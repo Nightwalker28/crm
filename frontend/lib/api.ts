@@ -1,5 +1,5 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-const REFRESH_PATH = "/api/v1/auth/refresh";
+const REFRESH_PATH = "/auth/refresh";
 
 // This function attempts to refresh the session. On success, it dispatches
 // a global event that a session provider can listen for to reset its timers.

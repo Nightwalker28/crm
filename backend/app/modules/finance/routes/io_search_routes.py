@@ -414,11 +414,6 @@ def list_finance_files_paginated(
                 "updated_at": updated_at.date().isoformat() if updated_at else None,
             }
         )
-    if not results:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="No finance IO files found",
-        )
     return build_paged_response(results, total_count, pagination)
 
 # commented for the future use needs to be updated according to the upcoming use case

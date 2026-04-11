@@ -2,6 +2,7 @@
 
 from alembic import op
 import sqlalchemy as sa
+from sqlalchemy import inspect
 
 # revision identifiers, used by Alembic.
 revision = "20241209_dept_mod_perms"
@@ -11,6 +12,11 @@ depends_on = None
 
 
 def upgrade() -> None:
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    if "department_module_permissions" in inspector.get_table_names():
+        return
+
     op.create_table(
         "department_module_permissions",
         sa.Column("id", sa.BigInteger(), nullable=False),
@@ -29,6 +35,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    bind = op.get_bind()
+    inspector = inspect(bind)
+    if "department_module_permissions" not in inspector.get_table_names():
+        return
+
     op.drop_index(
         op.f("ix_department_module_permissions_id"),
         table_name="department_module_permissions",

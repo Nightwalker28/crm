@@ -83,5 +83,13 @@ class Settings:
         if d.strip()
     ]
 
+    # -------------------------
+    # Initial bootstrap admin
+    # -------------------------
+    INITIAL_ADMIN_EMAIL: str | None = os.getenv("INITIAL_ADMIN_EMAIL")
+    INITIAL_ADMIN_PASSWORD: str | None = os.getenv("INITIAL_ADMIN_PASSWORD")
+    INITIAL_ADMIN_FIRST_NAME: str = os.getenv("INITIAL_ADMIN_FIRST_NAME", "System")
+    INITIAL_ADMIN_LAST_NAME: str = os.getenv("INITIAL_ADMIN_LAST_NAME", "Admin")
+
 
 settings = Settings()

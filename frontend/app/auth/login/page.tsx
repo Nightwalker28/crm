@@ -1,5 +1,6 @@
 "use client";
 
+import type { FormEvent } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -63,7 +64,7 @@ export default function LoginPage() {
     }
   }
 
-  async function handleManualSignIn(event: React.FormEvent<HTMLFormElement>) {
+  async function handleManualSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setSuccess(null);
@@ -90,7 +91,7 @@ export default function LoginPage() {
     }
   }
 
-  async function handleManualSignUp(event: React.FormEvent<HTMLFormElement>) {
+  async function handleManualSignUp(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
     setSuccess(null);
