@@ -1,0 +1,232 @@
+import urllib.parse
+
+from datetime import datetime, timezone
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.database import get_db
+from app.modules.user_management.models import RefreshToken, User
+from app.modules.user_management.schema import ManualLoginRequest, ManualSignupRequest
+from app.modules.user_management.services.auth import (
+    authenticate_manual_user,
+    create_access_token,
+    create_refresh_token,
+    decode_token,
+    get_google_auth_url,
+    handle_google_callback,
+    register_manual_user,
+)
+
+router = APIRouter(tags=["Auth"])
+
+
+def _set_session_cookies(
+    response: JSONResponse | RedirectResponse,
+    *,
+    access_token: str,
+    refresh_token: str,
+    secure_override: bool | None = None,
+) -> None:
+    secure = settings.COOKIE_SECURE if secure_override is None else secure_override
+
+    response.set_cookie(
+        key=settings.ACCESS_TOKEN_COOKIE_NAME,
+        value=access_token,
+        httponly=settings.COOKIE_HTTPONLY,
+        secure=secure,
+        samesite=settings.COOKIE_SAMESITE,
+        path=settings.COOKIE_PATH,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    response.set_cookie(
+        key=settings.REFRESH_TOKEN_COOKIE_NAME,
+        value=refresh_token,
+        httponly=settings.COOKIE_HTTPONLY,
+        secure=secure,
+        samesite=settings.COOKIE_SAMESITE,
+        path=settings.COOKIE_PATH,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_HOURS * 60 * 60,
+    )
+
+
+@router.post("/signup")
+def manual_signup(
+    payload: ManualSignupRequest,
+    db: Session = Depends(get_db),
+):
+    user = register_manual_user(
+        db,
+        email=payload.email,
+        password=payload.password,
+        first_name=payload.first_name,
+        last_name=payload.last_name,
+    )
+    return JSONResponse(
+        {
+            "status": "pending",
+            "message": "Account created and pending admin approval",
+            "user_id": user.id,
+        },
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+@router.post("/login")
+def manual_login(
+    payload: ManualLoginRequest,
+    db: Session = Depends(get_db),
+):
+    user = authenticate_manual_user(db, email=payload.email, password=payload.password)
+    access_token = create_access_token(user)
+    refresh_token = create_refresh_token(user, db)
+
+    response = JSONResponse({"status": "ok", "message": "Signed in"})
+    _set_session_cookies(
+        response,
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+    return response
+
+
+@router.post("/dev/login")
+def dev_login(
+    email: str,
+    db: Session = Depends(get_db),
+):
+    # Keep this endpoint out of production
+    if not getattr(settings, "DEBUG", False):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    user = db.query(User).filter(User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    access_token = create_access_token(user)
+    refresh_token = create_refresh_token(user, db)
+
+    response = JSONResponse({"status": "ok"})
+    _set_session_cookies(
+        response,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        secure_override=bool(getattr(settings, "COOKIE_SECURE", False)),
+    )
+    return response
+
+
+@router.get("/google")
+def google_login():
+    return {"auth_url": get_google_auth_url()}
+
+
+@router.get("/google/callback")
+def google_callback(
+    code: str | None = None,
+    db: Session = Depends(get_db),
+):
+    if not code:
+        query = urllib.parse.urlencode({"status": "error"})
+        return RedirectResponse(url=f"{settings.FRONTEND_ORIGIN}/auth/callback?{query}")
+
+    try:
+        result = handle_google_callback(code, db)
+    except HTTPException as exc:
+        status_value = "forbidden" if exc.status_code == 403 else "error"
+        query = urllib.parse.urlencode({"status": status_value})
+        return RedirectResponse(url=f"{settings.FRONTEND_ORIGIN}/auth/callback?{query}")
+
+    status_value = result.get("status", "error")
+    if status_value != "active":
+        query = urllib.parse.urlencode({"status": status_value})
+        return RedirectResponse(url=f"{settings.FRONTEND_ORIGIN}/auth/callback?{query}")
+
+    user = result["user"]
+    access_token = create_access_token(user)
+    refresh_token = create_refresh_token(user, db)
+
+    response = RedirectResponse(url=f"{settings.FRONTEND_ORIGIN}/auth/callback?status=active")
+    _set_session_cookies(
+        response,
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+    return response
+
+
+@router.post("/logout")
+def logout(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    refresh_token = request.cookies.get(settings.REFRESH_TOKEN_COOKIE_NAME)
+
+    if refresh_token:
+        try:
+            payload = decode_token(refresh_token, expected_type="refresh")
+            user_id = payload.get("sub")
+            if user_id:
+                db.query(RefreshToken).filter(RefreshToken.user_id == int(user_id)).delete()
+                db.commit()
+        except HTTPException:
+            pass
+
+    response = JSONResponse({"status": "logged_out"})
+    response.delete_cookie(settings.ACCESS_TOKEN_COOKIE_NAME, path=settings.COOKIE_PATH)
+    response.delete_cookie(settings.REFRESH_TOKEN_COOKIE_NAME, path=settings.COOKIE_PATH)
+    return response
+
+
+@router.post("/refresh")
+def refresh_access_token(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    refresh_token = request.cookies.get(settings.REFRESH_TOKEN_COOKIE_NAME)
+    if not refresh_token:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
+
+    payload = decode_token(refresh_token, expected_type="refresh")
+    user_id = payload.get("sub")
+    jti = payload.get("jti")
+
+    if not user_id or not jti:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+
+    db_row = db.query(RefreshToken).filter(
+        RefreshToken.user_id == int(user_id),
+        RefreshToken.token_jti == jti,
+    ).first()
+
+    if not db_row:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
+
+    now = datetime.now(timezone.utc)
+    if db_row.expires_at.replace(tzinfo=timezone.utc) <= now:
+        db.query(RefreshToken).filter(RefreshToken.id == db_row.id).delete()
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired")
+
+    user = db.query(User).filter(User.id == int(user_id)).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+
+    access_token = create_access_token(user)
+    response = JSONResponse(
+        {
+            "status": "ok",
+            "accessTokenMaxAge": settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        }
+    )
+    response.set_cookie(
+        key=settings.ACCESS_TOKEN_COOKIE_NAME,
+        value=access_token,
+        httponly=settings.COOKIE_HTTPONLY,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        path=settings.COOKIE_PATH,
+        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    return response

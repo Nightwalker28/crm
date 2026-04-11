@@ -1,0 +1,447 @@
+import csv
+import io
+from typing import Iterable, Sequence
+
+from fastapi import HTTPException, status
+from sqlalchemy import and_, func, or_
+from sqlalchemy.orm import Session
+
+from app.core.duplicates import detect_duplicates, ensure_single_duplicate_action
+from app.core.pagination import Pagination
+from app.modules.sales.models import SalesContact
+from app.modules.user_management.models import User
+
+EXPORT_COLUMNS = [
+    "contact_id",
+    "first_name",
+    "last_name",
+    "contact_telephone",
+    "linkedin_url",
+    "primary_email",
+    "current_title",
+    "region",
+    "country",
+    "email_opt_out",
+    "assigned_to",
+    "organization_id",
+    "created_time",
+]
+
+
+def _normalize_email(value: str | None) -> str:
+    if not value:
+        return ""
+    return value.strip().lower()
+
+
+def _normalize_name(first_name: str | None, last_name: str | None) -> str:
+    if not first_name or not last_name:
+        return ""
+    return f"{first_name.strip()} {last_name.strip()}".strip().lower()
+
+
+def _apply_search_filter(query, search: str | None):
+    if not search:
+        return query
+
+    pattern = f"%{search.lower()}%"
+    return query.filter(
+        or_(
+            func.lower(SalesContact.first_name).like(pattern),
+            func.lower(SalesContact.last_name).like(pattern),
+            func.lower(SalesContact.contact_telephone).like(pattern),
+            func.lower(SalesContact.primary_email).like(pattern),
+            func.lower(SalesContact.current_title).like(pattern),
+            func.lower(SalesContact.region).like(pattern),
+            func.lower(SalesContact.country).like(pattern),
+            func.lower(SalesContact.linkedin_url).like(pattern),
+        )
+    )
+
+
+def _ensure_assigned_user(db: Session, user_id: int):
+    exists = db.query(User.id).filter(User.id == user_id).first()
+    if not exists:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Assigned user not found",
+        )
+
+
+def list_sales_contacts(
+    db: Session,
+    pagination: Pagination,
+    search: str | None = None,
+) -> tuple[Sequence[SalesContact], int]:
+    query = _apply_search_filter(db.query(SalesContact), search)
+
+    total_count = query.count()
+    contacts = (
+        query.order_by(SalesContact.created_time.desc())
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+        .all()
+    )
+    return contacts, total_count
+
+
+def get_contact_or_404(db: Session, contact_id: int) -> SalesContact:
+    contact = db.query(SalesContact).filter(SalesContact.contact_id == contact_id).first()
+    if not contact:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
+    return contact
+
+
+def _apply_sales_contact_payload(contact: SalesContact, payload: dict) -> None:
+    for field, value in payload.items():
+        setattr(contact, field, value)
+
+
+def create_sales_contact(
+    db: Session,
+    payload: dict,
+    current_user,
+    replace_duplicates: bool = False,
+    skip_duplicates: bool = False,
+    create_new_records: bool = False,
+) -> SalesContact:
+    ensure_single_duplicate_action(
+        replace_duplicates=replace_duplicates,
+        skip_duplicates=skip_duplicates,
+        create_new_records=create_new_records,
+    )
+
+    data = dict(payload)
+    if not data.get("assigned_to"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="assigned_to is required")
+    _ensure_assigned_user(db, data["assigned_to"])
+
+    email = data.get("primary_email")
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="primary_email is required")
+
+    normalized_name = _normalize_name(data.get("first_name"), data.get("last_name"))
+    existing = (
+        db.query(SalesContact)
+        .filter(
+            or_(
+                func.lower(SalesContact.primary_email) == _normalize_email(email),
+                and_(
+                    normalized_name != "",
+                    func.lower(SalesContact.first_name) == (data.get("first_name") or "").strip().lower(),
+                    func.lower(SalesContact.last_name) == (data.get("last_name") or "").strip().lower(),
+                ),
+            )
+        )
+        .first()
+    )
+    if existing and not create_new_records:
+        if skip_duplicates:
+            return existing
+        if replace_duplicates:
+            _apply_sales_contact_payload(existing, data)
+            db.add(existing)
+            db.commit()
+            db.refresh(existing)
+            return existing
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"{email} or {normalized_name or 'contact name'} already exists. Resend with "
+                "replace_duplicates=true to overwrite, "
+                "skip_duplicates=true to leave the existing contact unchanged, or "
+                "create_new_records=true to add a new contact with the same email."
+            ),
+        )
+
+    contact = SalesContact(**data)
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> SalesContact:
+    if "assigned_to" in data:
+        if data["assigned_to"] is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="assigned_to cannot be null",
+            )
+        _ensure_assigned_user(db, data["assigned_to"])
+
+    if "primary_email" in data and data["primary_email"]:
+        normalized_email = _normalize_email(data["primary_email"])
+        duplicate = (
+            db.query(SalesContact)
+            .filter(
+                func.lower(SalesContact.primary_email) == normalized_email,
+                SalesContact.contact_id != contact.contact_id,
+            )
+            .first()
+        )
+        if duplicate:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Another contact already uses this email",
+            )
+
+    _apply_sales_contact_payload(contact, data)
+
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+    return contact
+
+
+def delete_sales_contact(db: Session, contact: SalesContact) -> None:
+    db.delete(contact)
+    db.commit()
+
+
+def _coerce_optional(value: str | None) -> str | None:
+    if value is None:
+        return None
+    value = value.strip()
+    return value or None
+
+
+def _parse_bool(value: str | None) -> bool | None:
+    if value is None:
+        return None
+    value = value.strip().lower()
+    if value in {"1", "true", "yes", "y"}:
+        return True
+    if value in {"0", "false", "no", "n"}:
+        return False
+    return None
+
+
+def import_contacts_from_csv(
+    db: Session,
+    file_bytes: bytes,
+    default_assigned_to: int,
+    replace_duplicates: bool = False,
+    skip_duplicates: bool = False,
+    create_new_records: bool = False,
+):
+    ensure_single_duplicate_action(
+        replace_duplicates=replace_duplicates,
+        skip_duplicates=skip_duplicates,
+        create_new_records=create_new_records,
+    )
+    text = file_bytes.decode("utf-8-sig")
+    csv_file = io.StringIO(text)
+    reader = csv.DictReader(csv_file)
+
+    if not reader.fieldnames:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV file is missing headers")
+
+    inserted = updated = skipped = 0
+    errors: list[str] = []
+    user_cache: dict[int, bool] = {}
+    rows: list[dict] = []
+    emails: list[str] = []
+    names: list[str] = []
+
+    for row_number, row in enumerate(reader, start=2):
+        normalized = {k.strip().lower(): (v.strip() if isinstance(v, str) else v) for k, v in row.items() if k}
+
+        if all(not (value or "").strip() for value in normalized.values()):
+            skipped += 1
+            continue
+
+        email = normalized.get("primary_email")
+        if not email:
+            errors.append(f"Row {row_number}: missing required field 'primary_email'")
+            skipped += 1
+            continue
+
+        assigned_to_str = normalized.get("assigned_to")
+        assigned_to = default_assigned_to
+        if assigned_to_str:
+            try:
+                assigned_to = int(assigned_to_str)
+            except ValueError:
+                errors.append(f"Row {row_number}: invalid assigned_to '{assigned_to_str}'")
+                skipped += 1
+                continue
+
+        if assigned_to not in user_cache:
+            user_cache[assigned_to] = bool(db.query(User.id).filter(User.id == assigned_to).first())
+        if not user_cache[assigned_to]:
+            errors.append(f"Row {row_number}: assigned_to '{assigned_to}' does not reference a valid user")
+            skipped += 1
+            continue
+
+        email_opt_out_value = normalized.get("email_opt_out")
+        parsed_opt_out = None
+        if email_opt_out_value is not None and email_opt_out_value != "":
+            parsed_opt_out = _parse_bool(email_opt_out_value)
+            if parsed_opt_out is None:
+                errors.append(
+                    f"Row {row_number}: email_opt_out '{email_opt_out_value}' must be true/false/1/0"
+                )
+                skipped += 1
+                continue
+
+        org_raw = normalized.get("organization_id")
+        organization_id = _parse_int_or_none(org_raw)
+        if org_raw and organization_id is None:
+            errors.append(f"Row {row_number}: invalid organization_id '{org_raw}'")
+            skipped += 1
+            continue
+
+        payload = {
+            "first_name": _coerce_optional(normalized.get("first_name")),
+            "last_name": _coerce_optional(normalized.get("last_name")),
+            "contact_telephone": _coerce_optional(normalized.get("contact_telephone")),
+            "linkedin_url": _coerce_optional(normalized.get("linkedin_url")),
+            "primary_email": email,
+            "current_title": _coerce_optional(normalized.get("current_title")),
+            "region": _coerce_optional(normalized.get("region")),
+            "country": _coerce_optional(normalized.get("country")),
+            "organization_id": organization_id,
+            "email_opt_out": parsed_opt_out if parsed_opt_out is not None else False,
+            "assigned_to": assigned_to,
+        }
+        rows.append(payload)
+        emails.append(_normalize_email(email))
+        names.append(_normalize_name(payload.get("first_name"), payload.get("last_name")))
+
+    normalized_emails = [email for email in emails if email]
+    normalized_names = [name for name in names if name]
+    existing_duplicates = {
+        row.primary_email.lower()
+        for row in db.query(SalesContact.primary_email)
+        .filter(func.lower(SalesContact.primary_email).in_(normalized_emails))
+        .distinct()
+    }
+    existing_name_duplicates = set()
+    first_names = {name.split(" ", 1)[0] for name in normalized_names if " " in name}
+    last_names = {name.split(" ", 1)[1] for name in normalized_names if " " in name}
+    if first_names and last_names:
+        existing_name_duplicates = {
+            _normalize_name(row.first_name, row.last_name)
+            for row in db.query(SalesContact.first_name, SalesContact.last_name)
+            .filter(
+                and_(
+                    func.lower(SalesContact.first_name).in_(first_names),
+                    func.lower(SalesContact.last_name).in_(last_names),
+                )
+            )
+            .distinct()
+        }
+
+    detection = detect_duplicates(normalized_emails, existing_values=existing_duplicates)
+    name_detection = detect_duplicates(normalized_names, existing_values=existing_name_duplicates)
+    if (existing_duplicates or existing_name_duplicates) and not any(
+        (replace_duplicates, skip_duplicates, create_new_records)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": (
+                    "Duplicate contacts detected. Resend with "
+                    "replace_duplicates=true to overwrite them, "
+                    "skip_duplicates=true to leave the existing contacts untouched, or "
+                    "create_new_records=true to add new contacts alongside the existing ones."
+                ),
+                "duplicate_emails": detection.duplicate_values,
+                "duplicate_names": name_detection.duplicate_values,
+                "requires_confirmation": True,
+            },
+        )
+
+    existing_by_email = {
+        row.primary_email.lower(): row
+        for row in db.query(SalesContact)
+        .filter(func.lower(SalesContact.primary_email).in_(normalized_emails))
+        .all()
+    }
+    existing_by_name = {}
+    if first_names and last_names:
+        existing_by_name = {
+            _normalize_name(row.first_name, row.last_name): row
+            for row in db.query(SalesContact)
+            .filter(
+                and_(
+                    func.lower(SalesContact.first_name).in_(first_names),
+                    func.lower(SalesContact.last_name).in_(last_names),
+                )
+            )
+            .all()
+        }
+
+    for payload in rows:
+        normalized_email = _normalize_email(payload["primary_email"])
+        normalized_name = _normalize_name(payload.get("first_name"), payload.get("last_name"))
+        existing = None
+        if not create_new_records:
+            existing = existing_by_email.get(normalized_email)
+            if not existing and normalized_name:
+                existing = existing_by_name.get(normalized_name)
+
+        if existing and skip_duplicates:
+            skipped += 1
+            continue
+
+        if existing and replace_duplicates:
+            _apply_sales_contact_payload(existing, payload)
+            db.add(existing)
+            updated += 1
+            continue
+
+        contact = SalesContact(**payload)
+        db.add(contact)
+        inserted += 1
+
+    db.commit()
+
+    return {
+        "inserted": inserted,
+        "updated": updated,
+        "skipped": skipped,
+        "errors": errors,
+    }
+
+
+def _parse_int_or_none(value: str | None) -> int | None:
+    if value is None or value == "":
+        return None
+    try:
+        return int(value)
+    except ValueError:
+        return None
+
+
+def export_contacts_to_csv(contacts: Iterable[SalesContact]) -> bytes:
+    csv_buffer = io.StringIO()
+    writer = csv.DictWriter(csv_buffer, fieldnames=EXPORT_COLUMNS)
+    writer.writeheader()
+
+    for contact in contacts:
+        writer.writerow(
+            {
+                "contact_id": contact.contact_id,
+                "first_name": contact.first_name or "",
+                "last_name": contact.last_name or "",
+                "contact_telephone": contact.contact_telephone or "",
+                "linkedin_url": contact.linkedin_url or "",
+                "primary_email": contact.primary_email or "",
+                "current_title": contact.current_title or "",
+                "region": contact.region or "",
+                "country": contact.country or "",
+                "email_opt_out": str(contact.email_opt_out).lower(),
+                "assigned_to": contact.assigned_to,
+                "organization_id": contact.organization_id or "",
+                "created_time": contact.created_time.isoformat() if contact.created_time else "",
+            }
+        )
+
+    return csv_buffer.getvalue().encode("utf-8")
+
+
+def get_all_contacts(db: Session, search: str | None = None) -> list[SalesContact]:
+    query = _apply_search_filter(db.query(SalesContact), search)
+    return query.order_by(SalesContact.created_time.desc()).all()
