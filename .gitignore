@@ -2,6 +2,9 @@
 # Python FastAPI
 ########################################
 
+# Uploads
+uploads/
+
 # Bytecode
 __pycache__/
 *.py[cod]

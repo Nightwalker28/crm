@@ -2,9 +2,15 @@ from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
 from datetime import datetime, timezone
 
+from app.core.access_control import (
+    ADMIN_MIN_ROLE_LEVEL,
+    SUPERUSER_MIN_ROLE_LEVEL,
+    USER_MIN_ROLE_LEVEL,
+    require_minimum_role_level,
+)
 from app.core.config import settings
 from app.core.database import get_db
-from app.modules.user_management.models import User, Role, UserStatus, RefreshToken
+from app.modules.user_management.models import User, UserStatus, RefreshToken
 from app.modules.user_management.services.auth import decode_token, create_access_token
 
 def get_current_user(
@@ -95,29 +101,39 @@ def get_current_user(
     )
 
 def require_admin(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    # Simple check: treat highest level as admin
-    role: Role | None = db.query(Role).filter(Role.id == current_user.role_id).first()
-    # Admins are level 100 and above
-    if not role or role.level < 100:
+    try:
+        require_minimum_role_level(
+            db,
+            user=current_user,
+            minimum_level=ADMIN_MIN_ROLE_LEVEL,
+        )
+    except PermissionError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Admin privileges required")
     return current_user
 
 def require_superuser(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    role: Role | None = db.query(Role).filter(Role.id == current_user.role_id).first()
-    # Superusers are level 90 and above (admins also qualify)
-    if not role or role.level < 90:
+    try:
+        require_minimum_role_level(
+            db,
+            user=current_user,
+            minimum_level=SUPERUSER_MIN_ROLE_LEVEL,
+        )
+    except PermissionError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Superuser privileges required")
     return current_user
 
 
 def require_user(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    role: Role | None = db.query(Role).filter(Role.id == current_user.role_id).first()
-    # Users are level 10 and above
-    if not role or role.level < 10:
+    try:
+        require_minimum_role_level(
+            db,
+            user=current_user,
+            minimum_level=USER_MIN_ROLE_LEVEL,
+        )
+    except PermissionError:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="User privileges required")
     return current_user
-
 

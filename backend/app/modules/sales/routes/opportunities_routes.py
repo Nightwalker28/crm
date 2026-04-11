@@ -1,7 +1,4 @@
-from pathlib import Path
-from uuid import uuid4
-
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -19,11 +16,9 @@ from app.modules.sales.services.opportunities_services import (
     delete_opportunity,
     get_opportunity_or_404,
     list_opportunities,
-    OPPORTUNITY_ATTACHMENTS_DIR,
-    parse_attachment_paths,
     update_opportunity,
 )
-from app.modules.sales.services.io_automation_services import create_finance_io_from_opportunity
+from app.modules.sales.services import opportunities_api
 
 router = APIRouter(prefix="/opportunities", tags=["Sales"])
 
@@ -75,33 +70,11 @@ async def upload_opportunity_attachments(
     current_user = Depends(require_user),
     require_module = Depends(require_module_access("sales_opportunities")),
 ):
-    opportunity = get_opportunity_or_404(db, opportunity_id)
-
-    if not files:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Upload one or more files.",
-        )
-
-    saved_paths: list[str] = []
-    for upload in files:
-        filename = Path(upload.filename or "upload").name
-        content = await upload.read()
-        if not content:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"The uploaded file '{upload.filename}' is empty.",
-            )
-
-        unique_name = f"{opportunity_id}_{uuid4().hex}_{filename}"
-        destination = OPPORTUNITY_ATTACHMENTS_DIR / unique_name
-        destination.write_bytes(content)
-        saved_paths.append(str(destination.relative_to(OPPORTUNITY_ATTACHMENTS_DIR.parent.parent)))
-
-    existing_paths = parse_attachment_paths(opportunity.attachments)
-    updated = existing_paths + saved_paths
-    updated_opportunity = update_opportunity(db, opportunity, {"attachments": updated})
-    return SalesOpportunityResponse.model_validate(updated_opportunity)
+    return await opportunities_api.upload_opportunity_attachments(
+        db,
+        opportunity_id=opportunity_id,
+        files=files,
+    )
 
 
 @router.delete("/{opportunity_id}/attachments", response_model=SalesOpportunityResponse)
@@ -112,37 +85,11 @@ def delete_opportunity_attachments(
     current_user = Depends(require_user),
     require_module = Depends(require_module_access("sales_opportunities")),
 ):
-    opportunity = get_opportunity_or_404(db, opportunity_id)
-
-    if not attachments:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Provide one or more attachments to delete.",
-        )
-
-    existing_paths = parse_attachment_paths(opportunity.attachments)
-    remaining_paths = [path for path in existing_paths if path not in attachments]
-    removed_paths = [path for path in existing_paths if path in attachments]
-
-    allowed_root = OPPORTUNITY_ATTACHMENTS_DIR.resolve()
-    for path_str in removed_paths:
-        try:
-            candidate = (OPPORTUNITY_ATTACHMENTS_DIR.parent.parent / path_str).resolve()
-            if allowed_root not in candidate.parents and candidate != allowed_root:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Invalid attachment location.",
-                )
-        except RuntimeError:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Unable to resolve attachment path.",
-            )
-        if candidate.is_file():
-            candidate.unlink()
-
-    updated_opportunity = update_opportunity(db, opportunity, {"attachments": remaining_paths})
-    return SalesOpportunityResponse.model_validate(updated_opportunity)
+    return opportunities_api.delete_opportunity_attachments(
+        db,
+        opportunity_id=opportunity_id,
+        attachments=attachments,
+    )
 
 
 @router.get("/{opportunity_id}", response_model=SalesOpportunityResponse)
@@ -191,5 +138,8 @@ def create_finance_io(
     current_user = Depends(require_user),
     require_module = Depends(require_module_access("sales_opportunities")),
 ):
-    opportunity = get_opportunity_or_404(db, opportunity_id)
-    return create_finance_io_from_opportunity(db, opportunity=opportunity, user_id=current_user.id)
+    return opportunities_api.create_finance_io_for_opportunity(
+        db,
+        opportunity_id=opportunity_id,
+        user_id=current_user.id,
+    )

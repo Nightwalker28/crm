@@ -6,7 +6,7 @@
 2. Run `docker compose up --build` from the repository root to start Postgres and the FastAPI backend.
 3. The API becomes available at `http://localhost:8000/api/v1`.
 
-The backend container waits for the Postgres healthcheck before starting and mounts `backend/app/uploads` to persist uploaded files between restarts.
+The backend container waits for the Postgres healthcheck before starting and mounts `backend/uploads` to persist uploaded files between restarts.
 
 join the postman workspace buddiesss...
 

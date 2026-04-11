@@ -10,8 +10,8 @@ from app.core.postgres_search import apply_trigram_search, searchable_text
 from app.modules.sales.models import SalesOpportunity, SalesContact, SalesOrganization
 from app.modules.user_management.models import User
 
-APP_DIR = Path(__file__).resolve().parents[3]
-OPPORTUNITY_ATTACHMENTS_DIR = APP_DIR / "uploads" / "opportunities-attachments"
+BACKEND_DIR = Path(__file__).resolve().parents[4]
+OPPORTUNITY_ATTACHMENTS_DIR = BACKEND_DIR / "uploads" / "opportunities-attachments"
 OPPORTUNITY_ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 
