@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+
 import { apiFetch } from "@/lib/api";
 
 export type Organization = {
@@ -23,84 +25,60 @@ export type OrganizationsResponse = {
   page: number;
 };
 
+async function fetchOrganizations(
+  page: number,
+  pageSize: number,
+  searchTerm: string
+): Promise<OrganizationsResponse> {
+  const params = new URLSearchParams({
+    page: String(page),
+    page_size: String(pageSize),
+  });
+
+  if (searchTerm.trim()) {
+    params.append("search", searchTerm.trim());
+  }
+
+  const res = await apiFetch(`/sales/organizations?${params.toString()}`);
+  if (!res.ok) throw new Error(`Failed with ${res.status}`);
+  return res.json();
+}
+
 export function useOrganizations(initialPage = 1, initialPageSize = 10) {
   const [page, setPage] = useState(initialPage);
-  const [pageSize, setPageSize] = useState(initialPageSize);
+  const [pageSize, setPageSizeState] = useState(initialPageSize);
+  const [searchTerm, setSearchTermState] = useState("");
 
-  const [organizations, setOrganizations] = useState<Organization[]>([]);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [rangeStart, setRangeStart] = useState(0);
-  const [rangeEnd, setRangeEnd] = useState(0);
+  const query = useQuery({
+    queryKey: ["sales-organizations", page, pageSize, searchTerm],
+    queryFn: () => fetchOrganizations(page, pageSize, searchTerm),
+    placeholderData: keepPreviousData,
+  });
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState<string>("");
-
-  const fetchPage = useCallback(
-    async (targetPage: number, targetPageSize = pageSize) => {
-      try {
-        setIsLoading(true);
-        setError(null);
-
-        const params = new URLSearchParams({
-          page: String(targetPage),
-          page_size: String(targetPageSize),
-        });
-
-        if (searchTerm.trim()) {
-          params.append("search", searchTerm.trim());
-        }
-
-        const res = await apiFetch(
-          `/sales/organizations?${params.toString()}`
-        );
-
-        if (!res.ok) throw new Error(`Failed with ${res.status}`);
-
-        const json: OrganizationsResponse = await res.json();
-
-        setOrganizations(json.results ?? []);
-        setTotalCount(json.total_count ?? 0);
-        setRangeStart(json.range_start ?? 0);
-        setRangeEnd(json.range_end ?? 0);
-        setTotalPages(json.total_pages ?? 1);
-
-        setPage(targetPage);
-        setPageSize(targetPageSize);
-      } catch (err) {
-        console.error(err);
-        setError("Failed to load organizations");
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    [pageSize, searchTerm]
-  );
-
-  useEffect(() => {
-    fetchPage(initialPage, pageSize);
-  }, [fetchPage, initialPage, pageSize]);
+  const data = query.data;
 
   return {
-    organizations,
-    page,
+    organizations: data?.results ?? [],
+    page: data?.page ?? page,
     pageSize,
-    totalPages,
-    totalCount,
-    rangeStart,
-    rangeEnd,
-    isLoading,
-    error,
+    totalPages: data?.total_pages ?? 1,
+    totalCount: data?.total_count ?? 0,
+    rangeStart: data?.range_start ?? 0,
+    rangeEnd: data?.range_end ?? 0,
+    isLoading: query.isLoading || query.isFetching,
+    error: query.error instanceof Error ? "Failed to load organizations" : null,
     searchTerm,
 
-    goToPage: (p: number) => fetchPage(p, pageSize),
-    setPageSize: (size: number) => fetchPage(1, size),
-    refresh: () => fetchPage(page, pageSize),
+    goToPage: setPage,
+    setPageSize: (size: number) => {
+      setPage(1);
+      setPageSizeState(size);
+    },
+    refresh: () => query.refetch(),
 
     setSearchTerm: (value: string) => {
-      setSearchTerm(value);
-      fetchPage(1, pageSize);
+      setPage(1);
+      setSearchTermState(value);
     },
   };
 }

@@ -5,6 +5,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import detect_duplicates, ensure_single_duplicate_action
+from app.core.postgres_search import apply_trigram_search, searchable_text
 from app.modules.sales.models import SalesOrganization
 from app.modules.sales.schema import SalesOrganizationCreate, SalesOrganizationUpdate
 
@@ -100,15 +101,36 @@ def list_organizations_paginated(db: Session, offset: int, limit: int) -> tuple[
 
 def search_organizations_pagianted(db: Session, name: str, offset: int, limit: int) -> tuple[list[SalesOrganization], int]:
     """Return a page of organizations matching the name and the total count."""
-    base_query = db.query(SalesOrganization).filter(SalesOrganization.org_name.ilike(f"%{name}%"))
-    total = base_query.count()
-    items = (
-        base_query
-        .order_by(SalesOrganization.created_time.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
+    document = searchable_text(
+        SalesOrganization.org_name,
+        SalesOrganization.website,
+        SalesOrganization.primary_email,
+        SalesOrganization.industry,
+        SalesOrganization.billing_city,
+        SalesOrganization.billing_country,
     )
+    base_query, rank = apply_trigram_search(
+        db.query(SalesOrganization),
+        search=name,
+        document=document,
+    )
+    total = base_query.count()
+    if rank is not None:
+        items = (
+            base_query
+            .order_by(rank.desc(), SalesOrganization.created_time.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
+    else:
+        items = (
+            base_query
+            .order_by(SalesOrganization.created_time.desc())
+            .offset(offset)
+            .limit(limit)
+            .all()
+        )
     return items, total
 
 

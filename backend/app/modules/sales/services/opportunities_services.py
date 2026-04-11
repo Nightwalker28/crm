@@ -2,10 +2,11 @@ import json
 from pathlib import Path
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination
+from app.core.postgres_search import apply_trigram_search, searchable_text
 from app.modules.sales.models import SalesOpportunity, SalesContact, SalesOrganization
 from app.modules.user_management.models import User
 
@@ -58,20 +59,18 @@ def _ensure_organization(db: Session, organization_id: int):
 
 def _apply_search_filter(query, search: str | None):
     if not search:
-        return query
+        return query, None
 
-    pattern = f"%{search.lower()}%"
-    return query.filter(
-        or_(
-            func.lower(SalesOpportunity.opportunity_name).like(pattern),
-            func.lower(SalesOpportunity.client).like(pattern),
-            func.lower(SalesOpportunity.sales_stage).like(pattern),
-            func.lower(SalesOpportunity.campaign_type).like(pattern),
-            func.lower(SalesOpportunity.target_geography).like(pattern),
-            func.lower(SalesOpportunity.target_audience).like(pattern),
-            func.lower(SalesOpportunity.tactics).like(pattern),
-        )
+    document = searchable_text(
+        SalesOpportunity.opportunity_name,
+        SalesOpportunity.client,
+        SalesOpportunity.sales_stage,
+        SalesOpportunity.campaign_type,
+        SalesOpportunity.target_geography,
+        SalesOpportunity.target_audience,
+        SalesOpportunity.tactics,
     )
+    return apply_trigram_search(query, search=search, document=document)
 
 
 def list_opportunities(
@@ -79,14 +78,22 @@ def list_opportunities(
     pagination: Pagination,
     search: str | None = None,
 ) -> tuple[list[SalesOpportunity], int]:
-    query = _apply_search_filter(db.query(SalesOpportunity), search)
+    query, rank = _apply_search_filter(db.query(SalesOpportunity), search)
     total_count = query.count()
-    items = (
-        query.order_by(SalesOpportunity.created_time.desc())
-        .offset(pagination.offset)
-        .limit(pagination.limit)
-        .all()
-    )
+    if rank is not None:
+        items = (
+            query.order_by(rank.desc(), SalesOpportunity.created_time.desc())
+            .offset(pagination.offset)
+            .limit(pagination.limit)
+            .all()
+        )
+    else:
+        items = (
+            query.order_by(SalesOpportunity.created_time.desc())
+            .offset(pagination.offset)
+            .limit(pagination.limit)
+            .all()
+        )
     return items, total_count
 
 

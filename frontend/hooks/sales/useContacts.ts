@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+
 import { apiFetch } from "@/lib/api";
 
 export type Contact = {
@@ -25,62 +27,36 @@ export type ContactsResponse = {
   page: number;
 };
 
+async function fetchContacts(page: number): Promise<ContactsResponse> {
+  const res = await apiFetch(`/sales/contacts?page=${page}`);
+  if (!res.ok) throw new Error(`Failed with ${res.status}`);
+  return res.json();
+}
+
 export function useContacts(initialPage = 1) {
   const [page, setPage] = useState(initialPage);
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-  const [rangeStart, setRangeStart] = useState(0);
-  const [rangeEnd, setRangeEnd] = useState(0);
 
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const fetchPage = useCallback(
-    async (targetPage: number) => {
-      try {
-        setIsLoading(true);
-        setError(null);
+  const query = useQuery({
+    queryKey: ["sales-contacts", page],
+    queryFn: () => fetchContacts(page),
+    placeholderData: keepPreviousData,
+  });
 
-        const res = await apiFetch(`/sales/contacts?page=${targetPage}`);
-
-        if (!res.ok) throw new Error(`Failed with ${res.status}`);
-
-        const json: ContactsResponse = await res.json();
-
-        setContacts(json.results ?? []);
-        setTotalCount(json.total_count ?? 0);
-        setRangeStart(json.range_start ?? 0);
-        setRangeEnd(json.range_end ?? 0);
-        setTotalPages(json.total_pages ?? 1);
-        setPage(json.page ?? targetPage);
-      } catch (err) {
-        console.error(err);
-        setError("Failed to load contacts");
-      } finally {
-        setIsLoading(false);
-      }
-    },
-    []
-  );
-
-  useEffect(() => {
-    fetchPage(initialPage);
-  }, [initialPage, fetchPage]);
-
-  const pageSize =
-    rangeStart && rangeEnd ? rangeEnd - rangeStart + 1 : 0;
+  const data = query.data;
+  const rangeStart = data?.range_start ?? 0;
+  const rangeEnd = data?.range_end ?? 0;
 
   return {
-    contacts,
-    page,
-    totalPages,
-    totalCount,
+    contacts: data?.results ?? [],
+    page: data?.page ?? page,
+    totalPages: data?.total_pages ?? 1,
+    totalCount: data?.total_count ?? 0,
     rangeStart,
     rangeEnd,
-    pageSize,
-    isLoading,
-    error,
-    goToPage: fetchPage,
-    refresh: () => fetchPage(page),
+    pageSize: rangeStart && rangeEnd ? rangeEnd - rangeStart + 1 : 0,
+    isLoading: query.isLoading || query.isFetching,
+    error: query.error instanceof Error ? "Failed to load contacts" : null,
+    goToPage: setPage,
+    refresh: () => query.refetch(),
   };
 }

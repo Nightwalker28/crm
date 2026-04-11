@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogBackdrop,
@@ -70,25 +71,26 @@ export default function CreateContactModal({
   const [orgOpen, setOrgOpen] = useState(false);
   const orgRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const fetchOrgs = async () => {
-      const res = await apiFetch("/sales/organizations");
-
-      if (!res.ok) return;
-
+  const orgsQuery = useQuery({
+    queryKey: ["contact-org-options"],
+    queryFn: async () => {
+      const res = await apiFetch("/sales/organizations?page=1&page_size=50");
+      if (!res.ok) throw new Error("Failed to load organizations");
       const json = await res.json();
-      setOrgs(
-        (json.results ?? []).map((o: any) => ({
-          id: o.id,
-          name: o.org_name,
-        }))
-      );
-    };
+      return (json.results ?? []).map((o: any) => ({
+        id: o.org_id ?? o.id,
+        name: o.org_name,
+      })) as OrgOption[];
+    },
+    enabled: isOpen,
+    staleTime: 5 * 60_000,
+  });
 
-    fetchOrgs();
-  }, [isOpen]);
+  useEffect(() => {
+    if (orgsQuery.data) {
+      setOrgs(orgsQuery.data);
+    }
+  }, [orgsQuery.data]);
 
   const filteredOrgs = orgs.filter((o) =>
     o.name.toLowerCase().includes(orgSearch.toLowerCase())

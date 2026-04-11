@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.duplicates import detect_duplicates, ensure_single_duplicate_action
 from app.core.pagination import Pagination
+from app.core.postgres_search import apply_trigram_search, searchable_text
 from app.modules.sales.models import SalesContact
 from app.modules.user_management.models import User
 
@@ -44,19 +45,20 @@ def _apply_search_filter(query, search: str | None):
     if not search:
         return query
 
-    pattern = f"%{search.lower()}%"
-    return query.filter(
-        or_(
-            func.lower(SalesContact.first_name).like(pattern),
-            func.lower(SalesContact.last_name).like(pattern),
-            func.lower(SalesContact.contact_telephone).like(pattern),
-            func.lower(SalesContact.primary_email).like(pattern),
-            func.lower(SalesContact.current_title).like(pattern),
-            func.lower(SalesContact.region).like(pattern),
-            func.lower(SalesContact.country).like(pattern),
-            func.lower(SalesContact.linkedin_url).like(pattern),
-        )
+    document = searchable_text(
+        SalesContact.first_name,
+        SalesContact.last_name,
+        SalesContact.contact_telephone,
+        SalesContact.primary_email,
+        SalesContact.current_title,
+        SalesContact.region,
+        SalesContact.country,
+        SalesContact.linkedin_url,
     )
+    filtered_query, rank = apply_trigram_search(query, search=search, document=document)
+    if rank is None:
+        return filtered_query
+    return filtered_query.order_by(rank.desc(), SalesContact.created_time.desc())
 
 
 def _ensure_assigned_user(db: Session, user_id: int):
@@ -76,12 +78,15 @@ def list_sales_contacts(
     query = _apply_search_filter(db.query(SalesContact), search)
 
     total_count = query.count()
-    contacts = (
-        query.order_by(SalesContact.created_time.desc())
-        .offset(pagination.offset)
-        .limit(pagination.limit)
-        .all()
-    )
+    if search:
+        contacts = query.offset(pagination.offset).limit(pagination.limit).all()
+    else:
+        contacts = (
+            query.order_by(SalesContact.created_time.desc())
+            .offset(pagination.offset)
+            .limit(pagination.limit)
+            .all()
+        )
     return contacts, total_count
 
 

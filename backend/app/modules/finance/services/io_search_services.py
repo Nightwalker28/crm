@@ -10,9 +10,10 @@ from typing import Any, IO
 from dateutil import parser
 from docx import Document
 import pdfplumber
-from sqlalchemy import extract
+from sqlalchemy import extract, func, literal, or_
 from sqlalchemy.orm import Session
 
+from app.core.postgres_search import TRIGRAM_SIMILARITY_THRESHOLD
 from app.modules.finance.models import FinanceIO
 from app.modules.user_management.models import User
 
@@ -649,12 +650,26 @@ def search_finance_io(
 
         base_query = base_query.filter(column == parsed)
     else:
-        base_query = base_query.filter(column.ilike(f"%{value}%"))
+        normalized = value.strip().lower()
+        searchable_column = func.lower(func.coalesce(column, literal("")))
+        rank = func.similarity(searchable_column, normalized)
+        base_query = base_query.filter(
+            or_(
+                searchable_column.ilike(f"%{normalized}%"),
+                rank >= TRIGRAM_SIMILARITY_THRESHOLD,
+            )
+        )
 
     # Compute total count before applying pagination
     total_count = base_query.distinct().count() if return_total else None
 
-    query = base_query.distinct().order_by(FinanceIO.updated_at.desc())
+    if field in TEXT_SEARCHABLE_FIELDS:
+        normalized = value.strip().lower()
+        searchable_column = func.lower(func.coalesce(column, literal("")))
+        rank = func.similarity(searchable_column, normalized)
+        query = base_query.distinct().order_by(rank.desc(), FinanceIO.updated_at.desc())
+    else:
+        query = base_query.distinct().order_by(FinanceIO.updated_at.desc())
 
     if offset is not None:
         query = query.offset(offset)

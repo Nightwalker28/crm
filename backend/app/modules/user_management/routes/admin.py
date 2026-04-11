@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, or_, text, case, func
 from sqlalchemy.orm import Session, selectinload, joinedload
 from app.core.database import get_db
+from app.core.postgres_search import apply_trigram_search, searchable_text
 from app.core.security import require_admin
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.modules.user_management.models import Department, Role, Team, User, UserStatus
@@ -115,14 +116,10 @@ def search_users(
 
     # --- APPLY FILTERS ---
     if q:
-        term = f"%{q.strip()}%"
-        query = query.filter(
-            or_(
-                User.first_name.ilike(term),
-                User.last_name.ilike(term),
-                User.email.ilike(term)
-            )
-        )
+        document = searchable_text(User.first_name, User.last_name, User.email)
+        query, rank = apply_trigram_search(query, search=q, document=document)
+    else:
+        rank = None
 
     if teams and teams.lower() != "all":
         try:
@@ -174,7 +171,12 @@ def search_users(
     else:
         user_sort = User.first_name 
 
-    if sort_order == "desc":
+    if rank is not None:
+        if sort_order == "desc":
+            query = query.order_by(attention_sort.asc(), team_sort.asc(), rank.asc(), User.id.desc())
+        else:
+            query = query.order_by(attention_sort.asc(), team_sort.asc(), rank.desc(), User.id.asc())
+    elif sort_order == "desc":
         query = query.order_by(attention_sort.asc(), team_sort.asc(), user_sort.desc(), User.id.desc())
     else:
         query = query.order_by(attention_sort.asc(), team_sort.asc(), user_sort.asc(), User.id.asc())
@@ -308,6 +310,14 @@ def create_team(
     db.commit()
     db.refresh(team)
     return team
+
+
+@router.get("/teams", response_model=list[TeamSchema])
+def list_teams(
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return db.query(Team).order_by(Team.name.asc()).all()
 
 
 @router.put("/teams/{team_id}", response_model=TeamSchema)
