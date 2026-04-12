@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   Dialog,
   DialogBackdrop,
@@ -21,12 +19,7 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { COUNTRIES } from "@/lib/countries";
-import { apiFetch } from "@/lib/api";
-
-type OrgOption = {
-  id: number;
-  name: string;
-};
+import { useCreateContact } from "@/hooks/sales/useCreateContact";
 
 const REGIONS = ["APAC", "EMEA", "NA", "LATAM"];
 
@@ -41,113 +34,30 @@ export default function CreateContactModal({
   onClose,
   onSuccess,
 }: Props) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  /* ---------------- FORM ---------------- */
-  const [form, setForm] = useState({
-    first_name: "",
-    last_name: "",
-    primary_email: "",
-    linkedin_url: "",
-    current_title: "",
-    region: "",
-    country: "",
-    organization_id: "" as string | number,
+  const {
+    form,
+    setForm,
+    error,
+    isSubmitting,
+    canSubmit,
+    orgRef,
+    orgSearch,
+    setOrgSearch,
+    selectedOrgName,
+    setSelectedOrgName,
+    orgOpen,
+    setOrgOpen,
+    filteredOrgs,
+    closeModal,
+    submit,
+  } = useCreateContact({
+    isOpen,
+    onClose,
+    onSuccess,
   });
-
-  const canSubmit = useMemo(() => {
-    return (
-      form.first_name.trim() ||
-      form.last_name.trim() ||
-      form.primary_email.trim()
-    );
-  }, [form]);
-
-  /* ---------------- ORGS ---------------- */
-  const [orgs, setOrgs] = useState<OrgOption[]>([]);
-  const [orgSearch, setOrgSearch] = useState("");
-  const [selectedOrgName, setSelectedOrgName] = useState("");
-  const [orgOpen, setOrgOpen] = useState(false);
-  const orgRef = useRef<HTMLDivElement>(null);
-
-  const orgsQuery = useQuery({
-    queryKey: ["contact-org-options"],
-    queryFn: async () => {
-      const res = await apiFetch("/sales/organizations?page=1&page_size=50");
-      if (!res.ok) throw new Error("Failed to load organizations");
-      const json = await res.json();
-      return (json.results ?? []).map((o: any) => ({
-        id: o.org_id ?? o.id,
-        name: o.org_name,
-      })) as OrgOption[];
-    },
-    enabled: isOpen,
-    staleTime: 5 * 60_000,
-  });
-
-  useEffect(() => {
-    if (orgsQuery.data) {
-      setOrgs(orgsQuery.data);
-    }
-  }, [orgsQuery.data]);
-
-  const filteredOrgs = orgs.filter((o) =>
-    o.name.toLowerCase().includes(orgSearch.toLowerCase())
-  );
-
-  /* -------- CLOSE ON OUTSIDE CLICK -------- */
-  useEffect(() => {
-    if (!orgOpen) return;
-
-    const handleClickOutside = (e: MouseEvent) => {
-      if (orgRef.current && !orgRef.current.contains(e.target as Node)) {
-        setOrgOpen(false);
-        setOrgSearch("");
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [orgOpen]);
-
-  /* ---------------- SUBMIT ---------------- */
-  const handleSubmit = async () => {
-    try {
-      setIsSubmitting(true);
-      setError(null);
-
-      const res = await apiFetch("/sales/contacts", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          ...form,
-          organization_id: form.organization_id
-            ? Number(form.organization_id)
-            : null,
-        }),
-      });
-
-      if (!res.ok) throw new Error(await res.text());
-
-      // reset
-      setSelectedOrgName("");
-      setOrgSearch("");
-      setOrgOpen(false);
-
-      onSuccess();
-      onClose();
-    } catch (err: any) {
-      setError(err.message || "Failed to create contact");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   return (
-    <Dialog open={isOpen} onClose={onClose}>
+    <Dialog open={isOpen} onClose={closeModal}>
       <DialogBackdrop />
 
       <div className="fixed inset-0 flex items-center justify-center p-4">
@@ -308,11 +218,11 @@ export default function CreateContactModal({
           </div>
 
           <DialogFooter className="mt-6">
-            <Button variant="outline" onClick={onClose}>
+            <Button variant="outline" onClick={closeModal}>
               Cancel
             </Button>
             <Button
-              onClick={handleSubmit}
+              onClick={submit}
               disabled={!canSubmit || isSubmitting}
             >
               {isSubmitting ? "Creating…" : "Create"}

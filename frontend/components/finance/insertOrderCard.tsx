@@ -1,6 +1,5 @@
 "use client";
 
-import { useState } from "react";
 import type { InsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import Image from "next/image";
 import { FileText } from "lucide-react";
@@ -30,12 +29,8 @@ export default function InsertionOrderCard({
 }: {
   order: InsertionOrder;
 }) {
-  const [isHovered, setIsHovered] = useState(false);
-
   return (
     <div
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       className="group relative bg-zinc-900/50 border border-zinc-800 rounded-lg p-3.5
         hover:bg-zinc-900 hover:border-zinc-700 transition-all duration-200"
     >

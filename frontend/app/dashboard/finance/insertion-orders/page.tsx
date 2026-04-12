@@ -1,14 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import InsertionOrdersList from "@/components/finance/insertionOrderList";
 import { useInsertionOrders } from "@/hooks/finance/useInsertionOrders";
 import FilterButton from "@/components/ui/filter-button";
-import type { InsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import InsertionOrdersHeader from "../../../../components/finance/InsertionOrdersHeader";
 import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
-import { apiFetch } from "@/lib/api";
 
 export default function InsertionOrdersPage() {
   const {
@@ -24,51 +21,12 @@ export default function InsertionOrdersPage() {
     totalCount,
     rangeStart,
     rangeEnd,
+    searchTerm,
+    searchField,
+    showingSearch,
+    setSearchTerm,
+    setSearchField,
   } = useInsertionOrders(1, 10);
-
-  const [searchTerm, setSearchTerm] = useState("");
-  const [searchField, setSearchField] = useState("campaign_name");
-  const [searchResults, setSearchResults] = useState<InsertionOrder[] | null>(
-    null
-  );
-  const [searching, setSearching] = useState(false);
-
-  // Live search (debounced, uses searchTerm + searchField)
-  useEffect(() => {
-    const trimmed = searchTerm.trim();
-
-    if (!trimmed) {
-      setSearchResults(null);
-      return;
-    }
-
-    const timeout = setTimeout(async () => {
-      try {
-        setSearching(true);
-        const res = await apiFetch(
-          `/finance/insertion-orders/search?field=${searchField}&value=${encodeURIComponent(
-            trimmed
-          )}`,
-        );
-
-        if (!res.ok) {
-          console.error("Search API failed:", res.status, await res.text());
-          return;
-        }
-
-        const json = await res.json();
-        setSearchResults(json.results ?? []);
-      } catch (err) {
-        console.error("Search error", err);
-      } finally {
-        setSearching(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(timeout);
-  }, [searchTerm, searchField]);
-
-  const showingSearch = searchResults !== null;
 
   const formattedSearchField = searchField
     .replace(/_/g, " ")
@@ -110,8 +68,8 @@ export default function InsertionOrdersPage() {
         )}
 
         <InsertionOrdersList
-          orders={showingSearch ? searchResults! : orders}
-          isLoading={isLoading || searching}
+          orders={orders}
+          isLoading={isLoading}
         />
 
         {/* Only show pagination when NOT searching (same as you had) */}

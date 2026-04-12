@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import CreateContactModal from "./createContactModal";
 import { Plus } from "lucide-react";
 
 interface ContactsHeaderProps {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -52,11 +52,6 @@ export default function ApproveUserDialog({
 }: Props) {
   const [role, setRole] = useState<number | "">("");
   const [team, setTeam] = useState<number | "">("");
-
-  useEffect(() => {
-    setRole("");
-    setTeam("");
-  }, [user]);
 
   return (
     <Dialog open={open} onClose={onClose}>

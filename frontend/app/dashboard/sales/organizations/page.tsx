@@ -1,6 +1,7 @@
 "use client";
 
 import OrganizationCard from "@/components/organizations/organizationCard";
+import CreateOrganizationModal from "@/components/organizations/createOrganizationModal";
 import OrganizationsHeader from "@/components/organizations/organizationHeader";
 import SearchBar from "@/components/ui/SearchBar";
 import Pagination from "@/components/ui/Pagination";
@@ -21,12 +22,16 @@ export default function OrganizationsPage() {
     goToPage,
     setPageSize,
     refresh,
+    createOpen,
+    isCreating,
+    setCreateOpen,
+    createOrganization,
   } = useOrganizations();
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-6">
       <OrganizationsHeader
-        onCreateClick={() => console.log("Create organization")}
+        onCreateClick={() => setCreateOpen(true)}
         onUploadSuccess={refresh}
       />
 
@@ -60,6 +65,13 @@ export default function OrganizationsPage() {
         pageSize={pageSize}
         onPageChange={goToPage}
         onPageSizeChange={setPageSize}
+      />
+
+      <CreateOrganizationModal
+        isOpen={createOpen}
+        isSubmitting={isCreating}
+        onClose={() => setCreateOpen(false)}
+        onCreate={createOrganization}
       />
     </div>
   );

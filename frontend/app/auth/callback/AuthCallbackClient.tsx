@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 
@@ -8,33 +8,26 @@ export default function AuthCallbackClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const [message, setMessage] = useState<string | null>(null);
+  const status = useMemo(() => {
+    const statusRaw = searchParams.get("status");
+    return (statusRaw ?? "error").toLowerCase();
+  }, [searchParams]);
 
   useEffect(() => {
-    const statusRaw = searchParams.get("status");
-
-    const status = (statusRaw ?? "error").toLowerCase();
-
     if (status === "active") {
       router.replace("/dashboard/users");
-      return;
     }
+  }, [router, status]);
 
-    // frontend owned messages for all non success states
-    if (status === "pending") {
-      setMessage("Your account is pending approval");
-    } else if (status === "forbidden") {
-      setMessage("You are not allowed to access this system");
-    } else if (status === "inactive") {
-      setMessage("Your account has been deactivated. Please contact an administrator.");
-    } else if (status === "error") {
-      setMessage("Something went wrong during login");
-    } else {
-      setMessage("Login failed");
-    }
-  }, [router, searchParams]);
+  const message = (() => {
+    if (status === "pending") return "Your account is pending approval";
+    if (status === "forbidden") return "You are not allowed to access this system";
+    if (status === "inactive") return "Your account has been deactivated. Please contact an administrator.";
+    if (status === "error") return "Something went wrong during login";
+    if (status === "active") return null;
+    return "Login failed";
+  })();
 
-  // If message is still null, do not render anything yet
   if (message === null) return null;
 
   // Error UI (wrapped by app/auth/layout.tsx)

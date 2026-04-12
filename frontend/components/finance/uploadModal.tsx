@@ -23,7 +23,6 @@ export default function UploadModal({
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [uploadStatus, setUploadStatus] = useState<UploadStatus>("idle");
-  const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [duplicateDialog, setDuplicateDialog] = useState({
@@ -90,7 +89,6 @@ export default function UploadModal({
     if (!files.length) return;
 
     setUploadStatus("uploading");
-    setUploadProgress(10);
 
     const formData = new FormData();
     files.forEach((file) => formData.append("files", file));
@@ -118,7 +116,6 @@ export default function UploadModal({
 
       if (!res.ok) throw new Error(data.message);
 
-      setUploadProgress(100);
       setUploadStatus("success");
       toast.success(data.message || "Upload successful!");
 
@@ -129,7 +126,6 @@ export default function UploadModal({
     } catch {
       toast.error("Upload failed");
       setUploadStatus("error");
-      setUploadProgress(0);
     }
   };
 
@@ -178,7 +174,6 @@ const resendWithAction = async (
   const handleClose = () => {
     setFiles([]);
     setUploadStatus("idle");
-    setUploadProgress(0);
     setIsDragging(false);
     if (fileInputRef.current) fileInputRef.current.value = "";
     onClose();

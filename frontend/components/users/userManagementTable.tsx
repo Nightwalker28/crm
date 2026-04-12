@@ -46,11 +46,22 @@ type UserOptionsData = {
   statuses: string[];
 };
 
+type UsersResponse = {
+  results: User[];
+  total_count: number;
+  total_pages: number;
+};
+
+type OptionMaps = {
+  teamMap: Map<string, number>;
+  roleMap: Map<string, number>;
+};
+
 type Props = {
   currentUserId?: number | null;
   optionsData: UserOptionsData;
-  onApprove: (u: User) => Promise<void>;
-  onReject: (u: User) => Promise<void>;
+  onApprove: (u: User) => void;
+  onReject: (u: User) => void;
   onEdit: (u: User) => void;
 };
 
@@ -110,9 +121,8 @@ const fetchUsers = async ({
   filters: UserFiltersValue;
   sortKey: SortKey;
   sortDirection: SortDirection;
-  maps: { teamMap: Map<string, number>, roleMap: Map<string, number> }
-}) => {
-  
+  maps: OptionMaps;
+}): Promise<UsersResponse> => {
   const isSearchMode = 
       !!filters.search || 
       filters.selectedTeams.length > 0 || 
@@ -165,6 +175,7 @@ export function UserManagementTable({
   const [pageSize, setPageSize] = useState(10);
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const emptyUsers: User[] = [];
 
   const [filters, setFilters] = useState<UserFiltersValue>({
     search: "",
@@ -186,10 +197,10 @@ export function UserManagementTable({
     const roleMap = new Map<string, number>();
     
     if (optionsData?.teams) {
-        optionsData.teams.forEach((t: any) => teamMap.set(t.name, t.id));
+        optionsData.teams.forEach((team) => teamMap.set(team.name, team.id));
     }
     if (optionsData?.roles) {
-        optionsData.roles.forEach((r: any) => roleMap.set(r.name, r.id));
+        optionsData.roles.forEach((role) => roleMap.set(role.name, role.id));
     }
     return { teamMap, roleMap };
   }, [optionsData]);
@@ -202,7 +213,7 @@ export function UserManagementTable({
     refetchOnWindowFocus: false, 
   });
 
-  const users = data?.results || [];
+  const users = data?.results ?? emptyUsers;
   const totalCount = data?.total_count || 0;
   const totalPages = data?.total_pages || 1;
 
@@ -253,8 +264,8 @@ export function UserManagementTable({
         value={filters}
         options={{
           totalCount: totalCount, 
-          allTeams: optionsData?.teams?.map((t:any) => t.name).sort() || [],
-          allRoles: optionsData?.roles?.map((r:any) => r.name).sort() || [],
+          allTeams: optionsData?.teams?.map((team) => team.name).sort() || [],
+          allRoles: optionsData?.roles?.map((role) => role.name).sort() || [],
           allStatuses: optionsData?.statuses || [],
         }}
         isLoading={isFetching}

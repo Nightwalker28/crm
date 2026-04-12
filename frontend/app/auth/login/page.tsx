@@ -2,6 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 
 import { AnimatedShinyText } from "@/components/ui/AnimatedShinyText";
@@ -37,6 +38,10 @@ const emptySignUp: SignUpForm = {
   confirmPassword: "",
 };
 
+function getErrorMessage(error: unknown, fallback: string) {
+  return error instanceof Error ? error.message : fallback;
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [mode, setMode] = useState<AuthMode>("signin");
@@ -58,8 +63,8 @@ export default function LoginPage() {
 
       const data = await res.json();
       window.location.href = data.auth_url;
-    } catch (err: any) {
-      setError(err.message ?? "Failed to start Google sign-in");
+    } catch (error) {
+      setError(getErrorMessage(error, "Failed to start Google sign-in"));
       setGoogleLoading(false);
     }
   }
@@ -84,8 +89,8 @@ export default function LoginPage() {
 
       router.replace("/dashboard/users");
       router.refresh();
-    } catch (err: any) {
-      setError(err.message ?? "Failed to sign in");
+    } catch (error) {
+      setError(getErrorMessage(error, "Failed to sign in"));
     } finally {
       setFormLoading(false);
     }
@@ -125,8 +130,8 @@ export default function LoginPage() {
       setMode("signin");
       setSignIn({ email: payload.email, password: "" });
       setSignUp(emptySignUp);
-    } catch (err: any) {
-      setError(err.message ?? "Failed to sign up");
+    } catch (error) {
+      setError(getErrorMessage(error, "Failed to sign up"));
     } finally {
       setFormLoading(false);
     }
@@ -275,9 +280,11 @@ export default function LoginPage() {
         <span className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 bg-[radial-gradient(circle_at_15%_20%,rgba(255,255,255,0.10),transparent_65%),radial-gradient(circle_at_85%_80%,rgba(255,255,255,0.06),transparent_65%)] group-hover:opacity-100" />
 
         <span className="relative z-10 flex items-center justify-center gap-3">
-          <img
+          <Image
             src="https://www.svgrepo.com/show/475656/google-color.svg"
             alt="google"
+            width={20}
+            height={20}
             className="h-5 w-5"
           />
           <AnimatedShinyText shimmerWidth={40}>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -63,11 +63,6 @@ export default function EditUserDialog({
 }: Props) {
   const [role, setRole] = useState<number>(user.role_id);
   const [team, setTeam] = useState<number>(user.team_id);
-
-  useEffect(() => {
-    setRole(user.role_id);
-    setTeam(user.team_id);
-  }, [user]);
 
   const isSelf = currentUserId != null && user.id === currentUserId;
 

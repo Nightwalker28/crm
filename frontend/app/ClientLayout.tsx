@@ -17,7 +17,7 @@ export default function ClientLayout(props: ClientLayoutProps) {
   const { children } = props;
 
   const [showSplash, setShowSplash] = useState(true);
-  const [mountedAt, setMountedAt] = useState<number | null>(null);
+  const [mountedAt] = useState(() => Date.now());
 
   // If you use next auth, you can turn this into real auth loading
   // const { status } = useSession();
@@ -25,7 +25,19 @@ export default function ClientLayout(props: ClientLayoutProps) {
 
   const authLoading = false;
 
-  // dev mode: always show splash so you see changes instantly
+  useEffect(() => {
+    if (DEV_ALWAYS_SHOW_SPLASH || authLoading) return;
+
+    const elapsed = Date.now() - mountedAt;
+    const remaining = Math.max(MIN_SPLASH_TIME - elapsed, 0);
+
+    const timeoutId = window.setTimeout(() => {
+      setShowSplash(false);
+    }, remaining);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [authLoading, mountedAt]);
+
   if (DEV_ALWAYS_SHOW_SPLASH) {
     return (
       <div className="relative min-h-screen">
@@ -33,25 +45,6 @@ export default function ClientLayout(props: ClientLayoutProps) {
       </div>
     );
   }
-
-  useEffect(() => {
-    if (mountedAt === null) {
-      setMountedAt(Date.now());
-    }
-  }, [mountedAt]);
-
-  useEffect(() => {
-    if (!authLoading && mountedAt !== null) {
-      const elapsed = Date.now() - mountedAt;
-      const remaining = Math.max(MIN_SPLASH_TIME - elapsed, 0);
-
-      const timeoutId = window.setTimeout(() => {
-        setShowSplash(false);
-      }, remaining);
-
-      return () => window.clearTimeout(timeoutId);
-    }
-  }, [authLoading, mountedAt]);
 
   return (
     <div className="relative min-h-screen">

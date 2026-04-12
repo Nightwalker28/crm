@@ -29,6 +29,14 @@ export const SidebarMenu = ({ children }: { children: React.ReactNode }) => {
   return <div className="flex flex-col gap-1 w-full">{children}</div>;
 };
 
+type SidebarChildProps = {
+  href?: string;
+};
+
+function getChildHref(child: React.ReactNode) {
+  if (!React.isValidElement<SidebarChildProps>(child)) return undefined;
+  return child.props.href;
+}
 
 function useIsActive() {
   const pathname = usePathname();
@@ -73,7 +81,7 @@ export function SidebarMenuItem({
   children,
 }: {
   href: string;
-  icon?: React.ComponentType<any>;
+  icon?: React.ComponentType<{ className?: string }>;
   children: React.ReactNode;
 }) {
   const isActiveFn = useIsActive();
@@ -114,23 +122,20 @@ export function SidebarMenuItemCollapsible({
   label,
   children,
 }: {
-  icon?: React.ComponentType<any>;
+  icon?: React.ComponentType<{ className?: string }>;
   label: string;
   children: React.ReactNode;
 }) {
   const isActiveFn = useIsActive();
-  const [open, setOpen] = React.useState(false);
+  const childItems = React.Children.toArray(children);
+  const hasActiveChild = childItems.some((child) => isActiveFn(getChildHref(child)));
+  const [open, setOpen] = React.useState(hasActiveChild);
 
   React.useEffect(() => {
-    const hasActive = React.Children.toArray(children).some((c: any) =>
-      isActiveFn(c.props.href),
-    );
-    if (hasActive) setOpen(true);
-  }, [children, isActiveFn]);
+    if (hasActiveChild) setOpen(true);
+  }, [hasActiveChild]);
 
-  const activeSelf = React.Children.toArray(children).some((c: any) =>
-    isActiveFn((c as any).props.href),
-  );
+  const activeSelf = hasActiveChild;
 
   const IconBox = Icon ? (
     <Icon
@@ -176,7 +181,7 @@ export function SidebarMenuItemCollapsible({
           ${open ? "max-h-64 opacity-100" : "max-h-0 opacity-75"}
         `}
       >
-        {children}
+        {childItems}
       </div>
     </div>
   );

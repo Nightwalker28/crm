@@ -1,10 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Pencil, Plus, Trash2, UsersRound, type LucideIcon } from "lucide-react";
 
-import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import {
@@ -25,53 +22,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
-
-type Department = {
-  id: number;
-  name: string;
-  description?: string | null;
-};
-
-type Team = {
-  id: number;
-  name: string;
-  description?: string | null;
-  department_id?: number | null;
-};
-
-type DepartmentForm = {
-  name: string;
-  description: string;
-};
-
-type TeamForm = {
-  name: string;
-  description: string;
-  department_id: string;
-};
-
-const emptyDepartmentForm: DepartmentForm = {
-  name: "",
-  description: "",
-};
-
-const emptyTeamForm: TeamForm = {
-  name: "",
-  description: "",
-  department_id: "",
-};
-
-async function fetchDepartments(): Promise<Department[]> {
-  const res = await apiFetch("/admin/users/departments");
-  if (!res.ok) throw new Error("Failed to load departments");
-  return res.json();
-}
-
-async function fetchTeams(): Promise<Team[]> {
-  const res = await apiFetch("/admin/users/teams");
-  if (!res.ok) throw new Error("Failed to load teams");
-  return res.json();
-}
+import {
+  type Department,
+  type DepartmentForm,
+  type TeamForm,
+  useTeamsAndDepartments,
+} from "@/hooks/admin/useTeamsAndDepartments";
 
 function SectionHeader({
   icon: Icon,
@@ -252,223 +208,33 @@ function TeamDialog({
 }
 
 export default function TeamsAndDepartmentsPage() {
-  const queryClient = useQueryClient();
-
-  const [error, setError] = useState<string | null>(null);
-  const [departmentDialogOpen, setDepartmentDialogOpen] = useState(false);
-  const [teamDialogOpen, setTeamDialogOpen] = useState(false);
-  const [departmentMode, setDepartmentMode] = useState<"create" | "edit">("create");
-  const [teamMode, setTeamMode] = useState<"create" | "edit">("create");
-  const [editingDepartmentId, setEditingDepartmentId] = useState<number | null>(null);
-  const [editingTeamId, setEditingTeamId] = useState<number | null>(null);
-  const [departmentSubmitting, setDepartmentSubmitting] = useState(false);
-  const [teamSubmitting, setTeamSubmitting] = useState(false);
-  const [departmentForm, setDepartmentForm] = useState<DepartmentForm>(emptyDepartmentForm);
-  const [teamForm, setTeamForm] = useState<TeamForm>(emptyTeamForm);
-
-  const departmentsQuery = useQuery({
-    queryKey: ["admin-departments"],
-    queryFn: fetchDepartments,
-  });
-
-  const teamsQuery = useQuery({
-    queryKey: ["admin-teams"],
-    queryFn: fetchTeams,
-  });
-
-  const departments = departmentsQuery.data ?? [];
-  const teams = teamsQuery.data ?? [];
-
-  const groupedTeams = useMemo(() => {
-    const grouped = departments.map((department) => ({
-      department,
-      teams: teams.filter((team) => team.department_id === department.id),
-    }));
-
-    const orphanedTeams = teams.filter(
-      (team) => team.department_id == null || !departments.some((department) => department.id === team.department_id)
-    );
-
-    if (orphanedTeams.length > 0) {
-      grouped.push({
-        department: {
-          id: -1,
-          name: "Unassigned Department",
-          description: "Teams with missing department links",
-        },
-        teams: orphanedTeams,
-      });
-    }
-
-    return grouped;
-  }, [departments, teams]);
-
-  async function refreshData() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["admin-departments"] }),
-      queryClient.invalidateQueries({ queryKey: ["admin-teams"] }),
-      queryClient.invalidateQueries({ queryKey: ["user-options"] }),
-    ]);
-  }
-
-  function openCreateDepartment() {
-    setError(null);
-    setDepartmentMode("create");
-    setEditingDepartmentId(null);
-    setDepartmentForm(emptyDepartmentForm);
-    setDepartmentDialogOpen(true);
-  }
-
-  function openEditDepartment(department: Department) {
-    setError(null);
-    setDepartmentMode("edit");
-    setEditingDepartmentId(department.id);
-    setDepartmentForm({
-      name: department.name,
-      description: department.description ?? "",
-    });
-    setDepartmentDialogOpen(true);
-  }
-
-  function openCreateTeam() {
-    setError(null);
-    setTeamMode("create");
-    setEditingTeamId(null);
-    setTeamForm({
-      ...emptyTeamForm,
-      department_id: departments[0] ? String(departments[0].id) : "",
-    });
-    setTeamDialogOpen(true);
-  }
-
-  function openEditTeam(team: Team) {
-    setError(null);
-    setTeamMode("edit");
-    setEditingTeamId(team.id);
-    setTeamForm({
-      name: team.name,
-      description: team.description ?? "",
-      department_id: team.department_id ? String(team.department_id) : "",
-    });
-    setTeamDialogOpen(true);
-  }
-
-  async function saveDepartment() {
-    try {
-      setDepartmentSubmitting(true);
-      setError(null);
-
-      const payload = {
-        name: departmentForm.name.trim(),
-        description: departmentForm.description.trim() || null,
-      };
-
-      const res =
-        departmentMode === "create"
-          ? await apiFetch("/admin/users/departments", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            })
-          : await apiFetch(`/admin/users/departments/${editingDepartmentId}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? "Failed to save department");
-      }
-
-      setDepartmentDialogOpen(false);
-      setDepartmentForm(emptyDepartmentForm);
-      await refreshData();
-    } catch (err: any) {
-      setError(err.message ?? "Failed to save department");
-    } finally {
-      setDepartmentSubmitting(false);
-    }
-  }
-
-  async function saveTeam() {
-    try {
-      setTeamSubmitting(true);
-      setError(null);
-
-      const payload = {
-        name: teamForm.name.trim(),
-        description: teamForm.description.trim() || null,
-        department_id: Number(teamForm.department_id),
-      };
-
-      const res =
-        teamMode === "create"
-          ? await apiFetch("/admin/users/teams", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            })
-          : await apiFetch(`/admin/users/teams/${editingTeamId}`, {
-              method: "PUT",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(payload),
-            });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? "Failed to save team");
-      }
-
-      setTeamDialogOpen(false);
-      setTeamForm(emptyTeamForm);
-      await refreshData();
-    } catch (err: any) {
-      setError(err.message ?? "Failed to save team");
-    } finally {
-      setTeamSubmitting(false);
-    }
-  }
-
-  async function removeDepartment(department: Department) {
-    const confirmed = window.confirm(`Delete department "${department.name}"?`);
-    if (!confirmed) return;
-
-    try {
-      setError(null);
-      const res = await apiFetch(`/admin/users/departments/${department.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? "Failed to delete department");
-      }
-      await refreshData();
-    } catch (err: any) {
-      setError(err.message ?? "Failed to delete department");
-    }
-  }
-
-  async function removeTeam(team: Team) {
-    const confirmed = window.confirm(`Delete team "${team.name}"? Users assigned to it will become unassigned.`);
-    if (!confirmed) return;
-
-    try {
-      setError(null);
-      const res = await apiFetch(`/admin/users/teams/${team.id}`, {
-        method: "DELETE",
-      });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? "Failed to delete team");
-      }
-      await refreshData();
-    } catch (err: any) {
-      setError(err.message ?? "Failed to delete team");
-    }
-  }
-
-  const loading = departmentsQuery.isLoading || teamsQuery.isLoading;
+  const {
+    departments,
+    teams,
+    groupedTeams,
+    error,
+    loading,
+    departmentDialogOpen,
+    teamDialogOpen,
+    departmentMode,
+    teamMode,
+    departmentSubmitting,
+    teamSubmitting,
+    departmentForm,
+    teamForm,
+    setDepartmentDialogOpen,
+    setTeamDialogOpen,
+    setDepartmentForm,
+    setTeamForm,
+    openCreateDepartment,
+    openEditDepartment,
+    openCreateTeam,
+    openEditTeam,
+    saveDepartment,
+    saveTeam,
+    removeDepartment,
+    removeTeam,
+  } = useTeamsAndDepartments();
 
   return (
     <div className="flex flex-col gap-6 text-neutral-200">

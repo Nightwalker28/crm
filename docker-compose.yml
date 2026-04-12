@@ -29,6 +29,19 @@ services:
     depends_on:
       - backend
 
+  frontend-e2e:
+    image: mcr.microsoft.com/playwright:v1.59.1-jammy
+    working_dir: /app
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      PLAYWRIGHT_BASE_URL: http://localhost:3000
+    volumes:
+      - ./frontend:/app
+    depends_on:
+      - frontend
+
   database:
     image: postgres:17
     env_file:

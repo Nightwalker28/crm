@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import SearchBar from "@/components/ui/SearchBar";
 import { Button } from "@/components/ui/button";
-import { Filter, SearchX, Loader2 } from "lucide-react";
+import { Filter, SearchX } from "lucide-react";
 import { Card } from "../ui/Card";
 import { Spinner } from "../ui/spinner";
 

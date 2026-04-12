@@ -1,10 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { UserRound, HandCoins, LogOut, BriefcaseBusiness } from "lucide-react";
-import { apiFetch } from "@/lib/api";
+import { useSidebarUser } from "@/hooks/useSidebarUser";
 
 import {
   SidebarNav,
@@ -15,57 +13,8 @@ import {
   SidebarMenuItemChild,
 } from "./SidebarNav";
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE_URL;
-
-type UserProfile = {
-  email?: string;
-  first_name?: string;
-  last_name?: string;
-  photo_url?: string;
-};
-
-function safeReadCachedUser(): UserProfile | null {
-  const cached = sessionStorage.getItem("lynk_user");
-  if (!cached) return null;
-  try {
-    return JSON.parse(cached) as UserProfile;
-  } catch {
-    sessionStorage.removeItem("lynk_user");
-    return null;
-  }
-}
-
-function clearAuthStorage() {
-  sessionStorage.removeItem("lynk_user");
-  sessionStorage.removeItem("lynk_modules");
-}
-
 export default function Sidebar() {
-  const router = useRouter();
-  const [user, setUser] = useState<UserProfile | null>(null);
-
-  useEffect(() => {
-    const cachedUser = safeReadCachedUser();
-    if (cachedUser) {
-      setUser(cachedUser);
-      return;
-    }
-
-    (async () => {
-      try {
-        const res = await apiFetch("/users/me");
-
-        const me = (await res.json()) as UserProfile;
-        sessionStorage.setItem("lynk_user", JSON.stringify(me));
-        setUser(me);
-
-      } catch {
-        clearAuthStorage();
-        router.replace("/auth/login");
-      }
-    })();
-  }, [router]);
+  const { user, logout } = useSidebarUser();
 
   const displayName =
     `${user?.first_name ?? ""} ${user?.last_name ?? ""}`.trim() ||
@@ -74,16 +23,6 @@ export default function Sidebar() {
 
   const initials =
     ((user?.first_name?.[0] ?? "") + (user?.last_name?.[0] ?? "")) || "US";
-
-  async function handleLogout() {
-    await apiFetch("/auth/logout", {
-      method: "POST",
-    });
-
-    sessionStorage.clear();
-    router.push("/auth/login");
-  }
-
 
   return (
     <aside className="relative z-10 flex h-screen w-52 flex-col py-6 pl-4">
@@ -160,7 +99,7 @@ export default function Sidebar() {
             </div>
 
             <button
-              onClick={handleLogout}
+              onClick={logout}
               className="text-neutral-300 hover:text-red-300 transition-colors"
               title="Logout"
             >
