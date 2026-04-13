@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 class SalesOrganizationBase(BaseModel):
     org_name: str
     primary_email: str
-    website: str # Must be present in the request cannot be None
+    website: str | None = None
     primary_phone: str | None = None # optional str = either can be a string or None = None by default
     secondary_phone: str | None = None
     secondary_email: str | None = None
@@ -109,6 +109,57 @@ class SalesContactListResponse(BaseModel):
     total_count: int
     total_pages: int
     page: int
+
+
+class RelatedOpportunitySummary(BaseModel):
+    opportunity_id: int
+    opportunity_name: str
+    sales_stage: str | None = None
+    expected_close_date: date | None = None
+    total_cost_of_project: str | None = None
+    currency_type: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RelatedInsertionOrderSummary(BaseModel):
+    id: int
+    io_number: str
+    customer_name: str | None = None
+    status: str | None = None
+    total_amount: float | None = None
+    currency: str | None = None
+    updated_at: datetime | None = None
+
+
+class OrganizationCompactSummary(BaseModel):
+    org_id: int
+    org_name: str
+    primary_email: str | None = None
+    website: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ContactSummaryResponse(BaseModel):
+    contact: SalesContactResponse
+    organization: OrganizationCompactSummary | None = None
+    related_opportunities: list[RelatedOpportunitySummary]
+    related_insertion_orders: list[RelatedInsertionOrderSummary]
+    inferred_services: list[str]
+    opportunity_count: int
+    insertion_order_count: int
+
+
+class OrganizationSummaryResponse(BaseModel):
+    organization: SalesOrganizationResponse
+    related_contacts: list[SalesContactResponse]
+    related_opportunities: list[RelatedOpportunitySummary]
+    related_insertion_orders: list[RelatedInsertionOrderSummary]
+    inferred_services: list[str]
+    contact_count: int
+    opportunity_count: int
+    insertion_order_count: int
 
 
 class SalesContactImportSummary(BaseModel):

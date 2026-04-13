@@ -20,8 +20,7 @@ export default function AuthCallbackClient() {
   }, [router, status]);
 
   const message = (() => {
-    if (status === "pending") return "Your account is pending approval";
-    if (status === "forbidden") return "You are not allowed to access this system";
+    if (status === "forbidden") return "Your account must be added by an administrator before Google sign-in can be used.";
     if (status === "inactive") return "Your account has been deactivated. Please contact an administrator.";
     if (status === "error") return "Something went wrong during login";
     if (status === "active") return null;

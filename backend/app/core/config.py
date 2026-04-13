@@ -49,6 +49,9 @@ class Settings:
     REFRESH_TOKEN_EXPIRE_HOURS: int = int(
         os.getenv("REFRESH_TOKEN_EXPIRE_HOURS", "8")
     )
+    USER_SETUP_TOKEN_EXPIRE_HOURS: int = int(
+        os.getenv("USER_SETUP_TOKEN_EXPIRE_HOURS", "72")
+    )
 
     # -------------------------
     # Cookie configuration

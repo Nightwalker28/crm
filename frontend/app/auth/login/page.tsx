@@ -10,32 +10,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
 
-type AuthMode = "signin" | "signup";
-
 type SignInForm = {
   email: string;
   password: string;
 };
 
-type SignUpForm = {
-  first_name: string;
-  last_name: string;
-  email: string;
-  password: string;
-  confirmPassword: string;
-};
-
 const emptySignIn: SignInForm = {
   email: "",
   password: "",
-};
-
-const emptySignUp: SignUpForm = {
-  first_name: "",
-  last_name: "",
-  email: "",
-  password: "",
-  confirmPassword: "",
 };
 
 function getErrorMessage(error: unknown, fallback: string) {
@@ -44,18 +26,14 @@ function getErrorMessage(error: unknown, fallback: string) {
 
 export default function LoginPage() {
   const router = useRouter();
-  const [mode, setMode] = useState<AuthMode>("signin");
   const [googleLoading, setGoogleLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
   const [signIn, setSignIn] = useState<SignInForm>(emptySignIn);
-  const [signUp, setSignUp] = useState<SignUpForm>(emptySignUp);
 
   async function handleGoogleLogin() {
     try {
       setError(null);
-      setSuccess(null);
       setGoogleLoading(true);
 
       const res = await apiFetch("/auth/google");
@@ -63,8 +41,8 @@ export default function LoginPage() {
 
       const data = await res.json();
       window.location.href = data.auth_url;
-    } catch (error) {
-      setError(getErrorMessage(error, "Failed to start Google sign-in"));
+    } catch (loginError) {
+      setError(getErrorMessage(loginError, "Failed to start Google sign-in"));
       setGoogleLoading(false);
     }
   }
@@ -72,7 +50,6 @@ export default function LoginPage() {
   async function handleManualSignIn(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    setSuccess(null);
     setFormLoading(true);
 
     try {
@@ -89,60 +66,12 @@ export default function LoginPage() {
 
       router.replace("/dashboard/users");
       router.refresh();
-    } catch (error) {
-      setError(getErrorMessage(error, "Failed to sign in"));
+    } catch (loginError) {
+      setError(getErrorMessage(loginError, "Failed to sign in"));
     } finally {
       setFormLoading(false);
     }
   }
-
-  async function handleManualSignUp(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setError(null);
-    setSuccess(null);
-
-    if (signUp.password !== signUp.confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-
-    setFormLoading(true);
-    try {
-      const payload = {
-        first_name: signUp.first_name.trim() || null,
-        last_name: signUp.last_name.trim() || null,
-        email: signUp.email.trim(),
-        password: signUp.password,
-      };
-
-      const res = await apiFetch("/auth/signup", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      const data = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(data?.detail ?? data?.message ?? `Status ${res.status}`);
-      }
-
-      setSuccess(data?.message ?? "Account created and pending admin approval");
-      setMode("signin");
-      setSignIn({ email: payload.email, password: "" });
-      setSignUp(emptySignUp);
-    } catch (error) {
-      setError(getErrorMessage(error, "Failed to sign up"));
-    } finally {
-      setFormLoading(false);
-    }
-  }
-
-  const modeButtonClass = (target: AuthMode) =>
-    `flex-1 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-      mode === target
-        ? "bg-white text-black"
-        : "bg-transparent text-neutral-300 hover:text-white"
-    }`;
 
   return (
     <>
@@ -150,121 +79,40 @@ export default function LoginPage() {
         Lynk
       </h1>
 
-      <p className="mb-5 text-sm text-slate-200/80">Powered by Acumen Intelligence.</p>
+      <p className="mb-6 text-sm text-slate-200/80">Sign in with your provisioned account.</p>
 
-      <div className="mb-5 flex rounded-md border border-white/10 bg-black/30 p-1">
-        <button type="button" className={modeButtonClass("signin")} onClick={() => setMode("signin")}>
-          Sign In
+      <form className="space-y-4 text-left" onSubmit={handleManualSignIn}>
+        <div className="space-y-2">
+          <Label htmlFor="signin-email">Email</Label>
+          <Input
+            id="signin-email"
+            type="email"
+            autoComplete="email"
+            value={signIn.email}
+            onChange={(event) => setSignIn((current) => ({ ...current, email: event.target.value }))}
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="signin-password">Password</Label>
+          <Input
+            id="signin-password"
+            type="password"
+            autoComplete="current-password"
+            value={signIn.password}
+            onChange={(event) => setSignIn((current) => ({ ...current, password: event.target.value }))}
+            required
+          />
+        </div>
+
+        <button
+          type="submit"
+          disabled={formLoading || googleLoading}
+          className="w-full cursor-pointer rounded-md border border-white/20 bg-white px-4 py-3 text-sm font-medium text-black transition-all hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          {formLoading ? "Signing in..." : "Sign in with email"}
         </button>
-        <button type="button" className={modeButtonClass("signup")} onClick={() => setMode("signup")}>
-          Sign Up
-        </button>
-      </div>
-
-      {mode === "signin" ? (
-        <form className="space-y-4 text-left" onSubmit={handleManualSignIn}>
-          <div className="space-y-2">
-            <Label htmlFor="signin-email">Email</Label>
-            <Input
-              id="signin-email"
-              type="email"
-              autoComplete="email"
-              value={signIn.email}
-              onChange={(event) => setSignIn((current) => ({ ...current, email: event.target.value }))}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="signin-password">Password</Label>
-            <Input
-              id="signin-password"
-              type="password"
-              autoComplete="current-password"
-              value={signIn.password}
-              onChange={(event) => setSignIn((current) => ({ ...current, password: event.target.value }))}
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={formLoading || googleLoading}
-            className="w-full cursor-pointer rounded-md border border-white/20 bg-white px-4 py-3 text-sm font-medium text-black transition-all hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {formLoading ? "Signing in..." : "Sign in with email"}
-          </button>
-        </form>
-      ) : (
-        <form className="space-y-4 text-left" onSubmit={handleManualSignUp}>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="signup-first-name">First Name</Label>
-              <Input
-                id="signup-first-name"
-                type="text"
-                autoComplete="given-name"
-                value={signUp.first_name}
-                onChange={(event) => setSignUp((current) => ({ ...current, first_name: event.target.value }))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="signup-last-name">Last Name</Label>
-              <Input
-                id="signup-last-name"
-                type="text"
-                autoComplete="family-name"
-                value={signUp.last_name}
-                onChange={(event) => setSignUp((current) => ({ ...current, last_name: event.target.value }))}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="signup-email">Email</Label>
-            <Input
-              id="signup-email"
-              type="email"
-              autoComplete="email"
-              value={signUp.email}
-              onChange={(event) => setSignUp((current) => ({ ...current, email: event.target.value }))}
-              required
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="signup-password">Password</Label>
-            <Input
-              id="signup-password"
-              type="password"
-              autoComplete="new-password"
-              value={signUp.password}
-              onChange={(event) => setSignUp((current) => ({ ...current, password: event.target.value }))}
-              required
-            />
-            <p className="text-xs text-slate-300/80">Use at least 12 characters.</p>
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="signup-confirm-password">Confirm Password</Label>
-            <Input
-              id="signup-confirm-password"
-              type="password"
-              autoComplete="new-password"
-              value={signUp.confirmPassword}
-              onChange={(event) =>
-                setSignUp((current) => ({ ...current, confirmPassword: event.target.value }))
-              }
-              required
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={formLoading || googleLoading}
-            className="w-full cursor-pointer rounded-md border border-white/20 bg-white px-4 py-3 text-sm font-medium text-black transition-all hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {formLoading ? "Creating account..." : "Create account"}
-          </button>
-        </form>
-      )}
+      </form>
 
       <div className="my-5 flex items-center gap-3 text-xs uppercase tracking-[0.25em] text-slate-400/70">
         <div className="h-px flex-1 bg-white/10" />
@@ -293,7 +141,6 @@ export default function LoginPage() {
         </span>
       </button>
 
-      {success && <p className="mt-3 text-xs text-emerald-300">{success}</p>}
       {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
     </>
   );

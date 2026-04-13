@@ -9,7 +9,7 @@ async function loginAsAdmin(page: Page) {
   }
 
   await page.goto("/auth/login");
-  await expect(page.getByRole("button", { name: "Sign In", exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Sign in with email" })).toBeVisible();
 
   await page.getByLabel("Email").fill(adminEmail);
   await page.getByLabel("Password").fill(adminPassword);

@@ -31,6 +31,7 @@ class SalesOrganization(Base):
         TIMESTAMP(timezone=True),
         server_default=func.now(),
     )
+    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
 
     billing_address = Column(Text, nullable=True)
     billing_city = Column(Text, nullable=True)
@@ -64,6 +65,7 @@ class SalesContact(Base):
         nullable=True,
     )
     created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
 
     assigned_user = relationship("User", lazy="joined")
 

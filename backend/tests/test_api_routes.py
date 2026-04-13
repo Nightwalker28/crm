@@ -33,33 +33,18 @@ class APIRouteTests(unittest.TestCase):
     def _active_user():
         return SimpleNamespace(id=7, email="user@example.com")
 
-    def test_manual_signup_returns_pending_payload(self):
-        fake_user = SimpleNamespace(id=42)
-
-        with patch(
-            "app.modules.user_management.routes.signin.register_manual_user",
-            return_value=fake_user,
-        ) as register_mock:
-            response = self.client.post(
-                "/api/v1/auth/signup",
-                json={
-                    "email": "new.user@example.com",
-                    "password": "secret123",
-                    "first_name": "New",
-                    "last_name": "User",
-                },
-            )
-
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(
-            response.json(),
-            {
-                "status": "pending",
-                "message": "Account created and pending admin approval",
-                "user_id": 42,
+    def test_manual_signup_route_is_removed(self):
+        response = self.client.post(
+            "/api/v1/auth/signup",
+            json={
+                "email": "new.user@example.com",
+                "password": "secret123",
+                "first_name": "New",
+                "last_name": "User",
             },
         )
-        register_mock.assert_called_once()
+
+        self.assertEqual(response.status_code, 404)
 
     def test_manual_login_sets_auth_cookies(self):
         fake_user = SimpleNamespace(id=7, email="user@example.com")
@@ -108,22 +93,65 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response.json(), fake_teams)
         list_mock.assert_called_once()
 
-    def test_admin_approve_user_route_returns_success_message(self):
+    def test_setup_password_route_returns_success_message(self):
+        app.dependency_overrides[get_db] = self._override_db
+
+        with patch(
+            "app.modules.user_management.routes.signin.set_initial_password",
+            return_value=SimpleNamespace(id=55),
+        ) as setup_mock:
+            response = self.client.post(
+                "/api/v1/auth/setup-password",
+                json={"token": "setup-token", "password": "verysecure123"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok", "message": "Password set successfully"})
+        setup_mock.assert_called_once()
+
+    def test_admin_create_user_route_returns_setup_link(self):
         app.dependency_overrides[require_admin] = lambda: SimpleNamespace(id=1)
         app.dependency_overrides[get_db] = self._override_db
 
         with patch(
-            "app.modules.user_management.routes.admin.admin_users.approve_user",
-            return_value={"message": "User approved successfully"},
-        ) as approve_mock:
+            "app.modules.user_management.routes.admin.admin_users.create_user",
+            return_value={
+                "user": {
+                    "id": 55,
+                    "first_name": "Ada",
+                    "last_name": "Lovelace",
+                    "email": "ada@example.com",
+                    "team_id": 4,
+                    "role_id": 9,
+                    "team_name": "Platform",
+                    "role_name": "Admin",
+                    "photo_url": None,
+                    "auth_mode": "manual_only",
+                    "is_active": "active",
+                },
+                "setup_link": "http://localhost:3000/auth/setup-password?token=abc",
+            },
+        ) as create_mock:
             response = self.client.post(
-                "/api/v1/admin/users/approve/55",
-                json={"role_id": 9, "team_id": 4},
+                "/api/v1/admin/users",
+                json={
+                    "email": "ada@example.com",
+                    "first_name": "Ada",
+                    "last_name": "Lovelace",
+                    "team_id": 4,
+                    "role_id": 9,
+                    "auth_mode": "manual_only",
+                    "is_active": "active",
+                },
             )
 
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"message": "User approved successfully"})
-        approve_mock.assert_called_once()
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["user"]["email"], "ada@example.com")
+        self.assertEqual(
+            response.json()["setup_link"],
+            "http://localhost:3000/auth/setup-password?token=abc",
+        )
+        create_mock.assert_called_once()
 
     def test_admin_update_user_route_returns_serialized_profile(self):
         app.dependency_overrides[require_admin] = lambda: SimpleNamespace(id=1)
@@ -138,6 +166,7 @@ class APIRouteTests(unittest.TestCase):
             team_name="Platform",
             role_name="Admin",
             photo_url=None,
+            auth_mode="manual_only",
             is_active="active",
         )
 

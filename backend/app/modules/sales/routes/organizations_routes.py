@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi import File, UploadFile, Body
 from fastapi.responses import StreamingResponse
 import io
@@ -8,24 +8,33 @@ from app.core.pagination import Pagination, get_pagination, build_paged_response
 from app.core.database import get_db
 from app.core.security import require_user
 from app.core.permissions import require_module_access
+from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.schema import (
     SalesOrganizationCreate,
     SalesOrganizationUpdate,
+    OrganizationSummaryResponse,
     SalesOrganizationResponse,
     SalesOrganizationListResponse,
 )
 from app.modules.sales.services.organizations_services import (
     create_organization,
+    list_deleted_organizations_paginated,
     list_organizations_paginated,
     search_organizations_pagianted,
     get_organization,
+    restore_organization,
     update_organization,
     delete_organization,
     import_organizations_from_csv,
     export_organizations,
 )
+from app.modules.sales.services.summary_services import build_organization_summary
 
 router = APIRouter(prefix="/organizations", tags=["Sales"])
+
+
+def _serialize_organization(org) -> dict:
+    return SalesOrganizationResponse.model_validate(org).model_dump(mode="json")
 
 # create
 @router.post("/create", response_model=SalesOrganizationResponse, status_code=status.HTTP_201_CREATED)
@@ -39,7 +48,7 @@ def create_sales_organization(
     require_module = Depends(require_module_access("sales_organizations")),
 ):
     try:
-        return create_organization(
+        created = create_organization(
             db=db,
             payload=payload,
             current_user=current_user,
@@ -47,6 +56,17 @@ def create_sales_organization(
             skip_duplicates=skip_duplicates,
             create_new_records=create_new_records,
         )
+        log_activity(
+            db,
+            actor_user_id=current_user.id if current_user else None,
+            module_key="sales_organizations",
+            entity_type="sales_organization",
+            entity_id=created.org_id,
+            action="create",
+            description=f"Created organization {created.org_name}",
+            after_state=_serialize_organization(created),
+        )
+        return created
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     
@@ -54,13 +74,34 @@ def create_sales_organization(
 # read all
 @router.get("", response_model=SalesOrganizationListResponse)
 def get_sales_organizations(
+    search: str | None = Query(default=None, min_length=1),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations'))
 ):
-    items, total = list_organizations_paginated(db=db, offset=pagination.offset, limit=pagination.limit)
+    if search:
+        items, total = search_organizations_pagianted(
+            db=db,
+            name=search,
+            offset=pagination.offset,
+            limit=pagination.limit,
+        )
+    else:
+        items, total = list_organizations_paginated(db=db, offset=pagination.offset, limit=pagination.limit)
     return build_paged_response(items, total_count=total, pagination=pagination)
+
+
+@router.get("/recycle", response_model=SalesOrganizationListResponse)
+def get_deleted_sales_organizations(
+    pagination: Pagination = Depends(get_pagination),
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access('sales_organizations'))
+):
+    items, total = list_deleted_organizations_paginated(db=db, offset=pagination.offset, limit=pagination.limit)
+    serialized = [SalesOrganizationResponse.model_validate(item) for item in items]
+    return build_paged_response(serialized, total_count=total, pagination=pagination)
 
 # search
 @router.get("/search/{name}", response_model=SalesOrganizationListResponse)
@@ -88,6 +129,20 @@ def get_sales_organization(
 
     return org
 
+
+@router.get("/{org_id}/summary", response_model=OrganizationSummaryResponse)
+def get_sales_organization_summary(
+    org_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access('sales_organizations')),
+):
+    org = get_organization(db=db, org_id=org_id)
+    if not org:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+
+    return build_organization_summary(db, org)
+
 # update
 @router.put("/{org_id}", response_model=SalesOrganizationResponse)
 def edit_sales_organization(
@@ -97,10 +152,26 @@ def edit_sales_organization(
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations')),
 ):
+    existing = get_organization(db=db, org_id=org_id)
+    if not existing:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+
+    before_state = _serialize_organization(existing)
     org = update_organization(db=db, org_id=org_id, payload=payload)
     if not org:
-        raise HTTPException(status_c4ode=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
+    log_activity(
+        db,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="sales_organizations",
+        entity_type="sales_organization",
+        entity_id=org.org_id,
+        action="update",
+        description=f"Updated organization {org.org_name}",
+        before_state=before_state,
+        after_state=_serialize_organization(org),
+    )
     return org
 
 # delete
@@ -111,10 +182,49 @@ def delete_sales_organization(
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations')),
 ):
+    org = get_organization(db=db, org_id=org_id)
+    if not org:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+
+    before_state = _serialize_organization(org)
     deleted = delete_organization(db=db, org_id=org_id)
 
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    log_activity(
+        db,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="sales_organizations",
+        entity_type="sales_organization",
+        entity_id=org.org_id,
+        action="soft_delete",
+        description=f"Moved organization {org.org_name} to recycle bin",
+        before_state=before_state,
+    )
+
+
+@router.post("/{org_id}/restore", response_model=SalesOrganizationResponse)
+def restore_sales_organization(
+    org_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access('sales_organizations')),
+):
+    org = restore_organization(db=db, org_id=org_id)
+    if not org:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+
+    log_activity(
+        db,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="sales_organizations",
+        entity_type="sales_organization",
+        entity_id=org.org_id,
+        action="restore",
+        description=f"Restored organization {org.org_name} from recycle bin",
+        after_state=_serialize_organization(org),
+    )
+    return org
 
 # import
 @router.post("/import", status_code=status.HTTP_201_CREATED)

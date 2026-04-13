@@ -5,12 +5,16 @@ import InsertionOrderCard from "./insertOrderCard";
 type InsertionOrdersListProps = {
   orders: InsertionOrder[];
   isLoading: boolean;
+  onEdit: (order: InsertionOrder) => void;
+  onDelete: (order: InsertionOrder) => void;
 };
 
 
 export default function InsertionOrdersList({
   orders,
   isLoading,
+  onEdit,
+  onDelete,
 }: InsertionOrdersListProps) {
   if (isLoading) {
     return (
@@ -38,7 +42,7 @@ export default function InsertionOrdersList({
       <div className="bg-zinc-900 border border-dashed border-zinc-700 rounded-xl p-12 text-center">
         <FileText className="mx-auto mb-4 text-zinc-600" size={48} />
         <p className="text-zinc-400 text-sm">
-          No insertion orders yet. Upload one to get started.
+          No insertion orders yet. Create one manually or import a legacy file.
         </p>
       </div>
     );
@@ -71,8 +75,10 @@ export default function InsertionOrdersList({
       >
         {orders.map((order, idx) => (
           <InsertionOrderCard
-            key={order.user_id + "-" + order.campaign_name + "-" + idx}
+            key={`${order.id}-${order.io_number}-${idx}`}
             order={order}
+            onEdit={() => onEdit(order)}
+            onDelete={() => onDelete(order)}
           />
         ))}
       </div>

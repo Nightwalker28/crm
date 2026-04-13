@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Linkedin, Mail } from "lucide-react";
 import type { Contact } from "@/hooks/sales/useContacts";
 
@@ -33,14 +34,16 @@ export default function ContactList({
           {contacts.map((c) => (
             <div
               key={c.contact_id}
-              className="flex items-center justify-between px-4 py-3 hover:bg-zinc-900/60 transition"
+              className="flex items-center justify-between px-4 py-3 transition hover:bg-zinc-900/60"
             >
-              {/* LEFT */}
-              <div className="flex flex-col min-w-0 gap-0.5">
+              <div className="flex min-w-0 flex-col gap-0.5">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-zinc-100 truncate">
+                  <Link
+                    href={`/dashboard/sales/contacts/${c.contact_id}`}
+                    className="truncate font-medium text-zinc-100 hover:text-white"
+                  >
                     {c.first_name || "-"} {c.last_name || ""}
-                  </span>
+                  </Link>
 
                   {c.linkedin_url && (
                     <a
@@ -61,8 +64,7 @@ export default function ContactList({
                 </div>
               </div>
 
-              {/* RIGHT */}
-              <div className="flex items-center gap-3 shrink-0">
+              <div className="flex shrink-0 items-center gap-3">
                 {c.primary_email && (
                   <a
                     href={`mailto:${c.primary_email}`}
@@ -75,6 +77,13 @@ export default function ContactList({
                     </span>
                   </a>
                 )}
+
+                <Link
+                  href={`/dashboard/sales/contacts/${c.contact_id}`}
+                  className="text-xs font-medium uppercase tracking-wide text-zinc-500 hover:text-zinc-200"
+                >
+                  Open
+                </Link>
               </div>
             </div>
           ))}

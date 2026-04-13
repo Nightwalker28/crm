@@ -1,6 +1,7 @@
 import csv
 import io
 from typing import Iterable, Sequence
+from datetime import datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_
@@ -75,7 +76,10 @@ def list_sales_contacts(
     pagination: Pagination,
     search: str | None = None,
 ) -> tuple[Sequence[SalesContact], int]:
-    query = _apply_search_filter(db.query(SalesContact), search)
+    query = _apply_search_filter(
+        db.query(SalesContact).filter(SalesContact.deleted_at.is_(None)),
+        search,
+    )
 
     total_count = query.count()
     if search:
@@ -90,8 +94,11 @@ def list_sales_contacts(
     return contacts, total_count
 
 
-def get_contact_or_404(db: Session, contact_id: int) -> SalesContact:
-    contact = db.query(SalesContact).filter(SalesContact.contact_id == contact_id).first()
+def get_contact_or_404(db: Session, contact_id: int, *, include_deleted: bool = False) -> SalesContact:
+    query = db.query(SalesContact).filter(SalesContact.contact_id == contact_id)
+    if not include_deleted:
+        query = query.filter(SalesContact.deleted_at.is_(None))
+    contact = query.first()
     if not contact:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
     return contact
@@ -118,7 +125,12 @@ def create_sales_contact(
 
     data = dict(payload)
     if not data.get("assigned_to"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="assigned_to is required")
+        data["assigned_to"] = current_user.id if current_user else None
+    if not data.get("assigned_to"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="assigned_to is required",
+        )
     _ensure_assigned_user(db, data["assigned_to"])
 
     email = data.get("primary_email")
@@ -129,6 +141,7 @@ def create_sales_contact(
     existing = (
         db.query(SalesContact)
         .filter(
+            SalesContact.deleted_at.is_(None),
             or_(
                 func.lower(SalesContact.primary_email) == _normalize_email(email),
                 and_(
@@ -180,6 +193,7 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
         duplicate = (
             db.query(SalesContact)
             .filter(
+                SalesContact.deleted_at.is_(None),
                 func.lower(SalesContact.primary_email) == normalized_email,
                 SalesContact.contact_id != contact.contact_id,
             )
@@ -200,8 +214,32 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
 
 
 def delete_sales_contact(db: Session, contact: SalesContact) -> None:
-    db.delete(contact)
+    contact.deleted_at = datetime.utcnow()
+    db.add(contact)
     db.commit()
+
+
+def list_deleted_sales_contacts(
+    db: Session,
+    pagination: Pagination,
+) -> tuple[Sequence[SalesContact], int]:
+    query = db.query(SalesContact).filter(SalesContact.deleted_at.is_not(None))
+    total_count = query.count()
+    contacts = (
+        query.order_by(SalesContact.deleted_at.desc(), SalesContact.created_time.desc())
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+        .all()
+    )
+    return contacts, total_count
+
+
+def restore_sales_contact(db: Session, contact: SalesContact) -> SalesContact:
+    contact.deleted_at = None
+    db.add(contact)
+    db.commit()
+    db.refresh(contact)
+    return contact
 
 
 def _coerce_optional(value: str | None) -> str | None:
@@ -319,7 +357,10 @@ def import_contacts_from_csv(
     existing_duplicates = {
         row.primary_email.lower()
         for row in db.query(SalesContact.primary_email)
-        .filter(func.lower(SalesContact.primary_email).in_(normalized_emails))
+        .filter(
+            func.lower(SalesContact.primary_email).in_(normalized_emails),
+            SalesContact.deleted_at.is_(None),
+        )
         .distinct()
     }
     existing_name_duplicates = set()
@@ -333,6 +374,7 @@ def import_contacts_from_csv(
                 and_(
                     func.lower(SalesContact.first_name).in_(first_names),
                     func.lower(SalesContact.last_name).in_(last_names),
+                    SalesContact.deleted_at.is_(None),
                 )
             )
             .distinct()
@@ -361,7 +403,10 @@ def import_contacts_from_csv(
     existing_by_email = {
         row.primary_email.lower(): row
         for row in db.query(SalesContact)
-        .filter(func.lower(SalesContact.primary_email).in_(normalized_emails))
+        .filter(
+            func.lower(SalesContact.primary_email).in_(normalized_emails),
+            SalesContact.deleted_at.is_(None),
+        )
         .all()
     }
     existing_by_name = {}
@@ -373,6 +418,7 @@ def import_contacts_from_csv(
                 and_(
                     func.lower(SalesContact.first_name).in_(first_names),
                     func.lower(SalesContact.last_name).in_(last_names),
+                    SalesContact.deleted_at.is_(None),
                 )
             )
             .all()
@@ -448,5 +494,8 @@ def export_contacts_to_csv(contacts: Iterable[SalesContact]) -> bytes:
 
 
 def get_all_contacts(db: Session, search: str | None = None) -> list[SalesContact]:
-    query = _apply_search_filter(db.query(SalesContact), search)
+    query = _apply_search_filter(
+        db.query(SalesContact).filter(SalesContact.deleted_at.is_(None)),
+        search,
+    )
     return query.order_by(SalesContact.created_time.desc()).all()

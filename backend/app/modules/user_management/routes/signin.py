@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.modules.user_management.models import RefreshToken, User
-from app.modules.user_management.schema import ManualLoginRequest, ManualSignupRequest
+from app.modules.user_management.schema import ManualLoginRequest, SetupPasswordRequest
 from app.modules.user_management.services.auth import (
     authenticate_manual_user,
     create_access_token,
@@ -16,7 +16,7 @@ from app.modules.user_management.services.auth import (
     decode_token,
     get_google_auth_url,
     handle_google_callback,
-    register_manual_user,
+    set_initial_password,
 )
 
 router = APIRouter(tags=["Auth"])
@@ -51,28 +51,6 @@ def _set_session_cookies(
     )
 
 
-@router.post("/signup")
-def manual_signup(
-    payload: ManualSignupRequest,
-    db: Session = Depends(get_db),
-):
-    user = register_manual_user(
-        db,
-        email=payload.email,
-        password=payload.password,
-        first_name=payload.first_name,
-        last_name=payload.last_name,
-    )
-    return JSONResponse(
-        {
-            "status": "pending",
-            "message": "Account created and pending admin approval",
-            "user_id": user.id,
-        },
-        status_code=status.HTTP_201_CREATED,
-    )
-
-
 @router.post("/login")
 def manual_login(
     payload: ManualLoginRequest,
@@ -89,6 +67,19 @@ def manual_login(
         refresh_token=refresh_token,
     )
     return response
+
+
+@router.post("/setup-password")
+def setup_password(
+    payload: SetupPasswordRequest,
+    db: Session = Depends(get_db),
+):
+    set_initial_password(
+        db,
+        token=payload.token,
+        password=payload.password,
+    )
+    return JSONResponse({"status": "ok", "message": "Password set successfully"})
 
 
 @router.post("/dev/login")

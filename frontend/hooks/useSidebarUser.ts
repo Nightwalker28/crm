@@ -34,10 +34,16 @@ function clearAuthStorage() {
 
 export function useSidebarUser() {
   const router = useRouter();
-  const [user, setUser] = useState<UserProfile | null>(() => safeReadCachedUser());
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
-    if (user) return;
+    setUser(safeReadCachedUser());
+    setHydrated(true);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || user) return;
 
     let cancelled = false;
 
@@ -61,7 +67,7 @@ export function useSidebarUser() {
     return () => {
       cancelled = true;
     };
-  }, [router, user]);
+  }, [hydrated, router, user]);
 
   async function logout() {
     await apiFetch("/auth/logout", {

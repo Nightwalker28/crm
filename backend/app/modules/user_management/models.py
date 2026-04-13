@@ -1,4 +1,5 @@
 import enum
+import uuid
 from sqlalchemy import (
     Column,
     BigInteger,
@@ -8,7 +9,7 @@ from sqlalchemy import (
     Text,
     DateTime,
     func,
-    Enum
+    Enum,
 )
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -43,6 +44,11 @@ class UserStatus(enum.Enum):
     pending = "pending"
     active = "active"
     inactive = "inactive"
+
+
+class UserAuthMode(enum.Enum):
+    manual_only = "manual_only"
+    manual_or_google = "manual_or_google"
 
 class Role(Base):
     __tablename__ = "roles"
@@ -108,11 +114,20 @@ class User(Base):
     email = Column(String(150), nullable=False, unique=True, index=True)
     password_hash = Column(Text, nullable=True)
     photo_url = Column(String(500), nullable=True)
+    phone_number = Column(String(50), nullable=True)
+    job_title = Column(String(150), nullable=True)
+    timezone = Column(String(100), nullable=True)
+    bio = Column(Text, nullable=True)
+    auth_mode = Column(
+        Enum(UserAuthMode, name="user_auth_mode"),
+        nullable=False,
+        server_default=UserAuthMode.manual_or_google.value,
+    )
 
     is_active = Column(
         Enum(UserStatus, name="user_status"),
         nullable=False,
-        server_default=UserStatus.pending.value,
+        server_default=UserStatus.inactive.value,
     )
 
     team = relationship("Team", back_populates="users")
@@ -121,6 +136,11 @@ class User(Base):
         "UserGoogleToken",
         back_populates="user",
         uselist=False,
+        cascade="all, delete-orphan",
+    )
+    setup_tokens = relationship(
+        "UserSetupToken",
+        back_populates="user",
         cascade="all, delete-orphan",
     )
 
@@ -161,3 +181,39 @@ class DepartmentModulePermission(Base):
 
     department = relationship("Department", back_populates="module_permissions")
     module = relationship("Module", back_populates="department_permissions")
+
+
+class UserSetupToken(Base):
+    __tablename__ = "user_setup_tokens"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    expires_at = Column(DateTime, nullable=False)
+    consumed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    user = relationship("User", back_populates="setup_tokens")
+
+
+class CompanyProfile(Base):
+    __tablename__ = "company_profiles"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    name = Column(String(150), nullable=False)
+    primary_email = Column(String(150), nullable=True)
+    website = Column(String(255), nullable=True)
+    primary_phone = Column(String(50), nullable=True)
+    industry = Column(String(120), nullable=True)
+    country = Column(String(120), nullable=True)
+    billing_address = Column(Text, nullable=True)
+    logo_url = Column(String(500), nullable=True)
+    updated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    updated_by_user = relationship("User")

@@ -1,16 +1,102 @@
 from typing import Literal
 
-from fastapi import APIRouter, Depends, File, UploadFile, status, Request
+from fastapi import APIRouter, Depends, File, UploadFile, status, Request, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination, get_pagination
 from app.core.security import get_current_user
 from app.core.database import get_db
-from app.modules.finance.schema import DocxZipParseResponse, IOFileSearchResponse
+from app.modules.finance.schema import (
+    DocxZipParseResponse,
+    IOFileSearchResponse,
+    InsertionOrderCreateRequest,
+    InsertionOrderListResponse,
+    InsertionOrderResponse,
+    InsertionOrderUpdateRequest,
+)
 from app.modules.finance.services import io_search_api
 
 router = APIRouter(tags=["Finance"])
+
+
+@router.get("/insertion-orders", response_model=InsertionOrderListResponse)
+def list_insertion_orders(
+    pagination: Pagination = Depends(get_pagination),
+    request: Request = None,
+    search: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    return io_search_api.list_generic_insertion_orders_page(
+        db,
+        current_user,
+        pagination=pagination,
+        request=request,
+        search=search,
+        status_filter=status_filter,
+    )
+
+
+@router.post("/insertion-orders", response_model=InsertionOrderResponse, status_code=status.HTTP_201_CREATED)
+def create_insertion_order(
+    payload: InsertionOrderCreateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    return io_search_api.create_generic_insertion_order(
+        db,
+        current_user,
+        data=payload.model_dump(),
+        request=request,
+    )
+
+
+@router.get("/insertion-orders/{io_id}", response_model=InsertionOrderResponse)
+def get_insertion_order(
+    io_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    return io_search_api.get_generic_insertion_order(
+        db,
+        current_user,
+        io_id=io_id,
+        request=request,
+    )
+
+
+@router.put("/insertion-orders/{io_id}", response_model=InsertionOrderResponse)
+def update_insertion_order(
+    io_id: int,
+    payload: InsertionOrderUpdateRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    return io_search_api.update_generic_insertion_order(
+        db,
+        current_user,
+        io_id=io_id,
+        data=payload.model_dump(exclude_unset=True),
+        request=request,
+    )
+
+
+@router.delete("/insertion-orders/{io_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_insertion_order(
+    io_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+):
+    io_search_api.delete_generic_insertion_order(
+        db,
+        current_user,
+        io_id=io_id,
+    )
 
 @router.post("/insertion-orders/upload", response_model=DocxZipParseResponse)
 async def upload_multiple_docx(

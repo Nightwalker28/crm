@@ -1,13 +1,20 @@
 "use client";
 
+import { useState } from "react";
+import { toast } from "sonner";
+
 import InsertionOrdersList from "@/components/finance/insertionOrderList";
+import InsertionOrderDialog from "@/components/finance/insertionOrderDialog";
 import { useInsertionOrders } from "@/hooks/finance/useInsertionOrders";
-import FilterButton from "@/components/ui/filter-button";
 import InsertionOrdersHeader from "../../../../components/finance/InsertionOrdersHeader";
 import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { InsertionOrder, InsertionOrderPayload } from "@/hooks/finance/useInsertionOrders";
 
 export default function InsertionOrdersPage() {
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<InsertionOrder | null>(null);
   const {
     orders,
     page,
@@ -22,18 +29,47 @@ export default function InsertionOrdersPage() {
     rangeStart,
     rangeEnd,
     searchTerm,
-    searchField,
-    showingSearch,
     setSearchTerm,
-    setSearchField,
+    statusFilter,
+    setStatusFilter,
+    createOrder,
+    updateOrder,
+    deleteOrder,
+    isSaving,
+    isDeleting,
   } = useInsertionOrders(1, 10);
 
-  const formattedSearchField = searchField
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-
   const handleCreateClick = () => {
-    console.log("Create button clicked");
+    setSelectedOrder(null);
+    setDialogOpen(true);
+  };
+
+  const handleEdit = (order: InsertionOrder) => {
+    setSelectedOrder(order);
+    setDialogOpen(true);
+  };
+
+  const handleDelete = async (order: InsertionOrder) => {
+    const confirmed = window.confirm(`Move ${order.io_number} to the recycle state?`);
+    if (!confirmed) return;
+
+    try {
+      await deleteOrder(order.id);
+      toast.success("Insertion order moved out of the active list.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete insertion order");
+    }
+  };
+
+  const handleSubmit = async (payload: InsertionOrderPayload) => {
+    if (selectedOrder) {
+      await updateOrder(selectedOrder.id, payload);
+      toast.success("Insertion order updated.");
+      return;
+    }
+
+    await createOrder(payload);
+    toast.success("Insertion order created.");
   };
 
   return (
@@ -45,17 +81,30 @@ export default function InsertionOrdersPage() {
         />
 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div className="flex items-center gap-2 w-full md:w-auto">
+          <div className="flex w-full flex-col gap-3 md:flex-row md:items-center">
             <SearchBar
               value={searchTerm}
               onChange={setSearchTerm}
-              placeholder={`Search by ${formattedSearchField}`}
+              placeholder="Search by customer, IO number, reference, or notes"
             />
-            <FilterButton field={searchField} setField={setSearchField} />
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-full md:w-52">
+                <SelectValue placeholder="All statuses" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All statuses</SelectItem>
+                <SelectItem value="draft">Draft</SelectItem>
+                <SelectItem value="issued">Issued</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="completed">Completed</SelectItem>
+                <SelectItem value="cancelled">Cancelled</SelectItem>
+                <SelectItem value="imported">Imported</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         </div>
 
-        {!showingSearch && error && (
+        {error && (
           <div className="bg-red-900/40 border border-red-700 text-red-200 text-sm rounded-lg px-4 py-3 flex items-center justify-between">
             <span>{error}</span>
             <button
@@ -70,22 +119,32 @@ export default function InsertionOrdersPage() {
         <InsertionOrdersList
           orders={orders}
           isLoading={isLoading}
+          onEdit={handleEdit}
+          onDelete={handleDelete}
         />
 
-        {/* Only show pagination when NOT searching (same as you had) */}
-        {!showingSearch && (
-          <Pagination
-            page={page}
-            totalPages={totalPages}
-            totalCount={totalCount}
-            rangeStart={rangeStart}
-            rangeEnd={rangeEnd}
-            pageSize={pageSize}
-            onPageChange={goToPage}
-            onPageSizeChange={onPageSizeChange}
-          />
-        )}
+        <Pagination
+          page={page}
+          totalPages={totalPages}
+          totalCount={totalCount}
+          rangeStart={rangeStart}
+          rangeEnd={rangeEnd}
+          pageSize={pageSize}
+          onPageChange={goToPage}
+          onPageSizeChange={onPageSizeChange}
+        />
       </div>
+
+      <InsertionOrderDialog
+        open={dialogOpen}
+        order={selectedOrder}
+        isSubmitting={isSaving || isDeleting}
+        onClose={() => {
+          setDialogOpen(false);
+          setSelectedOrder(null);
+        }}
+        onSubmit={handleSubmit}
+      />
     </div>
   );
 }

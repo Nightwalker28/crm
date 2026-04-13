@@ -114,7 +114,7 @@ export default function UploadModal({
         return;
       }
 
-      if (!res.ok) throw new Error(data.message);
+      if (!res.ok) throw new Error(data.detail ?? data.message ?? "Upload failed");
 
       setUploadStatus("success");
       toast.success(data.message || "Upload successful!");
@@ -123,8 +123,9 @@ export default function UploadModal({
         onUploadSuccess();
         handleClose();
       }, 600);
-    } catch {
-      toast.error("Upload failed");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Upload failed";
+      toast.error(message);
       setUploadStatus("error");
     }
   };
@@ -149,9 +150,11 @@ const resendWithAction = async (
       body: duplicateDialog.formData, // ✅ contains ALL selected files
     });
 
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
 
-    if (!res.ok) throw new Error(data.message);
+    if (!res.ok) {
+      throw new Error(data.detail ?? data.message ?? "Upload failed");
+    }
 
     toast.success(data.message || "Upload completed");
 
@@ -165,7 +168,7 @@ const resendWithAction = async (
     handleClose();
   } catch (err) {
     console.error(err);
-    toast.error("Upload failed");
+    toast.error(err instanceof Error ? err.message : "Upload failed");
   }
 };
 
@@ -194,10 +197,10 @@ const resendWithAction = async (
           <div className="flex items-center justify-between p-6 border-b border-zinc-800">
             <div>
               <h2 className="text-xl font-semibold text-zinc-100">
-                Upload Insertion Orders
+                Import Legacy Insertion Orders
               </h2>
               <p className="text-sm text-zinc-400 mt-1">
-                Upload one or more .docx or .pdf files
+                Import one or more legacy .docx or .pdf files into the generic insertion order module
               </p>
             </div>
             <Button onClick={handleClose} variant="ghost" size="icon-sm">

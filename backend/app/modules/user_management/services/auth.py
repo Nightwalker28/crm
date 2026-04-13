@@ -1,11 +1,14 @@
 import urllib.parse
 import requests
 import uuid
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -14,9 +17,11 @@ from app.modules.user_management.models import (
     User,
     Module,
     DepartmentModulePermission,
-    UserStatus, RefreshToken ,
+    UserAuthMode,
+    UserSetupToken,
+    UserStatus,
+    RefreshToken,
     Team,
-    RefreshToken
 )
 from app.modules.user_management.services.google_tokens import upsert_google_tokens
 
@@ -41,6 +46,10 @@ def get_google_auth_url() -> str:
         "prompt": "consent",
     }
     return GOOGLE_AUTH_URL + "?" + urllib.parse.urlencode(params)
+
+
+def _hash_setup_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
 # -------------------------------------------------------------------
@@ -173,30 +182,13 @@ def handle_google_callback(code: str, db: Session):
     last_name = profile.get("family_name")
 
     # 4) Find or create user
-    user = db.query(User).filter(User.email == email).first()
+    user = db.query(User).filter(func.lower(User.email) == email.strip().lower()).first()
 
     if not user:
-        user = User(
-            email=email,
-            first_name=first_name,
-            last_name=last_name,
-            photo_url=picture,
-            is_active=UserStatus.pending,
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This Google account has not been provisioned",
         )
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-
-        upsert_google_tokens(
-            db,
-            user_id=user.id,
-            access_token=token_json["access_token"],
-            refresh_token=token_json.get("refresh_token"),
-            expires_in=token_json.get("expires_in"),
-            scope=token_json.get("scope"),
-            token_type=token_json.get("token_type"),
-        )
-        return {"status": "pending"}
 
     upsert_google_tokens(
         db,
@@ -208,11 +200,14 @@ def handle_google_callback(code: str, db: Session):
         token_type=token_json.get("token_type"),
     )
 
-    if user.is_active == UserStatus.pending:
-        return {"status": "pending"}
-
     if user.is_active == UserStatus.inactive:
         return {"status": "inactive"}
+
+    if user.auth_mode == UserAuthMode.manual_only:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Google sign-in is not enabled for this account",
+        )
 
     # 5) Active user
     if picture and user.photo_url != picture:
@@ -225,44 +220,71 @@ def handle_google_callback(code: str, db: Session):
     }
 
 
-def register_manual_user(
-    db: Session,
-    *,
-    email: str,
-    password: str,
-    first_name: str | None = None,
-    last_name: str | None = None,
-):
-    normalized_email = email.strip().lower()
+def create_user_setup_link(db: Session, user: User) -> str:
+    raw_token = secrets.token_urlsafe(32)
+    token_hash = _hash_setup_token(raw_token)
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        hours=settings.USER_SETUP_TOKEN_EXPIRE_HOURS
+    )
 
-    try:
-        validate_password_strength(password)
-    except ValueError as exc:
+    db.query(UserSetupToken).filter(
+        UserSetupToken.user_id == user.id,
+        UserSetupToken.consumed_at.is_(None),
+    ).delete()
+
+    db.add(
+        UserSetupToken(
+            user_id=user.id,
+            token_hash=token_hash,
+            expires_at=expires_at,
+        )
+    )
+    db.commit()
+
+    token_query = urllib.parse.urlencode({"token": raw_token})
+    return f"{settings.FRONTEND_ORIGIN}/auth/setup-password?{token_query}"
+
+
+def set_initial_password(db: Session, *, token: str, password: str) -> User:
+    validate_password_strength(password)
+
+    token_hash = _hash_setup_token(token)
+    db_token = (
+        db.query(UserSetupToken)
+        .filter(
+            UserSetupToken.token_hash == token_hash,
+            UserSetupToken.consumed_at.is_(None),
+        )
+        .first()
+    )
+
+    if not db_token:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
+            detail="Setup link is invalid or has already been used",
         )
 
-    existing_user = db.query(User).filter(User.email == normalized_email).first()
-    if existing_user:
-        if existing_user.password_hash:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="An account with this email already exists",
-            )
+    expires_at = db_token.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+
+    if expires_at <= datetime.now(timezone.utc):
         raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="This email is already registered with Google sign-in",
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Setup link has expired",
         )
 
-    user = User(
-        email=normalized_email,
-        first_name=first_name.strip() if first_name else None,
-        last_name=last_name.strip() if last_name else None,
-        password_hash=hash_password(password),
-        is_active=UserStatus.pending,
-    )
+    user = db.query(User).filter(User.id == db_token.user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    user.password_hash = hash_password(password)
+    db_token.consumed_at = datetime.now(timezone.utc)
     db.add(user)
+    db.add(db_token)
     db.commit()
     db.refresh(user)
     return user
@@ -278,21 +300,26 @@ def authenticate_manual_user(
     user = db.query(User).filter(User.email == normalized_email).first()
 
     if not user or not verify_password(password, user.password_hash):
+        if user and not user.password_hash:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="This account does not have a password set yet",
+            )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid email or password",
-        )
-
-    if user.is_active == UserStatus.pending:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Your account is pending approval",
         )
 
     if user.is_active == UserStatus.inactive:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Your account is inactive",
+        )
+
+    if user.auth_mode not in {UserAuthMode.manual_only, UserAuthMode.manual_or_google}:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Manual sign-in is not enabled for this account",
         )
 
     return user

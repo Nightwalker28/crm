@@ -1,8 +1,10 @@
 from __future__ import annotations
+import json
 import os
 import re
 
 from datetime import datetime, date
+from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path
 from typing import Any, IO
@@ -15,7 +17,8 @@ from sqlalchemy.orm import Session
 
 from app.core.postgres_search import TRIGRAM_SIMILARITY_THRESHOLD
 from app.modules.finance.models import FinanceIO
-from app.modules.user_management.models import User
+from app.modules.sales.models import SalesOrganization
+from app.modules.user_management.models import Module, User
 
 # Single folder override via env
 IO_SEARCH_UPLOAD_DIR = Path(os.environ["IO_SEARCH_UPLOAD_DIR"]).resolve()
@@ -23,6 +26,9 @@ IO_SEARCH_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # IO module_id in the modules table
 DEFAULT_MODULE_ID = 2
+FINANCE_MODULE_KEY = "finance_io"
+DEFAULT_IO_STATUS = "draft"
+DEFAULT_IO_CURRENCY = "USD"
 
 # Mapping from the DOCX table labels to DB column names
 FIELD_MAP = {
@@ -114,6 +120,11 @@ IO_NUMBER_PAD = 5
 IO_NUMBER_REGEX = re.compile(rf"^{IO_NUMBER_PREFIX}(\d+)$")
 
 
+def get_finance_module_id(db: Session) -> int:
+    module_id = db.query(Module.id).filter(Module.name == FINANCE_MODULE_KEY).scalar()
+    return int(module_id) if module_id is not None else DEFAULT_MODULE_ID
+
+
 def _get_max_io_sequence(db: Session, prefix: str = IO_NUMBER_PREFIX) -> int:
     """Return the highest existing io_number sequence for the prefix."""
     max_seq = 0
@@ -146,6 +157,174 @@ def _safe_remove_file(path_str: str) -> None:
             path.unlink()
     except Exception:
         pass
+
+
+def _parse_decimal(value: Any) -> Decimal | None:
+    if value is None:
+        return None
+    if isinstance(value, Decimal):
+        return value
+    normalized = str(value).strip()
+    if not normalized:
+        return None
+    cleaned = re.sub(r"[^\d.\-]", "", normalized)
+    if not cleaned:
+        return None
+    try:
+        return Decimal(cleaned)
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _normalize_text(value: Any) -> str | None:
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def _date_to_iso(value: date | datetime | None) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value.date().isoformat()
+    return value.isoformat()
+
+
+def _legacy_payload_for_record(raw: dict[str, Any]) -> str:
+    legacy_data = {
+        "client_name": raw.get("client_name"),
+        "campaign_name": raw.get("campaign_name"),
+        "campaign_type": raw.get("campaign_type"),
+        "total_leads": raw.get("total_leads"),
+        "seniority_split": raw.get("seniority_split"),
+        "cpl": raw.get("cpl"),
+        "total_cost_of_project": raw.get("total_cost_of_project"),
+        "target_persona": raw.get("target_persona"),
+        "domain_cap": raw.get("domain_cap"),
+        "target_geography": raw.get("target_geography"),
+        "delivery_format": raw.get("delivery_format"),
+        "account_manager": raw.get("account_manager"),
+    }
+    return json.dumps({k: v for k, v in legacy_data.items() if v is not None})
+
+
+def _finance_record_customer_name(record: FinanceIO) -> str:
+    linked_customer = getattr(record, "customer_organization", None)
+    return (
+        _normalize_text(getattr(linked_customer, "org_name", None))
+        or
+        _normalize_text(record.customer_name)
+        or _normalize_text(record.client_name)
+        or _normalize_text(record.campaign_name)
+        or _normalize_text(record.file_name)
+        or "Untitled Insertion Order"
+    )
+
+
+def _finance_record_status(record: FinanceIO) -> str:
+    if _normalize_text(record.status):
+        return str(record.status)
+    if _normalize_text(record.campaign_name):
+        return "imported"
+    return DEFAULT_IO_STATUS
+
+
+def _finance_record_currency(record: FinanceIO) -> str:
+    return _normalize_text(record.currency) or DEFAULT_IO_CURRENCY
+
+
+def _finance_record_total(record: FinanceIO) -> Decimal | None:
+    return record.total_amount or _parse_decimal(record.total_cost_of_project)
+
+
+def _serialize_finance_record(record: FinanceIO, *, request, current_user) -> dict[str, Any]:
+    full_name = None
+    if getattr(record, "assigned_user", None):
+        first_name = getattr(record.assigned_user, "first_name", None)
+        last_name = getattr(record.assigned_user, "last_name", None)
+        full_name = " ".join([part for part in (first_name, last_name) if part]) or None
+
+    user_name = "You" if current_user and record.user_id == current_user.id else full_name
+    file_url = None
+    if request is not None and record.io_number:
+        file_url = str(request.url_for("download_insertion_order_file", io_number=record.io_number))
+
+    total_amount = _finance_record_total(record)
+
+    return {
+        "id": record.id,
+        "io_number": record.io_number,
+        "customer_name": _finance_record_customer_name(record),
+        "customer_organization_id": getattr(record, "customer_organization_id", None),
+        "counterparty_reference": _normalize_text(record.counterparty_reference) or _normalize_text(record.campaign_name),
+        "external_reference": _normalize_text(record.external_reference),
+        "issue_date": _date_to_iso(record.issue_date or record.created_at),
+        "effective_date": _date_to_iso(record.effective_date or record.start_date),
+        "due_date": _date_to_iso(record.due_date or record.end_date),
+        "start_date": _date_to_iso(record.start_date),
+        "end_date": _date_to_iso(record.end_date),
+        "status": _finance_record_status(record),
+        "currency": _finance_record_currency(record),
+        "subtotal_amount": float(record.subtotal_amount) if record.subtotal_amount is not None else None,
+        "tax_amount": float(record.tax_amount) if record.tax_amount is not None else None,
+        "total_amount": float(total_amount) if total_amount is not None else None,
+        "notes": _normalize_text(record.notes),
+        "file_name": _normalize_text(record.file_name),
+        "file_url": file_url,
+        "user_name": user_name,
+        "photo_url": getattr(getattr(record, "assigned_user", None), "photo_url", None),
+        "updated_at": _date_to_iso(record.updated_at),
+    }
+
+
+def _resolve_customer_organization(
+    db: Session,
+    *,
+    current_user,
+    customer_name: str | None,
+    customer_organization_id: int | None,
+    create_if_missing: bool,
+) -> SalesOrganization | None:
+    normalized_name = _normalize_text(customer_name)
+
+    if customer_organization_id is not None:
+        organization = (
+            db.query(SalesOrganization)
+            .filter(
+                SalesOrganization.org_id == customer_organization_id,
+                SalesOrganization.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if not organization:
+            raise ValueError("Linked customer organization was not found")
+        return organization
+
+    if not normalized_name:
+        return None
+
+    existing = (
+        db.query(SalesOrganization)
+        .filter(
+            func.lower(SalesOrganization.org_name) == normalized_name.lower(),
+            SalesOrganization.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if existing:
+        return existing
+
+    if not create_if_missing:
+        return None
+
+    organization = SalesOrganization(
+        org_name=normalized_name,
+        assigned_to=current_user.id if current_user else None,
+    )
+    db.add(organization)
+    db.flush()
+    return organization
 
 def _parse_docx_bytes(
     file_name: str,
@@ -324,12 +503,18 @@ def parse_io_files(
     all_records: list[dict[str, Any]] = []
     for file_name, payload in files:
         suffix = Path(file_name).suffix.lower()
-        if suffix == ".docx":
-            all_records.extend(_parse_docx_bytes(file_name, payload, save_dir))
-        elif suffix == ".pdf":
-            all_records.extend(_parse_pdf_bytes(file_name, payload, save_dir))
-        else:
-            raise ValueError(f"Unsupported file type for {file_name}")
+        try:
+            if suffix == ".docx":
+                all_records.extend(_parse_docx_bytes(file_name, payload, save_dir))
+            elif suffix == ".pdf":
+                all_records.extend(_parse_pdf_bytes(file_name, payload, save_dir))
+            else:
+                raise ValueError(f"Unsupported file type for {file_name}")
+        except ValueError:
+            raise
+        except Exception as exc:
+            file_type = "DOCX" if suffix == ".docx" else "PDF" if suffix == ".pdf" else "unsupported"
+            raise ValueError(f"Failed to parse '{file_name}' as a {file_type} file") from exc
     return all_records
 
 
@@ -434,6 +619,8 @@ def persist_records_to_db(
         payload: dict[str, Any] = {
             "module_id": module_id,
             "file_name": file_name,
+            "status": "imported",
+            "currency": DEFAULT_IO_CURRENCY,
         }
 
         if file_path:
@@ -461,9 +648,19 @@ def persist_records_to_db(
             else:
                 payload[column_name] = value
 
+        payload["customer_name"] = _normalize_text(payload.get("client_name")) or _normalize_text(payload.get("campaign_name"))
+        payload["counterparty_reference"] = _normalize_text(payload.get("campaign_name"))
+        payload["external_reference"] = _normalize_text(file_name)
+        payload["issue_date"] = payload.get("start_date") or datetime.utcnow().date()
+        payload["effective_date"] = payload.get("start_date")
+        payload["due_date"] = payload.get("end_date")
+        payload["total_amount"] = _parse_decimal(payload.get("total_cost_of_project"))
+        payload["legacy_payload"] = _legacy_payload_for_record(payload)
+        payload["notes"] = "Imported from the legacy insertion order workflow."
+
         existing = None
         if not force_insert:
-            filters = [FinanceIO.module_id == module_id]
+            filters = [FinanceIO.module_id == module_id, FinanceIO.deleted_at.is_(None)]
             if not replace_duplicates:
                 if user_id is not None:
                     filters.append(FinanceIO.user_id == user_id)
@@ -574,7 +771,10 @@ def search_finance_io(
             FinanceIO.total_leads,
         )
         .outerjoin(User, FinanceIO.user_id == User.id)
-        .filter(FinanceIO.module_id == module_id)
+        .filter(
+            FinanceIO.module_id == module_id,
+            FinanceIO.deleted_at.is_(None),
+        )
     )
 
     if user_id is not None:
@@ -714,7 +914,10 @@ def list_finance_io(
             FinanceIO.total_leads,
         )
         .outerjoin(User, FinanceIO.user_id == User.id)
-        .filter(FinanceIO.module_id == module_id)
+        .filter(
+            FinanceIO.module_id == module_id,
+            FinanceIO.deleted_at.is_(None),
+        )
     )
 
     if user_id is not None:
@@ -749,3 +952,206 @@ def list_finance_io(
         )
         for row in query.all()
     ]
+
+
+def list_insertion_orders(
+    db: Session,
+    *,
+    module_id: int,
+    user_id: int | None,
+    pagination,
+    search: str | None = None,
+    status_filter: str | None = None,
+) -> tuple[list[FinanceIO], int]:
+    query = db.query(FinanceIO).filter(
+        FinanceIO.module_id == module_id,
+        FinanceIO.deleted_at.is_(None),
+    )
+
+    if user_id is not None:
+        query = query.filter(FinanceIO.user_id == user_id)
+
+    if status_filter:
+        query = query.filter(func.lower(FinanceIO.status) == status_filter.strip().lower())
+
+    if search:
+        document = func.lower(
+            func.concat(
+                func.coalesce(FinanceIO.io_number, ""),
+                " ",
+                func.coalesce(FinanceIO.customer_name, ""),
+                " ",
+                func.coalesce(FinanceIO.counterparty_reference, ""),
+                " ",
+                func.coalesce(FinanceIO.external_reference, ""),
+                " ",
+                func.coalesce(FinanceIO.status, ""),
+                " ",
+                func.coalesce(FinanceIO.currency, ""),
+                " ",
+                func.coalesce(FinanceIO.file_name, ""),
+                " ",
+                func.coalesce(FinanceIO.notes, ""),
+                " ",
+                func.coalesce(FinanceIO.client_name, ""),
+                " ",
+                func.coalesce(FinanceIO.campaign_name, ""),
+            )
+        )
+        normalized = search.strip().lower()
+        rank = func.similarity(document, normalized)
+        query = query.filter(or_(document.ilike(f"%{normalized}%"), rank >= TRIGRAM_SIMILARITY_THRESHOLD))
+        query = query.order_by(rank.desc(), FinanceIO.updated_at.desc())
+    else:
+        query = query.order_by(FinanceIO.updated_at.desc())
+
+    total_count = query.count()
+    records = query.offset(pagination.offset).limit(pagination.limit).all()
+    return records, total_count
+
+
+def get_insertion_order_or_404(
+    db: Session,
+    *,
+    module_id: int,
+    io_id: int,
+    user_id: int | None,
+) -> FinanceIO:
+    query = db.query(FinanceIO).filter(
+        FinanceIO.id == io_id,
+        FinanceIO.module_id == module_id,
+        FinanceIO.deleted_at.is_(None),
+    )
+    if user_id is not None:
+        query = query.filter(FinanceIO.user_id == user_id)
+
+    record = query.first()
+    if not record:
+        raise ValueError("Insertion order not found")
+    return record
+
+
+def create_insertion_order(
+    db: Session,
+    *,
+    module_id: int,
+    current_user,
+    data: dict[str, Any],
+) -> FinanceIO:
+    next_io_sequence = _get_max_io_sequence(db) + 1
+    customer_name = _normalize_text(data.get("customer_name"))
+    customer_organization = _resolve_customer_organization(
+        db,
+        current_user=current_user,
+        customer_name=customer_name,
+        customer_organization_id=data.get("customer_organization_id"),
+        create_if_missing=bool(data.get("create_customer_if_missing")),
+    )
+    resolved_customer_name = (
+        customer_organization.org_name if customer_organization else customer_name
+    )
+    if not resolved_customer_name:
+        raise ValueError("customer_name is required")
+    issue_date = parse_human_date(data["issue_date"]) if data.get("issue_date") else datetime.utcnow().date()
+    effective_date = parse_human_date(data["effective_date"]) if data.get("effective_date") else None
+    due_date = parse_human_date(data["due_date"]) if data.get("due_date") else None
+    start_date = parse_human_date(data["start_date"]) if data.get("start_date") else None
+    end_date = parse_human_date(data["end_date"]) if data.get("end_date") else None
+
+    record = FinanceIO(
+        module_id=module_id,
+        user_id=current_user.id if current_user else None,
+        io_number=f"{IO_NUMBER_PREFIX}{next_io_sequence:0{IO_NUMBER_PAD}d}",
+        file_name=data.get("external_reference") or f"insertion-order-{next_io_sequence}.manual",
+        customer_organization_id=customer_organization.org_id if customer_organization else None,
+        customer_name=resolved_customer_name,
+        counterparty_reference=_normalize_text(data.get("counterparty_reference")),
+        external_reference=_normalize_text(data.get("external_reference")),
+        issue_date=issue_date,
+        effective_date=effective_date,
+        due_date=due_date,
+        start_date=start_date,
+        end_date=end_date,
+        status=_normalize_text(data.get("status")) or DEFAULT_IO_STATUS,
+        currency=(_normalize_text(data.get("currency")) or DEFAULT_IO_CURRENCY).upper(),
+        subtotal_amount=_parse_decimal(data.get("subtotal_amount")),
+        tax_amount=_parse_decimal(data.get("tax_amount")),
+        total_amount=_parse_decimal(data.get("total_amount")),
+        notes=_normalize_text(data.get("notes")),
+        client_name=resolved_customer_name,
+        campaign_name=_normalize_text(data.get("counterparty_reference")) or resolved_customer_name,
+    )
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def update_insertion_order(
+    db: Session,
+    *,
+    record: FinanceIO,
+    current_user=None,
+    data: dict[str, Any],
+) -> FinanceIO:
+    if (
+        "customer_name" in data
+        or "customer_organization_id" in data
+        or data.get("create_customer_if_missing")
+    ):
+        customer_organization = _resolve_customer_organization(
+            db,
+            current_user=current_user,
+            customer_name=data.get("customer_name", _finance_record_customer_name(record)),
+            customer_organization_id=data.get("customer_organization_id"),
+            create_if_missing=bool(data.get("create_customer_if_missing")),
+        )
+        if customer_organization:
+            record.customer_organization_id = customer_organization.org_id
+            record.customer_name = customer_organization.org_name
+        else:
+            if "customer_organization_id" in data and data["customer_organization_id"] is None:
+                record.customer_organization_id = None
+            if "customer_name" in data:
+                normalized_customer_name = _normalize_text(data["customer_name"])
+                if not normalized_customer_name:
+                    raise ValueError("customer_name is required")
+                record.customer_name = normalized_customer_name
+
+    for key in {"issue_date", "effective_date", "due_date", "start_date", "end_date"}:
+        if key in data:
+            value = data[key]
+            setattr(record, key, parse_human_date(value) if value else None)
+
+    for key in {
+        "counterparty_reference",
+        "external_reference",
+        "status",
+        "currency",
+        "notes",
+    }:
+        if key in data:
+            value = _normalize_text(data[key]) if data[key] is not None else None
+            if key == "currency" and value:
+                value = value.upper()
+            setattr(record, key, value)
+
+    for key in {"subtotal_amount", "tax_amount", "total_amount"}:
+        if key in data:
+            setattr(record, key, _parse_decimal(data[key]))
+
+    record.client_name = _finance_record_customer_name(record)
+    record.campaign_name = _normalize_text(record.counterparty_reference) or record.client_name
+    if record.external_reference:
+        record.file_name = record.external_reference
+
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record
+
+
+def soft_delete_insertion_order(db: Session, *, record: FinanceIO) -> None:
+    record.deleted_at = datetime.utcnow()
+    db.add(record)
+    db.commit()

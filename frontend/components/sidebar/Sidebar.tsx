@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { UserRound, HandCoins, LogOut, BriefcaseBusiness } from "lucide-react";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 
@@ -9,6 +10,7 @@ import {
   SidebarGroup,
   SidebarGroupLabel,
   SidebarMenu,
+  SidebarMenuItem,
   SidebarMenuItemCollapsible,
   SidebarMenuItemChild,
 } from "./SidebarNav";
@@ -41,6 +43,9 @@ export default function Sidebar() {
               <SidebarMenuItemChild href="/dashboard/user/teams">
                 Teams & Departments
               </SidebarMenuItemChild>
+              <SidebarMenuItemChild href="/dashboard/company">
+                Company
+              </SidebarMenuItemChild>
             </SidebarMenuItemCollapsible>
             <SidebarMenuItemCollapsible icon={HandCoins} label="Finance">
               <SidebarMenuItemChild href="/dashboard/finance/insertion-orders">
@@ -55,7 +60,7 @@ export default function Sidebar() {
               <SidebarMenuItemChild href="/dashboard/sales/contacts">
                 Contacts
               </SidebarMenuItemChild>
-            </SidebarMenuItemCollapsible>
+              </SidebarMenuItemCollapsible>
 
           </SidebarMenu>
         </SidebarGroup>
@@ -75,7 +80,7 @@ export default function Sidebar() {
             text-neutral-100 transition-colors duration-150 
             hover:bg-white/12 hover:border-white/25"
           >
-            <div className="flex items-center gap-1.5">
+            <Link href="/dashboard/profile" className="flex items-center gap-1.5 min-w-0">
               {user?.photo_url ? (
                 <Image
                   src={user.photo_url}
@@ -96,7 +101,7 @@ export default function Sidebar() {
               >
                 {displayName}
               </span>
-            </div>
+            </Link>
 
             <button
               onClick={logout}

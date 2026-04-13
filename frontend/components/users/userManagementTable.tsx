@@ -2,7 +2,7 @@
 
 import { useMemo, useState, Fragment } from "react";
 import Image from "next/image";
-import { Check, X, Pencil } from "lucide-react";
+import { Pencil } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import Pagination from "../ui/Pagination";
 import UserFilters, { type UserFiltersValue } from "@/components/users/userFilters";
@@ -25,7 +25,7 @@ import { Card } from "../ui/Card";
 
 export type SortKey = "name" | "role" | "email" | "status";
 export type SortDirection = "asc" | "desc";
-export type UserStatus = "pending" | "active" | "inactive";
+export type UserStatus = "active" | "inactive";
 
 export type User = {
   id: number;
@@ -37,6 +37,7 @@ export type User = {
   team_name: string;
   role_name: string;
   photo_url?: string;
+  auth_mode?: "manual_only" | "manual_or_google";
   is_active: UserStatus;
 };
 
@@ -60,8 +61,6 @@ type OptionMaps = {
 type Props = {
   currentUserId?: number | null;
   optionsData: UserOptionsData;
-  onApprove: (u: User) => void;
-  onReject: (u: User) => void;
   onEdit: (u: User) => void;
 };
 
@@ -167,8 +166,6 @@ const fetchUsers = async ({
 export function UserManagementTable({
   currentUserId,
   optionsData,
-  onApprove,
-  onReject,
   onEdit,
 }: Props) {
   const [page, setPage] = useState(1);
@@ -210,7 +207,8 @@ export function UserManagementTable({
     queryFn: () => fetchUsers({ page, pageSize, filters, sortKey, sortDirection, maps }),
     placeholderData: (previousData) => previousData, 
     enabled: !!optionsData,
-    refetchOnWindowFocus: false, 
+    refetchOnWindowFocus: false,
+    refetchOnMount: true,
   });
 
   const users = data?.results ?? emptyUsers;
@@ -355,7 +353,7 @@ export function UserManagementTable({
                                 />
                               ) : (
                                 <div className="h-6 w-6 rounded bg-neutral-700 flex items-center justify-center text-[10px]">
-                                  {u.first_name[0]}
+                                  {(u.first_name?.[0] ?? u.email[0] ?? "?").toUpperCase()}
                                 </div>
                               )}
 
@@ -396,10 +394,6 @@ export function UserManagementTable({
                               <Pill bg="bg-green-900/30" text="text-green-400" border="border-green-700/40">
                                 Active
                               </Pill>
-                            ) : u.is_active === "pending" ? (
-                              <Pill bg="bg-yellow-900/30" text="text-yellow-400" border="border-yellow-700/40">
-                                Pending
-                              </Pill>
                             ) : (
                               <Pill bg="bg-zinc-900/30" text="text-zinc-400" border="border-zinc-700/40">
                                 Inactive
@@ -409,33 +403,13 @@ export function UserManagementTable({
 
                           <TableCell className="text-center">
                             <div className="flex items-center justify-center gap-3 h-7">
-                              {u.is_active === "pending" ? (
-                                <>
-                                  <button
-                                    onClick={() => onApprove(u)}
-                                    className="text-green-400 hover:text-green-300 cursor-pointer"
-                                    title="Approve user"
-                                  >
-                                    <Check size={18} />
-                                  </button>
-
-                                  <button
-                                    onClick={() => onReject(u)}
-                                    className="text-red-400 hover:text-red-300 cursor-pointer"
-                                    title="Reject user"
-                                  >
-                                    <X size={18} />
-                                  </button>
-                                </>
-                              ) : (
-                                <button
-                                  onClick={() => onEdit(u)}
-                                  className="text-blue-300 hover:text-blue-200 cursor-pointer"
-                                  title="Edit user"
-                                >
-                                  <Pencil size={18} />
-                                </button>
-                              )}
+                              <button
+                                onClick={() => onEdit(u)}
+                                className="text-blue-300 hover:text-blue-200 cursor-pointer"
+                                title="Edit user"
+                              >
+                                <Pencil size={18} />
+                              </button>
                             </div>
                           </TableCell>
                         </TableRow>

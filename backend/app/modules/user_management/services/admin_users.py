@@ -1,18 +1,20 @@
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import case, func
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.pagination import Pagination, build_paged_response
 from app.core.postgres_search import apply_trigram_search, searchable_text
-from app.modules.user_management.models import Role, Team, User, UserStatus
+from app.modules.user_management.models import Role, Team, User, UserAuthMode, UserStatus
 from app.modules.user_management.schema import (
-    ApproveUserRequest,
+    AdminCreateUserRequest,
+    AdminCreateUserResponse,
     UpdateUserRequest,
     UserProfile,
     UserUpdateOptions,
 )
+from app.modules.user_management.services.auth import create_user_setup_link
 
 
 def list_all_users(db: Session, pagination: Pagination):
@@ -21,22 +23,10 @@ def list_all_users(db: Session, pagination: Pagination):
         .options(joinedload(User.team), selectinload(User.role))
         .outerjoin(Team)
     )
-
-    unassigned_label = "Action Required"
-
-    attention_sort = case(
-        (
-            (User.is_active == UserStatus.pending)
-            & (User.role_id.is_(None))
-            & (User.team_id.is_(None)),
-            0,
-        ),
-        else_=1,
-    )
+    unassigned_label = "Unassigned"
 
     team_sort = func.coalesce(Team.name, unassigned_label)
     query = query.order_by(
-        attention_sort.asc(),
         team_sort.asc(),
         User.first_name.asc(),
         User.id.asc(),
@@ -64,7 +54,7 @@ def search_users(
         .outerjoin(Team)
     )
 
-    unassigned_label = "Action Required"
+    unassigned_label = "Unassigned"
 
     if q:
         document = searchable_text(User.first_name, User.last_name, User.email)
@@ -100,16 +90,6 @@ def search_users(
         if valid_statuses:
             query = query.filter(User.is_active.in_(valid_statuses))
 
-    attention_sort = case(
-        (
-            (User.is_active == UserStatus.pending)
-            & (User.role_id.is_(None))
-            & (User.team_id.is_(None)),
-            0,
-        ),
-        else_=1,
-    )
-
     team_sort = func.coalesce(Team.name, unassigned_label)
 
     if sort_by == "email":
@@ -124,13 +104,13 @@ def search_users(
 
     if rank is not None:
         if sort_order == "desc":
-            query = query.order_by(attention_sort.asc(), team_sort.asc(), rank.asc(), User.id.desc())
+            query = query.order_by(team_sort.asc(), rank.asc(), User.id.desc())
         else:
-            query = query.order_by(attention_sort.asc(), team_sort.asc(), rank.desc(), User.id.asc())
+            query = query.order_by(team_sort.asc(), rank.desc(), User.id.asc())
     elif sort_order == "desc":
-        query = query.order_by(attention_sort.asc(), team_sort.asc(), user_sort.desc(), User.id.desc())
+        query = query.order_by(team_sort.asc(), user_sort.desc(), User.id.desc())
     else:
-        query = query.order_by(attention_sort.asc(), team_sort.asc(), user_sort.asc(), User.id.asc())
+        query = query.order_by(team_sort.asc(), user_sort.asc(), User.id.asc())
 
     total_count = query.count()
     items = query.offset(pagination.offset).limit(pagination.limit).all()
@@ -141,18 +121,48 @@ def search_users(
 def list_user_update_options(db: Session) -> UserUpdateOptions:
     roles = db.query(Role).order_by(Role.name.asc()).all()
     teams = db.query(Team).order_by(Team.name.asc()).all()
-    statuses = [s.value for s in UserStatus]
+    statuses = [UserStatus.active.value, UserStatus.inactive.value]
     return UserUpdateOptions(roles=roles, teams=teams, statuses=statuses)
 
+def create_user(db: Session, payload: AdminCreateUserRequest) -> AdminCreateUserResponse:
+    if payload.is_active == UserStatus.pending:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pending status is no longer supported",
+        )
 
-def list_pending_users(db: Session, limit: int, offset: int) -> list[User]:
-    return (
-        db.query(User)
-        .options(selectinload(User.team), selectinload(User.role))
-        .filter(User.is_active == UserStatus.pending)
-        .offset(offset)
-        .limit(limit)
-        .all()
+    normalized_email = payload.email.strip().lower()
+    existing_user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="An account with this email already exists",
+        )
+
+    _get_role_or_404(db, payload.role_id)
+    _get_team_or_404(db, payload.team_id)
+
+    user = User(
+        email=normalized_email,
+        first_name=payload.first_name.strip() if payload.first_name else None,
+        last_name=payload.last_name.strip() if payload.last_name else None,
+        role_id=payload.role_id,
+        team_id=payload.team_id,
+        auth_mode=payload.auth_mode,
+        is_active=payload.is_active,
+    )
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+
+    setup_link = None
+    if payload.auth_mode in {UserAuthMode.manual_only, UserAuthMode.manual_or_google}:
+        setup_link = create_user_setup_link(db, user)
+        db.refresh(user)
+
+    return AdminCreateUserResponse(
+        user=UserProfile.model_validate(user),
+        setup_link=setup_link,
     )
 
 
@@ -166,6 +176,11 @@ def update_user(db: Session, user_id: int, payload: UpdateUserRequest) -> User:
         _get_role_or_404(db, update_data["role_id"])
     if "team_id" in update_data and update_data["team_id"] is not None:
         _get_team_or_404(db, update_data["team_id"])
+    if "is_active" in update_data and update_data["is_active"] == UserStatus.pending:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Pending status is no longer supported",
+        )
 
     for field, value in update_data.items():
         setattr(user, field, value)
@@ -174,36 +189,6 @@ def update_user(db: Session, user_id: int, payload: UpdateUserRequest) -> User:
     db.commit()
     db.refresh(user)
     return user
-
-
-def approve_user(db: Session, user_id: int, payload: ApproveUserRequest) -> dict[str, str]:
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
-    _get_role_or_404(db, payload.role_id)
-    _get_team_or_404(db, payload.team_id)
-
-    user.role_id = payload.role_id
-    user.team_id = payload.team_id
-    user.is_active = UserStatus.active
-
-    db.commit()
-    return {"message": "User approved successfully"}
-
-
-def reject_pending_user(db: Session, user_id: int) -> dict[str, str]:
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user or user.is_active != UserStatus.pending:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Pending user not found",
-        )
-
-    db.delete(user)
-    db.commit()
-    return {"message": "Pending user rejected and removed"}
-
 
 def _serialize_user_profiles(users: list[User], unassigned_label: str):
     serialized = []

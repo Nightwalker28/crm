@@ -13,6 +13,7 @@ from app.modules.sales.schema import (
     SalesContactImportSummary,
     SalesContactListResponse,
     SalesContactResponse,
+    ContactSummaryResponse,
     SalesContactUpdateRequest,
     SalesOrganizationListResponse,
 )
@@ -23,12 +24,20 @@ from app.modules.sales.services.contacts_services import (
     get_all_contacts,
     get_contact_or_404,
     import_contacts_from_csv,
+    list_deleted_sales_contacts,
     list_sales_contacts,
+    restore_sales_contact,
     update_sales_contact,
 )
+from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.services.organizations_services import search_organizations_pagianted
+from app.modules.sales.services.summary_services import build_contact_summary
 
 router = APIRouter(prefix="/contacts", tags=["Sales"])
+
+
+def _serialize_contact(contact) -> dict:
+    return SalesContactResponse.model_validate(contact).model_dump(mode="json")
 
 
 @router.get("", response_model=SalesContactListResponse)
@@ -60,6 +69,18 @@ def search_contacts(
     return build_paged_response(serialized, total_count, pagination)
 
 
+@router.get("/recycle", response_model=SalesContactListResponse)
+def list_deleted_contacts(
+    pagination: Pagination = Depends(get_pagination),
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access('sales_contacts'))
+):
+    contacts, total_count = list_deleted_sales_contacts(db, pagination)
+    serialized = [SalesContactResponse.model_validate(contact) for contact in contacts]
+    return build_paged_response(serialized, total_count, pagination)
+
+
 @router.post("", response_model=SalesContactResponse, status_code=status.HTTP_201_CREATED)
 def create_contact(
     payload: SalesContactCreateRequest,
@@ -71,7 +92,7 @@ def create_contact(
     require_module = Depends(require_module_access('sales_contacts'))
 ):
     try:
-        return create_sales_contact(
+        created = create_sales_contact(
             db=db,
             payload=payload.model_dump(),
             current_user=current_user,
@@ -79,6 +100,17 @@ def create_contact(
             skip_duplicates=skip_duplicates,
             create_new_records=create_new_records,
         )
+        log_activity(
+            db,
+            actor_user_id=current_user.id if current_user else None,
+            module_key="sales_contacts",
+            entity_type="sales_contact",
+            entity_id=created.contact_id,
+            action="create",
+            description=f"Created contact {created.primary_email}",
+            after_state=_serialize_contact(created),
+        )
+        return created
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
 
@@ -158,6 +190,17 @@ def get_contact(
     return contact
 
 
+@router.get("/{contact_id}/summary", response_model=ContactSummaryResponse)
+def get_contact_summary(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access('sales_contacts'))
+):
+    contact = get_contact_or_404(db, contact_id)
+    return build_contact_summary(db, contact)
+
+
 @router.put("/{contact_id}", response_model=SalesContactResponse)
 def update_contact(
     contact_id: int,
@@ -171,7 +214,20 @@ def update_contact(
     if not update_data:
         return contact
 
-    return update_sales_contact(db, contact, update_data)
+    before_state = _serialize_contact(contact)
+    updated = update_sales_contact(db, contact, update_data)
+    log_activity(
+        db,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="sales_contacts",
+        entity_type="sales_contact",
+        entity_id=updated.contact_id,
+        action="update",
+        description=f"Updated contact {updated.primary_email}",
+        before_state=before_state,
+        after_state=_serialize_contact(updated),
+    )
+    return updated
 
 
 @router.delete("/{contact_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -182,4 +238,37 @@ def delete_contact(
     require_module = Depends(require_module_access('sales_contacts'))
 ):
     contact = get_contact_or_404(db, contact_id)
+    before_state = _serialize_contact(contact)
     delete_sales_contact(db, contact)
+    log_activity(
+        db,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="sales_contacts",
+        entity_type="sales_contact",
+        entity_id=contact.contact_id,
+        action="soft_delete",
+        description=f"Moved contact {contact.primary_email} to recycle bin",
+        before_state=before_state,
+    )
+
+
+@router.post("/{contact_id}/restore", response_model=SalesContactResponse)
+def restore_contact(
+    contact_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access('sales_contacts'))
+):
+    contact = get_contact_or_404(db, contact_id, include_deleted=True)
+    restored = restore_sales_contact(db, contact)
+    log_activity(
+        db,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="sales_contacts",
+        entity_type="sales_contact",
+        entity_id=restored.contact_id,
+        action="restore",
+        description=f"Restored contact {restored.primary_email} from recycle bin",
+        after_state=_serialize_contact(restored),
+    )
+    return restored

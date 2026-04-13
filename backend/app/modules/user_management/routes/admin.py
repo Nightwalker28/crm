@@ -4,7 +4,8 @@ from app.core.database import get_db
 from app.core.security import require_admin
 from app.core.pagination import Pagination, get_pagination
 from app.modules.user_management.schema import (
-    ApproveUserRequest,
+    AdminCreateUserRequest,
+    AdminCreateUserResponse,
     DepartmentCreateRequest,
     DepartmentSchema,
     DepartmentUpdateRequest,
@@ -58,6 +59,15 @@ def list_user_update_options(
     admin = Depends(require_admin),
 ):
     return admin_users.list_user_update_options(db)
+
+
+@router.post("", response_model=AdminCreateUserResponse, status_code=status.HTTP_201_CREATED)
+def create_user(
+    payload: AdminCreateUserRequest,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return admin_users.create_user(db, payload)
 
 @router.post("/departments", response_model=DepartmentSchema, status_code=status.HTTP_201_CREATED)
 def create_department(
@@ -130,15 +140,6 @@ def delete_team(
 ):
     admin_structure.delete_team(db, team_id)
 
-@router.get("/pending", response_model=list[UserProfile])
-def list_pending_users(
-    limit: int = Query(10, ge=1, le=100),
-    offset: int = Query(0, ge=0),
-    db: Session = Depends(get_db),
-    admin = Depends(require_admin),
-):
-    return admin_users.list_pending_users(db, limit=limit, offset=offset)
-
 @router.put("/{user_id}", response_model=UserProfile)
 def update_user(
     user_id: int,
@@ -147,20 +148,3 @@ def update_user(
     admin = Depends(require_admin),
 ):
     return admin_users.update_user(db, user_id, payload)
-
-@router.post("/approve/{user_id}")
-def approve_user(
-    user_id: int,
-    payload: ApproveUserRequest,
-    db: Session = Depends(get_db),
-    admin = Depends(require_admin),
-):
-    return admin_users.approve_user(db, user_id, payload)
-
-@router.delete("/pending/{user_id}")
-def reject_pending_user(
-    user_id: int,
-    db: Session = Depends(get_db),
-    admin = Depends(require_admin),
-):
-    return admin_users.reject_pending_user(db, user_id)

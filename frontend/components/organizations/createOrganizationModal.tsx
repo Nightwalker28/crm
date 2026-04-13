@@ -35,6 +35,10 @@ const emptyForm: OrganizationForm = {
   annual_revenue: "",
 };
 
+function RequiredMark() {
+  return <span className="text-red-400">*</span>;
+}
+
 type Props = {
   isOpen: boolean;
   isSubmitting?: boolean;
@@ -88,7 +92,7 @@ export default function CreateOrganizationModal({
 
           <FieldGroup className="mt-4 grid gap-4 sm:grid-cols-2">
             <Field className="sm:col-span-2">
-              <FieldLabel>Name</FieldLabel>
+              <FieldLabel>Organization Name <RequiredMark /></FieldLabel>
               <Input
                 value={form.org_name}
                 onChange={(event) => setForm((current) => ({ ...current, org_name: event.target.value }))}
@@ -97,7 +101,7 @@ export default function CreateOrganizationModal({
             </Field>
 
             <Field>
-              <FieldLabel>Primary Email</FieldLabel>
+              <FieldLabel>Primary Email <RequiredMark /></FieldLabel>
               <Input
                 type="email"
                 value={form.primary_email}
@@ -163,8 +167,7 @@ export default function CreateOrganizationModal({
               disabled={
                 isSubmitting ||
                 !form.org_name.trim() ||
-                !form.primary_email.trim() ||
-                !form.website.trim()
+                !form.primary_email.trim()
               }
             >
               {isSubmitting ? "Creating..." : "Create"}

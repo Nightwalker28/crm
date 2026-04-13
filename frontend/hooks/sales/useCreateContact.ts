@@ -60,8 +60,8 @@ export function useCreateContact({
   const orgRef = useRef<HTMLDivElement>(null);
 
   const canSubmit = useMemo(
-    () => Boolean(form.first_name.trim() || form.last_name.trim() || form.primary_email.trim()),
-    [form],
+    () => Boolean(form.primary_email.trim()),
+    [form.primary_email],
   );
 
   const orgsQuery = useQuery({
@@ -130,7 +130,11 @@ export function useCreateContact({
       });
 
       if (!res.ok) {
-        throw new Error(await res.text());
+        const data = await res.json().catch(async () => {
+          const text = await res.text().catch(() => "");
+          return text ? { detail: text } : null;
+        });
+        throw new Error(data?.detail ?? data?.message ?? `Failed with ${res.status}`);
       }
 
       onSuccess();

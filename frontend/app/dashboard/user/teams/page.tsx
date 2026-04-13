@@ -21,13 +21,16 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import {
   type Department,
   type DepartmentForm,
   type TeamForm,
   useTeamsAndDepartments,
 } from "@/hooks/admin/useTeamsAndDepartments";
+
+function RequiredMark() {
+  return <span className="text-red-400">*</span>;
+}
 
 function SectionHeader({
   icon: Icon,
@@ -93,7 +96,7 @@ function DepartmentDialog({
 
           <FieldGroup className="mt-4">
             <Field>
-              <FieldLabel>Name</FieldLabel>
+              <FieldLabel>Name <RequiredMark /></FieldLabel>
               <Input
                 value={form.name}
                 onChange={(event) => onChange({ ...form, name: event.target.value })}
@@ -157,7 +160,7 @@ function TeamDialog({
 
           <FieldGroup className="mt-4">
             <Field>
-              <FieldLabel>Name</FieldLabel>
+              <FieldLabel>Name <RequiredMark /></FieldLabel>
               <Input
                 value={form.name}
                 onChange={(event) => onChange({ ...form, name: event.target.value })}
@@ -166,7 +169,7 @@ function TeamDialog({
             </Field>
 
             <Field>
-              <FieldLabel>Department</FieldLabel>
+              <FieldLabel>Department <RequiredMark /></FieldLabel>
               <Select value={form.department_id} onValueChange={(value) => onChange({ ...form, department_id: value })}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select department" />
@@ -204,6 +207,41 @@ function TeamDialog({
         </DialogPanel>
       </div>
     </Dialog>
+  );
+}
+
+function EntityCard({
+  title,
+  subtitle,
+  meta,
+  onEdit,
+  onDelete,
+}: {
+  title: string;
+  subtitle: string;
+  meta?: string | null;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-4">
+      <div className="flex items-start justify-between gap-4">
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-neutral-100">{title}</div>
+          <div className="mt-1 text-sm text-neutral-500">{subtitle}</div>
+          {meta ? <div className="mt-2 text-xs uppercase tracking-wide text-neutral-500">{meta}</div> : null}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Button size="icon-sm" variant="outline" onClick={onEdit}>
+            <Pencil size={14} />
+          </Button>
+          <Button size="icon-sm" variant="destructive" onClick={onDelete}>
+            <Trash2 size={14} />
+          </Button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -271,28 +309,13 @@ export default function TeamsAndDepartmentsPage() {
             ) : (
               <div className="space-y-3">
                 {departments.map((department) => (
-                  <div
+                  <EntityCard
                     key={department.id}
-                    className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-4"
-                  >
-                    <div className="flex items-start justify-between gap-4">
-                      <div>
-                        <div className="text-sm font-semibold text-neutral-100">{department.name}</div>
-                        <div className="mt-1 text-sm text-neutral-500">
-                          {department.description || "No description"}
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <Button size="icon-sm" variant="outline" onClick={() => openEditDepartment(department)}>
-                          <Pencil size={14} />
-                        </Button>
-                        <Button size="icon-sm" variant="destructive" onClick={() => removeDepartment(department)}>
-                          <Trash2 size={14} />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+                    title={department.name}
+                    subtitle={department.description || "No description"}
+                    onEdit={() => openEditDepartment(department)}
+                    onDelete={() => removeDepartment(department)}
+                  />
                 ))}
               </div>
             )}
@@ -316,40 +339,19 @@ export default function TeamsAndDepartmentsPage() {
                 No teams yet.
               </div>
             ) : (
-              <div className="overflow-hidden rounded-md border border-neutral-800">
-                <Table>
-                  <TableHeader>
-                    <TableHeaderRow>
-                      <TableHead>Team</TableHead>
-                      <TableHead>Department</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead className="text-right">Actions</TableHead>
-                    </TableHeaderRow>
-                  </TableHeader>
-                  <TableBody>
-                    {groupedTeams.flatMap(({ department, teams: departmentTeams }) =>
-                      departmentTeams.map((team) => (
-                        <TableRow key={team.id}>
-                          <TableCell className="font-medium text-neutral-100">{team.name}</TableCell>
-                          <TableCell>{department.name}</TableCell>
-                          <TableCell className="text-neutral-400">
-                            {team.description || "No description"}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2">
-                              <Button size="icon-sm" variant="outline" onClick={() => openEditTeam(team)}>
-                                <Pencil size={14} />
-                              </Button>
-                              <Button size="icon-sm" variant="destructive" onClick={() => removeTeam(team)}>
-                                <Trash2 size={14} />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
+              <div className="space-y-3">
+                {groupedTeams.flatMap(({ department, teams: departmentTeams }) =>
+                  departmentTeams.map((team) => (
+                    <EntityCard
+                      key={team.id}
+                      title={team.name}
+                      subtitle={team.description || "No description"}
+                      meta={department.name}
+                      onEdit={() => openEditTeam(team)}
+                      onDelete={() => removeTeam(team)}
+                    />
+                  ))
+                )}
               </div>
             )}
           </div>

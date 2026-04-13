@@ -11,6 +11,7 @@ from app.modules.user_management.models import (
     Role,
     Team,
     User,
+    UserAuthMode,
     UserStatus,
 )
 
@@ -137,6 +138,7 @@ def seed_initial_data(
                 password_hash=hash_password(admin_password),
                 role_id=admin_role.id,
                 team_id=team.id,
+                auth_mode=UserAuthMode.manual_or_google,
                 is_active=UserStatus.active,
             )
             db.add(admin_user)
@@ -145,6 +147,7 @@ def seed_initial_data(
                 admin_user.password_hash = hash_password(admin_password)
             admin_user.role_id = admin_role.id
             admin_user.team_id = team.id
+            admin_user.auth_mode = UserAuthMode.manual_or_google
             admin_user.is_active = UserStatus.active
             if not admin_user.first_name:
                 admin_user.first_name = admin_first_name.strip() or None

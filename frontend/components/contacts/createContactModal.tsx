@@ -92,12 +92,14 @@ export default function CreateContactModal({
 
             {/* EMAIL + TITLE */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Email">
+              <Field label="Email" required>
                 <Input
                   value={form.primary_email}
                   onChange={(e) =>
                     setForm({ ...form, primary_email: e.target.value })
                   }
+                  type="email"
+                  placeholder="person@company.com"
                 />
               </Field>
 
@@ -234,19 +236,27 @@ export default function CreateContactModal({
   );
 }
 
+function RequiredMark() {
+  return <span className="text-red-400">*</span>;
+}
+
 /* ---------- FIELD ---------- */
 function Field({
   label,
   children,
   className,
+  required = false,
 }: {
   label: string;
   children: React.ReactNode;
   className?: string;
+  required?: boolean;
 }) {
   return (
     <div className={`space-y-1 ${className ?? ""}`}>
-      <Label>{label}</Label>
+      <Label>
+        {label} {required ? <RequiredMark /> : null}
+      </Label>
       {children}
     </div>
   );

@@ -9,6 +9,11 @@ class UserStatus(str, Enum):
     active = "active"
     inactive = "inactive"
 
+
+class UserAuthMode(str, Enum):
+    manual_only = "manual_only"
+    manual_or_google = "manual_or_google"
+
 class UserProfile(BaseModel):
     id: int
     first_name: Optional[str]
@@ -19,6 +24,11 @@ class UserProfile(BaseModel):
     team_name: Optional[str] = None
     role_name: Optional[str] = None
     photo_url: Optional[str]
+    phone_number: Optional[str] = None
+    job_title: Optional[str] = None
+    timezone: Optional[str] = None
+    bio: Optional[str] = None
+    auth_mode: UserAuthMode
     is_active: UserStatus
 
     model_config = ConfigDict(from_attributes=True)
@@ -51,6 +61,7 @@ class UpdateUserRequest(BaseModel):
     team_id: Optional[int] = None
     role_id: Optional[int] = None
     is_active: Optional[UserStatus] = None
+    auth_mode: Optional[UserAuthMode] = None
     
 class DepartmentSchema(BaseModel):
     id: int
@@ -117,3 +128,61 @@ class ManualSignupRequest(BaseModel):
 class ManualLoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class SetupPasswordRequest(BaseModel):
+    token: str
+    password: str
+
+
+class AdminCreateUserRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: EmailStr
+    team_id: int
+    role_id: int
+    auth_mode: UserAuthMode
+    is_active: UserStatus = UserStatus.active
+
+
+class AdminCreateUserResponse(BaseModel):
+    user: UserProfile
+    setup_link: Optional[str] = None
+
+
+class UserProfileUpdateRequest(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    photo_url: Optional[str] = None
+    phone_number: Optional[str] = None
+    job_title: Optional[str] = None
+    timezone: Optional[str] = None
+    bio: Optional[str] = None
+
+
+class CompanyProfileResponse(BaseModel):
+    id: int
+    name: str
+    primary_email: Optional[str] = None
+    website: Optional[str] = None
+    primary_phone: Optional[str] = None
+    industry: Optional[str] = None
+    country: Optional[str] = None
+    billing_address: Optional[str] = None
+    logo_url: Optional[str] = None
+    updated_by: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CompanyProfileUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    primary_email: Optional[str] = None
+    website: Optional[str] = None
+    primary_phone: Optional[str] = None
+    industry: Optional[str] = None
+    country: Optional[str] = None
+    billing_address: Optional[str] = None
+    logo_url: Optional[str] = None

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Organization } from "@/hooks/sales/useOrganizations";
 import { Building2, Globe, Mail, Phone } from "lucide-react";
 
@@ -7,12 +8,15 @@ export default function OrganizationCard({
   org: Organization;
 }) {
   return (
-    <div className="rounded-xl border border-zinc-800 bg-linear-to-b from-zinc-900 to-zinc-950 p-4 hover:border-zinc-700 transition">
+    <div className="rounded-xl border border-zinc-800 bg-linear-to-b from-zinc-900 to-zinc-950 p-4 transition hover:border-zinc-700">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-medium mb-1 text-zinc-100">
+          <Link
+            href={`/dashboard/sales/organizations/${org.org_id}`}
+            className="mb-1 block text-lg font-medium text-zinc-100 hover:text-white"
+          >
             {org.org_name}
-          </h2>
+          </Link>
 
           {org.industry && (
             <p className="text-sm text-zinc-400 mb-3">
@@ -61,6 +65,15 @@ export default function OrganizationCard({
           Revenue: {org.annual_revenue}
         </div>
       )}
+
+      <div className="mt-4 flex justify-end">
+        <Link
+          href={`/dashboard/sales/organizations/${org.org_id}`}
+          className="text-xs font-medium uppercase tracking-wide text-zinc-500 hover:text-zinc-200"
+        >
+          Open record
+        </Link>
+      </div>
     </div>
   );
 }

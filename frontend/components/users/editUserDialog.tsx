@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,8 @@ type User = {
   team_id: number;
   role_id: number;
   photo_url?: string;
+  auth_mode?: "manual_only" | "manual_or_google";
+  is_active: "active" | "inactive";
 };
 
 type RoleOption = { id: number; name: string };
@@ -49,7 +51,7 @@ type Props = {
   currentUserId: number | null;
 
   onClose: () => void;
-  onSave: (id: number, form: { role_id: number; team_id: number }) => void;
+  onSave: (id: number, form: { role_id: number; team_id: number; auth_mode: "manual_only" | "manual_or_google"; is_active: "active" | "inactive" }) => Promise<void>;
 };
 
 export default function EditUserDialog({
@@ -63,6 +65,15 @@ export default function EditUserDialog({
 }: Props) {
   const [role, setRole] = useState<number>(user.role_id);
   const [team, setTeam] = useState<number>(user.team_id);
+  const [authMode, setAuthMode] = useState<"manual_only" | "manual_or_google">(user.auth_mode ?? "manual_or_google");
+  const [status, setStatus] = useState<"active" | "inactive">(user.is_active);
+
+  useEffect(() => {
+    setRole(user.role_id);
+    setTeam(user.team_id);
+    setAuthMode(user.auth_mode ?? "manual_or_google");
+    setStatus(user.is_active);
+  }, [user]);
 
   const isSelf = currentUserId != null && user.id === currentUserId;
 
@@ -173,6 +184,46 @@ export default function EditUserDialog({
                   </FieldError>
                 )}
               </Field>
+
+              <Field>
+                <FieldLabel>Sign-In Mode</FieldLabel>
+                <Select
+                  value={authMode}
+                  onValueChange={(value: "manual_only" | "manual_or_google") => setAuthMode(value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select sign-in mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="manual_only">Manual only</SelectItem>
+                    <SelectItem value="manual_or_google">Manual + Google</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <FieldDescription>
+                  Controls whether the user can sign in manually only or with Google as well.
+                </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel>Status</FieldLabel>
+                <Select
+                  value={status}
+                  onValueChange={(value: "active" | "inactive") => setStatus(value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select status" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <FieldDescription>
+                  Inactive users cannot sign in until they are reactivated.
+                </FieldDescription>
+              </Field>
             </FieldGroup>
           </div>
 
@@ -182,7 +233,9 @@ export default function EditUserDialog({
             </Button>
             <Button
               size="sm"
-              onClick={() => onSave(user.id, { role_id: role, team_id: team })}
+              onClick={async () => {
+                await onSave(user.id, { role_id: role, team_id: team, auth_mode: authMode, is_active: status });
+              }}
             >
               Save
             </Button>

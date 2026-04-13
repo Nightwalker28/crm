@@ -30,7 +30,7 @@ export default function InsertionOrdersHeader({
             Insertion Orders
           </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Manage and view your insertion orders
+            Manage generic insertion orders and import legacy files when needed
           </p>
         </div>
 
@@ -40,12 +40,12 @@ export default function InsertionOrdersHeader({
             onClick={() => setIsUploadModalOpen(true)}
           >
             <Upload />
-            <span className="hidden sm:inline">Upload</span>
+            <span className="hidden sm:inline">Import</span>
           </Button>
 
           <Button onClick={onCreateClick}>
             <Plus />
-            <span className="hidden sm:inline">Create</span>
+            <span className="hidden sm:inline">New Order</span>
           </Button>
         </div>
       </div>

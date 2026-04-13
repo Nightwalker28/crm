@@ -1,6 +1,7 @@
 import csv
 import io
 import zipfile
+from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -43,7 +44,14 @@ def create_organization(
         create_new_records=create_new_records,
     )
 
-    existing = db.query(SalesOrganization).filter(SalesOrganization.org_name == payload.org_name).first()
+    existing = (
+        db.query(SalesOrganization)
+        .filter(
+            SalesOrganization.org_name == payload.org_name,
+            SalesOrganization.deleted_at.is_(None),
+        )
+        .first()
+    )
     if existing and not create_new_records:
         if skip_duplicates:
             return existing
@@ -81,14 +89,15 @@ def list_organizations(db: Session) -> list[SalesOrganization]:
     """Return all organizations sorted by creation time (newest first)."""
     return (
         # SELECT * FROM sales_organizations ORDER BY created_time DESC
-        db.query(SalesOrganization) 
+        db.query(SalesOrganization)
+        .filter(SalesOrganization.deleted_at.is_(None))
         .order_by(SalesOrganization.created_time.desc())
         .all()
     )
 
 def list_organizations_paginated(db: Session, offset: int, limit: int) -> tuple[list[SalesOrganization], int]:
     """Return a page of organizations and the total count."""
-    base_query = db.query(SalesOrganization)
+    base_query = db.query(SalesOrganization).filter(SalesOrganization.deleted_at.is_(None))
     total = base_query.count()
     items = (
         base_query
@@ -110,7 +119,7 @@ def search_organizations_pagianted(db: Session, name: str, offset: int, limit: i
         SalesOrganization.billing_country,
     )
     base_query, rank = apply_trigram_search(
-        db.query(SalesOrganization),
+        db.query(SalesOrganization).filter(SalesOrganization.deleted_at.is_(None)),
         search=name,
         document=document,
     )
@@ -134,14 +143,17 @@ def search_organizations_pagianted(db: Session, name: str, offset: int, limit: i
     return items, total
 
 
-def get_organization(db: Session, org_id: int) -> SalesOrganization | None:
+def get_organization(db: Session, org_id: int, *, include_deleted: bool = False) -> SalesOrganization | None:
     """Return one organization by ID."""
-    return db.query(SalesOrganization).filter(SalesOrganization.org_id == org_id).first()
+    query = db.query(SalesOrganization).filter(SalesOrganization.org_id == org_id)
+    if not include_deleted:
+        query = query.filter(SalesOrganization.deleted_at.is_(None))
+    return query.first()
 
 
 def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpdate) -> SalesOrganization | None:
     """Update an existing organization by ID."""
-    organization = db.query(SalesOrganization).filter(SalesOrganization.org_id == org_id).first()
+    organization = get_organization(db=db, org_id=org_id)
     if not organization:
         return None
 
@@ -154,20 +166,45 @@ def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpda
 
 
 def delete_organization(db: Session, org_id: int) -> bool:
-    """Delete an organization by ID. Returns True if deleted."""
-    organization = db.query(SalesOrganization).filter(SalesOrganization.org_id == org_id).first()
+    """Soft delete an organization by ID. Returns True if deleted."""
+    organization = get_organization(db=db, org_id=org_id)
     if not organization:
         return False
 
-    db.delete(organization)
+    organization.deleted_at = datetime.utcnow()
+    db.add(organization)
     db.commit()
     return True
+
+
+def list_deleted_organizations_paginated(db: Session, offset: int, limit: int) -> tuple[list[SalesOrganization], int]:
+    base_query = db.query(SalesOrganization).filter(SalesOrganization.deleted_at.is_not(None))
+    total = base_query.count()
+    items = (
+        base_query
+        .order_by(SalesOrganization.deleted_at.desc(), SalesOrganization.created_time.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+    return items, total
+
+
+def restore_organization(db: Session, org_id: int) -> SalesOrganization | None:
+    organization = get_organization(db=db, org_id=org_id, include_deleted=True)
+    if not organization or organization.deleted_at is None:
+        return None
+
+    organization.deleted_at = None
+    db.add(organization)
+    db.commit()
+    db.refresh(organization)
+    return organization
 
 
 REQUIRED_IMPORT_FIELDS = {
     "org_name",
     "primary_email",
-    "website",
 }
 
 
@@ -219,9 +256,7 @@ def import_organizations_from_csv(
 
         org_name = data.get("org_name")
         primary_email = data.get("primary_email")
-        website = data.get("website")
-
-        if not org_name or not primary_email or not website:
+        if not org_name or not primary_email:
             errors.append(f"Row {idx}: missing required fields")
             continue
 
@@ -231,7 +266,10 @@ def import_organizations_from_csv(
     existing_duplicates = {
         row.org_name
         for row in db.query(SalesOrganization.org_name)
-        .filter(SalesOrganization.org_name.in_(org_names))
+        .filter(
+            SalesOrganization.org_name.in_(org_names),
+            SalesOrganization.deleted_at.is_(None),
+        )
         .distinct()
     }
     detection = detect_duplicates(org_names, existing_values=existing_duplicates)
@@ -260,7 +298,10 @@ def import_organizations_from_csv(
     existing_by_name = {
         row.org_name: row
         for row in db.query(SalesOrganization)
-        .filter(SalesOrganization.org_name.in_(rows_by_org_name.keys()))
+        .filter(
+            SalesOrganization.org_name.in_(rows_by_org_name.keys()),
+            SalesOrganization.deleted_at.is_(None),
+        )
         .all()
     }
 
@@ -361,7 +402,11 @@ def _serialize_orgs_to_csv(rows: list[SalesOrganization]) -> bytes:
 
 def export_organizations(db: Session, org_ids: list[int] | None = None) -> tuple[bytes, dict]:
     """Export organizations to a ZIP of CSV batches (1k rows per batch)."""
-    query = db.query(SalesOrganization).order_by(SalesOrganization.org_id.asc())
+    query = (
+        db.query(SalesOrganization)
+        .filter(SalesOrganization.deleted_at.is_(None))
+        .order_by(SalesOrganization.org_id.asc())
+    )
     if org_ids:
         query = query.filter(SalesOrganization.org_id.in_(org_ids))
 
