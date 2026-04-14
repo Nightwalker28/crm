@@ -17,9 +17,9 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.modules.finance.models import FinanceIO
 from app.modules.finance.services.io_search_services import (
-    DEFAULT_MODULE_ID,
     IO_SEARCH_UPLOAD_DIR,
-    persist_records_to_db,
+    create_insertion_order,
+    get_finance_module_id,
     sanitize_file_name,
 )
 from app.modules.sales.models import SalesOpportunity
@@ -327,42 +327,43 @@ def create_finance_io_from_opportunity(
     destination_path.write_bytes(docx_bytes)
 
     # Persist the IO record so it can be indexed and assigned an IO number.
-    record = {
-        "file_name": file_name,
-        "file_path": str(destination_path),
-        "Agency / Client Name": opportunity.client,
-        "Campaign Name": opportunity.opportunity_name,
-        "Start Date": _format_date(opportunity.start_date),
-        "End Date": _format_date(opportunity.expected_close_date),
-        "Campaign Type": opportunity.campaign_type,
-        "Total Leads": opportunity.total_leads,
-        "CPL": opportunity.cpl,
-        "Total Cost of Project": opportunity.total_cost_of_project,
-        "Target Geography": opportunity.target_geography,
-        "Target Persona": opportunity.target_audience,
-        "Tactics": opportunity.tactics,
-        "Domain Cap": opportunity.domain_cap,
-        "Delivery Format": opportunity.delivery_format,
-        "Account Manager": account_manager,
-    }
-
-    persist_records_to_db(
+    module_id = get_finance_module_id(db)
+    io_row = create_insertion_order(
         db,
-        records=[record],
-        module_id=DEFAULT_MODULE_ID,
-        user_id=user_id,
-        force_insert=True,
+        module_id=module_id,
+        current_user=opportunity.assigned_user,
+        data={
+            "customer_name": opportunity.client or contact_name or "Imported Opportunity",
+            "customer_contact_id": opportunity.contact_id,
+            "customer_organization_id": opportunity.organization_id,
+            "counterparty_reference": opportunity.opportunity_name or None,
+            "external_reference": file_name,
+            "issue_date": _format_date(opportunity.start_date),
+            "due_date": _format_date(opportunity.expected_close_date),
+            "start_date": _format_date(opportunity.start_date),
+            "end_date": _format_date(opportunity.expected_close_date),
+            "status": "issued",
+            "currency": opportunity.currency_type or "USD",
+            "total_amount": opportunity.total_cost_of_project,
+            "notes": "\n".join(
+                [
+                    line
+                    for line in [
+                        f"Generated from opportunity: {opportunity.opportunity_name}" if opportunity.opportunity_name else None,
+                        f"Campaign type: {opportunity.campaign_type}" if opportunity.campaign_type else None,
+                        f"Target geography: {opportunity.target_geography}" if opportunity.target_geography else None,
+                        f"Delivery format: {opportunity.delivery_format}" if opportunity.delivery_format else None,
+                    ]
+                    if line
+                ]
+            ) or None,
+        },
     )
-
-    io_row = (
-        db.query(FinanceIO)
-        .filter(
-            FinanceIO.module_id == DEFAULT_MODULE_ID,
-            FinanceIO.file_name == file_name,
-        )
-        .order_by(FinanceIO.updated_at.desc())
-        .first()
-    )
+    io_row.file_path = str(destination_path)
+    io_row.file_name = file_name
+    db.add(io_row)
+    db.commit()
+    db.refresh(io_row)
 
     # If an IO number is assigned, update the doc and re-export with the number.
     if io_row and io_row.io_number:

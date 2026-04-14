@@ -71,7 +71,7 @@ export function useOrganizations(initialPage = 1, initialPageSize = 10) {
 
   const data = query.data;
 
-  async function createOrganization(payload: Record<string, string>) {
+  async function createOrganization(payload: Record<string, unknown>) {
     try {
       setIsCreating(true);
       const res = await apiFetch("/sales/organizations/create", {

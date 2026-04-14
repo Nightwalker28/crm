@@ -26,3 +26,41 @@ class ActivityLogListResponse(BaseModel):
     total_count: int
     total_pages: int
     page: int
+
+
+class CustomFieldDefinitionResponse(BaseModel):
+    id: int
+    module_key: str
+    field_key: str
+    label: str
+    field_type: str
+    placeholder: str | None = None
+    help_text: str | None = None
+    is_required: bool
+    is_active: bool
+    sort_order: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CustomFieldDefinitionCreateRequest(BaseModel):
+    field_key: str
+    label: str
+    field_type: str
+    placeholder: str | None = None
+    help_text: str | None = None
+    is_required: bool = False
+    is_active: bool = True
+    sort_order: int = 0
+
+
+class CustomFieldDefinitionUpdateRequest(BaseModel):
+    label: str | None = None
+    field_type: str | None = None
+    placeholder: str | None = None
+    help_text: str | None = None
+    is_required: bool | None = None
+    is_active: bool | None = None
+    sort_order: int | None = None

@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.pagination import Pagination, get_pagination, build_paged_response
 from app.core.database import get_db
 from app.core.security import require_user
-from app.core.permissions import require_module_access
+from app.core.permissions import require_action_access, require_module_access
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.schema import (
     SalesOrganizationCreate,
@@ -46,6 +46,7 @@ def create_sales_organization(
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access("sales_organizations")),
+    require_permission = Depends(require_action_access("sales_organizations", "create")),
 ):
     try:
         created = create_organization(
@@ -78,7 +79,8 @@ def get_sales_organizations(
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_organizations'))
+    require_module = Depends(require_module_access('sales_organizations')),
+    require_permission = Depends(require_action_access("sales_organizations", "view")),
 ):
     if search:
         items, total = search_organizations_pagianted(
@@ -97,7 +99,8 @@ def get_deleted_sales_organizations(
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_organizations'))
+    require_module = Depends(require_module_access('sales_organizations')),
+    require_permission = Depends(require_action_access("sales_organizations", "restore")),
 ):
     items, total = list_deleted_organizations_paginated(db=db, offset=pagination.offset, limit=pagination.limit)
     serialized = [SalesOrganizationResponse.model_validate(item) for item in items]
@@ -111,6 +114,7 @@ def search_sales_organizations(
     db:  Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations')),
+    require_permission = Depends(require_action_access("sales_organizations", "view")),
 ):
     items, total = search_organizations_pagianted(db, name, offset=pagination.offset, limit=pagination.limit)
     return build_paged_response(items, total_count=total, pagination=pagination)
@@ -122,6 +126,7 @@ def get_sales_organization(
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations')),
+    require_permission = Depends(require_action_access("sales_organizations", "view")),
 ):
     org = get_organization(db=db, org_id=org_id)
     if not org:
@@ -136,6 +141,7 @@ def get_sales_organization_summary(
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations')),
+    require_permission = Depends(require_action_access("sales_organizations", "view")),
 ):
     org = get_organization(db=db, org_id=org_id)
     if not org:
@@ -151,6 +157,7 @@ def edit_sales_organization(
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations')),
+    require_permission = Depends(require_action_access("sales_organizations", "edit")),
 ):
     existing = get_organization(db=db, org_id=org_id)
     if not existing:
@@ -181,6 +188,7 @@ def delete_sales_organization(
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations')),
+    require_permission = Depends(require_action_access("sales_organizations", "delete")),
 ):
     org = get_organization(db=db, org_id=org_id)
     if not org:
@@ -209,6 +217,7 @@ def restore_sales_organization(
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations')),
+    require_permission = Depends(require_action_access("sales_organizations", "restore")),
 ):
     org = restore_organization(db=db, org_id=org_id)
     if not org:
@@ -235,7 +244,8 @@ async def import_sales_organizations(
     create_new_records: bool = False,
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_organizations'))
+    require_module = Depends(require_module_access('sales_organizations')),
+    require_permission = Depends(require_action_access("sales_organizations", "create")),
 ):
     content = await file.read()
     if not content:
@@ -269,6 +279,7 @@ def export_sales_organizations(
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations')),
+    require_permission = Depends(require_action_access("sales_organizations", "export")),
 ):
     content, meta = export_organizations(db=db, org_ids=org_ids)
     filename = "organizations_export.zip"

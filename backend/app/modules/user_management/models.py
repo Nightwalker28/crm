@@ -59,6 +59,11 @@ class Role(Base):
     description = Column(String, nullable=True)
 
     users = relationship("User", back_populates="role")
+    module_permissions = relationship(
+        "RoleModulePermission",
+        back_populates="role",
+        cascade="all, delete-orphan",
+    )
 
 
 class Department(Base):
@@ -166,6 +171,11 @@ class Module(Base):
         "DepartmentModulePermission",
         back_populates="module",
     )
+    role_permissions = relationship(
+        "RoleModulePermission",
+        back_populates="module",
+        cascade="all, delete-orphan",
+    )
 
 
 class DepartmentModulePermission(Base):
@@ -181,6 +191,32 @@ class DepartmentModulePermission(Base):
 
     department = relationship("Department", back_populates="module_permissions")
     module = relationship("Module", back_populates="department_permissions")
+
+
+class RoleModulePermission(Base):
+    __tablename__ = "role_module_permissions"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    role_id = Column(
+        BigInteger,
+        ForeignKey("roles.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    module_id = Column(
+        BigInteger,
+        ForeignKey("modules.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    can_view = Column(SmallInteger, nullable=False, default=1)
+    can_create = Column(SmallInteger, nullable=False, default=0)
+    can_edit = Column(SmallInteger, nullable=False, default=0)
+    can_delete = Column(SmallInteger, nullable=False, default=0)
+    can_restore = Column(SmallInteger, nullable=False, default=0)
+    can_export = Column(SmallInteger, nullable=False, default=0)
+    can_configure = Column(SmallInteger, nullable=False, default=0)
+
+    role = relationship("Role", back_populates="module_permissions")
+    module = relationship("Module", back_populates="role_permissions")
 
 
 class UserSetupToken(Base):

@@ -9,6 +9,7 @@ from app.modules.user_management.models import (
     DepartmentModulePermission,
     Module,
     Role,
+    RoleModulePermission,
     Team,
     User,
     UserAuthMode,
@@ -31,6 +32,11 @@ DEFAULT_MODULES = [
 
 DEFAULT_DEPARTMENT = {"name": "Administration", "description": "Initial system administration department"}
 DEFAULT_TEAM = {"name": "Platform Admins", "description": "Initial platform administration team"}
+DEFAULT_ROLE_TEMPLATE_ACTIONS = {
+    "Admin": {"can_view": 1, "can_create": 1, "can_edit": 1, "can_delete": 1, "can_restore": 1, "can_export": 1, "can_configure": 1},
+    "Superuser": {"can_view": 1, "can_create": 1, "can_edit": 1, "can_delete": 1, "can_restore": 1, "can_export": 1, "can_configure": 0},
+    "User": {"can_view": 1, "can_create": 1, "can_edit": 1, "can_delete": 0, "can_restore": 0, "can_export": 0, "can_configure": 0},
+}
 
 
 def _sync_pk_sequence(db, table_name: str, sequence_name: str) -> None:
@@ -75,6 +81,7 @@ def seed_initial_data(
         _sync_pk_sequence(db, "users", "users_id_seq")
         _sync_pk_sequence(db, "modules", "modules_id_seq")
         _sync_pk_sequence(db, "department_module_permissions", "department_module_permissions_id_seq")
+        _sync_pk_sequence(db, "role_module_permissions", "role_module_permissions_id_seq")
 
         roles_by_name: dict[str, Role] = {}
         for payload in DEFAULT_ROLES:
@@ -127,6 +134,23 @@ def seed_initial_data(
                         module_id=module_id,
                     )
                 )
+
+        for role_name, role in roles_by_name.items():
+            template = DEFAULT_ROLE_TEMPLATE_ACTIONS[role_name]
+            for module_id in module_ids:
+                permission = (
+                    db.query(RoleModulePermission)
+                    .filter(
+                        RoleModulePermission.role_id == role.id,
+                        RoleModulePermission.module_id == module_id,
+                    )
+                    .first()
+                )
+                if not permission:
+                    permission = RoleModulePermission(role_id=role.id, module_id=module_id)
+                for key, value in template.items():
+                    setattr(permission, key, value)
+                db.add(permission)
 
         admin_role = roles_by_name["Admin"]
         admin_user = db.query(User).filter(func.lower(User.email) == admin_email).first()

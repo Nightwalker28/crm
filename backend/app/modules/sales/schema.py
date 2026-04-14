@@ -1,6 +1,6 @@
 from datetime import date, datetime
 import json
-from typing import Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -20,6 +20,7 @@ class SalesOrganizationBase(BaseModel):
     billing_state: str | None = None
     billing_postal_code: str | None = None
     billing_country: str | None = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class SalesOrganizationCreate(SalesOrganizationBase):
@@ -72,6 +73,7 @@ class SalesContactBase(BaseModel):
     country: Optional[str] = None
     email_opt_out: bool = False
     organization_id: Optional[int] = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class SalesContactCreateRequest(SalesContactBase):
@@ -190,6 +192,7 @@ class SalesOpportunityBase(BaseModel):
     tactics: str | None = None
     delivery_format: str | None = None
     attachments: list[str] | None = None
+    custom_fields: dict[str, Any] | None = None
 
     @field_validator("attachments", mode="before")
     @classmethod

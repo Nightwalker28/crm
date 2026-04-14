@@ -9,6 +9,12 @@ from app.modules.user_management.schema import (
     DepartmentCreateRequest,
     DepartmentSchema,
     DepartmentUpdateRequest,
+    ModulePermissionSchema,
+    RoleCreateRequest,
+    RolePermissionOverviewResponse,
+    RolePermissionUpdateRequest,
+    RoleSchema,
+    RoleUpdateRequest,
     TeamCreateRequest,
     TeamSchema,
     TeamUpdateRequest,
@@ -17,7 +23,7 @@ from app.modules.user_management.schema import (
     UserProfile,
     UserUpdateOptions,
 )
-from app.modules.user_management.services import admin_structure, admin_users
+from app.modules.user_management.services import admin_structure, admin_users, role_permissions
 from typing import Optional
 
 router = APIRouter(prefix="/admin/users", tags=["Admin Users"])
@@ -59,6 +65,52 @@ def list_user_update_options(
     admin = Depends(require_admin),
 ):
     return admin_users.list_user_update_options(db)
+
+
+@router.get("/roles/permissions", response_model=RolePermissionOverviewResponse)
+def get_role_permission_overview(
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return role_permissions.list_role_permission_overview(db)
+
+
+@router.get("/roles/{role_id}/permissions", response_model=list[ModulePermissionSchema])
+def get_role_permissions(
+    role_id: int,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return role_permissions.get_role_permissions(db, role_id)
+
+
+@router.post("/roles", response_model=RoleSchema, status_code=status.HTTP_201_CREATED)
+def create_role(
+    payload: RoleCreateRequest,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return role_permissions.create_role(db, payload)
+
+
+@router.put("/roles/{role_id}", response_model=RoleSchema)
+def update_role(
+    role_id: int,
+    payload: RoleUpdateRequest,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return role_permissions.update_role(db, role_id, payload)
+
+
+@router.put("/roles/{role_id}/permissions", response_model=list[ModulePermissionSchema])
+def update_role_permissions(
+    role_id: int,
+    payload: RolePermissionUpdateRequest,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return role_permissions.update_role_permissions(db, role_id, payload)
 
 
 @router.post("", response_model=AdminCreateUserResponse, status_code=status.HTTP_201_CREATED)

@@ -30,7 +30,7 @@ export default function InsertionOrdersHeader({
             Insertion Orders
           </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Manage generic insertion orders and import legacy files when needed
+            Manage generic insertion orders and import them from CSV when needed
           </p>
         </div>
 

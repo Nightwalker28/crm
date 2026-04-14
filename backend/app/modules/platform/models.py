@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, JSON, String, Text, func
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, func
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -19,3 +19,39 @@ class ActivityLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
     actor = relationship("User")
+
+
+class CustomFieldDefinition(Base):
+    __tablename__ = "custom_field_definitions"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    field_key = Column(String(100), nullable=False, index=True)
+    label = Column(String(150), nullable=False)
+    field_type = Column(String(50), nullable=False)
+    placeholder = Column(String(255), nullable=True)
+    help_text = Column(Text, nullable=True)
+    is_required = Column(Boolean, nullable=False, server_default="false")
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    sort_order = Column(Integer, nullable=False, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    values = relationship("CustomFieldValue", back_populates="definition", cascade="all, delete-orphan")
+
+
+class CustomFieldValue(Base):
+    __tablename__ = "custom_field_values"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    record_id = Column(BigInteger, nullable=False, index=True)
+    field_definition_id = Column(BigInteger, ForeignKey("custom_field_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
+    value_text = Column(Text, nullable=True)
+    value_number = Column(JSON, nullable=True)
+    value_date = Column(String(20), nullable=True)
+    value_boolean = Column(Boolean, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    definition = relationship("CustomFieldDefinition", back_populates="values")

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, Text, Date, TIMESTAMP, func, ForeignKey, Numeric
+from sqlalchemy import Column, BigInteger, Text, Date, TIMESTAMP, func, ForeignKey, Numeric, JSON
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -15,6 +15,11 @@ class FinanceIO(Base):
 
     file_name = Column(Text, nullable=False)
     file_path = Column(Text, nullable=True)
+    customer_contact_id = Column(
+        BigInteger,
+        ForeignKey("sales_contacts.contact_id", ondelete="SET NULL"),
+        nullable=True,
+    )
     customer_organization_id = Column(
         BigInteger,
         ForeignKey("sales_organizations.org_id", ondelete="SET NULL"),
@@ -31,28 +36,19 @@ class FinanceIO(Base):
     tax_amount = Column(Numeric(12, 2), nullable=True)
     total_amount = Column(Numeric(12, 2), nullable=True)
     notes = Column(Text, nullable=True)
-    legacy_payload = Column(Text, nullable=True)
+    custom_data = Column(JSON, nullable=True)
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
-    client_name = Column(Text, nullable=False)
-    campaign_name = Column(Text, nullable=False)
 
     start_date = Column(Date, nullable=True)
     end_date = Column(Date, nullable=True)
-
-    campaign_type = Column(Text, nullable=True)
-    total_leads = Column(Text, nullable=True)
-
-    seniority_split = Column(Text, nullable=True)
-    cpl = Column(Text, nullable=True)
-    total_cost_of_project = Column(Text, nullable=True)
-    target_persona = Column(Text, nullable=True)
-    domain_cap = Column(Text, nullable=True)
-    target_geography = Column(Text, nullable=True)
-    delivery_format = Column(Text, nullable=True)
-    account_manager = Column(Text, nullable=True)
 
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
     assigned_user = relationship("User", lazy="joined")
+    customer_contact = relationship("SalesContact", lazy="joined")
     customer_organization = relationship("SalesOrganization", lazy="joined")
+
+    @property
+    def custom_fields(self) -> dict | None:
+        return self.custom_data

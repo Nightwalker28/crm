@@ -9,6 +9,7 @@ from app.modules.user_management.models import (
     DepartmentModulePermission,
     Module,
     Role,
+    RoleModulePermission,
     Team,
     User,
 )
@@ -62,6 +63,58 @@ def require_department_module_access(
     )
     if not allowed:
         raise PermissionError("Access to this module is forbidden")
+
+
+def require_role_module_action_access(
+    db: Session,
+    *,
+    user: User,
+    module_key: str,
+    action: str,
+) -> None:
+    require_department_module_access(db, user=user, module_key=module_key)
+
+    module = (
+        db.query(Module)
+        .filter(or_(Module.name == module_key, Module.base_route == module_key))
+        .first()
+    )
+    if not module:
+        raise ValueError("module not found")
+
+    role_level = get_user_role_level(db, user)
+    if role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL:
+        return
+
+    if not user.role_id:
+        raise PermissionError("User is not assigned to a role")
+
+    permission = (
+        db.query(RoleModulePermission)
+        .filter(
+            RoleModulePermission.role_id == user.role_id,
+            RoleModulePermission.module_id == module.id,
+        )
+        .first()
+    )
+    if not permission:
+        raise PermissionError("Action is not allowed for this role")
+
+    field_map = {
+        "view": "can_view",
+        "create": "can_create",
+        "edit": "can_edit",
+        "delete": "can_delete",
+        "restore": "can_restore",
+        "export": "can_export",
+        "configure": "can_configure",
+    }
+    attr = field_map.get(action)
+    if not attr:
+        raise ValueError("unknown action")
+
+    if not bool(getattr(permission, attr)):
+        raise PermissionError("Action is not allowed for this role")
 
 
 def get_finance_user_scope(db: Session, user: User | None) -> UserDepartmentScope:

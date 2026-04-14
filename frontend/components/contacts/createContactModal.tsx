@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 import {
   Dialog,
   DialogBackdrop,
@@ -19,6 +21,8 @@ import {
   SelectItem,
 } from "@/components/ui/select";
 import { COUNTRIES } from "@/lib/countries";
+import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
+import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useCreateContact } from "@/hooks/sales/useCreateContact";
 
 const REGIONS = ["APAC", "EMEA", "NA", "LATAM"];
@@ -55,6 +59,12 @@ export default function CreateContactModal({
     onClose,
     onSuccess,
   });
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
+  const customFieldsQuery = useModuleCustomFields("sales_contacts", isOpen);
+
+  useEffect(() => {
+    if (isOpen) setCustomFieldValues({});
+  }, [isOpen]);
 
   return (
     <Dialog open={isOpen} onClose={closeModal}>
@@ -217,6 +227,14 @@ export default function CreateContactModal({
                 )}
               </div>
             </Field>
+
+            <CustomFieldInputs
+              definitions={customFieldsQuery.data ?? []}
+              values={customFieldValues}
+              onChange={(fieldKey, value) =>
+                setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))
+              }
+            />
           </div>
 
           <DialogFooter className="mt-6">
@@ -224,7 +242,7 @@ export default function CreateContactModal({
               Cancel
             </Button>
             <Button
-              onClick={submit}
+              onClick={() => submit({ custom_fields: customFieldValues })}
               disabled={!canSubmit || isSubmitting}
             >
               {isSubmitting ? "Creating…" : "Create"}

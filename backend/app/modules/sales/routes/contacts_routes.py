@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.security import require_user, require_admin, require_superuser
-from app.core.permissions import require_module_access
+from app.core.permissions import require_action_access, require_module_access
 from app.modules.sales.schema import (
     SalesContactCreateRequest,
     SalesContactImportSummary,
@@ -45,7 +45,8 @@ def list_contacts(
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_contacts'))
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
     contacts, total_count = list_sales_contacts(db, pagination, search=None)
     serialized = [SalesContactResponse.model_validate(contact) for contact in contacts]
@@ -62,7 +63,8 @@ def search_contacts(
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_contacts'))
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
     contacts, total_count = list_sales_contacts(db, pagination, search=query)
     serialized = [SalesContactResponse.model_validate(contact) for contact in contacts]
@@ -74,7 +76,8 @@ def list_deleted_contacts(
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_contacts'))
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "restore")),
 ):
     contacts, total_count = list_deleted_sales_contacts(db, pagination)
     serialized = [SalesContactResponse.model_validate(contact) for contact in contacts]
@@ -89,7 +92,8 @@ def create_contact(
     create_new_records: bool = False,
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_contacts'))
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "create")),
 ):
     try:
         created = create_sales_contact(
@@ -123,7 +127,8 @@ async def import_contacts(
     create_new_records: bool = False,
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_contacts'))
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "create")),
 ):
     filename = (file.filename or "").lower()
     if not filename.endswith(".csv"):
@@ -152,7 +157,8 @@ def export_contacts(
     ),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_contacts'))
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "export")),
 ):
     contacts = get_all_contacts(db, search)
     csv_bytes = export_contacts_to_csv(contacts)
@@ -168,7 +174,8 @@ def search_organizations_for_contacts(
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_contacts'))
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
     items, total = search_organizations_pagianted(
         db,
@@ -184,7 +191,8 @@ def get_contact(
     contact_id: int,
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_contacts'))
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
     contact = get_contact_or_404(db, contact_id)
     return contact
@@ -195,7 +203,8 @@ def get_contact_summary(
     contact_id: int,
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_contacts'))
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
     contact = get_contact_or_404(db, contact_id)
     return build_contact_summary(db, contact)
@@ -207,7 +216,8 @@ def update_contact(
     payload: SalesContactUpdateRequest,
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_contacts'))
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "edit")),
 ):
     contact = get_contact_or_404(db, contact_id)
     update_data = payload.model_dump(exclude_unset=True)
@@ -235,7 +245,8 @@ def delete_contact(
     contact_id: int,
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_contacts'))
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "delete")),
 ):
     contact = get_contact_or_404(db, contact_id)
     before_state = _serialize_contact(contact)
@@ -257,7 +268,8 @@ def restore_contact(
     contact_id: int,
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
-    require_module = Depends(require_module_access('sales_contacts'))
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "restore")),
 ):
     contact = get_contact_or_404(db, contact_id, include_deleted=True)
     restored = restore_sales_contact(db, contact)

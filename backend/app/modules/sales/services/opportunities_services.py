@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination
 from app.core.postgres_search import apply_trigram_search, searchable_text
+from app.modules.platform.services.custom_fields import save_custom_field_values, validate_custom_field_payload
 from app.modules.sales.models import SalesOpportunity, SalesContact, SalesOrganization
 from app.modules.user_management.models import User
 
@@ -78,7 +79,10 @@ def list_opportunities(
     pagination: Pagination,
     search: str | None = None,
 ) -> tuple[list[SalesOpportunity], int]:
-    query, rank = _apply_search_filter(db.query(SalesOpportunity), search)
+    query, rank = _apply_search_filter(
+        db.query(SalesOpportunity).filter(SalesOpportunity.deleted_at.is_(None)),
+        search,
+    )
     total_count = query.count()
     if rank is not None:
         items = (
@@ -97,10 +101,31 @@ def list_opportunities(
     return items, total_count
 
 
-def get_opportunity_or_404(db: Session, opportunity_id: int) -> SalesOpportunity:
+def list_deleted_opportunities(
+    db: Session,
+    pagination: Pagination,
+) -> tuple[list[SalesOpportunity], int]:
+    query = db.query(SalesOpportunity).filter(SalesOpportunity.deleted_at.is_not(None))
+    total_count = query.count()
+    items = (
+        query.order_by(SalesOpportunity.deleted_at.desc(), SalesOpportunity.created_time.desc())
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+        .all()
+    )
+    return items, total_count
+
+
+def get_opportunity_or_404(
+    db: Session,
+    opportunity_id: int,
+    *,
+    include_deleted: bool = False,
+) -> SalesOpportunity:
     opportunity = (
         db.query(SalesOpportunity)
         .filter(SalesOpportunity.opportunity_id == opportunity_id)
+        .filter(SalesOpportunity.deleted_at.is_not(None) if include_deleted else SalesOpportunity.deleted_at.is_(None))
         .first()
     )
     if not opportunity:
@@ -109,6 +134,11 @@ def get_opportunity_or_404(db: Session, opportunity_id: int) -> SalesOpportunity
 
 
 def create_opportunity(db: Session, data: dict) -> SalesOpportunity:
+    data["custom_data"] = validate_custom_field_payload(
+        db,
+        module_key="sales_opportunities",
+        payload=data.pop("custom_fields", None),
+    )
     contact_id = data.get("contact_id")
     if contact_id is not None:
         _ensure_contact(db, contact_id)
@@ -128,10 +158,19 @@ def create_opportunity(db: Session, data: dict) -> SalesOpportunity:
     db.add(opportunity)
     db.commit()
     db.refresh(opportunity)
+    save_custom_field_values(db, module_key="sales_opportunities", record_id=opportunity.opportunity_id, values=opportunity.custom_data or {})
+    db.commit()
     return opportunity
 
 
 def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict) -> SalesOpportunity:
+    if "custom_fields" in data:
+        data["custom_data"] = validate_custom_field_payload(
+            db,
+            module_key="sales_opportunities",
+            payload=data.pop("custom_fields"),
+            existing=opportunity.custom_data or {},
+        )
     if "contact_id" in data and data["contact_id"] is not None:
         _ensure_contact(db, data["contact_id"])
     if "organization_id" in data and data["organization_id"] is not None:
@@ -146,9 +185,20 @@ def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict) -
 
     db.commit()
     db.refresh(opportunity)
+    save_custom_field_values(db, module_key="sales_opportunities", record_id=opportunity.opportunity_id, values=opportunity.custom_data or {})
+    db.commit()
     return opportunity
 
 
-def delete_opportunity(db: Session, opportunity: SalesOpportunity):
-    db.delete(opportunity)
+def delete_opportunity(db: Session, opportunity: SalesOpportunity) -> SalesOpportunity:
+    opportunity.deleted_at = func.now()
     db.commit()
+    db.refresh(opportunity)
+    return opportunity
+
+
+def restore_opportunity(db: Session, opportunity: SalesOpportunity) -> SalesOpportunity:
+    opportunity.deleted_at = None
+    db.commit()
+    db.refresh(opportunity)
+    return opportunity

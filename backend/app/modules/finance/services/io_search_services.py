@@ -17,7 +17,8 @@ from sqlalchemy.orm import Session
 
 from app.core.postgres_search import TRIGRAM_SIMILARITY_THRESHOLD
 from app.modules.finance.models import FinanceIO
-from app.modules.sales.models import SalesOrganization
+from app.modules.platform.services.custom_fields import save_custom_field_values, validate_custom_field_payload
+from app.modules.sales.models import SalesContact, SalesOrganization
 from app.modules.user_management.models import Module, User
 
 # Single folder override via env
@@ -210,24 +211,33 @@ def _legacy_payload_for_record(raw: dict[str, Any]) -> str:
 
 
 def _finance_record_customer_name(record: FinanceIO) -> str:
+    linked_contact = getattr(record, "customer_contact", None)
     linked_customer = getattr(record, "customer_organization", None)
     return (
+        _normalize_text(
+            " ".join(
+                [
+                    part
+                    for part in (
+                        getattr(linked_contact, "first_name", None),
+                        getattr(linked_contact, "last_name", None),
+                    )
+                    if part
+                ]
+            )
+        )
+        or _normalize_text(getattr(linked_contact, "primary_email", None))
+        or
         _normalize_text(getattr(linked_customer, "org_name", None))
         or
         _normalize_text(record.customer_name)
-        or _normalize_text(record.client_name)
-        or _normalize_text(record.campaign_name)
         or _normalize_text(record.file_name)
         or "Untitled Insertion Order"
     )
 
 
 def _finance_record_status(record: FinanceIO) -> str:
-    if _normalize_text(record.status):
-        return str(record.status)
-    if _normalize_text(record.campaign_name):
-        return "imported"
-    return DEFAULT_IO_STATUS
+    return _normalize_text(record.status) or DEFAULT_IO_STATUS
 
 
 def _finance_record_currency(record: FinanceIO) -> str:
@@ -235,7 +245,7 @@ def _finance_record_currency(record: FinanceIO) -> str:
 
 
 def _finance_record_total(record: FinanceIO) -> Decimal | None:
-    return record.total_amount or _parse_decimal(record.total_cost_of_project)
+    return record.total_amount
 
 
 def _serialize_finance_record(record: FinanceIO, *, request, current_user) -> dict[str, Any]:
@@ -256,8 +266,9 @@ def _serialize_finance_record(record: FinanceIO, *, request, current_user) -> di
         "id": record.id,
         "io_number": record.io_number,
         "customer_name": _finance_record_customer_name(record),
+        "customer_contact_id": getattr(record, "customer_contact_id", None),
         "customer_organization_id": getattr(record, "customer_organization_id", None),
-        "counterparty_reference": _normalize_text(record.counterparty_reference) or _normalize_text(record.campaign_name),
+        "counterparty_reference": _normalize_text(record.counterparty_reference),
         "external_reference": _normalize_text(record.external_reference),
         "issue_date": _date_to_iso(record.issue_date or record.created_at),
         "effective_date": _date_to_iso(record.effective_date or record.start_date),
@@ -270,12 +281,93 @@ def _serialize_finance_record(record: FinanceIO, *, request, current_user) -> di
         "tax_amount": float(record.tax_amount) if record.tax_amount is not None else None,
         "total_amount": float(total_amount) if total_amount is not None else None,
         "notes": _normalize_text(record.notes),
+        "custom_fields": record.custom_data or None,
         "file_name": _normalize_text(record.file_name),
         "file_url": file_url,
         "user_name": user_name,
         "photo_url": getattr(getattr(record, "assigned_user", None), "photo_url", None),
         "updated_at": _date_to_iso(record.updated_at),
     }
+
+
+def _split_contact_name(value: str | None) -> tuple[str | None, str | None]:
+    normalized = _normalize_text(value)
+    if not normalized:
+        return None, None
+    parts = normalized.split()
+    if len(parts) == 1:
+        return parts[0], None
+    return parts[0], " ".join(parts[1:])
+
+
+def _resolve_customer_contact(
+    db: Session,
+    *,
+    current_user,
+    customer_contact_id: int | None,
+    customer_name: str | None,
+    customer_email: str | None,
+    create_if_missing: bool,
+) -> SalesContact | None:
+    normalized_name = _normalize_text(customer_name)
+    normalized_email = _normalize_text(customer_email)
+
+    if customer_contact_id is not None:
+        contact = (
+            db.query(SalesContact)
+            .filter(
+                SalesContact.contact_id == customer_contact_id,
+                SalesContact.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if not contact:
+            raise ValueError("Linked customer contact was not found")
+        return contact
+
+    if normalized_email:
+        existing_by_email = (
+            db.query(SalesContact)
+            .filter(
+                func.lower(SalesContact.primary_email) == normalized_email.lower(),
+                SalesContact.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if existing_by_email:
+            return existing_by_email
+
+    if normalized_name:
+        first_name, last_name = _split_contact_name(normalized_name)
+        if first_name and last_name:
+            existing_by_name = (
+                db.query(SalesContact)
+                .filter(
+                    func.lower(func.coalesce(SalesContact.first_name, "")) == first_name.lower(),
+                    func.lower(func.coalesce(SalesContact.last_name, "")) == last_name.lower(),
+                    SalesContact.deleted_at.is_(None),
+                )
+                .first()
+            )
+            if existing_by_name:
+                return existing_by_name
+
+    if not create_if_missing:
+        return None
+
+    if not normalized_email:
+        raise ValueError("customer_email is required when creating a new customer contact")
+
+    first_name, last_name = _split_contact_name(normalized_name or normalized_email)
+    contact = SalesContact(
+        first_name=first_name,
+        last_name=last_name,
+        primary_email=normalized_email,
+        assigned_to=current_user.id if current_user else None,
+    )
+    db.add(contact)
+    db.flush()
+    return contact
 
 
 def _resolve_customer_organization(
@@ -993,9 +1085,6 @@ def list_insertion_orders(
                 " ",
                 func.coalesce(FinanceIO.notes, ""),
                 " ",
-                func.coalesce(FinanceIO.client_name, ""),
-                " ",
-                func.coalesce(FinanceIO.campaign_name, ""),
             )
         )
         normalized = search.strip().lower()
@@ -1038,16 +1127,39 @@ def create_insertion_order(
     current_user,
     data: dict[str, Any],
 ) -> FinanceIO:
+    custom_data = validate_custom_field_payload(
+        db,
+        module_key="finance_io",
+        payload=data.pop("custom_fields", None),
+    )
     next_io_sequence = _get_max_io_sequence(db) + 1
+    requested_io_number = _normalize_text(data.get("io_number"))
+    customer_contact = _resolve_customer_contact(
+        db,
+        current_user=current_user,
+        customer_contact_id=data.get("customer_contact_id"),
+        customer_name=data.get("customer_name"),
+        customer_email=data.get("customer_email"),
+        create_if_missing=bool(data.get("create_customer_if_missing")),
+    )
     customer_name = _normalize_text(data.get("customer_name"))
     customer_organization = _resolve_customer_organization(
         db,
         current_user=current_user,
-        customer_name=customer_name,
-        customer_organization_id=data.get("customer_organization_id"),
+        customer_name=None if customer_contact else customer_name,
+        customer_organization_id=(
+            customer_contact.organization_id
+            if customer_contact and customer_contact.organization_id is not None
+            else data.get("customer_organization_id")
+        ),
         create_if_missing=bool(data.get("create_customer_if_missing")),
     )
     resolved_customer_name = (
+        " ".join([part for part in (customer_contact.first_name, customer_contact.last_name) if part]).strip()
+        if customer_contact and any((customer_contact.first_name, customer_contact.last_name))
+        else customer_contact.primary_email if customer_contact
+        else None
+    ) or (
         customer_organization.org_name if customer_organization else customer_name
     )
     if not resolved_customer_name:
@@ -1061,8 +1173,9 @@ def create_insertion_order(
     record = FinanceIO(
         module_id=module_id,
         user_id=current_user.id if current_user else None,
-        io_number=f"{IO_NUMBER_PREFIX}{next_io_sequence:0{IO_NUMBER_PAD}d}",
+        io_number=requested_io_number or f"{IO_NUMBER_PREFIX}{next_io_sequence:0{IO_NUMBER_PAD}d}",
         file_name=data.get("external_reference") or f"insertion-order-{next_io_sequence}.manual",
+        customer_contact_id=customer_contact.contact_id if customer_contact else None,
         customer_organization_id=customer_organization.org_id if customer_organization else None,
         customer_name=resolved_customer_name,
         counterparty_reference=_normalize_text(data.get("counterparty_reference")),
@@ -1078,12 +1191,13 @@ def create_insertion_order(
         tax_amount=_parse_decimal(data.get("tax_amount")),
         total_amount=_parse_decimal(data.get("total_amount")),
         notes=_normalize_text(data.get("notes")),
-        client_name=resolved_customer_name,
-        campaign_name=_normalize_text(data.get("counterparty_reference")) or resolved_customer_name,
+        custom_data=custom_data,
     )
     db.add(record)
     db.commit()
     db.refresh(record)
+    save_custom_field_values(db, module_key="finance_io", record_id=record.id, values=record.custom_data or {})
+    db.commit()
     return record
 
 
@@ -1094,21 +1208,50 @@ def update_insertion_order(
     current_user=None,
     data: dict[str, Any],
 ) -> FinanceIO:
+    if "custom_fields" in data:
+        record.custom_data = validate_custom_field_payload(
+            db,
+            module_key="finance_io",
+            payload=data.pop("custom_fields"),
+            existing=record.custom_data or {},
+        )
+
     if (
         "customer_name" in data
+        or "customer_contact_id" in data
         or "customer_organization_id" in data
+        or "customer_email" in data
         or data.get("create_customer_if_missing")
     ):
+        customer_contact = _resolve_customer_contact(
+            db,
+            current_user=current_user,
+            customer_contact_id=data.get("customer_contact_id"),
+            customer_name=data.get("customer_name", _finance_record_customer_name(record)),
+            customer_email=data.get("customer_email"),
+            create_if_missing=bool(data.get("create_customer_if_missing")),
+        )
         customer_organization = _resolve_customer_organization(
             db,
             current_user=current_user,
-            customer_name=data.get("customer_name", _finance_record_customer_name(record)),
-            customer_organization_id=data.get("customer_organization_id"),
+            customer_name=None if customer_contact else data.get("customer_name", _finance_record_customer_name(record)),
+            customer_organization_id=(
+                customer_contact.organization_id
+                if customer_contact and customer_contact.organization_id is not None
+                else data.get("customer_organization_id")
+            ),
             create_if_missing=bool(data.get("create_customer_if_missing")),
         )
+        if customer_contact:
+            record.customer_contact_id = customer_contact.contact_id
+            contact_name = " ".join([part for part in (customer_contact.first_name, customer_contact.last_name) if part]).strip()
+            record.customer_name = contact_name or customer_contact.primary_email
+        elif "customer_contact_id" in data and data["customer_contact_id"] is None:
+            record.customer_contact_id = None
         if customer_organization:
             record.customer_organization_id = customer_organization.org_id
-            record.customer_name = customer_organization.org_name
+            if not customer_contact:
+                record.customer_name = customer_organization.org_name
         else:
             if "customer_organization_id" in data and data["customer_organization_id"] is None:
                 record.customer_organization_id = None
@@ -1140,14 +1283,14 @@ def update_insertion_order(
         if key in data:
             setattr(record, key, _parse_decimal(data[key]))
 
-    record.client_name = _finance_record_customer_name(record)
-    record.campaign_name = _normalize_text(record.counterparty_reference) or record.client_name
     if record.external_reference:
         record.file_name = record.external_reference
 
     db.add(record)
     db.commit()
     db.refresh(record)
+    save_custom_field_values(db, module_key="finance_io", record_id=record.id, values=record.custom_data or {})
+    db.commit()
     return record
 
 
@@ -1155,3 +1298,50 @@ def soft_delete_insertion_order(db: Session, *, record: FinanceIO) -> None:
     record.deleted_at = datetime.utcnow()
     db.add(record)
     db.commit()
+
+
+def list_deleted_insertion_orders(
+    db: Session,
+    *,
+    module_id: int,
+    pagination,
+) -> tuple[list[FinanceIO], int]:
+    query = (
+        db.query(FinanceIO)
+        .filter(
+            FinanceIO.module_id == module_id,
+            FinanceIO.deleted_at.is_not(None),
+        )
+        .order_by(FinanceIO.deleted_at.desc(), FinanceIO.updated_at.desc())
+    )
+    total_count = query.count()
+    records = query.offset(pagination.offset).limit(pagination.limit).all()
+    return records, total_count
+
+
+def get_deleted_insertion_order_or_404(
+    db: Session,
+    *,
+    module_id: int,
+    io_id: int,
+) -> FinanceIO:
+    record = (
+        db.query(FinanceIO)
+        .filter(
+            FinanceIO.id == io_id,
+            FinanceIO.module_id == module_id,
+            FinanceIO.deleted_at.is_not(None),
+        )
+        .first()
+    )
+    if not record:
+        raise ValueError("Deleted insertion order not found")
+    return record
+
+
+def restore_insertion_order(db: Session, *, record: FinanceIO) -> FinanceIO:
+    record.deleted_at = None
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    return record

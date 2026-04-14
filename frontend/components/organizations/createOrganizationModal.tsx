@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import {
   Dialog,
   DialogBackdrop,
@@ -13,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { Input } from "@/components/ui/input";
 
 type OrganizationForm = {
@@ -43,7 +45,7 @@ type Props = {
   isOpen: boolean;
   isSubmitting?: boolean;
   onClose: () => void;
-  onCreate: (payload: Record<string, string>) => Promise<void>;
+  onCreate: (payload: Record<string, unknown>) => Promise<void>;
 };
 
 export default function CreateOrganizationModal({
@@ -53,9 +55,12 @@ export default function CreateOrganizationModal({
   onCreate,
 }: Props) {
   const [form, setForm] = useState<OrganizationForm>(emptyForm);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
+  const customFieldsQuery = useModuleCustomFields("sales_organizations", isOpen);
 
   function closeAndReset() {
     setForm(emptyForm);
+    setCustomFieldValues({});
     onClose();
   }
 
@@ -71,11 +76,15 @@ export default function CreateOrganizationModal({
     };
 
     await onCreate(
-      Object.fromEntries(
-        Object.entries(payload).filter(([, value]) => value.length > 0),
-      ),
+      {
+        ...Object.fromEntries(
+          Object.entries(payload).filter(([, value]) => value.length > 0),
+        ),
+        custom_fields: customFieldValues,
+      },
     );
     setForm(emptyForm);
+    setCustomFieldValues({});
   }
 
   return (
@@ -157,6 +166,16 @@ export default function CreateOrganizationModal({
               <FieldDescription>Keep this lightweight for now. Full editing can come later.</FieldDescription>
             </Field>
           </FieldGroup>
+
+          <div className="mt-4">
+            <CustomFieldInputs
+              definitions={customFieldsQuery.data ?? []}
+              values={customFieldValues}
+              onChange={(fieldKey, value) =>
+                setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))
+              }
+            />
+          </div>
 
           <DialogFooter className="mt-5">
             <Button variant="outline" onClick={closeAndReset}>

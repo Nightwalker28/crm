@@ -1,12 +1,13 @@
-import csv
-import io
-import zipfile
 from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import detect_duplicates, ensure_single_duplicate_action
-from app.core.postgres_search import apply_trigram_search, searchable_text
+from app.core.module_csv import require_csv_headers, rows_from_csv_bytes
+from app.core.module_export import batched_csv_zip_bytes, dict_rows_to_csv_bytes
+from app.core.module_search import apply_ranked_search
+from app.core.postgres_search import searchable_text
+from app.modules.platform.services.custom_fields import save_custom_field_values, validate_custom_field_payload
 from app.modules.sales.models import SalesOrganization
 from app.modules.sales.schema import SalesOrganizationCreate, SalesOrganizationUpdate
 
@@ -25,6 +26,7 @@ def _apply_org_payload(organization: SalesOrganization, payload: SalesOrganizati
     organization.billing_state = payload.billing_state
     organization.billing_postal_code = payload.billing_postal_code
     organization.billing_country = payload.billing_country
+    organization.custom_data = payload.custom_fields
     if current_user:
         organization.assigned_to = current_user.id
 
@@ -38,6 +40,15 @@ def create_organization(
     create_new_records: bool = False,
 ) -> SalesOrganization:
     """Persist a new organization using the current user as the assignee."""
+    payload = payload.model_copy(
+        update={
+            "custom_fields": validate_custom_field_payload(
+                db,
+                module_key="sales_organizations",
+                payload=payload.custom_fields,
+            ),
+        }
+    )
     ensure_single_duplicate_action(
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
@@ -79,6 +90,8 @@ def create_organization(
     try:
         db.commit()
         db.refresh(organization)
+        save_custom_field_values(db, module_key="sales_organizations", record_id=organization.org_id, values=organization.custom_data or {})
+        db.commit()
         return organization
     except Exception as e:
         # If DB commit fails undo all the changes made in the transaction and restore the state 
@@ -118,28 +131,19 @@ def search_organizations_pagianted(db: Session, name: str, offset: int, limit: i
         SalesOrganization.billing_city,
         SalesOrganization.billing_country,
     )
-    base_query, rank = apply_trigram_search(
+    base_query = apply_ranked_search(
         db.query(SalesOrganization).filter(SalesOrganization.deleted_at.is_(None)),
         search=name,
         document=document,
+        default_order_column=SalesOrganization.created_time,
     )
     total = base_query.count()
-    if rank is not None:
-        items = (
-            base_query
-            .order_by(rank.desc(), SalesOrganization.created_time.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
-    else:
-        items = (
-            base_query
-            .order_by(SalesOrganization.created_time.desc())
-            .offset(offset)
-            .limit(limit)
-            .all()
-        )
+    items = (
+        base_query
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return items, total
 
 
@@ -157,11 +161,22 @@ def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpda
     if not organization:
         return None
 
-    for field, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    if "custom_fields" in data:
+        data["custom_data"] = validate_custom_field_payload(
+            db,
+            module_key="sales_organizations",
+            payload=data.pop("custom_fields"),
+            existing=organization.custom_data or {},
+        )
+
+    for field, value in data.items():
         setattr(organization, field, value)
 
     db.commit()
     db.refresh(organization)
+    save_custom_field_values(db, module_key="sales_organizations", record_id=organization.org_id, values=organization.custom_data or {})
+    db.commit()
     return organization
 
 
@@ -222,25 +237,8 @@ def import_organizations_from_csv(
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
     )
-    try:
-        text = file_bytes.decode("utf-8-sig")
-    except UnicodeDecodeError:
-        raise ValueError("Unable to decode file as UTF-8")
-
-    # Detect delimiter if possible, otherwise default to comma
-    try:
-        dialect = csv.Sniffer().sniff(text[:1024])
-    except csv.Error:
-        dialect = csv.excel
-
-    reader = csv.DictReader(io.StringIO(text), dialect=dialect)
-    if not reader.fieldnames:
-        raise ValueError("CSV is missing headers")
-
-    normalized_headers = [h.strip() for h in reader.fieldnames if h is not None]
-    missing_headers = REQUIRED_IMPORT_FIELDS - set(normalized_headers)
-    if missing_headers:
-        raise ValueError(f"Missing required column(s): {', '.join(sorted(missing_headers))}")
+    headers, parsed_rows = rows_from_csv_bytes(file_bytes)
+    require_csv_headers(headers, required=REQUIRED_IMPORT_FIELDS)
 
     inserted = 0
     updated = 0
@@ -249,7 +247,7 @@ def import_organizations_from_csv(
     rows: list[dict[str, str | None]] = []
     org_names: list[str] = []
 
-    for idx, row in enumerate(reader, start=2):  # start=2 to account for header line
+    for idx, row in enumerate(parsed_rows, start=2):
         if row is None:
             continue
         data = {k.strip(): (v.strip() if v is not None else None) for k, v in row.items() if k is not None}
@@ -375,29 +373,30 @@ EXPORT_HEADERS = [
 
 
 def _serialize_orgs_to_csv(rows: list[SalesOrganization]) -> bytes:
-    output = io.StringIO()
-    writer = csv.writer(output)
-    writer.writerow(EXPORT_HEADERS)
-    for org in rows:
-        writer.writerow([
-            org.org_id,
-            org.org_name,
-            org.primary_email,
-            org.website,
-            org.primary_phone,
-            org.secondary_phone,
-            org.secondary_email,
-            org.industry,
-            org.annual_revenue,
-            org.billing_address,
-            org.billing_city,
-            org.billing_state,
-            org.billing_postal_code,
-            org.billing_country,
-            org.assigned_to,
-            org.created_time.isoformat() if org.created_time else None,
-        ])
-    return output.getvalue().encode("utf-8")
+    return dict_rows_to_csv_bytes(
+        headers=EXPORT_HEADERS,
+        rows=(
+            {
+                "org_id": org.org_id,
+                "org_name": org.org_name,
+                "primary_email": org.primary_email,
+                "website": org.website,
+                "primary_phone": org.primary_phone,
+                "secondary_phone": org.secondary_phone,
+                "secondary_email": org.secondary_email,
+                "industry": org.industry,
+                "annual_revenue": org.annual_revenue,
+                "billing_address": org.billing_address,
+                "billing_city": org.billing_city,
+                "billing_state": org.billing_state,
+                "billing_postal_code": org.billing_postal_code,
+                "billing_country": org.billing_country,
+                "assigned_to": org.assigned_to,
+                "created_time": org.created_time.isoformat() if org.created_time else None,
+            }
+            for org in rows
+        ),
+    )
 
 
 def export_organizations(db: Session, org_ids: list[int] | None = None) -> tuple[bytes, dict]:
@@ -410,22 +409,9 @@ def export_organizations(db: Session, org_ids: list[int] | None = None) -> tuple
     if org_ids:
         query = query.filter(SalesOrganization.org_id.in_(org_ids))
 
-    buffer = io.BytesIO()
-    total_rows = 0
-    batch_no = 1
-    batch: list[SalesOrganization] = []
-
-    with zipfile.ZipFile(buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zipf:
-        for org in query.yield_per(500):
-            batch.append(org)
-            if len(batch) >= EXPORT_BATCH_SIZE:
-                zipf.writestr(f"organizations_batch_{batch_no}.csv", _serialize_orgs_to_csv(batch))
-                total_rows += len(batch)
-                batch_no += 1
-                batch = []
-
-        if batch:
-            zipf.writestr(f"organizations_batch_{batch_no}.csv", _serialize_orgs_to_csv(batch))
-            total_rows += len(batch)
-
-    return buffer.getvalue(), {"batches": batch_no if total_rows else 0, "rows": total_rows}
+    return batched_csv_zip_bytes(
+        rows=query.yield_per(500),
+        batch_size=EXPORT_BATCH_SIZE,
+        file_prefix="organizations",
+        serialize_row=_serialize_orgs_to_csv,
+    )

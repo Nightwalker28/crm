@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, ForeignKey, Text, func, TIMESTAMP
+from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, ForeignKey, JSON, Text, func, TIMESTAMP
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import expression
 
@@ -32,12 +32,17 @@ class SalesOrganization(Base):
         server_default=func.now(),
     )
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    custom_data = Column(JSON, nullable=True)
 
     billing_address = Column(Text, nullable=True)
     billing_city = Column(Text, nullable=True)
     billing_state = Column(Text, nullable=True)
     billing_postal_code = Column(Text, nullable=True)
     billing_country = Column(Text, nullable=True)
+
+    @property
+    def custom_fields(self) -> dict | None:
+        return self.custom_data
 
 # contacts model
 
@@ -66,8 +71,13 @@ class SalesContact(Base):
     )
     created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    custom_data = Column(JSON, nullable=True)
 
     assigned_user = relationship("User", lazy="joined")
+
+    @property
+    def custom_fields(self) -> dict | None:
+        return self.custom_data
 
 
 class SalesOpportunity(Base):
@@ -112,7 +122,13 @@ class SalesOpportunity(Base):
         TIMESTAMP(timezone=True),
         server_default=func.now(),
     )
+    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    custom_data = Column(JSON, nullable=True)
 
     contact = relationship("SalesContact", lazy="joined")
     organization = relationship("SalesOrganization", lazy="joined")
     assigned_user = relationship("User", lazy="joined")
+
+    @property
+    def custom_fields(self) -> dict | None:
+        return self.custom_data

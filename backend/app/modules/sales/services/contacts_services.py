@@ -1,5 +1,3 @@
-import csv
-import io
 from typing import Iterable, Sequence
 from datetime import datetime
 
@@ -8,8 +6,12 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import detect_duplicates, ensure_single_duplicate_action
+from app.core.module_csv import require_csv_headers, rows_from_csv_bytes
+from app.core.module_export import dict_rows_to_csv_bytes
+from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination
-from app.core.postgres_search import apply_trigram_search, searchable_text
+from app.core.postgres_search import searchable_text
+from app.modules.platform.services.custom_fields import save_custom_field_values, validate_custom_field_payload
 from app.modules.sales.models import SalesContact
 from app.modules.user_management.models import User
 
@@ -43,9 +45,6 @@ def _normalize_name(first_name: str | None, last_name: str | None) -> str:
 
 
 def _apply_search_filter(query, search: str | None):
-    if not search:
-        return query
-
     document = searchable_text(
         SalesContact.first_name,
         SalesContact.last_name,
@@ -56,10 +55,12 @@ def _apply_search_filter(query, search: str | None):
         SalesContact.country,
         SalesContact.linkedin_url,
     )
-    filtered_query, rank = apply_trigram_search(query, search=search, document=document)
-    if rank is None:
-        return filtered_query
-    return filtered_query.order_by(rank.desc(), SalesContact.created_time.desc())
+    return apply_ranked_search(
+        query,
+        search=search,
+        document=document,
+        default_order_column=SalesContact.created_time,
+    )
 
 
 def _ensure_assigned_user(db: Session, user_id: int):
@@ -82,15 +83,7 @@ def list_sales_contacts(
     )
 
     total_count = query.count()
-    if search:
-        contacts = query.offset(pagination.offset).limit(pagination.limit).all()
-    else:
-        contacts = (
-            query.order_by(SalesContact.created_time.desc())
-            .offset(pagination.offset)
-            .limit(pagination.limit)
-            .all()
-        )
+    contacts = query.offset(pagination.offset).limit(pagination.limit).all()
     return contacts, total_count
 
 
@@ -124,6 +117,11 @@ def create_sales_contact(
     )
 
     data = dict(payload)
+    data["custom_data"] = validate_custom_field_payload(
+        db,
+        module_key="sales_contacts",
+        payload=data.pop("custom_fields", None),
+    )
     if not data.get("assigned_to"):
         data["assigned_to"] = current_user.id if current_user else None
     if not data.get("assigned_to"):
@@ -176,10 +174,20 @@ def create_sales_contact(
     db.add(contact)
     db.commit()
     db.refresh(contact)
+    save_custom_field_values(db, module_key="sales_contacts", record_id=contact.contact_id, values=contact.custom_data or {})
+    db.commit()
     return contact
 
 
 def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> SalesContact:
+    if "custom_fields" in data:
+        data["custom_data"] = validate_custom_field_payload(
+            db,
+            module_key="sales_contacts",
+            payload=data.pop("custom_fields"),
+            existing=contact.custom_data or {},
+        )
+
     if "assigned_to" in data:
         if data["assigned_to"] is None:
             raise HTTPException(
@@ -210,6 +218,8 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
     db.add(contact)
     db.commit()
     db.refresh(contact)
+    save_custom_field_values(db, module_key="sales_contacts", record_id=contact.contact_id, values=contact.custom_data or {})
+    db.commit()
     return contact
 
 
@@ -273,12 +283,8 @@ def import_contacts_from_csv(
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
     )
-    text = file_bytes.decode("utf-8-sig")
-    csv_file = io.StringIO(text)
-    reader = csv.DictReader(csv_file)
-
-    if not reader.fieldnames:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV file is missing headers")
+    headers, parsed_rows = rows_from_csv_bytes(file_bytes)
+    require_csv_headers(headers, required={"primary_email"})
 
     inserted = updated = skipped = 0
     errors: list[str] = []
@@ -287,7 +293,7 @@ def import_contacts_from_csv(
     emails: list[str] = []
     names: list[str] = []
 
-    for row_number, row in enumerate(reader, start=2):
+    for row_number, row in enumerate(parsed_rows, start=2):
         normalized = {k.strip().lower(): (v.strip() if isinstance(v, str) else v) for k, v in row.items() if k}
 
         if all(not (value or "").strip() for value in normalized.values()):
@@ -467,12 +473,9 @@ def _parse_int_or_none(value: str | None) -> int | None:
 
 
 def export_contacts_to_csv(contacts: Iterable[SalesContact]) -> bytes:
-    csv_buffer = io.StringIO()
-    writer = csv.DictWriter(csv_buffer, fieldnames=EXPORT_COLUMNS)
-    writer.writeheader()
-
-    for contact in contacts:
-        writer.writerow(
+    return dict_rows_to_csv_bytes(
+        headers=EXPORT_COLUMNS,
+        rows=(
             {
                 "contact_id": contact.contact_id,
                 "first_name": contact.first_name or "",
@@ -488,9 +491,9 @@ def export_contacts_to_csv(contacts: Iterable[SalesContact]) -> bytes:
                 "organization_id": contact.organization_id or "",
                 "created_time": contact.created_time.isoformat() if contact.created_time else "",
             }
-        )
-
-    return csv_buffer.getvalue().encode("utf-8")
+            for contact in contacts
+        ),
+    )
 
 
 def get_all_contacts(db: Session, search: str | None = None) -> list[SalesContact]:

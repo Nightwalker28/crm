@@ -1,49 +1,24 @@
-from typing import Optional
+from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class DocxTableRecord(BaseModel):
-    file_name: str
-    model_config = ConfigDict(extra="allow")
-
-
-class DocxZipParseResponse(BaseModel):
+class InsertionOrderImportResponse(BaseModel):
     message: str
-    duplicate_files: list[str] | None = None
-    duplicate_campaigns: list[str] | None = None
+    inserted: int = 0
+    updated: int = 0
+    skipped: int = 0
+    errors: list[str] = Field(default_factory=list)
+    duplicate_io_numbers: list[str] | None = None
     requires_confirmation: bool = False
 
 
-class IOFileSearchItem(BaseModel):
-    invoice_no: Optional[str] = None
-    file_url: Optional[str] = None
-    campaign_name: str
-    file_path: str
-    client_name: Optional[str] = None
-    cpl: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    campaign_type: Optional[str] = None
-    account_manager: Optional[str] = None
-    total_leads: Optional[str] = None
-    quarter: Optional[str] = None
-    user_name: Optional[str] = None
-    photo_url: Optional[str] = None
-    updated_at: str 
-
-class IOFileSearchResponse(BaseModel):
-    results: list[IOFileSearchItem]
-    range_start: int
-    range_end: int
-    total_count: int
-    total_pages: int
-    page: int
-
-
 class InsertionOrderBase(BaseModel):
+    io_number: Optional[str] = None
     customer_name: str = Field(min_length=1)
+    customer_contact_id: Optional[int] = None
     customer_organization_id: Optional[int] = None
     create_customer_if_missing: bool = False
+    customer_email: Optional[str] = None
     counterparty_reference: Optional[str] = None
     external_reference: Optional[str] = None
     issue_date: Optional[str] = None
@@ -57,6 +32,7 @@ class InsertionOrderBase(BaseModel):
     tax_amount: Optional[float] = None
     total_amount: Optional[float] = None
     notes: Optional[str] = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class InsertionOrderCreateRequest(InsertionOrderBase):
@@ -65,8 +41,10 @@ class InsertionOrderCreateRequest(InsertionOrderBase):
 
 class InsertionOrderUpdateRequest(BaseModel):
     customer_name: Optional[str] = Field(default=None, min_length=1)
+    customer_contact_id: Optional[int] = None
     customer_organization_id: Optional[int] = None
     create_customer_if_missing: bool = False
+    customer_email: Optional[str] = None
     counterparty_reference: Optional[str] = None
     external_reference: Optional[str] = None
     issue_date: Optional[str] = None
@@ -80,12 +58,14 @@ class InsertionOrderUpdateRequest(BaseModel):
     tax_amount: Optional[float] = None
     total_amount: Optional[float] = None
     notes: Optional[str] = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class InsertionOrderResponse(BaseModel):
     id: int
     io_number: str
     customer_name: str
+    customer_contact_id: Optional[int] = None
     customer_organization_id: Optional[int] = None
     counterparty_reference: Optional[str] = None
     external_reference: Optional[str] = None
@@ -100,6 +80,7 @@ class InsertionOrderResponse(BaseModel):
     tax_amount: Optional[float] = None
     total_amount: Optional[float] = None
     notes: Optional[str] = None
+    custom_fields: dict[str, Any] | None = None
     file_name: Optional[str] = None
     file_url: Optional[str] = None
     user_name: Optional[str] = None

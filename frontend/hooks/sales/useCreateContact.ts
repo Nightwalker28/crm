@@ -19,6 +19,7 @@ export type ContactForm = {
   region: string;
   country: string;
   organization_id: string | number;
+  custom_fields?: Record<string, unknown>;
 };
 
 const emptyForm: ContactForm = {
@@ -30,6 +31,7 @@ const emptyForm: ContactForm = {
   region: "",
   country: "",
   organization_id: "",
+  custom_fields: {},
 };
 
 const emptyOrganizations: OrgOption[] = [];
@@ -113,7 +115,7 @@ export function useCreateContact({
     onClose();
   }
 
-  async function submit() {
+  async function submit(overrides?: Record<string, unknown>) {
     try {
       setIsSubmitting(true);
       setError(null);
@@ -125,6 +127,7 @@ export function useCreateContact({
         },
         body: JSON.stringify({
           ...form,
+          ...overrides,
           organization_id: form.organization_id ? Number(form.organization_id) : null,
         }),
       });

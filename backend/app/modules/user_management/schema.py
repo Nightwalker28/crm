@@ -51,6 +51,66 @@ class UserUpdateOptions(BaseModel):
     teams: list[OptionSummary]
     statuses: list[UserStatus]
 
+
+class RolePermissionActions(BaseModel):
+    can_view: bool = True
+    can_create: bool = False
+    can_edit: bool = False
+    can_delete: bool = False
+    can_restore: bool = False
+    can_export: bool = False
+    can_configure: bool = False
+
+
+class RoleTemplateSummary(BaseModel):
+    key: str
+    label: str
+    description: str
+
+
+class RoleSchema(BaseModel):
+    id: int
+    name: str
+    level: int
+    description: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ModulePermissionSchema(BaseModel):
+    module_id: int
+    module_name: str
+    module_description: str | None = None
+    actions: RolePermissionActions
+
+
+class RolePermissionOverviewResponse(BaseModel):
+    roles: list[RoleSchema]
+    templates: list[RoleTemplateSummary]
+    modules: list[ModulePermissionSchema]
+
+
+class RoleCreateRequest(BaseModel):
+    name: str
+    description: str | None = None
+    level: int | None = None
+    template_key: str = "user"
+
+
+class RoleUpdateRequest(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    level: int | None = None
+
+
+class ModulePermissionUpdateRequest(BaseModel):
+    module_id: int
+    actions: RolePermissionActions
+
+
+class RolePermissionUpdateRequest(BaseModel):
+    permissions: list[ModulePermissionUpdateRequest]
+
 class ApproveUserRequest(BaseModel):
     role_id: int
     team_id: int

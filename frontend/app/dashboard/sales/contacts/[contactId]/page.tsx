@@ -6,9 +6,11 @@ import { useParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
+import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { Input } from "@/components/ui/input";
 
 type RelatedOpportunity = {
@@ -49,6 +51,7 @@ type ContactSummary = {
     region?: string | null;
     country?: string | null;
     organization_id?: number | null;
+    custom_fields?: Record<string, unknown> | null;
   };
   organization?: OrganizationCompact | null;
   related_opportunities: RelatedOpportunity[];
@@ -96,6 +99,8 @@ export default function ContactDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
+  const customFieldsQuery = useModuleCustomFields("sales_contacts", true);
 
   async function loadSummary(signal?: { cancelled: boolean }) {
     try {
@@ -117,6 +122,7 @@ export default function ContactDetailPage() {
         region: data.contact.region ?? "",
         country: data.contact.country ?? "",
       });
+      setCustomFieldValues(data.contact.custom_fields ?? {});
     } catch (loadError) {
       if (!signal?.cancelled) {
         setError(loadError instanceof Error ? loadError.message : "Failed to load contact");
@@ -148,6 +154,7 @@ export default function ContactDetailPage() {
         region: form.region.trim() || null,
         country: form.country.trim() || null,
         organization_id: summary?.organization?.org_id ?? summary?.contact.organization_id ?? null,
+        custom_fields: customFieldValues,
       };
       const res = await apiFetch(`/sales/contacts/${params.contactId}`, {
         method: "PUT",
@@ -230,6 +237,16 @@ export default function ContactDetailPage() {
                   <Input value={form.country} onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))} />
                 </Field>
               </FieldGroup>
+
+              <div className="mt-4">
+                <CustomFieldInputs
+                  definitions={customFieldsQuery.data ?? []}
+                  values={customFieldValues}
+                  onChange={(fieldKey, value) =>
+                    setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))
+                  }
+                />
+              </div>
             </Card>
 
             <Card className="px-5 py-5">

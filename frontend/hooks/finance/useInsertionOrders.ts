@@ -25,6 +25,7 @@ export type InsertionOrder = {
   tax_amount?: number | null;
   total_amount?: number | null;
   notes?: string | null;
+  custom_fields?: Record<string, unknown> | null;
   file_name?: string | null;
   file_url?: string | null;
   user_name?: string | null;
@@ -34,8 +35,10 @@ export type InsertionOrder = {
 
 export type InsertionOrderPayload = {
   customer_name: string;
+  customer_contact_id?: number | null;
   customer_organization_id?: number | null;
   create_customer_if_missing?: boolean;
+  customer_email?: string;
   counterparty_reference?: string;
   external_reference?: string;
   issue_date?: string;
@@ -49,6 +52,7 @@ export type InsertionOrderPayload = {
   tax_amount?: number | null;
   total_amount?: number | null;
   notes?: string;
+  custom_fields?: Record<string, unknown>;
 };
 
 type InsertionOrdersResponse = {

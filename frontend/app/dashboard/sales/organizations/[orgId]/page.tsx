@@ -6,9 +6,11 @@ import { useParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
+import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 
@@ -54,6 +56,7 @@ type OrganizationSummary = {
     billing_state?: string | null;
     billing_postal_code?: string | null;
     billing_country?: string | null;
+    custom_fields?: Record<string, unknown> | null;
   };
   related_contacts: RelatedContact[];
   related_opportunities: RelatedOpportunity[];
@@ -112,6 +115,8 @@ export default function OrganizationDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
+  const customFieldsQuery = useModuleCustomFields("sales_organizations", true);
 
   async function loadSummary(signal?: { cancelled: boolean }) {
     try {
@@ -138,6 +143,7 @@ export default function OrganizationDetailPage() {
         billing_postal_code: data.organization.billing_postal_code ?? "",
         billing_country: data.organization.billing_country ?? "",
       });
+      setCustomFieldValues(data.organization.custom_fields ?? {});
     } catch (loadError) {
       if (!signal?.cancelled) {
         setError(loadError instanceof Error ? loadError.message : "Failed to load organization");
@@ -162,10 +168,14 @@ export default function OrganizationDetailPage() {
       const payload = Object.fromEntries(
         Object.entries(form).map(([key, value]) => [key, value.trim() || null]),
       );
+      const requestPayload = {
+        ...payload,
+        custom_fields: customFieldValues,
+      };
       const res = await apiFetch(`/sales/organizations/${params.orgId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(requestPayload),
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
@@ -261,6 +271,16 @@ export default function OrganizationDetailPage() {
                   <Input value={form.billing_country} onChange={(event) => setForm((current) => ({ ...current, billing_country: event.target.value }))} />
                 </Field>
               </FieldGroup>
+
+              <div className="mt-4">
+                <CustomFieldInputs
+                  definitions={customFieldsQuery.data ?? []}
+                  values={customFieldValues}
+                  onChange={(fieldKey, value) =>
+                    setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))
+                  }
+                />
+              </div>
             </Card>
 
             <Card className="px-5 py-5">

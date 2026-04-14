@@ -4,6 +4,7 @@ import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
+import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import {
   Dialog,
   DialogBackdrop,
@@ -18,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { apiFetch } from "@/lib/api";
 import type { InsertionOrder, InsertionOrderPayload } from "@/hooks/finance/useInsertionOrders";
 
@@ -31,8 +33,10 @@ type Props = {
 
 type FormState = {
   customer_name: string;
+  customer_contact_id: number | null;
   customer_organization_id: number | null;
   create_customer_if_missing: boolean;
+  customer_email: string;
   counterparty_reference: string;
   external_reference: string;
   issue_date: string;
@@ -50,8 +54,10 @@ type FormState = {
 
 const emptyForm: FormState = {
   customer_name: "",
+  customer_contact_id: null,
   customer_organization_id: null,
   create_customer_if_missing: false,
+  customer_email: "",
   counterparty_reference: "",
   external_reference: "",
   issue_date: "",
@@ -69,20 +75,22 @@ const emptyForm: FormState = {
 
 const statusOptions = ["draft", "issued", "active", "completed", "cancelled"];
 
-type CustomerOption = {
-  org_id: number;
-  org_name: string;
+type ContactOption = {
+  contact_id: number;
+  first_name?: string | null;
+  last_name?: string | null;
   primary_email?: string | null;
+  current_title?: string | null;
 };
 
-async function fetchCustomerOptions(search: string): Promise<CustomerOption[]> {
+async function fetchCustomerOptions(search: string): Promise<ContactOption[]> {
   const params = new URLSearchParams({
     page: "1",
-    page_size: "6",
-    search,
+    page_size: "10",
+    query: search,
   });
 
-  const res = await apiFetch(`/sales/organizations?${params.toString()}`);
+  const res = await apiFetch(`/sales/contacts/search?${params.toString()}`);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
     throw new Error(body?.detail ?? `Failed with ${res.status}`);
@@ -96,8 +104,10 @@ function toFormState(order: InsertionOrder | null): FormState {
   if (!order) return emptyForm;
   return {
     customer_name: order.customer_name ?? "",
+    customer_contact_id: order.customer_contact_id ?? null,
     customer_organization_id: order.customer_organization_id ?? null,
     create_customer_if_missing: false,
+    customer_email: "",
     counterparty_reference: order.counterparty_reference ?? "",
     external_reference: order.external_reference ?? "",
     issue_date: order.issue_date ?? "",
@@ -127,32 +137,50 @@ function RequiredAsterisk() {
 
 export default function InsertionOrderDialog({ open, order, isSubmitting = false, onClose, onSubmit }: Props) {
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
+  const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const deferredCustomerSearch = useDeferredValue(form.customer_name.trim());
+  const customFieldsQuery = useModuleCustomFields("finance_io", open);
 
   const customerQuery = useQuery({
     queryKey: ["finance-io-customer-options", deferredCustomerSearch],
     queryFn: () => fetchCustomerOptions(deferredCustomerSearch),
-    enabled: open && deferredCustomerSearch.length > 0 && form.customer_organization_id == null,
+    enabled: open && deferredCustomerSearch.length > 0 && form.customer_contact_id == null,
     staleTime: 30_000,
   });
 
   useEffect(() => {
     if (open) {
       setForm(toFormState(order));
+      setCustomFieldValues(order?.custom_fields ?? {});
       setError(null);
+      setIsCustomerDropdownOpen(false);
     }
   }, [open, order]);
 
   const isEditMode = Boolean(order);
-  const canSubmit = useMemo(() => form.customer_name.trim().length > 0, [form.customer_name]);
+  const canSubmit = useMemo(() => {
+    if (!form.customer_name.trim()) return false;
+    if (form.customer_contact_id == null && form.create_customer_if_missing) {
+      return form.customer_email.trim().length > 0;
+    }
+    return true;
+  }, [form.create_customer_if_missing, form.customer_contact_id, form.customer_email, form.customer_name]);
   const customerOptions = customerQuery.data ?? [];
   const hasExactCustomerMatch = customerOptions.some(
-    (option) => option.org_name.trim().toLowerCase() === form.customer_name.trim().toLowerCase(),
+    (option) => {
+      const fullName = `${option.first_name ?? ""} ${option.last_name ?? ""}`.trim();
+      return (
+        fullName.toLowerCase() === form.customer_name.trim().toLowerCase()
+        || (option.primary_email ?? "").toLowerCase() === form.customer_name.trim().toLowerCase()
+      );
+    },
   );
 
   function handleClose() {
     setForm(emptyForm);
+    setCustomFieldValues({});
     setError(null);
     onClose();
   }
@@ -162,8 +190,10 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
       setError(null);
       await onSubmit({
         customer_name: form.customer_name.trim(),
+        customer_contact_id: form.customer_contact_id,
         customer_organization_id: form.customer_organization_id,
-        create_customer_if_missing: form.customer_organization_id == null && form.create_customer_if_missing,
+        create_customer_if_missing: form.customer_contact_id == null && form.create_customer_if_missing,
+        customer_email: form.customer_email.trim() || undefined,
         counterparty_reference: form.counterparty_reference.trim() || undefined,
         external_reference: form.external_reference.trim() || undefined,
         issue_date: form.issue_date || undefined,
@@ -177,6 +207,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
         tax_amount: toOptionalNumber(form.tax_amount),
         total_amount: toOptionalNumber(form.total_amount),
         notes: form.notes.trim() || undefined,
+        custom_fields: customFieldValues,
       });
       handleClose();
     } catch (submitError) {
@@ -208,30 +239,82 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                 <FieldLabel>
                   Customer Name <RequiredAsterisk />
                 </FieldLabel>
-                <Input
-                  value={form.customer_name}
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      customer_name: event.target.value,
-                      customer_organization_id: null,
-                    }))
-                  }
-                  placeholder="Acme Holdings"
-                />
+                <div className="relative">
+                  <Input
+                    value={form.customer_name}
+                    onFocus={() => setIsCustomerDropdownOpen(true)}
+                    onBlur={() => {
+                      window.setTimeout(() => {
+                        setIsCustomerDropdownOpen(false);
+                      }, 120);
+                    }}
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        customer_name: event.target.value,
+                        customer_contact_id: null,
+                        customer_organization_id: null,
+                      }))
+                    }
+                    placeholder="Search contact by name or email"
+                  />
+
+                  {form.customer_contact_id == null && deferredCustomerSearch && isCustomerDropdownOpen ? (
+                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 rounded-md border border-neutral-800 bg-neutral-950 shadow-2xl">
+                      {customerQuery.isLoading ? (
+                        <div className="px-3 py-2 text-sm text-neutral-500">Searching contacts…</div>
+                      ) : customerQuery.error ? (
+                        <div className="px-3 py-2 text-sm text-red-300">
+                          {customerQuery.error instanceof Error ? customerQuery.error.message : "Failed to search contacts."}
+                        </div>
+                      ) : customerOptions.length ? (
+                        <div className="max-h-56 overflow-y-auto py-1">
+                          {customerOptions.map((option) => (
+                            <button
+                              key={option.contact_id}
+                              type="button"
+                              className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-neutral-900"
+                              onMouseDown={(event) => event.preventDefault()}
+                              onClick={() => {
+                                setForm((current) => ({
+                                  ...current,
+                                  customer_name: `${option.first_name ?? ""} ${option.last_name ?? ""}`.trim() || option.primary_email || "",
+                                  customer_contact_id: option.contact_id,
+                                  create_customer_if_missing: false,
+                                  customer_email: option.primary_email ?? "",
+                                }));
+                                setIsCustomerDropdownOpen(false);
+                              }}
+                            >
+                              <span className="text-sm text-neutral-100">
+                                {`${option.first_name ?? ""} ${option.last_name ?? ""}`.trim() || option.primary_email || "Unnamed contact"}
+                              </span>
+                              <span className="text-xs text-neutral-500">
+                                {option.primary_email || option.current_title || "Existing contact"}
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="px-3 py-2 text-sm text-neutral-500">No existing contacts matched this search.</div>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
                 <FieldDescription>
-                  Search and link an existing customer, or type a new one and create a lightweight customer record.
+                  Search and link an existing sales contact, or type a new one and create a lightweight contact record.
                 </FieldDescription>
 
-                {form.customer_organization_id != null ? (
+                {form.customer_contact_id != null ? (
                   <div className="mt-2 flex items-center justify-between rounded-md border border-emerald-800/60 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-200">
-                    <span>Linked to an existing customer record.</span>
+                    <span>Linked to an existing contact record.</span>
                     <button
                       type="button"
                       className="text-xs font-medium uppercase tracking-wide text-emerald-100 hover:text-white"
                       onClick={() =>
                         setForm((current) => ({
                           ...current,
+                          customer_contact_id: null,
                           customer_organization_id: null,
                         }))
                       }
@@ -241,38 +324,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   </div>
                 ) : null}
 
-                {form.customer_organization_id == null && deferredCustomerSearch ? (
-                  <div className="mt-2 rounded-md border border-neutral-800 bg-neutral-950/70">
-                    {customerQuery.isLoading ? (
-                      <div className="px-3 py-2 text-sm text-neutral-500">Searching customers…</div>
-                    ) : customerOptions.length ? (
-                      <div className="max-h-48 overflow-y-auto py-1">
-                        {customerOptions.map((option) => (
-                          <button
-                            key={option.org_id}
-                            type="button"
-                            className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-neutral-900"
-                            onClick={() =>
-                              setForm((current) => ({
-                                ...current,
-                                customer_name: option.org_name,
-                                customer_organization_id: option.org_id,
-                                create_customer_if_missing: false,
-                              }))
-                            }
-                          >
-                            <span className="text-sm text-neutral-100">{option.org_name}</span>
-                            <span className="text-xs text-neutral-500">{option.primary_email || "Existing customer"}</span>
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="px-3 py-2 text-sm text-neutral-500">No existing customers matched this name.</div>
-                    )}
-                  </div>
-                ) : null}
-
-                {form.customer_organization_id == null && form.customer_name.trim() && !hasExactCustomerMatch ? (
+                {form.customer_contact_id == null && form.customer_name.trim() && !hasExactCustomerMatch ? (
                   <label className="mt-3 flex items-start gap-3 rounded-md border border-neutral-800 bg-neutral-950/60 px-3 py-3 text-sm text-neutral-300">
                     <Checkbox
                       checked={form.create_customer_if_missing}
@@ -286,8 +338,30 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                     >
                       <CheckboxIndicator className="h-3 w-3" />
                     </Checkbox>
-                    <span>Create a lightweight customer record if no existing customer matches this name.</span>
+                    <span>Create a lightweight sales contact if no existing contact matches this name.</span>
                   </label>
+                ) : null}
+
+                {form.customer_contact_id == null && form.create_customer_if_missing ? (
+                  <div className="mt-3">
+                    <FieldLabel>
+                      Customer Email <RequiredAsterisk />
+                    </FieldLabel>
+                    <Input
+                      type="email"
+                      value={form.customer_email}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          customer_email: event.target.value,
+                        }))
+                      }
+                      placeholder="customer@company.com"
+                    />
+                    <FieldDescription>
+                      This is the minimum extra detail needed to create a new contact while saving the insertion order.
+                    </FieldDescription>
+                  </div>
                 ) : null}
               </Field>
 
@@ -428,6 +502,14 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                 />
               </Field>
             </FieldGroup>
+
+            <CustomFieldInputs
+              definitions={customFieldsQuery.data ?? []}
+              values={customFieldValues}
+              onChange={(fieldKey, value) =>
+                setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))
+              }
+            />
           </div>
 
           <DialogFooter className="mt-5">

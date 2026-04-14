@@ -27,7 +27,7 @@ export default function UploadModal({
 
   const [duplicateDialog, setDuplicateDialog] = useState({
     open: false,
-    campaigns: [] as string[],
+    items: [] as string[],
     formData: null as FormData | null,
   });
 
@@ -35,9 +35,9 @@ export default function UploadModal({
 
   const validateFile = (file: File): boolean => {
     const lowerCaseName = file.name.toLowerCase();
-    if (!lowerCaseName.endsWith(".docx") && !lowerCaseName.endsWith(".pdf")) {
+    if (!lowerCaseName.endsWith(".csv")) {
       toast.error("Invalid file type", {
-        description: "Only .docx and .pdf files are supported",
+        description: "Only .csv files are supported",
       });
       return false;
     }
@@ -91,11 +91,13 @@ export default function UploadModal({
     setUploadStatus("uploading");
 
     const formData = new FormData();
-    files.forEach((file) => formData.append("files", file));
+    if (files[0]) {
+      formData.append("file", files[0]);
+    }
 
     try {
       const res = await apiFetch(
-        "/finance/insertion-orders/upload?replace_duplicates=false&skip_duplicates=false&create_new_records=false",
+        "/finance/insertion-orders/import?replace_duplicates=false&skip_duplicates=false&create_new_records=false",
         {
           method: "POST",
           body: formData,
@@ -108,7 +110,7 @@ export default function UploadModal({
         setUploadStatus("idle");
         setDuplicateDialog({
           open: true,
-          campaigns: data.duplicate_campaigns || [],
+          items: data.duplicate_io_numbers || [],
           formData,
         });
         return;
@@ -145,7 +147,7 @@ const resendWithAction = async (
       : "?create_new_records=true";
 
   try {
-    const res = await apiFetch(`/finance/insertion-orders/upload${query}`, {
+    const res = await apiFetch(`/finance/insertion-orders/import${query}`, {
       method: "POST",
       body: duplicateDialog.formData, // ✅ contains ALL selected files
     });
@@ -160,7 +162,7 @@ const resendWithAction = async (
 
     setDuplicateDialog({
       open: false,
-      campaigns: [],
+      items: [],
       formData: null,
     });
 
@@ -197,10 +199,10 @@ const resendWithAction = async (
           <div className="flex items-center justify-between p-6 border-b border-zinc-800">
             <div>
               <h2 className="text-xl font-semibold text-zinc-100">
-                Import Legacy Insertion Orders
+                Import Insertion Orders
               </h2>
               <p className="text-sm text-zinc-400 mt-1">
-                Import one or more legacy .docx or .pdf files into the generic insertion order module
+                Import generic insertion orders from a CSV file
               </p>
             </div>
             <Button onClick={handleClose} variant="ghost" size="icon-sm">
@@ -223,8 +225,7 @@ const resendWithAction = async (
                 <input
                   ref={fileInputRef}
                   type="file"
-                  multiple
-                  accept=".docx,.pdf"
+                  accept=".csv"
                   onChange={handleFileSelect}
                   className="hidden"
                   id="file-upload"
@@ -232,7 +233,7 @@ const resendWithAction = async (
 
                 <Upload className="mx-auto mb-3 text-zinc-400" size={40} />
                 <p className="text-zinc-100 font-medium">
-                  Drag & drop files here
+                  Drag & drop a CSV file here
                 </p>
                 <p className="text-sm text-zinc-400 my-2">or</p>
                 <Button asChild variant="outline">
@@ -292,9 +293,9 @@ const resendWithAction = async (
 
       <DuplicateConfirmation
         open={duplicateDialog.open}
-        campaigns={duplicateDialog.campaigns}
+        items={duplicateDialog.items}
         onCancel={() =>
-          setDuplicateDialog({ open: false, campaigns: [], formData: null })
+          setDuplicateDialog({ open: false, items: [], formData: null })
         }
         onChoose={resendWithAction}
       />

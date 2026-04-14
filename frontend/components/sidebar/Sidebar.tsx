@@ -46,6 +46,18 @@ export default function Sidebar() {
               <SidebarMenuItemChild href="/dashboard/company">
                 Company
               </SidebarMenuItemChild>
+              <SidebarMenuItemChild href="/dashboard/roles-permissions">
+                Roles & Permissions
+              </SidebarMenuItemChild>
+              <SidebarMenuItemChild href="/dashboard/custom-fields">
+                Custom Fields
+              </SidebarMenuItemChild>
+              <SidebarMenuItemChild href="/dashboard/recycle-bin">
+                Recycle Bin
+              </SidebarMenuItemChild>
+              <SidebarMenuItemChild href="/dashboard/activity-log">
+                Activity Log
+              </SidebarMenuItemChild>
             </SidebarMenuItemCollapsible>
             <SidebarMenuItemCollapsible icon={HandCoins} label="Finance">
               <SidebarMenuItemChild href="/dashboard/finance/insertion-orders">
@@ -60,7 +72,7 @@ export default function Sidebar() {
               <SidebarMenuItemChild href="/dashboard/sales/contacts">
                 Contacts
               </SidebarMenuItemChild>
-              </SidebarMenuItemCollapsible>
+            </SidebarMenuItemCollapsible>
 
           </SidebarMenu>
         </SidebarGroup>

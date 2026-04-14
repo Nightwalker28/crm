@@ -11,14 +11,14 @@ import { AlertTriangle } from "lucide-react";
 
 interface DuplicateConfirmationProps {
   open: boolean;
-  campaigns: string[];
+  items: string[];
   onCancel: () => void;
   onChoose: (action: "replace" | "skip" | "create") => void;
 }
 
 export default function DuplicateConfirmation({
   open,
-  campaigns,
+  items,
   onCancel,
   onChoose,
 }: DuplicateConfirmationProps) {
@@ -36,22 +36,22 @@ export default function DuplicateConfirmation({
 
             <div className="flex-1">
               <DialogTitle className="text-xl text-zinc-100 mb-1 text-left">
-                Duplicate Campaigns Found
+                Duplicate Records Found
               </DialogTitle>
 
               <DialogDescription className="text-zinc-400 text-left">
-                The following {campaigns.length} campaign
-                {campaigns.length > 1 ? "s" : ""} already exist in your database:
+                The following {items.length} record
+                {items.length > 1 ? "s" : ""} already exist in your database:
               </DialogDescription>
             </div>
           </div>
 
-          {/* Campaign list */}
+          {/* duplicate list */}
           <div className="bg-zinc-800/50 border border-zinc-700 rounded-md p-4 mb-6 max-h-48 overflow-y-auto">
             <ul className="text-sm text-zinc-300 space-y-2">
-              {campaigns.map((c) => (
-                <li key={c} className="flex items-center gap-2">
-                  <span className="break-all">{c}</span>
+              {items.map((item) => (
+                <li key={item} className="flex items-center gap-2">
+                  <span className="break-all">{item}</span>
                 </li>
               ))}
             </ul>
