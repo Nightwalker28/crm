@@ -33,8 +33,21 @@ class UserProfile(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class UserListItem(BaseModel):
+    id: int
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    team_id: Optional[int] = None
+    role_id: Optional[int] = None
+    team_name: Optional[str] = None
+    role_name: Optional[str] = None
+    photo_url: Optional[str] = None
+    auth_mode: Optional[UserAuthMode] = None
+    is_active: Optional[UserStatus] = None
+
 class UserListResponse(BaseModel):
-    results: List[UserProfile]  # Renamed from 'users' to match pagination.py helper
+    results: List[UserListItem]  # Renamed from 'users' to match pagination.py helper
     total_count: int
     total_pages: int
     page: int
@@ -167,9 +180,17 @@ class ModuleSchema(BaseModel):
     name: str
     base_route: Optional[str] = None
     description: Optional[str] = None
+    is_enabled: bool = True
     created_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ModuleUpdateRequest(BaseModel):
+    name: str | None = None
+    base_route: str | None = None
+    description: str | None = None
+    is_enabled: bool | None = None
 
 class AuthResponse(BaseModel):
     status: str
@@ -228,6 +249,7 @@ class CompanyProfileResponse(BaseModel):
     primary_phone: Optional[str] = None
     industry: Optional[str] = None
     country: Optional[str] = None
+    operating_currencies: list[str] = []
     billing_address: Optional[str] = None
     logo_url: Optional[str] = None
     updated_by: Optional[int] = None
@@ -244,5 +266,15 @@ class CompanyProfileUpdateRequest(BaseModel):
     primary_phone: Optional[str] = None
     industry: Optional[str] = None
     country: Optional[str] = None
+    operating_currencies: list[str] | None = None
     billing_address: Optional[str] = None
     logo_url: Optional[str] = None
+
+
+class TablePreferenceResponse(BaseModel):
+    module_key: str
+    visible_columns: list[str]
+
+
+class TablePreferenceUpdateRequest(BaseModel):
+    visible_columns: list[str]

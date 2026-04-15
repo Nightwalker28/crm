@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { UserRound, HandCoins, LogOut, BriefcaseBusiness } from "lucide-react";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 
 import {
   SidebarNav,
@@ -17,6 +18,7 @@ import {
 
 export default function Sidebar() {
   const { user, logout } = useSidebarUser();
+  const { modules } = useAccessibleModules();
 
   const displayName =
     `${user?.first_name ?? ""} ${user?.last_name ?? ""}`.trim() ||
@@ -25,6 +27,11 @@ export default function Sidebar() {
 
   const initials =
     ((user?.first_name?.[0] ?? "") + (user?.last_name?.[0] ?? "")) || "US";
+  const moduleMap = new Map(modules.map((module) => [module.name, module]));
+  const financeIoModule = moduleMap.get("finance_io");
+  const contactsModule = moduleMap.get("sales_contacts");
+  const organizationsModule = moduleMap.get("sales_organizations");
+  const opportunitiesModule = moduleMap.get("sales_opportunities");
 
   return (
     <aside className="relative z-10 flex h-screen w-52 flex-col py-6 pl-4">
@@ -52,6 +59,9 @@ export default function Sidebar() {
               <SidebarMenuItemChild href="/dashboard/custom-fields">
                 Custom Fields
               </SidebarMenuItemChild>
+              <SidebarMenuItemChild href="/dashboard/modules">
+                Modules
+              </SidebarMenuItemChild>
               <SidebarMenuItemChild href="/dashboard/recycle-bin">
                 Recycle Bin
               </SidebarMenuItemChild>
@@ -59,20 +69,33 @@ export default function Sidebar() {
                 Activity Log
               </SidebarMenuItemChild>
             </SidebarMenuItemCollapsible>
-            <SidebarMenuItemCollapsible icon={HandCoins} label="Finance">
-              <SidebarMenuItemChild href="/dashboard/finance/insertion-orders">
-                Insertion Orders
-              </SidebarMenuItemChild>
-            </SidebarMenuItemCollapsible>
+            {financeIoModule?.base_route ? (
+              <SidebarMenuItemCollapsible icon={HandCoins} label="Finance">
+                <SidebarMenuItemChild href={financeIoModule.base_route}>
+                  Insertion Orders
+                </SidebarMenuItemChild>
+              </SidebarMenuItemCollapsible>
+            ) : null}
 
-            <SidebarMenuItemCollapsible icon={BriefcaseBusiness} label="Sales">
-              <SidebarMenuItemChild href="/dashboard/sales/organizations">
-                Organizations
-              </SidebarMenuItemChild>
-              <SidebarMenuItemChild href="/dashboard/sales/contacts">
-                Contacts
-              </SidebarMenuItemChild>
-            </SidebarMenuItemCollapsible>
+            {(organizationsModule?.base_route || contactsModule?.base_route || opportunitiesModule?.base_route) ? (
+              <SidebarMenuItemCollapsible icon={BriefcaseBusiness} label="Sales">
+                {organizationsModule?.base_route ? (
+                  <SidebarMenuItemChild href={organizationsModule.base_route}>
+                    Organizations
+                  </SidebarMenuItemChild>
+                ) : null}
+                {contactsModule?.base_route ? (
+                  <SidebarMenuItemChild href={contactsModule.base_route}>
+                    Contacts
+                  </SidebarMenuItemChild>
+                ) : null}
+                {opportunitiesModule?.base_route ? (
+                  <SidebarMenuItemChild href={opportunitiesModule.base_route}>
+                    Opportunities
+                  </SidebarMenuItemChild>
+                ) : null}
+              </SidebarMenuItemCollapsible>
+            ) : null}
 
           </SidebarMenu>
         </SidebarGroup>

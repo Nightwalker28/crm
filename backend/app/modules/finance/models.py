@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, Text, Date, TIMESTAMP, func, ForeignKey, Numeric, JSON
+from sqlalchemy import Column, BigInteger, Text, Date, TIMESTAMP, func, ForeignKey, Numeric
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -36,7 +36,6 @@ class FinanceIO(Base):
     tax_amount = Column(Numeric(12, 2), nullable=True)
     total_amount = Column(Numeric(12, 2), nullable=True)
     notes = Column(Text, nullable=True)
-    custom_data = Column(JSON, nullable=True)
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
 
     start_date = Column(Date, nullable=True)
@@ -50,5 +49,17 @@ class FinanceIO(Base):
     customer_organization = relationship("SalesOrganization", lazy="joined")
 
     @property
+    def custom_data(self) -> dict | None:
+        return getattr(self, "_custom_field_cache", None)
+
+    @custom_data.setter
+    def custom_data(self, value: dict | None) -> None:
+        self._custom_field_cache = value or None
+
+    @property
     def custom_fields(self) -> dict | None:
         return self.custom_data
+
+    @custom_fields.setter
+    def custom_fields(self, value: dict | None) -> None:
+        self.custom_data = value

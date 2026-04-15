@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -7,12 +7,16 @@ from app.modules.user_management.schema import (
     CompanyProfileResponse,
     CompanyProfileUpdateRequest,
     ModuleSchema,
+    TablePreferenceResponse,
+    TablePreferenceUpdateRequest,
     UserProfile,
     UserProfileUpdateRequest,
 )
 from app.modules.user_management.services.auth import get_user_accessible_modules
 from app.modules.user_management.services.profile import (
     get_or_create_company_profile,
+    get_user_table_preference,
+    save_user_table_preference,
     update_company_profile,
     update_user_profile,
 )
@@ -56,3 +60,38 @@ def save_company_profile(
     current_user = Depends(require_admin),
 ):
     return update_company_profile(db, current_user, payload.model_dump(exclude_unset=True))
+
+
+@router.get("/table-preferences/{module_key}", response_model=TablePreferenceResponse)
+def get_table_preference(
+    module_key: str,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+):
+    try:
+        preference = get_user_table_preference(db, current_user, module_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return TablePreferenceResponse(
+        module_key=module_key,
+        visible_columns=preference.visible_columns if preference else [],
+    )
+
+
+@router.put("/table-preferences/{module_key}", response_model=TablePreferenceResponse)
+def update_table_preference(
+    module_key: str,
+    payload: TablePreferenceUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+):
+    try:
+        preference = save_user_table_preference(db, current_user, module_key, payload.visible_columns)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return TablePreferenceResponse(
+        module_key=preference.module_key,
+        visible_columns=preference.visible_columns or [],
+    )

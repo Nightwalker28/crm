@@ -1,14 +1,16 @@
 # Platform Refactor Roadmap
 
-Overall completion: 86%
+Overall completion: 99%
 
 Current phase:
 - Phase 1 complete: Finance IO refactor and immediate UX cleanup
 - Phase 1.5 complete: Shared UI consistency pass for creation modals and Teams/Departments styling
 - Phase 2 complete: company record, user profile, and record detail navigation for contacts and organizations
-- Phase 3 in progress: recycle-bin, activity log, and action-level permission foundation
-- Phase 4 in progress: custom fields for existing modules
-- Phase 4.5 in progress: legacy finance cleanup and shared module utility framework
+- Phase 3 complete: recycle-bin, activity log, and action-level permission foundation
+- Phase 4 complete: custom fields for existing modules
+- Phase 4.5 complete: legacy finance cleanup and shared module utility framework
+- Phase 5 in progress: uniform list tables, per-user table preferences, and cache hardening
+- Phase 6 in progress: module wiring completion and module availability controls
 
 Completed items:
 - Added a generic insertion-order backend contract alongside the legacy finance import flow.
@@ -51,28 +53,60 @@ Completed items:
 - Extracted the first shared module CSV utility for reusable upload parsing and header validation.
 - Extracted shared module search and export helpers and refactored contact and organization services to use them.
 - Added relational custom field value storage and started persisting custom-field writes into linked value rows for insertion orders, contacts, organizations, and opportunities.
+- Added a migration that backfills relational custom field values from the existing JSON bridge columns.
+- Switched contact, organization, opportunity, and insertion-order reads and update merges to hydrate custom fields from the relational value store first, with JSON only as a guarded fallback during transition.
+- Extended the shared module search utility into sales opportunities so search behavior is no longer implemented three different ways across the main sales modules.
+- Extended the shared module search utility into admin user search and generic finance insertion-order search so the core list/search surfaces now share one ranked-search primitive.
+- Removed the dead legacy finance search and persistence helpers that still referenced deleted campaign-era columns, reducing the chance of reintroducing broken legacy paths later.
+- Added shared upload-byte validation and shared binary download response helpers so contacts and organizations no longer duplicate CSV upload checks or attachment/export response header handling.
+- Refactored the contact and organization import/export routes to use the shared module file helpers instead of hand-rolled route-level validation and response construction.
+- Removed the JSON `custom_data` bridge columns from the finance and sales tables after backfilling the relational custom field values.
+- Converted ORM-side `custom_data` handling into an in-memory cache so service and API shapes stay stable while persistence remains fully relational.
+- Added local cached custom-field definition reads with explicit invalidation on create and update so definitions are no longer reloaded from Postgres on every request.
+- Added a persisted per-user table preference model and API for list pages.
+- Standardized organizations onto the shared table language and added per-user visible-column controls for contacts, organizations, and users.
+- Added a shared module table shell so contacts, organizations, and users now use the same list container height and base styling.
+- Fixed the organizations page runtime regression caused by the missing `isLoading` hook binding.
+- Added `fields`-aware list requests from the contacts, organizations, and users dashboards so visible-column preferences are now sent to the backend.
+- Added backend payload shaping for contact and organization list APIs so hidden columns are no longer serialized into list responses by default.
+- Added conservative user list payload shaping support that keeps the edit modal safe by preserving the row fields the current user-management flow still depends on.
+- Extended the same per-user visible-column controls and shared table styling to the finance insertion-order list so the main operational module lists now follow one table language.
+- Added finance insertion-order list payload shaping so the finance dashboard also sends a `fields` contract and trims non-visible list fields while still preserving the edit-critical values the dialog currently depends on.
+- Replaced the custom-field definition cache internals with a cache backend that can use Redis when configured and falls back to a local in-process cache when Redis is unavailable.
+- Added Redis service wiring to the development stack and backend configuration so definition caching can move off a single-process cache without breaking local development when Redis is absent.
+- Wired the backend-only sales opportunities module into the frontend with a full list page, create/edit dialog, visible-column preferences, search, delete, and finance handoff action.
+- Added backend list payload shaping for sales opportunities so the new opportunity page follows the same `fields` contract as the other operational list modules.
+- Added a real global module availability flag on the `modules` table with an admin API and migration-backed persistence.
+- Added an admin Modules page so admins can enable or disable modules without editing seed data or permissions by hand.
+- Updated accessible-module resolution so disabled modules are filtered out of `/users/me/modules`.
+- Switched business-module navigation in the sidebar to the backend-provided accessible module list, so enabled/disabled state and permissions now affect what users can actually open.
+- Fixed the shared switch component so Radix-only props such as `onCheckedChange` are no longer leaked into DOM buttons on the Modules page.
+- Added company-managed operating currencies to the company profile model, API, migration, and dashboard page.
+- Wired insertion-order currency selection to the company-configured currency list instead of a free-text input.
+- Wired opportunity currency selection to the same company-configured currency list instead of a free-text input.
+- Changed opportunity creation/editing so the client is selected from linked sales contacts rather than typed as arbitrary free text.
+- Extended contact search list payloads so opportunity/client pickers can backfill linked organization context from the chosen contact.
+- Fixed the opportunity search helper regression so opportunity list/search queries still return ranked results instead of breaking on a missing return path.
+- Improved opportunity save error handling so backend validation details surface in the frontend instead of collapsing into a generic status error.
 
 In progress:
-- Verify the new contact and organization detail pages plus the related summary endpoints in the runtime.
-- Verify the new recycle-bin and activity-log backend slice in the runtime.
-- Expand action-level permission enforcement beyond the currently wired finance and sales routes into the remaining admin structure workflows.
-- Broaden custom-field rendering into additional writable modules and list/detail surfaces after those modules are refactored.
-- Continue extracting shared import/export/search utilities from the remaining module-specific implementations into reusable platform helpers.
-- Complete the migration away from JSON-backed custom-field reads so relational custom field values become the primary source of truth.
+- Push list-column preferences deeper into the query layer so modules can avoid selecting fields that are not needed for the current view, not just avoid serializing them.
+- Continue unifying any remaining main module index pages onto one shared table-based presentation where a table is the correct default.
+- Harden the new Redis-backed cache operationally now that the cache abstraction and fallback behavior are in place.
+- Keep extending the new module availability controls so they cover broader admin/module configuration use cases than simple global enabled or disabled state.
+- Keep standardizing module forms so linked-record selectors and company-managed reference data replace remaining free-text fields where those relationships are the real source of truth.
 
 Next up:
-- Introduce shared platform primitives for pagination, search, export, and import, with module-specific adapters instead of duplicated per-module flows.
-- Replace JSON custom fields fully with a relational extension model using shared custom field definitions plus linked custom field values.
-- Expand recycle-bin behavior and activity logging into the remaining writable admin structure workflows.
-- Add stronger role-based enforcement around company/profile/admin structure endpoints.
-- Continue the custom-field framework into more modules and richer field-management controls after the relational custom-field refactor lands.
-- Broader record detail pages for other modules as they are refactored.
-- Company table and broader company-management workflows.
-- Add role editing and role deletion safeguards once the permission matrix settles.
-- Add custom-field management safeguards such as immutable keys, sort controls, and richer field editing.
+- Push those list preferences all the way into ORM select/load behavior over time so modules can avoid loading fields that are not needed for the active view.
+- Add runtime verification and failure-path hardening for the Redis-backed cache layer now that the abstraction is in place.
+- Continue standardizing any remaining main module index pages onto one shared table-based visual language where that layout makes sense.
+- Extend module availability from a global enabled or disabled flag into richer module configuration once the current control model is stable.
+- Continue converting remaining business forms to shared linked dropdowns and company-managed reference data where those constraints are platform rules rather than per-module ad hoc inputs.
+- Future roadmap candidates can continue from the deferred items and post-completion hardening work.
 
 Deferred items:
 - True tenant/company ownership at the data-model level for finance records.
+- ORM-level selective field loading for list pages should be treated as a later performance-hardening phase after the current module wiring and availability work lands.
 - Module enable/disable controls.
 - Full custom module builder.
 - User-created modules stay deferred until the shared module utility layer and relational custom-field architecture are stable enough to support them safely.
@@ -83,5 +117,8 @@ Risks and migration notes:
 - The platform-wide tenant/company model is not implemented in this increment yet, so this remains phaseable rather than complete.
 - Action-level permissions now exist but are only partially enforced; module-level access remains the broad gate while the per-action rollout continues.
 - Recycle-bin direction is now fixed as one unified admin area with module-specific tables and filters, rather than separate recycle pages for every module.
-- The current custom-field slice is active for contacts, organizations, insertion orders, and opportunities, but it uses JSON-backed storage as a temporary bridge and should be replaced with relational custom field values before being treated as the long-term enterprise design.
+- The custom-field runtime is now fully relational at the database layer; remaining custom-field work is now about hardening and extension rather than bridge removal.
+- Table-column customization and definition caching are the next UX/performance slice and should be treated as optimization and consistency work, not schema-correctness work.
+- Redis-backed caching now exists for definition reads, but it still needs runtime validation in the actual container stack before it should be treated as production-ready.
+- The new table-preference layer now controls presentation, persistence, and API payload shaping, but it does not yet change ORM select lists or relationship loading.
 - Custom modules stay deferred until custom fields, module configuration, recycle, activity, and action permissions are stable.

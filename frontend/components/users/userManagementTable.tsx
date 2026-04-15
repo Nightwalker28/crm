@@ -22,6 +22,7 @@ import {
   SortableHead,
 } from "@/components/ui/Table";
 import { Card } from "../ui/Card";
+import { ModuleTableShell } from "../ui/ModuleTableShell";
 
 export type SortKey = "name" | "role" | "email" | "status";
 export type SortDirection = "asc" | "desc";
@@ -62,6 +63,7 @@ type Props = {
   currentUserId?: number | null;
   optionsData: UserOptionsData;
   onEdit: (u: User) => void;
+  visibleColumns: string[];
 };
 
 // --- Color Configurations ---
@@ -113,7 +115,8 @@ const fetchUsers = async ({
   filters, 
   sortKey, 
   sortDirection,
-  maps
+  maps,
+  visibleColumns,
 }: {
   page: number;
   pageSize: number;
@@ -121,6 +124,7 @@ const fetchUsers = async ({
   sortKey: SortKey;
   sortDirection: SortDirection;
   maps: OptionMaps;
+  visibleColumns: string[];
 }): Promise<UsersResponse> => {
   const isSearchMode = 
       !!filters.search || 
@@ -135,6 +139,7 @@ const fetchUsers = async ({
   const params = new URLSearchParams();
   params.append("page", page.toString());
   params.append("page_size", pageSize.toString());
+  if (visibleColumns.length) params.append("fields", visibleColumns.join(","));
 
   if (isSearchMode) {
     if (filters.search) params.append("search", filters.search);
@@ -167,6 +172,7 @@ export function UserManagementTable({
   currentUserId,
   optionsData,
   onEdit,
+  visibleColumns = [],
 }: Props) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -203,8 +209,8 @@ export function UserManagementTable({
   }, [optionsData]);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ["users-paged", page, pageSize, apiFilters, sortKey, sortDirection], 
-    queryFn: () => fetchUsers({ page, pageSize, filters, sortKey, sortDirection, maps }),
+    queryKey: ["users-paged", page, pageSize, apiFilters, sortKey, sortDirection, visibleColumns], 
+    queryFn: () => fetchUsers({ page, pageSize, filters, sortKey, sortDirection, maps, visibleColumns }),
     placeholderData: (previousData) => previousData, 
     enabled: !!optionsData,
     refetchOnWindowFocus: false,
@@ -231,6 +237,9 @@ export function UserManagementTable({
       users: map[teamName as string] || []
     }));
   }, [users]);
+
+  const hasColumn = (key: string) => visibleColumns.includes(key);
+  const columnCount = visibleColumns.length + 1;
 
   const handleFilterChange = (newFilters: UserFiltersValue) => {
     setFilters(newFilters);
@@ -272,41 +281,53 @@ export function UserManagementTable({
       />
 
       <div className="flex flex-col gap-2">
-        <div className="rounded-md border border-neutral-800 overflow-auto relative min-h-[69vh] max-h-[69vh]">
+        <ModuleTableShell>
           <Table className="min-w-[900px]">
             <TableHeader >
               <TableHeaderRow className="">
-                <SortableHead
-                  sorted={sortKey === "name"}
-                  direction={sortDirection}
-                  onClick={() => handleHeaderClick("name")}
-                >
-                  Name
-                </SortableHead>
+                {hasColumn("name") && (
+                  <SortableHead
+                    sorted={sortKey === "name"}
+                    direction={sortDirection}
+                    onClick={() => handleHeaderClick("name")}
+                  >
+                    Name
+                  </SortableHead>
+                )}
 
-                <SortableHead
-                  sorted={sortKey === "role"}
-                  direction={sortDirection}
-                  onClick={() => handleHeaderClick("role")}
-                >
-                  Role
-                </SortableHead>
+                {hasColumn("team_name") && <TableHead>Team</TableHead>}
 
-                <SortableHead
-                  sorted={sortKey === "email"}
-                  direction={sortDirection}
-                  onClick={() => handleHeaderClick("email")}
-                >
-                  Email
-                </SortableHead>
+                {hasColumn("role_name") && (
+                  <SortableHead
+                    sorted={sortKey === "role"}
+                    direction={sortDirection}
+                    onClick={() => handleHeaderClick("role")}
+                  >
+                    Role
+                  </SortableHead>
+                )}
 
-                <SortableHead
-                  sorted={sortKey === "status"}
-                  direction={sortDirection}
-                  onClick={() => handleHeaderClick("status")}
-                >
-                  Status
-                </SortableHead>
+                {hasColumn("email") && (
+                  <SortableHead
+                    sorted={sortKey === "email"}
+                    direction={sortDirection}
+                    onClick={() => handleHeaderClick("email")}
+                  >
+                    Email
+                  </SortableHead>
+                )}
+
+                {hasColumn("auth_mode") && <TableHead>Sign-in Mode</TableHead>}
+
+                {hasColumn("is_active") && (
+                  <SortableHead
+                    sorted={sortKey === "status"}
+                    direction={sortDirection}
+                    onClick={() => handleHeaderClick("status")}
+                  >
+                    Status
+                  </SortableHead>
+                )}
 
                 <TableHead className="text-center">Actions</TableHead>
               </TableHeaderRow>
@@ -315,13 +336,13 @@ export function UserManagementTable({
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-10 text-neutral-500">
+                  <TableCell colSpan={columnCount} className="text-center py-10 text-neutral-500">
                     Loading data...
                   </TableCell>
                 </TableRow>
               ) : groupedByTeam.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="text-center py-10 text-neutral-500">
+                  <TableCell colSpan={columnCount} className="text-center py-10 text-neutral-500">
                     No users found.
                   </TableCell>
                 </TableRow>
@@ -329,7 +350,7 @@ export function UserManagementTable({
                 groupedByTeam.map(({ teamName, users }) => (
                   <Fragment key={teamName}>
                     <TableGroupRow>
-                      <TableGroupCell colSpan={5}>
+                      <TableGroupCell colSpan={columnCount}>
                          <span className="font-semibold text-neutral-300">{teamName}</span>
                       </TableGroupCell>
                     </TableGroupRow>
@@ -341,65 +362,79 @@ export function UserManagementTable({
 
                       return (
                         <TableRow key={u.id}>
-                          <TableCell>
-                            <div className="flex items-center gap-2 h-7">
-                              {u.photo_url ? (
-                                <Image
-                                  src={u.photo_url}
-                                  alt=""
-                                  width={24}
-                                  height={24}
-                                  className="h-6 w-6 rounded object-cover"
-                                />
-                              ) : (
-                                <div className="h-6 w-6 rounded bg-neutral-700 flex items-center justify-center text-[10px]">
-                                  {(u.first_name?.[0] ?? u.email[0] ?? "?").toUpperCase()}
-                                </div>
-                              )}
-
-                              <div className="flex items-center gap-1 max-w-full">
-                                <span className="whitespace-nowrap overflow-hidden text-ellipsis">
-                                  {u.first_name} {u.last_name}
-                                </span>
-                                {isSelf && (
-                                  <span className="text-[10px] text-neutral-400 shrink-0">
-                                    (You)
-                                  </span>
+                          {hasColumn("name") && (
+                            <TableCell>
+                              <div className="flex items-center gap-2 h-7">
+                                {u.photo_url ? (
+                                  <Image
+                                    src={u.photo_url}
+                                    alt=""
+                                    width={24}
+                                    height={24}
+                                    className="h-6 w-6 rounded object-cover"
+                                  />
+                                ) : (
+                                  <div className="h-6 w-6 rounded bg-neutral-700 flex items-center justify-center text-[10px]">
+                                    {(u.first_name?.[0] ?? u.email[0] ?? "?").toUpperCase()}
+                                  </div>
                                 )}
+
+                                <div className="flex items-center gap-1 max-w-full">
+                                  <span className="whitespace-nowrap overflow-hidden text-ellipsis">
+                                    {u.first_name} {u.last_name}
+                                  </span>
+                                  {isSelf && (
+                                    <span className="text-[10px] text-neutral-400 shrink-0">
+                                      (You)
+                                    </span>
+                                  )}
+                                </div>
                               </div>
-                            </div>
-                          </TableCell>
+                            </TableCell>
+                          )}
 
-                          {/* --- Role Pill Usage --- */}
-                          <TableCell>
-                            <Pill
-                              bg={roleProps.bg}
-                              text={roleProps.text}
-                              border={roleProps.border}
-                              className="w-22"
-                            >
-                              {u.role_name}
-                            </Pill>
-                          </TableCell>
+                          {hasColumn("team_name") && <TableCell>{u.team_name}</TableCell>}
 
-                          <TableCell>
-                            <span className="whitespace-nowrap overflow-hidden text-ellipsis block">
-                              {u.email}
-                            </span>
-                          </TableCell>
-
-                          {/* --- Status Pill Usage --- */}
-                          <TableCell>
-                            {u.is_active === "active" ? (
-                              <Pill bg="bg-green-900/30" text="text-green-400" border="border-green-700/40">
-                                Active
+                          {hasColumn("role_name") && (
+                            <TableCell>
+                              <Pill
+                                bg={roleProps.bg}
+                                text={roleProps.text}
+                                border={roleProps.border}
+                                className="w-22"
+                              >
+                                {u.role_name}
                               </Pill>
-                            ) : (
-                              <Pill bg="bg-zinc-900/30" text="text-zinc-400" border="border-zinc-700/40">
-                                Inactive
-                              </Pill>
-                            )}
-                          </TableCell>
+                            </TableCell>
+                          )}
+
+                          {hasColumn("email") && (
+                            <TableCell>
+                              <span className="whitespace-nowrap overflow-hidden text-ellipsis block">
+                                {u.email}
+                              </span>
+                            </TableCell>
+                          )}
+
+                          {hasColumn("auth_mode") && (
+                            <TableCell>
+                              {u.auth_mode === "manual_only" ? "Manual only" : "Manual + Google"}
+                            </TableCell>
+                          )}
+
+                          {hasColumn("is_active") && (
+                            <TableCell>
+                              {u.is_active === "active" ? (
+                                <Pill bg="bg-green-900/30" text="text-green-400" border="border-green-700/40">
+                                  Active
+                                </Pill>
+                              ) : (
+                                <Pill bg="bg-zinc-900/30" text="text-zinc-400" border="border-zinc-700/40">
+                                  Inactive
+                                </Pill>
+                              )}
+                            </TableCell>
+                          )}
 
                           <TableCell className="text-center">
                             <div className="flex items-center justify-center gap-3 h-7">
@@ -420,7 +455,7 @@ export function UserManagementTable({
               )}
             </TableBody>
           </Table>
-        </div>
+        </ModuleTableShell>
 
         {/* --- Pagination Footer --- */}
         <Card className="px-4 py-1.5">

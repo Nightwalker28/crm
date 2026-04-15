@@ -1,16 +1,17 @@
-from io import BytesIO
-
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.module_csv import read_upload_bytes
+from app.core.module_export import bytes_download_response
 from app.core.pagination import Pagination, build_paged_response, get_pagination
-from app.core.security import require_user, require_admin, require_superuser
+from app.core.security import require_user
 from app.core.permissions import require_action_access, require_module_access
 from app.modules.sales.schema import (
     SalesContactCreateRequest,
     SalesContactImportSummary,
+    SalesContactListItem,
     SalesContactListResponse,
     SalesContactResponse,
     ContactSummaryResponse,
@@ -35,13 +36,43 @@ from app.modules.sales.services.summary_services import build_contact_summary
 
 router = APIRouter(prefix="/contacts", tags=["Sales"])
 
+CONTACT_LIST_FIELDS = {
+    "first_name",
+    "last_name",
+    "primary_email",
+    "linkedin_url",
+    "current_title",
+    "region",
+    "country",
+    "organization_id",
+    "organization_name",
+    "assigned_to",
+    "created_time",
+}
+
 
 def _serialize_contact(contact) -> dict:
     return SalesContactResponse.model_validate(contact).model_dump(mode="json")
 
 
+def _parse_list_fields(raw_fields: str | None, allowed_fields: set[str]) -> set[str]:
+    if not raw_fields:
+        return allowed_fields
+    requested = {field.strip() for field in raw_fields.split(",") if field.strip()}
+    valid = requested & allowed_fields
+    return valid or allowed_fields
+
+
+def _serialize_contact_list_item(contact, fields: set[str]) -> SalesContactListItem:
+    payload = {"contact_id": contact.contact_id}
+    for field in fields:
+        payload[field] = getattr(contact, field, None)
+    return SalesContactListItem.model_validate(payload)
+
+
 @router.get("", response_model=SalesContactListResponse)
 def list_contacts(
+    fields: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
@@ -49,7 +80,8 @@ def list_contacts(
     require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
     contacts, total_count = list_sales_contacts(db, pagination, search=None)
-    serialized = [SalesContactResponse.model_validate(contact) for contact in contacts]
+    selected_fields = _parse_list_fields(fields, CONTACT_LIST_FIELDS)
+    serialized = [_serialize_contact_list_item(contact, selected_fields) for contact in contacts]
     return build_paged_response(serialized, total_count, pagination)
 
 
@@ -60,6 +92,7 @@ def search_contacts(
         min_length=1,
         description="Search by name, email, title, region, country, or LinkedIn URL",
     ),
+    fields: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
@@ -67,7 +100,8 @@ def search_contacts(
     require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
     contacts, total_count = list_sales_contacts(db, pagination, search=query)
-    serialized = [SalesContactResponse.model_validate(contact) for contact in contacts]
+    selected_fields = _parse_list_fields(fields, CONTACT_LIST_FIELDS)
+    serialized = [_serialize_contact_list_item(contact, selected_fields) for contact in contacts]
     return build_paged_response(serialized, total_count, pagination)
 
 
@@ -130,14 +164,7 @@ async def import_contacts(
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "create")),
 ):
-    filename = (file.filename or "").lower()
-    if not filename.endswith(".csv"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only CSV files are supported")
-
-    file_bytes = await file.read()
-    if not file_bytes:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded file is empty")
-
+    file_bytes = await read_upload_bytes(file, allowed_extensions={"csv"})
     summary = import_contacts_from_csv(
         db,
         file_bytes,
@@ -162,10 +189,11 @@ def export_contacts(
 ):
     contacts = get_all_contacts(db, search)
     csv_bytes = export_contacts_to_csv(contacts)
-    buffer = BytesIO(csv_bytes)
-
-    headers = {"Content-Disposition": 'attachment; filename="sales_contacts.csv"'}
-    return StreamingResponse(buffer, media_type="text/csv", headers=headers)
+    return bytes_download_response(
+        content=csv_bytes,
+        filename="sales_contacts.csv",
+        media_type="text/csv",
+    )
 
 
 @router.get("/organization-search", response_model=SalesOrganizationListResponse)

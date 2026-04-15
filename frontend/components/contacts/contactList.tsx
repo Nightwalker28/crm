@@ -1,94 +1,101 @@
 "use client";
 
 import Link from "next/link";
-import { Linkedin, Mail } from "lucide-react";
+
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableHeaderRow,
+  TableRow,
+} from "@/components/ui/Table";
+import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import type { Contact } from "@/hooks/sales/useContacts";
 
 interface ContactListProps {
   contacts: Contact[];
   isLoading: boolean;
+  visibleColumns: string[];
 }
 
 export default function ContactList({
   contacts,
   isLoading,
+  visibleColumns = [],
 }: ContactListProps) {
+  const hasColumn = (key: string) => visibleColumns.includes(key);
+
   return (
-    <div
-      className="
-        border border-zinc-800 rounded-lg
-        bg-zinc-900/40
-        overflow-y-auto
-      "
-    >
-      {isLoading ? (
-        <div className="p-6 text-sm text-zinc-400">
-          Loading contacts…
-        </div>
-      ) : contacts.length === 0 ? (
-        <div className="p-6 text-sm text-zinc-400">
-          No contacts found.
-        </div>
-      ) : (
-        <div className="divide-y divide-zinc-800">
-          {contacts.map((c) => (
-            <div
-              key={c.contact_id}
-              className="flex items-center justify-between px-4 py-3 transition hover:bg-zinc-900/60"
-            >
-              <div className="flex min-w-0 flex-col gap-0.5">
-                <div className="flex items-center gap-2">
-                  <Link
-                    href={`/dashboard/sales/contacts/${c.contact_id}`}
-                    className="truncate font-medium text-zinc-100 hover:text-white"
-                  >
-                    {c.first_name || "-"} {c.last_name || ""}
-                  </Link>
+    <ModuleTableShell>
+      <Table className="min-w-[920px]">
+        <TableHeader>
+          <TableHeaderRow>
+            {hasColumn("first_name") && <TableHead>First Name</TableHead>}
+            {hasColumn("last_name") && <TableHead>Last Name</TableHead>}
+            {hasColumn("primary_email") && <TableHead>Email</TableHead>}
+            {hasColumn("current_title") && <TableHead>Job Title</TableHead>}
+            {hasColumn("organization_name") && <TableHead>Organization</TableHead>}
+            {hasColumn("region") && <TableHead>Region</TableHead>}
+            {hasColumn("country") && <TableHead>Country</TableHead>}
+            {hasColumn("linkedin_url") && <TableHead>LinkedIn</TableHead>}
+            <TableHead className="text-right">Record</TableHead>
+          </TableHeaderRow>
+        </TableHeader>
 
-                  {c.linkedin_url && (
-                    <a
-                      href={`https://${c.linkedin_url}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[#0A66C2] hover:text-[#0A66C2]/80"
-                      title="LinkedIn"
-                    >
-                      <Linkedin size={15} />
-                    </a>
-                  )}
-                </div>
-
-                <div className="text-sm text-zinc-400 truncate">
-                  {c.current_title || "No title"} ·{" "}
-                  {c.region || "Unknown region"}
-                </div>
-              </div>
-
-              <div className="flex shrink-0 items-center gap-3">
-                {c.primary_email && (
-                  <a
-                    href={`mailto:${c.primary_email}`}
-                    className="flex items-center gap-1 text-sm text-zinc-400 hover:text-zinc-200"
-                    title="Send email"
-                  >
-                    <Mail size={14} />
-                    <span className="hidden md:inline">
-                      {c.primary_email}
-                    </span>
-                  </a>
+        <TableBody>
+          {isLoading ? (
+            <TableRow>
+              <TableCell colSpan={visibleColumns.length + 1} className="py-10 text-center text-neutral-500">
+                Loading contacts...
+              </TableCell>
+            </TableRow>
+          ) : contacts.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={visibleColumns.length + 1} className="py-10 text-center text-neutral-500">
+                No contacts found.
+              </TableCell>
+            </TableRow>
+          ) : (
+            contacts.map((contact) => (
+              <TableRow key={contact.contact_id}>
+                {hasColumn("first_name") && <TableCell>{contact.first_name || "-"}</TableCell>}
+                {hasColumn("last_name") && <TableCell>{contact.last_name || "-"}</TableCell>}
+                {hasColumn("primary_email") && <TableCell>{contact.primary_email || "-"}</TableCell>}
+                {hasColumn("current_title") && <TableCell>{contact.current_title || "-"}</TableCell>}
+                {hasColumn("organization_name") && <TableCell>{contact.organization_name || "-"}</TableCell>}
+                {hasColumn("region") && <TableCell>{contact.region || "-"}</TableCell>}
+                {hasColumn("country") && <TableCell>{contact.country || "-"}</TableCell>}
+                {hasColumn("linkedin_url") && (
+                  <TableCell>
+                    {contact.linkedin_url ? (
+                      <a
+                        href={`https://${contact.linkedin_url.replace(/^https?:\/\//, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-sky-300 hover:text-sky-200"
+                      >
+                        Open
+                      </a>
+                    ) : (
+                      "-"
+                    )}
+                  </TableCell>
                 )}
-
-                <Link
-                  href={`/dashboard/sales/contacts/${c.contact_id}`}
-                  className="text-xs font-medium uppercase tracking-wide text-zinc-500 hover:text-zinc-200"
-                >
-                  Open
-                </Link>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
+                <TableCell className="text-right">
+                  <Link
+                    href={`/dashboard/sales/contacts/${contact.contact_id}`}
+                    className="text-xs font-medium uppercase tracking-wide text-neutral-400 hover:text-neutral-100"
+                  >
+                    Open
+                  </Link>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </ModuleTableShell>
   );
 }

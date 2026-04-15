@@ -8,6 +8,7 @@ from app.core.security import require_user
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.schema import (
     SalesOpportunityCreate,
+    SalesOpportunityListItem,
     SalesOpportunityListResponse,
     SalesOpportunityResponse,
     SalesOpportunityUpdate,
@@ -25,13 +26,57 @@ from app.modules.sales.services.opportunities_services import (
 
 router = APIRouter(prefix="/opportunities", tags=["Sales"])
 
+OPPORTUNITY_LIST_FIELDS = {
+    "opportunity_name",
+    "client",
+    "sales_stage",
+    "expected_close_date",
+    "total_cost_of_project",
+    "currency_type",
+    "created_time",
+}
+
 
 def _serialize_opportunity(opportunity) -> dict:
     return SalesOpportunityResponse.model_validate(opportunity).model_dump(mode="json")
 
 
+def _parse_list_fields(raw_fields: str | None) -> set[str]:
+    if not raw_fields:
+        return OPPORTUNITY_LIST_FIELDS
+    requested = {field.strip() for field in raw_fields.split(",") if field.strip()}
+    valid = requested & OPPORTUNITY_LIST_FIELDS
+    return valid or OPPORTUNITY_LIST_FIELDS
+
+
+def _serialize_opportunity_list_item(opportunity, fields: set[str]) -> SalesOpportunityListItem:
+    safe_fields = set(fields)
+    safe_fields.update(
+        {
+            "assigned_to",
+            "contact_id",
+            "organization_id",
+            "start_date",
+            "campaign_type",
+            "total_leads",
+            "cpl",
+            "target_geography",
+            "target_audience",
+            "domain_cap",
+            "tactics",
+            "delivery_format",
+            "attachments",
+        }
+    )
+    payload = {"opportunity_id": opportunity.opportunity_id}
+    for field in safe_fields:
+        payload[field] = getattr(opportunity, field, None)
+    return SalesOpportunityListItem.model_validate(payload)
+
+
 @router.get("", response_model=SalesOpportunityListResponse)
 def list_sales_opportunities(
+    fields: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
@@ -39,13 +84,15 @@ def list_sales_opportunities(
     require_permission = Depends(require_action_access("sales_opportunities", "view")),
 ):
     items, total_count = list_opportunities(db, pagination)
-    serialized = [SalesOpportunityResponse.model_validate(item) for item in items]
+    selected_fields = _parse_list_fields(fields)
+    serialized = [_serialize_opportunity_list_item(item, selected_fields) for item in items]
     return build_paged_response(serialized, total_count, pagination)
 
 
 @router.get("/search", response_model=SalesOpportunityListResponse)
 def search_sales_opportunities(
     query: str = Query(..., min_length=1, description="Search by opportunity fields"),
+    fields: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
@@ -53,7 +100,8 @@ def search_sales_opportunities(
     require_permission = Depends(require_action_access("sales_opportunities", "view")),
 ):
     items, total_count = list_opportunities(db, pagination, search=query)
-    serialized = [SalesOpportunityResponse.model_validate(item) for item in items]
+    selected_fields = _parse_list_fields(fields)
+    serialized = [_serialize_opportunity_list_item(item, selected_fields) for item in items]
     return build_paged_response(serialized, total_count, pagination)
 
 

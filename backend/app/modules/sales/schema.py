@@ -53,8 +53,19 @@ class SalesOrganizationResponse(SalesOrganizationBase):
     model_config = ConfigDict(from_attributes=True)
 
 
+class SalesOrganizationListItem(BaseModel):
+    org_id: int
+    org_name: str | None = None
+    primary_email: str | None = None
+    website: str | None = None
+    primary_phone: str | None = None
+    industry: str | None = None
+    annual_revenue: str | None = None
+    billing_country: str | None = None
+
+
 class SalesOrganizationListResponse(BaseModel):
-    results: list[SalesOrganizationResponse]
+    results: list[SalesOrganizationListItem]
     range_start: int
     range_end: int
     total_count: int
@@ -100,12 +111,28 @@ class SalesContactResponse(SalesContactBase):
     primary_email: EmailStr
     assigned_to: int
     created_time: datetime
+    organization_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)
 
 
+class SalesContactListItem(BaseModel):
+    contact_id: int
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    primary_email: EmailStr | None = None
+    linkedin_url: Optional[str] = None
+    current_title: Optional[str] = None
+    region: Optional[str] = None
+    country: Optional[str] = None
+    organization_id: Optional[int] = None
+    organization_name: Optional[str] = None
+    assigned_to: Optional[int] = None
+    created_time: datetime | None = None
+
+
 class SalesContactListResponse(BaseModel):
-    results: list[SalesContactResponse]
+    results: list[SalesContactListItem]
     range_start: int
     range_end: int
     total_count: int
@@ -174,7 +201,7 @@ class SalesContactImportSummary(BaseModel):
 
 class SalesOpportunityBase(BaseModel):
     opportunity_name: str
-    client: str
+    client: str | None = None
     sales_stage: str | None = None
     contact_id: int | None = None
     organization_id: int | None = None
@@ -213,7 +240,7 @@ class SalesOpportunityBase(BaseModel):
 
 
 class SalesOpportunityCreate(SalesOpportunityBase):
-    pass
+    client: str | None = None
 
 
 class SalesOpportunityUpdate(BaseModel):
@@ -243,10 +270,34 @@ class SalesOpportunityResponse(SalesOpportunityBase):
     created_time: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
-    
 
+
+class SalesOpportunityListItem(BaseModel):
+    opportunity_id: int
+    opportunity_name: str | None = None
+    client: str | None = None
+    sales_stage: str | None = None
+    expected_close_date: date | None = None
+    total_cost_of_project: str | None = None
+    currency_type: str | None = None
+    created_time: datetime | None = None
+    assigned_to: int | None = None
+    contact_id: int | None = None
+    organization_id: int | None = None
+    start_date: date | None = None
+    campaign_type: str | None = None
+    total_leads: str | None = None
+    cpl: str | None = None
+    target_geography: str | None = None
+    target_audience: str | None = None
+    domain_cap: str | None = None
+    tactics: str | None = None
+    delivery_format: str | None = None
+    attachments: list[str] | None = None
+
+    
 class SalesOpportunityListResponse(BaseModel):
-    results: list[SalesOpportunityResponse]
+    results: list[SalesOpportunityListItem]
     range_start: int
     range_end: int
     total_count: int

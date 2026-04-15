@@ -5,6 +5,8 @@ import io
 import zipfile
 from collections.abc import Iterable, Sequence
 
+from fastapi.responses import StreamingResponse
+
 
 def dict_rows_to_csv_bytes(*, headers: Sequence[str], rows: Iterable[dict]) -> bytes:
     output = io.StringIO()
@@ -41,3 +43,16 @@ def batched_csv_zip_bytes(
             total_rows += len(batch)
 
     return buffer.getvalue(), {"batches": batch_no if total_rows else 0, "rows": total_rows}
+
+
+def bytes_download_response(
+    *,
+    content: bytes,
+    filename: str,
+    media_type: str,
+    extra_headers: dict[str, str] | None = None,
+) -> StreamingResponse:
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    if extra_headers:
+        headers.update(extra_headers)
+    return StreamingResponse(io.BytesIO(content), media_type=media_type, headers=headers)

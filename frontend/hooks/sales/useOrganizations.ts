@@ -16,6 +16,7 @@ export type Organization = {
   secondary_phone?: string;
   industry?: string;
   annual_revenue?: string;
+  billing_country?: string;
 };
 
 export type OrganizationsResponse = {
@@ -30,7 +31,8 @@ export type OrganizationsResponse = {
 async function fetchOrganizations(
   page: number,
   pageSize: number,
-  searchTerm: string
+  searchTerm: string,
+  visibleColumns: string[],
 ): Promise<OrganizationsResponse> {
   const params = new URLSearchParams({
     page: String(page),
@@ -39,6 +41,9 @@ async function fetchOrganizations(
 
   if (searchTerm.trim()) {
     params.append("search", searchTerm.trim());
+  }
+  if (visibleColumns.length) {
+    params.append("fields", visibleColumns.join(","));
   }
 
   const res = await apiFetch(`/sales/organizations?${params.toString()}`);
@@ -54,7 +59,11 @@ function getErrorMessage(error: unknown) {
   return "Failed to load organizations";
 }
 
-export function useOrganizations(initialPage = 1, initialPageSize = 10) {
+export function useOrganizations(
+  visibleColumns: string[],
+  initialPage = 1,
+  initialPageSize = 10,
+) {
   const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSizeState] = useState(initialPageSize);
   const [searchTerm, setSearchTermState] = useState("");
@@ -64,8 +73,8 @@ export function useOrganizations(initialPage = 1, initialPageSize = 10) {
   const deferredSearchTerm = useDeferredValue(searchTerm);
 
   const query = useQuery({
-    queryKey: ["sales-organizations", page, pageSize, deferredSearchTerm],
-    queryFn: () => fetchOrganizations(page, pageSize, deferredSearchTerm),
+    queryKey: ["sales-organizations", page, pageSize, deferredSearchTerm, visibleColumns],
+    queryFn: () => fetchOrganizations(page, pageSize, deferredSearchTerm, visibleColumns),
     placeholderData: keepPreviousData,
   });
 

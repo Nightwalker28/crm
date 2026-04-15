@@ -7,7 +7,13 @@ from app.core.module_csv import require_csv_headers, rows_from_csv_bytes
 from app.core.module_export import batched_csv_zip_bytes, dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
-from app.modules.platform.services.custom_fields import save_custom_field_values, validate_custom_field_payload
+from app.modules.platform.services.custom_fields import (
+    hydrate_custom_field_record,
+    hydrate_custom_field_records,
+    load_custom_field_values_with_fallback,
+    save_custom_field_values,
+    validate_custom_field_payload,
+)
 from app.modules.sales.models import SalesOrganization
 from app.modules.sales.schema import SalesOrganizationCreate, SalesOrganizationUpdate
 
@@ -26,7 +32,7 @@ def _apply_org_payload(organization: SalesOrganization, payload: SalesOrganizati
     organization.billing_state = payload.billing_state
     organization.billing_postal_code = payload.billing_postal_code
     organization.billing_country = payload.billing_country
-    organization.custom_data = payload.custom_fields
+    organization.custom_data = payload.custom_fields or None
     if current_user:
         organization.assigned_to = current_user.id
 
@@ -65,12 +71,29 @@ def create_organization(
     )
     if existing and not create_new_records:
         if skip_duplicates:
-            return existing
+            return hydrate_custom_field_record(
+                db,
+                module_key="sales_organizations",
+                record=existing,
+                record_id=existing.org_id,
+            )
         if replace_duplicates:
             _apply_org_payload(existing, payload, current_user)
             db.commit()
             db.refresh(existing)
-            return existing
+            save_custom_field_values(
+                db,
+                module_key="sales_organizations",
+                record_id=existing.org_id,
+                values=existing.custom_data or {},
+            )
+            db.commit()
+            return hydrate_custom_field_record(
+                db,
+                module_key="sales_organizations",
+                record=existing,
+                record_id=existing.org_id,
+            )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -92,7 +115,12 @@ def create_organization(
         db.refresh(organization)
         save_custom_field_values(db, module_key="sales_organizations", record_id=organization.org_id, values=organization.custom_data or {})
         db.commit()
-        return organization
+        return hydrate_custom_field_record(
+            db,
+            module_key="sales_organizations",
+            record=organization,
+            record_id=organization.org_id,
+        )
     except Exception as e:
         # If DB commit fails undo all the changes made in the transaction and restore the state 
         db.rollback()
@@ -100,12 +128,18 @@ def create_organization(
 
 def list_organizations(db: Session) -> list[SalesOrganization]:
     """Return all organizations sorted by creation time (newest first)."""
-    return (
+    organizations = (
         # SELECT * FROM sales_organizations ORDER BY created_time DESC
         db.query(SalesOrganization)
         .filter(SalesOrganization.deleted_at.is_(None))
         .order_by(SalesOrganization.created_time.desc())
         .all()
+    )
+    return hydrate_custom_field_records(
+        db,
+        module_key="sales_organizations",
+        records=organizations,
+        record_id_attr="org_id",
     )
 
 def list_organizations_paginated(db: Session, offset: int, limit: int) -> tuple[list[SalesOrganization], int]:
@@ -118,6 +152,12 @@ def list_organizations_paginated(db: Session, offset: int, limit: int) -> tuple[
         .offset(offset)
         .limit(limit)
         .all()
+    )
+    items = hydrate_custom_field_records(
+        db,
+        module_key="sales_organizations",
+        records=items,
+        record_id_attr="org_id",
     )
     return items, total
 
@@ -144,6 +184,12 @@ def search_organizations_pagianted(db: Session, name: str, offset: int, limit: i
         .limit(limit)
         .all()
     )
+    items = hydrate_custom_field_records(
+        db,
+        module_key="sales_organizations",
+        records=items,
+        record_id_attr="org_id",
+    )
     return items, total
 
 
@@ -152,7 +198,15 @@ def get_organization(db: Session, org_id: int, *, include_deleted: bool = False)
     query = db.query(SalesOrganization).filter(SalesOrganization.org_id == org_id)
     if not include_deleted:
         query = query.filter(SalesOrganization.deleted_at.is_(None))
-    return query.first()
+    organization = query.first()
+    if not organization:
+        return None
+    return hydrate_custom_field_record(
+        db,
+        module_key="sales_organizations",
+        record=organization,
+        record_id=organization.org_id,
+    )
 
 
 def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpdate) -> SalesOrganization | None:
@@ -167,7 +221,12 @@ def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpda
             db,
             module_key="sales_organizations",
             payload=data.pop("custom_fields"),
-            existing=organization.custom_data or {},
+            existing=load_custom_field_values_with_fallback(
+                db,
+                module_key="sales_organizations",
+                record_id=organization.org_id,
+                fallback=organization.custom_data,
+            ),
         )
 
     for field, value in data.items():
@@ -177,7 +236,12 @@ def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpda
     db.refresh(organization)
     save_custom_field_values(db, module_key="sales_organizations", record_id=organization.org_id, values=organization.custom_data or {})
     db.commit()
-    return organization
+    return hydrate_custom_field_record(
+        db,
+        module_key="sales_organizations",
+        record=organization,
+        record_id=organization.org_id,
+    )
 
 
 def delete_organization(db: Session, org_id: int) -> bool:
@@ -202,6 +266,12 @@ def list_deleted_organizations_paginated(db: Session, offset: int, limit: int) -
         .limit(limit)
         .all()
     )
+    items = hydrate_custom_field_records(
+        db,
+        module_key="sales_organizations",
+        records=items,
+        record_id_attr="org_id",
+    )
     return items, total
 
 
@@ -214,7 +284,12 @@ def restore_organization(db: Session, org_id: int) -> SalesOrganization | None:
     db.add(organization)
     db.commit()
     db.refresh(organization)
-    return organization
+    return hydrate_custom_field_record(
+        db,
+        module_key="sales_organizations",
+        record=organization,
+        record_id=organization.org_id,
+    )
 
 
 REQUIRED_IMPORT_FIELDS = {

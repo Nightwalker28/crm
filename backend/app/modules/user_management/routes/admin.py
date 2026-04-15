@@ -6,6 +6,8 @@ from app.core.pagination import Pagination, get_pagination
 from app.modules.user_management.schema import (
     AdminCreateUserRequest,
     AdminCreateUserResponse,
+    ModuleSchema,
+    ModuleUpdateRequest,
     DepartmentCreateRequest,
     DepartmentSchema,
     DepartmentUpdateRequest,
@@ -20,21 +22,56 @@ from app.modules.user_management.schema import (
     TeamUpdateRequest,
     UpdateUserRequest,
     UserListResponse,
+    UserListItem,
     UserProfile,
     UserUpdateOptions,
 )
-from app.modules.user_management.services import admin_structure, admin_users, role_permissions
+from app.modules.user_management.services import admin_modules, admin_structure, admin_users, role_permissions
 from typing import Optional
 
 router = APIRouter(prefix="/admin/users", tags=["Admin Users"])
 
+USER_LIST_FIELDS = {
+    "first_name",
+    "last_name",
+    "email",
+    "team_id",
+    "role_id",
+    "team_name",
+    "role_name",
+    "photo_url",
+    "auth_mode",
+    "is_active",
+}
+
+
+def _parse_list_fields(raw_fields: str | None) -> set[str]:
+    if not raw_fields:
+        return USER_LIST_FIELDS
+    requested = {field.strip() for field in raw_fields.split(",") if field.strip()}
+    valid = requested & USER_LIST_FIELDS
+    return valid or USER_LIST_FIELDS
+
+
+def _serialize_user_list_item(user, fields: set[str]) -> UserListItem:
+    safe_fields = set(fields)
+    safe_fields.update({"team_name", "first_name", "last_name", "email", "team_id", "role_id", "role_name", "auth_mode", "is_active", "photo_url"})
+    payload = {"id": user.id}
+    for field in safe_fields:
+        payload[field] = getattr(user, field, None)
+    return UserListItem.model_validate(payload)
+
 @router.get("", response_model=UserListResponse)
 def list_all_users(
+    fields: Optional[str] = Query(None),
     pagination: Pagination = Depends(get_pagination), 
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_users.list_all_users(db, pagination)
+    response = admin_users.list_all_users(db, pagination)
+    selected_fields = _parse_list_fields(fields)
+    response["results"] = [_serialize_user_list_item(user, selected_fields) for user in response["results"]]
+    return response
 
 @router.get("/search", response_model=UserListResponse)
 def search_users(
@@ -44,11 +81,12 @@ def search_users(
     status: Optional[str] = Query(None),
     sort_by: str = Query("name"),
     sort_order: str = Query("asc"),
+    fields: Optional[str] = Query(None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_users.search_users(
+    response = admin_users.search_users(
         db,
         pagination=pagination,
         q=q,
@@ -58,6 +96,9 @@ def search_users(
         sort_by=sort_by,
         sort_order=sort_order,
     )
+    selected_fields = _parse_list_fields(fields)
+    response["results"] = [_serialize_user_list_item(user, selected_fields) for user in response["results"]]
+    return response
 
 @router.get("/options", response_model=UserUpdateOptions)
 def list_user_update_options(
@@ -65,6 +106,24 @@ def list_user_update_options(
     admin = Depends(require_admin),
 ):
     return admin_users.list_user_update_options(db)
+
+
+@router.get("/modules", response_model=list[ModuleSchema])
+def list_modules(
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return admin_modules.list_modules(db)
+
+
+@router.put("/modules/{module_id}", response_model=ModuleSchema)
+def update_module(
+    module_id: int,
+    payload: ModuleUpdateRequest,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return admin_modules.update_module(db, module_id, payload)
 
 
 @router.get("/roles/permissions", response_model=RolePermissionOverviewResponse)

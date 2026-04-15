@@ -82,6 +82,7 @@ async function fetchInsertionOrders(
   pageSize: number,
   searchTerm: string,
   statusFilter: string,
+  visibleColumns: string[],
 ): Promise<InsertionOrdersResponse> {
   const params = new URLSearchParams({
     page: String(page),
@@ -94,6 +95,9 @@ async function fetchInsertionOrders(
 
   if (statusFilter !== "all") {
     params.set("status", statusFilter);
+  }
+  if (visibleColumns.length) {
+    params.set("fields", visibleColumns.join(","));
   }
 
   const res = await apiFetch(`/finance/insertion-orders?${params.toString()}`);
@@ -152,7 +156,7 @@ function getErrorMessage(error: unknown) {
   return DEFAULT_ERROR;
 }
 
-export function useInsertionOrders(initialPage = 1, initialPageSize = 10) {
+export function useInsertionOrders(visibleColumns: string[], initialPage = 1, initialPageSize = 10) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState(initialPageSize);
@@ -163,8 +167,8 @@ export function useInsertionOrders(initialPage = 1, initialPageSize = 10) {
   const deferredStatusFilter = useDeferredValue(statusFilter);
 
   const query = useQuery<InsertionOrdersResponse>({
-    queryKey: ["insertion-orders", page, pageSize, deferredSearchTerm, deferredStatusFilter],
-    queryFn: () => fetchInsertionOrders(page, pageSize, deferredSearchTerm, deferredStatusFilter),
+    queryKey: ["insertion-orders", page, pageSize, deferredSearchTerm, deferredStatusFilter, visibleColumns],
+    queryFn: () => fetchInsertionOrders(page, pageSize, deferredSearchTerm, deferredStatusFilter, visibleColumns),
     placeholderData: (previousData) => previousData,
     refetchOnWindowFocus: false,
   });

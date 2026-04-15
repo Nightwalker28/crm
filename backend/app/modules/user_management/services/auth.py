@@ -338,6 +338,7 @@ def get_department_modules(department_id: int | None, db: Session) -> list[Modul
         db.query(Module)
         .join(DepartmentModulePermission, DepartmentModulePermission.module_id == Module.id)
         .filter(DepartmentModulePermission.department_id == department_id)
+        .filter(Module.is_enabled == 1)
         .order_by(Module.name.asc())
         .all()
     )

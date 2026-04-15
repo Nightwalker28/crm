@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, ForeignKey, JSON, Text, func, TIMESTAMP
+from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, ForeignKey, Text, func, TIMESTAMP
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import expression
 
@@ -32,7 +32,6 @@ class SalesOrganization(Base):
         server_default=func.now(),
     )
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
-    custom_data = Column(JSON, nullable=True)
 
     billing_address = Column(Text, nullable=True)
     billing_city = Column(Text, nullable=True)
@@ -41,8 +40,20 @@ class SalesOrganization(Base):
     billing_country = Column(Text, nullable=True)
 
     @property
+    def custom_data(self) -> dict | None:
+        return getattr(self, "_custom_field_cache", None)
+
+    @custom_data.setter
+    def custom_data(self, value: dict | None) -> None:
+        self._custom_field_cache = value or None
+
+    @property
     def custom_fields(self) -> dict | None:
         return self.custom_data
+
+    @custom_fields.setter
+    def custom_fields(self, value: dict | None) -> None:
+        self.custom_data = value
 
 # contacts model
 
@@ -71,13 +82,29 @@ class SalesContact(Base):
     )
     created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
-    custom_data = Column(JSON, nullable=True)
 
     assigned_user = relationship("User", lazy="joined")
+    organization = relationship("SalesOrganization", lazy="joined")
+
+    @property
+    def custom_data(self) -> dict | None:
+        return getattr(self, "_custom_field_cache", None)
+
+    @custom_data.setter
+    def custom_data(self, value: dict | None) -> None:
+        self._custom_field_cache = value or None
 
     @property
     def custom_fields(self) -> dict | None:
         return self.custom_data
+
+    @custom_fields.setter
+    def custom_fields(self, value: dict | None) -> None:
+        self.custom_data = value
+
+    @property
+    def organization_name(self) -> str | None:
+        return self.organization.org_name if self.organization else None
 
 
 class SalesOpportunity(Base):
@@ -123,12 +150,23 @@ class SalesOpportunity(Base):
         server_default=func.now(),
     )
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
-    custom_data = Column(JSON, nullable=True)
 
     contact = relationship("SalesContact", lazy="joined")
     organization = relationship("SalesOrganization", lazy="joined")
     assigned_user = relationship("User", lazy="joined")
 
     @property
+    def custom_data(self) -> dict | None:
+        return getattr(self, "_custom_field_cache", None)
+
+    @custom_data.setter
+    def custom_data(self, value: dict | None) -> None:
+        self._custom_field_cache = value or None
+
+    @property
     def custom_fields(self) -> dict | None:
         return self.custom_data
+
+    @custom_fields.setter
+    def custom_fields(self, value: dict | None) -> None:
+        self.custom_data = value

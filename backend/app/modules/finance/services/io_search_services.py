@@ -1,5 +1,4 @@
 from __future__ import annotations
-import json
 import os
 import re
 
@@ -9,17 +8,24 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, IO
 
-from dateutil import parser
 from docx import Document
 import pdfplumber
-from sqlalchemy import extract, func, literal, or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
-from app.core.postgres_search import TRIGRAM_SIMILARITY_THRESHOLD
+from app.core.module_search import apply_ranked_search
+from app.core.postgres_search import searchable_text
 from app.modules.finance.models import FinanceIO
-from app.modules.platform.services.custom_fields import save_custom_field_values, validate_custom_field_payload
+from app.modules.platform.services.custom_fields import (
+    hydrate_custom_field_record,
+    hydrate_custom_field_records,
+    load_custom_field_values_with_fallback,
+    save_custom_field_values,
+    validate_custom_field_payload,
+)
 from app.modules.sales.models import SalesContact, SalesOrganization
-from app.modules.user_management.models import Module, User
+from app.modules.user_management.services.profile import get_company_operating_currencies
+from app.modules.user_management.models import Module
 
 # Single folder override via env
 IO_SEARCH_UPLOAD_DIR = Path(os.environ["IO_SEARCH_UPLOAD_DIR"]).resolve()
@@ -30,45 +36,6 @@ DEFAULT_MODULE_ID = 2
 FINANCE_MODULE_KEY = "finance_io"
 DEFAULT_IO_STATUS = "draft"
 DEFAULT_IO_CURRENCY = "USD"
-
-# Mapping from the DOCX table labels to DB column names
-FIELD_MAP = {
-    "Agency / Client Name": "client_name",
-    "Campaign Name": "campaign_name",
-    "Start Date": "start_date",
-    "End Date": "end_date",
-    "Campaign Type": "campaign_type",
-    "Total Leads": "total_leads",
-    "Seniority Split": "seniority_split",
-    "CPL": "cpl",
-    "Total Cost of Project": "total_cost_of_project",
-    "Target Persona": "target_persona",
-    "Targeting": "target_persona",
-    "Domain Cap": "domain_cap",
-    "Target Geography": "target_geography",
-    "Delivery Format": "delivery_format",
-    "Account Manager": "account_manager",
-}
-
-TEXT_SEARCHABLE_FIELDS = {
-    "file_name",
-    "client_name",
-    "campaign_name",
-    "campaign_type",
-    "total_leads",
-    "seniority_split",
-    "cpl",
-    "total_cost_of_project",
-    "target_persona",
-    "domain_cap",
-    "target_geography",
-    "delivery_format",
-    "account_manager",
-}
-
-DATE_FIELDS = {"start_date", "end_date"}
-QUARTER_SEARCH_FIELD = "quarter"
-REQUIRED_RECORD_FIELDS = {"Agency / Client Name", "Campaign Name"}
 
 MONTH_ALIASES: dict[str, int] = {
     "jan": 1,
@@ -96,25 +63,6 @@ MONTH_ALIASES: dict[str, int] = {
     "dec": 12,
     "december": 12,
 }
-
-FinanceSearchRow = tuple[
-    str | None,  # io_number
-    str,  # file_name
-    str | None,  # file_path
-    str,  # campaign_name
-    datetime,  # updated_at
-    int | None,  # user_id
-    str | None,  # first_name
-    str | None,  # last_name
-    str | None,  # photo_url
-    str | None,  # client_name
-    str | None,  # cpl
-    date | None,  # start_date
-    date | None,  # end_date
-    str | None,  # campaign_type
-    str | None,  # account_manager
-    str | None,  # total_leads
-]
 
 IO_NUMBER_PREFIX = "IOAI"
 IO_NUMBER_PAD = 5
@@ -150,16 +98,6 @@ def sanitize_file_name(file_name: str) -> str:
     sanitized_stem = re.sub(r"\s+", "-", stem.strip())
     return f"{sanitized_stem}{suffix}"
 
-def _safe_remove_file(path_str: str) -> None:
-    """Best-effort removal of a file, ignoring any errors."""
-    try:
-        path = Path(path_str)
-        if path.is_file():
-            path.unlink()
-    except Exception:
-        pass
-
-
 def _parse_decimal(value: Any) -> Decimal | None:
     if value is None:
         return None
@@ -190,24 +128,6 @@ def _date_to_iso(value: date | datetime | None) -> str | None:
     if isinstance(value, datetime):
         return value.date().isoformat()
     return value.isoformat()
-
-
-def _legacy_payload_for_record(raw: dict[str, Any]) -> str:
-    legacy_data = {
-        "client_name": raw.get("client_name"),
-        "campaign_name": raw.get("campaign_name"),
-        "campaign_type": raw.get("campaign_type"),
-        "total_leads": raw.get("total_leads"),
-        "seniority_split": raw.get("seniority_split"),
-        "cpl": raw.get("cpl"),
-        "total_cost_of_project": raw.get("total_cost_of_project"),
-        "target_persona": raw.get("target_persona"),
-        "domain_cap": raw.get("domain_cap"),
-        "target_geography": raw.get("target_geography"),
-        "delivery_format": raw.get("delivery_format"),
-        "account_manager": raw.get("account_manager"),
-    }
-    return json.dumps({k: v for k, v in legacy_data.items() if v is not None})
 
 
 def _finance_record_customer_name(record: FinanceIO) -> str:
@@ -242,6 +162,14 @@ def _finance_record_status(record: FinanceIO) -> str:
 
 def _finance_record_currency(record: FinanceIO) -> str:
     return _normalize_text(record.currency) or DEFAULT_IO_CURRENCY
+
+
+def _normalize_allowed_currency(db: Session, currency: str | None) -> str:
+    allowed = get_company_operating_currencies(db)
+    normalized = (_normalize_text(currency) or allowed[0]).upper()
+    if normalized not in allowed:
+        raise ValueError(f"Currency must be one of: {', '.join(allowed)}")
+    return normalized
 
 
 def _finance_record_total(record: FinanceIO) -> Decimal | None:
@@ -649,403 +577,6 @@ def parse_human_date(value: str) -> datetime.date | None:
     return None
 
 
-def get_quarter_from_date(date_value: date | datetime | None) -> str | None:
-    """Return the quarter label (e.g. 'Q1 2025') for a given date or datetime."""
-    if not date_value:
-        return None
-
-    quarter_number = ((date_value.month - 1) // 3) + 1
-    return f"Q{quarter_number} {date_value.year}"
-
-
-def get_quarter_from_date_string(date_string: str) -> str | None:
-    """
-    Return the quarter label (e.g. 'Q1 2025') for a given date string.
-
-    Accepts flexible inputs like '1 Sept 2025' or 'Sept 2025'.
-    Returns None when the date cannot be parsed.
-    """
-    try:
-        parsed_date = parser.parse(date_string, fuzzy=True)
-        return get_quarter_from_date(parsed_date)
-    except ValueError:
-        return None
-    except Exception as exc:
-        return f"error while processing the Quarter {exc}"
-
-
-def persist_records_to_db(
-    db: Session,
-    records: list[dict[str, Any]],
-    module_id: int = DEFAULT_MODULE_ID,
-    user_id: int | None = None,
-    force_insert: bool = False,
-    replace_duplicates: bool = False,
-) -> dict[str, Any]:
-    """
-    Insert or update finance IO records for a given module_id.
-    Uses (module_id, user_id, campaign_name) as the natural key to decide whether to update or insert.
-    When force_insert is True, always creates new rows even if a matching campaign_name exists.
-    When replace_duplicates is True, updates existing rows for the module regardless of user_id ownership.
-    Optionally stamps records with the uploading user's id.
-
-    Returns a summary with counts and skipped duplicates (kept for compatibility).
-    """
-    inserted = 0
-    updated = 0
-    skipped_duplicates: list[tuple[str, str]] = []
-    next_io_sequence: int | None = None
-
-    for raw in records:
-        file_name = raw.get("file_name")
-        if not file_name:
-            continue
-
-        file_path = raw.get("file_path")
-
-        # Skip records that are missing required table fields to avoid DB NOT NULL failures.
-        missing_required = [label for label in REQUIRED_RECORD_FIELDS if not raw.get(label)]
-        if missing_required:
-            continue
-
-        payload: dict[str, Any] = {
-            "module_id": module_id,
-            "file_name": file_name,
-            "status": "imported",
-            "currency": DEFAULT_IO_CURRENCY,
-        }
-
-        if file_path:
-            payload["file_path"] = file_path
-
-        if user_id is not None:
-            payload["user_id"] = user_id
-
-        for source_label, column_name in FIELD_MAP.items():
-            value = raw.get(source_label)
-
-            if column_name == "target_persona":
-                # Prefer the first non-empty value among Target Persona/Targeting
-                existing = payload.get(column_name)
-                candidate = value.strip() if isinstance(value, str) else value
-                if existing:
-                    continue
-                if candidate is None or candidate == "":
-                    continue
-                payload[column_name] = candidate
-                continue
-
-            if column_name in {"start_date", "end_date"}:
-                payload[column_name] = parse_human_date(value) if isinstance(value, str) else None
-            else:
-                payload[column_name] = value
-
-        payload["customer_name"] = _normalize_text(payload.get("client_name")) or _normalize_text(payload.get("campaign_name"))
-        payload["counterparty_reference"] = _normalize_text(payload.get("campaign_name"))
-        payload["external_reference"] = _normalize_text(file_name)
-        payload["issue_date"] = payload.get("start_date") or datetime.utcnow().date()
-        payload["effective_date"] = payload.get("start_date")
-        payload["due_date"] = payload.get("end_date")
-        payload["total_amount"] = _parse_decimal(payload.get("total_cost_of_project"))
-        payload["legacy_payload"] = _legacy_payload_for_record(payload)
-        payload["notes"] = "Imported from the legacy insertion order workflow."
-
-        existing = None
-        if not force_insert:
-            filters = [FinanceIO.module_id == module_id, FinanceIO.deleted_at.is_(None)]
-            if not replace_duplicates:
-                if user_id is not None:
-                    filters.append(FinanceIO.user_id == user_id)
-                else:
-                    filters.append(FinanceIO.user_id.is_(None))
-
-            if payload.get("campaign_name"):
-                filters.append(FinanceIO.campaign_name == payload["campaign_name"])
-            else:
-                # Fallback to file_name when campaign_name is missing
-                filters.append(FinanceIO.file_name == file_name)
-
-            existing = db.query(FinanceIO).filter(*filters).first()
-
-        if existing and not force_insert:
-            if replace_duplicates:
-                old_path = getattr(existing, "file_path", None)
-                new_path = payload.get("file_path")
-                if old_path and new_path and old_path != new_path:
-                    _safe_remove_file(old_path)
-
-            # Ensure existing rows get an io_number if missing
-            if not getattr(existing, "io_number", None):
-                if next_io_sequence is None:
-                    next_io_sequence = _get_max_io_sequence(db)
-                next_io_sequence += 1
-                existing.io_number = f"{IO_NUMBER_PREFIX}{next_io_sequence:0{IO_NUMBER_PAD}d}"
-
-            for field, value in payload.items():
-                setattr(existing, field, value)
-            db.add(existing)
-            updated += 1
-        else:
-            if next_io_sequence is None:
-                next_io_sequence = _get_max_io_sequence(db)
-            next_io_sequence += 1
-            payload["io_number"] = f"{IO_NUMBER_PREFIX}{next_io_sequence:0{IO_NUMBER_PAD}d}"
-            db.add(FinanceIO(**payload))
-            inserted += 1
-
-    db.commit()
-
-    return {
-        "inserted": inserted,
-        "updated": updated,
-        "skipped_duplicates": skipped_duplicates,
-    }
-
-
-def search_finance_io(
-    db: Session,
-    field: str,
-    value: str,
-    module_id: int = DEFAULT_MODULE_ID,
-    user_id: int | None = None,
-    limit: int | None = None,
-    offset: int | None = None,
-    return_total: bool = False,
-) -> list[FinanceSearchRow] | tuple[list[FinanceSearchRow], int]:
-    """
-    Search finance_io by a single column and return matching file names with updated timestamps.
-    Text fields use case-insensitive substring match; date fields require exact date.
-    """
-    allowed_fields = TEXT_SEARCHABLE_FIELDS | DATE_FIELDS | {QUARTER_SEARCH_FIELD}
-    if field not in allowed_fields:
-        raise ValueError("Unsupported search field")
-
-    def _rows_to_results(rows):
-        return [
-            (
-                row.io_number,
-                row.file_name,
-                row.file_path,
-                row.campaign_name,
-                row.updated_at,
-                row.user_id,
-                row.first_name,
-                row.last_name,
-                row.photo_url,
-                row.client_name,
-                row.cpl,
-                row.start_date,
-                row.end_date,
-                row.campaign_type,
-                row.account_manager,
-                row.total_leads,
-            )
-            for row in rows
-        ]
-
-    base_query = (
-        db.query(
-            FinanceIO.io_number,
-            FinanceIO.file_name,
-            FinanceIO.file_path,
-            FinanceIO.campaign_name,
-            FinanceIO.updated_at,
-            FinanceIO.user_id,
-            User.first_name,
-            User.last_name,
-            User.photo_url,
-            FinanceIO.client_name,
-            FinanceIO.cpl,
-            FinanceIO.start_date,
-            FinanceIO.end_date,
-            FinanceIO.campaign_type,
-            FinanceIO.account_manager,
-            FinanceIO.total_leads,
-        )
-        .outerjoin(User, FinanceIO.user_id == User.id)
-        .filter(
-            FinanceIO.module_id == module_id,
-            FinanceIO.deleted_at.is_(None),
-        )
-    )
-
-    if user_id is not None:
-        base_query = base_query.filter(FinanceIO.user_id == user_id)
-
-    if field == QUARTER_SEARCH_FIELD:
-        normalized_value = value.strip().upper()
-        match = re.match(r"Q([1-4])(?:\s+(\d{4}))?$", normalized_value)
-        if not match:
-            return ([], 0) if return_total else []
-
-        quarter_num = int(match.group(1))
-        year_filter = int(match.group(2)) if match.group(2) else None
-        quarter_months = {
-            1: (1, 3),
-            2: (4, 6),
-            3: (7, 9),
-            4: (10, 12),
-        }
-        start_month, end_month = quarter_months[quarter_num]
-
-        base_query = base_query.filter(
-            FinanceIO.start_date.isnot(None),
-            extract("month", FinanceIO.start_date) >= start_month,
-            extract("month", FinanceIO.start_date) <= end_month,
-        )
-        if year_filter:
-            base_query = base_query.filter(extract("year", FinanceIO.start_date) == year_filter)
-
-        query = base_query.distinct().order_by(FinanceIO.updated_at.desc())
-        rows = query.all()
-
-        filtered_rows = []
-        expected_prefix = f"Q{quarter_num}" if not year_filter else f"Q{quarter_num} {year_filter}"
-        for row in rows:
-            if not row.start_date:
-                continue
-            quarter_label = get_quarter_from_date(row.start_date)
-            if not quarter_label:
-                continue
-
-            quarter_label_upper = quarter_label.upper()
-            if year_filter:
-                if quarter_label_upper == expected_prefix:
-                    filtered_rows.append(row)
-            else:
-                if quarter_label_upper.startswith(expected_prefix):
-                    filtered_rows.append(row)
-
-        total_count = len(filtered_rows) if return_total else None
-
-        if offset is not None:
-            filtered_rows = filtered_rows[offset:]
-        if limit is not None:
-            filtered_rows = filtered_rows[:limit]
-
-        results = _rows_to_results(filtered_rows)
-        return (results, total_count) if return_total else results
-
-    column = getattr(FinanceIO, field)
-
-    if field in DATE_FIELDS:
-        parsed = parse_human_date(value) if isinstance(value, str) else None
-        if not parsed:
-            # Try ISO format as a fallback
-            try:
-                parsed = datetime.strptime(value, "%Y-%m-%d").date() if value else None
-            except (ValueError, TypeError):
-                parsed = None
-
-        if not parsed:
-            return ([], 0) if return_total else []
-
-        base_query = base_query.filter(column == parsed)
-    else:
-        normalized = value.strip().lower()
-        searchable_column = func.lower(func.coalesce(column, literal("")))
-        rank = func.similarity(searchable_column, normalized)
-        base_query = base_query.filter(
-            or_(
-                searchable_column.ilike(f"%{normalized}%"),
-                rank >= TRIGRAM_SIMILARITY_THRESHOLD,
-            )
-        )
-
-    # Compute total count before applying pagination
-    total_count = base_query.distinct().count() if return_total else None
-
-    if field in TEXT_SEARCHABLE_FIELDS:
-        normalized = value.strip().lower()
-        searchable_column = func.lower(func.coalesce(column, literal("")))
-        rank = func.similarity(searchable_column, normalized)
-        query = base_query.distinct().order_by(rank.desc(), FinanceIO.updated_at.desc())
-    else:
-        query = base_query.distinct().order_by(FinanceIO.updated_at.desc())
-
-    if offset is not None:
-        query = query.offset(offset)
-    if limit is not None:
-        query = query.limit(limit)
-
-    results = _rows_to_results(query.all())
-
-    if return_total:
-        return results, total_count
-
-    return results
-
-
-def list_finance_io(
-    db: Session,
-    module_id: int = DEFAULT_MODULE_ID,
-    user_id: int | None = None,
-    limit: int | None = None,
-    offset: int | None = None,
-) -> list[FinanceSearchRow]:
-    """
-    Return all finance_io file names with their last updated timestamp for a module.
-    """
-    query = (
-        db.query(
-            FinanceIO.io_number,
-            FinanceIO.file_name,
-            FinanceIO.file_path,
-            FinanceIO.campaign_name,
-            FinanceIO.updated_at,
-            FinanceIO.user_id,
-            User.first_name,
-            User.last_name,
-            User.photo_url,
-            FinanceIO.client_name,
-            FinanceIO.cpl,
-            FinanceIO.start_date,
-            FinanceIO.end_date,
-            FinanceIO.campaign_type,
-            FinanceIO.account_manager,
-            FinanceIO.total_leads,
-        )
-        .outerjoin(User, FinanceIO.user_id == User.id)
-        .filter(
-            FinanceIO.module_id == module_id,
-            FinanceIO.deleted_at.is_(None),
-        )
-    )
-
-    if user_id is not None:
-        query = query.filter(FinanceIO.user_id == user_id)
-
-    query = query.order_by(FinanceIO.updated_at.desc())
-
-    if offset is not None:
-        query = query.offset(offset)
-    if limit is not None:
-        query = query.limit(limit)
-
-    query = query.distinct()
-    return [
-        (
-            row.io_number,
-            row.file_name,
-            row.file_path,
-            row.campaign_name,
-            row.updated_at,
-            row.user_id,
-            row.first_name,
-            row.last_name,
-            row.photo_url,
-            row.client_name,
-            row.cpl,
-            row.start_date,
-            row.end_date,
-            row.campaign_type,
-            row.account_manager,
-            row.total_leads,
-        )
-        for row in query.all()
-    ]
-
-
 def list_insertion_orders(
     db: Session,
     *,
@@ -1066,36 +597,30 @@ def list_insertion_orders(
     if status_filter:
         query = query.filter(func.lower(FinanceIO.status) == status_filter.strip().lower())
 
-    if search:
-        document = func.lower(
-            func.concat(
-                func.coalesce(FinanceIO.io_number, ""),
-                " ",
-                func.coalesce(FinanceIO.customer_name, ""),
-                " ",
-                func.coalesce(FinanceIO.counterparty_reference, ""),
-                " ",
-                func.coalesce(FinanceIO.external_reference, ""),
-                " ",
-                func.coalesce(FinanceIO.status, ""),
-                " ",
-                func.coalesce(FinanceIO.currency, ""),
-                " ",
-                func.coalesce(FinanceIO.file_name, ""),
-                " ",
-                func.coalesce(FinanceIO.notes, ""),
-                " ",
-            )
-        )
-        normalized = search.strip().lower()
-        rank = func.similarity(document, normalized)
-        query = query.filter(or_(document.ilike(f"%{normalized}%"), rank >= TRIGRAM_SIMILARITY_THRESHOLD))
-        query = query.order_by(rank.desc(), FinanceIO.updated_at.desc())
-    else:
-        query = query.order_by(FinanceIO.updated_at.desc())
+    query = apply_ranked_search(
+        query,
+        search=search,
+        document=searchable_text(
+            FinanceIO.io_number,
+            FinanceIO.customer_name,
+            FinanceIO.counterparty_reference,
+            FinanceIO.external_reference,
+            FinanceIO.status,
+            FinanceIO.currency,
+            FinanceIO.file_name,
+            FinanceIO.notes,
+        ),
+        default_order_column=FinanceIO.updated_at,
+    )
 
     total_count = query.count()
     records = query.offset(pagination.offset).limit(pagination.limit).all()
+    records = hydrate_custom_field_records(
+        db,
+        module_key="finance_io",
+        records=records,
+        record_id_attr="id",
+    )
     return records, total_count
 
 
@@ -1117,7 +642,12 @@ def get_insertion_order_or_404(
     record = query.first()
     if not record:
         raise ValueError("Insertion order not found")
-    return record
+    return hydrate_custom_field_record(
+        db,
+        module_key="finance_io",
+        record=record,
+        record_id=record.id,
+    )
 
 
 def create_insertion_order(
@@ -1186,7 +716,7 @@ def create_insertion_order(
         start_date=start_date,
         end_date=end_date,
         status=_normalize_text(data.get("status")) or DEFAULT_IO_STATUS,
-        currency=(_normalize_text(data.get("currency")) or DEFAULT_IO_CURRENCY).upper(),
+        currency=_normalize_allowed_currency(db, data.get("currency")),
         subtotal_amount=_parse_decimal(data.get("subtotal_amount")),
         tax_amount=_parse_decimal(data.get("tax_amount")),
         total_amount=_parse_decimal(data.get("total_amount")),
@@ -1196,9 +726,14 @@ def create_insertion_order(
     db.add(record)
     db.commit()
     db.refresh(record)
-    save_custom_field_values(db, module_key="finance_io", record_id=record.id, values=record.custom_data or {})
+    save_custom_field_values(db, module_key="finance_io", record_id=record.id, values=custom_data)
     db.commit()
-    return record
+    return hydrate_custom_field_record(
+        db,
+        module_key="finance_io",
+        record=record,
+        record_id=record.id,
+    )
 
 
 def update_insertion_order(
@@ -1213,7 +748,12 @@ def update_insertion_order(
             db,
             module_key="finance_io",
             payload=data.pop("custom_fields"),
-            existing=record.custom_data or {},
+            existing=load_custom_field_values_with_fallback(
+                db,
+                module_key="finance_io",
+                record_id=record.id,
+                fallback=record.custom_data,
+            ),
         )
 
     if (
@@ -1275,8 +815,8 @@ def update_insertion_order(
     }:
         if key in data:
             value = _normalize_text(data[key]) if data[key] is not None else None
-            if key == "currency" and value:
-                value = value.upper()
+            if key == "currency":
+                value = _normalize_allowed_currency(db, value)
             setattr(record, key, value)
 
     for key in {"subtotal_amount", "tax_amount", "total_amount"}:
@@ -1291,7 +831,12 @@ def update_insertion_order(
     db.refresh(record)
     save_custom_field_values(db, module_key="finance_io", record_id=record.id, values=record.custom_data or {})
     db.commit()
-    return record
+    return hydrate_custom_field_record(
+        db,
+        module_key="finance_io",
+        record=record,
+        record_id=record.id,
+    )
 
 
 def soft_delete_insertion_order(db: Session, *, record: FinanceIO) -> None:
@@ -1316,6 +861,12 @@ def list_deleted_insertion_orders(
     )
     total_count = query.count()
     records = query.offset(pagination.offset).limit(pagination.limit).all()
+    records = hydrate_custom_field_records(
+        db,
+        module_key="finance_io",
+        records=records,
+        record_id_attr="id",
+    )
     return records, total_count
 
 
@@ -1336,7 +887,12 @@ def get_deleted_insertion_order_or_404(
     )
     if not record:
         raise ValueError("Deleted insertion order not found")
-    return record
+    return hydrate_custom_field_record(
+        db,
+        module_key="finance_io",
+        record=record,
+        record_id=record.id,
+    )
 
 
 def restore_insertion_order(db: Session, *, record: FinanceIO) -> FinanceIO:
@@ -1344,4 +900,9 @@ def restore_insertion_order(db: Session, *, record: FinanceIO) -> FinanceIO:
     db.add(record)
     db.commit()
     db.refresh(record)
-    return record
+    return hydrate_custom_field_record(
+        db,
+        module_key="finance_io",
+        record=record,
+        record_id=record.id,
+    )

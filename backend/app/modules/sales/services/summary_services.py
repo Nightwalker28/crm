@@ -3,6 +3,7 @@ from decimal import Decimal
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.modules.platform.services.custom_fields import hydrate_custom_field_record, hydrate_custom_field_records
 from app.modules.finance.models import FinanceIO
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization
 
@@ -101,6 +102,12 @@ def _get_related_insertion_orders(
 
 
 def build_contact_summary(db: Session, contact: SalesContact) -> dict:
+    contact = hydrate_custom_field_record(
+        db,
+        module_key="sales_contacts",
+        record=contact,
+        record_id=contact.contact_id,
+    )
     organization = None
     if contact.organization_id:
         organization = (
@@ -108,6 +115,13 @@ def build_contact_summary(db: Session, contact: SalesContact) -> dict:
             .filter(SalesOrganization.org_id == contact.organization_id)
             .first()
         )
+        if organization:
+            organization = hydrate_custom_field_record(
+                db,
+                module_key="sales_organizations",
+                record=organization,
+                record_id=organization.org_id,
+            )
 
     opportunities = (
         db.query(SalesOpportunity)
@@ -118,6 +132,12 @@ def build_contact_summary(db: Session, contact: SalesContact) -> dict:
         .order_by(SalesOpportunity.created_time.desc())
         .limit(10)
         .all()
+    )
+    opportunities = hydrate_custom_field_records(
+        db,
+        module_key="sales_opportunities",
+        records=opportunities,
+        record_id_attr="opportunity_id",
     )
     insertion_orders = _get_related_insertion_orders(
         db,
@@ -138,6 +158,12 @@ def build_contact_summary(db: Session, contact: SalesContact) -> dict:
 
 
 def build_organization_summary(db: Session, organization: SalesOrganization) -> dict:
+    organization = hydrate_custom_field_record(
+        db,
+        module_key="sales_organizations",
+        record=organization,
+        record_id=organization.org_id,
+    )
     contacts = (
         db.query(SalesContact)
         .filter(
@@ -148,6 +174,12 @@ def build_organization_summary(db: Session, organization: SalesOrganization) -> 
         .limit(12)
         .all()
     )
+    contacts = hydrate_custom_field_records(
+        db,
+        module_key="sales_contacts",
+        records=contacts,
+        record_id_attr="contact_id",
+    )
     opportunities = (
         db.query(SalesOpportunity)
         .filter(
@@ -157,6 +189,12 @@ def build_organization_summary(db: Session, organization: SalesOrganization) -> 
         .order_by(SalesOpportunity.created_time.desc())
         .limit(10)
         .all()
+    )
+    opportunities = hydrate_custom_field_records(
+        db,
+        module_key="sales_opportunities",
+        records=opportunities,
+        record_id_attr="opportunity_id",
     )
     insertion_orders = _get_related_insertion_orders(db, organization.org_name, organization.org_id)
 

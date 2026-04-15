@@ -11,7 +11,13 @@ from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination
 from app.core.postgres_search import searchable_text
-from app.modules.platform.services.custom_fields import save_custom_field_values, validate_custom_field_payload
+from app.modules.platform.services.custom_fields import (
+    hydrate_custom_field_record,
+    hydrate_custom_field_records,
+    load_custom_field_values_with_fallback,
+    save_custom_field_values,
+    validate_custom_field_payload,
+)
 from app.modules.sales.models import SalesContact
 from app.modules.user_management.models import User
 
@@ -84,6 +90,12 @@ def list_sales_contacts(
 
     total_count = query.count()
     contacts = query.offset(pagination.offset).limit(pagination.limit).all()
+    contacts = hydrate_custom_field_records(
+        db,
+        module_key="sales_contacts",
+        records=contacts,
+        record_id_attr="contact_id",
+    )
     return contacts, total_count
 
 
@@ -94,7 +106,12 @@ def get_contact_or_404(db: Session, contact_id: int, *, include_deleted: bool = 
     contact = query.first()
     if not contact:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
-    return contact
+    return hydrate_custom_field_record(
+        db,
+        module_key="sales_contacts",
+        record=contact,
+        record_id=contact.contact_id,
+    )
 
 
 def _apply_sales_contact_payload(contact: SalesContact, payload: dict) -> None:
@@ -117,11 +134,12 @@ def create_sales_contact(
     )
 
     data = dict(payload)
-    data["custom_data"] = validate_custom_field_payload(
+    custom_data = validate_custom_field_payload(
         db,
         module_key="sales_contacts",
         payload=data.pop("custom_fields", None),
     )
+    data["custom_data"] = custom_data
     if not data.get("assigned_to"):
         data["assigned_to"] = current_user.id if current_user else None
     if not data.get("assigned_to"):
@@ -153,13 +171,30 @@ def create_sales_contact(
     )
     if existing and not create_new_records:
         if skip_duplicates:
-            return existing
+            return hydrate_custom_field_record(
+                db,
+                module_key="sales_contacts",
+                record=existing,
+                record_id=existing.contact_id,
+            )
         if replace_duplicates:
             _apply_sales_contact_payload(existing, data)
             db.add(existing)
             db.commit()
             db.refresh(existing)
-            return existing
+            save_custom_field_values(
+                db,
+                module_key="sales_contacts",
+                record_id=existing.contact_id,
+                values=existing.custom_data or {},
+            )
+            db.commit()
+            return hydrate_custom_field_record(
+                db,
+                module_key="sales_contacts",
+                record=existing,
+                record_id=existing.contact_id,
+            )
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -174,9 +209,14 @@ def create_sales_contact(
     db.add(contact)
     db.commit()
     db.refresh(contact)
-    save_custom_field_values(db, module_key="sales_contacts", record_id=contact.contact_id, values=contact.custom_data or {})
+    save_custom_field_values(db, module_key="sales_contacts", record_id=contact.contact_id, values=custom_data)
     db.commit()
-    return contact
+    return hydrate_custom_field_record(
+        db,
+        module_key="sales_contacts",
+        record=contact,
+        record_id=contact.contact_id,
+    )
 
 
 def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> SalesContact:
@@ -185,7 +225,12 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
             db,
             module_key="sales_contacts",
             payload=data.pop("custom_fields"),
-            existing=contact.custom_data or {},
+            existing=load_custom_field_values_with_fallback(
+                db,
+                module_key="sales_contacts",
+                record_id=contact.contact_id,
+                fallback=contact.custom_data,
+            ),
         )
 
     if "assigned_to" in data:
@@ -220,7 +265,12 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
     db.refresh(contact)
     save_custom_field_values(db, module_key="sales_contacts", record_id=contact.contact_id, values=contact.custom_data or {})
     db.commit()
-    return contact
+    return hydrate_custom_field_record(
+        db,
+        module_key="sales_contacts",
+        record=contact,
+        record_id=contact.contact_id,
+    )
 
 
 def delete_sales_contact(db: Session, contact: SalesContact) -> None:
@@ -249,7 +299,12 @@ def restore_sales_contact(db: Session, contact: SalesContact) -> SalesContact:
     db.add(contact)
     db.commit()
     db.refresh(contact)
-    return contact
+    return hydrate_custom_field_record(
+        db,
+        module_key="sales_contacts",
+        record=contact,
+        record_id=contact.contact_id,
+    )
 
 
 def _coerce_optional(value: str | None) -> str | None:
@@ -501,4 +556,10 @@ def get_all_contacts(db: Session, search: str | None = None) -> list[SalesContac
         db.query(SalesContact).filter(SalesContact.deleted_at.is_(None)),
         search,
     )
-    return query.order_by(SalesContact.created_time.desc()).all()
+    contacts = query.order_by(SalesContact.created_time.desc()).all()
+    return hydrate_custom_field_records(
+        db,
+        module_key="sales_contacts",
+        records=contacts,
+        record_id_attr="contact_id",
+    )

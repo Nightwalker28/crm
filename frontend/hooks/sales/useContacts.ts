@@ -14,6 +14,7 @@ export type Contact = {
   current_title: string | null;
   region: string | null;
   country: string | null;
+  organization_name: string | null;
   assigned_to: number | null;
   created_time: string;
 };
@@ -27,18 +28,22 @@ export type ContactsResponse = {
   page: number;
 };
 
-async function fetchContacts(page: number): Promise<ContactsResponse> {
-  const res = await apiFetch(`/sales/contacts?page=${page}`);
+async function fetchContacts(page: number, visibleColumns: string[]): Promise<ContactsResponse> {
+  const params = new URLSearchParams({ page: String(page) });
+  if (visibleColumns.length) {
+    params.append("fields", visibleColumns.join(","));
+  }
+  const res = await apiFetch(`/sales/contacts?${params.toString()}`);
   if (!res.ok) throw new Error(`Failed with ${res.status}`);
   return res.json();
 }
 
-export function useContacts(initialPage = 1) {
+export function useContacts(visibleColumns: string[], initialPage = 1) {
   const [page, setPage] = useState(initialPage);
 
   const query = useQuery({
-    queryKey: ["sales-contacts", page],
-    queryFn: () => fetchContacts(page),
+    queryKey: ["sales-contacts", page, visibleColumns],
+    queryFn: () => fetchContacts(page, visibleColumns),
     placeholderData: keepPreviousData,
   });
 

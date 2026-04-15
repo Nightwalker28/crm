@@ -6,12 +6,17 @@ import io
 from fastapi import HTTPException, UploadFile, status
 
 
-async def read_csv_upload(file: UploadFile) -> tuple[list[str], list[dict[str, str | None]]]:
+async def read_upload_bytes(
+    file: UploadFile,
+    *,
+    allowed_extensions: set[str],
+) -> bytes:
     filename = (file.filename or "").lower()
-    if not filename.endswith(".csv"):
+    if not any(filename.endswith(f".{extension.lower().lstrip('.')}") for extension in allowed_extensions):
+        allowed_text = ", ".join(sorted(f".{extension.lower().lstrip('.')}" for extension in allowed_extensions))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Only CSV files are supported.",
+            detail=f"Only {allowed_text} files are supported.",
         )
 
     content = await file.read()
@@ -20,7 +25,11 @@ async def read_csv_upload(file: UploadFile) -> tuple[list[str], list[dict[str, s
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Uploaded file is empty.",
         )
+    return content
 
+
+async def read_csv_upload(file: UploadFile) -> tuple[list[str], list[dict[str, str | None]]]:
+    content = await read_upload_bytes(file, allowed_extensions={"csv"})
     try:
         text = content.decode("utf-8-sig")
     except UnicodeDecodeError as exc:

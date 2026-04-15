@@ -16,3 +16,4 @@ python-docx
 pdfplumber
 alembic
 python-dateutil
+redis

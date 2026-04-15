@@ -79,6 +79,7 @@ class Settings:
     # Frontend
     # -------------------------
     FRONTEND_ORIGIN: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+    REDIS_URL: str | None = os.getenv("REDIS_URL")
 
     # -------------------------
     # Allowed email domains

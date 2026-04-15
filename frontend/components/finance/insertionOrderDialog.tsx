@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { apiFetch } from "@/lib/api";
 import type { InsertionOrder, InsertionOrderPayload } from "@/hooks/finance/useInsertionOrders";
@@ -142,6 +143,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const deferredCustomerSearch = useDeferredValue(form.customer_name.trim());
   const customFieldsQuery = useModuleCustomFields("finance_io", open);
+  const currenciesQuery = useCompanyCurrencies(open);
 
   const customerQuery = useQuery({
     queryKey: ["finance-io-customer-options", deferredCustomerSearch],
@@ -405,12 +407,18 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                 <FieldLabel>
                   Currency <RequiredAsterisk />
                 </FieldLabel>
-                <Input
-                  value={form.currency}
-                  onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value.toUpperCase() }))}
-                  placeholder="USD"
-                  maxLength={3}
-                />
+                <Select value={form.currency} onValueChange={(value) => setForm((current) => ({ ...current, currency: value }))}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select currency" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(currenciesQuery.data ?? ["USD"]).map((currency) => (
+                      <SelectItem key={currency} value={currency}>
+                        {currency}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </Field>
 
               <Field>

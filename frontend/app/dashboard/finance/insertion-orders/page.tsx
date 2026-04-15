@@ -11,10 +11,32 @@ import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { InsertionOrder, InsertionOrderPayload } from "@/hooks/finance/useInsertionOrders";
+import { ColumnPicker } from "@/components/ui/ColumnPicker";
+import { useTablePreferences } from "@/hooks/useTablePreferences";
+
+const INSERTION_ORDER_COLUMNS = [
+  { key: "io_number", label: "IO Number" },
+  { key: "customer_name", label: "Customer" },
+  { key: "status", label: "Status" },
+  { key: "currency", label: "Currency" },
+  { key: "total_amount", label: "Total" },
+  { key: "issue_date", label: "Issue Date" },
+  { key: "due_date", label: "Due Date" },
+  { key: "external_reference", label: "Reference" },
+  { key: "user_name", label: "Owner" },
+  { key: "updated_at", label: "Updated" },
+];
+
+const DEFAULT_INSERTION_ORDER_COLUMNS = ["io_number", "customer_name", "status", "total_amount", "due_date"];
 
 export default function InsertionOrdersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<InsertionOrder | null>(null);
+  const { visibleColumns, saveVisibleColumns } = useTablePreferences(
+    "finance_io",
+    INSERTION_ORDER_COLUMNS,
+    DEFAULT_INSERTION_ORDER_COLUMNS,
+  );
   const {
     orders,
     page,
@@ -37,7 +59,7 @@ export default function InsertionOrdersPage() {
     deleteOrder,
     isSaving,
     isDeleting,
-  } = useInsertionOrders(1, 10);
+  } = useInsertionOrders(visibleColumns, 1, 10);
 
   const handleCreateClick = () => {
     setSelectedOrder(null);
@@ -75,10 +97,18 @@ export default function InsertionOrdersPage() {
   return (
     <div className="bg-zinc-950">
       <div className="max-w-5xl mx-auto flex flex-col gap-6">
-        <InsertionOrdersHeader
-          onCreateClick={handleCreateClick}
-          onUploadSuccess={refresh}
-        />
+        <div className="flex items-start justify-between gap-4">
+          <InsertionOrdersHeader
+            onCreateClick={handleCreateClick}
+            onUploadSuccess={refresh}
+          />
+          <ColumnPicker
+            title="Insertion order columns"
+            options={INSERTION_ORDER_COLUMNS}
+            visibleColumns={visibleColumns}
+            onChange={saveVisibleColumns}
+          />
+        </div>
 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex w-full flex-col gap-3 md:flex-row md:items-center">
@@ -121,6 +151,7 @@ export default function InsertionOrdersPage() {
           isLoading={isLoading}
           onEdit={handleEdit}
           onDelete={handleDelete}
+          visibleColumns={visibleColumns}
         />
 
         <Pagination

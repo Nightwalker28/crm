@@ -18,6 +18,7 @@ type CompanyResponse = {
   primary_phone?: string | null;
   industry?: string | null;
   country?: string | null;
+  operating_currencies?: string[] | null;
   billing_address?: string | null;
   logo_url?: string | null;
 };
@@ -29,6 +30,7 @@ type CompanyForm = {
   primary_phone: string;
   industry: string;
   country: string;
+  operating_currencies: string;
   billing_address: string;
   logo_url: string;
 };
@@ -40,6 +42,7 @@ const emptyForm: CompanyForm = {
   primary_phone: "",
   industry: "",
   country: "",
+  operating_currencies: "USD",
   billing_address: "",
   logo_url: "",
 };
@@ -76,6 +79,9 @@ export default function CompanyPage() {
           primary_phone: data.primary_phone ?? "",
           industry: data.industry ?? "",
           country: data.country ?? "",
+          operating_currencies: Array.isArray(data.operating_currencies) && data.operating_currencies.length
+            ? data.operating_currencies.join(", ")
+            : "USD",
           billing_address: data.billing_address ?? "",
           logo_url: data.logo_url ?? "",
         });
@@ -105,6 +111,14 @@ export default function CompanyPage() {
         primary_phone: form.primary_phone.trim() || null,
         industry: form.industry.trim() || null,
         country: form.country.trim() || null,
+        operating_currencies: Array.from(
+          new Set(
+            form.operating_currencies
+              .split(",")
+              .map((value) => value.trim().toUpperCase())
+              .filter(Boolean),
+          ),
+        ),
         billing_address: form.billing_address.trim() || null,
         logo_url: form.logo_url.trim() || null,
       };
@@ -171,6 +185,15 @@ export default function CompanyPage() {
               <Field>
                 <FieldLabel>Country</FieldLabel>
                 <Input value={form.country} onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))} />
+              </Field>
+              <Field>
+                <FieldLabel>Operating Currencies <RequiredMark /></FieldLabel>
+                <Input
+                  value={form.operating_currencies}
+                  onChange={(event) => setForm((current) => ({ ...current, operating_currencies: event.target.value }))}
+                  placeholder="USD, EUR, GBP"
+                />
+                <FieldDescription>Comma-separated ISO currency codes used across opportunities, insertion orders, and other commercial records.</FieldDescription>
               </Field>
               <Field>
                 <FieldLabel>Logo URL</FieldLabel>

@@ -1,12 +1,22 @@
 import type { InsertionOrder } from "@/hooks/finance/useInsertionOrders";
-import { FileText } from "lucide-react";
-import InsertionOrderCard from "./insertOrderCard";
+import { Pencil, Trash2 } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableHeaderRow,
+  TableRow,
+} from "@/components/ui/Table";
+import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 
 type InsertionOrdersListProps = {
   orders: InsertionOrder[];
   isLoading: boolean;
   onEdit: (order: InsertionOrder) => void;
   onDelete: (order: InsertionOrder) => void;
+  visibleColumns: string[];
 };
 
 
@@ -15,77 +25,79 @@ export default function InsertionOrdersList({
   isLoading,
   onEdit,
   onDelete,
+  visibleColumns,
 }: InsertionOrdersListProps) {
-  if (isLoading) {
-    return (
-      <div className="flex flex-col gap-2">
-        {Array.from({ length: 4 }).map((_, idx) => (
-          <div
-            key={idx}
-            className="animate-pulse bg-zinc-900 border border-zinc-800 rounded-lg p-3.5"
-          >
-            <div className="flex gap-3">
-              <div className="w-10 h-10 bg-zinc-800 rounded-lg" />
-              <div className="flex-1 space-y-2">
-                <div className="h-3.5 w-2/3 bg-zinc-800 rounded" />
-                <div className="h-3 w-1/2 bg-zinc-800 rounded" />
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  if (!orders.length) {
-    return (
-      <div className="bg-zinc-900 border border-dashed border-zinc-700 rounded-xl p-12 text-center">
-        <FileText className="mx-auto mb-4 text-zinc-600" size={48} />
-        <p className="text-zinc-400 text-sm">
-          No insertion orders yet. Create one manually or import a legacy file.
-        </p>
-      </div>
-    );
-  }
+  const hasColumn = (key: string) => visibleColumns.includes(key);
+  const columnCount = visibleColumns.length + 1;
 
   return (
-    <div className="relative">
-      <style jsx>{`
-        .scrollable-container::-webkit-scrollbar {
-          width: 8px;
-        }
-        .scrollable-container::-webkit-scrollbar-track {
-          background: transparent;
-        }
-        .scrollable-container::-webkit-scrollbar-thumb {
-          background: #52525b;
-          border-radius: 4px;
-        }
-        .scrollable-container::-webkit-scrollbar-thumb:hover {
-          background: #71717a;
-        }
-      `}</style>
-      
-      <div 
-        className="scrollable-container flex flex-col gap-2 overflow-y-auto max-h-[calc(100vh-20rem)] p-3 bg-zinc-950/30 rounded-lg border border-zinc-900"
-        style={{
-          scrollbarWidth: 'thin',
-          scrollbarColor: '#52525b transparent'
-        }}
-      >
-        {orders.map((order, idx) => (
-          <InsertionOrderCard
-            key={`${order.id}-${order.io_number}-${idx}`}
-            order={order}
-            onEdit={() => onEdit(order)}
-            onDelete={() => onDelete(order)}
-          />
-        ))}
-      </div>
-      
-      {orders.length > 3 && (
-        <div className="absolute bottom-0 left-0 right-0 h-8 bg-linear-to-t from-zinc-950 to-transparent pointer-events-none rounded-b-lg" />
-      )}
-    </div>
+    <ModuleTableShell>
+      <Table className="min-w-[1040px]">
+        <TableHeader>
+          <TableHeaderRow>
+            {hasColumn("io_number") && <TableHead>IO Number</TableHead>}
+            {hasColumn("customer_name") && <TableHead>Customer</TableHead>}
+            {hasColumn("status") && <TableHead>Status</TableHead>}
+            {hasColumn("currency") && <TableHead>Currency</TableHead>}
+            {hasColumn("total_amount") && <TableHead>Total</TableHead>}
+            {hasColumn("issue_date") && <TableHead>Issue Date</TableHead>}
+            {hasColumn("due_date") && <TableHead>Due Date</TableHead>}
+            {hasColumn("external_reference") && <TableHead>Reference</TableHead>}
+            {hasColumn("user_name") && <TableHead>Owner</TableHead>}
+            {hasColumn("updated_at") && <TableHead>Updated</TableHead>}
+            <TableHead className="text-right">Actions</TableHead>
+          </TableHeaderRow>
+        </TableHeader>
+
+        <TableBody>
+          {isLoading ? (
+            <TableRow>
+              <TableCell colSpan={columnCount} className="py-10 text-center text-neutral-500">
+                Loading insertion orders...
+              </TableCell>
+            </TableRow>
+          ) : orders.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={columnCount} className="py-10 text-center text-neutral-500">
+                No insertion orders found.
+              </TableCell>
+            </TableRow>
+          ) : (
+            orders.map((order) => (
+              <TableRow key={order.id}>
+                {hasColumn("io_number") && <TableCell>{order.io_number || "-"}</TableCell>}
+                {hasColumn("customer_name") && <TableCell>{order.customer_name || "-"}</TableCell>}
+                {hasColumn("status") && <TableCell className="capitalize">{order.status || "-"}</TableCell>}
+                {hasColumn("currency") && <TableCell>{order.currency || "-"}</TableCell>}
+                {hasColumn("total_amount") && <TableCell>{order.total_amount ?? "-"}</TableCell>}
+                {hasColumn("issue_date") && <TableCell>{order.issue_date || "-"}</TableCell>}
+                {hasColumn("due_date") && <TableCell>{order.due_date || "-"}</TableCell>}
+                {hasColumn("external_reference") && <TableCell>{order.external_reference || "-"}</TableCell>}
+                {hasColumn("user_name") && <TableCell>{order.user_name || "-"}</TableCell>}
+                {hasColumn("updated_at") && <TableCell>{order.updated_at || "-"}</TableCell>}
+                <TableCell className="text-right">
+                  <div className="flex items-center justify-end gap-3">
+                    <button
+                      onClick={() => onEdit(order)}
+                      className="text-blue-300 hover:text-blue-200"
+                      title="Edit insertion order"
+                    >
+                      <Pencil size={16} />
+                    </button>
+                    <button
+                      onClick={() => onDelete(order)}
+                      className="text-red-300 hover:text-red-200"
+                      title="Delete insertion order"
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))
+          )}
+        </TableBody>
+      </Table>
+    </ModuleTableShell>
   );
 }

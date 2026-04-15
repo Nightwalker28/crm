@@ -88,8 +88,32 @@ class InsertionOrderResponse(BaseModel):
     updated_at: Optional[str] = None
 
 
+class InsertionOrderListItem(BaseModel):
+    id: int
+    io_number: str | None = None
+    customer_name: str | None = None
+    status: str | None = None
+    currency: str | None = None
+    total_amount: Optional[float] = None
+    issue_date: Optional[str] = None
+    due_date: Optional[str] = None
+    external_reference: Optional[str] = None
+    user_name: Optional[str] = None
+    updated_at: Optional[str] = None
+    customer_contact_id: Optional[int] = None
+    customer_organization_id: Optional[int] = None
+    counterparty_reference: Optional[str] = None
+    effective_date: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    subtotal_amount: Optional[float] = None
+    tax_amount: Optional[float] = None
+    notes: Optional[str] = None
+    custom_fields: dict[str, Any] | None = None
+
+
 class InsertionOrderListResponse(BaseModel):
-    results: list[InsertionOrderResponse]
+    results: list[InsertionOrderListItem]
     range_start: int
     range_end: int
     total_count: int

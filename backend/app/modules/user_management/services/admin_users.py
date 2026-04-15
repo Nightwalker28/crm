@@ -4,8 +4,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination, build_paged_response
-from app.core.postgres_search import apply_trigram_search, searchable_text
+from app.core.postgres_search import searchable_text
 from app.modules.user_management.models import Role, Team, User, UserAuthMode, UserStatus
 from app.modules.user_management.schema import (
     AdminCreateUserRequest,
@@ -56,12 +57,6 @@ def search_users(
 
     unassigned_label = "Unassigned"
 
-    if q:
-        document = searchable_text(User.first_name, User.last_name, User.email)
-        query, rank = apply_trigram_search(query, search=q, document=document)
-    else:
-        rank = None
-
     if teams and teams.lower() != "all":
         try:
             ids = [int(x) for x in teams.split(",") if x.strip().isdigit()]
@@ -102,15 +97,17 @@ def search_users(
     else:
         user_sort = User.first_name
 
-    if rank is not None:
-        if sort_order == "desc":
-            query = query.order_by(team_sort.asc(), rank.asc(), User.id.desc())
-        else:
-            query = query.order_by(team_sort.asc(), rank.desc(), User.id.asc())
-    elif sort_order == "desc":
-        query = query.order_by(team_sort.asc(), user_sort.desc(), User.id.desc())
+    if sort_order == "desc":
+        default_order_by = [team_sort.asc(), user_sort.desc(), User.id.desc()]
     else:
-        query = query.order_by(team_sort.asc(), user_sort.asc(), User.id.asc())
+        default_order_by = [team_sort.asc(), user_sort.asc(), User.id.asc()]
+
+    query = apply_ranked_search(
+        query,
+        search=q,
+        document=searchable_text(User.first_name, User.last_name, User.email),
+        default_order_by=default_order_by,
+    )
 
     total_count = query.count()
     items = query.offset(pagination.offset).limit(pagination.limit).all()

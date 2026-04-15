@@ -1,13 +1,32 @@
 "use client";
 
-import OrganizationCard from "@/components/organizations/organizationCard";
+import OrganizationsTable from "@/components/organizations/OrganizationsTable";
 import CreateOrganizationModal from "@/components/organizations/createOrganizationModal";
 import OrganizationsHeader from "@/components/organizations/organizationHeader";
 import SearchBar from "@/components/ui/SearchBar";
 import Pagination from "@/components/ui/Pagination";
 import { useOrganizations } from "@/hooks/sales/useOrganizations";
+import { ColumnPicker } from "@/components/ui/ColumnPicker";
+import { useTablePreferences } from "@/hooks/useTablePreferences";
+
+const ORGANIZATION_COLUMNS = [
+  { key: "org_name", label: "Organization" },
+  { key: "primary_email", label: "Email" },
+  { key: "website", label: "Website" },
+  { key: "industry", label: "Industry" },
+  { key: "annual_revenue", label: "Revenue" },
+  { key: "primary_phone", label: "Phone" },
+  { key: "billing_country", label: "Country" },
+];
+
+const DEFAULT_ORGANIZATION_COLUMNS = ["org_name", "primary_email", "website", "industry"];
 
 export default function OrganizationsPage() {
+  const { visibleColumns, saveVisibleColumns } = useTablePreferences(
+    "sales_organizations",
+    ORGANIZATION_COLUMNS,
+    DEFAULT_ORGANIZATION_COLUMNS,
+  );
   const {
     organizations,
     page,
@@ -16,6 +35,7 @@ export default function OrganizationsPage() {
     totalCount,
     rangeStart,
     rangeEnd,
+    isLoading,
     error,
     searchTerm,
     setSearchTerm,
@@ -26,14 +46,22 @@ export default function OrganizationsPage() {
     isCreating,
     setCreateOpen,
     createOrganization,
-  } = useOrganizations();
+  } = useOrganizations(visibleColumns);
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-6">
-      <OrganizationsHeader
-        onCreateClick={() => setCreateOpen(true)}
-        onUploadSuccess={refresh}
-      />
+      <div className="flex items-start justify-between gap-4">
+        <OrganizationsHeader
+          onCreateClick={() => setCreateOpen(true)}
+          onUploadSuccess={refresh}
+        />
+        <ColumnPicker
+          title="Organization columns"
+          options={ORGANIZATION_COLUMNS}
+          visibleColumns={visibleColumns}
+          onChange={saveVisibleColumns}
+        />
+      </div>
 
       <SearchBar
         value={searchTerm}
@@ -47,14 +75,11 @@ export default function OrganizationsPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-        {organizations.map((org) => (
-          <OrganizationCard
-            key={`${org.org_name}-${org.primary_email}`}
-            org={org}
-          />
-        ))}
-      </div>
+      <OrganizationsTable
+        organizations={organizations}
+        isLoading={isLoading}
+        visibleColumns={visibleColumns}
+      />
 
       <Pagination
         page={page}

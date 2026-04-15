@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     func,
     Enum,
+    JSON,
 )
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -165,6 +166,7 @@ class Module(Base):
     name = Column(String(100), nullable=False, unique=True)
     base_route = Column(String(255), nullable=True)
     description = Column(Text, nullable=True)
+    is_enabled = Column(SmallInteger, nullable=False, default=1)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     department_permissions = relationship(
@@ -242,6 +244,7 @@ class CompanyProfile(Base):
     primary_phone = Column(String(50), nullable=True)
     industry = Column(String(120), nullable=True)
     country = Column(String(120), nullable=True)
+    operating_currencies = Column(JSON, nullable=True)
     billing_address = Column(Text, nullable=True)
     logo_url = Column(String(500), nullable=True)
     updated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -253,3 +256,20 @@ class CompanyProfile(Base):
     )
 
     updated_by_user = relationship("User")
+
+
+class UserTablePreference(Base):
+    __tablename__ = "user_table_preferences"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    visible_columns = Column(JSON, nullable=False, server_default="[]")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    user = relationship("User")
