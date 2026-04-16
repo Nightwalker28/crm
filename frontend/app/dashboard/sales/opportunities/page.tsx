@@ -8,30 +8,32 @@ import OpportunitiesTable from "@/components/opportunities/OpportunitiesTable";
 import SearchBar from "@/components/ui/SearchBar";
 import Pagination from "@/components/ui/Pagination";
 import { Button } from "@/components/ui/button";
-import { ColumnPicker } from "@/components/ui/ColumnPicker";
-import { useTablePreferences } from "@/hooks/useTablePreferences";
+import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
+import { useSavedViews } from "@/hooks/useSavedViews";
+import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
 import { useOpportunities, type Opportunity, type OpportunityPayload } from "@/hooks/sales/useOpportunities";
-
-const OPPORTUNITY_COLUMNS = [
-  { key: "opportunity_name", label: "Opportunity" },
-  { key: "client", label: "Client" },
-  { key: "sales_stage", label: "Stage" },
-  { key: "expected_close_date", label: "Expected Close" },
-  { key: "total_cost_of_project", label: "Project Cost" },
-  { key: "currency_type", label: "Currency" },
-  { key: "created_time", label: "Created" },
-];
-
-const DEFAULT_OPPORTUNITY_COLUMNS = ["opportunity_name", "client", "sales_stage", "expected_close_date", "total_cost_of_project"];
+import { useMemo } from "react";
 
 export default function OpportunitiesPage() {
+  const { data: customFields = [] } = useModuleCustomFields("sales_opportunities");
+  const definition = useMemo(
+    () => buildModuleViewDefinition("sales_opportunities", customFields),
+    [customFields],
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
-  const { visibleColumns, saveVisibleColumns } = useTablePreferences(
+  const {
+    views,
+    selectedViewId,
+    setSelectedViewId,
+    draftConfig,
+    setDraftConfig,
+  } = useSavedViews(
     "sales_opportunities",
-    OPPORTUNITY_COLUMNS,
-    DEFAULT_OPPORTUNITY_COLUMNS,
+    MODULE_VIEW_DEFAULTS.sales_opportunities,
   );
+  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : MODULE_VIEW_DEFAULTS.sales_opportunities.visible_columns;
   const {
     opportunities,
     page,
@@ -41,8 +43,6 @@ export default function OpportunitiesPage() {
     rangeEnd,
     isLoading,
     error,
-    searchTerm,
-    setSearchTerm,
     goToPage,
     createOpportunity,
     updateOpportunity,
@@ -50,7 +50,7 @@ export default function OpportunitiesPage() {
     createFinanceIo,
     isSaving,
     isDeleting,
-  } = useOpportunities(visibleColumns);
+  } = useOpportunities(visibleColumns, draftConfig.filters);
 
   async function handleSubmit(payload: OpportunityPayload) {
     if (selectedOpportunity) {
@@ -70,11 +70,11 @@ export default function OpportunitiesPage() {
           <p className="mt-1 text-sm text-neutral-400">Track pipeline, project value, and finance handoff.</p>
         </div>
         <div className="flex items-center gap-3">
-          <ColumnPicker
-            title="Opportunity columns"
-            options={OPPORTUNITY_COLUMNS}
-            visibleColumns={visibleColumns}
-            onChange={saveVisibleColumns}
+          <SavedViewSelector
+            moduleKey="sales_opportunities"
+            views={views}
+            selectedViewId={selectedViewId}
+            onSelect={setSelectedViewId}
           />
           <Button
             onClick={() => {
@@ -87,7 +87,19 @@ export default function OpportunitiesPage() {
         </div>
       </div>
 
-      <SearchBar value={searchTerm} onChange={setSearchTerm} placeholder="Search opportunities" />
+      <SearchBar
+        value={typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : ""}
+        onChange={(value) =>
+          setDraftConfig((current) => ({
+            ...current,
+            filters: {
+              ...current.filters,
+              search: value,
+            },
+          }))
+        }
+        placeholder="Search opportunities"
+      />
 
       {error && <div className="rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">{error}</div>}
 
@@ -95,6 +107,7 @@ export default function OpportunitiesPage() {
         opportunities={opportunities}
         isLoading={isLoading}
         visibleColumns={visibleColumns}
+        columnOptions={definition?.columns ?? []}
         onEdit={(opportunity) => {
           setSelectedOpportunity(opportunity);
           setDialogOpen(true);

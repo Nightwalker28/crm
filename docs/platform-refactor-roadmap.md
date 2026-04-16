@@ -1,6 +1,6 @@
 # Platform Refactor Roadmap
 
-Overall completion: 99%
+Overall completion: 94%
 
 Current phase:
 - Phase 1 complete: Finance IO refactor and immediate UX cleanup
@@ -11,6 +11,7 @@ Current phase:
 - Phase 4.5 complete: legacy finance cleanup and shared module utility framework
 - Phase 5 in progress: uniform list tables, per-user table preferences, and cache hardening
 - Phase 6 in progress: module wiring completion and module availability controls
+- Phase 7 pending: platform hardening, tenant isolation, and deeper performance optimization
 
 Completed items:
 - Added a generic insertion-order backend contract alongside the legacy finance import flow.
@@ -88,32 +89,55 @@ Completed items:
 - Extended contact search list payloads so opportunity/client pickers can backfill linked organization context from the chosen contact.
 - Fixed the opportunity search helper regression so opportunity list/search queries still return ranked results instead of breaking on a missing return path.
 - Improved opportunity save error handling so backend validation details surface in the frontend instead of collapsing into a generic status error.
+- Added shared visible-column reordering controls in the dashboard column picker.
+- Updated contacts, organizations, users, opportunities, and insertion orders to render table columns in the saved user-defined order instead of a fixed hardcoded order.
+- Added a first saved-view persistence layer so users can store named personal views per module with module config payloads and a default-view flag.
+- Wired the first saved-view frontend slice into contacts so users can switch between a built-in default view and named personal saved views with persisted columns and search state.
+- Extended the saved-view frontend pattern across the current major operational modules so contacts, organizations, opportunities, insertion orders, and users now all use the shared saved-view path instead of only plain table preferences.
+- Added a shared module-view registry for current modules and documented the global onboarding primitives for future modules.
+- Replaced the large inline saved-view action bar on the main module pages with a compact shared selector and a dedicated manage-view route.
+- Added a shared route-based manage-view screen that handles naming, columns, default search, and reusable condition filters for the current main modules.
+- Added a shared backend condition-filter engine so contacts, organizations, opportunities, insertion orders, and user search can all accept saved-view filter rules with `all`/`any` logic.
+- Wired the current main module list/search hooks so normal search combines with saved-view conditions instead of acting as a separate disconnected mechanism.
+- Fixed saved-view default resolution so a personal default view now displaces the built-in system default on reload instead of the system default always reappearing.
+- Extended module-view column selection so active custom fields now appear as real selectable columns in contacts, organizations, opportunities, and insertion orders rather than being limited to form/detail screens.
 
 In progress:
+- Replace one-off table preferences with saved module views over time.
+- Add richer dashboard-view configurability so users can control visible columns and presentation order more flexibly.
+- Extend dashboard-view configurability beyond column reordering into richer per-view presentation settings where useful.
+- Continue building real import/export workflows across the current business modules on top of the shared helper layer.
+- Add proper upload support for company and profile imagery instead of URL-only inputs.
+- Make user-facing time rendering respect the user profile timezone.
 - Push list-column preferences deeper into the query layer so modules can avoid selecting fields that are not needed for the current view, not just avoid serializing them.
 - Continue unifying any remaining main module index pages onto one shared table-based presentation where a table is the correct default.
-- Harden the new Redis-backed cache operationally now that the cache abstraction and fallback behavior are in place.
-- Keep extending the new module availability controls so they cover broader admin/module configuration use cases than simple global enabled or disabled state.
+- Harden the Redis-backed cache operationally now that the cache abstraction and fallback behavior are in place.
+- Extend module availability from simple global on/off into broader per-module configuration.
 - Keep standardizing module forms so linked-record selectors and company-managed reference data replace remaining free-text fields where those relationships are the real source of truth.
+- Expand action-level permission enforcement beyond the currently refactored core modules so module-level access is no longer the main fallback gate.
+- Run browser-side smoke testing on the newer admin/module/detail/dialog surfaces that were built incrementally.
 
 Next up:
-- Push those list preferences all the way into ORM select/load behavior over time so modules can avoid loading fields that are not needed for the active view.
-- Add runtime verification and failure-path hardening for the Redis-backed cache layer now that the abstraction is in place.
-- Continue standardizing any remaining main module index pages onto one shared table-based visual language where that layout makes sense.
-- Extend module availability from a global enabled or disabled flag into richer module configuration once the current control model is stable.
+- Finish the dedicated saved-view management flow so module pages only need compact view switching.
+- Expand saved views over time to include richer per-module state beyond the current search, condition, status, and sort slices.
+- Expand import/export coverage and consistency across the current business modules.
+- Add upload-backed company/profile image handling and timezone-aware display of time-based data.
+- Finish query-layer selective loading for the heaviest list endpoints first.
+- Add runtime verification and failure-path hardening for the Redis-backed cache layer.
+- Continue standardizing remaining main module index pages onto one shared table-based visual language where that layout makes sense.
 - Continue converting remaining business forms to shared linked dropdowns and company-managed reference data where those constraints are platform rules rather than per-module ad hoc inputs.
-- Future roadmap candidates can continue from the deferred items and post-completion hardening work.
+- Expand per-action authorization coverage route by route until module-level access is no longer acting as the main fallback.
+- Extend module availability from a global enabled or disabled flag into richer module configuration once the current control model is stable.
+- Start a separate hardening phase for tenant/company row ownership once the above platform work is stable.
 
 Deferred items:
 - True tenant/company ownership at the data-model level for finance records.
 - ORM-level selective field loading for list pages should be treated as a later performance-hardening phase after the current module wiring and availability work lands.
-- Module enable/disable controls.
 - Full custom module builder.
 - User-created modules stay deferred until the shared module utility layer and relational custom-field architecture are stable enough to support them safely.
 
 Risks and migration notes:
-- Backward compatibility for the original campaign-centric finance model is now intentionally being removed; the next finance migration should be treated as a cleanup and simplification step, not a compatibility layer.
-- Existing upload/import behavior is being replaced with a generic insertion-order import path; that change should be paired with a one-time operational snapshot before destructive finance schema cleanup.
+- The finance cleanup has already removed the original campaign-centric compatibility path; future finance work should assume the generic insertion-order model is the only supported contract.
 - The platform-wide tenant/company model is not implemented in this increment yet, so this remains phaseable rather than complete.
 - Action-level permissions now exist but are only partially enforced; module-level access remains the broad gate while the per-action rollout continues.
 - Recycle-bin direction is now fixed as one unified admin area with module-specific tables and filters, rather than separate recycle pages for every module.

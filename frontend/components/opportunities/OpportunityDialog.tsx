@@ -274,7 +274,15 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
                 <CustomFieldInputs
                   definitions={customFieldsQuery.data}
                   values={(form.custom_fields as Record<string, unknown>) ?? {}}
-                  onChange={(values) => setForm((c) => ({ ...c, custom_fields: values }))}
+                  onChange={(fieldKey, value) =>
+                    setForm((current) => ({
+                      ...current,
+                      custom_fields: {
+                        ...(current.custom_fields ?? {}),
+                        [fieldKey]: value,
+                      },
+                    }))
+                  }
                 />
               </div>
             ) : null}

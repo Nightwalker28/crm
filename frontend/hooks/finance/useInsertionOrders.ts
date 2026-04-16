@@ -4,6 +4,8 @@ import { useDeferredValue, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
+import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
+import type { SavedViewFilters } from "@/hooks/useSavedViews";
 
 export type InsertionOrderStatus = "draft" | "issued" | "active" | "completed" | "cancelled" | "imported";
 
@@ -11,6 +13,7 @@ export type InsertionOrder = {
   id: number;
   io_number: string;
   customer_name: string;
+  customer_contact_id?: number | null;
   customer_organization_id?: number | null;
   counterparty_reference?: string | null;
   external_reference?: string | null;
@@ -80,8 +83,7 @@ function toApiErrorMessage(body: unknown, fallback: string) {
 async function fetchInsertionOrders(
   page: number,
   pageSize: number,
-  searchTerm: string,
-  statusFilter: string,
+  filters: SavedViewFilters,
   visibleColumns: string[],
 ): Promise<InsertionOrdersResponse> {
   const params = new URLSearchParams({
@@ -89,15 +91,14 @@ async function fetchInsertionOrders(
     page_size: String(pageSize),
   });
 
-  if (searchTerm.trim()) {
-    params.set("search", searchTerm.trim());
-  }
-
+  appendSavedViewFilterParams(params, filters);
+  const statusFilter = typeof filters.status === "string" ? filters.status : "all";
   if (statusFilter !== "all") {
     params.set("status", statusFilter);
   }
-  if (visibleColumns.length) {
-    params.set("fields", visibleColumns.join(","));
+  const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
+  if (baseVisibleColumns.length) {
+    params.set("fields", baseVisibleColumns.join(","));
   }
 
   const res = await apiFetch(`/finance/insertion-orders?${params.toString()}`);
@@ -156,19 +157,21 @@ function getErrorMessage(error: unknown) {
   return DEFAULT_ERROR;
 }
 
-export function useInsertionOrders(visibleColumns: string[], initialPage = 1, initialPageSize = 10) {
+export function useInsertionOrders(
+  visibleColumns: string[],
+  viewFilters: SavedViewFilters,
+  initialPage = 1,
+  initialPageSize = 10,
+) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState(initialPageSize);
-  const [searchTerm, setSearchTermState] = useState("");
-  const [statusFilter, setStatusFilterState] = useState("all");
 
-  const deferredSearchTerm = useDeferredValue(searchTerm.trim());
-  const deferredStatusFilter = useDeferredValue(statusFilter);
+  const deferredFilters = useDeferredValue(viewFilters);
 
   const query = useQuery<InsertionOrdersResponse>({
-    queryKey: ["insertion-orders", page, pageSize, deferredSearchTerm, deferredStatusFilter, visibleColumns],
-    queryFn: () => fetchInsertionOrders(page, pageSize, deferredSearchTerm, deferredStatusFilter, visibleColumns),
+    queryKey: ["insertion-orders", page, pageSize, deferredFilters, visibleColumns],
+    queryFn: () => fetchInsertionOrders(page, pageSize, deferredFilters, visibleColumns),
     placeholderData: (previousData) => previousData,
     refetchOnWindowFocus: false,
   });
@@ -215,22 +218,12 @@ export function useInsertionOrders(visibleColumns: string[], initialPage = 1, in
     rangeEnd: query.data?.range_end ?? 0,
     isLoading: query.isLoading || query.isFetching,
     error: query.error ? getErrorMessage(query.error) : null,
-    searchTerm,
-    statusFilter,
     goToPage: (nextPage: number) => setPage(Math.max(1, nextPage)),
     onPageSizeChange: (size: number) => {
       setPage(1);
       setPageSize(Math.max(1, size));
     },
     refresh: () => query.refetch(),
-    setSearchTerm: (value: string) => {
-      setPage(1);
-      setSearchTermState(value);
-    },
-    setStatusFilter: (value: string) => {
-      setPage(1);
-      setStatusFilterState(value);
-    },
     createOrder: (payload: InsertionOrderPayload) => createMutation.mutateAsync(payload),
     updateOrder: (id: number, payload: InsertionOrderPayload) => updateMutation.mutateAsync({ id, payload }),
     deleteOrder: (id: number) => deleteMutation.mutateAsync(id),

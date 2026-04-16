@@ -1,6 +1,7 @@
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
+from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.security import require_admin
 from app.core.pagination import Pagination, get_pagination
 from app.modules.user_management.schema import (
@@ -82,10 +83,19 @@ def search_users(
     sort_by: str = Query("name"),
     sort_order: str = Query("asc"),
     fields: Optional[str] = Query(None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     response = admin_users.search_users(
         db,
         pagination=pagination,
@@ -95,6 +105,8 @@ def search_users(
         status_filter=status,
         sort_by=sort_by,
         sort_order=sort_order,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
     )
     selected_fields = _parse_list_fields(fields)
     response["results"] = [_serialize_user_list_item(user, selected_fields) for user in response["results"]]

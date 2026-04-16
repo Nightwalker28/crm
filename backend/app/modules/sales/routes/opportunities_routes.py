@@ -2,6 +2,7 @@ from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Upload
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
@@ -66,24 +67,42 @@ def _serialize_opportunity_list_item(opportunity, fields: set[str]) -> SalesOppo
             "tactics",
             "delivery_format",
             "attachments",
+            "custom_fields",
         }
     )
     payload = {"opportunity_id": opportunity.opportunity_id}
     for field in safe_fields:
-        payload[field] = getattr(opportunity, field, None)
+        if field == "custom_fields":
+            payload[field] = getattr(opportunity, "custom_data", None)
+        else:
+            payload[field] = getattr(opportunity, field, None)
     return SalesOpportunityListItem.model_validate(payload)
 
 
 @router.get("", response_model=SalesOpportunityListResponse)
 def list_sales_opportunities(
     fields: str | None = Query(default=None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access("sales_opportunities")),
     require_permission = Depends(require_action_access("sales_opportunities", "view")),
 ):
-    items, total_count = list_opportunities(db, pagination)
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    items, total_count = list_opportunities(
+        db,
+        pagination,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+    )
     selected_fields = _parse_list_fields(fields)
     serialized = [_serialize_opportunity_list_item(item, selected_fields) for item in items]
     return build_paged_response(serialized, total_count, pagination)
@@ -93,13 +112,28 @@ def list_sales_opportunities(
 def search_sales_opportunities(
     query: str = Query(..., min_length=1, description="Search by opportunity fields"),
     fields: str | None = Query(default=None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access("sales_opportunities")),
     require_permission = Depends(require_action_access("sales_opportunities", "view")),
 ):
-    items, total_count = list_opportunities(db, pagination, search=query)
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    items, total_count = list_opportunities(
+        db,
+        pagination,
+        search=query,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+    )
     selected_fields = _parse_list_fields(fields)
     serialized = [_serialize_opportunity_list_item(item, selected_fields) for item in items]
     return build_paged_response(serialized, total_count, pagination)

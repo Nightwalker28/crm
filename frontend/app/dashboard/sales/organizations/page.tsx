@@ -6,27 +6,29 @@ import OrganizationsHeader from "@/components/organizations/organizationHeader";
 import SearchBar from "@/components/ui/SearchBar";
 import Pagination from "@/components/ui/Pagination";
 import { useOrganizations } from "@/hooks/sales/useOrganizations";
-import { ColumnPicker } from "@/components/ui/ColumnPicker";
-import { useTablePreferences } from "@/hooks/useTablePreferences";
-
-const ORGANIZATION_COLUMNS = [
-  { key: "org_name", label: "Organization" },
-  { key: "primary_email", label: "Email" },
-  { key: "website", label: "Website" },
-  { key: "industry", label: "Industry" },
-  { key: "annual_revenue", label: "Revenue" },
-  { key: "primary_phone", label: "Phone" },
-  { key: "billing_country", label: "Country" },
-];
-
-const DEFAULT_ORGANIZATION_COLUMNS = ["org_name", "primary_email", "website", "industry"];
+import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
+import { useSavedViews } from "@/hooks/useSavedViews";
+import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
+import { useMemo } from "react";
 
 export default function OrganizationsPage() {
-  const { visibleColumns, saveVisibleColumns } = useTablePreferences(
-    "sales_organizations",
-    ORGANIZATION_COLUMNS,
-    DEFAULT_ORGANIZATION_COLUMNS,
+  const { data: customFields = [] } = useModuleCustomFields("sales_organizations");
+  const definition = useMemo(
+    () => buildModuleViewDefinition("sales_organizations", customFields),
+    [customFields],
   );
+  const {
+    views,
+    selectedViewId,
+    setSelectedViewId,
+    draftConfig,
+    setDraftConfig,
+  } = useSavedViews(
+    "sales_organizations",
+    MODULE_VIEW_DEFAULTS.sales_organizations,
+  );
+  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : MODULE_VIEW_DEFAULTS.sales_organizations.visible_columns;
   const {
     organizations,
     page,
@@ -37,8 +39,6 @@ export default function OrganizationsPage() {
     rangeEnd,
     isLoading,
     error,
-    searchTerm,
-    setSearchTerm,
     goToPage,
     setPageSize,
     refresh,
@@ -46,7 +46,7 @@ export default function OrganizationsPage() {
     isCreating,
     setCreateOpen,
     createOrganization,
-  } = useOrganizations(visibleColumns);
+  } = useOrganizations(visibleColumns, draftConfig.filters);
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-6">
@@ -55,17 +55,25 @@ export default function OrganizationsPage() {
           onCreateClick={() => setCreateOpen(true)}
           onUploadSuccess={refresh}
         />
-        <ColumnPicker
-          title="Organization columns"
-          options={ORGANIZATION_COLUMNS}
-          visibleColumns={visibleColumns}
-          onChange={saveVisibleColumns}
+        <SavedViewSelector
+          moduleKey="sales_organizations"
+          views={views}
+          selectedViewId={selectedViewId}
+          onSelect={setSelectedViewId}
         />
       </div>
 
       <SearchBar
-        value={searchTerm}
-        onChange={setSearchTerm}
+        value={typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : ""}
+        onChange={(value) =>
+          setDraftConfig((current) => ({
+            ...current,
+            filters: {
+              ...current.filters,
+              search: value,
+            },
+          }))
+        }
         placeholder="Search"
       />
 
@@ -79,6 +87,7 @@ export default function OrganizationsPage() {
         organizations={organizations}
         isLoading={isLoading}
         visibleColumns={visibleColumns}
+        columnOptions={definition?.columns ?? []}
       />
 
       <Pagination

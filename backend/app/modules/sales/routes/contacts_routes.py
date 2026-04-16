@@ -3,6 +3,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.module_csv import read_upload_bytes
 from app.core.module_export import bytes_download_response
 from app.core.pagination import Pagination, build_paged_response, get_pagination
@@ -67,19 +68,35 @@ def _serialize_contact_list_item(contact, fields: set[str]) -> SalesContactListI
     payload = {"contact_id": contact.contact_id}
     for field in fields:
         payload[field] = getattr(contact, field, None)
+    payload["custom_fields"] = getattr(contact, "custom_data", None)
     return SalesContactListItem.model_validate(payload)
 
 
 @router.get("", response_model=SalesContactListResponse)
 def list_contacts(
     fields: str | None = Query(default=None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
-    contacts, total_count = list_sales_contacts(db, pagination, search=None)
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    contacts, total_count = list_sales_contacts(
+        db,
+        pagination,
+        search=None,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+    )
     selected_fields = _parse_list_fields(fields, CONTACT_LIST_FIELDS)
     serialized = [_serialize_contact_list_item(contact, selected_fields) for contact in contacts]
     return build_paged_response(serialized, total_count, pagination)
@@ -93,13 +110,28 @@ def search_contacts(
         description="Search by name, email, title, region, country, or LinkedIn URL",
     ),
     fields: str | None = Query(default=None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
-    contacts, total_count = list_sales_contacts(db, pagination, search=query)
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    contacts, total_count = list_sales_contacts(
+        db,
+        pagination,
+        search=query,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+    )
     selected_fields = _parse_list_fields(fields, CONTACT_LIST_FIELDS)
     serialized = [_serialize_contact_list_item(contact, selected_fields) for contact in contacts]
     return build_paged_response(serialized, total_count, pagination)

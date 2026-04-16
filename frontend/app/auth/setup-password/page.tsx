@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Failed to set password";
 }
 
-export default function SetupPasswordPage() {
+function SetupPasswordPageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const token = useMemo(() => searchParams.get("token") ?? "", [searchParams]);
@@ -106,5 +106,13 @@ export default function SetupPasswordPage() {
       {success && <p className="mt-3 text-xs text-emerald-300">{success}</p>}
       {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
     </>
+  );
+}
+
+export default function SetupPasswordPage() {
+  return (
+    <Suspense fallback={<p className="text-sm text-slate-300/80">Loading setup link...</p>}>
+      <SetupPasswordPageContent />
+    </Suspense>
   );
 }

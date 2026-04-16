@@ -6,28 +6,30 @@ import ContactList from "@/components/contacts/contactList";
 import { useContacts } from "@/hooks/sales/useContacts";
 import { useState } from "react";
 import CreateContactModal from "@/components/contacts/createContactModal";
-import { ColumnPicker } from "@/components/ui/ColumnPicker";
-import { useTablePreferences } from "@/hooks/useTablePreferences";
-
-const CONTACT_COLUMNS = [
-  { key: "first_name", label: "First Name" },
-  { key: "last_name", label: "Last Name" },
-  { key: "primary_email", label: "Email" },
-  { key: "current_title", label: "Job Title" },
-  { key: "organization_name", label: "Organization" },
-  { key: "region", label: "Region" },
-  { key: "country", label: "Country" },
-  { key: "linkedin_url", label: "LinkedIn" },
-];
-
-const DEFAULT_CONTACT_COLUMNS = ["first_name", "last_name", "primary_email", "organization_name", "linkedin_url"];
+import SearchBar from "@/components/ui/SearchBar";
+import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
+import { useSavedViews } from "@/hooks/useSavedViews";
+import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
+import { useMemo } from "react";
 
 export default function ContactsPage() {
-  const { visibleColumns, saveVisibleColumns } = useTablePreferences(
-    "sales_contacts",
-    CONTACT_COLUMNS,
-    DEFAULT_CONTACT_COLUMNS,
+  const { data: customFields = [] } = useModuleCustomFields("sales_contacts");
+  const definition = useMemo(
+    () => buildModuleViewDefinition("sales_contacts", customFields),
+    [customFields],
   );
+  const {
+    views,
+    selectedViewId,
+    setSelectedViewId,
+    draftConfig,
+    setDraftConfig,
+  } = useSavedViews(
+    "sales_contacts",
+    MODULE_VIEW_DEFAULTS.sales_contacts,
+  );
+  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : MODULE_VIEW_DEFAULTS.sales_contacts.visible_columns;
   const {
     contacts,
     page,
@@ -40,7 +42,7 @@ export default function ContactsPage() {
     error,
     goToPage,
     refresh,
-  } = useContacts(visibleColumns);
+  } = useContacts(visibleColumns, draftConfig.filters);
 
   const [createOpen, setCreateOpen] = useState(false);
 
@@ -49,13 +51,27 @@ export default function ContactsPage() {
       <div className="max-w-5xl mx-auto flex flex-col gap-6 h-full">
         <div className="flex items-start justify-between gap-4">
           <ContactsHeader onCreateClick={() => setCreateOpen(true)} />
-          <ColumnPicker
-            title="Contact columns"
-            options={CONTACT_COLUMNS}
-            visibleColumns={visibleColumns}
-            onChange={saveVisibleColumns}
+          <SavedViewSelector
+            moduleKey="sales_contacts"
+            views={views}
+            selectedViewId={selectedViewId}
+            onSelect={setSelectedViewId}
           />
         </div>
+
+        <SearchBar
+          value={typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : ""}
+          onChange={(value) =>
+            setDraftConfig((current) => ({
+              ...current,
+              filters: {
+                ...current.filters,
+                search: value,
+              },
+            }))
+          }
+          placeholder="Search contacts"
+        />
 
         {error && (
           <div className="bg-red-900/40 border border-red-700 text-red-200 text-sm rounded-lg px-4 py-3 flex justify-between">
@@ -74,6 +90,7 @@ export default function ContactsPage() {
             contacts={contacts}
             isLoading={isLoading}
             visibleColumns={visibleColumns}
+            columnOptions={definition?.columns ?? []}
           />
         </div>
 

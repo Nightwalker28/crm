@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, Fragment } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 import Image from "next/image";
 import { Pencil } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -8,6 +8,7 @@ import Pagination from "../ui/Pagination";
 import UserFilters, { type UserFiltersValue } from "@/components/users/userFilters";
 import { Pill } from "@/components/ui/Pill"; 
 import { apiFetch } from "@/lib/api";
+import type { SavedViewCondition } from "@/hooks/useSavedViews";
 
 import {
   Table,
@@ -64,7 +65,27 @@ type Props = {
   optionsData: UserOptionsData;
   onEdit: (u: User) => void;
   visibleColumns: string[];
+  initialFilters?: UserFiltersValue;
+  initialSortKey?: SortKey;
+  initialSortDirection?: SortDirection;
+  allViewConditions?: SavedViewCondition[];
+  anyViewConditions?: SavedViewCondition[];
+  onStateChange?: (state: {
+    filters: UserFiltersValue;
+    sortKey: SortKey;
+    sortDirection: SortDirection;
+  }) => void;
 };
+
+function filtersEqual(a: UserFiltersValue, b: UserFiltersValue) {
+  return (
+    a.search === b.search &&
+    a.filtersOpen === b.filtersOpen &&
+    a.selectedTeams.join("|") === b.selectedTeams.join("|") &&
+    a.selectedRoles.join("|") === b.selectedRoles.join("|") &&
+    a.selectedStatuses.join("|") === b.selectedStatuses.join("|")
+  );
+}
 
 // --- Color Configurations ---
 // We map role names to Tailwind class strings here
@@ -117,6 +138,8 @@ const fetchUsers = async ({
   sortDirection,
   maps,
   visibleColumns,
+  allViewConditions,
+  anyViewConditions,
 }: {
   page: number;
   pageSize: number;
@@ -125,12 +148,16 @@ const fetchUsers = async ({
   sortDirection: SortDirection;
   maps: OptionMaps;
   visibleColumns: string[];
+  allViewConditions?: SavedViewCondition[];
+  anyViewConditions?: SavedViewCondition[];
 }): Promise<UsersResponse> => {
+  const totalViewConditions = (allViewConditions?.length ?? 0) + (anyViewConditions?.length ?? 0);
   const isSearchMode = 
       !!filters.search || 
       filters.selectedTeams.length > 0 || 
       filters.selectedRoles.length > 0 || 
       filters.selectedStatuses.length > 0 ||
+      totalViewConditions > 0 ||
       sortKey !== "name" || 
       sortDirection !== "asc";
 
@@ -158,6 +185,12 @@ const fetchUsers = async ({
     if (filters.selectedStatuses.length > 0) {
        params.append("status", filters.selectedStatuses.join(","));
     }
+    if (allViewConditions?.length) {
+      params.append("filters_all", JSON.stringify(allViewConditions));
+    }
+    if (anyViewConditions?.length) {
+      params.append("filters_any", JSON.stringify(anyViewConditions));
+    }
     
     params.append("sort_by", sortKey);
     params.append("sort_order", sortDirection);
@@ -173,19 +206,25 @@ export function UserManagementTable({
   optionsData,
   onEdit,
   visibleColumns = [],
+  initialFilters,
+  initialSortKey = "name",
+  initialSortDirection = "asc",
+  allViewConditions = [],
+  anyViewConditions = [],
+  onStateChange,
 }: Props) {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
-  const [sortKey, setSortKey] = useState<SortKey>("name");
-  const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+  const [sortKey, setSortKey] = useState<SortKey>(initialSortKey);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(initialSortDirection);
   const emptyUsers: User[] = [];
 
   const [filters, setFilters] = useState<UserFiltersValue>({
-    search: "",
-    filtersOpen: false,
-    selectedTeams: [],
-    selectedRoles: [],
-    selectedStatuses: [],
+    search: initialFilters?.search ?? "",
+    filtersOpen: initialFilters?.filtersOpen ?? false,
+    selectedTeams: initialFilters?.selectedTeams ?? [],
+    selectedRoles: initialFilters?.selectedRoles ?? [],
+    selectedStatuses: initialFilters?.selectedStatuses ?? [],
   });
 
   const apiFilters = useMemo(() => ({
@@ -209,8 +248,8 @@ export function UserManagementTable({
   }, [optionsData]);
 
   const { data, isLoading, isFetching } = useQuery({
-    queryKey: ["users-paged", page, pageSize, apiFilters, sortKey, sortDirection, visibleColumns], 
-    queryFn: () => fetchUsers({ page, pageSize, filters, sortKey, sortDirection, maps, visibleColumns }),
+    queryKey: ["users-paged", page, pageSize, apiFilters, sortKey, sortDirection, visibleColumns, allViewConditions, anyViewConditions], 
+    queryFn: () => fetchUsers({ page, pageSize, filters, sortKey, sortDirection, maps, visibleColumns, allViewConditions, anyViewConditions }),
     placeholderData: (previousData) => previousData, 
     enabled: !!optionsData,
     refetchOnWindowFocus: false,
@@ -238,8 +277,147 @@ export function UserManagementTable({
     }));
   }, [users]);
 
-  const hasColumn = (key: string) => visibleColumns.includes(key);
   const columnCount = visibleColumns.length + 1;
+  const getUserName = (user: User) => [user.first_name, user.last_name].filter(Boolean).join(" ").trim() || user.email;
+
+  const renderHead = (column: string) => {
+    switch (column) {
+      case "name":
+        return (
+          <SortableHead
+            key={column}
+            sorted={sortKey === "name"}
+            direction={sortDirection}
+            onClick={() => handleHeaderClick("name")}
+          >
+            Name
+          </SortableHead>
+        );
+      case "team_name":
+        return <TableHead key={column}>Team</TableHead>;
+      case "role_name":
+        return (
+          <SortableHead
+            key={column}
+            sorted={sortKey === "role"}
+            direction={sortDirection}
+            onClick={() => handleHeaderClick("role")}
+          >
+            Role
+          </SortableHead>
+        );
+      case "email":
+        return (
+          <SortableHead
+            key={column}
+            sorted={sortKey === "email"}
+            direction={sortDirection}
+            onClick={() => handleHeaderClick("email")}
+          >
+            Email
+          </SortableHead>
+        );
+      case "auth_mode":
+        return <TableHead key={column}>Sign-in Mode</TableHead>;
+      case "is_active":
+        return (
+          <SortableHead
+            key={column}
+            sorted={sortKey === "status"}
+            direction={sortDirection}
+            onClick={() => handleHeaderClick("status")}
+          >
+            Status
+          </SortableHead>
+        );
+      default:
+        return null;
+    }
+  };
+
+  const renderUserCell = (u: User, column: string) => {
+    const isSelf = typeof currentUserId === "number" && u.id === currentUserId;
+    const roleProps = getRolePillProps(u.role_name);
+
+    switch (column) {
+      case "name":
+        return (
+          <TableCell>
+            <div className="flex items-center gap-2 h-7">
+              {u.photo_url ? (
+                <Image
+                  src={u.photo_url}
+                  alt=""
+                  width={24}
+                  height={24}
+                  className="h-6 w-6 rounded object-cover"
+                />
+              ) : (
+                <div className="h-6 w-6 rounded bg-neutral-700 flex items-center justify-center text-[10px]">
+                  {(u.first_name?.[0] ?? u.email[0] ?? "?").toUpperCase()}
+                </div>
+              )}
+
+              <div className="flex items-center gap-1 max-w-full">
+                <span className="whitespace-nowrap overflow-hidden text-ellipsis">
+                  {getUserName(u)}
+                </span>
+                {isSelf && (
+                  <span className="text-[10px] text-neutral-400 shrink-0">
+                    (You)
+                  </span>
+                )}
+              </div>
+            </div>
+          </TableCell>
+        );
+      case "team_name":
+        return <TableCell>{u.team_name}</TableCell>;
+      case "role_name":
+        return (
+          <TableCell>
+            <Pill
+              bg={roleProps.bg}
+              text={roleProps.text}
+              border={roleProps.border}
+              className="w-22"
+            >
+              {u.role_name}
+            </Pill>
+          </TableCell>
+        );
+      case "email":
+        return (
+          <TableCell>
+            <span className="whitespace-nowrap overflow-hidden text-ellipsis block">
+              {u.email}
+            </span>
+          </TableCell>
+        );
+      case "auth_mode":
+        return (
+          <TableCell>
+            {u.auth_mode === "manual_only" ? "Manual only" : "Manual + Google"}
+          </TableCell>
+        );
+      case "is_active":
+        return (
+          <TableCell>
+            {u.is_active === "active" ? (
+              <Pill bg="bg-green-900/30" text="text-green-400" border="border-green-700/40">
+                Active
+              </Pill>
+            ) : (
+              <Pill bg="bg-zinc-900/30" text="text-zinc-400" border="border-zinc-700/40">
+                Inactive
+              </Pill>
+            )}
+          </TableCell>
+        );
+      default:
+        return null;
+    }
+  };
 
   const handleFilterChange = (newFilters: UserFiltersValue) => {
     setFilters(newFilters);
@@ -265,6 +443,32 @@ export function UserManagementTable({
     }
   };
 
+  useEffect(() => {
+    const nextFilters = {
+      search: initialFilters?.search ?? "",
+      filtersOpen: initialFilters?.filtersOpen ?? false,
+      selectedTeams: initialFilters?.selectedTeams ?? [],
+      selectedRoles: initialFilters?.selectedRoles ?? [],
+      selectedStatuses: initialFilters?.selectedStatuses ?? [],
+    };
+    if (!filtersEqual(filters, nextFilters)) {
+      setFilters(nextFilters);
+      setPage(1);
+    }
+    if (sortKey !== initialSortKey) {
+      setSortKey(initialSortKey);
+      setPage(1);
+    }
+    if (sortDirection !== initialSortDirection) {
+      setSortDirection(initialSortDirection);
+      setPage(1);
+    }
+  }, [filters, initialFilters, initialSortDirection, initialSortKey, sortDirection, sortKey]);
+
+  useEffect(() => {
+    onStateChange?.({ filters, sortKey, sortDirection });
+  }, [filters, sortDirection, sortKey, onStateChange]);
+
   return (
     <div className="flex flex-col gap-4 text-neutral-200">
       <UserFilters
@@ -285,50 +489,7 @@ export function UserManagementTable({
           <Table className="min-w-[900px]">
             <TableHeader >
               <TableHeaderRow className="">
-                {hasColumn("name") && (
-                  <SortableHead
-                    sorted={sortKey === "name"}
-                    direction={sortDirection}
-                    onClick={() => handleHeaderClick("name")}
-                  >
-                    Name
-                  </SortableHead>
-                )}
-
-                {hasColumn("team_name") && <TableHead>Team</TableHead>}
-
-                {hasColumn("role_name") && (
-                  <SortableHead
-                    sorted={sortKey === "role"}
-                    direction={sortDirection}
-                    onClick={() => handleHeaderClick("role")}
-                  >
-                    Role
-                  </SortableHead>
-                )}
-
-                {hasColumn("email") && (
-                  <SortableHead
-                    sorted={sortKey === "email"}
-                    direction={sortDirection}
-                    onClick={() => handleHeaderClick("email")}
-                  >
-                    Email
-                  </SortableHead>
-                )}
-
-                {hasColumn("auth_mode") && <TableHead>Sign-in Mode</TableHead>}
-
-                {hasColumn("is_active") && (
-                  <SortableHead
-                    sorted={sortKey === "status"}
-                    direction={sortDirection}
-                    onClick={() => handleHeaderClick("status")}
-                  >
-                    Status
-                  </SortableHead>
-                )}
-
+                {visibleColumns.map((column) => renderHead(column))}
                 <TableHead className="text-center">Actions</TableHead>
               </TableHeaderRow>
             </TableHeader>
@@ -356,85 +517,11 @@ export function UserManagementTable({
                     </TableGroupRow>
 
                     {users.map((u) => {
-                      const isSelf = typeof currentUserId === "number" && u.id === currentUserId;
-                      // Determine Role Pill Props from our map
-                      const roleProps = getRolePillProps(u.role_name);
-
                       return (
                         <TableRow key={u.id}>
-                          {hasColumn("name") && (
-                            <TableCell>
-                              <div className="flex items-center gap-2 h-7">
-                                {u.photo_url ? (
-                                  <Image
-                                    src={u.photo_url}
-                                    alt=""
-                                    width={24}
-                                    height={24}
-                                    className="h-6 w-6 rounded object-cover"
-                                  />
-                                ) : (
-                                  <div className="h-6 w-6 rounded bg-neutral-700 flex items-center justify-center text-[10px]">
-                                    {(u.first_name?.[0] ?? u.email[0] ?? "?").toUpperCase()}
-                                  </div>
-                                )}
-
-                                <div className="flex items-center gap-1 max-w-full">
-                                  <span className="whitespace-nowrap overflow-hidden text-ellipsis">
-                                    {u.first_name} {u.last_name}
-                                  </span>
-                                  {isSelf && (
-                                    <span className="text-[10px] text-neutral-400 shrink-0">
-                                      (You)
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </TableCell>
-                          )}
-
-                          {hasColumn("team_name") && <TableCell>{u.team_name}</TableCell>}
-
-                          {hasColumn("role_name") && (
-                            <TableCell>
-                              <Pill
-                                bg={roleProps.bg}
-                                text={roleProps.text}
-                                border={roleProps.border}
-                                className="w-22"
-                              >
-                                {u.role_name}
-                              </Pill>
-                            </TableCell>
-                          )}
-
-                          {hasColumn("email") && (
-                            <TableCell>
-                              <span className="whitespace-nowrap overflow-hidden text-ellipsis block">
-                                {u.email}
-                              </span>
-                            </TableCell>
-                          )}
-
-                          {hasColumn("auth_mode") && (
-                            <TableCell>
-                              {u.auth_mode === "manual_only" ? "Manual only" : "Manual + Google"}
-                            </TableCell>
-                          )}
-
-                          {hasColumn("is_active") && (
-                            <TableCell>
-                              {u.is_active === "active" ? (
-                                <Pill bg="bg-green-900/30" text="text-green-400" border="border-green-700/40">
-                                  Active
-                                </Pill>
-                              ) : (
-                                <Pill bg="bg-zinc-900/30" text="text-zinc-400" border="border-zinc-700/40">
-                                  Inactive
-                                </Pill>
-                              )}
-                            </TableCell>
-                          )}
+                          {visibleColumns.map((column) => (
+                            <Fragment key={column}>{renderUserCell(u, column)}</Fragment>
+                          ))}
 
                           <TableCell className="text-center">
                             <div className="flex items-center justify-center gap-3 h-7">

@@ -273,3 +273,22 @@ class UserTablePreference(Base):
     )
 
     user = relationship("User")
+
+
+class UserSavedView(Base):
+    __tablename__ = "user_saved_views"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    config = Column(JSON, nullable=False, server_default="{}")
+    is_default = Column(SmallInteger, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    user = relationship("User")

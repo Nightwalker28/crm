@@ -4,6 +4,8 @@ import { useDeferredValue, useState } from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
+import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
+import type { SavedViewFilters } from "@/hooks/useSavedViews";
 
 export type Opportunity = {
   opportunity_id: number;
@@ -41,14 +43,14 @@ type OpportunitiesResponse = {
   page: number;
 };
 
-async function fetchOpportunities(page: number, search: string, visibleColumns: string[]) {
+async function fetchOpportunities(page: number, filters: SavedViewFilters, visibleColumns: string[]) {
   const params = new URLSearchParams({ page: String(page) });
-  if (search.trim()) {
-    params.set("query", search.trim());
+  appendSavedViewFilterParams(params, filters);
+  const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
+  if (baseVisibleColumns.length) {
+    params.set("fields", baseVisibleColumns.join(","));
   }
-  if (visibleColumns.length) {
-    params.set("fields", visibleColumns.join(","));
-  }
+  const search = typeof filters.search === "string" ? filters.search.trim() : "";
   const path = search.trim() ? `/sales/opportunities/search?${params.toString()}` : `/sales/opportunities?${params.toString()}`;
   const res = await apiFetch(path);
   if (!res.ok) throw new Error(`Failed with ${res.status}`);
@@ -92,15 +94,14 @@ async function createFinanceIo(opportunityId: number) {
   return res.json();
 }
 
-export function useOpportunities(visibleColumns: string[], initialPage = 1) {
+export function useOpportunities(visibleColumns: string[], viewFilters: SavedViewFilters, initialPage = 1) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(initialPage);
-  const [searchTerm, setSearchTermState] = useState("");
-  const deferredSearch = useDeferredValue(searchTerm);
+  const deferredFilters = useDeferredValue(viewFilters);
 
   const query = useQuery({
-    queryKey: ["sales-opportunities", page, deferredSearch, visibleColumns],
-    queryFn: () => fetchOpportunities(page, deferredSearch, visibleColumns),
+    queryKey: ["sales-opportunities", page, deferredFilters, visibleColumns],
+    queryFn: () => fetchOpportunities(page, deferredFilters, visibleColumns),
     placeholderData: keepPreviousData,
   });
 
@@ -136,11 +137,6 @@ export function useOpportunities(visibleColumns: string[], initialPage = 1) {
     rangeEnd: data?.range_end ?? 0,
     isLoading: query.isLoading || query.isFetching,
     error: query.error instanceof Error ? query.error.message : null,
-    searchTerm,
-    setSearchTerm: (value: string) => {
-      setPage(1);
-      setSearchTermState(value);
-    },
     goToPage: setPage,
     refresh: () => query.refetch(),
     createOpportunity: (payload: OpportunityPayload) => createMutation.mutateAsync(payload),

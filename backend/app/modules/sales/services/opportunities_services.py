@@ -6,6 +6,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination
+from app.core.module_filters import apply_filter_conditions
 from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
 from app.modules.platform.services.custom_fields import (
@@ -114,11 +115,42 @@ def list_opportunities(
     db: Session,
     pagination: Pagination,
     search: str | None = None,
+    *,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[SalesOpportunity], int]:
-    query = _apply_search_filter(
-        db.query(SalesOpportunity).filter(SalesOpportunity.deleted_at.is_(None)),
-        search,
+    query = db.query(SalesOpportunity).filter(SalesOpportunity.deleted_at.is_(None))
+    query = apply_filter_conditions(
+        query,
+        conditions=all_filter_conditions,
+        logic="all",
+        field_map={
+            "opportunity_name": {"expression": SalesOpportunity.opportunity_name, "type": "text"},
+            "client": {"expression": SalesOpportunity.client, "type": "text"},
+            "sales_stage": {"expression": SalesOpportunity.sales_stage, "type": "text"},
+            "expected_close_date": {"expression": SalesOpportunity.expected_close_date, "type": "date"},
+            "total_cost_of_project": {"expression": SalesOpportunity.total_cost_of_project, "type": "number"},
+            "currency_type": {"expression": SalesOpportunity.currency_type, "type": "text"},
+            "target_geography": {"expression": SalesOpportunity.target_geography, "type": "text"},
+            "created_time": {"expression": SalesOpportunity.created_time, "type": "date"},
+        },
     )
+    query = apply_filter_conditions(
+        query,
+        conditions=any_filter_conditions,
+        logic="any",
+        field_map={
+            "opportunity_name": {"expression": SalesOpportunity.opportunity_name, "type": "text"},
+            "client": {"expression": SalesOpportunity.client, "type": "text"},
+            "sales_stage": {"expression": SalesOpportunity.sales_stage, "type": "text"},
+            "expected_close_date": {"expression": SalesOpportunity.expected_close_date, "type": "date"},
+            "total_cost_of_project": {"expression": SalesOpportunity.total_cost_of_project, "type": "number"},
+            "currency_type": {"expression": SalesOpportunity.currency_type, "type": "text"},
+            "target_geography": {"expression": SalesOpportunity.target_geography, "type": "text"},
+            "created_time": {"expression": SalesOpportunity.created_time, "type": "date"},
+        },
+    )
+    query = _apply_search_filter(query, search)
     total_count = query.count()
     items = query.offset(pagination.offset).limit(pagination.limit).all()
     items = hydrate_custom_field_records(

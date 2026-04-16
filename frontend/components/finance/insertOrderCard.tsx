@@ -18,7 +18,7 @@ function getUserInitials(name: string): string {
     .slice(0, 2);
 }
 
-function formatDate(dateString: string): string {
+function formatDate(dateString?: string | null): string {
   if (!dateString) return "";
   const date = new Date(dateString);
   if (Number.isNaN(date.getTime())) return dateString;

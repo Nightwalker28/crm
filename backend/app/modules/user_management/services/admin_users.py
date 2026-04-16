@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, selectinload
 
+from app.core.module_filters import apply_filter_conditions
 from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination, build_paged_response
 from app.core.postgres_search import searchable_text
@@ -23,6 +24,7 @@ def list_all_users(db: Session, pagination: Pagination):
         db.query(User)
         .options(joinedload(User.team), selectinload(User.role))
         .outerjoin(Team)
+        .outerjoin(Role)
     )
     unassigned_label = "Unassigned"
 
@@ -48,11 +50,14 @@ def search_users(
     status_filter: Optional[str],
     sort_by: str,
     sort_order: str,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
 ):
     query = (
         db.query(User)
         .options(joinedload(User.team), selectinload(User.role))
         .outerjoin(Team)
+        .outerjoin(Role)
     )
 
     unassigned_label = "Unassigned"
@@ -85,12 +90,40 @@ def search_users(
         if valid_statuses:
             query = query.filter(User.is_active.in_(valid_statuses))
 
+    query = apply_filter_conditions(
+        query,
+        conditions=all_filter_conditions,
+        logic="all",
+        field_map={
+            "first_name": {"expression": User.first_name, "type": "text"},
+            "last_name": {"expression": User.last_name, "type": "text"},
+            "email": {"expression": User.email, "type": "text"},
+            "team_name": {"expression": Team.name, "type": "text"},
+            "role_name": {"expression": Role.name, "type": "text"},
+            "auth_mode": {"expression": User.auth_mode, "type": "text"},
+            "is_active": {"expression": User.is_active, "type": "text"},
+        },
+    )
+    query = apply_filter_conditions(
+        query,
+        conditions=any_filter_conditions,
+        logic="any",
+        field_map={
+            "first_name": {"expression": User.first_name, "type": "text"},
+            "last_name": {"expression": User.last_name, "type": "text"},
+            "email": {"expression": User.email, "type": "text"},
+            "team_name": {"expression": Team.name, "type": "text"},
+            "role_name": {"expression": Role.name, "type": "text"},
+            "auth_mode": {"expression": User.auth_mode, "type": "text"},
+            "is_active": {"expression": User.is_active, "type": "text"},
+        },
+    )
+
     team_sort = func.coalesce(Team.name, unassigned_label)
 
     if sort_by == "email":
         user_sort = User.email
     elif sort_by == "role":
-        query = query.outerjoin(Role)
         user_sort = Role.name
     elif sort_by == "status":
         user_sort = User.is_active

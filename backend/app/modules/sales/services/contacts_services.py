@@ -6,6 +6,7 @@ from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import detect_duplicates, ensure_single_duplicate_action
+from app.core.module_filters import apply_filter_conditions
 from app.core.module_csv import require_csv_headers, rows_from_csv_bytes
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
@@ -18,7 +19,7 @@ from app.modules.platform.services.custom_fields import (
     save_custom_field_values,
     validate_custom_field_payload,
 )
-from app.modules.sales.models import SalesContact
+from app.modules.sales.models import SalesContact, SalesOrganization
 from app.modules.user_management.models import User
 
 EXPORT_COLUMNS = [
@@ -82,11 +83,44 @@ def list_sales_contacts(
     db: Session,
     pagination: Pagination,
     search: str | None = None,
+    *,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
 ) -> tuple[Sequence[SalesContact], int]:
-    query = _apply_search_filter(
-        db.query(SalesContact).filter(SalesContact.deleted_at.is_(None)),
-        search,
+    query = db.query(SalesContact).outerjoin(SalesOrganization).filter(SalesContact.deleted_at.is_(None))
+    query = apply_filter_conditions(
+        query,
+        conditions=all_filter_conditions,
+        logic="all",
+        field_map={
+            "first_name": {"expression": SalesContact.first_name, "type": "text"},
+            "last_name": {"expression": SalesContact.last_name, "type": "text"},
+            "primary_email": {"expression": SalesContact.primary_email, "type": "text"},
+            "current_title": {"expression": SalesContact.current_title, "type": "text"},
+            "region": {"expression": SalesContact.region, "type": "text"},
+            "country": {"expression": SalesContact.country, "type": "text"},
+            "linkedin_url": {"expression": SalesContact.linkedin_url, "type": "text"},
+            "organization_name": {"expression": SalesOrganization.org_name, "type": "text"},
+            "created_time": {"expression": SalesContact.created_time, "type": "date"},
+        },
     )
+    query = apply_filter_conditions(
+        query,
+        conditions=any_filter_conditions,
+        logic="any",
+        field_map={
+            "first_name": {"expression": SalesContact.first_name, "type": "text"},
+            "last_name": {"expression": SalesContact.last_name, "type": "text"},
+            "primary_email": {"expression": SalesContact.primary_email, "type": "text"},
+            "current_title": {"expression": SalesContact.current_title, "type": "text"},
+            "region": {"expression": SalesContact.region, "type": "text"},
+            "country": {"expression": SalesContact.country, "type": "text"},
+            "linkedin_url": {"expression": SalesContact.linkedin_url, "type": "text"},
+            "organization_name": {"expression": SalesOrganization.org_name, "type": "text"},
+            "created_time": {"expression": SalesContact.created_time, "type": "date"},
+        },
+    )
+    query = _apply_search_filter(query, search)
 
     total_count = query.count()
     contacts = query.offset(pagination.offset).limit(pagination.limit).all()

@@ -1,4 +1,4 @@
-from typing import Optional, List
+from typing import Optional, List, Any
 from datetime import datetime
 from enum import Enum
 
@@ -278,3 +278,36 @@ class TablePreferenceResponse(BaseModel):
 
 class TablePreferenceUpdateRequest(BaseModel):
     visible_columns: list[str]
+
+
+class SavedViewConfig(BaseModel):
+    visible_columns: list[str] = []
+    filters: dict[str, Any] = {}
+    sort: dict[str, Any] | None = None
+
+
+class SavedViewResponse(BaseModel):
+    id: int | None = None
+    module_key: str
+    name: str
+    config: SavedViewConfig
+    is_default: bool = False
+    is_system: bool = False
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class SavedViewsListResponse(BaseModel):
+    views: list[SavedViewResponse]
+
+
+class SavedViewCreateRequest(BaseModel):
+    name: str
+    config: SavedViewConfig
+    is_default: bool = False
+
+
+class SavedViewUpdateRequest(BaseModel):
+    name: str | None = None
+    config: SavedViewConfig | None = None
+    is_default: bool | None = None

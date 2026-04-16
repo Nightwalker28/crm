@@ -198,6 +198,8 @@ def list_generic_insertion_orders_page(
     request: Request | None,
     search: str | None = None,
     status_filter: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
 ):
     module_id = get_finance_module_id(db)
     user_scope = get_finance_user_scope(db, current_user)
@@ -208,6 +210,8 @@ def list_generic_insertion_orders_page(
         pagination=pagination,
         search=search,
         status_filter=status_filter,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
     )
     return build_paged_response(
         [_serialize_finance_record(record, request=request, current_user=current_user) for record in records],

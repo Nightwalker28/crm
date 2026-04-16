@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import type { InsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import { Pencil, Trash2 } from "lucide-react";
 import {
@@ -10,6 +11,8 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import type { TableColumnOption } from "@/hooks/useTablePreferences";
+import { getCustomFieldKeyFromColumn, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 
 type InsertionOrdersListProps = {
   orders: InsertionOrder[];
@@ -17,6 +20,7 @@ type InsertionOrdersListProps = {
   onEdit: (order: InsertionOrder) => void;
   onDelete: (order: InsertionOrder) => void;
   visibleColumns: string[];
+  columnOptions?: TableColumnOption[];
 };
 
 
@@ -26,25 +30,63 @@ export default function InsertionOrdersList({
   onEdit,
   onDelete,
   visibleColumns,
+  columnOptions = [],
 }: InsertionOrdersListProps) {
-  const hasColumn = (key: string) => visibleColumns.includes(key);
   const columnCount = visibleColumns.length + 1;
+  const headers: Record<string, string> = {
+    io_number: "IO Number",
+    customer_name: "Customer",
+    status: "Status",
+    currency: "Currency",
+    total_amount: "Total",
+    issue_date: "Issue Date",
+    due_date: "Due Date",
+    external_reference: "Reference",
+    user_name: "Owner",
+    updated_at: "Updated",
+  };
+  const columnLabels = new Map(columnOptions.map((option) => [option.key, option.label]));
+
+  const renderCell = (order: InsertionOrder, column: string) => {
+    if (isCustomFieldColumnKey(column)) {
+      const fieldKey = getCustomFieldKeyFromColumn(column);
+      const value = order.custom_fields?.[fieldKey];
+      return <TableCell>{value == null || value === "" ? "-" : String(value)}</TableCell>;
+    }
+    switch (column) {
+      case "io_number":
+        return <TableCell>{order.io_number || "-"}</TableCell>;
+      case "customer_name":
+        return <TableCell>{order.customer_name || "-"}</TableCell>;
+      case "status":
+        return <TableCell className="capitalize">{order.status || "-"}</TableCell>;
+      case "currency":
+        return <TableCell>{order.currency || "-"}</TableCell>;
+      case "total_amount":
+        return <TableCell>{order.total_amount ?? "-"}</TableCell>;
+      case "issue_date":
+        return <TableCell>{order.issue_date || "-"}</TableCell>;
+      case "due_date":
+        return <TableCell>{order.due_date || "-"}</TableCell>;
+      case "external_reference":
+        return <TableCell>{order.external_reference || "-"}</TableCell>;
+      case "user_name":
+        return <TableCell>{order.user_name || "-"}</TableCell>;
+      case "updated_at":
+        return <TableCell>{order.updated_at || "-"}</TableCell>;
+      default:
+        return null;
+    }
+  };
 
   return (
     <ModuleTableShell>
       <Table className="min-w-[1040px]">
         <TableHeader>
           <TableHeaderRow>
-            {hasColumn("io_number") && <TableHead>IO Number</TableHead>}
-            {hasColumn("customer_name") && <TableHead>Customer</TableHead>}
-            {hasColumn("status") && <TableHead>Status</TableHead>}
-            {hasColumn("currency") && <TableHead>Currency</TableHead>}
-            {hasColumn("total_amount") && <TableHead>Total</TableHead>}
-            {hasColumn("issue_date") && <TableHead>Issue Date</TableHead>}
-            {hasColumn("due_date") && <TableHead>Due Date</TableHead>}
-            {hasColumn("external_reference") && <TableHead>Reference</TableHead>}
-            {hasColumn("user_name") && <TableHead>Owner</TableHead>}
-            {hasColumn("updated_at") && <TableHead>Updated</TableHead>}
+            {visibleColumns.map((column) => (
+              <TableHead key={column}>{headers[column] ?? columnLabels.get(column) ?? column}</TableHead>
+            ))}
             <TableHead className="text-right">Actions</TableHead>
           </TableHeaderRow>
         </TableHeader>
@@ -65,16 +107,9 @@ export default function InsertionOrdersList({
           ) : (
             orders.map((order) => (
               <TableRow key={order.id}>
-                {hasColumn("io_number") && <TableCell>{order.io_number || "-"}</TableCell>}
-                {hasColumn("customer_name") && <TableCell>{order.customer_name || "-"}</TableCell>}
-                {hasColumn("status") && <TableCell className="capitalize">{order.status || "-"}</TableCell>}
-                {hasColumn("currency") && <TableCell>{order.currency || "-"}</TableCell>}
-                {hasColumn("total_amount") && <TableCell>{order.total_amount ?? "-"}</TableCell>}
-                {hasColumn("issue_date") && <TableCell>{order.issue_date || "-"}</TableCell>}
-                {hasColumn("due_date") && <TableCell>{order.due_date || "-"}</TableCell>}
-                {hasColumn("external_reference") && <TableCell>{order.external_reference || "-"}</TableCell>}
-                {hasColumn("user_name") && <TableCell>{order.user_name || "-"}</TableCell>}
-                {hasColumn("updated_at") && <TableCell>{order.updated_at || "-"}</TableCell>}
+                {visibleColumns.map((column) => (
+                  <Fragment key={column}>{renderCell(order, column)}</Fragment>
+                ))}
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-3">
                     <button

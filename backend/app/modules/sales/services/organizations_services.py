@@ -3,6 +3,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import detect_duplicates, ensure_single_duplicate_action
+from app.core.module_filters import apply_filter_conditions
 from app.core.module_csv import require_csv_headers, rows_from_csv_bytes
 from app.core.module_export import batched_csv_zip_bytes, dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
@@ -142,9 +143,46 @@ def list_organizations(db: Session) -> list[SalesOrganization]:
         record_id_attr="org_id",
     )
 
-def list_organizations_paginated(db: Session, offset: int, limit: int) -> tuple[list[SalesOrganization], int]:
+def list_organizations_paginated(
+    db: Session,
+    offset: int,
+    limit: int,
+    *,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> tuple[list[SalesOrganization], int]:
     """Return a page of organizations and the total count."""
     base_query = db.query(SalesOrganization).filter(SalesOrganization.deleted_at.is_(None))
+    base_query = apply_filter_conditions(
+        base_query,
+        conditions=all_filter_conditions,
+        logic="all",
+        field_map={
+            "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
+            "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
+            "website": {"expression": SalesOrganization.website, "type": "text"},
+            "industry": {"expression": SalesOrganization.industry, "type": "text"},
+            "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "number"},
+            "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
+            "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
+            "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
+        },
+    )
+    base_query = apply_filter_conditions(
+        base_query,
+        conditions=any_filter_conditions,
+        logic="any",
+        field_map={
+            "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
+            "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
+            "website": {"expression": SalesOrganization.website, "type": "text"},
+            "industry": {"expression": SalesOrganization.industry, "type": "text"},
+            "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "number"},
+            "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
+            "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
+            "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
+        },
+    )
     total = base_query.count()
     items = (
         base_query
@@ -161,7 +199,15 @@ def list_organizations_paginated(db: Session, offset: int, limit: int) -> tuple[
     )
     return items, total
 
-def search_organizations_pagianted(db: Session, name: str, offset: int, limit: int) -> tuple[list[SalesOrganization], int]:
+def search_organizations_pagianted(
+    db: Session,
+    name: str,
+    offset: int,
+    limit: int,
+    *,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> tuple[list[SalesOrganization], int]:
     """Return a page of organizations matching the name and the total count."""
     document = searchable_text(
         SalesOrganization.org_name,
@@ -176,6 +222,36 @@ def search_organizations_pagianted(db: Session, name: str, offset: int, limit: i
         search=name,
         document=document,
         default_order_column=SalesOrganization.created_time,
+    )
+    base_query = apply_filter_conditions(
+        base_query,
+        conditions=all_filter_conditions,
+        logic="all",
+        field_map={
+            "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
+            "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
+            "website": {"expression": SalesOrganization.website, "type": "text"},
+            "industry": {"expression": SalesOrganization.industry, "type": "text"},
+            "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "number"},
+            "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
+            "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
+            "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
+        },
+    )
+    base_query = apply_filter_conditions(
+        base_query,
+        conditions=any_filter_conditions,
+        logic="any",
+        field_map={
+            "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
+            "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
+            "website": {"expression": SalesOrganization.website, "type": "text"},
+            "industry": {"expression": SalesOrganization.industry, "type": "text"},
+            "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "number"},
+            "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
+            "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
+            "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
+        },
     )
     total = base_query.count()
     items = (

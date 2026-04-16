@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import Link from "next/link";
 
 import {
@@ -13,32 +14,82 @@ import {
 } from "@/components/ui/Table";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import type { Organization } from "@/hooks/sales/useOrganizations";
+import type { TableColumnOption } from "@/hooks/useTablePreferences";
+import { getCustomFieldKeyFromColumn, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 
 type Props = {
   organizations: Organization[];
   isLoading: boolean;
   visibleColumns: string[];
+  columnOptions?: TableColumnOption[];
 };
 
 export default function OrganizationsTable({
   organizations,
   isLoading,
   visibleColumns = [],
+  columnOptions = [],
 }: Props) {
-  const hasColumn = (key: string) => visibleColumns.includes(key);
+  const headers: Record<string, string> = {
+    org_name: "Organization",
+    primary_email: "Email",
+    website: "Website",
+    industry: "Industry",
+    annual_revenue: "Revenue",
+    primary_phone: "Phone",
+    billing_country: "Country",
+  };
+  const columnLabels = new Map(columnOptions.map((option) => [option.key, option.label]));
+
+  const renderCell = (org: Organization, column: string) => {
+    if (isCustomFieldColumnKey(column)) {
+      const fieldKey = getCustomFieldKeyFromColumn(column);
+      const value = org.custom_fields?.[fieldKey];
+      return <TableCell>{value == null || value === "" ? "-" : String(value)}</TableCell>;
+    }
+    switch (column) {
+      case "org_name":
+        return <TableCell>{org.org_name}</TableCell>;
+      case "primary_email":
+        return <TableCell>{org.primary_email || "-"}</TableCell>;
+      case "website":
+        return (
+          <TableCell>
+            {org.website ? (
+              <a
+                href={org.website}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-sky-300 hover:text-sky-200"
+              >
+                {org.website.replace(/^https?:\/\//, "")}
+              </a>
+            ) : (
+              "-"
+            )}
+          </TableCell>
+        );
+      case "industry":
+        return <TableCell>{org.industry || "-"}</TableCell>;
+      case "annual_revenue":
+        return <TableCell>{org.annual_revenue || "-"}</TableCell>;
+      case "primary_phone":
+        return <TableCell>{org.primary_phone || "-"}</TableCell>;
+      case "billing_country":
+        return <TableCell>{org.billing_country || "-"}</TableCell>;
+      default:
+        return null;
+    }
+  };
 
   return (
     <ModuleTableShell>
       <Table className="min-w-[960px]">
         <TableHeader>
           <TableHeaderRow>
-            {hasColumn("org_name") && <TableHead>Organization</TableHead>}
-            {hasColumn("primary_email") && <TableHead>Email</TableHead>}
-            {hasColumn("website") && <TableHead>Website</TableHead>}
-            {hasColumn("industry") && <TableHead>Industry</TableHead>}
-            {hasColumn("annual_revenue") && <TableHead>Revenue</TableHead>}
-            {hasColumn("primary_phone") && <TableHead>Phone</TableHead>}
-            {hasColumn("billing_country") && <TableHead>Country</TableHead>}
+            {visibleColumns.map((column) => (
+              <TableHead key={column}>{headers[column] ?? columnLabels.get(column) ?? column}</TableHead>
+            ))}
             <TableHead className="text-right">Record</TableHead>
           </TableHeaderRow>
         </TableHeader>
@@ -59,28 +110,9 @@ export default function OrganizationsTable({
           ) : (
             organizations.map((org) => (
               <TableRow key={org.org_id}>
-                {hasColumn("org_name") && <TableCell>{org.org_name}</TableCell>}
-                {hasColumn("primary_email") && <TableCell>{org.primary_email || "-"}</TableCell>}
-                {hasColumn("website") && (
-                  <TableCell>
-                    {org.website ? (
-                      <a
-                        href={org.website}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sky-300 hover:text-sky-200"
-                      >
-                        {org.website.replace(/^https?:\/\//, "")}
-                      </a>
-                    ) : (
-                      "-"
-                    )}
-                  </TableCell>
-                )}
-                {hasColumn("industry") && <TableCell>{org.industry || "-"}</TableCell>}
-                {hasColumn("annual_revenue") && <TableCell>{org.annual_revenue || "-"}</TableCell>}
-                {hasColumn("primary_phone") && <TableCell>{org.primary_phone || "-"}</TableCell>}
-                {hasColumn("billing_country") && <TableCell>{org.billing_country || "-"}</TableCell>}
+                {visibleColumns.map((column) => (
+                  <Fragment key={column}>{renderCell(org, column)}</Fragment>
+                ))}
                 <TableCell className="text-right">
                   <Link
                     href={`/dashboard/sales/organizations/${org.org_id}`}

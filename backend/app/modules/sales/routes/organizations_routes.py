@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination, get_pagination, build_paged_response
 from app.core.database import get_db
+from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.module_csv import read_upload_bytes
 from app.core.module_export import bytes_download_response
 from app.core.security import require_user
@@ -60,6 +61,7 @@ def _serialize_organization_list_item(org, fields: set[str]) -> SalesOrganizatio
     payload = {"org_id": org.org_id}
     for field in fields:
         payload[field] = getattr(org, field, None)
+    payload["custom_fields"] = getattr(org, "custom_data", None)
     return SalesOrganizationListItem.model_validate(payload)
 
 # create
@@ -103,21 +105,38 @@ def create_sales_organization(
 def get_sales_organizations(
     search: str | None = Query(default=None, min_length=1),
     fields: str | None = Query(default=None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations')),
     require_permission = Depends(require_action_access("sales_organizations", "view")),
 ):
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     if search:
         items, total = search_organizations_pagianted(
             db=db,
             name=search,
             offset=pagination.offset,
             limit=pagination.limit,
+            all_filter_conditions=all_conditions,
+            any_filter_conditions=any_conditions,
         )
     else:
-        items, total = list_organizations_paginated(db=db, offset=pagination.offset, limit=pagination.limit)
+        items, total = list_organizations_paginated(
+            db=db,
+            offset=pagination.offset,
+            limit=pagination.limit,
+            all_filter_conditions=all_conditions,
+            any_filter_conditions=any_conditions,
+        )
     selected_fields = _parse_list_fields(fields, ORGANIZATION_LIST_FIELDS)
     serialized = [_serialize_organization_list_item(item, selected_fields) for item in items]
     return build_paged_response(serialized, total_count=total, pagination=pagination)
@@ -140,13 +159,29 @@ def get_deleted_sales_organizations(
 def search_sales_organizations(
     name: str,
     fields: str | None = Query(default=None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db:  Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations')),
     require_permission = Depends(require_action_access("sales_organizations", "view")),
 ):
-    items, total = search_organizations_pagianted(db, name, offset=pagination.offset, limit=pagination.limit)
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    items, total = search_organizations_pagianted(
+        db,
+        name,
+        offset=pagination.offset,
+        limit=pagination.limit,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+    )
     selected_fields = _parse_list_fields(fields, ORGANIZATION_LIST_FIELDS)
     serialized = [_serialize_organization_list_item(item, selected_fields) for item in items]
     return build_paged_response(serialized, total_count=total, pagination=pagination)

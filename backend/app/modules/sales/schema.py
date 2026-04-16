@@ -62,6 +62,7 @@ class SalesOrganizationListItem(BaseModel):
     industry: str | None = None
     annual_revenue: str | None = None
     billing_country: str | None = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class SalesOrganizationListResponse(BaseModel):
@@ -129,6 +130,7 @@ class SalesContactListItem(BaseModel):
     organization_name: Optional[str] = None
     assigned_to: Optional[int] = None
     created_time: datetime | None = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class SalesContactListResponse(BaseModel):
@@ -294,6 +296,7 @@ class SalesOpportunityListItem(BaseModel):
     tactics: str | None = None
     delivery_format: str | None = None
     attachments: list[str] | None = None
+    custom_fields: dict[str, Any] | None = None
 
     
 class SalesOpportunityListResponse(BaseModel):

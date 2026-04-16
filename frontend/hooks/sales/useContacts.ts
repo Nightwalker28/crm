@@ -4,6 +4,8 @@ import { useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
+import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
+import type { SavedViewFilters } from "@/hooks/useSavedViews";
 
 export type Contact = {
   contact_id: number;
@@ -17,6 +19,7 @@ export type Contact = {
   organization_name: string | null;
   assigned_to: number | null;
   created_time: string;
+  custom_fields?: Record<string, unknown> | null;
 };
 
 export type ContactsResponse = {
@@ -28,22 +31,26 @@ export type ContactsResponse = {
   page: number;
 };
 
-async function fetchContacts(page: number, visibleColumns: string[]): Promise<ContactsResponse> {
+async function fetchContacts(page: number, visibleColumns: string[], filters: SavedViewFilters): Promise<ContactsResponse> {
   const params = new URLSearchParams({ page: String(page) });
-  if (visibleColumns.length) {
-    params.append("fields", visibleColumns.join(","));
+  const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
+  if (baseVisibleColumns.length) {
+    params.append("fields", baseVisibleColumns.join(","));
   }
-  const res = await apiFetch(`/sales/contacts?${params.toString()}`);
+  appendSavedViewFilterParams(params, filters);
+  const searchTerm = typeof filters.search === "string" ? filters.search.trim() : "";
+  const path = searchTerm ? `/sales/contacts/search?${params.toString()}` : `/sales/contacts?${params.toString()}`;
+  const res = await apiFetch(path);
   if (!res.ok) throw new Error(`Failed with ${res.status}`);
   return res.json();
 }
 
-export function useContacts(visibleColumns: string[], initialPage = 1) {
+export function useContacts(visibleColumns: string[], viewFilters: SavedViewFilters, initialPage = 1) {
   const [page, setPage] = useState(initialPage);
 
   const query = useQuery({
-    queryKey: ["sales-contacts", page, visibleColumns],
-    queryFn: () => fetchContacts(page, visibleColumns),
+    queryKey: ["sales-contacts", page, visibleColumns, viewFilters],
+    queryFn: () => fetchContacts(page, visibleColumns, viewFilters),
     placeholderData: keepPreviousData,
   });
 

@@ -3,6 +3,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination, get_pagination
+from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.security import get_current_user
 from app.core.permissions import require_action_access
 from app.core.database import get_db
@@ -75,10 +76,19 @@ def list_insertion_orders(
     search: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
     fields: str | None = Query(default=None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
     require_permission = Depends(require_action_access("finance_io", "view")),
 ):
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     response = io_search_api.list_generic_insertion_orders_page(
         db,
         current_user,
@@ -86,6 +96,8 @@ def list_insertion_orders(
         request=request,
         search=search,
         status_filter=status_filter,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
     )
     selected_fields = _parse_list_fields(fields)
     response["results"] = [_serialize_insertion_order_list_item(item, selected_fields) for item in response["results"]]

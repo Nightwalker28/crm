@@ -5,6 +5,8 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
+import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
+import type { SavedViewFilters } from "@/hooks/useSavedViews";
 
 export type Organization = {
   org_id?: number;
@@ -17,6 +19,7 @@ export type Organization = {
   industry?: string;
   annual_revenue?: string;
   billing_country?: string;
+  custom_fields?: Record<string, unknown> | null;
 };
 
 export type OrganizationsResponse = {
@@ -31,7 +34,7 @@ export type OrganizationsResponse = {
 async function fetchOrganizations(
   page: number,
   pageSize: number,
-  searchTerm: string,
+  filters: SavedViewFilters,
   visibleColumns: string[],
 ): Promise<OrganizationsResponse> {
   const params = new URLSearchParams({
@@ -39,11 +42,10 @@ async function fetchOrganizations(
     page_size: String(pageSize),
   });
 
-  if (searchTerm.trim()) {
-    params.append("search", searchTerm.trim());
-  }
-  if (visibleColumns.length) {
-    params.append("fields", visibleColumns.join(","));
+  appendSavedViewFilterParams(params, filters);
+  const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
+  if (baseVisibleColumns.length) {
+    params.append("fields", baseVisibleColumns.join(","));
   }
 
   const res = await apiFetch(`/sales/organizations?${params.toString()}`);
@@ -61,20 +63,20 @@ function getErrorMessage(error: unknown) {
 
 export function useOrganizations(
   visibleColumns: string[],
+  viewFilters: SavedViewFilters,
   initialPage = 1,
   initialPageSize = 10,
 ) {
   const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSizeState] = useState(initialPageSize);
-  const [searchTerm, setSearchTermState] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
 
-  const deferredSearchTerm = useDeferredValue(searchTerm);
+  const deferredFilters = useDeferredValue(viewFilters);
 
   const query = useQuery({
-    queryKey: ["sales-organizations", page, pageSize, deferredSearchTerm, visibleColumns],
-    queryFn: () => fetchOrganizations(page, pageSize, deferredSearchTerm, visibleColumns),
+    queryKey: ["sales-organizations", page, pageSize, deferredFilters, visibleColumns],
+    queryFn: () => fetchOrganizations(page, pageSize, deferredFilters, visibleColumns),
     placeholderData: keepPreviousData,
   });
 
@@ -115,7 +117,6 @@ export function useOrganizations(
     rangeEnd: data?.range_end ?? 0,
     isLoading: query.isLoading || query.isFetching,
     error: query.error ? getErrorMessage(query.error) : null,
-    searchTerm,
     createOpen,
     isCreating,
 
@@ -125,11 +126,6 @@ export function useOrganizations(
       setPageSizeState(size);
     },
     refresh: () => query.refetch(),
-
-    setSearchTerm: (value: string) => {
-      setPage(1);
-      setSearchTermState(value);
-    },
     setCreateOpen,
     createOrganization,
   };

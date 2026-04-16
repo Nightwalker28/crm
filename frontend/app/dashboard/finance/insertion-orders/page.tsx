@@ -11,32 +11,32 @@ import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { InsertionOrder, InsertionOrderPayload } from "@/hooks/finance/useInsertionOrders";
-import { ColumnPicker } from "@/components/ui/ColumnPicker";
-import { useTablePreferences } from "@/hooks/useTablePreferences";
-
-const INSERTION_ORDER_COLUMNS = [
-  { key: "io_number", label: "IO Number" },
-  { key: "customer_name", label: "Customer" },
-  { key: "status", label: "Status" },
-  { key: "currency", label: "Currency" },
-  { key: "total_amount", label: "Total" },
-  { key: "issue_date", label: "Issue Date" },
-  { key: "due_date", label: "Due Date" },
-  { key: "external_reference", label: "Reference" },
-  { key: "user_name", label: "Owner" },
-  { key: "updated_at", label: "Updated" },
-];
-
-const DEFAULT_INSERTION_ORDER_COLUMNS = ["io_number", "customer_name", "status", "total_amount", "due_date"];
+import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
+import { useSavedViews } from "@/hooks/useSavedViews";
+import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
+import { useMemo } from "react";
 
 export default function InsertionOrdersPage() {
+  const { data: customFields = [] } = useModuleCustomFields("finance_io");
+  const definition = useMemo(
+    () => buildModuleViewDefinition("finance_io", customFields),
+    [customFields],
+  );
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<InsertionOrder | null>(null);
-  const { visibleColumns, saveVisibleColumns } = useTablePreferences(
+  const {
+    views,
+    selectedViewId,
+    setSelectedViewId,
+    draftConfig,
+    setDraftConfig,
+  } = useSavedViews(
     "finance_io",
-    INSERTION_ORDER_COLUMNS,
-    DEFAULT_INSERTION_ORDER_COLUMNS,
+    MODULE_VIEW_DEFAULTS.finance_io,
   );
+  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : MODULE_VIEW_DEFAULTS.finance_io.visible_columns;
+  const statusFilter = typeof draftConfig.filters?.status === "string" ? draftConfig.filters.status : "all";
   const {
     orders,
     page,
@@ -50,16 +50,12 @@ export default function InsertionOrdersPage() {
     totalCount,
     rangeStart,
     rangeEnd,
-    searchTerm,
-    setSearchTerm,
-    statusFilter,
-    setStatusFilter,
     createOrder,
     updateOrder,
     deleteOrder,
     isSaving,
     isDeleting,
-  } = useInsertionOrders(visibleColumns, 1, 10);
+  } = useInsertionOrders(visibleColumns, draftConfig.filters, 1, 10);
 
   const handleCreateClick = () => {
     setSelectedOrder(null);
@@ -102,22 +98,41 @@ export default function InsertionOrdersPage() {
             onCreateClick={handleCreateClick}
             onUploadSuccess={refresh}
           />
-          <ColumnPicker
-            title="Insertion order columns"
-            options={INSERTION_ORDER_COLUMNS}
-            visibleColumns={visibleColumns}
-            onChange={saveVisibleColumns}
+          <SavedViewSelector
+            moduleKey="finance_io"
+            views={views}
+            selectedViewId={selectedViewId}
+            onSelect={setSelectedViewId}
           />
         </div>
 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex w-full flex-col gap-3 md:flex-row md:items-center">
             <SearchBar
-              value={searchTerm}
-              onChange={setSearchTerm}
+              value={typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : ""}
+              onChange={(value) =>
+                setDraftConfig((current) => ({
+                  ...current,
+                  filters: {
+                    ...current.filters,
+                    search: value,
+                  },
+                }))
+              }
               placeholder="Search by customer, IO number, reference, or notes"
             />
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select
+              value={statusFilter}
+              onValueChange={(value) =>
+                setDraftConfig((current) => ({
+                  ...current,
+                  filters: {
+                    ...current.filters,
+                    status: value,
+                  },
+                }))
+              }
+            >
               <SelectTrigger className="w-full md:w-52">
                 <SelectValue placeholder="All statuses" />
               </SelectTrigger>
@@ -152,6 +167,7 @@ export default function InsertionOrdersPage() {
           onEdit={handleEdit}
           onDelete={handleDelete}
           visibleColumns={visibleColumns}
+          columnOptions={definition?.columns ?? []}
         />
 
         <Pagination

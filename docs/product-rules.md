@@ -1,0 +1,76 @@
+# Product Rules
+
+This file captures stable business and UX rules for the platform. These should be treated as source-of-truth product constraints unless explicitly changed here.
+
+## Platform Positioning
+
+- The product is a CRM + ERP system.
+- The product should be modular: modules should be enableable/disableable without breaking unrelated modules.
+- The platform is intended to support enterprise-grade reliability, security, and recoverability.
+
+## Core Governance Rules
+
+- Deletes should be non-destructive by default.
+- Deleted records should go to recycle/recovery flows, not be permanently removed in standard operations.
+- Important write actions should be logged in the activity/audit system.
+- Permissions should be enforceable per action, not only per module.
+- Core records and core fields should be protected from destructive user customization.
+
+## UI and UX Rules
+
+- Main operational list pages should use one shared table-based presentation where a table is the right default.
+- Users should be able to choose which columns they see on major list pages.
+- Users should also be able to control column ordering/sort presentation for their main dashboard views where practical, including cases like showing last name before first name.
+- The preferred long-term model is named saved views per module rather than one rigid table preference per module.
+- The system should ship with a default view for major modules, and users should be able to create their own named personal views on top of that.
+- Saved views should be able to store visible fields, field order, sort behavior, and module-specific filter state over time.
+- Saved views should support reusable condition builders with `all`/`any` logic and operators such as `is`, `is not`, `contains`, `in`, `not in`, `greater than`, and `less than`.
+- Saved-view creation and editing should happen on a dedicated manage-view route rather than living as a large inline section on every module page.
+- Module pages should keep only a compact place to switch/change the active view.
+- Normal module search should combine with the selected saved-view conditions rather than acting as a disconnected separate mechanism.
+- Required fields in create/edit forms should be visually marked with `*`.
+- Quick creation can use dialogs where appropriate.
+- Once records exist, the preferred interaction is a record page with summary/history/editing rather than modal-only editing.
+- Profile access should come from the sidebar identity block at the bottom.
+
+## Linked Data Rules
+
+- Opportunity `client` should always be a linked sales contact, not arbitrary free text.
+- Insertion order customer linking should use sales contacts as the primary linked entity.
+- If a linked contact belongs to an organization, that organization should be backfilled where relevant.
+- Currency should not be free text where the company controls allowed currencies.
+- Company operating currencies should be managed from the Company section and reused anywhere the system asks for currency.
+
+## Finance / Insertion Order Rules
+
+- Finance insertion orders use the generic insertion-order model, not the old campaign-specific finance model.
+- Manual create/edit is the primary IO workflow.
+- Import/export should be adapter-style module workflows, not the core domain model.
+- The old campaign-specific finance compatibility path is intentionally removed.
+
+## Customization Rules
+
+- Admins can define custom fields on supported modules.
+- Core fields cannot be deleted through customization tools.
+- Core records should not be destructively altered through the field builder.
+- User-created modules are deferred until custom fields, permissions, recycle, activity logging, and configuration are stable enough to support them safely.
+
+## Company / Tenant Rules
+
+- One primary company profile is supported in the current increment.
+- Multi-company within a tenant is deferred.
+- Full tenant/company row-level ownership is not yet implemented and remains a later hardening phase.
+- Company-managed reference data such as operating currencies should be defined centrally and reused across modules.
+- Company and user profiles should support uploaded logos/images rather than relying only on raw URL entry where file upload is the expected product behavior.
+- User timezone should be stored in the user profile and used to display time-based data in the user’s local timezone instead of raw server/database time where the UI is user-facing.
+
+## Import / Export Rules
+
+- Main business modules should have real import/export workflows, not just placeholder or partial support.
+- Import/export behavior should reuse shared platform helpers where possible, with module-specific mapping/validation layered on top.
+
+## Current Predefined Role Expectations
+
+- Admin: broad configuration and management access.
+- Superuser: elevated operational access without necessarily full platform-control equivalence.
+- User: limited operational access based on permissions granted by role/module rules.
