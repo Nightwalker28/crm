@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
@@ -94,6 +95,7 @@ function formatMoney(value?: number | null, currency?: string | null) {
 
 export default function ContactDetailPage() {
   const params = useParams<{ contactId: string }>();
+  const queryClient = useQueryClient();
   const [summary, setSummary] = useState<ContactSummary | null>(null);
   const [form, setForm] = useState<ContactForm>(emptyForm);
   const [loading, setLoading] = useState(true);
@@ -163,6 +165,10 @@ export default function ContactDetailPage() {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["sales-contacts"] }),
+        queryClient.refetchQueries({ queryKey: ["sales-contacts"], type: "all" }),
+      ]);
       await loadSummary();
       toast.success("Contact updated.");
     } catch (saveError) {

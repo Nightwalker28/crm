@@ -25,22 +25,6 @@ class RefreshToken(Base):
     expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
-
-class UserGoogleToken(Base):
-    __tablename__ = "user_google_tokens"
-
-    id = Column(BigInteger, primary_key=True, index=True)
-    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True)
-    access_token_enc = Column(Text, nullable=False)
-    refresh_token_enc = Column(Text, nullable=True)
-    scopes = Column(Text, nullable=True)
-    token_type = Column(String(50), nullable=True)
-    expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    user = relationship("User", back_populates="google_tokens")
-
 class UserStatus(enum.Enum):
     pending = "pending"
     active = "active"
@@ -107,6 +91,11 @@ class Team(Base):
 
     users = relationship("User", back_populates="team")
     department = relationship("Department", back_populates="teams")
+    module_permissions = relationship(
+        "TeamModulePermission",
+        back_populates="team",
+        cascade="all, delete-orphan",
+    )
 
 class User(Base):
     __tablename__ = "users"
@@ -138,12 +127,6 @@ class User(Base):
 
     team = relationship("Team", back_populates="users")
     role = relationship("Role", back_populates="users")
-    google_tokens = relationship(
-        "UserGoogleToken",
-        back_populates="user",
-        uselist=False,
-        cascade="all, delete-orphan",
-    )
     setup_tokens = relationship(
         "UserSetupToken",
         back_populates="user",
@@ -173,6 +156,11 @@ class Module(Base):
         "DepartmentModulePermission",
         back_populates="module",
     )
+    team_permissions = relationship(
+        "TeamModulePermission",
+        back_populates="module",
+        cascade="all, delete-orphan",
+    )
     role_permissions = relationship(
         "RoleModulePermission",
         back_populates="module",
@@ -193,6 +181,25 @@ class DepartmentModulePermission(Base):
 
     department = relationship("Department", back_populates="module_permissions")
     module = relationship("Module", back_populates="department_permissions")
+
+
+class TeamModulePermission(Base):
+    __tablename__ = "team_module_permissions"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    team_id = Column(
+        BigInteger,
+        ForeignKey("teams.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    module_id = Column(
+        BigInteger,
+        ForeignKey("modules.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    team = relationship("Team", back_populates="module_permissions")
+    module = relationship("Module", back_populates="team_permissions")
 
 
 class RoleModulePermission(Base):

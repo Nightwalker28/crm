@@ -9,9 +9,6 @@ python-jose[cryptography]
 requests
 pydantic
 email-validator
-google-auth
-google-auth-oauthlib
-google-api-python-client
 python-docx
 pdfplumber
 alembic

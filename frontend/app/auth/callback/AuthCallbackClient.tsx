@@ -15,7 +15,7 @@ export default function AuthCallbackClient() {
 
   useEffect(() => {
     if (status === "active") {
-      router.replace("/dashboard/users");
+      router.replace("/dashboard");
     }
   }, [router, status]);
 

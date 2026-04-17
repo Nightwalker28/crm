@@ -20,17 +20,6 @@ class Settings:
     GOOGLE_CLIENT_SECRET: str = os.getenv("GOOGLE_CLIENT_SECRET")
     GOOGLE_REDIRECT_URI: str = os.getenv("GOOGLE_REDIRECT_URI")
 
-    # Added for finance team IO automation
-    GOOGLE_TOKEN_ENCRYPTION_KEY: str = os.getenv("GOOGLE_TOKEN_ENCRYPTION_KEY")
-    GOOGLE_DOCS_TEMPLATE_ID: str = os.getenv("GOOGLE_DOCS_TEMPLATE_ID")
-    GOOGLE_DRIVE_IO_FOLDER_ID: str = os.getenv("GOOGLE_DRIVE_IO_FOLDER_ID")
-    GOOGLE_API_TIMEOUT_SECONDS: int = int(os.getenv("GOOGLE_API_TIMEOUT_SECONDS", "120"))
-    GOOGLE_API_MAX_RETRIES: int = int(os.getenv("GOOGLE_API_MAX_RETRIES", "5"))
-    GOOGLE_API_RETRY_BASE_DELAY_SECONDS: float = float(
-        os.getenv("GOOGLE_API_RETRY_BASE_DELAY_SECONDS", "1.0")
-    )
-    
-
     # -------------------------
     # JWT configuration
     # -------------------------

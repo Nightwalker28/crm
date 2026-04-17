@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, File, UploadFile, status, Request, Query
+from fastapi import APIRouter, Depends, File, UploadFile, status, Request, Query, HTTPException
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
+from app.core.module_export import bytes_download_response
 from app.core.pagination import Pagination, get_pagination
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.security import get_current_user
@@ -184,6 +185,38 @@ async def import_insertion_orders(
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
+    )
+
+
+@router.get("/insertion-orders/export")
+def export_insertion_orders(
+    search: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+    require_permission = Depends(require_action_access("finance_io", "export")),
+):
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    csv_bytes = io_search_api.export_generic_insertion_orders(
+        db,
+        current_user,
+        search=search,
+        status_filter=status_filter,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+    )
+    return bytes_download_response(
+        content=csv_bytes,
+        filename="insertion_orders.csv",
+        media_type="text/csv",
     )
 
 

@@ -7,6 +7,7 @@ import { useContacts } from "@/hooks/sales/useContacts";
 import { useState } from "react";
 import CreateContactModal from "@/components/contacts/createContactModal";
 import SearchBar from "@/components/ui/SearchBar";
+import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
@@ -50,7 +51,7 @@ export default function ContactsPage() {
     <div className="bg-zinc-950 overflow-hidden">
       <div className="max-w-5xl mx-auto flex flex-col gap-6 h-full">
         <div className="flex items-start justify-between gap-4">
-          <ContactsHeader onCreateClick={() => setCreateOpen(true)} />
+          <ContactsHeader onCreateClick={() => setCreateOpen(true)} onImportSuccess={refresh} />
           <SavedViewSelector
             moduleKey="sales_contacts"
             views={views}
@@ -71,6 +72,17 @@ export default function ContactsPage() {
             }))
           }
           placeholder="Search contacts"
+        />
+
+        <InlineSavedViewFilters
+          filterFields={definition?.filterFields ?? []}
+          filters={draftConfig.filters}
+          onChange={(nextFilters) =>
+            setDraftConfig((current) => ({
+              ...current,
+              filters: nextFilters,
+            }))
+          }
         />
 
         {error && (

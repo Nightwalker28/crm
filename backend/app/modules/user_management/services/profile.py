@@ -12,6 +12,7 @@ TABLE_PREFERENCE_MODULES = {
 }
 
 SAVED_VIEW_MODULES = TABLE_PREFERENCE_MODULES
+SYSTEM_DEFAULT_VIEW_NAME = "Default View"
 
 
 def _clean(value: str | None) -> str | None:
@@ -189,25 +190,81 @@ def _normalize_saved_view_config(module_key: str, config: dict | None) -> dict:
     }
 
 
-def _default_saved_view(
+def _get_config_meta(config: dict | None) -> dict:
+    if not isinstance(config, dict):
+        return {}
+    meta = config.get("_meta")
+    return dict(meta) if isinstance(meta, dict) else {}
+
+
+def _is_system_saved_view(view: UserSavedView | dict | None) -> bool:
+    if not view:
+        return False
+    config = view.config if isinstance(view, UserSavedView) else view.get("config")
+    return bool(_get_config_meta(config).get("system_default"))
+
+
+def _build_system_default_config(module_key: str, visible_columns: list[str]) -> dict:
+    config = _normalize_saved_view_config(
+        module_key,
+        {
+            "visible_columns": visible_columns,
+            "filters": {
+                "search": "",
+                "logic": "all",
+                "conditions": [],
+                "all_conditions": [],
+                "any_conditions": [],
+            },
+            "sort": None,
+        },
+    )
+    config["_meta"] = {"system_default": True}
+    return config
+
+
+def _serialize_saved_view(module_key: str, view: UserSavedView) -> dict:
+    return {
+        "id": view.id,
+        "module_key": view.module_key,
+        "name": view.name,
+        "config": _normalize_saved_view_config(module_key, view.config),
+        "is_default": bool(view.is_default),
+        "is_system": _is_system_saved_view(view),
+        "created_at": view.created_at,
+        "updated_at": view.updated_at,
+    }
+
+
+def _get_or_create_system_saved_view(
+    db: Session,
+    user: User,
     module_key: str,
     *,
     visible_columns: list[str],
-) -> dict:
-    return {
-        "id": None,
-        "module_key": module_key,
-        "name": "Default View",
-        "config": {
-            "visible_columns": visible_columns,
-            "filters": {"search": "", "logic": "all", "conditions": [], "all_conditions": [], "any_conditions": []},
-            "sort": None,
-        },
-        "is_default": True,
-        "is_system": True,
-        "created_at": None,
-        "updated_at": None,
-    }
+) -> UserSavedView:
+    saved_views = (
+        db.query(UserSavedView)
+        .filter(UserSavedView.user_id == user.id, UserSavedView.module_key == module_key)
+        .order_by(UserSavedView.id.asc())
+        .all()
+    )
+
+    system_view = next((view for view in saved_views if _is_system_saved_view(view)), None)
+    if system_view:
+        return system_view
+
+    system_view = UserSavedView(
+        user_id=user.id,
+        module_key=module_key,
+        name=SYSTEM_DEFAULT_VIEW_NAME,
+        config=_build_system_default_config(module_key, visible_columns),
+        is_default=0,
+    )
+    db.add(system_view)
+    db.commit()
+    db.refresh(system_view)
+    return system_view
 
 
 def list_saved_views(
@@ -224,32 +281,31 @@ def list_saved_views(
         if legacy_preference and legacy_preference.visible_columns
         else default_visible_columns
     )
+    system_view = _get_or_create_system_saved_view(
+        db,
+        user,
+        module_key,
+        visible_columns=default_columns,
+    )
     saved_views = (
         db.query(UserSavedView)
         .filter(UserSavedView.user_id == user.id, UserSavedView.module_key == module_key)
         .order_by(UserSavedView.is_default.desc(), UserSavedView.name.asc(), UserSavedView.id.asc())
         .all()
     )
-
-    has_custom_default = any(bool(view.is_default) for view in saved_views)
-    system_default = _default_saved_view(module_key, visible_columns=default_columns)
-    system_default["is_default"] = not has_custom_default
-
-    results = [system_default]
-    for view in saved_views:
-        results.append(
-            {
-                "id": view.id,
-                "module_key": view.module_key,
-                "name": view.name,
-                "config": _normalize_saved_view_config(module_key, view.config),
-                "is_default": bool(view.is_default),
-                "is_system": False,
-                "created_at": view.created_at,
-                "updated_at": view.updated_at,
-            }
+    has_default = any(bool(view.is_default) for view in saved_views)
+    if not has_default:
+        system_view.is_default = 1
+        db.add(system_view)
+        db.commit()
+        saved_views = (
+            db.query(UserSavedView)
+            .filter(UserSavedView.user_id == user.id, UserSavedView.module_key == module_key)
+            .order_by(UserSavedView.is_default.desc(), UserSavedView.name.asc(), UserSavedView.id.asc())
+            .all()
         )
-    return results
+
+    return [_serialize_saved_view(module_key, view) for view in saved_views]
 
 
 def create_saved_view(
@@ -316,6 +372,7 @@ def update_saved_view(
     payload: dict,
 ) -> UserSavedView:
     view = get_saved_view_or_404(db, user, module_key, view_id)
+    is_system_view = _is_system_saved_view(view)
 
     if "name" in payload:
         cleaned_name = _clean(payload["name"])
@@ -324,7 +381,10 @@ def update_saved_view(
         view.name = cleaned_name
 
     if "config" in payload and payload["config"] is not None:
-        view.config = _normalize_saved_view_config(module_key, payload["config"])
+        next_config = _normalize_saved_view_config(module_key, payload["config"])
+        if is_system_view:
+            next_config["_meta"] = {"system_default": True}
+        view.config = next_config
 
     if payload.get("is_default") is True:
         (

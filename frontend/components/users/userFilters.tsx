@@ -118,7 +118,7 @@ export default function UserFilters({ value, options, isLoading = false, onChang
               <Filter />
               Filters
               {activeCount > 0 && (
-                <span className="flex h-4 min-w-[16px] items-center justify-center rounded-full bg-neutral-200 px-1 text-[9px] font-bold text-neutral-950">
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-neutral-200 px-1 text-[9px] font-bold text-neutral-950">
                   {activeCount}
                 </span>
               )}

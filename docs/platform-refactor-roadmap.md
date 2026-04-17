@@ -1,6 +1,6 @@
 # Platform Refactor Roadmap
 
-Overall completion: 94%
+Overall completion: 98%
 
 Current phase:
 - Phase 1 complete: Finance IO refactor and immediate UX cleanup
@@ -12,8 +12,17 @@ Current phase:
 - Phase 5 in progress: uniform list tables, per-user table preferences, and cache hardening
 - Phase 6 in progress: module wiring completion and module availability controls
 - Phase 7 pending: platform hardening, tenant isolation, and deeper performance optimization
+- Phase 7.5 in progress: auth/access-control correction, Google scope cleanup, and saved-view filter usability hardening
 
 Completed items:
+- Reduced Google OAuth to identity-only scopes and removed the live Google Docs/Drive opportunity automation path.
+- Removed the old Google token-storage and document-automation code/services, plus the no-longer-needed Google client dependencies.
+- Fixed manual-capable first-login behavior so accounts without passwords now return a setup-required response with a usable setup link instead of a dead-end generic failure.
+- Fixed post-login routing so users land on `/dashboard`, which now redirects to the first accessible enabled module instead of hardcoding `/dashboard/users`.
+- Fixed admin module visibility so admin-role users can access all enabled modules regardless of team or department placement.
+- Added a new `team_module_permissions` table with migration backfill from existing department module permissions.
+- Updated access control to use team-module assignment first, with department module permissions as a compatibility fallback during the transition.
+- Updated seed/bootstrap and team management flows so team-module permissions are populated from department defaults while dedicated team-level management is still being built.
 - Added a generic insertion-order backend contract alongside the legacy finance import flow.
 - Added manual list/create/update/delete APIs for insertion orders.
 - Preserved legacy finance fields and added a migration path that backfills generic fields from historical records.
@@ -101,12 +110,18 @@ Completed items:
 - Wired the current main module list/search hooks so normal search combines with saved-view conditions instead of acting as a separate disconnected mechanism.
 - Fixed saved-view default resolution so a personal default view now displaces the built-in system default on reload instead of the system default always reappearing.
 - Extended module-view column selection so active custom fields now appear as real selectable columns in contacts, organizations, opportunities, and insertion orders rather than being limited to form/detail screens.
+- Added a shared saved-view condition-editor UI primitive and wired inline multi-condition quick filters into the current main module pages so users can apply grouped AND/OR filters without leaving the module page.
+- Added backend custom-field filter support and re-enabled active custom fields as real saved-view and inline-filter targets on contacts, organizations, opportunities, and insertion orders.
+- Fixed the custom-field definition cache serialization bug so module pages and the custom-fields admin page can load created fields again without fetch failures.
+- Fixed saved-view correctness so edited contacts and organizations invalidate/refetch their list queries and the platform-provided default view is now backed by a real persisted saved view rather than a synthetic special case.
+- Expanded CSV import/export coverage so opportunities now have backend import/export routes, insertion orders now have CSV export, and the current business-module headers use shared authenticated import/export controls for contacts, organizations, opportunities, and finance export.
 
 In progress:
+- Start replacing department-based module assignment with team-based module assignment while keeping department access only as a compatibility fallback during transition.
 - Replace one-off table preferences with saved module views over time.
 - Add richer dashboard-view configurability so users can control visible columns and presentation order more flexibly.
 - Extend dashboard-view configurability beyond column reordering into richer per-view presentation settings where useful.
-- Continue building real import/export workflows across the current business modules on top of the shared helper layer.
+- Continue hardening the expanded import/export workflows across the current business modules on top of the shared helper layer.
 - Add proper upload support for company and profile imagery instead of URL-only inputs.
 - Make user-facing time rendering respect the user profile timezone.
 - Push list-column preferences deeper into the query layer so modules can avoid selecting fields that are not needed for the current view, not just avoid serializing them.
@@ -120,7 +135,7 @@ In progress:
 Next up:
 - Finish the dedicated saved-view management flow so module pages only need compact view switching.
 - Expand saved views over time to include richer per-module state beyond the current search, condition, status, and sort slices.
-- Expand import/export coverage and consistency across the current business modules.
+- Add inline shared quick-filter UX on current module pages so users can apply multi-field conditions without leaving the module.
 - Add upload-backed company/profile image handling and timezone-aware display of time-based data.
 - Finish query-layer selective loading for the heaviest list endpoints first.
 - Add runtime verification and failure-path hardening for the Redis-backed cache layer.
@@ -137,6 +152,7 @@ Deferred items:
 - User-created modules stay deferred until the shared module utility layer and relational custom-field architecture are stable enough to support them safely.
 
 Risks and migration notes:
+- Auth and module-access logic is still in a transitional state until team-based module assignment fully replaces the department gate.
 - The finance cleanup has already removed the original campaign-centric compatibility path; future finance work should assume the generic insertion-order model is the only supported contract.
 - The platform-wide tenant/company model is not implemented in this increment yet, so this remains phaseable rather than complete.
 - Action-level permissions now exist but are only partially enforced; module-level access remains the broad gate while the per-action rollout continues.

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
@@ -110,6 +111,7 @@ function formatMoney(value?: number | null, currency?: string | null) {
 
 export default function OrganizationDetailPage() {
   const params = useParams<{ orgId: string }>();
+  const queryClient = useQueryClient();
   const [summary, setSummary] = useState<OrganizationSummary | null>(null);
   const [form, setForm] = useState<OrganizationForm>(emptyForm);
   const [loading, setLoading] = useState(true);
@@ -179,6 +181,10 @@ export default function OrganizationDetailPage() {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
+        queryClient.refetchQueries({ queryKey: ["sales-organizations"], type: "all" }),
+      ]);
       await loadSummary();
       toast.success("Organization updated.");
     } catch (saveError) {

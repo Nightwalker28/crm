@@ -1,7 +1,10 @@
 from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.module_csv import read_upload_bytes
+from app.core.module_export import bytes_download_response
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
@@ -18,7 +21,9 @@ from app.modules.sales.services import opportunities_api
 from app.modules.sales.services.opportunities_services import (
     create_opportunity,
     delete_opportunity,
+    export_opportunities_to_csv,
     get_opportunity_or_404,
+    import_opportunities_from_csv,
     list_deleted_opportunities,
     list_opportunities,
     restore_opportunity,
@@ -311,4 +316,47 @@ def create_finance_io(
         db,
         opportunity_id=opportunity_id,
         user_id=current_user.id,
+    )
+
+
+@router.post("/import", status_code=status.HTTP_201_CREATED)
+async def import_sales_opportunities(
+    file: UploadFile = File(...),
+    replace_duplicates: bool = False,
+    skip_duplicates: bool = False,
+    create_new_records: bool = False,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access("sales_opportunities")),
+    require_permission = Depends(require_action_access("sales_opportunities", "create")),
+):
+    content = await read_upload_bytes(file, allowed_extensions={"csv"})
+    return import_opportunities_from_csv(
+        db=db,
+        file_bytes=content,
+        current_user=current_user,
+        replace_duplicates=replace_duplicates,
+        skip_duplicates=skip_duplicates,
+        create_new_records=create_new_records,
+    )
+
+
+@router.get("/export", response_class=StreamingResponse)
+def export_sales_opportunities(
+    search: str | None = Query(default=None, description="Optional ranked search filter"),
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access("sales_opportunities")),
+    require_permission = Depends(require_action_access("sales_opportunities", "export")),
+):
+    items, _ = list_opportunities(
+        db,
+        Pagination(page=1, page_size=100000, offset=0, limit=100000),
+        search=search,
+    )
+    csv_bytes = export_opportunities_to_csv(items)
+    return bytes_download_response(
+        content=csv_bytes,
+        filename="sales_opportunities.csv",
+        media_type="text/csv",
     )

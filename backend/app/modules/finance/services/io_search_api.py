@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.access_control import get_finance_user_scope
 from app.core.module_csv import read_csv_upload, require_csv_headers
+from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.duplicates import (
     detect_duplicates,
     ensure_single_duplicate_action,
@@ -26,6 +27,27 @@ from app.modules.finance.services.io_search_services import (
 )
 
 logger = logging.getLogger(__name__)
+INSERTION_ORDER_EXPORT_HEADERS = [
+    "id",
+    "io_number",
+    "customer_name",
+    "customer_contact_id",
+    "customer_organization_id",
+    "counterparty_reference",
+    "external_reference",
+    "issue_date",
+    "effective_date",
+    "due_date",
+    "start_date",
+    "end_date",
+    "status",
+    "currency",
+    "subtotal_amount",
+    "tax_amount",
+    "total_amount",
+    "notes",
+    "updated_at",
+]
 
 
 async def import_insertion_orders_csv(
@@ -217,6 +239,56 @@ def list_generic_insertion_orders_page(
         [_serialize_finance_record(record, request=request, current_user=current_user) for record in records],
         total_count,
         pagination,
+    )
+
+
+def export_generic_insertion_orders(
+    db: Session,
+    current_user,
+    *,
+    search: str | None = None,
+    status_filter: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> bytes:
+    module_id = get_finance_module_id(db)
+    user_scope = get_finance_user_scope(db, current_user)
+    records, _ = list_insertion_orders(
+        db,
+        module_id=module_id,
+        user_id=user_scope.user_id_filter,
+        pagination=Pagination(page=1, page_size=100000, offset=0, limit=100000),
+        search=search,
+        status_filter=status_filter,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+    return dict_rows_to_csv_bytes(
+        headers=INSERTION_ORDER_EXPORT_HEADERS,
+        rows=(
+            {
+                "id": record.id,
+                "io_number": record.io_number or "",
+                "customer_name": record.customer_name or "",
+                "customer_contact_id": record.customer_contact_id or "",
+                "customer_organization_id": record.customer_organization_id or "",
+                "counterparty_reference": record.counterparty_reference or "",
+                "external_reference": record.external_reference or "",
+                "issue_date": record.issue_date.isoformat() if record.issue_date else "",
+                "effective_date": record.effective_date.isoformat() if record.effective_date else "",
+                "due_date": record.due_date.isoformat() if record.due_date else "",
+                "start_date": record.start_date.isoformat() if record.start_date else "",
+                "end_date": record.end_date.isoformat() if record.end_date else "",
+                "status": record.status or "",
+                "currency": record.currency or "",
+                "subtotal_amount": record.subtotal_amount if record.subtotal_amount is not None else "",
+                "tax_amount": record.tax_amount if record.tax_amount is not None else "",
+                "total_amount": record.total_amount if record.total_amount is not None else "",
+                "notes": record.notes or "",
+                "updated_at": record.updated_at.isoformat() if record.updated_at else "",
+            }
+            for record in records
+        ),
     )
 
 

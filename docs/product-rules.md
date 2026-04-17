@@ -15,6 +15,9 @@ This file captures stable business and UX rules for the platform. These should b
 - Important write actions should be logged in the activity/audit system.
 - Permissions should be enforceable per action, not only per module.
 - Core records and core fields should be protected from destructive user customization.
+- Role permissions and module assignment should be separate concerns.
+- Module access should be controlled by module-to-team assignment rather than being implicitly coupled to role permissions.
+- Admin-role users should have full access to enabled operational modules regardless of team placement.
 
 ## UI and UX Rules
 
@@ -32,6 +35,8 @@ This file captures stable business and UX rules for the platform. These should b
 - Quick creation can use dialogs where appropriate.
 - Once records exist, the preferred interaction is a record page with summary/history/editing rather than modal-only editing.
 - Profile access should come from the sidebar identity block at the bottom.
+- Main module pages should support inline multi-condition filtering in addition to saved-view management.
+- Inline and saved-view filtering should support grouped `AND` and `OR` conditions together, not only one group at a time.
 
 ## Linked Data Rules
 
@@ -40,6 +45,7 @@ This file captures stable business and UX rules for the platform. These should b
 - If a linked contact belongs to an organization, that organization should be backfilled where relevant.
 - Currency should not be free text where the company controls allowed currencies.
 - Company operating currencies should be managed from the Company section and reused anywhere the system asks for currency.
+- Active custom fields must work inside the module they belong to, including create/edit, detail, table views, saved views, and filters.
 
 ## Finance / Insertion Order Rules
 
@@ -63,6 +69,7 @@ This file captures stable business and UX rules for the platform. These should b
 - Company-managed reference data such as operating currencies should be defined centrally and reused across modules.
 - Company and user profiles should support uploaded logos/images rather than relying only on raw URL entry where file upload is the expected product behavior.
 - User timezone should be stored in the user profile and used to display time-based data in the user’s local timezone instead of raw server/database time where the UI is user-facing.
+- Google sign-in should request only the minimum scopes needed for authentication unless a specific product workflow explicitly requires more.
 
 ## Import / Export Rules
 

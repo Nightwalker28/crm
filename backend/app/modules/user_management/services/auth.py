@@ -14,22 +14,22 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.passwords import hash_password, verify_password, validate_password_strength
 from app.modules.user_management.models import (
-    User,
     Module,
-    DepartmentModulePermission,
+    RefreshToken,
+    Team,
+    TeamModulePermission,
+    User,
     UserAuthMode,
     UserSetupToken,
     UserStatus,
-    RefreshToken,
-    Team,
 )
-from app.modules.user_management.services.google_tokens import upsert_google_tokens
+from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, get_user_role_level
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
-SCOPES = "openid email profile https://www.googleapis.com/auth/documents https://www.googleapis.com/auth/drive"
+SCOPES = "openid email profile"
 
 
 # -------------------------------------------------------------------
@@ -190,16 +190,6 @@ def handle_google_callback(code: str, db: Session):
             detail="This Google account has not been provisioned",
         )
 
-    upsert_google_tokens(
-        db,
-        user_id=user.id,
-        access_token=token_json["access_token"],
-        refresh_token=token_json.get("refresh_token"),
-        expires_in=token_json.get("expires_in"),
-        scope=token_json.get("scope"),
-        token_type=token_json.get("token_type"),
-    )
-
     if user.is_active == UserStatus.inactive:
         return {"status": "inactive"}
 
@@ -303,7 +293,15 @@ def authenticate_manual_user(
         if user and not user.password_hash:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
-                detail="This account does not have a password set yet",
+                detail={
+                    "code": "password_setup_required",
+                    "message": "This account does not have a password set yet",
+                    "setup_link": (
+                        create_user_setup_link(db, user)
+                        if user.auth_mode in {UserAuthMode.manual_only, UserAuthMode.manual_or_google}
+                        else None
+                    ),
+                },
             )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -329,15 +327,14 @@ def authenticate_manual_user(
 # MODULE ACCESS 
 # -------------------------------------------------------------------
 
-def get_department_modules(department_id: int | None, db: Session) -> list[Module]:
-    """Return the modules a given department is allowed to access."""
-    if not department_id:
+def get_team_modules(team_id: int | None, db: Session) -> list[Module]:
+    if not team_id:
         return []
 
     return (
         db.query(Module)
-        .join(DepartmentModulePermission, DepartmentModulePermission.module_id == Module.id)
-        .filter(DepartmentModulePermission.department_id == department_id)
+        .join(TeamModulePermission, TeamModulePermission.module_id == Module.id)
+        .filter(TeamModulePermission.team_id == team_id)
         .filter(Module.is_enabled == 1)
         .order_by(Module.name.asc())
         .all()
@@ -345,12 +342,35 @@ def get_department_modules(department_id: int | None, db: Session) -> list[Modul
 
 
 def get_user_accessible_modules(user: User, db: Session) -> list[Module]:
-    """Convenience wrapper that loads modules for a user's department."""
-    department_id = None
+    role_level = get_user_role_level(db, user)
+    if role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL:
+        return (
+            db.query(Module)
+            .filter(Module.is_enabled == 1)
+            .order_by(Module.name.asc())
+            .all()
+        )
+
     if user.team_id:
+        team_modules = get_team_modules(user.team_id, db)
+        if team_modules:
+            return team_modules
+
         department_id = (
             db.query(Team.department_id)
             .filter(Team.id == user.team_id)
             .scalar()
         )
-    return get_department_modules(department_id, db)
+        if department_id:
+            from app.modules.user_management.models import DepartmentModulePermission
+
+            return (
+                db.query(Module)
+                .join(DepartmentModulePermission, DepartmentModulePermission.module_id == Module.id)
+                .filter(DepartmentModulePermission.department_id == department_id)
+                .filter(Module.is_enabled == 1)
+                .order_by(Module.name.asc())
+                .all()
+            )
+
+    return []

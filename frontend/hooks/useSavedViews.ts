@@ -122,22 +122,34 @@ export function useSavedViews(
   });
 
   const views = query.data?.views ?? [];
+  const systemView = views.find((view) => view.is_system) ?? null;
+
+  const resolveViewId = (rawViewId: string) => {
+    if (rawViewId === "system-default") {
+      return systemView ? String(systemView.id) : "system-default";
+    }
+    return rawViewId;
+  };
 
   useEffect(() => {
     if (!views.length) return;
     const defaultView = views.find((view) => view.is_default) ?? views[0];
     setSelectedViewId((current) => {
-      if (!current) {
+      const normalizedCurrent = resolveViewId(current);
+      if (!normalizedCurrent) {
         return String(defaultView.id ?? "system-default");
       }
-      const exists = views.some((view) => String(view.id ?? "system-default") === current);
-      return exists ? current : String(defaultView.id ?? "system-default");
+      const exists = views.some((view) => String(view.id ?? "system-default") === normalizedCurrent);
+      return exists ? normalizedCurrent : String(defaultView.id ?? "system-default");
     });
-  }, [views]);
+  }, [systemView, views]);
 
   const selectedView = useMemo(
-    () => views.find((view) => String(view.id ?? "system-default") === selectedViewId) ?? views[0] ?? null,
-    [views, selectedViewId],
+    () => {
+      const normalizedSelectedViewId = resolveViewId(selectedViewId);
+      return views.find((view) => String(view.id ?? "system-default") === normalizedSelectedViewId) ?? views[0] ?? null;
+    },
+    [selectedViewId, systemView, views],
   );
 
   useEffect(() => {
@@ -213,7 +225,7 @@ export function useSavedViews(
       updateMutation.mutateAsync({ viewId, payload }),
     setCurrentAsDefault: async () => {
       if (!selectedView || selectedView.id == null) {
-        throw new Error("Only personal saved views can be set as default.");
+        throw new Error("Select a saved view before setting the default.");
       }
       return updateMutation.mutateAsync({ viewId: selectedView.id, payload: { is_default: true } });
     },

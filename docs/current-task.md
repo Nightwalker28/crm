@@ -14,29 +14,30 @@ Before making substantial code changes:
 
 ## Current Focus
 
-Turn saved module views into the real global list-view system by adding a dedicated manage-view route, reusable condition filters with AND/OR logic, and applying that model across the current main modules before moving back to import/export, uploads, and timezone-aware presentation.
+Complete the current business-module CSV import/export surface consistently across contacts, organizations, opportunities, and insertion orders now that saved-view correctness and list refresh behavior have been stabilized.
 
 ## Current Priorities
 
-1. Replace the inline saved-view action bar with a dedicated global manage-view route and keep only a compact view selector/changer on module pages.
-2. Add reusable saved-view condition filters with `all`/`any` logic and operators such as `is`, `is not`, `contains`, `in`, `not in`, `greater than`, and `less than`.
-3. Apply the shared saved-view condition model across the current main modules so normal searching combines with saved conditions cleanly.
-4. Fix saved-view default selection so a user-set default survives reloads and route transitions.
-5. Make active module custom fields appear as real selectable module-view columns instead of existing only in create/edit/detail forms.
-6. Continue expanding real import/export functionality across the current business modules using the shared platform helpers.
-7. Add proper upload support for company and personal profile/logo imagery rather than relying only on URLs.
-8. Make user-facing time-based data respect the user profile timezone in the UI.
-9. Push list-column preferences and view-driven field usage deeper into the query layer for the heaviest list endpoints.
-10. Harden Redis-backed caching operationally and verify failure paths.
-11. Expand action-level permission enforcement beyond the currently refactored core modules.
+1. Finish CSV import/export consistency across contacts, organizations, opportunities, and insertion orders using the shared platform helpers and current module headers.
+2. Add proper upload support for company and personal profile/logo imagery rather than relying only on URLs.
+3. Make user-facing time-based data respect the user profile timezone in the UI.
+4. Push list-column preferences and view-driven field usage deeper into the query layer for the heaviest list endpoints.
+6. Harden Redis-backed caching operationally and verify failure paths.
+7. Expand action-level permission enforcement beyond the currently refactored core modules.
 
 ## Acceptance Direction
 
+- Google sign-in should only request the scopes the product actually uses.
+- Manual-capable provisioned users should be able to reach password setup reliably on first login instead of being stuck on a generic failure.
+- Admin users should see and access all enabled operational modules without being blocked by team or department placement.
+- Module access should move toward team-level assignment, while role permissions stay focused on action/function restrictions.
 - Users should be able to create and manage named module views from a dedicated route instead of being limited to one inline selector workflow.
-- Saved views should support reusable condition builders with `all`/`any` logic and common operators.
-- Normal search on a module page should work together with the selected saved-view conditions.
+- Saved views and inline module filtering should support reusable condition builders with grouped `all` and `any` logic and common operators.
+- Normal search on a module page should work together with selected saved-view and inline conditions.
 - A user-defined default view should actually become the selected default after refresh or reopening the module.
-- Active custom fields for a module should be usable in that module's saved-view column selection and appear in the module tables.
+- The platform-provided default view should behave like a normal editable saved view and should be re-selectable as the default after another view has temporarily taken that role.
+- Returning from a record edit into a list or saved-view table should show the updated data without requiring a hard browser refresh.
+- Active custom fields for a module should be usable in that module's saved-view column selection, filters, and tables.
 - Saved views should become the foundation for richer dashboard behavior later.
 - Main business modules should move toward complete, usable import/export flows rather than partial support.
 - Profile/company imagery should support proper upload flows.
@@ -47,6 +48,12 @@ Turn saved module views into the real global list-view system by adding a dedica
 
 ## Immediate Notes
 
+- The first auth/access cleanup slice is now in place:
+  - Google OAuth scopes were reduced to identity-only
+  - the dead Google Docs/Drive automation path was removed from the live code
+  - manual-capable users without passwords now get a setup-required response
+  - admin users now bypass legacy module-assignment restrictions for enabled modules
+  - team-module permissions now exist with department fallback during transition
+- Inline shared quick-filter UI is now wired into the current main module pages on top of the existing shared `all_conditions` / `any_conditions` backend filter engine.
+- Active custom fields are now usable as real filter targets on the supported business modules, not only as form/detail/table fields.
 - The roadmap has been normalized, but some newer surfaces still need full browser-side smoke testing.
-- Platform hardening still matters, but the current focus is on high-value workflow completeness and configurability gaps.
-- The current bugfix slice covers saved-view selection loops on the users page and custom-field consistency across create, detail, and module-view list rendering.

@@ -4,14 +4,16 @@ from uuid import uuid4
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.modules.finance.models import FinanceIO
+from app.modules.finance.services.io_search_services import create_insertion_order, get_finance_module_id
 from app.modules.sales.schema import SalesOpportunityResponse
-from app.modules.sales.services.io_automation_services import create_finance_io_from_opportunity
 from app.modules.sales.services.opportunities_services import (
     OPPORTUNITY_ATTACHMENTS_DIR,
     get_opportunity_or_404,
     parse_attachment_paths,
     update_opportunity,
 )
+from app.modules.user_management.models import User
 
 
 async def upload_opportunity_attachments(
@@ -106,4 +108,31 @@ def create_finance_io_for_opportunity(
     user_id: int,
 ):
     opportunity = get_opportunity_or_404(db, opportunity_id)
-    return create_finance_io_from_opportunity(db, opportunity=opportunity, user_id=user_id)
+    current_user = db.query(User).filter(User.id == user_id).first()
+    if not current_user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    finance_module_id = get_finance_module_id(db)
+    record = create_insertion_order(
+        db,
+        module_id=finance_module_id,
+        current_user=current_user,
+        data={
+            "customer_name": opportunity.client,
+            "customer_contact_id": opportunity.contact_id,
+            "customer_organization_id": opportunity.organization_id,
+            "counterparty_reference": opportunity.opportunity_name,
+            "external_reference": f"opportunity-{opportunity.opportunity_id}",
+            "issue_date": opportunity.start_date.isoformat() if opportunity.start_date else None,
+            "due_date": opportunity.expected_close_date.isoformat() if opportunity.expected_close_date else None,
+            "status": "draft",
+            "currency": opportunity.currency_type or "USD",
+            "notes": f"Created from opportunity: {opportunity.opportunity_name}",
+        },
+    )
+    return {
+        "status": "ok",
+        "message": "Insertion order created successfully",
+        "insertion_order_id": record.id,
+        "io_number": record.io_number,
+    }

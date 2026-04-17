@@ -191,7 +191,7 @@ function TeamDialog({
                 onChange={(event) => onChange({ ...form, description: event.target.value })}
                 placeholder="Optional description"
               />
-              <FieldDescription>Users inherit department-based module access through teams.</FieldDescription>
+              <FieldDescription>Teams carry module access; department linkage remains a compatibility/defaulting layer while team-based access is rolled out.</FieldDescription>
             </Field>
           </FieldGroup>
 

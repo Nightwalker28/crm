@@ -10,6 +10,7 @@ from app.modules.user_management.models import (
     Module,
     Role,
     RoleModulePermission,
+    TeamModulePermission,
     Team,
     User,
 )
@@ -38,12 +39,13 @@ def get_user_department_id(db: Session, user: User | None) -> int | None:
     )
 
 
-def require_department_module_access(
-    db: Session,
-    *,
-    user: User,
-    module_key: str,
-) -> None:
+def get_user_team_id(user: User | None) -> int | None:
+    if not user:
+        return None
+    return getattr(user, "team_id", None)
+
+
+def _get_module_or_404(db: Session, module_key: str) -> Module:
     module = (
         db.query(Module)
         .filter(or_(Module.name == module_key, Module.base_route == module_key))
@@ -51,17 +53,57 @@ def require_department_module_access(
     )
     if not module:
         raise ValueError("module not found")
+    return module
+
+
+def user_has_module_assignment(
+    db: Session,
+    *,
+    user: User,
+    module: Module,
+) -> bool:
+    role_level = get_user_role_level(db, user)
+    if role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL:
+        return bool(module.is_enabled)
+
+    team_id = get_user_team_id(user)
+    if team_id:
+        team_assignment = (
+            db.query(TeamModulePermission.id)
+            .filter(
+                TeamModulePermission.team_id == team_id,
+                TeamModulePermission.module_id == module.id,
+            )
+            .first()
+        )
+        if team_assignment:
+            return True
 
     department_id = get_user_department_id(db, user)
     if not department_id:
-        raise PermissionError("User is not assigned to a department")
+        return False
 
-    allowed = (
-        db.query(DepartmentModulePermission)
-        .filter_by(department_id=department_id, module_id=module.id)
+    department_assignment = (
+        db.query(DepartmentModulePermission.id)
+        .filter(
+            DepartmentModulePermission.department_id == department_id,
+            DepartmentModulePermission.module_id == module.id,
+        )
         .first()
     )
-    if not allowed:
+    return department_assignment is not None
+
+
+def require_department_module_access(
+    db: Session,
+    *,
+    user: User,
+    module_key: str,
+) -> None:
+    module = _get_module_or_404(db, module_key)
+    if not bool(module.is_enabled):
+        raise PermissionError("This module is disabled")
+    if not user_has_module_assignment(db, user=user, module=module):
         raise PermissionError("Access to this module is forbidden")
 
 
@@ -72,19 +114,15 @@ def require_role_module_action_access(
     module_key: str,
     action: str,
 ) -> None:
-    require_department_module_access(db, user=user, module_key=module_key)
-
-    module = (
-        db.query(Module)
-        .filter(or_(Module.name == module_key, Module.base_route == module_key))
-        .first()
-    )
-    if not module:
-        raise ValueError("module not found")
+    module = _get_module_or_404(db, module_key)
 
     role_level = get_user_role_level(db, user)
     if role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL:
+        if not bool(module.is_enabled):
+            raise PermissionError("This module is disabled")
         return
+
+    require_department_module_access(db, user=user, module_key=module_key)
 
     if not user.role_id:
         raise PermissionError("User is not assigned to a role")
@@ -118,6 +156,10 @@ def require_role_module_action_access(
 
 
 def get_finance_user_scope(db: Session, user: User | None) -> UserDepartmentScope:
+    role_level = get_user_role_level(db, user)
+    if role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL:
+        return UserDepartmentScope(department_id=get_user_department_id(db, user), user_id_filter=None)
+
     department_id = get_user_department_id(db, user)
     if department_id == FINANCE_FULL_ACCESS_DEPARTMENT_ID:
         return UserDepartmentScope(department_id=department_id, user_id_filter=None)

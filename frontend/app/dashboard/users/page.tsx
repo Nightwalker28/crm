@@ -4,12 +4,13 @@ import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
+import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { UserManagementTable, type SortDirection, type SortKey } from "@/components/users/userManagementTable";
 import CreateUserDialog from "@/components/users/createUserDialog";
 import EditUserDialog from "@/components/users/editUserDialog";
 import { useUserManagement } from "@/hooks/admin/useUserManagement";
 import { useSavedViews } from "@/hooks/useSavedViews";
-import { MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
+import { getModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
 import type { UserFiltersValue } from "@/components/users/userFilters";
 import { useMemo } from "react";
 
@@ -58,6 +59,7 @@ export default function UserManagementPage() {
     }),
     [draftConfig.sort],
   );
+  const definition = getModuleViewDefinition("admin_users");
 
 
   return (
@@ -77,6 +79,22 @@ export default function UserManagementPage() {
           </Button>
         </div>
       </div>
+
+      <InlineSavedViewFilters
+        filterFields={definition?.filterFields ?? []}
+        filters={draftConfig.filters}
+        onChange={(nextFilters) =>
+          setDraftConfig((current) => ({
+            ...current,
+            filters: {
+              ...nextFilters,
+              selectedTeams: Array.isArray(current.filters?.selectedTeams) ? current.filters.selectedTeams : [],
+              selectedRoles: Array.isArray(current.filters?.selectedRoles) ? current.filters.selectedRoles : [],
+              selectedStatuses: Array.isArray(current.filters?.selectedStatuses) ? current.filters.selectedStatuses : [],
+            },
+          }))
+        }
+      />
 
       <UserManagementTable
         currentUserId={currentUserId}

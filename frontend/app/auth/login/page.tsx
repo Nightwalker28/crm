@@ -61,10 +61,25 @@ export default function LoginPage() {
 
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(data?.detail ?? data?.message ?? `Status ${res.status}`);
+        const detail = data?.detail;
+        if (detail && typeof detail === "object" && detail.code === "password_setup_required") {
+          if (typeof detail.setup_link === "string" && detail.setup_link) {
+            window.location.href = detail.setup_link;
+            return;
+          }
+          throw new Error(detail.message ?? "This account still needs a password setup link.");
+        }
+
+        const detailMessage =
+          typeof detail === "string"
+            ? detail
+            : typeof detail?.message === "string"
+              ? detail.message
+              : data?.message;
+        throw new Error(detailMessage ?? `Status ${res.status}`);
       }
 
-      router.replace("/dashboard/users");
+      router.replace("/dashboard");
       router.refresh();
     } catch (loginError) {
       setError(getErrorMessage(loginError, "Failed to sign in"));

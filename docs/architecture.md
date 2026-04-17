@@ -13,6 +13,9 @@ This file captures the current intended technical patterns and constraints so ne
 ### Permissions
 
 - Use module-level access checks and action-level permission checks at the route layer.
+- Separate module assignment from action permissions:
+  - team/module mapping should determine whether a team can access a module
+  - role/module permissions should determine what actions a role can perform inside an accessible module
 - Action permissions currently include:
   - `view`
   - `create`
@@ -21,7 +24,11 @@ This file captures the current intended technical patterns and constraints so ne
   - `restore`
   - `export`
   - `configure`
-- Module-level access still exists as a broad gate.
+- Module-level access currently exists as a broad gate and still has department-based legacy coupling.
+- The transition direction is:
+  - admin-role users bypass module-assignment restrictions for enabled operational modules
+  - team-module permissions become the primary source of module assignment
+  - department-module permissions remain only as a compatibility fallback until the transition is complete
 - Action-level enforcement is partially rolled out and should be expanded rather than replaced.
 
 ### Soft Delete and Recovery
@@ -59,6 +66,14 @@ This file captures the current intended technical patterns and constraints so ne
 - Redis support exists, but runtime validation and failure-path hardening are still open work.
 - Redis is the preferred cache/session/reference-data acceleration layer in the current architecture.
 - Elasticsearch is not the default choice for the current platform needs because the main open need is caching and fast key/value or short-lived derived data, not distributed search indexing as the primary bottleneck.
+
+### Auth and Google Integration
+
+- Google OAuth should request only identity scopes unless a specific product workflow explicitly depends on broader scopes.
+- If broader Google workflows are removed from the product, their scope requests, token persistence, and dependent service code should be removed rather than left partially dormant.
+- Manual-capable users created by admins should have a reliable password-setup flow:
+  - admin user creation should generate a setup link
+  - manual sign-in for an account without a password should return a setup-required response, not a dead-end generic failure
 
 ### Finance / IO
 
@@ -100,9 +115,10 @@ This file captures the current intended technical patterns and constraints so ne
   - default-view selection
 - Saved-view management should be route-based, with a compact selector on the module page and a separate shared manage-view screen for naming, columns, sort, and filter conditions.
 - Filter conditions should use one shared config model across modules:
-  - `logic`: `all` or `any`
-  - `conditions`: list of field/operator/value rules
+  - `all_conditions`: list of field/operator/value rules that must all pass
+  - `any_conditions`: list of field/operator/value rules where any may pass
   - optional free-text search layered on top
+- Inline quick filters on module pages should use the same shared condition model as saved views instead of inventing a second filter grammar.
 - Module-specific list/search backends should accept the shared saved-view filter payload and map it through module-specific allowed-field definitions rather than each module inventing its own ad hoc filter shape.
 - Send `fields` to the backend on list endpoints so payload shaping can follow visible columns.
 - Current payload shaping is serializer-level in many places; deeper ORM select/load optimization is still open.
@@ -128,6 +144,8 @@ This file captures the current intended technical patterns and constraints so ne
 - Add proper upload handling for company/profile imagery rather than URL-only inputs.
 - Expand import/export coverage and consistency across the main business modules.
 - Ensure user timezone settings are honored in UI-facing time rendering.
+- Complete the transition from department-based module assignment to team-based module assignment.
+- Remove unneeded Google Docs/Drive integration code if those product capabilities are no longer active.
 
 ## Things To Avoid
 

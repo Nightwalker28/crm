@@ -2,7 +2,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
-from app.modules.user_management.models import Department, Team, User
+from app.modules.user_management.models import Department, DepartmentModulePermission, Team, TeamModulePermission, User
 from app.modules.user_management.schema import (
     DepartmentCreateRequest,
     DepartmentUpdateRequest,
@@ -25,6 +25,25 @@ def _sync_pk_sequence(db: Session, model, sequence_name: str) -> None:
         db.execute(text(f"SELECT setval('{sequence_name}', 1, false)"))
     elif max_id >= current_value:
         db.execute(text(f"SELECT setval('{sequence_name}', :value, true)"), {"value": max_id})
+
+
+def _sync_team_module_permissions_from_department(db: Session, team: Team) -> None:
+    if not team.department_id:
+        db.query(TeamModulePermission).filter(TeamModulePermission.team_id == team.id).delete()
+        return
+
+    department_module_ids = [
+        module_id
+        for (module_id,) in (
+            db.query(DepartmentModulePermission.module_id)
+            .filter(DepartmentModulePermission.department_id == team.department_id)
+            .all()
+        )
+    ]
+
+    db.query(TeamModulePermission).filter(TeamModulePermission.team_id == team.id).delete()
+    for module_id in department_module_ids:
+        db.add(TeamModulePermission(team_id=team.id, module_id=module_id))
 
 
 def create_department(db: Session, payload: DepartmentCreateRequest) -> Department:
@@ -99,6 +118,8 @@ def create_team(db: Session, payload: TeamCreateRequest) -> Team:
     team = Team(**payload.model_dump())
     db.add(team)
     db.commit()
+    _sync_team_module_permissions_from_department(db, team)
+    db.commit()
     db.refresh(team)
     return team
 
@@ -133,6 +154,9 @@ def update_team(db: Session, team_id: int, payload: TeamUpdateRequest) -> Team:
 
     db.add(team)
     db.commit()
+    if "department_id" in update_data:
+        _sync_team_module_permissions_from_department(db, team)
+        db.commit()
     db.refresh(team)
     return team
 

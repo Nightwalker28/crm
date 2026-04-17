@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
 
 from fastapi import HTTPException, status
+from sqlalchemy import Date, Numeric, Text, cast, select
 from sqlalchemy.orm import Session
 
 from app.core.cache import cache_delete, cache_delete_prefix, cache_get_json, cache_set_json
@@ -25,6 +26,7 @@ SUPPORTED_MODULE_KEYS = {
 
 SUPPORTED_FIELD_TYPES = {"text", "long_text", "number", "date", "boolean"}
 DEFINITION_CACHE_TTL_SECONDS = 300
+CUSTOM_FIELD_FILTER_PREFIX = "custom:"
 
 
 @dataclass(frozen=True)
@@ -39,6 +41,25 @@ class CachedCustomFieldDefinition:
     is_required: bool
     is_active: bool
     sort_order: int
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+def _serialize_cached_definition(item: CachedCustomFieldDefinition) -> dict[str, Any]:
+    return {
+        "id": item.id,
+        "module_key": item.module_key,
+        "field_key": item.field_key,
+        "label": item.label,
+        "field_type": item.field_type,
+        "placeholder": item.placeholder,
+        "help_text": item.help_text,
+        "is_required": item.is_required,
+        "is_active": item.is_active,
+        "sort_order": item.sort_order,
+        "created_at": item.created_at.isoformat() if item.created_at else None,
+        "updated_at": item.updated_at.isoformat() if item.updated_at else None,
+    }
 
 
 def list_custom_field_definitions(
@@ -68,15 +89,17 @@ def list_custom_field_definitions(
             is_required=bool(item.is_required),
             is_active=bool(item.is_active),
             sort_order=item.sort_order,
+            created_at=item.created_at,
+            updated_at=item.updated_at,
         )
         for item in results
     ]
     cache_set_json(
         cache_key,
-        [item.__dict__ for item in cached_results],
+        [_serialize_cached_definition(item) for item in cached_results],
         ttl_seconds=DEFINITION_CACHE_TTL_SECONDS,
     )
-    return results
+    return cached_results
 
 
 def create_custom_field_definition(
@@ -307,6 +330,49 @@ def save_custom_field_values(
         elif definition.field_type == "boolean":
             row.value_boolean = bool(value)
         db.add(row)
+
+
+def build_custom_field_filter_map(
+    db: Session,
+    *,
+    module_key: str,
+    record_id_expression,
+) -> dict[str, dict[str, Any]]:
+    definitions = list_custom_field_definitions(db, module_key=module_key, include_inactive=False)
+    field_map: dict[str, dict[str, Any]] = {}
+
+    for definition in definitions:
+        if definition.field_type in {"text", "long_text"}:
+            value_column = CustomFieldValue.value_text
+            value_type = "text"
+        elif definition.field_type == "number":
+            value_column = cast(cast(CustomFieldValue.value_number, Text), Numeric)
+            value_type = "number"
+        elif definition.field_type == "date":
+            value_column = cast(CustomFieldValue.value_date, Date)
+            value_type = "date"
+        elif definition.field_type == "boolean":
+            value_column = CustomFieldValue.value_boolean
+            value_type = "boolean"
+        else:
+            continue
+
+        expression = (
+            select(value_column)
+            .where(
+                CustomFieldValue.module_key == module_key,
+                CustomFieldValue.record_id == record_id_expression,
+                CustomFieldValue.field_definition_id == definition.id,
+            )
+            .limit(1)
+            .scalar_subquery()
+        )
+        field_map[f"{CUSTOM_FIELD_FILTER_PREFIX}{definition.field_key}"] = {
+            "expression": expression,
+            "type": value_type,
+        }
+
+    return field_map
 
 
 def _get_custom_field_definition_or_404(db: Session, field_id: int) -> CustomFieldDefinition:

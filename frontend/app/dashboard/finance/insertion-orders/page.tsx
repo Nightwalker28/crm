@@ -9,6 +9,7 @@ import { useInsertionOrders } from "@/hooks/finance/useInsertionOrders";
 import InsertionOrdersHeader from "../../../../components/finance/InsertionOrdersHeader";
 import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
+import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { InsertionOrder, InsertionOrderPayload } from "@/hooks/finance/useInsertionOrders";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
@@ -148,6 +149,17 @@ export default function InsertionOrdersPage() {
             </Select>
           </div>
         </div>
+
+        <InlineSavedViewFilters
+          filterFields={definition?.filterFields ?? []}
+          filters={draftConfig.filters}
+          onChange={(nextFilters) =>
+            setDraftConfig((current) => ({
+              ...current,
+              filters: nextFilters,
+            }))
+          }
+        />
 
         {error && (
           <div className="bg-red-900/40 border border-red-700 text-red-200 text-sm rounded-lg px-4 py-3 flex items-center justify-between">

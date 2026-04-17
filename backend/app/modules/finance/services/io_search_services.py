@@ -18,6 +18,7 @@ from app.core.module_filters import apply_filter_conditions
 from app.core.postgres_search import searchable_text
 from app.modules.finance.models import FinanceIO
 from app.modules.platform.services.custom_fields import (
+    build_custom_field_filter_map,
     hydrate_custom_field_record,
     hydrate_custom_field_records,
     load_custom_field_values_with_fallback,
@@ -600,39 +601,34 @@ def list_insertion_orders(
     if status_filter:
         query = query.filter(func.lower(FinanceIO.status) == status_filter.strip().lower())
 
+    filter_field_map = {
+        "io_number": {"expression": FinanceIO.io_number, "type": "text"},
+        "customer_name": {"expression": FinanceIO.customer_name, "type": "text"},
+        "status": {"expression": FinanceIO.status, "type": "text"},
+        "currency": {"expression": FinanceIO.currency, "type": "text"},
+        "total_amount": {"expression": FinanceIO.total_amount, "type": "number"},
+        "issue_date": {"expression": FinanceIO.issue_date, "type": "date"},
+        "due_date": {"expression": FinanceIO.due_date, "type": "date"},
+        "external_reference": {"expression": FinanceIO.external_reference, "type": "text"},
+        "counterparty_reference": {"expression": FinanceIO.counterparty_reference, "type": "text"},
+        "updated_at": {"expression": FinanceIO.updated_at, "type": "date"},
+        **build_custom_field_filter_map(
+            db,
+            module_key="finance_io",
+            record_id_expression=FinanceIO.id,
+        ),
+    }
     query = apply_filter_conditions(
         query,
         conditions=all_filter_conditions,
         logic="all",
-        field_map={
-            "io_number": {"expression": FinanceIO.io_number, "type": "text"},
-            "customer_name": {"expression": FinanceIO.customer_name, "type": "text"},
-            "status": {"expression": FinanceIO.status, "type": "text"},
-            "currency": {"expression": FinanceIO.currency, "type": "text"},
-            "total_amount": {"expression": FinanceIO.total_amount, "type": "number"},
-            "issue_date": {"expression": FinanceIO.issue_date, "type": "date"},
-            "due_date": {"expression": FinanceIO.due_date, "type": "date"},
-            "external_reference": {"expression": FinanceIO.external_reference, "type": "text"},
-            "counterparty_reference": {"expression": FinanceIO.counterparty_reference, "type": "text"},
-            "updated_at": {"expression": FinanceIO.updated_at, "type": "date"},
-        },
+        field_map=filter_field_map,
     )
     query = apply_filter_conditions(
         query,
         conditions=any_filter_conditions,
         logic="any",
-        field_map={
-            "io_number": {"expression": FinanceIO.io_number, "type": "text"},
-            "customer_name": {"expression": FinanceIO.customer_name, "type": "text"},
-            "status": {"expression": FinanceIO.status, "type": "text"},
-            "currency": {"expression": FinanceIO.currency, "type": "text"},
-            "total_amount": {"expression": FinanceIO.total_amount, "type": "number"},
-            "issue_date": {"expression": FinanceIO.issue_date, "type": "date"},
-            "due_date": {"expression": FinanceIO.due_date, "type": "date"},
-            "external_reference": {"expression": FinanceIO.external_reference, "type": "text"},
-            "counterparty_reference": {"expression": FinanceIO.counterparty_reference, "type": "text"},
-            "updated_at": {"expression": FinanceIO.updated_at, "type": "date"},
-        },
+        field_map=filter_field_map,
     )
 
     query = apply_ranked_search(

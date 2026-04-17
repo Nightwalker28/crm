@@ -11,6 +11,7 @@ from app.modules.user_management.models import (
     Role,
     RoleModulePermission,
     Team,
+    TeamModulePermission,
     User,
     UserAuthMode,
     UserStatus,
@@ -81,6 +82,7 @@ def seed_initial_data(
         _sync_pk_sequence(db, "users", "users_id_seq")
         _sync_pk_sequence(db, "modules", "modules_id_seq")
         _sync_pk_sequence(db, "department_module_permissions", "department_module_permissions_id_seq")
+        _sync_pk_sequence(db, "team_module_permissions", "team_module_permissions_id_seq")
         _sync_pk_sequence(db, "role_module_permissions", "role_module_permissions_id_seq")
 
         roles_by_name: dict[str, Role] = {}
@@ -131,6 +133,22 @@ def seed_initial_data(
                 db.add(
                     DepartmentModulePermission(
                         department_id=department.id,
+                        module_id=module_id,
+                    )
+                )
+
+            team_permission = (
+                db.query(TeamModulePermission)
+                .filter(
+                    TeamModulePermission.team_id == team.id,
+                    TeamModulePermission.module_id == module_id,
+                )
+                .first()
+            )
+            if not team_permission:
+                db.add(
+                    TeamModulePermission(
+                        team_id=team.id,
                         module_id=module_id,
                     )
                 )

@@ -21,6 +21,7 @@ from app.modules.user_management.services.profile import (
     get_or_create_company_profile,
     list_saved_views,
     create_saved_view,
+    _is_system_saved_view,
     update_saved_view,
     delete_saved_view,
     get_user_table_preference,
@@ -149,7 +150,7 @@ def create_saved_view_route(
             "name": view.name,
             "config": view.config or {},
             "is_default": bool(view.is_default),
-            "is_system": False,
+            "is_system": _is_system_saved_view(view),
             "created_at": view.created_at,
             "updated_at": view.updated_at,
         }
@@ -181,7 +182,7 @@ def update_saved_view_route(
             "name": view.name,
             "config": view.config or {},
             "is_default": bool(view.is_default),
-            "is_system": False,
+            "is_system": _is_system_saved_view(view),
             "created_at": view.created_at,
             "updated_at": view.updated_at,
         }

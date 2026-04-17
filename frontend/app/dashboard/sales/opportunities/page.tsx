@@ -6,8 +6,10 @@ import { toast } from "sonner";
 import OpportunityDialog from "@/components/opportunities/OpportunityDialog";
 import OpportunitiesTable from "@/components/opportunities/OpportunitiesTable";
 import SearchBar from "@/components/ui/SearchBar";
+import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import Pagination from "@/components/ui/Pagination";
 import { Button } from "@/components/ui/button";
+import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
@@ -70,6 +72,10 @@ export default function OpportunitiesPage() {
           <p className="mt-1 text-sm text-neutral-400">Track pipeline, project value, and finance handoff.</p>
         </div>
         <div className="flex items-center gap-3">
+          <ModuleImportExportControls
+            importEndpoint="/sales/opportunities/import"
+            exportEndpoint="/sales/opportunities/export"
+          />
           <SavedViewSelector
             moduleKey="sales_opportunities"
             views={views}
@@ -99,6 +105,17 @@ export default function OpportunitiesPage() {
           }))
         }
         placeholder="Search opportunities"
+      />
+
+      <InlineSavedViewFilters
+        filterFields={definition?.filterFields ?? []}
+        filters={draftConfig.filters}
+        onChange={(nextFilters) =>
+          setDraftConfig((current) => ({
+            ...current,
+            filters: nextFilters,
+          }))
+        }
       />
 
       {error && <div className="rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">{error}</div>}

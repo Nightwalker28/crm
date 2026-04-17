@@ -4,6 +4,7 @@ import OrganizationsTable from "@/components/organizations/OrganizationsTable";
 import CreateOrganizationModal from "@/components/organizations/createOrganizationModal";
 import OrganizationsHeader from "@/components/organizations/organizationHeader";
 import SearchBar from "@/components/ui/SearchBar";
+import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import Pagination from "@/components/ui/Pagination";
 import { useOrganizations } from "@/hooks/sales/useOrganizations";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
@@ -53,7 +54,7 @@ export default function OrganizationsPage() {
       <div className="flex items-start justify-between gap-4">
         <OrganizationsHeader
           onCreateClick={() => setCreateOpen(true)}
-          onUploadSuccess={refresh}
+          onImportSuccess={refresh}
         />
         <SavedViewSelector
           moduleKey="sales_organizations"
@@ -75,6 +76,17 @@ export default function OrganizationsPage() {
           }))
         }
         placeholder="Search"
+      />
+
+      <InlineSavedViewFilters
+        filterFields={definition?.filterFields ?? []}
+        filters={draftConfig.filters}
+        onChange={(nextFilters) =>
+          setDraftConfig((current) => ({
+            ...current,
+            filters: nextFilters,
+          }))
+        }
       />
 
       {error && (

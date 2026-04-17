@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Upload, Plus } from "lucide-react";
 import UploadModal from "@/components/finance/uploadModal";
+import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 
 interface InsertionOrdersHeaderProps {
   onUploadSuccess: () => void;
@@ -35,6 +36,10 @@ export default function InsertionOrdersHeader({
         </div>
 
         <div className="flex items-center gap-3">
+          <ModuleImportExportControls
+            exportEndpoint="/finance/insertion-orders/export"
+            exportLabel="Export"
+          />
           <Button
             variant="outline"
             onClick={() => setIsUploadModalOpen(true)}

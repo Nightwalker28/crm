@@ -1,15 +1,17 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Upload, Plus } from "lucide-react";
+import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
+import { Plus } from "lucide-react";
 
 interface OrganizationsHeaderProps {
-  onUploadSuccess?: () => void;
+  onImportSuccess?: () => void;
   onCreateClick: () => void;
 }
 
 export default function OrganizationsHeader({
   onCreateClick,
+  onImportSuccess,
 }: OrganizationsHeaderProps) {
   return (
     <div className="flex items-center justify-between">
@@ -23,14 +25,13 @@ export default function OrganizationsHeader({
       </div>
 
       <div className="flex items-center gap-3">
-        <Button
-          variant="outline"
-          disabled
-          title="Bulk organization upload is not wired yet"
-        >
-          <Upload />
-          <span className="hidden sm:inline">Upload</span>
-        </Button>
+        <ModuleImportExportControls
+          importEndpoint="/sales/organizations/import"
+          exportEndpoint="/sales/organizations/export"
+          exportMethod="POST"
+          exportBody={{ org_ids: null }}
+          onImportSuccess={onImportSuccess}
+        />
 
         <Button onClick={onCreateClick}>
           <Plus />

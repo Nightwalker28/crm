@@ -320,8 +320,40 @@ export function buildModuleViewDefinition(
       label: field.label,
     }));
 
+  const customFilterFields: ModuleFilterField[] = customFields
+    .filter((field) => field.is_active)
+    .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id)
+    .map((field) => ({
+      key: getCustomFieldColumnKey(field.field_key),
+      label: field.label,
+      type:
+        field.field_type === "number"
+          ? "number"
+          : field.field_type === "date"
+            ? "date"
+            : field.field_type === "boolean"
+              ? "select"
+              : "text",
+      operators:
+        field.field_type === "number"
+          ? NUMBER_OPERATORS
+          : field.field_type === "date"
+            ? DATE_OPERATORS
+            : field.field_type === "boolean"
+              ? SELECT_OPERATORS
+              : TEXT_OPERATORS,
+      options:
+        field.field_type === "boolean"
+          ? [
+              { value: "true", label: "True" },
+              { value: "false", label: "False" },
+            ]
+          : undefined,
+    }));
+
   return {
     ...baseDefinition,
     columns: [...baseDefinition.columns, ...customColumns],
+    filterFields: [...baseDefinition.filterFields, ...customFilterFields],
   };
 }

@@ -9,6 +9,7 @@ from app.core.module_export import batched_csv_zip_bytes, dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
 from app.modules.platform.services.custom_fields import (
+    build_custom_field_filter_map,
     hydrate_custom_field_record,
     hydrate_custom_field_records,
     load_custom_field_values_with_fallback,
@@ -153,35 +154,32 @@ def list_organizations_paginated(
 ) -> tuple[list[SalesOrganization], int]:
     """Return a page of organizations and the total count."""
     base_query = db.query(SalesOrganization).filter(SalesOrganization.deleted_at.is_(None))
+    filter_field_map = {
+        "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
+        "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
+        "website": {"expression": SalesOrganization.website, "type": "text"},
+        "industry": {"expression": SalesOrganization.industry, "type": "text"},
+        "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "number"},
+        "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
+        "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
+        "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
+        **build_custom_field_filter_map(
+            db,
+            module_key="sales_organizations",
+            record_id_expression=SalesOrganization.org_id,
+        ),
+    }
     base_query = apply_filter_conditions(
         base_query,
         conditions=all_filter_conditions,
         logic="all",
-        field_map={
-            "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
-            "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
-            "website": {"expression": SalesOrganization.website, "type": "text"},
-            "industry": {"expression": SalesOrganization.industry, "type": "text"},
-            "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "number"},
-            "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
-            "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
-            "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
-        },
+        field_map=filter_field_map,
     )
     base_query = apply_filter_conditions(
         base_query,
         conditions=any_filter_conditions,
         logic="any",
-        field_map={
-            "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
-            "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
-            "website": {"expression": SalesOrganization.website, "type": "text"},
-            "industry": {"expression": SalesOrganization.industry, "type": "text"},
-            "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "number"},
-            "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
-            "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
-            "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
-        },
+        field_map=filter_field_map,
     )
     total = base_query.count()
     items = (
@@ -236,6 +234,11 @@ def search_organizations_pagianted(
             "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
             "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
             "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
+            **build_custom_field_filter_map(
+                db,
+                module_key="sales_organizations",
+                record_id_expression=SalesOrganization.org_id,
+            ),
         },
     )
     base_query = apply_filter_conditions(
@@ -251,6 +254,11 @@ def search_organizations_pagianted(
             "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
             "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
             "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
+            **build_custom_field_filter_map(
+                db,
+                module_key="sales_organizations",
+                record_id_expression=SalesOrganization.org_id,
+            ),
         },
     )
     total = base_query.count()
