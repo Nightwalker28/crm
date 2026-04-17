@@ -43,6 +43,7 @@ class SalesOrganizationUpdate(BaseModel):
     billing_state: str | None = None
     billing_postal_code: str | None = None
     billing_country: str | None = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class SalesOrganizationResponse(SalesOrganizationBase):
@@ -105,6 +106,7 @@ class SalesContactUpdateRequest(BaseModel):
     organization_id: Optional[int] = None
     primary_email: Optional[EmailStr] = None
     assigned_to: Optional[int] = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class SalesContactResponse(SalesContactBase):
@@ -265,6 +267,7 @@ class SalesOpportunityUpdate(BaseModel):
     tactics: str | None = None
     delivery_format: str | None = None
     attachments: list[str] | None = None
+    custom_fields: dict[str, Any] | None = None
 
 
 class SalesOpportunityResponse(SalesOpportunityBase):

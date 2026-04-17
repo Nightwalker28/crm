@@ -49,3 +49,4 @@ Turn saved module views into the real global list-view system by adding a dedica
 
 - The roadmap has been normalized, but some newer surfaces still need full browser-side smoke testing.
 - Platform hardening still matters, but the current focus is on high-value workflow completeness and configurability gaps.
+- The current bugfix slice covers saved-view selection loops on the users page and custom-field consistency across create, detail, and module-view list rendering.

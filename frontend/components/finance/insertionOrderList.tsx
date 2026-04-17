@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/Table";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
-import { getCustomFieldKeyFromColumn, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
+import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 
 type InsertionOrdersListProps = {
   orders: InsertionOrder[];
@@ -45,8 +45,6 @@ export default function InsertionOrdersList({
     user_name: "Owner",
     updated_at: "Updated",
   };
-  const columnLabels = new Map(columnOptions.map((option) => [option.key, option.label]));
-
   const renderCell = (order: InsertionOrder, column: string) => {
     if (isCustomFieldColumnKey(column)) {
       const fieldKey = getCustomFieldKeyFromColumn(column);
@@ -85,7 +83,7 @@ export default function InsertionOrdersList({
         <TableHeader>
           <TableHeaderRow>
             {visibleColumns.map((column) => (
-              <TableHead key={column}>{headers[column] ?? columnLabels.get(column) ?? column}</TableHead>
+              <TableHead key={column}>{headers[column] ?? getReadableColumnLabel(column, columnOptions)}</TableHead>
             ))}
             <TableHead className="text-right">Actions</TableHead>
           </TableHeaderRow>

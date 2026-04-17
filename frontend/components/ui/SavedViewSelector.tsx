@@ -15,9 +15,18 @@ type Props = {
 };
 
 export function SavedViewSelector({ moduleKey, views, selectedViewId, onSelect }: Props) {
+  const hasSelectedView = views.some((view) => String(view.id ?? "system-default") === selectedViewId);
+  const effectiveViewId = hasSelectedView
+    ? selectedViewId
+    : String((views.find((view) => view.is_default) ?? views[0])?.id ?? "system-default");
+
   return (
     <div className="flex items-center gap-3">
-      <Select value={selectedViewId} onValueChange={onSelect}>
+      <Select value={effectiveViewId} onValueChange={(value) => {
+        if (value !== selectedViewId) {
+          onSelect(value);
+        }
+      }}>
         <SelectTrigger className="w-56">
           <SelectValue placeholder="Select view" />
         </SelectTrigger>
@@ -30,7 +39,7 @@ export function SavedViewSelector({ moduleKey, views, selectedViewId, onSelect }
         </SelectContent>
       </Select>
       <Button asChild type="button" variant="outline" size="sm">
-        <Link href={`/dashboard/views/${moduleKey}?viewId=${selectedViewId}`}>
+        <Link href={`/dashboard/views/${moduleKey}?viewId=${effectiveViewId}`}>
           <SlidersHorizontal className="h-4 w-4" />
           Manage View
         </Link>

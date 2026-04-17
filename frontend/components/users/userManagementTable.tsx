@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, Fragment } from "react";
+import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 import Image from "next/image";
 import { Pencil } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -65,6 +65,7 @@ type Props = {
   optionsData: UserOptionsData;
   onEdit: (u: User) => void;
   visibleColumns: string[];
+  stateKey?: string;
   initialFilters?: UserFiltersValue;
   initialSortKey?: SortKey;
   initialSortDirection?: SortDirection;
@@ -206,6 +207,7 @@ export function UserManagementTable({
   optionsData,
   onEdit,
   visibleColumns = [],
+  stateKey,
   initialFilters,
   initialSortKey = "name",
   initialSortDirection = "asc",
@@ -218,6 +220,7 @@ export function UserManagementTable({
   const [sortKey, setSortKey] = useState<SortKey>(initialSortKey);
   const [sortDirection, setSortDirection] = useState<SortDirection>(initialSortDirection);
   const emptyUsers: User[] = [];
+  const onStateChangeRef = useRef(onStateChange);
 
   const [filters, setFilters] = useState<UserFiltersValue>({
     search: initialFilters?.search ?? "",
@@ -226,6 +229,10 @@ export function UserManagementTable({
     selectedRoles: initialFilters?.selectedRoles ?? [],
     selectedStatuses: initialFilters?.selectedStatuses ?? [],
   });
+
+  useEffect(() => {
+    onStateChangeRef.current = onStateChange;
+  }, [onStateChange]);
 
   const apiFilters = useMemo(() => ({
     search: filters.search,
@@ -451,23 +458,15 @@ export function UserManagementTable({
       selectedRoles: initialFilters?.selectedRoles ?? [],
       selectedStatuses: initialFilters?.selectedStatuses ?? [],
     };
-    if (!filtersEqual(filters, nextFilters)) {
-      setFilters(nextFilters);
-      setPage(1);
-    }
-    if (sortKey !== initialSortKey) {
-      setSortKey(initialSortKey);
-      setPage(1);
-    }
-    if (sortDirection !== initialSortDirection) {
-      setSortDirection(initialSortDirection);
-      setPage(1);
-    }
-  }, [filters, initialFilters, initialSortDirection, initialSortKey, sortDirection, sortKey]);
+    setFilters((current) => (filtersEqual(current, nextFilters) ? current : nextFilters));
+    setSortKey((current) => (current === initialSortKey ? current : initialSortKey));
+    setSortDirection((current) => (current === initialSortDirection ? current : initialSortDirection));
+    setPage(1);
+  }, [stateKey, initialFilters, initialSortDirection, initialSortKey]);
 
   useEffect(() => {
-    onStateChange?.({ filters, sortKey, sortDirection });
-  }, [filters, sortDirection, sortKey, onStateChange]);
+    onStateChangeRef.current?.({ filters, sortKey, sortDirection });
+  }, [filters, sortDirection, sortKey]);
 
   return (
     <div className="flex flex-col gap-4 text-neutral-200">

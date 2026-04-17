@@ -83,6 +83,7 @@ export default function UserManagementPage() {
         optionsData={optionsData}
         onEdit={openEditModal}
         visibleColumns={visibleColumns}
+        stateKey={selectedViewId}
         initialFilters={viewFilters}
         initialSortKey={viewSort.key}
         initialSortDirection={viewSort.direction}

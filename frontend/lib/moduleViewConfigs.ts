@@ -285,6 +285,20 @@ export function getCustomFieldKeyFromColumn(columnKey: string) {
     : columnKey;
 }
 
+export function getReadableColumnLabel(columnKey: string, columnOptions: TableColumnOption[] = []) {
+  const explicit = columnOptions.find((option) => option.key === columnKey);
+  if (explicit) {
+    return explicit.label;
+  }
+
+  const rawKey = getCustomFieldKeyFromColumn(columnKey);
+  return rawKey
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 export function buildModuleViewDefinition(
   moduleKey: string,
   customFields: CustomFieldDefinition[] = [],

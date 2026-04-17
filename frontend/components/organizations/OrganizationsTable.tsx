@@ -15,7 +15,7 @@ import {
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import type { Organization } from "@/hooks/sales/useOrganizations";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
-import { getCustomFieldKeyFromColumn, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
+import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 
 type Props = {
   organizations: Organization[];
@@ -39,8 +39,6 @@ export default function OrganizationsTable({
     primary_phone: "Phone",
     billing_country: "Country",
   };
-  const columnLabels = new Map(columnOptions.map((option) => [option.key, option.label]));
-
   const renderCell = (org: Organization, column: string) => {
     if (isCustomFieldColumnKey(column)) {
       const fieldKey = getCustomFieldKeyFromColumn(column);
@@ -88,7 +86,7 @@ export default function OrganizationsTable({
         <TableHeader>
           <TableHeaderRow>
             {visibleColumns.map((column) => (
-              <TableHead key={column}>{headers[column] ?? columnLabels.get(column) ?? column}</TableHead>
+              <TableHead key={column}>{headers[column] ?? getReadableColumnLabel(column, columnOptions)}</TableHead>
             ))}
             <TableHead className="text-right">Record</TableHead>
           </TableHeaderRow>

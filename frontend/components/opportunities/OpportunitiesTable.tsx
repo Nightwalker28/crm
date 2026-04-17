@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/Table";
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
-import { getCustomFieldKeyFromColumn, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
+import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 
 type Props = {
   opportunities: Opportunity[];
@@ -46,8 +46,6 @@ export default function OpportunitiesTable({
     currency_type: "Currency",
     created_time: "Created",
   };
-  const columnLabels = new Map(columnOptions.map((option) => [option.key, option.label]));
-
   const renderCell = (opportunity: Opportunity, column: string) => {
     if (isCustomFieldColumnKey(column)) {
       const fieldKey = getCustomFieldKeyFromColumn(column);
@@ -80,7 +78,7 @@ export default function OpportunitiesTable({
         <TableHeader>
           <TableHeaderRow>
             {visibleColumns.map((column) => (
-              <TableHead key={column}>{headers[column] ?? columnLabels.get(column) ?? column}</TableHead>
+              <TableHead key={column}>{headers[column] ?? getReadableColumnLabel(column, columnOptions)}</TableHead>
             ))}
             <TableHead className="text-right">Actions</TableHead>
           </TableHeaderRow>
