@@ -5,12 +5,8 @@ import { cn } from "@/lib/utils";
 import { ArrowUpDown, ArrowDownAZ, ArrowDownZA } from "lucide-react";
 
 
-
-
 /* ============================================================================
    Root
-   Table wrapper gives horizontal scroll while allowing sticky to use the parent
-   vertical scroller
    ========================================================================== */
 
 const Table = React.forwardRef<
@@ -28,11 +24,8 @@ const Table = React.forwardRef<
 Table.displayName = "Table";
 
 
-
-
 /* ============================================================================
    Sections
-   Table semantic sections
    ========================================================================== */
 
 const TableHeader = React.forwardRef<
@@ -41,7 +34,12 @@ const TableHeader = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <thead
     ref={ref}
-    className={cn("sticky top-0 z-20 bg-neutral-900 border-b border-neutral-800 text-neutral-300 text-xs select-none", className)}
+    className={cn(
+      "sticky top-0 z-20 bg-neutral-900/95 backdrop-blur-sm",
+      "border-b border-neutral-800",
+      "text-neutral-400 text-xs select-none",
+      className
+    )}
     {...props}
   />
 ));
@@ -68,11 +66,8 @@ const TableCaption = React.forwardRef<
 TableCaption.displayName = "TableCaption";
 
 
-
-
 /* ============================================================================
    Rows
-   Separate header row so we never reuse body styling inside thead
    ========================================================================== */
 
 const TableHeaderRow = React.forwardRef<
@@ -90,7 +85,9 @@ const TableRow = React.forwardRef<
   <tr
     ref={ref}
     className={cn(
-      "border-t border-neutral-800 odd:bg-neutral-900/30 even:bg-neutral-900/60",
+      "border-t border-neutral-800/60",
+      "odd:bg-neutral-950 even:bg-neutral-900/20",
+      "hover:bg-neutral-900/60 transition-colors duration-100",
       className
     )}
     {...props}
@@ -107,17 +104,14 @@ const TableGroupRow = React.forwardRef<
 TableGroupRow.displayName = "TableGroupRow";
 
 
-
-
 /* ============================================================================
    Cells
-   Sticky is applied to cells only (browser reliable)
    ========================================================================== */
 
 const baseHeadClass =
-  "px-4 py-2 text-left font-medium align-middle " +
+  "px-4 py-2.5 text-left font-medium text-xs uppercase tracking-wide align-middle " +
   "relative before:content-[''] before:absolute before:top-1/2 before:-translate-y-1/2 " +
-  "before:left-0 before:h-4 before:w-px before:bg-neutral-700 first:before:hidden";
+  "before:left-0 before:h-3.5 before:w-px before:bg-neutral-700/60 first:before:hidden";
 
 const TableHead = React.forwardRef<
   HTMLTableCellElement,
@@ -131,7 +125,7 @@ const TableCell = React.forwardRef<
   HTMLTableCellElement,
   React.TdHTMLAttributes<HTMLTableCellElement>
 >(({ className, ...props }, ref) => (
-  <td ref={ref} className={cn("px-4 py-1.5 align-middle", className)} {...props} />
+  <td ref={ref} className={cn("px-4 py-2.5 align-middle", className)} {...props} />
 ));
 TableCell.displayName = "TableCell";
 
@@ -142,7 +136,8 @@ const TableGroupCell = React.forwardRef<
   <td
     ref={ref}
     className={cn(
-      "px-4 py-2 text-xs font-semibold tracking-wide uppercase text-neutral-200 bg-[oklch(22.9%_0_0)]",
+      "px-4 py-2 text-xs font-semibold tracking-widest uppercase text-neutral-400 bg-[oklch(22.9%_0_0)]",
+      "border-t border-neutral-800",
       className
     )}
     {...props}
@@ -151,11 +146,8 @@ const TableGroupCell = React.forwardRef<
 TableGroupCell.displayName = "TableGroupCell";
 
 
-
-
 /* ============================================================================
    Sortable header cell
-   Visual sort indicator with consistent sticky header behavior
    ========================================================================== */
 
 type SortDirection = "asc" | "desc";
@@ -169,21 +161,25 @@ const SortableHead = React.forwardRef<HTMLTableCellElement, SortableHeadProps>(
   ({ sorted, direction = "asc", children, className, ...props }, ref) => (
     <th
       ref={ref}
-      className={cn(baseHeadClass, "cursor-pointer select-none", className)}
+      className={cn(
+        baseHeadClass,
+        "cursor-pointer select-none",
+        "hover:text-neutral-200 transition-colors duration-100",
+        sorted && "text-neutral-200",
+        className
+      )}
       {...props}
     >
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-1.5">
         {children}
-        {!sorted && <ArrowUpDown size={12} className="text-neutral-500/80" />}
-        {sorted && direction === "asc" && <ArrowDownAZ size={12} className="text-neutral-300" />}
-        {sorted && direction === "desc" && <ArrowDownZA size={12} className="text-neutral-300" />}
+        {!sorted && <ArrowUpDown size={11} className="text-neutral-600" />}
+        {sorted && direction === "asc" && <ArrowDownAZ size={11} className="text-neutral-300" />}
+        {sorted && direction === "desc" && <ArrowDownZA size={11} className="text-neutral-300" />}
       </div>
     </th>
   )
 );
 SortableHead.displayName = "SortableHead";
-
-
 
 
 export {
