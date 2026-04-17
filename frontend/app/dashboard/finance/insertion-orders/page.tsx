@@ -92,8 +92,7 @@ export default function InsertionOrdersPage() {
   };
 
   return (
-    <div className="bg-zinc-950">
-      <div className="max-w-5xl mx-auto flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
         <div className="flex items-start justify-between gap-4">
           <InsertionOrdersHeader
             onCreateClick={handleCreateClick}
@@ -192,7 +191,6 @@ export default function InsertionOrdersPage() {
           onPageChange={goToPage}
           onPageSizeChange={onPageSizeChange}
         />
-      </div>
 
       <InsertionOrderDialog
         open={dialogOpen}

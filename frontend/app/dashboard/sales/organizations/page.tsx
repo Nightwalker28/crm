@@ -50,7 +50,7 @@ export default function OrganizationsPage() {
   } = useOrganizations(visibleColumns, draftConfig.filters);
 
   return (
-    <div className="max-w-5xl mx-auto flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <OrganizationsHeader
           onCreateClick={() => setCreateOpen(true)}

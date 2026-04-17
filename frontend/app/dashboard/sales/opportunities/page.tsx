@@ -65,7 +65,7 @@ export default function OpportunitiesPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto flex flex-col gap-6">
+    <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold text-neutral-100">Opportunities</h1>

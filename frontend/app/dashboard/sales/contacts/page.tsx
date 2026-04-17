@@ -49,7 +49,7 @@ export default function ContactsPage() {
 
   return (
     <div className="bg-zinc-950 overflow-hidden">
-      <div className="max-w-5xl mx-auto flex flex-col gap-6 h-full">
+      <div className="flex flex-col gap-6 h-full">
         <div className="flex items-start justify-between gap-4">
           <ContactsHeader onCreateClick={() => setCreateOpen(true)} onImportSuccess={refresh} />
           <SavedViewSelector
