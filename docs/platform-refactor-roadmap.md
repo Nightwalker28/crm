@@ -126,6 +126,7 @@ In progress:
 - The shared persisted data-transfer job foundation is now in place; the next step is wiring the export modes and later large imports onto it.
 - The data-transfer job foundation is now being moved onto Celery with Redis so import/export and future scheduled workloads use a real worker architecture instead of in-process request tasks.
 - Large imports now queue real Celery jobs through the shared data-transfer-job layer, and that path has been verified end to end with Redis and the dedicated worker service.
+- Apply the shared UI audit fixes across the dashboard shell, sidebar, page headers, and secondary action patterns while keeping the product on its monochrome palette.
 - Rebuild imports into a proper staged workflow with preview/header mapping first, then duplicate-policy control, then richer result summaries.
 - Rebuild exports into a proper staged workflow with export-all, export-current, and export-selected-across-pages modes.
 - Shared import preview/header-mapping, duplicate-policy control, and standardized result summaries are now in place for the current importable business modules.

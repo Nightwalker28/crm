@@ -2,18 +2,18 @@
 
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Copy, X } from "lucide-react";
+import { Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogBackdrop,
-  DialogClose,
   DialogFooter,
   DialogHeader,
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -114,9 +114,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
         <DialogPanel className="w-full max-w-xl">
           <DialogHeader>
             <DialogTitle>{setupLink ? "User Created" : "Add User"}</DialogTitle>
-            <DialogClose className="cursor-pointer text-neutral-400/70 hover:text-red-400/90">
-              <X size={16} />
-            </DialogClose>
+            <DialogIconClose />
           </DialogHeader>
 
           {setupLink ? (

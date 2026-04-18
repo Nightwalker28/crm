@@ -29,7 +29,7 @@ export default function AuthLayout({
 
         {/* card noise */}
         <div
-          className="absolute inset-0 pointer-events-none mix-blend-multiply bg-repeat bg-size-[150px_150px] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-5 rounded-md"
+          className="noise-overlay absolute inset-0 pointer-events-none rounded-md opacity-5"
         ></div>
 
         {/* actual page content */}

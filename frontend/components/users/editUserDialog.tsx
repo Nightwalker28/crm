@@ -2,17 +2,16 @@
 
 import { useEffect, useState } from "react";
 import Image from "next/image";
-import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogClose,
   DialogPanel,
   DialogHeader,
   DialogTitle,
   DialogFooter,
   DialogBackdrop,
 } from "@/components/ui/dialog";
+import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import {
   Select,
   SelectContent,
@@ -85,17 +84,13 @@ export default function EditUserDialog({
         <DialogPanel className="w-88 sm:max-w-[380px]">
           <DialogHeader>
             <DialogTitle>Editing User</DialogTitle>
-            <DialogClose className="text-neutral-400/70 hover:text-red-400/90 cursor-pointer">
-              <X size={16} />
-            </DialogClose>
+            <DialogIconClose />
           </DialogHeader>
 
           <div className="flex flex-col gap-4 mt-2">
             <div className="relative rounded-md">
               <div
-                className="absolute inset-0 pointer-events-none mix-blend-multiply bg-repeat
-                bg-size-[150px_150px] bg-[url('https://grainy-gradients.vercel.app/noise.svg')]
-                opacity-25 rounded-md"
+                className="noise-overlay absolute inset-0 pointer-events-none rounded-md opacity-25"
               />
 
               <div

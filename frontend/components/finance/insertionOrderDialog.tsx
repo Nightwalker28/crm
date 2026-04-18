@@ -8,12 +8,12 @@ import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import {
   Dialog,
   DialogBackdrop,
-  DialogClose,
   DialogFooter,
   DialogHeader,
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
@@ -224,9 +224,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
         <DialogPanel className="w-full max-w-3xl">
           <DialogHeader>
             <DialogTitle>{isEditMode ? "Edit Insertion Order" : "Create Insertion Order"}</DialogTitle>
-            <DialogClose className="cursor-pointer text-neutral-400/70 hover:text-red-400/90">
-              Close
-            </DialogClose>
+            <DialogIconClose />
           </DialogHeader>
 
           <div className="mt-4 space-y-4">

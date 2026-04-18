@@ -3,6 +3,7 @@
 import { Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { UserManagementTable, type SortDirection, type SortKey } from "@/components/users/userManagementTable";
@@ -63,10 +64,12 @@ export default function UserManagementPage() {
 
 
   return (
-    <div className="flex flex-col gap-5 text-neutral-200">
-      <div className="flex items-center justify-between gap-4">
-        <h1 className="text-2xl font-semibold leading-none">User Management</h1>
-        <div className="flex items-center gap-3">
+    <div className="flex flex-col gap-6 text-neutral-200">
+      <PageHeader
+        title="User Management"
+        description="Manage provisioned users, roles, access, and team membership."
+        actions={
+          <>
           <SavedViewSelector
             moduleKey="admin_users"
             views={views}
@@ -77,8 +80,9 @@ export default function UserManagementPage() {
             <Plus />
             Add User
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <InlineSavedViewFilters
         filterFields={definition?.filterFields ?? []}

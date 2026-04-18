@@ -25,8 +25,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
             
             // 2. The Noise Texture (Positions itself relative to the line above)
             "before:absolute before:inset-0 before:z-[-1]",
-            "before:bg-[url('https://grainy-gradients.vercel.app/noise.svg')]",
-            "before:bg-[size:150px_150px] before:bg-repeat",
+            "before:bg-[image:var(--noise-texture)] before:bg-repeat before:bg-[size:140px_140px]",
             "before:opacity-[0.1] before:mix-blend-overlay before:content-['']",
 
             // 3. Base Styles (Glassmorphism)

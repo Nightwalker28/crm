@@ -10,6 +10,7 @@ import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import Pagination from "@/components/ui/Pagination";
 import { Button } from "@/components/ui/button";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
@@ -66,12 +67,11 @@ export default function OpportunitiesPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold text-neutral-100">Opportunities</h1>
-          <p className="mt-1 text-sm text-neutral-400">Track pipeline, project value, and finance handoff.</p>
-        </div>
-        <div className="flex items-center gap-3">
+      <PageHeader
+        title="Opportunities"
+        description="Track pipeline, project value, and finance handoff."
+        actions={
+          <>
           <ModuleImportExportControls
             importEndpoint="/sales/opportunities/import"
             exportEndpoint="/sales/opportunities/export"
@@ -90,8 +90,9 @@ export default function OpportunitiesPage() {
           >
             Add Opportunity
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
       <SearchBar
         value={typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : ""}

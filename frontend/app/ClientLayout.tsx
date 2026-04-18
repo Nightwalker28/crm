@@ -1,6 +1,7 @@
 "use client";
 
 import { ReactNode, useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import LynkSplash from "@/components/LynkSplash";
 // import { useSession } from "next-auth/react"; // if you use next auth
 
@@ -15,8 +16,10 @@ const DEV_ALWAYS_SHOW_SPLASH = false;
 
 export default function ClientLayout(props: ClientLayoutProps) {
   const { children } = props;
+  const pathname = usePathname();
 
-  const [showSplash, setShowSplash] = useState(true);
+  const shouldUseSplash = !pathname?.startsWith("/dashboard");
+  const [showSplash, setShowSplash] = useState(shouldUseSplash);
   const [mountedAt] = useState(() => Date.now());
 
   // If you use next auth, you can turn this into real auth loading
@@ -26,6 +29,10 @@ export default function ClientLayout(props: ClientLayoutProps) {
   const authLoading = false;
 
   useEffect(() => {
+    if (!shouldUseSplash) {
+      setShowSplash(false);
+      return;
+    }
     if (DEV_ALWAYS_SHOW_SPLASH || authLoading) return;
 
     const elapsed = Date.now() - mountedAt;
@@ -36,7 +43,7 @@ export default function ClientLayout(props: ClientLayoutProps) {
     }, remaining);
 
     return () => window.clearTimeout(timeoutId);
-  }, [authLoading, mountedAt]);
+  }, [authLoading, mountedAt, shouldUseSplash]);
 
   if (DEV_ALWAYS_SHOW_SPLASH) {
     return (
@@ -44,6 +51,10 @@ export default function ClientLayout(props: ClientLayoutProps) {
         <LynkSplash />
       </div>
     );
+  }
+
+  if (!shouldUseSplash) {
+    return <div className="relative min-h-screen">{children}</div>;
   }
 
   return (

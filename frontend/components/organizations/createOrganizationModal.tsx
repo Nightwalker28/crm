@@ -7,12 +7,12 @@ import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import {
   Dialog,
   DialogBackdrop,
-  DialogClose,
   DialogFooter,
   DialogHeader,
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { Input } from "@/components/ui/input";
@@ -94,9 +94,7 @@ export default function CreateOrganizationModal({
         <DialogPanel className="w-full max-w-xl">
           <DialogHeader>
             <DialogTitle>Create Organization</DialogTitle>
-            <DialogClose className="text-neutral-400/70 hover:text-red-400/90 cursor-pointer">
-              Close
-            </DialogClose>
+            <DialogIconClose />
           </DialogHeader>
 
           <FieldGroup className="mt-4 grid gap-4 sm:grid-cols-2">

@@ -8,12 +8,12 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogBackdrop,
-  DialogClose,
   DialogFooter,
   DialogHeader,
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -155,9 +155,7 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
         <DialogPanel className="w-full max-w-3xl">
           <DialogHeader>
             <DialogTitle>{opportunity ? "Edit Opportunity" : "Create Opportunity"}</DialogTitle>
-            <DialogClose className="cursor-pointer text-neutral-400/70 hover:text-red-400/90">
-              Close
-            </DialogClose>
+            <DialogIconClose />
           </DialogHeader>
 
           <div className="mt-4 space-y-4">

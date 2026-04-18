@@ -48,75 +48,76 @@ export default function ContactsPage() {
   const [createOpen, setCreateOpen] = useState(false);
 
   return (
-    <div className="bg-zinc-950 overflow-hidden">
-      <div className="flex flex-col gap-6 h-full">
-        <div className="flex items-start justify-between gap-4">
-          <ContactsHeader onCreateClick={() => setCreateOpen(true)} onImportSuccess={refresh} />
+    <div className="flex h-full flex-col gap-6">
+      <ContactsHeader
+        onCreateClick={() => setCreateOpen(true)}
+        onImportSuccess={refresh}
+        viewSelector={
           <SavedViewSelector
             moduleKey="sales_contacts"
             views={views}
             selectedViewId={selectedViewId}
             onSelect={setSelectedViewId}
           />
+        }
+      />
+
+      <SearchBar
+        value={typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : ""}
+        onChange={(value) =>
+          setDraftConfig((current) => ({
+            ...current,
+            filters: {
+              ...current.filters,
+              search: value,
+            },
+          }))
+        }
+        placeholder="Search contacts"
+      />
+
+      <InlineSavedViewFilters
+        filterFields={definition?.filterFields ?? []}
+        filters={draftConfig.filters}
+        onChange={(nextFilters) =>
+          setDraftConfig((current) => ({
+            ...current,
+            filters: nextFilters,
+          }))
+        }
+      />
+
+      {error && (
+        <div className="flex justify-between rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">
+          <span>{error}</span>
+          <button
+            onClick={refresh}
+            className="underline underline-offset-2"
+          >
+            Retry
+          </button>
         </div>
+      )}
 
-        <SearchBar
-          value={typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : ""}
-          onChange={(value) =>
-            setDraftConfig((current) => ({
-              ...current,
-              filters: {
-                ...current.filters,
-                search: value,
-              },
-            }))
-          }
-          placeholder="Search contacts"
-        />
-
-        <InlineSavedViewFilters
-          filterFields={definition?.filterFields ?? []}
-          filters={draftConfig.filters}
-          onChange={(nextFilters) =>
-            setDraftConfig((current) => ({
-              ...current,
-              filters: nextFilters,
-            }))
-          }
-        />
-
-        {error && (
-          <div className="bg-red-900/40 border border-red-700 text-red-200 text-sm rounded-lg px-4 py-3 flex justify-between">
-            <span>{error}</span>
-            <button
-              onClick={refresh}
-              className="underline underline-offset-2"
-            >
-              Retry
-            </button>
-          </div>
-        )}
-
-        <div className="flex-1 min-h-0">
-          <ContactList
-            contacts={contacts}
-            isLoading={isLoading}
-            visibleColumns={visibleColumns}
-            columnOptions={definition?.columns ?? []}
-          />
-        </div>
-
-        <Pagination
-          page={page}
-          totalPages={totalPages}
-          totalCount={totalCount}
-          rangeStart={rangeStart}
-          rangeEnd={rangeEnd}
-          pageSize={pageSize}
-          onPageChange={goToPage}
-          onPageSizeChange={() => {}}
+      <div className="min-h-0 flex-1">
+        <ContactList
+          contacts={contacts}
+          isLoading={isLoading}
+          visibleColumns={visibleColumns}
+          columnOptions={definition?.columns ?? []}
         />
       </div>
+
+      <Pagination
+        page={page}
+        totalPages={totalPages}
+        totalCount={totalCount}
+        rangeStart={rangeStart}
+        rangeEnd={rangeEnd}
+        pageSize={pageSize}
+        onPageChange={goToPage}
+        onPageSizeChange={() => {}}
+      />
 
       <CreateContactModal
         isOpen={createOpen}

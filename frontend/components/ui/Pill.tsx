@@ -28,11 +28,7 @@ export function Pill({
     >
       {/* Noise Overlay */}
       <div
-        className="absolute inset-0 pointer-events-none mix-blend-multiply bg-repeat opacity-12"
-        style={{
-          backgroundImage: "url('https://grainy-gradients.vercel.app/noise.svg')",
-          backgroundSize: "100px 100px",
-        }}
+        className="noise-overlay absolute inset-0 pointer-events-none opacity-12"
       />
 
       {/* Content */}

@@ -1,19 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
-import { Upload, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import UploadModal from "@/components/finance/uploadModal";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
+import { PageHeader } from "@/components/ui/PageHeader";
 
 interface InsertionOrdersHeaderProps {
   onUploadSuccess: () => void;
   onCreateClick: () => void;
+  viewSelector?: ReactNode;
 }
 
 export default function InsertionOrdersHeader({
   onUploadSuccess,
   onCreateClick,
+  viewSelector,
 }: InsertionOrdersHeaderProps) {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
@@ -24,38 +27,27 @@ export default function InsertionOrdersHeader({
 
   return (
     <>
-      {/* HEADER */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold text-zinc-100">
-            Insertion Orders
-          </h1>
-          <p className="text-sm text-zinc-500 mt-1">
-            Manage generic insertion orders and import them from CSV when needed
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
+      <PageHeader
+        title="Insertion Orders"
+        description="Manage generic insertion orders and bring in CSV data when needed."
+        actions={
+          <>
+            {viewSelector}
           <ModuleImportExportControls
             exportEndpoint="/finance/insertion-orders/export"
             exportLabel="Export"
+            onImportClick={() => setIsUploadModalOpen(true)}
+            importLabel="Import"
           />
-          <Button
-            variant="outline"
-            onClick={() => setIsUploadModalOpen(true)}
-          >
-            <Upload />
-            <span className="hidden sm:inline">Import</span>
-          </Button>
 
           <Button onClick={onCreateClick}>
             <Plus />
             <span className="hidden sm:inline">New Order</span>
           </Button>
-        </div>
-      </div>
+          </>
+        }
+      />
 
-      {/* UPLOAD MODAL */}
       <UploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}

@@ -7,12 +7,12 @@ import { Card } from "@/components/ui/Card";
 import {
   Dialog,
   DialogBackdrop,
-  DialogClose,
   DialogFooter,
   DialogHeader,
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import {
   Field,
   FieldDescription,
@@ -89,9 +89,7 @@ function DepartmentDialog({
         <DialogPanel className="w-full max-w-lg">
           <DialogHeader>
             <DialogTitle>{mode === "create" ? "Create Department" : "Edit Department"}</DialogTitle>
-            <DialogClose className="text-neutral-400/70 hover:text-red-400/90 cursor-pointer">
-              Close
-            </DialogClose>
+            <DialogIconClose />
           </DialogHeader>
 
           <FieldGroup className="mt-4">
@@ -153,9 +151,7 @@ function TeamDialog({
         <DialogPanel className="w-full max-w-lg">
           <DialogHeader>
             <DialogTitle>{mode === "create" ? "Create Team" : "Edit Team"}</DialogTitle>
-            <DialogClose className="text-neutral-400/70 hover:text-red-400/90 cursor-pointer">
-              Close
-            </DialogClose>
+            <DialogIconClose />
           </DialogHeader>
 
           <FieldGroup className="mt-4">

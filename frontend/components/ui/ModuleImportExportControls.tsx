@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Download, Upload } from "lucide-react";
+import { Menu, MenuButton, MenuItem, MenuItems } from "@headlessui/react";
+import { ChevronDown, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -71,6 +72,7 @@ type Props = {
   exportLabel?: string;
   fileAccept?: string;
   onImportSuccess?: () => void;
+  onImportClick?: () => void;
 };
 
 function getFilenameFromDisposition(header: string | null, fallback: string) {
@@ -101,6 +103,7 @@ export function ModuleImportExportControls({
   exportLabel = "Export",
   fileAccept = ".csv",
   onImportSuccess,
+  onImportClick,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [isImporting, setIsImporting] = useState(false);
@@ -256,36 +259,84 @@ export function ModuleImportExportControls({
 
   return (
     <div className="flex items-center gap-3">
-      {importEndpoint ? (
-        <>
-          <input
-            ref={inputRef}
-            type="file"
-            accept={fileAccept}
-            className="hidden"
-            onChange={async (event) => {
-              const file = event.target.files?.[0];
-              if (!file) return;
-              try {
-                setSelectedFile(file);
-                await loadPreview(file);
-                setIsImportDialogOpen(true);
-              } catch (error) {
-                toast.error(error instanceof Error ? error.message : "Failed to preview import.");
-              }
-            }}
-          />
-          <Button type="button" variant="outline" onClick={() => inputRef.current?.click()} disabled={isImporting}>
-            <Upload />
-            <span className="hidden sm:inline">{isImporting ? "Importing..." : importLabel}</span>
-          </Button>
-        </>
+      {importEndpoint || onImportClick ? (
+        <input
+          ref={inputRef}
+          type="file"
+          accept={fileAccept}
+          className="hidden"
+          onChange={async (event) => {
+            const file = event.target.files?.[0];
+            if (!file) return;
+            try {
+              setSelectedFile(file);
+              await loadPreview(file);
+              setIsImportDialogOpen(true);
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "Failed to preview import.");
+            }
+          }}
+        />
       ) : null}
-      {exportEndpoint ? (
-        <Button type="button" variant="outline" onClick={() => void handleExport()} disabled={isExporting}>
-          <Download />
-          <span className="hidden sm:inline">{isExporting ? "Exporting..." : exportLabel}</span>
-        </Button>
+
+      {importEndpoint || exportEndpoint || onImportClick ? (
+        <Menu as="div" className="relative">
+          <MenuButton
+            as={Button}
+            type="button"
+            variant="outline"
+            className="border-neutral-800 bg-neutral-950/70 text-neutral-200 hover:bg-neutral-900 hover:text-neutral-100"
+            disabled={isImporting || isExporting}
+          >
+            Actions
+            <ChevronDown className="h-4 w-4" />
+          </MenuButton>
+          <MenuItems
+            anchor="bottom end"
+            className="z-50 mt-2 w-44 rounded-lg border border-neutral-800 bg-[#0d0d0d] p-1 shadow-2xl outline-none"
+          >
+            {importEndpoint || onImportClick ? (
+              <MenuItem>
+                {({ focus }) => (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (onImportClick) {
+                        onImportClick();
+                        return;
+                      }
+                      inputRef.current?.click();
+                    }}
+                    className={
+                      "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-neutral-200 transition-colors " +
+                      (focus ? "bg-neutral-800 text-neutral-100" : "")
+                    }
+                  >
+                    <Upload className="h-4 w-4" />
+                    {isImporting ? "Importing..." : importLabel}
+                  </button>
+                )}
+              </MenuItem>
+            ) : null}
+            {exportEndpoint ? (
+              <MenuItem>
+                {({ focus }) => (
+                  <button
+                    type="button"
+                    onClick={() => void handleExport()}
+                    className={
+                      "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-neutral-200 transition-colors " +
+                      (focus ? "bg-neutral-800 text-neutral-100" : "")
+                    }
+                  >
+                    <Download className="h-4 w-4" />
+                    {isExporting ? "Exporting..." : exportLabel}
+                  </button>
+                )}
+              </MenuItem>
+            ) : null}
+          </MenuItems>
+        </Menu>
       ) : null}
 
       <Dialog open={isImportDialogOpen} onClose={resetImportState}>

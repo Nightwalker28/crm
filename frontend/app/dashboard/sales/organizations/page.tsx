@@ -51,18 +51,18 @@ export default function OrganizationsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
-        <OrganizationsHeader
-          onCreateClick={() => setCreateOpen(true)}
-          onImportSuccess={refresh}
-        />
-        <SavedViewSelector
+      <OrganizationsHeader
+        onCreateClick={() => setCreateOpen(true)}
+        onImportSuccess={refresh}
+        viewSelector={
+          <SavedViewSelector
           moduleKey="sales_organizations"
           views={views}
           selectedViewId={selectedViewId}
           onSelect={setSelectedViewId}
-        />
-      </div>
+          />
+        }
+      />
 
       <SearchBar
         value={typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : ""}

@@ -93,18 +93,18 @@ export default function InsertionOrdersPage() {
 
   return (
     <div className="flex flex-col gap-6">
-        <div className="flex items-start justify-between gap-4">
-          <InsertionOrdersHeader
-            onCreateClick={handleCreateClick}
-            onUploadSuccess={refresh}
-          />
-          <SavedViewSelector
+        <InsertionOrdersHeader
+          onCreateClick={handleCreateClick}
+          onUploadSuccess={refresh}
+          viewSelector={
+            <SavedViewSelector
             moduleKey="finance_io"
             views={views}
             selectedViewId={selectedViewId}
             onSelect={setSelectedViewId}
           />
-        </div>
+          }
+        />
 
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex w-full flex-col gap-3 md:flex-row md:items-center">

@@ -15,7 +15,7 @@ export function Card({ className, children, ...props }: CardProps) {
     >
       {/* Noise Texture Overlay */}
       <div
-        className="absolute inset-0 pointer-events-none mix-blend-multiply bg-repeat bg-[length:150px_150px] bg-[url('https://grainy-gradients.vercel.app/noise.svg')] opacity-10"
+        className="noise-overlay absolute inset-0 pointer-events-none opacity-10"
         aria-hidden="true"
       />
 

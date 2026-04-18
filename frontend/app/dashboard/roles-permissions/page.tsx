@@ -8,12 +8,12 @@ import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogBackdrop,
-  DialogClose,
   DialogFooter,
   DialogHeader,
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -189,9 +189,7 @@ export default function RolesPermissionsPage() {
           <DialogPanel className="w-full max-w-xl">
             <DialogHeader>
               <DialogTitle>Create Role</DialogTitle>
-              <DialogClose className="cursor-pointer text-neutral-400/70 hover:text-red-400/90">
-                Close
-              </DialogClose>
+              <DialogIconClose />
             </DialogHeader>
 
             <FieldGroup className="mt-4 grid gap-4">

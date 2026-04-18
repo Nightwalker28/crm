@@ -14,18 +14,17 @@ Before making substantial code changes:
 
 ## Current Focus
 
-Rebuild imports and exports into a proper multi-step workflow, and add background job execution for large imports/exports so long-running data-transfer tasks do not block request threads.
+Apply the shared frontend UI audit fixes across the dashboard shell and main module pages without changing the primary palette away from the current black-and-white direction.
 
 ## Current Priorities
 
-1. Add a shared async data-transfer job foundation for large imports/exports with persisted status, summary, and downloadable result/error artifacts.
-2. Add the three export modes: export all, export selected across pages, and export current filtered screen results.
-3. Expand the shared import dialog so the standardized import summary is fully polished and consistent across the current business modules in-browser.
-4. Add proper upload support for company and personal profile/logo imagery rather than relying only on URLs.
-5. Make user-facing time-based data respect the user profile timezone in the UI.
-6. Push list-column preferences and view-driven field usage deeper into the query layer for the heaviest list endpoints.
-7. Harden Redis-backed caching operationally and verify failure paths.
-8. Expand action-level permission enforcement beyond the currently refactored core modules.
+1. Remove the external noise-texture dependency and replace it with a local/shared texture treatment.
+2. Clean up the shared dashboard shell so pages sit in one consistent canvas instead of nested framed cards.
+3. Make the sidebar compact/collapsible and remove redundant group chrome.
+4. Introduce a shared page-header pattern and use it on the main operational modules.
+5. Reduce header action noise by moving secondary import/export actions into a compact overflow menu while keeping the primary create action visible.
+6. Replace text-based dialog close controls with a shared icon-close treatment.
+7. Keep import/export execution work queued next in line once the shared UI polish pass is stable.
 
 ## Acceptance Direction
 
