@@ -2,9 +2,9 @@ from datetime import datetime
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.duplicates import detect_duplicates, ensure_single_duplicate_action
+from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
 from app.core.module_filters import apply_filter_conditions
-from app.core.module_csv import require_csv_headers, rows_from_csv_bytes
+from app.core.module_csv import build_import_summary, require_csv_headers, rows_from_csv_bytes
 from app.core.module_export import batched_csv_zip_bytes, dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
@@ -36,6 +36,16 @@ def _apply_org_payload(organization: SalesOrganization, payload: SalesOrganizati
     organization.billing_country = payload.billing_country
     organization.custom_data = payload.custom_fields or None
     if current_user:
+        organization.assigned_to = current_user.id
+
+
+def _merge_org_payload(organization: SalesOrganization, payload: SalesOrganizationCreate, current_user) -> None:
+    for field, value in payload.model_dump().items():
+        if field == "custom_fields":
+            continue
+        if should_merge_value(getattr(organization, field, None), value):
+            setattr(organization, field, value)
+    if current_user and organization.assigned_to is None:
         organization.assigned_to = current_user.id
 
 
@@ -386,12 +396,16 @@ def import_organizations_from_csv(
     db: Session,
     file_bytes: bytes,
     current_user,
+    duplicate_mode: str | None = None,
+    default_duplicate_mode: str | None = None,
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
 ) -> dict:
     """Bulk import organizations from CSV content."""
-    ensure_single_duplicate_action(
+    mode = resolve_duplicate_mode(
+        duplicate_mode=duplicate_mode,
+        default_mode=default_duplicate_mode,
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
@@ -399,10 +413,8 @@ def import_organizations_from_csv(
     headers, parsed_rows = rows_from_csv_bytes(file_bytes)
     require_csv_headers(headers, required=REQUIRED_IMPORT_FIELDS)
 
-    inserted = 0
-    updated = 0
-    skipped_duplicates: list[str] = []
-    errors: list[str] = []
+    new_rows = overwritten_rows = merged_rows = skipped_rows = 0
+    failures: list[dict[str, str | int | None]] = []
     rows: list[dict[str, str | None]] = []
     org_names: list[str] = []
 
@@ -414,7 +426,13 @@ def import_organizations_from_csv(
         org_name = data.get("org_name")
         primary_email = data.get("primary_email")
         if not org_name or not primary_email:
-            errors.append(f"Row {idx}: missing required fields")
+            failures.append(
+                {
+                    "row_number": idx,
+                    "record_identifier": org_name or primary_email,
+                    "reason": "Missing required fields 'org_name' and/or 'primary_email'.",
+                }
+            )
             continue
 
         rows.append(data)
@@ -430,7 +448,7 @@ def import_organizations_from_csv(
         .distinct()
     }
     detection = detect_duplicates(org_names, existing_values=existing_duplicates)
-    if existing_duplicates and not any((replace_duplicates, skip_duplicates, create_new_records)):
+    if existing_duplicates and duplicate_mode is None and not any((replace_duplicates, skip_duplicates, create_new_records)) and default_duplicate_mode is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -445,27 +463,23 @@ def import_organizations_from_csv(
             },
         )
 
-    rows_by_org_name: dict[str, dict[str, str | None]] = {}
-    for data in rows:
-        org_name = data.get("org_name")
-        if not org_name:
-            continue
-        rows_by_org_name[org_name] = data
-
     existing_by_name = {
         row.org_name: row
         for row in db.query(SalesOrganization)
         .filter(
-            SalesOrganization.org_name.in_(rows_by_org_name.keys()),
+            SalesOrganization.org_name.in_(org_names),
             SalesOrganization.deleted_at.is_(None),
         )
         .all()
     }
 
-    for org_name, data in rows_by_org_name.items():
+    for row_number, data in enumerate(rows, start=2):
+        org_name = data.get("org_name")
+        if not org_name:
+            continue
         existing = existing_by_name.get(org_name)
-        if existing and skip_duplicates:
-            skipped_duplicates.append(org_name)
+        if existing and mode == DuplicateMode.skip:
+            skipped_rows += 1
             continue
 
         payload = SalesOrganizationCreate(
@@ -484,30 +498,47 @@ def import_organizations_from_csv(
             billing_country=data.get("billing_country"),
         )
 
-        if existing and replace_duplicates:
+        if existing and mode == DuplicateMode.overwrite:
             _apply_org_payload(existing, payload, current_user)
             db.add(existing)
-            updated += 1
+            overwritten_rows += 1
             continue
 
-        create_organization(
-            db=db,
-            payload=payload,
-            current_user=current_user,
-            create_new_records=create_new_records,
-        )
-        inserted += 1
+        if existing and mode == DuplicateMode.merge:
+            _merge_org_payload(existing, payload, current_user)
+            db.add(existing)
+            merged_rows += 1
+            continue
 
-    if updated:
+        try:
+            created = create_organization(
+                db=db,
+                payload=payload,
+                current_user=current_user,
+                create_new_records=create_new_records,
+            )
+            existing_by_name[org_name] = created
+            new_rows += 1
+        except HTTPException as exc:
+            failures.append(
+                {
+                    "row_number": row_number,
+                    "record_identifier": org_name,
+                    "reason": str(exc.detail),
+                }
+            )
+
+    if overwritten_rows or merged_rows:
         db.commit()
 
-    return {
-        "inserted": inserted,
-        "updated": updated,
-        "skipped_duplicates": skipped_duplicates,
-        "errors": errors,
-        "duplicate_orgs": detection.duplicate_values or None,
-    }
+    return build_import_summary(
+        total_rows=len(parsed_rows),
+        new_rows=new_rows,
+        skipped_rows=skipped_rows,
+        overwritten_rows=overwritten_rows,
+        merged_rows=merged_rows,
+        failures=failures,
+    )
 
 
 EXPORT_BATCH_SIZE = 1000

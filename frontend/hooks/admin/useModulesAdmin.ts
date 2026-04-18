@@ -10,6 +10,7 @@ export type AdminModule = {
   base_route?: string | null;
   description?: string | null;
   is_enabled: boolean;
+  import_duplicate_mode: "skip" | "overwrite" | "merge";
 };
 
 async function fetchModules(): Promise<AdminModule[]> {

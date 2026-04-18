@@ -69,6 +69,13 @@ class Settings:
     # -------------------------
     FRONTEND_ORIGIN: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
     REDIS_URL: str | None = os.getenv("REDIS_URL")
+    CELERY_BROKER_URL: str | None = os.getenv("CELERY_BROKER_URL") or os.getenv("REDIS_URL")
+    DATA_TRANSFER_BACKGROUND_ROW_THRESHOLD: int = int(
+        os.getenv("DATA_TRANSFER_BACKGROUND_ROW_THRESHOLD", "10000")
+    )
+    DATA_TRANSFER_BACKGROUND_FILE_BYTES_THRESHOLD: int = int(
+        os.getenv("DATA_TRANSFER_BACKGROUND_FILE_BYTES_THRESHOLD", str(5 * 1024 * 1024))
+    )
 
     # -------------------------
     # Allowed email domains

@@ -122,6 +122,13 @@ In progress:
 - Add richer dashboard-view configurability so users can control visible columns and presentation order more flexibly.
 - Extend dashboard-view configurability beyond column reordering into richer per-view presentation settings where useful.
 - Continue hardening the expanded import/export workflows across the current business modules on top of the shared helper layer.
+- Add a shared persisted background-job foundation for large imports/exports before finalizing the export-mode rollout on heavier datasets.
+- The shared persisted data-transfer job foundation is now in place; the next step is wiring the export modes and later large imports onto it.
+- The data-transfer job foundation is now being moved onto Celery with Redis so import/export and future scheduled workloads use a real worker architecture instead of in-process request tasks.
+- Large imports now queue real Celery jobs through the shared data-transfer-job layer, and that path has been verified end to end with Redis and the dedicated worker service.
+- Rebuild imports into a proper staged workflow with preview/header mapping first, then duplicate-policy control, then richer result summaries.
+- Rebuild exports into a proper staged workflow with export-all, export-current, and export-selected-across-pages modes.
+- Shared import preview/header-mapping, duplicate-policy control, and standardized result summaries are now in place for the current importable business modules.
 - Add proper upload support for company and profile imagery instead of URL-only inputs.
 - Make user-facing time rendering respect the user profile timezone.
 - Push list-column preferences deeper into the query layer so modules can avoid selecting fields that are not needed for the current view, not just avoid serializing them.

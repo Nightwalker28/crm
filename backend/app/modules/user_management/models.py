@@ -150,6 +150,7 @@ class Module(Base):
     base_route = Column(String(255), nullable=True)
     description = Column(Text, nullable=True)
     is_enabled = Column(SmallInteger, nullable=False, default=1)
+    import_duplicate_mode = Column(String(20), nullable=False, server_default="skip")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     department_permissions = relationship(

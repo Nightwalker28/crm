@@ -1,15 +1,22 @@
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, UploadFile, status
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.module_csv import read_upload_bytes
-from app.core.module_export import bytes_download_response
+from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.data_transfer_jobs import (
+    create_data_transfer_job,
+    enqueue_export_job,
+    enqueue_import_job,
+    persist_job_upload,
+    should_background_data_transfer_with_size,
+)
+from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
+from app.modules.user_management.services import admin_modules
 from app.modules.sales.schema import (
     SalesOpportunityCreate,
     SalesOpportunityListItem,
@@ -40,6 +47,46 @@ OPPORTUNITY_LIST_FIELDS = {
     "total_cost_of_project",
     "currency_type",
     "created_time",
+}
+
+OPPORTUNITY_IMPORT_TARGET_FIELDS = [
+    "opportunity_name",
+    "contact_id",
+    "organization_id",
+    "assigned_to",
+    "sales_stage",
+    "start_date",
+    "expected_close_date",
+    "campaign_type",
+    "total_leads",
+    "cpl",
+    "total_cost_of_project",
+    "currency_type",
+    "target_geography",
+    "target_audience",
+    "domain_cap",
+    "tactics",
+    "delivery_format",
+]
+
+OPPORTUNITY_IMPORT_ALIASES = {
+    "opportunity_name": ["name", "opportunity", "deal name", "opportunity name"],
+    "contact_id": ["contact", "contact id", "client", "client id"],
+    "organization_id": ["organization", "organization id", "org id", "company id"],
+    "assigned_to": ["owner", "assignee", "assigned to"],
+    "sales_stage": ["stage", "pipeline stage", "sales stage"],
+    "start_date": ["start", "start date"],
+    "expected_close_date": ["close date", "expected close", "expected close date"],
+    "campaign_type": ["type", "campaign type"],
+    "total_leads": ["leads", "total leads"],
+    "cpl": ["cost per lead", "cpl"],
+    "total_cost_of_project": ["project cost", "total cost", "total project cost"],
+    "currency_type": ["currency", "currency type"],
+    "target_geography": ["geography", "target geography", "region"],
+    "target_audience": ["audience", "target audience"],
+    "domain_cap": ["domain cap"],
+    "tactics": ["tactic", "tactics"],
+    "delivery_format": ["format", "delivery format"],
 }
 
 
@@ -319,9 +366,11 @@ def create_finance_io(
     )
 
 
-@router.post("/import", status_code=status.HTTP_201_CREATED)
+@router.post("/import", response_model=ImportExecutionResponse, status_code=status.HTTP_201_CREATED)
 async def import_sales_opportunities(
     file: UploadFile = File(...),
+    mapping_json: str | None = Form(default=None),
+    duplicate_mode: str | None = Query(default=None),
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
@@ -331,32 +380,99 @@ async def import_sales_opportunities(
     require_permission = Depends(require_action_access("sales_opportunities", "create")),
 ):
     content = await read_upload_bytes(file, allowed_extensions={"csv"})
-    return import_opportunities_from_csv(
+    mapping = parse_mapping_json(mapping_json, target_headers=OPPORTUNITY_IMPORT_TARGET_FIELDS)
+    remapped_content = remap_csv_bytes(
+        content,
+        target_headers=OPPORTUNITY_IMPORT_TARGET_FIELDS,
+        mapping=mapping,
+    )
+    _, remapped_rows = rows_from_csv_bytes(remapped_content)
+    if should_background_data_transfer_with_size(
+        row_count=len(remapped_rows),
+        file_size_bytes=len(remapped_content),
+    ):
+        mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "sales_opportunities")
+        job = create_data_transfer_job(
+            db,
+            actor_user_id=current_user.id,
+            module_key="sales_opportunities",
+            operation_type="import",
+            payload={"filename": file.filename, "row_count": len(remapped_rows), "duplicate_mode": mode},
+        )
+        stored_path = persist_job_upload(job_id=job.id, filename="opportunities-import.csv", file_bytes=remapped_content)
+        job.payload = {
+            **(job.payload or {}),
+            "source_file_path": stored_path,
+        }
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        enqueue_import_job(job.id)
+        return ImportExecutionResponse(
+            mode="background",
+            message=f"Import queued in background as job #{job.id}.",
+            job_id=job.id,
+            job_status=job.status,
+        )
+    summary = import_opportunities_from_csv(
         db=db,
-        file_bytes=content,
+        file_bytes=remapped_content,
         current_user=current_user,
+        duplicate_mode=duplicate_mode,
+        default_duplicate_mode=admin_modules.get_module_duplicate_mode(db, "sales_opportunities"),
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
     )
+    return ImportExecutionResponse(
+        mode="inline",
+        message=summary["message"],
+        summary=StandardImportSummary(**summary),
+    )
 
 
-@router.get("/export", response_class=StreamingResponse)
+@router.post("/import/preview")
+async def preview_sales_opportunities_import(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access("sales_opportunities")),
+    require_permission = Depends(require_action_access("sales_opportunities", "create")),
+):
+    content = await read_upload_bytes(file, allowed_extensions={"csv"})
+    source_headers, _ = rows_from_csv_bytes(content)
+    return {
+        "source_headers": source_headers,
+        "target_headers": OPPORTUNITY_IMPORT_TARGET_FIELDS,
+        "required_headers": ["opportunity_name", "contact_id"],
+        "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "sales_opportunities"),
+        "suggested_mapping": suggest_header_mapping(
+            source_headers=source_headers,
+            target_headers=OPPORTUNITY_IMPORT_TARGET_FIELDS,
+            aliases=OPPORTUNITY_IMPORT_ALIASES,
+        ),
+    }
+
+
+@router.post("/export", response_model=DataTransferExecutionResponse)
 def export_sales_opportunities(
-    search: str | None = Query(default=None, description="Optional ranked search filter"),
+    payload: DataTransferExportRequest = Body(default=DataTransferExportRequest()),
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access("sales_opportunities")),
     require_permission = Depends(require_action_access("sales_opportunities", "export")),
 ):
-    items, _ = list_opportunities(
+    job = create_data_transfer_job(
         db,
-        Pagination(page=1, page_size=100000, offset=0, limit=100000),
-        search=search,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="sales_opportunities",
+        operation_type="export",
+        payload=payload.model_dump(),
     )
-    csv_bytes = export_opportunities_to_csv(items)
-    return bytes_download_response(
-        content=csv_bytes,
-        filename="sales_opportunities.csv",
-        media_type="text/csv",
+    enqueue_export_job(job.id)
+    return DataTransferExecutionResponse(
+        mode="background",
+        message=f"Export queued in background as job #{job.id}.",
+        job_id=job.id,
+        job_status=job.status,
     )

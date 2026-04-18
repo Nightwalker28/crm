@@ -6,11 +6,14 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
 
 from app.core.access_control import get_finance_user_scope
-from app.core.module_csv import read_csv_upload, require_csv_headers
+from app.core.module_csv import build_import_summary, read_csv_upload, require_csv_headers
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.duplicates import (
+    DuplicateMode,
     detect_duplicates,
     ensure_single_duplicate_action,
+    resolve_duplicate_mode,
+    should_merge_value,
 )
 from app.core.pagination import Pagination, build_paged_response
 from app.modules.platform.services.activity_logs import log_activity
@@ -53,15 +56,20 @@ INSERTION_ORDER_EXPORT_HEADERS = [
 async def import_insertion_orders_csv(
     db: Session,
     current_user,
-    file: UploadFile,
+    file: UploadFile | None = None,
     *,
+    file_bytes: bytes | None = None,
+    duplicate_mode: str | None = None,
+    default_duplicate_mode: str | None = None,
     replace_duplicates: bool,
     skip_duplicates: bool,
     create_new_records: bool,
 ):
     module_id = get_finance_module_id(db)
     try:
-        ensure_single_duplicate_action(
+        mode = resolve_duplicate_mode(
+            duplicate_mode=duplicate_mode,
+            default_mode=default_duplicate_mode,
             replace_duplicates=replace_duplicates,
             skip_duplicates=skip_duplicates,
             create_new_records=create_new_records,
@@ -72,19 +80,35 @@ async def import_insertion_orders_csv(
             detail=str(exc),
         )
 
-    headers, rows = await read_csv_upload(file)
+    if file_bytes is not None:
+        from app.core.module_csv import rows_from_csv_bytes
+        headers, rows = rows_from_csv_bytes(file_bytes)
+    elif file is not None:
+        headers, rows = await read_csv_upload(file)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Import file is required.",
+        )
     require_csv_headers(headers, required={"customer_name"})
 
     import_io_numbers: list[str] = []
+    failures: list[dict[str, str | int | None]] = []
+    valid_rows: list[tuple[int, dict[str, str | None]]] = []
     for index, row in enumerate(rows, start=2):
         if not (row.get("customer_name") or "").strip():
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Row {index}: customer_name is required.",
+            failures.append(
+                {
+                    "row_number": index,
+                    "record_identifier": (row.get("io_number") or "").strip() or None,
+                    "reason": "customer_name is required.",
+                }
             )
+            continue
         io_number = (row.get("io_number") or "").strip()
         if io_number:
             import_io_numbers.append(io_number)
+        valid_rows.append((index, row))
 
     existing_by_io_number = {
         row.io_number: row
@@ -98,7 +122,7 @@ async def import_insertion_orders_csv(
     }
     detection = detect_duplicates(import_io_numbers, existing_values=set(existing_by_io_number))
     duplicate_io_numbers = detection.duplicate_values
-    if duplicate_io_numbers and not any((replace_duplicates, skip_duplicates, create_new_records)):
+    if duplicate_io_numbers and duplicate_mode is None and not any((replace_duplicates, skip_duplicates, create_new_records)) and default_duplicate_mode is None:
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={
@@ -113,16 +137,13 @@ async def import_insertion_orders_csv(
             },
         )
 
-    inserted = 0
-    updated = 0
-    skipped = 0
-    errors: list[str] = []
+    new_rows = overwritten_rows = merged_rows = skipped_rows = 0
 
-    for index, row in enumerate(rows, start=2):
+    for index, row in valid_rows:
         try:
             row_io_number = (row.get("io_number") or "").strip() or None
             payload = {
-                "io_number": None if create_new_records and row_io_number in existing_by_io_number else row_io_number,
+                "io_number": row_io_number,
                 "customer_name": row.get("customer_name"),
                 "customer_contact_id": int(row["customer_contact_id"]) if (row.get("customer_contact_id") or "").strip() else None,
                 "customer_organization_id": int(row["customer_organization_id"]) if (row.get("customer_organization_id") or "").strip() else None,
@@ -143,28 +164,43 @@ async def import_insertion_orders_csv(
                 "notes": (row.get("notes") or "").strip() or None,
             }
             existing = existing_by_io_number.get(row_io_number) if row_io_number else None
-            if existing and skip_duplicates:
-                skipped += 1
+            if existing and mode == DuplicateMode.skip:
+                skipped_rows += 1
                 continue
-            if existing and replace_duplicates:
+            if existing and mode == DuplicateMode.overwrite:
                 update_insertion_order(db, record=existing, current_user=current_user, data=payload)
-                updated += 1
+                overwritten_rows += 1
+                continue
+            if existing and mode == DuplicateMode.merge:
+                merge_payload = {
+                    field: value
+                    for field, value in payload.items()
+                    if should_merge_value(getattr(existing, field, None), value)
+                }
+                if merge_payload:
+                    update_insertion_order(db, record=existing, current_user=current_user, data=merge_payload)
+                merged_rows += 1
                 continue
             create_insertion_order(db, module_id=module_id, current_user=current_user, data=payload)
-            inserted += 1
+            new_rows += 1
         except Exception as exc:
             logger.warning("Insertion order import failed on row %s: %s", index, exc)
-            errors.append(f"Row {index}: {exc}")
+            failures.append(
+                {
+                    "row_number": index,
+                    "record_identifier": row_io_number or (row.get("customer_name") or "").strip() or None,
+                    "reason": str(exc),
+                }
+            )
 
-    return {
-        "message": f"Processed {len(rows)} row(s). Inserted: {inserted}, updated: {updated}, skipped: {skipped}.",
-        "inserted": inserted,
-        "updated": updated,
-        "skipped": skipped,
-        "errors": errors,
-        "duplicate_io_numbers": duplicate_io_numbers or None,
-        "requires_confirmation": False,
-    }
+    return build_import_summary(
+        total_rows=len(rows),
+        new_rows=new_rows,
+        skipped_rows=skipped_rows,
+        overwritten_rows=overwritten_rows,
+        merged_rows=merged_rows,
+        failures=failures,
+    )
 
 
 def get_downloadable_insertion_order(db: Session, current_user, io_number: str) -> tuple[Path, str]:

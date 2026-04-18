@@ -75,6 +75,31 @@ This file captures stable business and UX rules for the platform. These should b
 
 - Main business modules should have real import/export workflows, not just placeholder or partial support.
 - Import/export behavior should reuse shared platform helpers where possible, with module-specific mapping/validation layered on top.
+- Imports should be multi-step:
+  - parse file and preview headers
+  - auto-match source headers to target platform fields
+  - allow the user to correct the mapping
+  - force a duplicate-handling decision
+  - return a post-import summary
+- Auto-matching should use shared normalization and alias rules so obvious header variants are matched without manual effort.
+- Duplicate handling should consistently offer:
+  - skip duplicate records
+  - overwrite duplicate records
+  - merge duplicate records
+- Import completion should show:
+  - total rows in the sheet
+  - successfully processed rows
+  - newly created rows
+  - skipped rows
+  - overwritten rows
+  - merged rows
+  - failed rows with reasons and record context where practical
+- Large imports and exports should run in the background instead of holding an interactive request open for long-running jobs.
+- Background import/export jobs should expose status, summary, and result/error artifacts so users can come back later and retrieve the outcome.
+- Exports should consistently offer:
+  - export all records
+  - export selected records, even across multiple pages
+  - export the currently displayed filtered result set
 
 ## Current Predefined Role Expectations
 

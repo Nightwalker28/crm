@@ -64,3 +64,44 @@ class CustomFieldDefinitionUpdateRequest(BaseModel):
     is_required: bool | None = None
     is_active: bool | None = None
     sort_order: int | None = None
+
+
+class DataTransferJobResponse(BaseModel):
+    id: int
+    actor_user_id: int | None = None
+    module_key: str
+    operation_type: str
+    status: str
+    mode: str
+    summary: dict[str, Any] | None = None
+    result_file_name: str | None = None
+    result_media_type: str | None = None
+    error_message: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DataTransferJobListResponse(BaseModel):
+    results: list[DataTransferJobResponse]
+    range_start: int
+    range_end: int
+    total_count: int
+    total_pages: int
+    page: int
+
+
+class DataTransferExecutionResponse(BaseModel):
+    mode: str
+    message: str
+    job_id: int | None = None
+    job_status: str | None = None
+
+
+class DataTransferExportRequest(BaseModel):
+    mode: str = "all"
+    selected_ids: list[int] | None = None
+    current_page_ids: list[int] | None = None

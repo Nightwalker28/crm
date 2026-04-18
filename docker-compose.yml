@@ -17,6 +17,40 @@ services:
       - database
       - redis
 
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.core.celery_app.celery_app worker --loglevel=info
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+      - ./backend/${IO_SEARCH_UPLOAD_DIR:-uploads/io-search}:/app/${IO_SEARCH_UPLOAD_DIR:-uploads/io-search}
+    depends_on:
+      - database
+      - redis
+
+  celery-beat:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: celery -A app.core.celery_app.celery_app beat --loglevel=info
+    environment:
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      CELERY_BROKER_URL: ${CELERY_BROKER_URL:-redis://redis:6379/0}
+    env_file:
+      - .env
+    volumes:
+      - ./backend:/app
+      - ./backend/${IO_SEARCH_UPLOAD_DIR:-uploads/io-search}:/app/${IO_SEARCH_UPLOAD_DIR:-uploads/io-search}
+    depends_on:
+      - database
+      - redis
+
   frontend:
     build:
       context: ./frontend

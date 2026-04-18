@@ -14,3 +14,4 @@ pdfplumber
 alembic
 python-dateutil
 redis
+celery[redis]

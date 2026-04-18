@@ -47,11 +47,37 @@ This file captures the current intended technical patterns and constraints so ne
 - Module-specific logic should be adapter/config driven, not duplicated.
 - Shared helpers should be extended rather than bypassed when new modules are wired in.
 - Import/export should evolve toward one reusable framework with module adapters for:
+  - preview/parse step
+  - source-header normalization
+  - auto-match alias rules
+  - user-correctable field mapping
   - allowed file types
   - required columns
   - duplicate handling
   - row mapping
   - serializer/export columns
+- The intended import flow is:
+  - preview upload and parse headers
+  - suggest source-to-target mapping
+  - confirm duplicate policy
+  - execute import
+  - return structured import summary
+- The intended export flow is:
+  - export all
+  - export current filtered result set
+  - export explicit selected record IDs across pagination
+- Large import/export operations should move through a shared data-transfer job abstraction rather than running fully on the request thread.
+- The preferred pattern is:
+  - persist a job row with module, operation type, payload, status, and actor
+  - return job status immediately for large workloads
+  - enqueue the work to Celery
+  - process the work in a dedicated worker
+  - persist structured summary and downloadable result/error artifacts
+- Celery with Redis as the broker is the chosen background-job architecture for the platform because scheduled tasks and other async workflows are expected to grow beyond import/export.
+- Current threshold direction:
+  - row count is the primary trigger because database work scales with rows
+  - file size is the secondary trigger as a safety valve for unusually heavy files
+  - current defaults are `10000` rows or `5 MB`, whichever is hit first
 
 ### Custom Fields
 
@@ -143,6 +169,7 @@ This file captures the current intended technical patterns and constraints so ne
 - Introduce true tenant/company row-level ownership in a later hardening phase.
 - Add proper upload handling for company/profile imagery rather than URL-only inputs.
 - Expand import/export coverage and consistency across the main business modules.
+- Add a shared persisted background-job layer for large imports/exports and integrate it into the import/export workflow.
 - Ensure user timezone settings are honored in UI-facing time rendering.
 - Complete the transition from department-based module assignment to team-based module assignment.
 - Remove unneeded Google Docs/Drive integration code if those product capabilities are no longer active.

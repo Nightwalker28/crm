@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, UploadFile, status, Request, Query, HTTPException
+from fastapi import APIRouter, Depends, File, UploadFile, status, Request, Query, HTTPException, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -8,8 +8,8 @@ from app.core.module_filters import normalize_filter_logic, parse_filter_conditi
 from app.core.security import get_current_user
 from app.core.permissions import require_action_access
 from app.core.database import get_db
+from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, parse_mapping_json, read_csv_upload, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
 from app.modules.finance.schema import (
-    InsertionOrderImportResponse,
     InsertionOrderCreateRequest,
     InsertionOrderListItem,
     InsertionOrderListResponse,
@@ -17,6 +17,13 @@ from app.modules.finance.schema import (
     InsertionOrderUpdateRequest,
 )
 from app.modules.finance.services import io_search_api
+from app.modules.user_management.services import admin_modules
+from app.modules.platform.services.data_transfer_jobs import (
+    create_data_transfer_job,
+    enqueue_import_job,
+    persist_job_upload,
+    should_background_data_transfer_with_size,
+)
 
 router = APIRouter(tags=["Finance"])
 
@@ -31,6 +38,50 @@ INSERTION_ORDER_LIST_FIELDS = {
     "external_reference",
     "user_name",
     "updated_at",
+}
+
+INSERTION_ORDER_IMPORT_TARGET_FIELDS = [
+    "io_number",
+    "customer_name",
+    "customer_contact_id",
+    "customer_organization_id",
+    "create_customer_if_missing",
+    "customer_email",
+    "counterparty_reference",
+    "external_reference",
+    "issue_date",
+    "effective_date",
+    "due_date",
+    "start_date",
+    "end_date",
+    "status",
+    "currency",
+    "subtotal_amount",
+    "tax_amount",
+    "total_amount",
+    "notes",
+]
+
+INSERTION_ORDER_IMPORT_ALIASES = {
+    "io_number": ["io", "io no", "io number", "order number"],
+    "customer_name": ["customer", "client", "customer name", "client name"],
+    "customer_contact_id": ["contact", "contact id", "customer contact id"],
+    "customer_organization_id": ["organization", "organization id", "customer organization id", "org id"],
+    "create_customer_if_missing": ["create customer", "create if missing"],
+    "customer_email": ["email", "customer email", "client email"],
+    "counterparty_reference": ["counterparty reference", "vendor reference"],
+    "external_reference": ["reference", "external reference", "po number"],
+    "issue_date": ["issue date"],
+    "effective_date": ["effective date"],
+    "due_date": ["due date"],
+    "start_date": ["start date"],
+    "end_date": ["end date"],
+    "status": ["status"],
+    "currency": ["currency"],
+    "subtotal_amount": ["subtotal", "subtotal amount"],
+    "tax_amount": ["tax", "tax amount"],
+    "total_amount": ["total", "total amount"],
+    "notes": ["notes", "description"],
 }
 
 
@@ -168,9 +219,11 @@ def delete_insertion_order(
         io_id=io_id,
     )
 
-@router.post("/insertion-orders/import", response_model=InsertionOrderImportResponse)
+@router.post("/insertion-orders/import", response_model=ImportExecutionResponse)
 async def import_insertion_orders(
     file: UploadFile = File(...),
+    mapping_json: str | None = Form(default=None),
+    duplicate_mode: str | None = Query(default=None),
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
@@ -178,14 +231,78 @@ async def import_insertion_orders(
     current_user = Depends(get_current_user),
     require_permission = Depends(require_action_access("finance_io", "create")),
 ):
-    return await io_search_api.import_insertion_orders_csv(
+    file_bytes = await read_upload_bytes(file, allowed_extensions={"csv"})
+    mapping = parse_mapping_json(mapping_json, target_headers=INSERTION_ORDER_IMPORT_TARGET_FIELDS)
+    remapped_file_bytes = remap_csv_bytes(
+        file_bytes,
+        target_headers=INSERTION_ORDER_IMPORT_TARGET_FIELDS,
+        mapping=mapping,
+    )
+    _, remapped_rows = rows_from_csv_bytes(remapped_file_bytes)
+    if should_background_data_transfer_with_size(
+        row_count=len(remapped_rows),
+        file_size_bytes=len(remapped_file_bytes),
+    ):
+        mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "finance_io")
+        job = create_data_transfer_job(
+            db,
+            actor_user_id=current_user.id if current_user else None,
+            module_key="finance_io",
+            operation_type="import",
+            payload={"filename": file.filename, "row_count": len(remapped_rows), "duplicate_mode": mode},
+        )
+        stored_path = persist_job_upload(job_id=job.id, filename="insertion-orders-import.csv", file_bytes=remapped_file_bytes)
+        job.payload = {
+            **(job.payload or {}),
+            "source_file_path": stored_path,
+        }
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        enqueue_import_job(job.id)
+        return ImportExecutionResponse(
+            mode="background",
+            message=f"Import queued in background as job #{job.id}.",
+            job_id=job.id,
+            job_status=job.status,
+        )
+    summary = await io_search_api.import_insertion_orders_csv(
         db,
         current_user,
-        file,
+        file=None,
+        file_bytes=remapped_file_bytes,
+        duplicate_mode=duplicate_mode,
+        default_duplicate_mode=admin_modules.get_module_duplicate_mode(db, "finance_io"),
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
     )
+    return ImportExecutionResponse(
+        mode="inline",
+        message=summary["message"],
+        summary=StandardImportSummary(**summary),
+    )
+
+
+@router.post("/insertion-orders/import/preview")
+async def preview_insertion_orders_import(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user = Depends(get_current_user),
+    require_permission = Depends(require_action_access("finance_io", "create")),
+):
+    source_headers, _ = await read_csv_upload(file)
+    return {
+        "source_headers": source_headers,
+        "target_headers": INSERTION_ORDER_IMPORT_TARGET_FIELDS,
+        "required_headers": ["customer_name"],
+        "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "finance_io"),
+        "suggested_mapping": suggest_header_mapping(
+            source_headers=source_headers,
+            target_headers=INSERTION_ORDER_IMPORT_TARGET_FIELDS,
+            aliases=INSERTION_ORDER_IMPORT_ALIASES,
+        ),
+    }
 
 
 @router.get("/insertion-orders/export")

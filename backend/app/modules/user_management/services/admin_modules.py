@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.user_management.models import Module
 from app.modules.user_management.schema import ModuleUpdateRequest
+from app.core.duplicates import DuplicateMode
 
 
 def list_modules(db: Session) -> list[Module]:
@@ -25,6 +26,11 @@ def update_module(db: Session, module_id: int, payload: ModuleUpdateRequest) -> 
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Module name already exists")
 
     for field, value in update_data.items():
+        if field == "import_duplicate_mode" and value is not None:
+            try:
+                value = DuplicateMode(value).value
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid duplicate mode") from exc
         if isinstance(value, str):
             value = value.strip() or None
         setattr(module, field, value)
@@ -33,3 +39,14 @@ def update_module(db: Session, module_id: int, payload: ModuleUpdateRequest) -> 
     db.commit()
     db.refresh(module)
     return module
+
+
+def get_module_duplicate_mode(db: Session, module_name: str) -> str:
+    module = db.query(Module).filter(Module.name == module_name).first()
+    if not module:
+        return DuplicateMode.skip.value
+    value = (module.import_duplicate_mode or DuplicateMode.skip.value).strip().lower()
+    try:
+        return DuplicateMode(value).value
+    except ValueError:
+        return DuplicateMode.skip.value

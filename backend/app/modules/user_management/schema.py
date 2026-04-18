@@ -181,6 +181,7 @@ class ModuleSchema(BaseModel):
     base_route: Optional[str] = None
     description: Optional[str] = None
     is_enabled: bool = True
+    import_duplicate_mode: str = "skip"
     created_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -191,6 +192,7 @@ class ModuleUpdateRequest(BaseModel):
     base_route: str | None = None
     description: str | None = None
     is_enabled: bool | None = None
+    import_duplicate_mode: str | None = None
 
 class AuthResponse(BaseModel):
     status: str

@@ -6,8 +6,8 @@ from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from app.core.duplicates import detect_duplicates, ensure_single_duplicate_action
-from app.core.module_csv import require_csv_headers, rows_from_csv_bytes
+from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
+from app.core.module_csv import build_import_summary, require_csv_headers, rows_from_csv_bytes
 from app.core.pagination import Pagination
 from app.core.module_filters import apply_filter_conditions
 from app.core.module_export import dict_rows_to_csv_bytes
@@ -366,11 +366,15 @@ def import_opportunities_from_csv(
     db: Session,
     file_bytes: bytes,
     current_user,
+    duplicate_mode: str | None = None,
+    default_duplicate_mode: str | None = None,
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
 ) -> dict:
-    ensure_single_duplicate_action(
+    mode = resolve_duplicate_mode(
+        duplicate_mode=duplicate_mode,
+        default_mode=default_duplicate_mode,
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
@@ -378,11 +382,9 @@ def import_opportunities_from_csv(
     headers, parsed_rows = rows_from_csv_bytes(file_bytes)
     require_csv_headers(headers, required=OPPORTUNITY_IMPORT_HEADERS)
 
-    inserted = 0
-    updated = 0
-    skipped = 0
-    errors: list[str] = []
-    rows: list[dict] = []
+    new_rows = overwritten_rows = merged_rows = skipped_rows = 0
+    failures: list[dict[str, str | int | None]] = []
+    rows: list[tuple[int, dict]] = []
     names: list[str] = []
 
     for row_number, row in enumerate(parsed_rows, start=2):
@@ -390,19 +392,37 @@ def import_opportunities_from_csv(
         opportunity_name = (normalized.get("opportunity_name") or "").strip()
         contact_id_raw = (normalized.get("contact_id") or "").strip()
         if not opportunity_name or not contact_id_raw:
-            errors.append(f"Row {row_number}: missing required fields")
+            failures.append(
+                {
+                    "row_number": row_number,
+                    "record_identifier": opportunity_name or None,
+                    "reason": "Missing required fields 'opportunity_name' and/or 'contact_id'.",
+                }
+            )
             continue
 
         contact_id = _parse_optional_int(contact_id_raw)
         if contact_id is None:
-            errors.append(f"Row {row_number}: invalid contact_id '{contact_id_raw}'")
+            failures.append(
+                {
+                    "row_number": row_number,
+                    "record_identifier": opportunity_name,
+                    "reason": f"Invalid contact_id '{contact_id_raw}'.",
+                }
+            )
             continue
 
         assigned_to = _parse_optional_int((normalized.get("assigned_to") or "").strip()) or (current_user.id if current_user else None)
         organization_id_raw = (normalized.get("organization_id") or "").strip()
         organization_id = _parse_optional_int(organization_id_raw)
         if organization_id_raw and organization_id is None:
-            errors.append(f"Row {row_number}: invalid organization_id '{organization_id_raw}'")
+            failures.append(
+                {
+                    "row_number": row_number,
+                    "record_identifier": opportunity_name,
+                    "reason": f"Invalid organization_id '{organization_id_raw}'.",
+                }
+            )
             continue
 
         try:
@@ -426,10 +446,16 @@ def import_opportunities_from_csv(
                 "delivery_format": (normalized.get("delivery_format") or "").strip() or None,
             }
         except HTTPException as exc:
-            errors.append(f"Row {row_number}: {exc.detail}")
+            failures.append(
+                {
+                    "row_number": row_number,
+                    "record_identifier": opportunity_name,
+                    "reason": str(exc.detail),
+                }
+            )
             continue
 
-        rows.append(payload)
+        rows.append((row_number, payload))
         names.append(opportunity_name)
 
     existing_duplicates = {
@@ -442,7 +468,7 @@ def import_opportunities_from_csv(
         .distinct()
     }
     detection = detect_duplicates(names, existing_values=existing_duplicates)
-    if existing_duplicates and not any((replace_duplicates, skip_duplicates, create_new_records)):
+    if existing_duplicates and duplicate_mode is None and not any((replace_duplicates, skip_duplicates, create_new_records)) and default_duplicate_mode is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -467,28 +493,45 @@ def import_opportunities_from_csv(
         .all()
     }
 
-    for payload in rows:
+    for row_number, payload in rows:
         existing = None if create_new_records else existing_by_name.get(payload["opportunity_name"])
         try:
-            if existing and skip_duplicates:
-                skipped += 1
+            if existing and mode == DuplicateMode.skip:
+                skipped_rows += 1
                 continue
-            if existing and replace_duplicates:
+            if existing and mode == DuplicateMode.overwrite:
                 update_opportunity(db, existing, payload)
-                updated += 1
+                overwritten_rows += 1
+                continue
+            if existing and mode == DuplicateMode.merge:
+                merge_payload = {
+                    field: value
+                    for field, value in payload.items()
+                    if should_merge_value(getattr(existing, field, None), value)
+                }
+                if merge_payload:
+                    update_opportunity(db, existing, merge_payload)
+                merged_rows += 1
                 continue
             create_opportunity(db, payload)
-            inserted += 1
+            new_rows += 1
         except HTTPException as exc:
-            errors.append(f"Opportunity '{payload['opportunity_name']}': {exc.detail}")
+            failures.append(
+                {
+                    "row_number": row_number,
+                    "record_identifier": payload["opportunity_name"],
+                    "reason": str(exc.detail),
+                }
+            )
 
-    return {
-        "inserted": inserted,
-        "updated": updated,
-        "skipped": skipped,
-        "errors": errors,
-        "duplicate_opportunities": detection.duplicate_values or None,
-    }
+    return build_import_summary(
+        total_rows=len(parsed_rows),
+        new_rows=new_rows,
+        skipped_rows=skipped_rows,
+        overwritten_rows=overwritten_rows,
+        merged_rows=merged_rows,
+        failures=failures,
+    )
 
 
 def export_opportunities_to_csv(opportunities: list[SalesOpportunity]) -> bytes:

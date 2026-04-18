@@ -5,9 +5,9 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session
 
-from app.core.duplicates import detect_duplicates, ensure_single_duplicate_action
+from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
 from app.core.module_filters import apply_filter_conditions
-from app.core.module_csv import require_csv_headers, rows_from_csv_bytes
+from app.core.module_csv import build_import_summary, require_csv_headers, rows_from_csv_bytes
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination
@@ -148,6 +148,12 @@ def get_contact_or_404(db: Session, contact_id: int, *, include_deleted: bool = 
 def _apply_sales_contact_payload(contact: SalesContact, payload: dict) -> None:
     for field, value in payload.items():
         setattr(contact, field, value)
+
+
+def _merge_sales_contact_payload(contact: SalesContact, payload: dict) -> None:
+    for field, value in payload.items():
+        if should_merge_value(getattr(contact, field, None), value):
+            setattr(contact, field, value)
 
 
 def create_sales_contact(
@@ -360,11 +366,15 @@ def import_contacts_from_csv(
     db: Session,
     file_bytes: bytes,
     default_assigned_to: int,
+    duplicate_mode: str | None = None,
+    default_duplicate_mode: str | None = None,
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
 ):
-    ensure_single_duplicate_action(
+    mode = resolve_duplicate_mode(
+        duplicate_mode=duplicate_mode,
+        default_mode=default_duplicate_mode,
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
@@ -372,8 +382,8 @@ def import_contacts_from_csv(
     headers, parsed_rows = rows_from_csv_bytes(file_bytes)
     require_csv_headers(headers, required={"primary_email"})
 
-    inserted = updated = skipped = 0
-    errors: list[str] = []
+    new_rows = overwritten_rows = merged_rows = skipped_rows = 0
+    failures: list[dict[str, str | int | None]] = []
     user_cache: dict[int, bool] = {}
     rows: list[dict] = []
     emails: list[str] = []
@@ -382,14 +392,15 @@ def import_contacts_from_csv(
     for row_number, row in enumerate(parsed_rows, start=2):
         normalized = {k.strip().lower(): (v.strip() if isinstance(v, str) else v) for k, v in row.items() if k}
 
-        if all(not (value or "").strip() for value in normalized.values()):
-            skipped += 1
-            continue
-
         email = normalized.get("primary_email")
         if not email:
-            errors.append(f"Row {row_number}: missing required field 'primary_email'")
-            skipped += 1
+            failures.append(
+                {
+                    "row_number": row_number,
+                    "record_identifier": None,
+                    "reason": "Missing required field 'primary_email'.",
+                }
+            )
             continue
 
         assigned_to_str = normalized.get("assigned_to")
@@ -398,15 +409,25 @@ def import_contacts_from_csv(
             try:
                 assigned_to = int(assigned_to_str)
             except ValueError:
-                errors.append(f"Row {row_number}: invalid assigned_to '{assigned_to_str}'")
-                skipped += 1
+                failures.append(
+                    {
+                        "row_number": row_number,
+                        "record_identifier": email,
+                        "reason": f"Invalid assigned_to '{assigned_to_str}'.",
+                    }
+                )
                 continue
 
         if assigned_to not in user_cache:
             user_cache[assigned_to] = bool(db.query(User.id).filter(User.id == assigned_to).first())
         if not user_cache[assigned_to]:
-            errors.append(f"Row {row_number}: assigned_to '{assigned_to}' does not reference a valid user")
-            skipped += 1
+            failures.append(
+                {
+                    "row_number": row_number,
+                    "record_identifier": email,
+                    "reason": f"assigned_to '{assigned_to}' does not reference a valid user.",
+                }
+            )
             continue
 
         email_opt_out_value = normalized.get("email_opt_out")
@@ -414,17 +435,25 @@ def import_contacts_from_csv(
         if email_opt_out_value is not None and email_opt_out_value != "":
             parsed_opt_out = _parse_bool(email_opt_out_value)
             if parsed_opt_out is None:
-                errors.append(
-                    f"Row {row_number}: email_opt_out '{email_opt_out_value}' must be true/false/1/0"
+                failures.append(
+                    {
+                        "row_number": row_number,
+                        "record_identifier": email,
+                        "reason": f"email_opt_out '{email_opt_out_value}' must be true/false/1/0.",
+                    }
                 )
-                skipped += 1
                 continue
 
         org_raw = normalized.get("organization_id")
         organization_id = _parse_int_or_none(org_raw)
         if org_raw and organization_id is None:
-            errors.append(f"Row {row_number}: invalid organization_id '{org_raw}'")
-            skipped += 1
+            failures.append(
+                {
+                    "row_number": row_number,
+                    "record_identifier": email,
+                    "reason": f"Invalid organization_id '{org_raw}'.",
+                }
+            )
             continue
 
         payload = {
@@ -474,9 +503,9 @@ def import_contacts_from_csv(
 
     detection = detect_duplicates(normalized_emails, existing_values=existing_duplicates)
     name_detection = detect_duplicates(normalized_names, existing_values=existing_name_duplicates)
-    if (existing_duplicates or existing_name_duplicates) and not any(
+    if (existing_duplicates or existing_name_duplicates) and duplicate_mode is None and not any(
         (replace_duplicates, skip_duplicates, create_new_records)
-    ):
+    ) and default_duplicate_mode is None:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
@@ -525,28 +554,36 @@ def import_contacts_from_csv(
             if not existing and normalized_name:
                 existing = existing_by_name.get(normalized_name)
 
-        if existing and skip_duplicates:
-            skipped += 1
+        if existing and mode == DuplicateMode.skip:
+            skipped_rows += 1
             continue
 
-        if existing and replace_duplicates:
+        if existing and mode == DuplicateMode.overwrite:
             _apply_sales_contact_payload(existing, payload)
             db.add(existing)
-            updated += 1
+            overwritten_rows += 1
+            continue
+
+        if existing and mode == DuplicateMode.merge:
+            _merge_sales_contact_payload(existing, payload)
+            db.add(existing)
+            merged_rows += 1
             continue
 
         contact = SalesContact(**payload)
         db.add(contact)
-        inserted += 1
+        new_rows += 1
 
     db.commit()
 
-    return {
-        "inserted": inserted,
-        "updated": updated,
-        "skipped": skipped,
-        "errors": errors,
-    }
+    return build_import_summary(
+        total_rows=len(parsed_rows),
+        new_rows=new_rows,
+        skipped_rows=skipped_rows,
+        overwritten_rows=overwritten_rows,
+        merged_rows=merged_rows,
+        failures=failures,
+    )
 
 
 def _parse_int_or_none(value: str | None) -> int | None:
