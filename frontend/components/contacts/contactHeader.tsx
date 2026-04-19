@@ -11,12 +11,16 @@ interface ContactsHeaderProps {
   onCreateClick: () => void;
   onImportSuccess?: () => void;
   viewSelector?: ReactNode;
+  selectedIds?: number[];
+  currentPageIds?: number[];
 }
 
 export default function ContactsHeader({
   onCreateClick,
   onImportSuccess,
   viewSelector,
+  selectedIds = [],
+  currentPageIds = [],
 }: ContactsHeaderProps) {
   return (
     <PageHeader
@@ -28,7 +32,10 @@ export default function ContactsHeader({
         <ModuleImportExportControls
           importEndpoint="/sales/contacts/import"
           exportEndpoint="/sales/contacts/export"
+          exportMethod="POST"
           onImportSuccess={onImportSuccess}
+          selectedIds={selectedIds}
+          currentPageIds={currentPageIds}
         />
         <Button onClick={onCreateClick}>
           <Plus />

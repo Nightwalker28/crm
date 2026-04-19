@@ -16,6 +16,49 @@ DATA_TRANSFER_UPLOAD_DIR = Path(__file__).resolve().parents[4] / "uploads" / "da
 DATA_TRANSFER_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
+MODULE_DISPLAY_NAMES = {
+    "sales_contacts": "Contacts",
+    "sales_organizations": "Organizations",
+    "sales_opportunities": "Opportunities",
+    "finance_io": "Insertion Orders",
+}
+
+
+MODULE_LINKS = {
+    "sales_contacts": "/dashboard/sales/contacts",
+    "sales_organizations": "/dashboard/sales/organizations",
+    "sales_opportunities": "/dashboard/sales/opportunities",
+    "finance_io": "/dashboard/finance/insertion-orders",
+}
+
+
+def _notify_job_state(
+    db: Session,
+    *,
+    job: DataTransferJob,
+    title: str,
+    message: str,
+) -> None:
+    if not job.actor_user_id:
+        return
+    from app.modules.platform.services.notifications import create_notification
+
+    create_notification(
+        db,
+        user_id=job.actor_user_id,
+        category="data_transfer",
+        title=title,
+        message=message,
+        link_url=MODULE_LINKS.get(job.module_key),
+        metadata={
+            "job_id": job.id,
+            "module_key": job.module_key,
+            "operation_type": job.operation_type,
+            "status": job.status,
+        },
+    )
+
+
 def should_background_data_transfer(*, row_count: int | None = None) -> bool:
     return should_background_data_transfer_with_size(row_count=row_count, file_size_bytes=None)
 
@@ -52,6 +95,13 @@ def create_data_transfer_job(
     db.add(job)
     db.commit()
     db.refresh(job)
+    module_name = MODULE_DISPLAY_NAMES.get(module_key, module_key)
+    _notify_job_state(
+        db,
+        job=job,
+        title=f"{operation_type.title()} queued",
+        message=f"{operation_type.title()} for {module_name} has been queued in the background.",
+    )
     return job
 
 
@@ -99,6 +149,13 @@ def mark_job_completed(
     db.add(job)
     db.commit()
     db.refresh(job)
+    module_name = MODULE_DISPLAY_NAMES.get(job.module_key, job.module_key)
+    _notify_job_state(
+        db,
+        job=job,
+        title=f"{job.operation_type.title()} completed",
+        message=f"{job.operation_type.title()} for {module_name} completed successfully.",
+    )
     return job
 
 
@@ -112,6 +169,13 @@ def mark_job_failed(db: Session, job: DataTransferJob, *, error_message: str, su
     db.add(job)
     db.commit()
     db.refresh(job)
+    module_name = MODULE_DISPLAY_NAMES.get(job.module_key, job.module_key)
+    _notify_job_state(
+        db,
+        job=job,
+        title=f"{job.operation_type.title()} failed",
+        message=f"{job.operation_type.title()} for {module_name} failed: {error_message}",
+    )
     return job
 
 

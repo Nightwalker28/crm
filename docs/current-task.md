@@ -14,17 +14,14 @@ Before making substantial code changes:
 
 ## Current Focus
 
-Apply the shared frontend UI audit fixes across the dashboard shell and main module pages without changing the primary palette away from the current black-and-white direction.
+Stabilize the current dashboard runtime first, then finish the shared data-transfer UX around it: restore the broken backend load path, add a real per-user notification center starting with import/export job notifications, and finish the splash/loading treatment so it covers the full page cleanly.
 
 ## Current Priorities
 
-1. Remove the external noise-texture dependency and replace it with a local/shared texture treatment.
-2. Clean up the shared dashboard shell so pages sit in one consistent canvas instead of nested framed cards.
-3. Make the sidebar compact/collapsible and remove redundant group chrome.
-4. Introduce a shared page-header pattern and use it on the main operational modules.
-5. Reduce header action noise by moving secondary import/export actions into a compact overflow menu while keeping the primary create action visible.
-6. Replace text-based dialog close controls with a shared icon-close treatment.
-7. Keep import/export execution work queued next in line once the shared UI polish pass is stable.
+1. Restore the broken backend route/module state so dashboard data loads again reliably.
+2. Add a per-user notification center with persisted notifications and wire import/export background-job events into it first.
+3. Make the splash/loading treatment cover the full viewport with a minimum 3 second display instead of only covering the inner dashboard container.
+4. Finish the remaining audit/UI cleanup and verify the current import/export slice honestly instead of assuming it is complete.
 
 ## Acceptance Direction
 

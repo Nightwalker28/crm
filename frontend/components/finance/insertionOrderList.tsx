@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/Table";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
+import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 
@@ -22,6 +23,10 @@ type InsertionOrdersListProps = {
   onDelete: (order: InsertionOrder) => void;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
+  selectedIds?: number[];
+  currentPageSelectionState?: boolean | "indeterminate";
+  onToggleRow?: (orderId: number, checked: boolean) => void;
+  onToggleCurrentPage?: (checked: boolean) => void;
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string }> = {
@@ -72,8 +77,12 @@ export default function InsertionOrdersList({
   onDelete,
   visibleColumns,
   columnOptions = [],
+  selectedIds = [],
+  currentPageSelectionState = false,
+  onToggleRow,
+  onToggleCurrentPage,
 }: InsertionOrdersListProps) {
-  const columnCount = visibleColumns.length + 1;
+  const columnCount = visibleColumns.length + 2;
   const headers: Record<string, string> = {
     io_number: "IO Number",
     customer_name: "Customer",
@@ -219,6 +228,16 @@ export default function InsertionOrdersList({
       <Table className="min-w-[1040px]">
         <TableHeader>
           <TableHeaderRow>
+            <TableHead className="w-12 pr-0">
+              <Checkbox
+                checked={currentPageSelectionState}
+                onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
+                className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                aria-label="Select current page insertion orders"
+              >
+                <CheckboxIndicator className="h-3 w-3" />
+              </Checkbox>
+            </TableHead>
             {visibleColumns.map((column) => (
               <TableHead key={column}>
                 {headers[column] ?? getReadableColumnLabel(column, columnOptions)}
@@ -252,6 +271,16 @@ export default function InsertionOrdersList({
           ) : (
             orders.map((order) => (
               <TableRow key={order.id} className="group">
+                <TableCell className="w-12 pr-0">
+                  <Checkbox
+                    checked={selectedIds.includes(order.id)}
+                    onCheckedChange={(checked) => onToggleRow?.(order.id, checked === true)}
+                    className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                    aria-label={`Select insertion order ${order.io_number}`}
+                  >
+                    <CheckboxIndicator className="h-3 w-3" />
+                  </Checkbox>
+                </TableCell>
                 {visibleColumns.map((column) => (
                   <Fragment key={column}>{renderCell(order, column)}</Fragment>
                 ))}

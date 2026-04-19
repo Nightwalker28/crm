@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Trash2 } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -122,7 +123,12 @@ export default function RecycleBinPage() {
         {query.isLoading ? (
           <div className="px-5 py-5 text-sm text-neutral-500">Loading recycle items…</div>
         ) : !data?.results?.length ? (
-          <div className="px-5 py-5 text-sm text-neutral-500">No recycled records for this module.</div>
+          <div className="px-5 py-8">
+            <div className="flex flex-col items-center justify-center gap-2 text-center text-neutral-500">
+              <Trash2 className="h-8 w-8 text-neutral-700" />
+              <div className="text-sm">No recycled records for this module.</div>
+            </div>
+          </div>
         ) : (
           <div className="divide-y divide-neutral-800">
             {data.results.map((item) => (

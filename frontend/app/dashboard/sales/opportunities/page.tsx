@@ -40,6 +40,7 @@ export default function OpportunitiesPage() {
   const {
     opportunities,
     page,
+    pageSize,
     totalPages,
     totalCount,
     rangeStart,
@@ -47,6 +48,7 @@ export default function OpportunitiesPage() {
     isLoading,
     error,
     goToPage,
+    onPageSizeChange,
     createOpportunity,
     updateOpportunity,
     deleteOpportunity,
@@ -54,6 +56,30 @@ export default function OpportunitiesPage() {
     isSaving,
     isDeleting,
   } = useOpportunities(visibleColumns, draftConfig.filters);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const currentPageIds = useMemo(() => opportunities.map((opportunity) => opportunity.opportunity_id), [opportunities]);
+  const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
+    if (!currentPageIds.length) return false;
+    const selectedOnPage = currentPageIds.filter((id) => selectedIds.includes(id)).length;
+    if (!selectedOnPage) return false;
+    if (selectedOnPage === currentPageIds.length) return true;
+    return "indeterminate";
+  }, [currentPageIds, selectedIds]);
+
+  function toggleRow(opportunityId: number, checked: boolean) {
+    setSelectedIds((current) =>
+      checked ? Array.from(new Set([...current, opportunityId])) : current.filter((id) => id !== opportunityId),
+    );
+  }
+
+  function toggleCurrentPage(checked: boolean) {
+    setSelectedIds((current) => {
+      if (checked) {
+        return Array.from(new Set([...current, ...currentPageIds]));
+      }
+      return current.filter((id) => !currentPageIds.includes(id));
+    });
+  }
 
   async function handleSubmit(payload: OpportunityPayload) {
     if (selectedOpportunity) {
@@ -75,6 +101,9 @@ export default function OpportunitiesPage() {
           <ModuleImportExportControls
             importEndpoint="/sales/opportunities/import"
             exportEndpoint="/sales/opportunities/export"
+            exportMethod="POST"
+            selectedIds={selectedIds}
+            currentPageIds={currentPageIds}
           />
           <SavedViewSelector
             moduleKey="sales_opportunities"
@@ -126,6 +155,10 @@ export default function OpportunitiesPage() {
         isLoading={isLoading}
         visibleColumns={visibleColumns}
         columnOptions={definition?.columns ?? []}
+        selectedIds={selectedIds}
+        currentPageSelectionState={currentPageSelectionState}
+        onToggleRow={toggleRow}
+        onToggleCurrentPage={toggleCurrentPage}
         onEdit={(opportunity) => {
           setSelectedOpportunity(opportunity);
           setDialogOpen(true);
@@ -147,9 +180,9 @@ export default function OpportunitiesPage() {
         totalCount={totalCount}
         rangeStart={rangeStart}
         rangeEnd={rangeEnd}
-        pageSize={rangeStart && rangeEnd ? rangeEnd - rangeStart + 1 : 0}
+        pageSize={pageSize}
         onPageChange={goToPage}
-        onPageSizeChange={() => {}}
+        onPageSizeChange={onPageSizeChange}
       />
 
       <OpportunityDialog

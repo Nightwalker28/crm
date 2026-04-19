@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/Table";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
+import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { Contact } from "@/hooks/sales/useContacts";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
@@ -24,6 +25,10 @@ interface ContactListProps {
   isLoading: boolean;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
+  selectedIds?: number[];
+  currentPageSelectionState?: boolean | "indeterminate";
+  onToggleRow?: (contactId: number, checked: boolean) => void;
+  onToggleCurrentPage?: (checked: boolean) => void;
 }
 
 function getInitials(firstName?: string | null, lastName?: string | null, email?: string | null): string {
@@ -48,6 +53,10 @@ export default function ContactList({
   isLoading,
   visibleColumns = [],
   columnOptions = [],
+  selectedIds = [],
+  currentPageSelectionState = false,
+  onToggleRow,
+  onToggleCurrentPage,
 }: ContactListProps) {
   const headers: Record<string, string> = {
     first_name: "First Name",
@@ -174,6 +183,16 @@ export default function ContactList({
       <Table className="min-w-[920px]">
         <TableHeader>
           <TableHeaderRow>
+            <TableHead className="w-12 pr-0">
+              <Checkbox
+                checked={currentPageSelectionState}
+                onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
+                className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                aria-label="Select current page contacts"
+              >
+                <CheckboxIndicator className="h-3 w-3" />
+              </Checkbox>
+            </TableHead>
             {visibleColumns.map((column) => (
               <TableHead key={column}>
                 {headers[column] ?? getReadableColumnLabel(column, columnOptions)}
@@ -186,7 +205,7 @@ export default function ContactList({
         <TableBody>
           {isLoading ? (
             <TableRow>
-              <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
+              <TableCell colSpan={visibleColumns.length + 2} className="py-16 text-center">
                 <div className="flex flex-col items-center gap-3 text-neutral-500">
                   <div className="h-5 w-5 rounded-full border-2 border-neutral-700 border-t-neutral-400 animate-spin" />
                   <span className="text-sm">Loading contacts...</span>
@@ -195,7 +214,7 @@ export default function ContactList({
             </TableRow>
           ) : contacts.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
+              <TableCell colSpan={visibleColumns.length + 2} className="py-16 text-center">
                 <div className="flex flex-col items-center gap-2 text-neutral-500">
                   <svg className="w-8 h-8 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -207,6 +226,16 @@ export default function ContactList({
           ) : (
             contacts.map((contact) => (
               <TableRow key={contact.contact_id} className="group">
+                <TableCell className="w-12 pr-0">
+                  <Checkbox
+                    checked={selectedIds.includes(contact.contact_id)}
+                    onCheckedChange={(checked) => onToggleRow?.(contact.contact_id, checked === true)}
+                    className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                    aria-label={`Select contact ${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim()}
+                  >
+                    <CheckboxIndicator className="h-3 w-3" />
+                  </Checkbox>
+                </TableCell>
                 {visibleColumns.map((column) => (
                   <Fragment key={column}>{renderCell(contact, column)}</Fragment>
                 ))}

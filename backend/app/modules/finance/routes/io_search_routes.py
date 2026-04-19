@@ -1,8 +1,7 @@
-from fastapi import APIRouter, Depends, File, UploadFile, status, Request, Query, HTTPException, Form
+from fastapi import APIRouter, Body, Depends, File, UploadFile, status, Request, Query, HTTPException, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from app.core.module_export import bytes_download_response
 from app.core.pagination import Pagination, get_pagination
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.security import get_current_user
@@ -20,10 +19,12 @@ from app.modules.finance.services import io_search_api
 from app.modules.user_management.services import admin_modules
 from app.modules.platform.services.data_transfer_jobs import (
     create_data_transfer_job,
+    enqueue_export_job,
     enqueue_import_job,
     persist_job_upload,
     should_background_data_transfer_with_size,
 )
+from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
 
 router = APIRouter(tags=["Finance"])
 
@@ -305,35 +306,26 @@ async def preview_insertion_orders_import(
     }
 
 
-@router.get("/insertion-orders/export")
+@router.post("/insertion-orders/export", response_model=DataTransferExecutionResponse)
 def export_insertion_orders(
-    search: str | None = Query(default=None),
-    status_filter: str | None = Query(default=None, alias="status"),
-    filter_logic: str = Query(default="all"),
-    filters: str | None = Query(default=None),
-    filters_all: str | None = Query(default=None),
-    filters_any: str | None = Query(default=None),
+    payload: DataTransferExportRequest = Body(default=DataTransferExportRequest()),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
     require_permission = Depends(require_action_access("finance_io", "export")),
 ):
-    try:
-        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
-        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    csv_bytes = io_search_api.export_generic_insertion_orders(
+    job = create_data_transfer_job(
         db,
-        current_user,
-        search=search,
-        status_filter=status_filter,
-        all_filter_conditions=all_conditions,
-        any_filter_conditions=any_conditions,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="finance_io",
+        operation_type="export",
+        payload=payload.model_dump(),
     )
-    return bytes_download_response(
-        content=csv_bytes,
-        filename="insertion_orders.csv",
-        media_type="text/csv",
+    enqueue_export_job(job.id)
+    return DataTransferExecutionResponse(
+        mode="background",
+        message=f"Export queued in background as job #{job.id}.",
+        job_id=job.id,
+        job_status=job.status,
     )
 
 

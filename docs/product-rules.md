@@ -74,6 +74,7 @@ This file captures stable business and UX rules for the platform. These should b
 ## Import / Export Rules
 
 - Main business modules should have real import/export workflows, not just placeholder or partial support.
+- Users should have one per-user notification center for operational updates; background import/export jobs are the first required notification source, not the last.
 - Import/export behavior should reuse shared platform helpers where possible, with module-specific mapping/validation layered on top.
 - Imports should be multi-step:
   - parse file and preview headers

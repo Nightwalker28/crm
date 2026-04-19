@@ -11,7 +11,7 @@ import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 export default function OrganizationsPage() {
   const { data: customFields = [] } = useModuleCustomFields("sales_organizations");
@@ -48,12 +48,41 @@ export default function OrganizationsPage() {
     setCreateOpen,
     createOrganization,
   } = useOrganizations(visibleColumns, draftConfig.filters);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const currentPageIds = useMemo(
+    () => organizations.map((org) => org.org_id).filter((id): id is number => typeof id === "number"),
+    [organizations],
+  );
+  const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
+    if (!currentPageIds.length) return false;
+    const selectedOnPage = currentPageIds.filter((id) => selectedIds.includes(id)).length;
+    if (!selectedOnPage) return false;
+    if (selectedOnPage === currentPageIds.length) return true;
+    return "indeterminate";
+  }, [currentPageIds, selectedIds]);
+
+  function toggleRow(orgId: number, checked: boolean) {
+    setSelectedIds((current) =>
+      checked ? Array.from(new Set([...current, orgId])) : current.filter((id) => id !== orgId),
+    );
+  }
+
+  function toggleCurrentPage(checked: boolean) {
+    setSelectedIds((current) => {
+      if (checked) {
+        return Array.from(new Set([...current, ...currentPageIds]));
+      }
+      return current.filter((id) => !currentPageIds.includes(id));
+    });
+  }
 
   return (
     <div className="flex flex-col gap-6">
       <OrganizationsHeader
         onCreateClick={() => setCreateOpen(true)}
         onImportSuccess={refresh}
+        selectedIds={selectedIds}
+        currentPageIds={currentPageIds}
         viewSelector={
           <SavedViewSelector
           moduleKey="sales_organizations"
@@ -100,6 +129,10 @@ export default function OrganizationsPage() {
         isLoading={isLoading}
         visibleColumns={visibleColumns}
         columnOptions={definition?.columns ?? []}
+        selectedIds={selectedIds}
+        currentPageSelectionState={currentPageSelectionState}
+        onToggleRow={toggleRow}
+        onToggleCurrentPage={toggleCurrentPage}
       />
 
       <Pagination

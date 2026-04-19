@@ -11,12 +11,16 @@ interface OrganizationsHeaderProps {
   onImportSuccess?: () => void;
   onCreateClick: () => void;
   viewSelector?: ReactNode;
+  selectedIds?: number[];
+  currentPageIds?: number[];
 }
 
 export default function OrganizationsHeader({
   onCreateClick,
   onImportSuccess,
   viewSelector,
+  selectedIds = [],
+  currentPageIds = [],
 }: OrganizationsHeaderProps) {
   return (
     <PageHeader
@@ -29,8 +33,9 @@ export default function OrganizationsHeader({
           importEndpoint="/sales/organizations/import"
           exportEndpoint="/sales/organizations/export"
           exportMethod="POST"
-          exportBody={{ org_ids: null }}
           onImportSuccess={onImportSuccess}
+          selectedIds={selectedIds}
+          currentPageIds={currentPageIds}
         />
 
         <Button onClick={onCreateClick}>

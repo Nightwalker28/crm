@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/Table";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
+import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { Organization } from "@/hooks/sales/useOrganizations";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
@@ -23,6 +24,10 @@ type Props = {
   isLoading: boolean;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
+  selectedIds?: number[];
+  currentPageSelectionState?: boolean | "indeterminate";
+  onToggleRow?: (orgId: number, checked: boolean) => void;
+  onToggleCurrentPage?: (checked: boolean) => void;
 };
 
 const INDUSTRY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
@@ -54,6 +59,10 @@ export default function OrganizationsTable({
   isLoading,
   visibleColumns = [],
   columnOptions = [],
+  selectedIds = [],
+  currentPageSelectionState = false,
+  onToggleRow,
+  onToggleCurrentPage,
 }: Props) {
   const headers: Record<string, string> = {
     org_name: "Organization",
@@ -170,6 +179,16 @@ export default function OrganizationsTable({
       <Table className="min-w-[960px]">
         <TableHeader>
           <TableHeaderRow>
+            <TableHead className="w-12 pr-0">
+              <Checkbox
+                checked={currentPageSelectionState}
+                onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
+                className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                aria-label="Select current page organizations"
+              >
+                <CheckboxIndicator className="h-3 w-3" />
+              </Checkbox>
+            </TableHead>
             {visibleColumns.map((column) => (
               <TableHead key={column}>
                 {headers[column] ?? getReadableColumnLabel(column, columnOptions)}
@@ -182,7 +201,7 @@ export default function OrganizationsTable({
         <TableBody>
           {isLoading ? (
             <TableRow>
-              <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
+              <TableCell colSpan={visibleColumns.length + 2} className="py-16 text-center">
                 <div className="flex flex-col items-center gap-3 text-neutral-500">
                   <div className="h-5 w-5 rounded-full border-2 border-neutral-700 border-t-neutral-400 animate-spin" />
                   <span className="text-sm">Loading organizations...</span>
@@ -191,7 +210,7 @@ export default function OrganizationsTable({
             </TableRow>
           ) : organizations.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
+              <TableCell colSpan={visibleColumns.length + 2} className="py-16 text-center">
                 <div className="flex flex-col items-center gap-2 text-neutral-500">
                   <svg className="w-8 h-8 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -203,6 +222,18 @@ export default function OrganizationsTable({
           ) : (
             organizations.map((org) => (
               <TableRow key={org.org_id} className="group">
+                <TableCell className="w-12 pr-0">
+                  <Checkbox
+                    checked={selectedIds.includes(org.org_id ?? 0)}
+                    onCheckedChange={(checked) => {
+                      if (org.org_id != null) onToggleRow?.(org.org_id, checked === true);
+                    }}
+                    className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                    aria-label={`Select organization ${org.org_name}`}
+                  >
+                    <CheckboxIndicator className="h-3 w-3" />
+                  </Checkbox>
+                </TableCell>
                 {visibleColumns.map((column) => (
                   <Fragment key={column}>{renderCell(org, column)}</Fragment>
                 ))}

@@ -15,6 +15,10 @@ Current phase:
 - Phase 7.5 in progress: auth/access-control correction, Google scope cleanup, and saved-view filter usability hardening
 
 Completed items:
+- Restored the broken finance route import path so backend reloads no longer die on `FileResponse` and dashboard data can load again after the export refactor.
+- Added a first per-user notification center foundation with persisted `user_notifications`, authenticated notification APIs, and sidebar access in the dashboard shell.
+- Wired background import/export job state into the notification center so queued, completed, and failed data-transfer events now surface outside transient toast messages.
+- Restored the branded splash/loading treatment as a full-viewport overlay and increased the minimum initial display time to 3 seconds so the shell does not show through awkwardly during load.
 - Reduced Google OAuth to identity-only scopes and removed the live Google Docs/Drive opportunity automation path.
 - Removed the old Google token-storage and document-automation code/services, plus the no-longer-needed Google client dependencies.
 - Fixed manual-capable first-login behavior so accounts without passwords now return a setup-required response with a usable setup link instead of a dead-end generic failure.
@@ -117,6 +121,7 @@ Completed items:
 - Expanded CSV import/export coverage so opportunities now have backend import/export routes, insertion orders now have CSV export, and the current business-module headers use shared authenticated import/export controls for contacts, organizations, opportunities, and finance export.
 
 In progress:
+- Expand the new notification center beyond data-transfer jobs into broader per-user operational notifications over time.
 - Start replacing department-based module assignment with team-based module assignment while keeping department access only as a compatibility fallback during transition.
 - Replace one-off table preferences with saved module views over time.
 - Add richer dashboard-view configurability so users can control visible columns and presentation order more flexibly.
@@ -127,6 +132,8 @@ In progress:
 - The data-transfer job foundation is now being moved onto Celery with Redis so import/export and future scheduled workloads use a real worker architecture instead of in-process request tasks.
 - Large imports now queue real Celery jobs through the shared data-transfer-job layer, and that path has been verified end to end with Redis and the dedicated worker service.
 - Apply the shared UI audit fixes across the dashboard shell, sidebar, page headers, and secondary action patterns while keeping the product on its monochrome palette.
+- Finish the current export rebuild so contacts, organizations, opportunities, and insertion orders can export all rows, selected rows across pages, and the current visible page through the background-job flow.
+- Restore the branded splash/loading treatment in a controlled way for initial load and route-level loading states.
 - Rebuild imports into a proper staged workflow with preview/header mapping first, then duplicate-policy control, then richer result summaries.
 - Rebuild exports into a proper staged workflow with export-all, export-current, and export-selected-across-pages modes.
 - Shared import preview/header-mapping, duplicate-policy control, and standardized result summaries are now in place for the current importable business modules.

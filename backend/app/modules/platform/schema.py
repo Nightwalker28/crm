@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ActivityLogResponse(BaseModel):
@@ -105,3 +105,30 @@ class DataTransferExportRequest(BaseModel):
     mode: str = "all"
     selected_ids: list[int] | None = None
     current_page_ids: list[int] | None = None
+
+
+class UserNotificationResponse(BaseModel):
+    id: int
+    user_id: int
+    category: str
+    title: str
+    message: str
+    status: str
+    link_url: str | None = None
+    metadata: dict[str, Any] | None = Field(default=None, alias="payload")
+    read_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+
+class UserNotificationListResponse(BaseModel):
+    results: list[UserNotificationResponse]
+    range_start: int
+    range_end: int
+    total_count: int
+    total_pages: int
+    page: int
+    page_size: int
+    unread_count: int

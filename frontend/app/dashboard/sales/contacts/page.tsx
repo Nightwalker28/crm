@@ -39,6 +39,7 @@ export default function ContactsPage() {
     rangeStart,
     rangeEnd,
     pageSize,
+    onPageSizeChange,
     isLoading,
     error,
     goToPage,
@@ -46,12 +47,38 @@ export default function ContactsPage() {
   } = useContacts(visibleColumns, draftConfig.filters);
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const currentPageIds = useMemo(() => contacts.map((contact) => contact.contact_id), [contacts]);
+  const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
+    if (!currentPageIds.length) return false;
+    const selectedOnPage = currentPageIds.filter((id) => selectedIds.includes(id)).length;
+    if (!selectedOnPage) return false;
+    if (selectedOnPage === currentPageIds.length) return true;
+    return "indeterminate";
+  }, [currentPageIds, selectedIds]);
+
+  function toggleRow(contactId: number, checked: boolean) {
+    setSelectedIds((current) =>
+      checked ? Array.from(new Set([...current, contactId])) : current.filter((id) => id !== contactId),
+    );
+  }
+
+  function toggleCurrentPage(checked: boolean) {
+    setSelectedIds((current) => {
+      if (checked) {
+        return Array.from(new Set([...current, ...currentPageIds]));
+      }
+      return current.filter((id) => !currentPageIds.includes(id));
+    });
+  }
 
   return (
     <div className="flex h-full flex-col gap-6">
       <ContactsHeader
         onCreateClick={() => setCreateOpen(true)}
         onImportSuccess={refresh}
+        selectedIds={selectedIds}
+        currentPageIds={currentPageIds}
         viewSelector={
           <SavedViewSelector
             moduleKey="sales_contacts"
@@ -105,6 +132,10 @@ export default function ContactsPage() {
           isLoading={isLoading}
           visibleColumns={visibleColumns}
           columnOptions={definition?.columns ?? []}
+          selectedIds={selectedIds}
+          currentPageSelectionState={currentPageSelectionState}
+          onToggleRow={toggleRow}
+          onToggleCurrentPage={toggleCurrentPage}
         />
       </div>
 
@@ -116,7 +147,7 @@ export default function ContactsPage() {
         rangeEnd={rangeEnd}
         pageSize={pageSize}
         onPageChange={goToPage}
-        onPageSizeChange={() => {}}
+        onPageSizeChange={onPageSizeChange}
       />
 
       <CreateContactModal

@@ -57,6 +57,30 @@ export default function InsertionOrdersPage() {
     isSaving,
     isDeleting,
   } = useInsertionOrders(visibleColumns, draftConfig.filters, 1, 10);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const currentPageIds = useMemo(() => orders.map((order) => order.id), [orders]);
+  const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
+    if (!currentPageIds.length) return false;
+    const selectedOnPage = currentPageIds.filter((id) => selectedIds.includes(id)).length;
+    if (!selectedOnPage) return false;
+    if (selectedOnPage === currentPageIds.length) return true;
+    return "indeterminate";
+  }, [currentPageIds, selectedIds]);
+
+  function toggleRow(orderId: number, checked: boolean) {
+    setSelectedIds((current) =>
+      checked ? Array.from(new Set([...current, orderId])) : current.filter((id) => id !== orderId),
+    );
+  }
+
+  function toggleCurrentPage(checked: boolean) {
+    setSelectedIds((current) => {
+      if (checked) {
+        return Array.from(new Set([...current, ...currentPageIds]));
+      }
+      return current.filter((id) => !currentPageIds.includes(id));
+    });
+  }
 
   const handleCreateClick = () => {
     setSelectedOrder(null);
@@ -96,6 +120,8 @@ export default function InsertionOrdersPage() {
         <InsertionOrdersHeader
           onCreateClick={handleCreateClick}
           onUploadSuccess={refresh}
+          selectedIds={selectedIds}
+          currentPageIds={currentPageIds}
           viewSelector={
             <SavedViewSelector
             moduleKey="finance_io"
@@ -179,6 +205,10 @@ export default function InsertionOrdersPage() {
           onDelete={handleDelete}
           visibleColumns={visibleColumns}
           columnOptions={definition?.columns ?? []}
+          selectedIds={selectedIds}
+          currentPageSelectionState={currentPageSelectionState}
+          onToggleRow={toggleRow}
+          onToggleCurrentPage={toggleCurrentPage}
         />
 
         <Pagination

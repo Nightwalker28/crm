@@ -6,6 +6,7 @@ import Link from "next/link";
 import { UserRound, HandCoins, LogOut, BriefcaseBusiness, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import NotificationCenter from "@/components/notifications/NotificationCenter";
 
 import {
   SidebarNav,
@@ -144,6 +145,9 @@ export default function Sidebar() {
         <div
           className="relative noise-overlay rounded-lg border border-white/12 bg-white/6 p-1.5 text-neutral-100 transition-colors duration-150 hover:bg-white/10 hover:border-white/20"
         >
+          <div className="mb-1.5 flex justify-end">
+            <NotificationCenter />
+          </div>
           <div className="flex items-center justify-between gap-2">
             <Link href="/dashboard/profile" className="flex min-w-0 items-center gap-2 rounded-md px-1 py-1">
               {user?.photo_url ? (
@@ -174,6 +178,7 @@ export default function Sidebar() {
 
             <button
               onClick={logout}
+              type="button"
               className="flex h-8 w-8 items-center justify-center rounded-md text-neutral-300 transition-colors hover:bg-white/6 hover:text-red-300"
               title="Logout"
             >

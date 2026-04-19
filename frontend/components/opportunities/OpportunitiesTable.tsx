@@ -5,6 +5,7 @@ import { HandCoins, Pencil, Trash2 } from "lucide-react";
 
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
+import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -26,6 +27,10 @@ type Props = {
   onEdit: (opportunity: Opportunity) => void;
   onDelete: (opportunity: Opportunity) => void;
   onCreateFinanceIo: (opportunity: Opportunity) => void;
+  selectedIds?: number[];
+  currentPageSelectionState?: boolean | "indeterminate";
+  onToggleRow?: (opportunityId: number, checked: boolean) => void;
+  onToggleCurrentPage?: (checked: boolean) => void;
 };
 
 const STAGE_STYLES: Record<string, { bg: string; text: string; border: string }> = {
@@ -77,8 +82,12 @@ export default function OpportunitiesTable({
   onEdit,
   onDelete,
   onCreateFinanceIo,
+  selectedIds = [],
+  currentPageSelectionState = false,
+  onToggleRow,
+  onToggleCurrentPage,
 }: Props) {
-  const columnCount = visibleColumns.length + 1;
+  const columnCount = visibleColumns.length + 2;
   const headers: Record<string, string> = {
     opportunity_name: "Opportunity",
     client: "Client",
@@ -197,6 +206,16 @@ export default function OpportunitiesTable({
       <Table className="min-w-[1040px]">
         <TableHeader>
           <TableHeaderRow>
+            <TableHead className="w-12 pr-0">
+              <Checkbox
+                checked={currentPageSelectionState}
+                onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
+                className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                aria-label="Select current page opportunities"
+              >
+                <CheckboxIndicator className="h-3 w-3" />
+              </Checkbox>
+            </TableHead>
             {visibleColumns.map((column) => (
               <TableHead key={column}>
                 {headers[column] ?? getReadableColumnLabel(column, columnOptions)}
@@ -229,6 +248,16 @@ export default function OpportunitiesTable({
           ) : (
             opportunities.map((opportunity) => (
               <TableRow key={opportunity.opportunity_id} className="group">
+                <TableCell className="w-12 pr-0">
+                  <Checkbox
+                    checked={selectedIds.includes(opportunity.opportunity_id)}
+                    onCheckedChange={(checked) => onToggleRow?.(opportunity.opportunity_id, checked === true)}
+                    className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                    aria-label={`Select opportunity ${opportunity.opportunity_name}`}
+                  >
+                    <CheckboxIndicator className="h-3 w-3" />
+                  </Checkbox>
+                </TableCell>
                 {visibleColumns.map((column) => (
                   <Fragment key={column}>{renderCell(opportunity, column)}</Fragment>
                 ))}

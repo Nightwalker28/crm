@@ -41,6 +41,11 @@ This file captures the current intended technical patterns and constraints so ne
 - Important write actions should be logged with actor/module/entity/action metadata.
 - Logging is explicit in service/route flows rather than assumed by the ORM.
 
+### Notifications
+
+- User-facing operational notifications should use one shared persisted notification model and API instead of each background workflow inventing its own UI state.
+- Background job systems such as import/export should write queued/completed/failed notifications into that shared center so users can leave and come back without losing status visibility.
+
 ### Search / Import / Export
 
 - Shared helpers exist for search, CSV parsing, uploads, and downloads.

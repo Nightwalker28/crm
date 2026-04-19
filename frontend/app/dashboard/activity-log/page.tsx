@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { ClipboardList } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
@@ -83,7 +84,12 @@ export default function ActivityLogPage() {
         {query.isLoading ? (
           <div className="px-5 py-5 text-sm text-neutral-500">Loading activity…</div>
         ) : !data?.results?.length ? (
-          <div className="px-5 py-5 text-sm text-neutral-500">No activity matched the current filter.</div>
+          <div className="px-5 py-8">
+            <div className="flex flex-col items-center justify-center gap-2 text-center text-neutral-500">
+              <ClipboardList className="h-8 w-8 text-neutral-700" />
+              <div className="text-sm">No activity matched the current filter.</div>
+            </div>
+          </div>
         ) : (
           <div className="divide-y divide-neutral-800">
             {data.results.map((item) => (

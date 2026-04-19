@@ -43,8 +43,8 @@ type OpportunitiesResponse = {
   page: number;
 };
 
-async function fetchOpportunities(page: number, filters: SavedViewFilters, visibleColumns: string[]) {
-  const params = new URLSearchParams({ page: String(page) });
+async function fetchOpportunities(page: number, pageSize: number, filters: SavedViewFilters, visibleColumns: string[]) {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   appendSavedViewFilterParams(params, filters);
   const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
   if (baseVisibleColumns.length) {
@@ -94,14 +94,20 @@ async function createFinanceIo(opportunityId: number) {
   return res.json();
 }
 
-export function useOpportunities(visibleColumns: string[], viewFilters: SavedViewFilters, initialPage = 1) {
+export function useOpportunities(
+  visibleColumns: string[],
+  viewFilters: SavedViewFilters,
+  initialPage = 1,
+  initialPageSize = 10,
+) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState(initialPageSize);
   const deferredFilters = useDeferredValue(viewFilters);
 
   const query = useQuery({
-    queryKey: ["sales-opportunities", page, deferredFilters, visibleColumns],
-    queryFn: () => fetchOpportunities(page, deferredFilters, visibleColumns),
+    queryKey: ["sales-opportunities", page, pageSize, deferredFilters, visibleColumns],
+    queryFn: () => fetchOpportunities(page, pageSize, deferredFilters, visibleColumns),
     placeholderData: keepPreviousData,
   });
 
@@ -135,9 +141,14 @@ export function useOpportunities(visibleColumns: string[], viewFilters: SavedVie
     totalCount: data?.total_count ?? 0,
     rangeStart: data?.range_start ?? 0,
     rangeEnd: data?.range_end ?? 0,
+    pageSize,
     isLoading: query.isLoading || query.isFetching,
     error: query.error instanceof Error ? query.error.message : null,
     goToPage: setPage,
+    onPageSizeChange: (nextPageSize: number) => {
+      setPage(1);
+      setPageSize(nextPageSize);
+    },
     refresh: () => query.refetch(),
     createOpportunity: (payload: OpportunityPayload) => createMutation.mutateAsync(payload),
     updateOpportunity: (opportunityId: number, payload: Partial<OpportunityPayload>) =>

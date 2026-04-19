@@ -1,27 +1,19 @@
 "use client";
 
-import GridLayout from "react-grid-layout";
-import "react-grid-layout/css/styles.css";
-import "react-resizable/css/styles.css";
-
 export default function FinancePage() {
   return (
     <div className="p-4">
       <h1 className="text-2xl font-bold mb-4">Finance Dashboard</h1>
 
-      <GridLayout
-        className="layout"
-        gridConfig={{ cols: 12, rowHeight: 100 }}
-        width={1200}
-      >
-        <div key="a" className="bg-slate-800 text-white rounded p-4">
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded bg-slate-800 p-4 text-white">
           Widget A
         </div>
 
-        <div key="b" className="bg-slate-700 text-white rounded p-4">
+        <div className="rounded bg-slate-700 p-4 text-white">
           Widget B
         </div>
-      </GridLayout>
+      </div>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useDeferredValue, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
@@ -31,8 +31,13 @@ export type ContactsResponse = {
   page: number;
 };
 
-async function fetchContacts(page: number, visibleColumns: string[], filters: SavedViewFilters): Promise<ContactsResponse> {
-  const params = new URLSearchParams({ page: String(page) });
+async function fetchContacts(
+  page: number,
+  pageSize: number,
+  visibleColumns: string[],
+  filters: SavedViewFilters,
+): Promise<ContactsResponse> {
+  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
   if (baseVisibleColumns.length) {
     params.append("fields", baseVisibleColumns.join(","));
@@ -45,12 +50,19 @@ async function fetchContacts(page: number, visibleColumns: string[], filters: Sa
   return res.json();
 }
 
-export function useContacts(visibleColumns: string[], viewFilters: SavedViewFilters, initialPage = 1) {
+export function useContacts(
+  visibleColumns: string[],
+  viewFilters: SavedViewFilters,
+  initialPage = 1,
+  initialPageSize = 10,
+) {
   const [page, setPage] = useState(initialPage);
+  const [pageSize, setPageSize] = useState(initialPageSize);
+  const deferredFilters = useDeferredValue(viewFilters);
 
   const query = useQuery({
-    queryKey: ["sales-contacts", page, visibleColumns, viewFilters],
-    queryFn: () => fetchContacts(page, visibleColumns, viewFilters),
+    queryKey: ["sales-contacts", page, pageSize, visibleColumns, deferredFilters],
+    queryFn: () => fetchContacts(page, pageSize, visibleColumns, deferredFilters),
     placeholderData: keepPreviousData,
   });
 
@@ -65,10 +77,14 @@ export function useContacts(visibleColumns: string[], viewFilters: SavedViewFilt
     totalCount: data?.total_count ?? 0,
     rangeStart,
     rangeEnd,
-    pageSize: rangeStart && rangeEnd ? rangeEnd - rangeStart + 1 : 0,
+    pageSize,
     isLoading: query.isLoading || query.isFetching,
     error: query.error instanceof Error ? "Failed to load contacts" : null,
     goToPage: setPage,
+    onPageSizeChange: (nextPageSize: number) => {
+      setPage(1);
+      setPageSize(nextPageSize);
+    },
     refresh: () => query.refetch(),
   };
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { Sparkles } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -202,7 +203,15 @@ export default function CustomFieldsPage() {
           {query.isLoading ? (
             <div className="px-5 py-5 text-sm text-neutral-500">Loading custom fields…</div>
           ) : !query.data?.length ? (
-            <div className="px-5 py-5 text-sm text-neutral-500">No custom fields configured for this module.</div>
+            <div className="px-5 py-8">
+              <div className="flex flex-col items-center justify-center rounded-lg border border-dashed border-neutral-800 bg-neutral-950/50 px-6 py-10 text-center">
+                <Sparkles className="h-8 w-8 text-neutral-600" />
+                <div className="mt-3 text-sm font-medium text-neutral-200">No custom fields yet</div>
+                <div className="mt-1 text-sm text-neutral-500">
+                  Use the form on the left to add the first custom field for this module.
+                </div>
+              </div>
+            </div>
           ) : (
             <div className="divide-y divide-neutral-800">
               {query.data.map((field) => (
