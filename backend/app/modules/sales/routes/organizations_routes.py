@@ -127,6 +127,7 @@ def create_sales_organization(
         )
         log_activity(
             db,
+            tenant_id=current_user.tenant_id,
             actor_user_id=current_user.id if current_user else None,
             module_key="sales_organizations",
             entity_type="sales_organization",
@@ -163,6 +164,7 @@ def get_sales_organizations(
     if search:
         items, total = search_organizations_pagianted(
             db=db,
+            tenant_id=current_user.tenant_id,
             name=search,
             offset=pagination.offset,
             limit=pagination.limit,
@@ -172,6 +174,7 @@ def get_sales_organizations(
     else:
         items, total = list_organizations_paginated(
             db=db,
+            tenant_id=current_user.tenant_id,
             offset=pagination.offset,
             limit=pagination.limit,
             all_filter_conditions=all_conditions,
@@ -190,7 +193,12 @@ def get_deleted_sales_organizations(
     require_module = Depends(require_module_access('sales_organizations')),
     require_permission = Depends(require_action_access("sales_organizations", "restore")),
 ):
-    items, total = list_deleted_organizations_paginated(db=db, offset=pagination.offset, limit=pagination.limit)
+    items, total = list_deleted_organizations_paginated(
+        db=db,
+        tenant_id=current_user.tenant_id,
+        offset=pagination.offset,
+        limit=pagination.limit,
+    )
     serialized = [SalesOrganizationResponse.model_validate(item) for item in items]
     return build_paged_response(serialized, total_count=total, pagination=pagination)
 
@@ -217,6 +225,7 @@ def search_sales_organizations(
     items, total = search_organizations_pagianted(
         db,
         name,
+        tenant_id=current_user.tenant_id,
         offset=pagination.offset,
         limit=pagination.limit,
         all_filter_conditions=all_conditions,
@@ -235,7 +244,7 @@ def get_sales_organization(
     require_module = Depends(require_module_access('sales_organizations')),
     require_permission = Depends(require_action_access("sales_organizations", "view")),
 ):
-    org = get_organization(db=db, org_id=org_id)
+    org = get_organization(db=db, org_id=org_id, tenant_id=current_user.tenant_id)
     if not org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
@@ -250,7 +259,7 @@ def get_sales_organization_summary(
     require_module = Depends(require_module_access('sales_organizations')),
     require_permission = Depends(require_action_access("sales_organizations", "view")),
 ):
-    org = get_organization(db=db, org_id=org_id)
+    org = get_organization(db=db, org_id=org_id, tenant_id=current_user.tenant_id)
     if not org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
@@ -266,17 +275,18 @@ def edit_sales_organization(
     require_module = Depends(require_module_access('sales_organizations')),
     require_permission = Depends(require_action_access("sales_organizations", "edit")),
 ):
-    existing = get_organization(db=db, org_id=org_id)
+    existing = get_organization(db=db, org_id=org_id, tenant_id=current_user.tenant_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
     before_state = _serialize_organization(existing)
-    org = update_organization(db=db, org_id=org_id, payload=payload)
+    org = update_organization(db=db, org_id=org_id, payload=payload, tenant_id=current_user.tenant_id)
     if not org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_organizations",
         entity_type="sales_organization",
@@ -297,17 +307,18 @@ def delete_sales_organization(
     require_module = Depends(require_module_access('sales_organizations')),
     require_permission = Depends(require_action_access("sales_organizations", "delete")),
 ):
-    org = get_organization(db=db, org_id=org_id)
+    org = get_organization(db=db, org_id=org_id, tenant_id=current_user.tenant_id)
     if not org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
     before_state = _serialize_organization(org)
-    deleted = delete_organization(db=db, org_id=org_id)
+    deleted = delete_organization(db=db, org_id=org_id, tenant_id=current_user.tenant_id)
 
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_organizations",
         entity_type="sales_organization",
@@ -326,12 +337,13 @@ def restore_sales_organization(
     require_module = Depends(require_module_access('sales_organizations')),
     require_permission = Depends(require_action_access("sales_organizations", "restore")),
 ):
-    org = restore_organization(db=db, org_id=org_id)
+    org = restore_organization(db=db, org_id=org_id, tenant_id=current_user.tenant_id)
     if not org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_organizations",
         entity_type="sales_organization",
@@ -372,6 +384,7 @@ async def import_sales_organizations(
         mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "sales_organizations")
         job = create_data_transfer_job(
             db,
+            tenant_id=current_user.tenant_id,
             actor_user_id=current_user.id,
             module_key="sales_organizations",
             operation_type="import",
@@ -447,6 +460,7 @@ def export_sales_organizations(
 ):
     job = create_data_transfer_job(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_organizations",
         operation_type="export",

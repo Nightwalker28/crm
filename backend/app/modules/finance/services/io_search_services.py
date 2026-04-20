@@ -166,8 +166,8 @@ def _finance_record_currency(record: FinanceIO) -> str:
     return _normalize_text(record.currency) or DEFAULT_IO_CURRENCY
 
 
-def _normalize_allowed_currency(db: Session, currency: str | None) -> str:
-    allowed = get_company_operating_currencies(db)
+def _normalize_allowed_currency(db: Session, current_user, currency: str | None) -> str:
+    allowed = get_company_operating_currencies(db, current_user)
     normalized = (_normalize_text(currency) or allowed[0]).upper()
     if normalized not in allowed:
         raise ValueError(f"Currency must be one of: {', '.join(allowed)}")
@@ -582,6 +582,7 @@ def parse_human_date(value: str) -> datetime.date | None:
 def list_insertion_orders(
     db: Session,
     *,
+    tenant_id: int,
     module_id: int,
     user_id: int | None,
     pagination,
@@ -591,6 +592,7 @@ def list_insertion_orders(
     any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[FinanceIO], int]:
     query = db.query(FinanceIO).filter(
+        FinanceIO.tenant_id == tenant_id,
         FinanceIO.module_id == module_id,
         FinanceIO.deleted_at.is_(None),
     )
@@ -614,6 +616,7 @@ def list_insertion_orders(
         "updated_at": {"expression": FinanceIO.updated_at, "type": "date"},
         **build_custom_field_filter_map(
             db,
+            tenant_id=tenant_id,
             module_key="finance_io",
             record_id_expression=FinanceIO.id,
         ),
@@ -651,6 +654,7 @@ def list_insertion_orders(
     records = query.offset(pagination.offset).limit(pagination.limit).all()
     records = hydrate_custom_field_records(
         db,
+        tenant_id=tenant_id,
         module_key="finance_io",
         records=records,
         record_id_attr="id",
@@ -661,12 +665,14 @@ def list_insertion_orders(
 def get_insertion_order_or_404(
     db: Session,
     *,
+    tenant_id: int,
     module_id: int,
     io_id: int,
     user_id: int | None,
 ) -> FinanceIO:
     query = db.query(FinanceIO).filter(
         FinanceIO.id == io_id,
+        FinanceIO.tenant_id == tenant_id,
         FinanceIO.module_id == module_id,
         FinanceIO.deleted_at.is_(None),
     )
@@ -678,6 +684,7 @@ def get_insertion_order_or_404(
         raise ValueError("Insertion order not found")
     return hydrate_custom_field_record(
         db,
+        tenant_id=tenant_id,
         module_key="finance_io",
         record=record,
         record_id=record.id,
@@ -693,6 +700,7 @@ def create_insertion_order(
 ) -> FinanceIO:
     custom_data = validate_custom_field_payload(
         db,
+        tenant_id=current_user.tenant_id,
         module_key="finance_io",
         payload=data.pop("custom_fields", None),
     )
@@ -735,6 +743,7 @@ def create_insertion_order(
     end_date = parse_human_date(data["end_date"]) if data.get("end_date") else None
 
     record = FinanceIO(
+        tenant_id=current_user.tenant_id,
         module_id=module_id,
         user_id=current_user.id if current_user else None,
         io_number=requested_io_number or f"{IO_NUMBER_PREFIX}{next_io_sequence:0{IO_NUMBER_PAD}d}",
@@ -750,7 +759,7 @@ def create_insertion_order(
         start_date=start_date,
         end_date=end_date,
         status=_normalize_text(data.get("status")) or DEFAULT_IO_STATUS,
-        currency=_normalize_allowed_currency(db, data.get("currency")),
+        currency=_normalize_allowed_currency(db, current_user, data.get("currency")),
         subtotal_amount=_parse_decimal(data.get("subtotal_amount")),
         tax_amount=_parse_decimal(data.get("tax_amount")),
         total_amount=_parse_decimal(data.get("total_amount")),
@@ -760,10 +769,17 @@ def create_insertion_order(
     db.add(record)
     db.commit()
     db.refresh(record)
-    save_custom_field_values(db, module_key="finance_io", record_id=record.id, values=custom_data)
+    save_custom_field_values(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="finance_io",
+        record_id=record.id,
+        values=custom_data,
+    )
     db.commit()
     return hydrate_custom_field_record(
         db,
+        tenant_id=current_user.tenant_id,
         module_key="finance_io",
         record=record,
         record_id=record.id,
@@ -780,10 +796,12 @@ def update_insertion_order(
     if "custom_fields" in data:
         record.custom_data = validate_custom_field_payload(
             db,
+            tenant_id=record.tenant_id,
             module_key="finance_io",
             payload=data.pop("custom_fields"),
             existing=load_custom_field_values_with_fallback(
                 db,
+                tenant_id=record.tenant_id,
                 module_key="finance_io",
                 record_id=record.id,
                 fallback=record.custom_data,
@@ -850,7 +868,7 @@ def update_insertion_order(
         if key in data:
             value = _normalize_text(data[key]) if data[key] is not None else None
             if key == "currency":
-                value = _normalize_allowed_currency(db, value)
+                value = _normalize_allowed_currency(db, current_user, value)
             setattr(record, key, value)
 
     for key in {"subtotal_amount", "tax_amount", "total_amount"}:
@@ -863,10 +881,17 @@ def update_insertion_order(
     db.add(record)
     db.commit()
     db.refresh(record)
-    save_custom_field_values(db, module_key="finance_io", record_id=record.id, values=record.custom_data or {})
+    save_custom_field_values(
+        db,
+        tenant_id=record.tenant_id,
+        module_key="finance_io",
+        record_id=record.id,
+        values=record.custom_data or {},
+    )
     db.commit()
     return hydrate_custom_field_record(
         db,
+        tenant_id=record.tenant_id,
         module_key="finance_io",
         record=record,
         record_id=record.id,
@@ -882,6 +907,7 @@ def soft_delete_insertion_order(db: Session, *, record: FinanceIO) -> None:
 def list_deleted_insertion_orders(
     db: Session,
     *,
+    tenant_id: int,
     module_id: int,
     pagination,
 ) -> tuple[list[FinanceIO], int]:
@@ -889,6 +915,7 @@ def list_deleted_insertion_orders(
         db.query(FinanceIO)
         .filter(
             FinanceIO.module_id == module_id,
+            FinanceIO.tenant_id == tenant_id,
             FinanceIO.deleted_at.is_not(None),
         )
         .order_by(FinanceIO.deleted_at.desc(), FinanceIO.updated_at.desc())
@@ -897,6 +924,7 @@ def list_deleted_insertion_orders(
     records = query.offset(pagination.offset).limit(pagination.limit).all()
     records = hydrate_custom_field_records(
         db,
+        tenant_id=tenant_id,
         module_key="finance_io",
         records=records,
         record_id_attr="id",
@@ -907,6 +935,7 @@ def list_deleted_insertion_orders(
 def get_deleted_insertion_order_or_404(
     db: Session,
     *,
+    tenant_id: int,
     module_id: int,
     io_id: int,
 ) -> FinanceIO:
@@ -914,6 +943,7 @@ def get_deleted_insertion_order_or_404(
         db.query(FinanceIO)
         .filter(
             FinanceIO.id == io_id,
+            FinanceIO.tenant_id == tenant_id,
             FinanceIO.module_id == module_id,
             FinanceIO.deleted_at.is_not(None),
         )
@@ -923,6 +953,7 @@ def get_deleted_insertion_order_or_404(
         raise ValueError("Deleted insertion order not found")
     return hydrate_custom_field_record(
         db,
+        tenant_id=tenant_id,
         module_key="finance_io",
         record=record,
         record_id=record.id,
@@ -936,6 +967,7 @@ def restore_insertion_order(db: Session, *, record: FinanceIO) -> FinanceIO:
     db.refresh(record)
     return hydrate_custom_field_record(
         db,
+        tenant_id=record.tenant_id,
         module_key="finance_io",
         record=record,
         record_id=record.id,

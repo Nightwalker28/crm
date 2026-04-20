@@ -21,6 +21,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { resolveMediaUrl } from "@/lib/media";
 
 type User = {
   id: number;
@@ -70,10 +71,11 @@ export default function ApproveUserDialog({
             <div className="flex items-center gap-3 px-3 py-2 rounded-md bg-neutral-950 border border-neutral-800">
               {user.photo_url ? (
                 <Image
-                  src={user.photo_url}
+                  src={resolveMediaUrl(user.photo_url)}
                   alt=""
                   width={32}
                   height={32}
+                  unoptimized
                   className="h-8 w-8 rounded-lg object-cover"
                 />
               ) : (

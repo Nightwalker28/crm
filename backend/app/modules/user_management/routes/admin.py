@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.security import require_admin
+from app.core.tenancy import get_frontend_origin_for_request
 from app.core.pagination import Pagination, get_pagination
 from app.modules.user_management.schema import (
     AdminCreateUserRequest,
@@ -69,7 +70,7 @@ def list_all_users(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    response = admin_users.list_all_users(db, pagination)
+    response = admin_users.list_all_users(db, tenant_id=admin.tenant_id, pagination=pagination)
     selected_fields = _parse_list_fields(fields)
     response["results"] = [_serialize_user_list_item(user, selected_fields) for user in response["results"]]
     return response
@@ -98,6 +99,7 @@ def search_users(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     response = admin_users.search_users(
         db,
+        tenant_id=admin.tenant_id,
         pagination=pagination,
         q=q,
         teams=teams,
@@ -187,10 +189,16 @@ def update_role_permissions(
 @router.post("", response_model=AdminCreateUserResponse, status_code=status.HTTP_201_CREATED)
 def create_user(
     payload: AdminCreateUserRequest,
+    request: Request,
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_users.create_user(db, payload)
+    return admin_users.create_user(
+        db,
+        payload,
+        tenant_id=admin.tenant_id,
+        frontend_origin=get_frontend_origin_for_request(request),
+    )
 
 @router.post("/departments", response_model=DepartmentSchema, status_code=status.HTTP_201_CREATED)
 def create_department(
@@ -270,4 +278,4 @@ def update_user(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_users.update_user(db, user_id, payload)
+    return admin_users.update_user(db, user_id, payload, tenant_id=admin.tenant_id)

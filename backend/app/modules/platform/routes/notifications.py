@@ -24,6 +24,7 @@ def get_notifications(
 ):
     items, total, unread_count = list_notifications(
         db,
+        tenant_id=current_user.tenant_id,
         user_id=current_user.id,
         pagination=pagination,
         status_filter=status_filter,
@@ -39,7 +40,7 @@ def read_all_notifications(
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
 ):
-    updated = mark_all_notifications_read(db, user_id=current_user.id)
+    updated = mark_all_notifications_read(db, tenant_id=current_user.tenant_id, user_id=current_user.id)
     return {"updated_count": updated}
 
 
@@ -49,6 +50,11 @@ def read_notification(
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
 ):
-    notification = get_notification_or_404(db, notification_id=notification_id, user_id=current_user.id)
+    notification = get_notification_or_404(
+        db,
+        notification_id=notification_id,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+    )
     notification = mark_notification_read(db, notification=notification)
     return UserNotificationResponse.model_validate(notification)

@@ -243,6 +243,11 @@ class UserProfileUpdateRequest(BaseModel):
     bio: Optional[str] = None
 
 
+class UserImageUploadResponse(BaseModel):
+    photo_url: str
+    user: UserProfile
+
+
 class CompanyProfileResponse(BaseModel):
     id: int
     name: str
@@ -271,6 +276,11 @@ class CompanyProfileUpdateRequest(BaseModel):
     operating_currencies: list[str] | None = None
     billing_address: Optional[str] = None
     logo_url: Optional[str] = None
+
+
+class CompanyLogoUploadResponse(BaseModel):
+    logo_url: str
+    company: CompanyProfileResponse
 
 
 class TablePreferenceResponse(BaseModel):

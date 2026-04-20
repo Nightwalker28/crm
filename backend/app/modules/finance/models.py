@@ -7,6 +7,7 @@ class FinanceIO(Base):
     __tablename__ = "finance_io"
 
     id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     module_id = Column(BigInteger, nullable=False)
 
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

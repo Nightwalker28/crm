@@ -129,8 +129,8 @@ def _contact_display_name(contact: SalesContact) -> str:
     return full_name or contact.primary_email or "Unnamed Contact"
 
 
-def _normalize_currency(db: Session, currency: str | None) -> str:
-    allowed = get_company_operating_currencies(db)
+def _normalize_currency(db: Session, current_user, currency: str | None) -> str:
+    allowed = get_company_operating_currencies(db, current_user)
     normalized = (currency or allowed[0]).strip().upper()
     if normalized not in allowed:
         raise HTTPException(
@@ -163,13 +163,17 @@ def _parse_optional_date(value: str | None) -> date | None:
 
 def list_opportunities(
     db: Session,
+    tenant_id: int,
     pagination: Pagination,
     search: str | None = None,
     *,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[SalesOpportunity], int]:
-    query = db.query(SalesOpportunity).filter(SalesOpportunity.deleted_at.is_(None))
+    query = db.query(SalesOpportunity).filter(
+        SalesOpportunity.tenant_id == tenant_id,
+        SalesOpportunity.deleted_at.is_(None),
+    )
     filter_field_map = {
         "opportunity_name": {"expression": SalesOpportunity.opportunity_name, "type": "text"},
         "client": {"expression": SalesOpportunity.client, "type": "text"},
@@ -181,6 +185,7 @@ def list_opportunities(
         "created_time": {"expression": SalesOpportunity.created_time, "type": "date"},
         **build_custom_field_filter_map(
             db,
+            tenant_id=tenant_id,
             module_key="sales_opportunities",
             record_id_expression=SalesOpportunity.opportunity_id,
         ),
@@ -202,6 +207,7 @@ def list_opportunities(
     items = query.offset(pagination.offset).limit(pagination.limit).all()
     items = hydrate_custom_field_records(
         db,
+        tenant_id=tenant_id,
         module_key="sales_opportunities",
         records=items,
         record_id_attr="opportunity_id",
@@ -211,9 +217,13 @@ def list_opportunities(
 
 def list_deleted_opportunities(
     db: Session,
+    tenant_id: int,
     pagination: Pagination,
 ) -> tuple[list[SalesOpportunity], int]:
-    query = db.query(SalesOpportunity).filter(SalesOpportunity.deleted_at.is_not(None))
+    query = db.query(SalesOpportunity).filter(
+        SalesOpportunity.tenant_id == tenant_id,
+        SalesOpportunity.deleted_at.is_not(None),
+    )
     total_count = query.count()
     items = (
         query.order_by(SalesOpportunity.deleted_at.desc(), SalesOpportunity.created_time.desc())
@@ -223,6 +233,7 @@ def list_deleted_opportunities(
     )
     items = hydrate_custom_field_records(
         db,
+        tenant_id=tenant_id,
         module_key="sales_opportunities",
         records=items,
         record_id_attr="opportunity_id",
@@ -234,11 +245,15 @@ def get_opportunity_or_404(
     db: Session,
     opportunity_id: int,
     *,
+    tenant_id: int,
     include_deleted: bool = False,
 ) -> SalesOpportunity:
     opportunity = (
         db.query(SalesOpportunity)
-        .filter(SalesOpportunity.opportunity_id == opportunity_id)
+        .filter(
+            SalesOpportunity.opportunity_id == opportunity_id,
+            SalesOpportunity.tenant_id == tenant_id,
+        )
         .filter(SalesOpportunity.deleted_at.is_not(None) if include_deleted else SalesOpportunity.deleted_at.is_(None))
         .first()
     )
@@ -246,15 +261,17 @@ def get_opportunity_or_404(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found")
     return hydrate_custom_field_record(
         db,
+        tenant_id=tenant_id,
         module_key="sales_opportunities",
         record=opportunity,
         record_id=opportunity.opportunity_id,
     )
 
 
-def create_opportunity(db: Session, data: dict) -> SalesOpportunity:
+def create_opportunity(db: Session, data: dict, *, current_user) -> SalesOpportunity:
     custom_data = validate_custom_field_payload(
         db,
+        tenant_id=current_user.tenant_id,
         module_key="sales_opportunities",
         payload=data.pop("custom_fields", None),
     )
@@ -263,6 +280,8 @@ def create_opportunity(db: Session, data: dict) -> SalesOpportunity:
     if contact_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="contact_id is required")
     contact = _get_contact_or_404(db, contact_id)
+    if contact.tenant_id != current_user.tenant_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact not found")
     data["client"] = _contact_display_name(contact)
     if not data.get("organization_id") and contact.organization_id is not None:
         data["organization_id"] = contact.organization_id
@@ -278,30 +297,40 @@ def create_opportunity(db: Session, data: dict) -> SalesOpportunity:
     if "attachments" in data:
         data["attachments"] = _serialize_attachment_paths(data.get("attachments"))
     if "currency_type" in data:
-        data["currency_type"] = _normalize_currency(db, data.get("currency_type"))
+        data["currency_type"] = _normalize_currency(db, current_user, data.get("currency_type"))
 
+    data["tenant_id"] = current_user.tenant_id
     opportunity = SalesOpportunity(**data)
     db.add(opportunity)
     db.commit()
     db.refresh(opportunity)
-    save_custom_field_values(db, module_key="sales_opportunities", record_id=opportunity.opportunity_id, values=custom_data)
+    save_custom_field_values(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_opportunities",
+        record_id=opportunity.opportunity_id,
+        values=custom_data,
+    )
     db.commit()
     return hydrate_custom_field_record(
         db,
+        tenant_id=current_user.tenant_id,
         module_key="sales_opportunities",
         record=opportunity,
         record_id=opportunity.opportunity_id,
     )
 
 
-def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict) -> SalesOpportunity:
+def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict, *, current_user) -> SalesOpportunity:
     if "custom_fields" in data:
         data["custom_data"] = validate_custom_field_payload(
             db,
+            tenant_id=opportunity.tenant_id,
             module_key="sales_opportunities",
             payload=data.pop("custom_fields"),
             existing=load_custom_field_values_with_fallback(
                 db,
+                tenant_id=opportunity.tenant_id,
                 module_key="sales_opportunities",
                 record_id=opportunity.opportunity_id,
                 fallback=opportunity.custom_data,
@@ -311,6 +340,8 @@ def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict) -
         if data["contact_id"] is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="contact_id cannot be null")
         contact = _get_contact_or_404(db, data["contact_id"])
+        if contact.tenant_id != opportunity.tenant_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact not found")
         data["client"] = _contact_display_name(contact)
         if "organization_id" not in data and contact.organization_id is not None:
             data["organization_id"] = contact.organization_id
@@ -321,17 +352,24 @@ def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict) -
     if "attachments" in data:
         data["attachments"] = _serialize_attachment_paths(data.get("attachments"))
     if "currency_type" in data and data["currency_type"] is not None:
-        data["currency_type"] = _normalize_currency(db, data.get("currency_type"))
+        data["currency_type"] = _normalize_currency(db, current_user, data.get("currency_type"))
 
     for field, value in data.items():
         setattr(opportunity, field, value)
 
     db.commit()
     db.refresh(opportunity)
-    save_custom_field_values(db, module_key="sales_opportunities", record_id=opportunity.opportunity_id, values=opportunity.custom_data or {})
+    save_custom_field_values(
+        db,
+        tenant_id=opportunity.tenant_id,
+        module_key="sales_opportunities",
+        record_id=opportunity.opportunity_id,
+        values=opportunity.custom_data or {},
+    )
     db.commit()
     return hydrate_custom_field_record(
         db,
+        tenant_id=opportunity.tenant_id,
         module_key="sales_opportunities",
         record=opportunity,
         record_id=opportunity.opportunity_id,
@@ -344,6 +382,7 @@ def delete_opportunity(db: Session, opportunity: SalesOpportunity) -> SalesOppor
     db.refresh(opportunity)
     return hydrate_custom_field_record(
         db,
+        tenant_id=opportunity.tenant_id,
         module_key="sales_opportunities",
         record=opportunity,
         record_id=opportunity.opportunity_id,
@@ -356,6 +395,7 @@ def restore_opportunity(db: Session, opportunity: SalesOpportunity) -> SalesOppo
     db.refresh(opportunity)
     return hydrate_custom_field_record(
         db,
+        tenant_id=opportunity.tenant_id,
         module_key="sales_opportunities",
         record=opportunity,
         record_id=opportunity.opportunity_id,

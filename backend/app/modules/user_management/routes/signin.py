@@ -7,12 +7,14 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.tenancy import get_frontend_origin_for_request, is_cloud_mode_enabled
 from app.modules.user_management.models import RefreshToken, User
 from app.modules.user_management.schema import ManualLoginRequest, SetupPasswordRequest
 from app.modules.user_management.services.auth import (
     authenticate_manual_user,
     create_access_token,
     create_refresh_token,
+    decode_oauth_state,
     decode_token,
     get_google_auth_url,
     handle_google_callback,
@@ -20,6 +22,18 @@ from app.modules.user_management.services.auth import (
 )
 
 router = APIRouter(tags=["Auth"])
+
+
+def _validate_request_tenant(request: Request, payload: dict) -> int | None:
+    tenant = getattr(request.state, "tenant", None)
+    token_tenant_id = payload.get("tenant_id")
+    if is_cloud_mode_enabled():
+        if not tenant or token_tenant_id is None or int(token_tenant_id) != int(tenant.id):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session tenant mismatch",
+            )
+    return token_tenant_id
 
 
 def _set_session_cookies(
@@ -54,9 +68,20 @@ def _set_session_cookies(
 @router.post("/login")
 def manual_login(
     payload: ManualLoginRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
-    user = authenticate_manual_user(db, email=payload.email, password=payload.password)
+    tenant = getattr(request.state, "tenant", None)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
+
+    user = authenticate_manual_user(
+        db,
+        tenant_id=tenant.id,
+        email=payload.email,
+        password=payload.password,
+        frontend_origin=get_frontend_origin_for_request(request),
+    )
     access_token = create_access_token(user)
     refresh_token = create_refresh_token(user, db)
 
@@ -85,13 +110,25 @@ def setup_password(
 @router.post("/dev/login")
 def dev_login(
     email: str,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     # Keep this endpoint out of production
     if not getattr(settings, "DEBUG", False):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
-    user = db.query(User).filter(User.email == email).first()
+    tenant = getattr(request.state, "tenant", None)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
+
+    user = (
+        db.query(User)
+        .filter(
+            User.tenant_id == tenant.id,
+            User.email == email,
+        )
+        .first()
+    )
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
@@ -109,36 +146,56 @@ def dev_login(
 
 
 @router.get("/google")
-def google_login():
-    return {"auth_url": get_google_auth_url()}
+def google_login(
+    request: Request,
+):
+    tenant = getattr(request.state, "tenant", None)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
+    return {"auth_url": get_google_auth_url(request=request, tenant=tenant)}
 
 
 @router.get("/google/callback")
 def google_callback(
+    request: Request,
     code: str | None = None,
+    state: str | None = None,
     db: Session = Depends(get_db),
 ):
+    state_payload = decode_oauth_state(state)
+    tenant = getattr(request.state, "tenant", None)
+    frontend_origin = (
+        (state_payload or {}).get("frontend_origin")
+        or get_frontend_origin_for_request(request)
+    )
+
+    if state_payload and tenant and state_payload.get("tenant_id") != tenant.id:
+        query = urllib.parse.urlencode({"status": "error"})
+        return RedirectResponse(url=f"{frontend_origin}/auth/callback?{query}")
+
     if not code:
         query = urllib.parse.urlencode({"status": "error"})
-        return RedirectResponse(url=f"{settings.FRONTEND_ORIGIN}/auth/callback?{query}")
+        return RedirectResponse(url=f"{frontend_origin}/auth/callback?{query}")
 
     try:
-        result = handle_google_callback(code, db)
+        if not tenant:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
+        result = handle_google_callback(code, db, tenant=tenant, request=request)
     except HTTPException as exc:
         status_value = "forbidden" if exc.status_code == 403 else "error"
         query = urllib.parse.urlencode({"status": status_value})
-        return RedirectResponse(url=f"{settings.FRONTEND_ORIGIN}/auth/callback?{query}")
+        return RedirectResponse(url=f"{frontend_origin}/auth/callback?{query}")
 
     status_value = result.get("status", "error")
     if status_value != "active":
         query = urllib.parse.urlencode({"status": status_value})
-        return RedirectResponse(url=f"{settings.FRONTEND_ORIGIN}/auth/callback?{query}")
+        return RedirectResponse(url=f"{frontend_origin}/auth/callback?{query}")
 
     user = result["user"]
     access_token = create_access_token(user)
     refresh_token = create_refresh_token(user, db)
 
-    response = RedirectResponse(url=f"{settings.FRONTEND_ORIGIN}/auth/callback?status=active")
+    response = RedirectResponse(url=f"{frontend_origin}/auth/callback?status=active")
     _set_session_cookies(
         response,
         access_token=access_token,
@@ -157,6 +214,7 @@ def logout(
     if refresh_token:
         try:
             payload = decode_token(refresh_token, expected_type="refresh")
+            _validate_request_tenant(request, payload)
             user_id = payload.get("sub")
             if user_id:
                 db.query(RefreshToken).filter(RefreshToken.user_id == int(user_id)).delete()
@@ -180,6 +238,7 @@ def refresh_access_token(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
 
     payload = decode_token(refresh_token, expected_type="refresh")
+    _validate_request_tenant(request, payload)
     user_id = payload.get("sub")
     jti = payload.get("jti")
 

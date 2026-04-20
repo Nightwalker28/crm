@@ -11,6 +11,7 @@ from sqlalchemy import (
     func,
     Enum,
     JSON,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
 from app.core.database import Base
@@ -34,6 +35,45 @@ class UserStatus(enum.Enum):
 class UserAuthMode(enum.Enum):
     manual_only = "manual_only"
     manual_or_google = "manual_or_google"
+
+
+class Tenant(Base):
+    __tablename__ = "tenants"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    slug = Column(String(120), nullable=False, unique=True, index=True)
+    name = Column(String(150), nullable=False)
+    is_active = Column(SmallInteger, nullable=False, default=1)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    domains = relationship(
+        "TenantDomain",
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
+    users = relationship("User", back_populates="tenant")
+
+
+class TenantDomain(Base):
+    __tablename__ = "tenant_domains"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(
+        BigInteger,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    hostname = Column(String(255), nullable=False, unique=True, index=True)
+    is_primary = Column(SmallInteger, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    tenant = relationship("Tenant", back_populates="domains")
 
 class Role(Base):
     __tablename__ = "roles"
@@ -99,8 +139,17 @@ class Team(Base):
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(
+        BigInteger,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     team_id = Column(BigInteger, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
     role_id = Column(BigInteger, ForeignKey("roles.id", ondelete="RESTRICT"), nullable=True)
 
@@ -127,6 +176,7 @@ class User(Base):
 
     team = relationship("Team", back_populates="users")
     role = relationship("Role", back_populates="users")
+    tenant = relationship("Tenant", back_populates="users")
     setup_tokens = relationship(
         "UserSetupToken",
         back_populates="user",
@@ -246,6 +296,7 @@ class CompanyProfile(Base):
     __tablename__ = "company_profiles"
 
     id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(150), nullable=False)
     primary_email = Column(String(150), nullable=True)
     website = Column(String(255), nullable=True)

@@ -42,10 +42,16 @@ def list_recycle_items(
     *,
     pagination: Pagination,
     module_key: str,
+    tenant_id: int,
 ):
     if module_key == "finance_insertion_orders":
         module_id = get_finance_module_id(db)
-        items, total = list_deleted_insertion_orders(db, module_id=module_id, pagination=pagination)
+        items, total = list_deleted_insertion_orders(
+            db,
+            tenant_id=tenant_id,
+            module_id=module_id,
+            pagination=pagination,
+        )
         serialized = [
             {
                 "module_key": module_key,
@@ -60,7 +66,7 @@ def list_recycle_items(
         return build_paged_response(serialized, total_count=total, pagination=pagination)
 
     if module_key == "sales_contacts":
-        items, total = list_deleted_sales_contacts(db, pagination)
+        items, total = list_deleted_sales_contacts(db, tenant_id, pagination)
         serialized = [
             {
                 "module_key": module_key,
@@ -75,7 +81,12 @@ def list_recycle_items(
         return build_paged_response(serialized, total_count=total, pagination=pagination)
 
     if module_key == "sales_organizations":
-        items, total = list_deleted_organizations_paginated(db, offset=pagination.offset, limit=pagination.limit)
+        items, total = list_deleted_organizations_paginated(
+            db,
+            tenant_id=tenant_id,
+            offset=pagination.offset,
+            limit=pagination.limit,
+        )
         serialized = [
             {
                 "module_key": module_key,
@@ -90,7 +101,7 @@ def list_recycle_items(
         return build_paged_response(serialized, total_count=total, pagination=pagination)
 
     if module_key == "sales_opportunities":
-        items, total = list_deleted_opportunities(db, pagination)
+        items, total = list_deleted_opportunities(db, tenant_id, pagination)
         serialized = [
             {
                 "module_key": module_key,
@@ -116,11 +127,17 @@ def restore_recycle_item(
 ):
     if module_key == "finance_insertion_orders":
         module_id = get_finance_module_id(db)
-        record = get_deleted_insertion_order_or_404(db, module_id=module_id, io_id=record_id)
+        record = get_deleted_insertion_order_or_404(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_id=module_id,
+            io_id=record_id,
+        )
         restored = restore_insertion_order(db, record=record)
         serialized = _serialize_finance_record(restored, request=None, current_user=current_user)
         log_activity(
             db,
+            tenant_id=current_user.tenant_id,
             actor_user_id=current_user.id if current_user else None,
             module_key=module_key,
             entity_type="finance_insertion_order",
@@ -132,11 +149,12 @@ def restore_recycle_item(
         return serialized
 
     if module_key == "sales_contacts":
-        contact = get_contact_or_404(db, record_id, include_deleted=True)
+        contact = get_contact_or_404(db, record_id, tenant_id=current_user.tenant_id, include_deleted=True)
         restored = restore_sales_contact(db, contact)
         serialized = SalesContactResponse.model_validate(restored).model_dump(mode="json")
         log_activity(
             db,
+            tenant_id=current_user.tenant_id,
             actor_user_id=current_user.id if current_user else None,
             module_key=module_key,
             entity_type="sales_contact",
@@ -148,12 +166,13 @@ def restore_recycle_item(
         return serialized
 
     if module_key == "sales_organizations":
-        restored = restore_organization(db, record_id)
+        restored = restore_organization(db, record_id, tenant_id=current_user.tenant_id)
         if not restored:
             raise ValueError("Deleted organization not found")
         serialized = SalesOrganizationResponse.model_validate(restored).model_dump(mode="json")
         log_activity(
             db,
+            tenant_id=current_user.tenant_id,
             actor_user_id=current_user.id if current_user else None,
             module_key=module_key,
             entity_type="sales_organization",
@@ -165,11 +184,12 @@ def restore_recycle_item(
         return serialized
 
     if module_key == "sales_opportunities":
-        opportunity = get_opportunity_or_404(db, record_id, include_deleted=True)
+        opportunity = get_opportunity_or_404(db, record_id, tenant_id=current_user.tenant_id, include_deleted=True)
         restored = restore_opportunity(db, opportunity)
         serialized = SalesOpportunityResponse.model_validate(restored).model_dump(mode="json")
         log_activity(
             db,
+            tenant_id=current_user.tenant_id,
             actor_user_id=current_user.id if current_user else None,
             module_key=module_key,
             entity_type="sales_opportunity",

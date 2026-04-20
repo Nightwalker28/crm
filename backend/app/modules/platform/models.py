@@ -8,6 +8,7 @@ class ActivityLog(Base):
     __tablename__ = "activity_logs"
 
     id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     actor_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     module_key = Column(String(100), nullable=False, index=True)
     entity_type = Column(String(100), nullable=False, index=True)
@@ -25,6 +26,7 @@ class CustomFieldDefinition(Base):
     __tablename__ = "custom_field_definitions"
 
     id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     module_key = Column(String(100), nullable=False, index=True)
     field_key = Column(String(100), nullable=False, index=True)
     label = Column(String(150), nullable=False)
@@ -44,6 +46,7 @@ class CustomFieldValue(Base):
     __tablename__ = "custom_field_values"
 
     id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     module_key = Column(String(100), nullable=False, index=True)
     record_id = Column(BigInteger, nullable=False, index=True)
     field_definition_id = Column(BigInteger, ForeignKey("custom_field_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -61,6 +64,7 @@ class DataTransferJob(Base):
     __tablename__ = "data_transfer_jobs"
 
     id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     actor_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     module_key = Column(String(100), nullable=False, index=True)
     operation_type = Column(String(20), nullable=False, index=True)
@@ -72,6 +76,8 @@ class DataTransferJob(Base):
     result_file_name = Column(String(255), nullable=True)
     result_media_type = Column(String(100), nullable=True)
     error_message = Column(Text, nullable=True)
+    progress_percent = Column(Integer, nullable=False, server_default="0")
+    progress_message = Column(String(255), nullable=True)
     started_at = Column(DateTime(timezone=True), nullable=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -84,6 +90,7 @@ class UserNotification(Base):
     __tablename__ = "user_notifications"
 
     id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     category = Column(String(50), nullable=False, index=True)
     title = Column(String(255), nullable=False)

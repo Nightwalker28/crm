@@ -24,6 +24,7 @@ import {
 } from "@/components/ui/Table";
 import { Card } from "../ui/Card";
 import { ModuleTableShell } from "../ui/ModuleTableShell";
+import { resolveMediaUrl } from "@/lib/media";
 
 export type SortKey = "name" | "role" | "email" | "status";
 export type SortDirection = "asc" | "desc";
@@ -353,10 +354,11 @@ export function UserManagementTable({
             <div className="flex items-center gap-2 h-7">
               {u.photo_url ? (
                 <Image
-                  src={u.photo_url}
+                  src={resolveMediaUrl(u.photo_url)}
                   alt=""
                   width={24}
                   height={24}
+                  unoptimized
                   className="h-6 w-6 rounded object-cover"
                 />
               ) : (

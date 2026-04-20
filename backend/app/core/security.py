@@ -10,8 +10,29 @@ from app.core.access_control import (
 )
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.tenancy import is_cloud_mode_enabled
 from app.modules.user_management.models import User, UserStatus, RefreshToken
 from app.modules.user_management.services.auth import decode_token, create_access_token
+
+
+def _validate_request_tenant(request: Request, payload: dict) -> int:
+    user_id = int(payload.get("sub"))
+    request_tenant = getattr(request.state, "tenant", None)
+    token_tenant_id = payload.get("tenant_id")
+
+    if is_cloud_mode_enabled():
+        if not request_tenant or token_tenant_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Tenant context missing",
+            )
+        if int(token_tenant_id) != int(request_tenant.id):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session tenant mismatch",
+            )
+
+    return user_id
 
 def get_current_user(
     request: Request,
@@ -31,7 +52,7 @@ def get_current_user(
     if access_token:
         try:
             payload = decode_token(access_token, expected_type="access")
-            user_id = int(payload.get("sub"))
+            user_id = _validate_request_tenant(request, payload)
         except HTTPException:
             payload = None
 
@@ -42,13 +63,19 @@ def get_current_user(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Inactive or missing user",
                 )
+            request_tenant = getattr(request.state, "tenant", None)
+            if request_tenant and user.tenant_id != request_tenant.id:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Session tenant mismatch",
+                )
             return user
 
     # 2. Access token missing or expired → try refresh
     if refresh_token:
         try:
             payload = decode_token(refresh_token, expected_type="refresh")
-            user_id = int(payload.get("sub"))
+            user_id = _validate_request_tenant(request, payload)
             jti = payload.get("jti")
         except HTTPException:
             raise HTTPException(
@@ -85,6 +112,12 @@ def get_current_user(
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Inactive or missing user",
+            )
+        request_tenant = getattr(request.state, "tenant", None)
+        if request_tenant and user.tenant_id != request_tenant.id:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session tenant mismatch",
             )
 
         # Issue new access token
@@ -136,4 +169,3 @@ def require_user(current_user: User = Depends(get_current_user), db: Session = D
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="User privileges required")
     return current_user
-

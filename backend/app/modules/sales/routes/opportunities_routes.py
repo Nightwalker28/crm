@@ -151,6 +151,7 @@ def list_sales_opportunities(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     items, total_count = list_opportunities(
         db,
+        current_user.tenant_id,
         pagination,
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
@@ -181,6 +182,7 @@ def search_sales_opportunities(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     items, total_count = list_opportunities(
         db,
+        current_user.tenant_id,
         pagination,
         search=query,
         all_filter_conditions=all_conditions,
@@ -199,7 +201,7 @@ def list_deleted_sales_opportunities(
     require_module = Depends(require_module_access("sales_opportunities")),
     require_permission = Depends(require_action_access("sales_opportunities", "restore")),
 ):
-    items, total_count = list_deleted_opportunities(db, pagination)
+    items, total_count = list_deleted_opportunities(db, current_user.tenant_id, pagination)
     serialized = [SalesOpportunityResponse.model_validate(item) for item in items]
     return build_paged_response(serialized, total_count, pagination)
 
@@ -215,9 +217,10 @@ def create_sales_opportunity(
     data = payload.model_dump()
     if not data.get("assigned_to"):
         data["assigned_to"] = current_user.id
-    opportunity = create_opportunity(db, data)
+    opportunity = create_opportunity(db, data, current_user=current_user)
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_opportunities",
         entity_type="sales_opportunity",
@@ -269,7 +272,7 @@ def get_sales_opportunity(
     require_module = Depends(require_module_access("sales_opportunities")),
     require_permission = Depends(require_action_access("sales_opportunities", "view")),
 ):
-    opportunity = get_opportunity_or_404(db, opportunity_id)
+    opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
     return SalesOpportunityResponse.model_validate(opportunity)
 
 
@@ -282,15 +285,16 @@ def update_sales_opportunity(
     require_module = Depends(require_module_access("sales_opportunities")),
     require_permission = Depends(require_action_access("sales_opportunities", "edit")),
 ):
-    opportunity = get_opportunity_or_404(db, opportunity_id)
+    opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
         return SalesOpportunityResponse.model_validate(opportunity)
 
     before_state = _serialize_opportunity(opportunity)
-    updated = update_opportunity(db, opportunity, update_data)
+    updated = update_opportunity(db, opportunity, update_data, current_user=current_user)
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_opportunities",
         entity_type="sales_opportunity",
@@ -311,11 +315,12 @@ def delete_sales_opportunity(
     require_module = Depends(require_module_access("sales_opportunities")),
     require_permission = Depends(require_action_access("sales_opportunities", "delete")),
 ):
-    opportunity = get_opportunity_or_404(db, opportunity_id)
+    opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
     before_state = _serialize_opportunity(opportunity)
     delete_opportunity(db, opportunity)
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_opportunities",
         entity_type="sales_opportunity",
@@ -334,12 +339,13 @@ def restore_sales_opportunity(
     require_module = Depends(require_module_access("sales_opportunities")),
     require_permission = Depends(require_action_access("sales_opportunities", "restore")),
 ):
-    opportunity = get_opportunity_or_404(db, opportunity_id, include_deleted=True)
+    opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id, include_deleted=True)
     if opportunity.deleted_at is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Opportunity is not in recycle bin")
     restored = restore_opportunity(db, opportunity)
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_opportunities",
         entity_type="sales_opportunity",
@@ -394,6 +400,7 @@ async def import_sales_opportunities(
         mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "sales_opportunities")
         job = create_data_transfer_job(
             db,
+            tenant_id=current_user.tenant_id,
             actor_user_id=current_user.id,
             module_key="sales_opportunities",
             operation_type="import",
@@ -464,6 +471,7 @@ def export_sales_opportunities(
 ):
     job = create_data_transfer_job(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_opportunities",
         operation_type="export",

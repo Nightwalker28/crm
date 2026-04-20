@@ -65,15 +65,19 @@ def _serialize_cached_definition(item: CachedCustomFieldDefinition) -> dict[str,
 def list_custom_field_definitions(
     db: Session,
     *,
+    tenant_id: int,
     module_key: str,
     include_inactive: bool = False,
 ) -> list[CustomFieldDefinition | CachedCustomFieldDefinition]:
-    cache_key = f"custom-field-definitions:{module_key}:{int(include_inactive)}"
+    cache_key = f"custom-field-definitions:{tenant_id}:{module_key}:{int(include_inactive)}"
     cached = cache_get_json(cache_key)
     if cached:
         return [CachedCustomFieldDefinition(**item) for item in cached]
 
-    query = db.query(CustomFieldDefinition).filter(CustomFieldDefinition.module_key == module_key)
+    query = db.query(CustomFieldDefinition).filter(
+        CustomFieldDefinition.tenant_id == tenant_id,
+        CustomFieldDefinition.module_key == module_key,
+    )
     if not include_inactive:
         query = query.filter(CustomFieldDefinition.is_active.is_(True))
     results = query.order_by(CustomFieldDefinition.sort_order.asc(), CustomFieldDefinition.id.asc()).all()
@@ -105,6 +109,7 @@ def list_custom_field_definitions(
 def create_custom_field_definition(
     db: Session,
     *,
+    tenant_id: int,
     module_key: str,
     payload: CustomFieldDefinitionCreateRequest,
 ) -> CustomFieldDefinition:
@@ -116,6 +121,7 @@ def create_custom_field_definition(
         db.query(CustomFieldDefinition)
         .filter(
             CustomFieldDefinition.module_key == module_key,
+            CustomFieldDefinition.tenant_id == tenant_id,
             CustomFieldDefinition.field_key == field_key,
         )
         .first()
@@ -125,6 +131,7 @@ def create_custom_field_definition(
 
     item = CustomFieldDefinition(
         module_key=module_key,
+        tenant_id=tenant_id,
         field_key=field_key,
         label=payload.label.strip(),
         field_type=payload.field_type,
@@ -137,17 +144,18 @@ def create_custom_field_definition(
     db.add(item)
     db.commit()
     db.refresh(item)
-    invalidate_custom_field_definition_cache(module_key)
+    invalidate_custom_field_definition_cache(module_key, tenant_id=tenant_id)
     return item
 
 
 def update_custom_field_definition(
     db: Session,
     *,
+    tenant_id: int,
     field_id: int,
     payload: CustomFieldDefinitionUpdateRequest,
 ) -> CustomFieldDefinition:
-    item = _get_custom_field_definition_or_404(db, field_id)
+    item = _get_custom_field_definition_or_404(db, field_id, tenant_id=tenant_id)
     data = payload.model_dump(exclude_unset=True)
     if "field_type" in data and data["field_type"] is not None:
         _ensure_supported_field_type(data["field_type"])
@@ -159,28 +167,29 @@ def update_custom_field_definition(
 
     db.commit()
     db.refresh(item)
-    invalidate_custom_field_definition_cache(item.module_key)
+    invalidate_custom_field_definition_cache(item.module_key, tenant_id=tenant_id)
     return item
 
 
-def invalidate_custom_field_definition_cache(module_key: str | None = None) -> None:
-    if module_key is None:
+def invalidate_custom_field_definition_cache(module_key: str | None = None, *, tenant_id: int | None = None) -> None:
+    if module_key is None or tenant_id is None:
         cache_delete_prefix("custom-field-definitions:")
         return
 
     for include_inactive in (False, True):
-        cache_delete(f"custom-field-definitions:{module_key}:{int(include_inactive)}")
+        cache_delete(f"custom-field-definitions:{tenant_id}:{module_key}:{int(include_inactive)}")
 
 
 def validate_custom_field_payload(
     db: Session,
     *,
+    tenant_id: int,
     module_key: str,
     payload: dict[str, Any] | None,
     existing: dict[str, Any] | None = None,
     enforce_required: bool = True,
 ) -> dict[str, Any]:
-    definitions = list_custom_field_definitions(db, module_key=module_key, include_inactive=False)
+    definitions = list_custom_field_definitions(db, tenant_id=tenant_id, module_key=module_key, include_inactive=False)
     definition_map = {definition.field_key: definition for definition in definitions}
     payload = payload or {}
     existing = existing or {}
@@ -215,6 +224,7 @@ def validate_custom_field_payload(
 def load_custom_field_values(
     db: Session,
     *,
+    tenant_id: int,
     module_key: str,
     record_id: int,
 ) -> dict[str, Any]:
@@ -222,6 +232,7 @@ def load_custom_field_values(
         db.query(CustomFieldValue)
         .join(CustomFieldDefinition, CustomFieldDefinition.id == CustomFieldValue.field_definition_id)
         .filter(
+            CustomFieldValue.tenant_id == tenant_id,
             CustomFieldValue.module_key == module_key,
             CustomFieldValue.record_id == record_id,
         )
@@ -246,11 +257,12 @@ def load_custom_field_values(
 def load_custom_field_values_with_fallback(
     db: Session,
     *,
+    tenant_id: int,
     module_key: str,
     record_id: int,
     fallback: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    values = load_custom_field_values(db, module_key=module_key, record_id=record_id)
+    values = load_custom_field_values(db, tenant_id=tenant_id, module_key=module_key, record_id=record_id)
     if values:
         return values
     return {key: value for key, value in (fallback or {}).items() if not _is_empty_custom_value(value)}
@@ -259,12 +271,14 @@ def load_custom_field_values_with_fallback(
 def hydrate_custom_field_record(
     db: Session,
     *,
+    tenant_id: int,
     module_key: str,
     record,
     record_id: int,
 ):
     values = load_custom_field_values_with_fallback(
         db,
+        tenant_id=tenant_id,
         module_key=module_key,
         record_id=record_id,
         fallback=getattr(record, "custom_data", None),
@@ -276,6 +290,7 @@ def hydrate_custom_field_record(
 def hydrate_custom_field_records(
     db: Session,
     *,
+    tenant_id: int,
     module_key: str,
     records: Iterable[tuple[int, Any]] | Iterable[Any],
     record_id_attr: str | None = None,
@@ -289,23 +304,25 @@ def hydrate_custom_field_records(
                 raise ValueError("record_id_attr is required when hydrating raw record iterables")
             record = entry
             record_id = getattr(record, record_id_attr)
-        hydrated.append(hydrate_custom_field_record(db, module_key=module_key, record=record, record_id=record_id))
+        hydrated.append(hydrate_custom_field_record(db, tenant_id=tenant_id, module_key=module_key, record=record, record_id=record_id))
     return hydrated
 
 
 def save_custom_field_values(
     db: Session,
     *,
+    tenant_id: int,
     module_key: str,
     record_id: int,
     values: dict[str, Any],
 ) -> None:
-    definitions = list_custom_field_definitions(db, module_key=module_key, include_inactive=True)
+    definitions = list_custom_field_definitions(db, tenant_id=tenant_id, module_key=module_key, include_inactive=True)
     definition_map = {definition.field_key: definition for definition in definitions}
 
     (
         db.query(CustomFieldValue)
         .filter(
+            CustomFieldValue.tenant_id == tenant_id,
             CustomFieldValue.module_key == module_key,
             CustomFieldValue.record_id == record_id,
         )
@@ -317,6 +334,7 @@ def save_custom_field_values(
         if not definition:
             continue
         row = CustomFieldValue(
+            tenant_id=tenant_id,
             module_key=module_key,
             record_id=record_id,
             field_definition_id=definition.id,
@@ -335,10 +353,11 @@ def save_custom_field_values(
 def build_custom_field_filter_map(
     db: Session,
     *,
+    tenant_id: int,
     module_key: str,
     record_id_expression,
 ) -> dict[str, dict[str, Any]]:
-    definitions = list_custom_field_definitions(db, module_key=module_key, include_inactive=False)
+    definitions = list_custom_field_definitions(db, tenant_id=tenant_id, module_key=module_key, include_inactive=False)
     field_map: dict[str, dict[str, Any]] = {}
 
     for definition in definitions:
@@ -361,6 +380,7 @@ def build_custom_field_filter_map(
             select(value_column)
             .where(
                 CustomFieldValue.module_key == module_key,
+                CustomFieldValue.tenant_id == tenant_id,
                 CustomFieldValue.record_id == record_id_expression,
                 CustomFieldValue.field_definition_id == definition.id,
             )
@@ -375,8 +395,15 @@ def build_custom_field_filter_map(
     return field_map
 
 
-def _get_custom_field_definition_or_404(db: Session, field_id: int) -> CustomFieldDefinition:
-    item = db.query(CustomFieldDefinition).filter(CustomFieldDefinition.id == field_id).first()
+def _get_custom_field_definition_or_404(db: Session, field_id: int, *, tenant_id: int) -> CustomFieldDefinition:
+    item = (
+        db.query(CustomFieldDefinition)
+        .filter(
+            CustomFieldDefinition.id == field_id,
+            CustomFieldDefinition.tenant_id == tenant_id,
+        )
+        .first()
+    )
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Custom field not found")
     return item

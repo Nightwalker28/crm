@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import Pagination from "@/components/ui/Pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatDateTime } from "@/lib/datetime";
 
 type ActivityItem = {
   id: number;
@@ -102,7 +103,7 @@ export default function ActivityLogPage() {
                   <span className="text-xs text-neutral-500">#{item.entity_id}</span>
                 </div>
                 <div className="mt-2 text-sm text-neutral-300">{item.description || `${item.entity_type} ${item.entity_id}`}</div>
-                <div className="mt-1 text-xs text-neutral-500">{new Date(item.created_at).toLocaleString()}</div>
+                <div className="mt-1 text-xs text-neutral-500">{formatDateTime(item.created_at)}</div>
               </div>
             ))}
           </div>

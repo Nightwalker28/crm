@@ -26,6 +26,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { resolveMediaUrl } from "@/lib/media";
 
 type User = {
   id: number;
@@ -100,10 +101,11 @@ export default function EditUserDialog({
               >
                 {user.photo_url ? (
                   <Image
-                    src={user.photo_url}
+                    src={resolveMediaUrl(user.photo_url)}
                     alt=""
                     width={34}
                     height={34}
+                    unoptimized
                     className="h-8.5 w-8.5 rounded-md object-cover shadow-sm"
                   />
                 ) : (

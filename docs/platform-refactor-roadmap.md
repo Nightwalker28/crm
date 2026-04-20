@@ -13,14 +13,27 @@ Current phase:
 - Phase 6 in progress: module wiring completion and module availability controls
 - Phase 7 pending: platform hardening, tenant isolation, and deeper performance optimization
 - Phase 7.5 in progress: auth/access-control correction, Google scope cleanup, and saved-view filter usability hardening
+- Phase 8 in progress: deployment licensing, hostname-based tenant resolution, and cloud-auth foundation
+- Phase 8.5 in progress: tenant ownership rollout across existing modules and platform defaults for timezone-aware rendering
 
 Completed items:
+- Fixed uploaded profile/company media URL resolution so backend-served `/media/...` assets are no longer incorrectly built under `/api/v1/...` on the frontend.
+- Replaced the profile timezone free-text field with a searchable timezone picker that stores the real timezone value while letting users search by country/city labels such as Sri Lanka / Colombo.
+- Added persisted progress fields to background data-transfer jobs so import/export flows can expose percentage and current-step text instead of only queued/completed/failed states.
+- Added explicit upload flows for user profile images and company logos, plus backend media serving for those uploaded assets.
+- Started the timezone-rendering rollout with shared frontend datetime helpers and applied them to notification, activity-log, recycle-bin, and key list timestamp surfaces.
 - Restored the broken finance route import path so backend reloads no longer die on `FileResponse` and dashboard data can load again after the export refactor.
 - Added a first per-user notification center foundation with persisted `user_notifications`, authenticated notification APIs, and sidebar access in the dashboard shell.
 - Wired background import/export job state into the notification center so queued, completed, and failed data-transfer events now surface outside transient toast messages.
 - Restored the branded splash/loading treatment as a full-viewport overlay and increased the minimum initial display time to 3 seconds so the shell does not show through awkwardly during load.
 - Reduced Google OAuth to identity-only scopes and removed the live Google Docs/Drive opportunity automation path.
 - Removed the old Google token-storage and document-automation code/services, plus the no-longer-needed Google client dependencies.
+- Started the cloud-auth foundation by introducing tenant and tenant-domain persistence, signed deployment-license gating for hosted cloud mode, and hostname-based tenant resolution in the backend request path.
+- Updated auth token issuance and validation so access and refresh tokens now carry tenant identity and are rejected on tenant mismatch in cloud mode.
+- Scoped the current admin-user listing, creation, update, and tenant-aware sign-in flows to the resolved tenant instead of treating the whole install as one implicit global user pool.
+- Added Google OAuth state signing plus request-derived frontend origin handling so hosted cloud logins can redirect back to the correct host instead of relying only on one fixed frontend origin.
+- Started the row-ownership rollout by adding tenant ownership columns for the current major business/platform tables and scoping the first shared platform services, company profile flow, and core sales/finance paths toward tenant-aware behavior.
+- Locked tenant-aware ownership and user-timezone rendering into the architecture notes so future modules should start with those defaults instead of retrofitting them later.
 - Fixed manual-capable first-login behavior so accounts without passwords now return a setup-required response with a usable setup link instead of a dead-end generic failure.
 - Fixed post-login routing so users land on `/dashboard`, which now redirects to the first accessible enabled module instead of hardcoding `/dashboard/users`.
 - Fixed admin module visibility so admin-role users can access all enabled modules regardless of team or department placement.
@@ -121,6 +134,8 @@ Completed items:
 - Expanded CSV import/export coverage so opportunities now have backend import/export routes, insertion orders now have CSV export, and the current business-module headers use shared authenticated import/export controls for contacts, organizations, opportunities, and finance export.
 
 In progress:
+- Keep extending timezone-aware timestamp formatting across remaining UI surfaces that still render raw browser-local or server-default times.
+- Keep normalizing uploaded/local media URLs across all avatar/logo consumers so uploaded profile/company assets behave the same as remote images everywhere.
 - Expand the new notification center beyond data-transfer jobs into broader per-user operational notifications over time.
 - Start replacing department-based module assignment with team-based module assignment while keeping department access only as a compatibility fallback during transition.
 - Replace one-off table preferences with saved module views over time.
@@ -146,6 +161,7 @@ In progress:
 - Keep standardizing module forms so linked-record selectors and company-managed reference data replace remaining free-text fields where those relationships are the real source of truth.
 - Expand action-level permission enforcement beyond the currently refactored core modules so module-level access is no longer the main fallback gate.
 - Run browser-side smoke testing on the newer admin/module/detail/dialog surfaces that were built incrementally.
+- Finish the first tenant-aware backend pass beyond auth by scoping company profile, module configuration, and other cross-tenant admin data that still assumes a single shared row set.
 
 Next up:
 - Finish the dedicated saved-view management flow so module pages only need compact view switching.
@@ -159,6 +175,8 @@ Next up:
 - Expand per-action authorization coverage route by route until module-level access is no longer acting as the main fallback.
 - Extend module availability from a global enabled or disabled flag into richer module configuration once the current control model is stable.
 - Start a separate hardening phase for tenant/company row ownership once the above platform work is stable.
+- Complete the post-auth tenant-isolation pass across non-auth tables and services before treating the hosted cloud mode as production-ready.
+- Finish remaining service/query call sites that still assume globally shared data now that the schema and shared-service tenant foundation is in place.
 
 Deferred items:
 - True tenant/company ownership at the data-model level for finance records.
@@ -170,6 +188,7 @@ Risks and migration notes:
 - Auth and module-access logic is still in a transitional state until team-based module assignment fully replaces the department gate.
 - The finance cleanup has already removed the original campaign-centric compatibility path; future finance work should assume the generic insertion-order model is the only supported contract.
 - The platform-wide tenant/company model is not implemented in this increment yet, so this remains phaseable rather than complete.
+- Hosted cloud mode now has a backend auth foundation, but the rest of the business tables are not tenant-scoped yet, so this is not full SaaS isolation yet.
 - Action-level permissions now exist but are only partially enforced; module-level access remains the broad gate while the per-action rollout continues.
 - Recycle-bin direction is now fixed as one unified admin area with module-specific tables and filters, rather than separate recycle pages for every module.
 - The custom-field runtime is now fully relational at the database layer; remaining custom-field work is now about hardening and extension rather than bridge removal.

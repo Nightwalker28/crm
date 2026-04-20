@@ -62,6 +62,7 @@ def create_organization(
         update={
             "custom_fields": validate_custom_field_payload(
                 db,
+                tenant_id=current_user.tenant_id,
                 module_key="sales_organizations",
                 payload=payload.custom_fields,
             ),
@@ -85,6 +86,7 @@ def create_organization(
         if skip_duplicates:
             return hydrate_custom_field_record(
                 db,
+                tenant_id=current_user.tenant_id,
                 module_key="sales_organizations",
                 record=existing,
                 record_id=existing.org_id,
@@ -95,6 +97,7 @@ def create_organization(
             db.refresh(existing)
             save_custom_field_values(
                 db,
+                tenant_id=current_user.tenant_id,
                 module_key="sales_organizations",
                 record_id=existing.org_id,
                 values=existing.custom_data or {},
@@ -102,6 +105,7 @@ def create_organization(
             db.commit()
             return hydrate_custom_field_record(
                 db,
+                tenant_id=current_user.tenant_id,
                 module_key="sales_organizations",
                 record=existing,
                 record_id=existing.org_id,
@@ -117,6 +121,7 @@ def create_organization(
         )
 
     organization = SalesOrganization(
+        tenant_id=current_user.tenant_id,
         assigned_to=current_user.id if current_user else None,
     )
     _apply_org_payload(organization, payload, current_user)
@@ -125,10 +130,17 @@ def create_organization(
     try:
         db.commit()
         db.refresh(organization)
-        save_custom_field_values(db, module_key="sales_organizations", record_id=organization.org_id, values=organization.custom_data or {})
+        save_custom_field_values(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key="sales_organizations",
+            record_id=organization.org_id,
+            values=organization.custom_data or {},
+        )
         db.commit()
         return hydrate_custom_field_record(
             db,
+            tenant_id=current_user.tenant_id,
             module_key="sales_organizations",
             record=organization,
             record_id=organization.org_id,
@@ -156,6 +168,7 @@ def list_organizations(db: Session) -> list[SalesOrganization]:
 
 def list_organizations_paginated(
     db: Session,
+    tenant_id: int,
     offset: int,
     limit: int,
     *,
@@ -163,7 +176,10 @@ def list_organizations_paginated(
     any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[SalesOrganization], int]:
     """Return a page of organizations and the total count."""
-    base_query = db.query(SalesOrganization).filter(SalesOrganization.deleted_at.is_(None))
+    base_query = db.query(SalesOrganization).filter(
+        SalesOrganization.tenant_id == tenant_id,
+        SalesOrganization.deleted_at.is_(None),
+    )
     filter_field_map = {
         "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
         "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
@@ -175,6 +191,7 @@ def list_organizations_paginated(
         "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
         **build_custom_field_filter_map(
             db,
+            tenant_id=tenant_id,
             module_key="sales_organizations",
             record_id_expression=SalesOrganization.org_id,
         ),
@@ -201,6 +218,7 @@ def list_organizations_paginated(
     )
     items = hydrate_custom_field_records(
         db,
+        tenant_id=tenant_id,
         module_key="sales_organizations",
         records=items,
         record_id_attr="org_id",
@@ -209,6 +227,7 @@ def list_organizations_paginated(
 
 def search_organizations_pagianted(
     db: Session,
+    tenant_id: int,
     name: str,
     offset: int,
     limit: int,
@@ -226,7 +245,10 @@ def search_organizations_pagianted(
         SalesOrganization.billing_country,
     )
     base_query = apply_ranked_search(
-        db.query(SalesOrganization).filter(SalesOrganization.deleted_at.is_(None)),
+        db.query(SalesOrganization).filter(
+            SalesOrganization.tenant_id == tenant_id,
+            SalesOrganization.deleted_at.is_(None),
+        ),
         search=name,
         document=document,
         default_order_column=SalesOrganization.created_time,
@@ -246,6 +268,7 @@ def search_organizations_pagianted(
             "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
             **build_custom_field_filter_map(
                 db,
+                tenant_id=tenant_id,
                 module_key="sales_organizations",
                 record_id_expression=SalesOrganization.org_id,
             ),
@@ -266,6 +289,7 @@ def search_organizations_pagianted(
             "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
             **build_custom_field_filter_map(
                 db,
+                tenant_id=tenant_id,
                 module_key="sales_organizations",
                 record_id_expression=SalesOrganization.org_id,
             ),
@@ -280,6 +304,7 @@ def search_organizations_pagianted(
     )
     items = hydrate_custom_field_records(
         db,
+        tenant_id=tenant_id,
         module_key="sales_organizations",
         records=items,
         record_id_attr="org_id",
@@ -287,9 +312,12 @@ def search_organizations_pagianted(
     return items, total
 
 
-def get_organization(db: Session, org_id: int, *, include_deleted: bool = False) -> SalesOrganization | None:
+def get_organization(db: Session, org_id: int, *, tenant_id: int, include_deleted: bool = False) -> SalesOrganization | None:
     """Return one organization by ID."""
-    query = db.query(SalesOrganization).filter(SalesOrganization.org_id == org_id)
+    query = db.query(SalesOrganization).filter(
+        SalesOrganization.org_id == org_id,
+        SalesOrganization.tenant_id == tenant_id,
+    )
     if not include_deleted:
         query = query.filter(SalesOrganization.deleted_at.is_(None))
     organization = query.first()
@@ -297,15 +325,16 @@ def get_organization(db: Session, org_id: int, *, include_deleted: bool = False)
         return None
     return hydrate_custom_field_record(
         db,
+        tenant_id=tenant_id,
         module_key="sales_organizations",
         record=organization,
         record_id=organization.org_id,
     )
 
 
-def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpdate) -> SalesOrganization | None:
+def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpdate, *, tenant_id: int) -> SalesOrganization | None:
     """Update an existing organization by ID."""
-    organization = get_organization(db=db, org_id=org_id)
+    organization = get_organization(db=db, org_id=org_id, tenant_id=tenant_id)
     if not organization:
         return None
 
@@ -313,10 +342,12 @@ def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpda
     if "custom_fields" in data:
         data["custom_data"] = validate_custom_field_payload(
             db,
+            tenant_id=tenant_id,
             module_key="sales_organizations",
             payload=data.pop("custom_fields"),
             existing=load_custom_field_values_with_fallback(
                 db,
+                tenant_id=tenant_id,
                 module_key="sales_organizations",
                 record_id=organization.org_id,
                 fallback=organization.custom_data,
@@ -328,19 +359,26 @@ def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpda
 
     db.commit()
     db.refresh(organization)
-    save_custom_field_values(db, module_key="sales_organizations", record_id=organization.org_id, values=organization.custom_data or {})
+    save_custom_field_values(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_organizations",
+        record_id=organization.org_id,
+        values=organization.custom_data or {},
+    )
     db.commit()
     return hydrate_custom_field_record(
         db,
+        tenant_id=tenant_id,
         module_key="sales_organizations",
         record=organization,
         record_id=organization.org_id,
     )
 
 
-def delete_organization(db: Session, org_id: int) -> bool:
+def delete_organization(db: Session, org_id: int, *, tenant_id: int) -> bool:
     """Soft delete an organization by ID. Returns True if deleted."""
-    organization = get_organization(db=db, org_id=org_id)
+    organization = get_organization(db=db, org_id=org_id, tenant_id=tenant_id)
     if not organization:
         return False
 
@@ -350,8 +388,11 @@ def delete_organization(db: Session, org_id: int) -> bool:
     return True
 
 
-def list_deleted_organizations_paginated(db: Session, offset: int, limit: int) -> tuple[list[SalesOrganization], int]:
-    base_query = db.query(SalesOrganization).filter(SalesOrganization.deleted_at.is_not(None))
+def list_deleted_organizations_paginated(db: Session, *, tenant_id: int, offset: int, limit: int) -> tuple[list[SalesOrganization], int]:
+    base_query = db.query(SalesOrganization).filter(
+        SalesOrganization.tenant_id == tenant_id,
+        SalesOrganization.deleted_at.is_not(None),
+    )
     total = base_query.count()
     items = (
         base_query
@@ -362,6 +403,7 @@ def list_deleted_organizations_paginated(db: Session, offset: int, limit: int) -
     )
     items = hydrate_custom_field_records(
         db,
+        tenant_id=tenant_id,
         module_key="sales_organizations",
         records=items,
         record_id_attr="org_id",
@@ -369,8 +411,8 @@ def list_deleted_organizations_paginated(db: Session, offset: int, limit: int) -
     return items, total
 
 
-def restore_organization(db: Session, org_id: int) -> SalesOrganization | None:
-    organization = get_organization(db=db, org_id=org_id, include_deleted=True)
+def restore_organization(db: Session, org_id: int, *, tenant_id: int) -> SalesOrganization | None:
+    organization = get_organization(db=db, org_id=org_id, tenant_id=tenant_id, include_deleted=True)
     if not organization or organization.deleted_at is None:
         return None
 
@@ -380,6 +422,7 @@ def restore_organization(db: Session, org_id: int) -> SalesOrganization | None:
     db.refresh(organization)
     return hydrate_custom_field_record(
         db,
+        tenant_id=tenant_id,
         module_key="sales_organizations",
         record=organization,
         record_id=organization.org_id,

@@ -10,6 +10,7 @@ class SalesOrganization(Base):
     __tablename__ = "sales_organizations"
     
     org_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     org_name = Column(Text, nullable=False)
     website = Column(Text, nullable=True)
 
@@ -61,6 +62,7 @@ class SalesContact(Base):
     __tablename__ = "sales_contacts"
 
     contact_id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     first_name = Column(Text, nullable=True)
     last_name = Column(Text, nullable=True)
     contact_telephone = Column(Text, nullable=True)
@@ -111,6 +113,7 @@ class SalesOpportunity(Base):
     __tablename__ = "sales_opportunities"
 
     opportunity_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     opportunity_name = Column(Text, nullable=False)
     client = Column(Text, nullable=False)
     sales_stage = Column(Text, nullable=True)

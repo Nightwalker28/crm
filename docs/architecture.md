@@ -10,6 +10,25 @@ This file captures the current intended technical patterns and constraints so ne
 
 ## Backend Patterns
 
+### Tenant Isolation
+
+- Every business-owned or tenant-configurable record must carry explicit tenant ownership from the start.
+- For the current platform, that means:
+  - auth resolves a tenant from the request host in cloud mode
+  - the resolved tenant or the current user tenant becomes the default scope for service queries
+  - new module tables should include `tenant_id` unless the table is truly global platform metadata
+- Route handlers should not rely on “current install” assumptions for data ownership.
+- Service-layer queries should filter by tenant scope explicitly rather than assuming auth alone is enough.
+- Linked-record validation must also stay inside the same tenant:
+  - contacts linked to opportunities/IOs must belong to the same tenant
+  - organizations linked to contacts/opportunities/IOs must belong to the same tenant
+  - tenant-configured definitions such as custom fields and company settings must not leak across tenants
+- Single-tenant/self-hosted mode still uses the same model:
+  - one default tenant
+  - all records belong to that tenant
+  - cloud mode simply resolves different tenants by host/domain
+- Future modules must be designed as tenant-aware on day one rather than retrofitted later.
+
 ### Permissions
 
 - Use module-level access checks and action-level permission checks at the route layer.
@@ -88,6 +107,7 @@ This file captures the current intended technical patterns and constraints so ne
 
 - Custom-field definitions are stored centrally by module.
 - Custom-field values are stored relationally, not in JSON columns on the core business tables.
+- Custom-field definitions and values should be tenant-scoped; custom-field configuration is tenant data, not global platform data.
 - Runtime API shapes may still expose a `custom_fields`-style dictionary, but persistence is relational.
 - Custom-field definitions are cached and invalidated on definition changes.
 
@@ -115,11 +135,15 @@ This file captures the current intended technical patterns and constraints so ne
 
 - User-facing image/file uploads such as company logo and profile image should use explicit upload flows rather than assuming users will always paste remote URLs.
 - Upload metadata should remain tied to the owning record and stay compatible with soft-delete/audit expectations where relevant.
+- Uploaded assets tied to tenant-owned records should be treated as tenant-owned operational data even if the storage path itself is generic.
 
 ### Time and Timezones
 
 - Store timestamps in a normalized backend-friendly format and convert to the user’s configured timezone at the presentation layer.
 - User profile timezone should be treated as the source of truth for UI-facing time rendering unless a module has a stronger domain-specific rule.
+- UTC remains the storage/default processing timezone for backend jobs, database timestamps, and server-side scheduling.
+- Frontend rendering should use shared datetime helpers so new pages do not reintroduce browser-local or server-default time rendering.
+- New list/detail pages should assume “render in user timezone” by default unless the feature explicitly requires a fixed canonical timezone display.
 
 ### PostgreSQL Optimization Direction
 
@@ -172,10 +196,12 @@ This file captures the current intended technical patterns and constraints so ne
 - Harden Redis-backed cache behavior in the real container/runtime environment.
 - Expand action-level permission coverage route by route.
 - Introduce true tenant/company row-level ownership in a later hardening phase.
+- Finish the current tenant-isolation rollout across all existing module services, imports/exports, recycle flows, summaries, and admin configuration paths.
 - Add proper upload handling for company/profile imagery rather than URL-only inputs.
 - Expand import/export coverage and consistency across the main business modules.
 - Add a shared persisted background-job layer for large imports/exports and integrate it into the import/export workflow.
 - Ensure user timezone settings are honored in UI-facing time rendering.
+- Keep timezone-aware rendering as a shared platform concern instead of per-page formatting.
 - Complete the transition from department-based module assignment to team-based module assignment.
 - Remove unneeded Google Docs/Drive integration code if those product capabilities are no longer active.
 

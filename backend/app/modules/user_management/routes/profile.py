@@ -1,10 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_admin, require_user
 from app.modules.user_management.schema import (
     CompanyProfileResponse,
+    CompanyLogoUploadResponse,
     CompanyProfileUpdateRequest,
     ModuleSchema,
     SavedViewCreateRequest,
@@ -13,6 +14,7 @@ from app.modules.user_management.schema import (
     SavedViewUpdateRequest,
     TablePreferenceResponse,
     TablePreferenceUpdateRequest,
+    UserImageUploadResponse,
     UserProfile,
     UserProfileUpdateRequest,
 )
@@ -26,6 +28,8 @@ from app.modules.user_management.services.profile import (
     delete_saved_view,
     get_user_table_preference,
     save_user_table_preference,
+    upload_company_logo,
+    upload_user_photo,
     update_company_profile,
     update_user_profile,
 )
@@ -46,6 +50,16 @@ def update_me(
     return update_user_profile(db, current_user, payload.model_dump(exclude_unset=True))
 
 
+@router.post("/me/photo", response_model=UserImageUploadResponse)
+async def upload_me_photo(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+):
+    user = await upload_user_photo(db, current_user, file)
+    return UserImageUploadResponse(photo_url=user.photo_url or "", user=user)
+
+
 @router.get("/me/modules", response_model=list[ModuleSchema])
 def get_my_modules(
     current_user = Depends(get_current_user),
@@ -59,7 +73,7 @@ def get_company_profile(
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
 ):
-    return get_or_create_company_profile(db)
+    return get_or_create_company_profile(db, current_user)
 
 
 @router.put("/company", response_model=CompanyProfileResponse)
@@ -69,6 +83,16 @@ def save_company_profile(
     current_user = Depends(require_admin),
 ):
     return update_company_profile(db, current_user, payload.model_dump(exclude_unset=True))
+
+
+@router.post("/company/logo", response_model=CompanyLogoUploadResponse)
+async def upload_company_logo_route(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    company = await upload_company_logo(db, current_user, file)
+    return CompanyLogoUploadResponse(logo_url=company.logo_url or "", company=company)
 
 
 @router.get("/table-preferences/{module_key}", response_model=TablePreferenceResponse)

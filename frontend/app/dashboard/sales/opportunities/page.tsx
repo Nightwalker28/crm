@@ -17,6 +17,7 @@ import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
 import { useOpportunities, type Opportunity, type OpportunityPayload } from "@/hooks/sales/useOpportunities";
 import { useMemo } from "react";
+import { Plus } from "lucide-react";
 
 export default function OpportunitiesPage() {
   const { data: customFields = [] } = useModuleCustomFields("sales_opportunities");
@@ -98,27 +99,31 @@ export default function OpportunitiesPage() {
         description="Track pipeline, project value, and finance handoff."
         actions={
           <>
-          <ModuleImportExportControls
-            importEndpoint="/sales/opportunities/import"
-            exportEndpoint="/sales/opportunities/export"
-            exportMethod="POST"
-            selectedIds={selectedIds}
-            currentPageIds={currentPageIds}
-          />
-          <SavedViewSelector
-            moduleKey="sales_opportunities"
-            views={views}
-            selectedViewId={selectedViewId}
-            onSelect={setSelectedViewId}
-          />
-          <Button
-            onClick={() => {
-              setSelectedOpportunity(null);
-              setDialogOpen(true);
-            }}
-          >
-            Add Opportunity
-          </Button>
+            {/* 1. View selector */}
+            <SavedViewSelector
+              moduleKey="sales_opportunities"
+              views={views}
+              selectedViewId={selectedViewId}
+              onSelect={setSelectedViewId}
+            />
+            {/* 2. Import/export actions */}
+            <ModuleImportExportControls
+              importEndpoint="/sales/opportunities/import"
+              exportEndpoint="/sales/opportunities/export"
+              exportMethod="POST"
+              selectedIds={selectedIds}
+              currentPageIds={currentPageIds}
+            />
+            {/* 3. Primary create action */}
+            <Button
+              onClick={() => {
+                setSelectedOpportunity(null);
+                setDialogOpen(true);
+              }}
+            >
+              <Plus />
+              <span className="hidden sm:inline">Add Opportunity</span>
+            </Button>
           </>
         }
       />
@@ -148,7 +153,11 @@ export default function OpportunitiesPage() {
         }
       />
 
-      {error && <div className="rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">{error}</div>}
+      {error && (
+        <div className="rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">
+          {error}
+        </div>
+      )}
 
       <OpportunitiesTable
         opportunities={opportunities}

@@ -247,6 +247,7 @@ async def import_insertion_orders(
         mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "finance_io")
         job = create_data_transfer_job(
             db,
+            tenant_id=current_user.tenant_id,
             actor_user_id=current_user.id if current_user else None,
             module_key="finance_io",
             operation_type="import",
@@ -315,6 +316,7 @@ def export_insertion_orders(
 ):
     job = create_data_transfer_job(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="finance_io",
         operation_type="export",

@@ -63,6 +63,8 @@ type DataTransferJobResponse = {
   summary?: ImportSummaryResponse | Record<string, unknown> | null;
   result_file_name?: string | null;
   error_message?: string | null;
+  progress_percent?: number;
+  progress_message?: string | null;
 };
 
 type Props = {
@@ -127,11 +129,15 @@ export function ModuleImportExportControls({
   const [importJobId, setImportJobId] = useState<number | null>(null);
   const [importJobStatus, setImportJobStatus] = useState<string | null>(null);
   const [importJobError, setImportJobError] = useState<string | null>(null);
+  const [importJobProgress, setImportJobProgress] = useState(0);
+  const [importJobMessage, setImportJobMessage] = useState<string | null>(null);
   const [exportMode, setExportMode] = useState<ExportMode>("all");
   const [exportJobId, setExportJobId] = useState<number | null>(null);
   const [exportJobStatus, setExportJobStatus] = useState<string | null>(null);
   const [exportJobError, setExportJobError] = useState<string | null>(null);
   const [exportSummary, setExportSummary] = useState<Record<string, unknown> | null>(null);
+  const [exportJobProgress, setExportJobProgress] = useState(0);
+  const [exportJobMessage, setExportJobMessage] = useState<string | null>(null);
 
   const previewEndpoint = importEndpoint ? `${importEndpoint}/preview` : null;
 
@@ -168,6 +174,8 @@ export function ModuleImportExportControls({
     setImportJobId(null);
     setImportJobStatus(null);
     setImportJobError(null);
+    setImportJobProgress(0);
+    setImportJobMessage(null);
     if (inputRef.current) inputRef.current.value = "";
   }
 
@@ -179,6 +187,8 @@ export function ModuleImportExportControls({
     setExportJobStatus(null);
     setExportJobError(null);
     setExportSummary(null);
+    setExportJobProgress(0);
+    setExportJobMessage(null);
     downloadedExportJobRef.current = null;
   }
 
@@ -193,6 +203,8 @@ export function ModuleImportExportControls({
         const body = (await res.json().catch(() => null)) as DataTransferJobResponse | null;
         if (!res.ok || !body || cancelled) return;
         setImportJobStatus(body.status);
+        setImportJobProgress(body.progress_percent ?? 0);
+        setImportJobMessage(body.progress_message ?? null);
         if (body.status === "completed" && body.summary) {
           setImportSummary(body.summary as ImportSummaryResponse);
           setImportJobError(null);
@@ -222,6 +234,8 @@ export function ModuleImportExportControls({
         const body = (await res.json().catch(() => null)) as DataTransferJobResponse | null;
         if (!res.ok || !body || cancelled) return;
         setExportJobStatus(body.status);
+        setExportJobProgress(body.progress_percent ?? 0);
+        setExportJobMessage(body.progress_message ?? null);
         if (body.status === "completed") {
           setExportSummary(body.summary ?? null);
           setExportJobError(null);
@@ -298,6 +312,8 @@ export function ModuleImportExportControls({
         setExportJobStatus(body.job_status || "queued");
         setExportJobError(null);
         setExportSummary(null);
+        setExportJobProgress(0);
+        setExportJobMessage("Export queued.");
         toast.success(body.message || `Export queued as job #${body.job_id}.`);
       }
     } catch (error) {
@@ -332,6 +348,8 @@ export function ModuleImportExportControls({
         setImportJobStatus(body.job_status || "queued");
         setImportJobError(null);
         setImportSummary(null);
+        setImportJobProgress(0);
+        setImportJobMessage("Import queued.");
         toast.success(body.message || `Import queued as job #${body.job_id}.`);
         return;
       }
@@ -522,6 +540,13 @@ export function ModuleImportExportControls({
                           ? "Import failed."
                           : "Import is running in the background."}
                     </div>
+                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-neutral-900">
+                      <div className="h-full rounded-full bg-white transition-all" style={{ width: `${importJobProgress}%` }} />
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-neutral-500">
+                      <span>{importJobMessage || "Waiting for progress..."}</span>
+                      <span>{importJobProgress}%</span>
+                    </div>
                     <div className="mt-3 text-xs uppercase tracking-wide text-neutral-500">Status</div>
                     <div className="mt-1 text-lg font-semibold text-neutral-100">{importJobStatus || "queued"}</div>
                   </div>
@@ -649,6 +674,13 @@ export function ModuleImportExportControls({
                         : exportJobStatus === "failed"
                           ? "Export failed."
                           : "Export is running in the background."}
+                    </div>
+                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-neutral-900">
+                      <div className="h-full rounded-full bg-white transition-all" style={{ width: `${exportJobProgress}%` }} />
+                    </div>
+                    <div className="mt-2 flex items-center justify-between text-xs text-neutral-500">
+                      <span>{exportJobMessage || "Waiting for progress..."}</span>
+                      <span>{exportJobProgress}%</span>
                     </div>
                     <div className="mt-3 text-xs uppercase tracking-wide text-neutral-500">Status</div>
                     <div className="mt-1 text-lg font-semibold text-neutral-100">{exportJobStatus || "queued"}</div>

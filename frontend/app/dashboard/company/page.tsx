@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { resolveMediaUrl } from "@/lib/media";
 
 type CompanyResponse = {
   id: number;
@@ -55,6 +56,7 @@ export default function CompanyPage() {
   const [form, setForm] = useState<CompanyForm>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -141,6 +143,32 @@ export default function CompanyPage() {
     }
   }
 
+  async function handleLogoUpload(file: File) {
+    try {
+      setUploadingLogo(true);
+      setError(null);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await apiFetch("/users/company/logo", {
+        method: "POST",
+        body: formData,
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      }
+
+      setForm((current) => ({ ...current, logo_url: body.logo_url ?? "" }));
+      toast.success("Company logo uploaded.");
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Failed to upload company logo");
+    } finally {
+      setUploadingLogo(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <div>
@@ -198,6 +226,29 @@ export default function CompanyPage() {
               <Field>
                 <FieldLabel>Logo URL</FieldLabel>
                 <Input value={form.logo_url} onChange={(event) => setForm((current) => ({ ...current, logo_url: event.target.value }))} placeholder="https://..." />
+                <div className="mt-3 flex items-center gap-3">
+                  {form.logo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={resolveMediaUrl(form.logo_url)}
+                      alt="Company logo preview"
+                      className="h-12 w-12 rounded-lg border border-neutral-800 object-cover"
+                    />
+                  ) : null}
+                  <label className="inline-flex cursor-pointer items-center rounded-md border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900">
+                    {uploadingLogo ? "Uploading..." : "Upload Logo"}
+                    <input
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void handleLogoUpload(file);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
               </Field>
               <Field className="md:col-span-2">
                 <FieldLabel>Billing Address</FieldLabel>

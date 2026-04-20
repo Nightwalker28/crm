@@ -1,5 +1,7 @@
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.core.uploads import build_media_url, delete_local_media_file, persist_media_file, read_image_upload
 from app.modules.user_management.models import CompanyProfile, User, UserSavedView, UserTablePreference
 
 
@@ -44,8 +46,30 @@ def update_user_profile(db: Session, user: User, payload: dict) -> User:
     return user
 
 
-def get_or_create_company_profile(db: Session) -> CompanyProfile:
-    profile = db.query(CompanyProfile).order_by(CompanyProfile.id.asc()).first()
+async def upload_user_photo(db: Session, user: User, file: UploadFile) -> User:
+    file_bytes, extension = await read_image_upload(file)
+    relative_media_path = persist_media_file(
+        category="profile-assets",
+        owner_key=f"user-{user.id}",
+        extension=extension,
+        content=file_bytes,
+    )
+    previous = user.photo_url
+    user.photo_url = build_media_url(relative_media_path)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    delete_local_media_file(previous)
+    return user
+
+
+def get_or_create_company_profile(db: Session, current_user: User) -> CompanyProfile:
+    profile = (
+        db.query(CompanyProfile)
+        .filter(CompanyProfile.tenant_id == current_user.tenant_id)
+        .order_by(CompanyProfile.id.asc())
+        .first()
+    )
     if profile:
         if not getattr(profile, "operating_currencies", None):
             profile.operating_currencies = ["USD"]
@@ -54,7 +78,11 @@ def get_or_create_company_profile(db: Session) -> CompanyProfile:
             db.refresh(profile)
         return profile
 
-    profile = CompanyProfile(name="Your Company", operating_currencies=["USD"])
+    profile = CompanyProfile(
+        tenant_id=current_user.tenant_id,
+        name="Your Company",
+        operating_currencies=["USD"],
+    )
     db.add(profile)
     db.commit()
     db.refresh(profile)
@@ -62,7 +90,7 @@ def get_or_create_company_profile(db: Session) -> CompanyProfile:
 
 
 def update_company_profile(db: Session, current_user: User, payload: dict) -> CompanyProfile:
-    profile = get_or_create_company_profile(db)
+    profile = get_or_create_company_profile(db, current_user)
 
     for field in {"name", "primary_email", "website", "primary_phone", "industry", "country", "billing_address", "logo_url"}:
         if field in payload:
@@ -77,8 +105,30 @@ def update_company_profile(db: Session, current_user: User, payload: dict) -> Co
     return profile
 
 
-def get_company_operating_currencies(db: Session) -> list[str]:
-    profile = get_or_create_company_profile(db)
+async def upload_company_logo(db: Session, current_user: User, file: UploadFile) -> CompanyProfile:
+    profile = get_or_create_company_profile(db, current_user)
+    if not profile.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company profile is not available.")
+
+    file_bytes, extension = await read_image_upload(file)
+    relative_media_path = persist_media_file(
+        category="company-assets",
+        owner_key=f"company-{profile.id}",
+        extension=extension,
+        content=file_bytes,
+    )
+    previous = profile.logo_url
+    profile.logo_url = build_media_url(relative_media_path)
+    profile.updated_by = current_user.id if current_user else None
+    db.add(profile)
+    db.commit()
+    db.refresh(profile)
+    delete_local_media_file(previous)
+    return profile
+
+
+def get_company_operating_currencies(db: Session, current_user: User) -> list[str]:
+    profile = get_or_create_company_profile(db, current_user)
     return _clean_currency_list(getattr(profile, "operating_currencies", None))
 
 

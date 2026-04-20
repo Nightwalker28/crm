@@ -9,6 +9,8 @@ import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { resolveMediaUrl } from "@/lib/media";
+import TimezonePicker from "@/components/ui/TimezonePicker";
 
 type ProfileResponse = {
   first_name?: string | null;
@@ -50,6 +52,7 @@ export default function ProfilePage() {
   const [roleName, setRoleName] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -127,6 +130,35 @@ export default function ProfilePage() {
     }
   }
 
+  async function handlePhotoUpload(file: File) {
+    try {
+      setUploadingPhoto(true);
+      setError(null);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const res = await apiFetch("/users/me/photo", {
+        method: "POST",
+        body: formData,
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      }
+
+      setForm((current) => ({ ...current, photo_url: body.photo_url ?? "" }));
+      if (body?.user) {
+        sessionStorage.setItem("lynk_user", JSON.stringify(body.user));
+      }
+      toast.success("Profile image uploaded.");
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Failed to upload profile image");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <div>
@@ -181,11 +213,39 @@ export default function ProfilePage() {
               </Field>
               <Field>
                 <FieldLabel>Timezone</FieldLabel>
-                <Input value={form.timezone} onChange={(event) => setForm((current) => ({ ...current, timezone: event.target.value }))} placeholder="Asia/Colombo" />
+                <TimezonePicker
+                  value={form.timezone}
+                  onChange={(value) => setForm((current) => ({ ...current, timezone: value }))}
+                  placeholder="Search country or city"
+                />
+                <FieldDescription>Search by country or city. The platform stores the actual timezone value for display conversion.</FieldDescription>
               </Field>
               <Field>
                 <FieldLabel>Photo URL</FieldLabel>
                 <Input value={form.photo_url} onChange={(event) => setForm((current) => ({ ...current, photo_url: event.target.value }))} placeholder="https://..." />
+                <div className="mt-3 flex items-center gap-3">
+                  {form.photo_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={resolveMediaUrl(form.photo_url)}
+                      alt="Profile preview"
+                      className="h-12 w-12 rounded-lg border border-neutral-800 object-cover"
+                    />
+                  ) : null}
+                  <label className="inline-flex cursor-pointer items-center rounded-md border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900">
+                    {uploadingPhoto ? "Uploading..." : "Upload Photo"}
+                    <input
+                      type="file"
+                      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) void handlePhotoUpload(file);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                  </label>
+                </div>
               </Field>
               <Field className="md:col-span-2">
                 <FieldLabel>Bio</FieldLabel>

@@ -22,7 +22,12 @@ def get_recycle_items(
 ):
     if module_key not in SUPPORTED_RECYCLE_MODULES:
         raise HTTPException(status_code=400, detail="Unsupported recycle module")
-    return list_recycle_items(db, pagination=pagination, module_key=module_key)
+    return list_recycle_items(
+        db,
+        pagination=pagination,
+        module_key=module_key,
+        tenant_id=current_user.tenant_id,
+    )
 
 
 @router.post("/{module_key}/{record_id}/restore")

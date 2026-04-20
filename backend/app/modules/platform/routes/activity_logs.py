@@ -21,6 +21,7 @@ def get_activity_logs(
 ):
     items, total = list_activity_logs(
         db,
+        tenant_id=current_user.tenant_id,
         pagination=pagination,
         module_key=module_key,
         entity_type=entity_type,

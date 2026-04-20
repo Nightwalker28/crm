@@ -19,12 +19,13 @@ from app.modules.user_management.schema import (
 from app.modules.user_management.services.auth import create_user_setup_link
 
 
-def list_all_users(db: Session, pagination: Pagination):
+def list_all_users(db: Session, *, tenant_id: int, pagination: Pagination):
     query = (
         db.query(User)
         .options(joinedload(User.team), selectinload(User.role))
         .outerjoin(Team)
         .outerjoin(Role)
+        .filter(User.tenant_id == tenant_id)
     )
     unassigned_label = "Unassigned"
 
@@ -43,6 +44,8 @@ def list_all_users(db: Session, pagination: Pagination):
 
 def search_users(
     db: Session,
+    *,
+    tenant_id: int,
     pagination: Pagination,
     q: Optional[str],
     teams: Optional[str],
@@ -58,6 +61,7 @@ def search_users(
         .options(joinedload(User.team), selectinload(User.role))
         .outerjoin(Team)
         .outerjoin(Role)
+        .filter(User.tenant_id == tenant_id)
     )
 
     unassigned_label = "Unassigned"
@@ -154,7 +158,13 @@ def list_user_update_options(db: Session) -> UserUpdateOptions:
     statuses = [UserStatus.active.value, UserStatus.inactive.value]
     return UserUpdateOptions(roles=roles, teams=teams, statuses=statuses)
 
-def create_user(db: Session, payload: AdminCreateUserRequest) -> AdminCreateUserResponse:
+def create_user(
+    db: Session,
+    payload: AdminCreateUserRequest,
+    *,
+    tenant_id: int,
+    frontend_origin: str | None = None,
+) -> AdminCreateUserResponse:
     if payload.is_active == UserStatus.pending:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -162,7 +172,14 @@ def create_user(db: Session, payload: AdminCreateUserRequest) -> AdminCreateUser
         )
 
     normalized_email = payload.email.strip().lower()
-    existing_user = db.query(User).filter(func.lower(User.email) == normalized_email).first()
+    existing_user = (
+        db.query(User)
+        .filter(
+            User.tenant_id == tenant_id,
+            func.lower(User.email) == normalized_email,
+        )
+        .first()
+    )
     if existing_user:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -173,6 +190,7 @@ def create_user(db: Session, payload: AdminCreateUserRequest) -> AdminCreateUser
     _get_team_or_404(db, payload.team_id)
 
     user = User(
+        tenant_id=tenant_id,
         email=normalized_email,
         first_name=payload.first_name.strip() if payload.first_name else None,
         last_name=payload.last_name.strip() if payload.last_name else None,
@@ -187,7 +205,11 @@ def create_user(db: Session, payload: AdminCreateUserRequest) -> AdminCreateUser
 
     setup_link = None
     if payload.auth_mode in {UserAuthMode.manual_only, UserAuthMode.manual_or_google}:
-        setup_link = create_user_setup_link(db, user)
+        setup_link = create_user_setup_link(
+            db,
+            user,
+            frontend_origin=frontend_origin,
+        )
         db.refresh(user)
 
     return AdminCreateUserResponse(
@@ -196,8 +218,15 @@ def create_user(db: Session, payload: AdminCreateUserRequest) -> AdminCreateUser
     )
 
 
-def update_user(db: Session, user_id: int, payload: UpdateUserRequest) -> User:
-    user = db.query(User).filter(User.id == user_id).first()
+def update_user(db: Session, user_id: int, payload: UpdateUserRequest, *, tenant_id: int) -> User:
+    user = (
+        db.query(User)
+        .filter(
+            User.id == user_id,
+            User.tenant_id == tenant_id,
+        )
+        .first()
+    )
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 

@@ -45,6 +45,7 @@ def _notify_job_state(
 
     create_notification(
         db,
+        tenant_id=job.tenant_id,
         user_id=job.actor_user_id,
         category="data_transfer",
         title=title,
@@ -78,6 +79,7 @@ def should_background_data_transfer_with_size(
 def create_data_transfer_job(
     db: Session,
     *,
+    tenant_id: int,
     actor_user_id: int | None,
     module_key: str,
     operation_type: str,
@@ -85,6 +87,7 @@ def create_data_transfer_job(
     mode: str = "background",
 ) -> DataTransferJob:
     job = DataTransferJob(
+        tenant_id=tenant_id,
         actor_user_id=actor_user_id,
         module_key=module_key,
         operation_type=operation_type,
@@ -122,6 +125,23 @@ def mark_job_running(db: Session, job: DataTransferJob) -> DataTransferJob:
 
     job.status = "running"
     job.started_at = func.now()
+    job.progress_percent = max(job.progress_percent or 0, 5)
+    job.progress_message = "Job started."
+    db.add(job)
+    db.commit()
+    db.refresh(job)
+    return job
+
+
+def update_job_progress(
+    db: Session,
+    job: DataTransferJob,
+    *,
+    progress_percent: int,
+    progress_message: str,
+) -> DataTransferJob:
+    job.progress_percent = max(0, min(int(progress_percent), 100))
+    job.progress_message = progress_message[:255]
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -146,6 +166,8 @@ def mark_job_completed(
     job.result_media_type = result_media_type
     job.completed_at = func.now()
     job.error_message = None
+    job.progress_percent = 100
+    job.progress_message = "Completed."
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -166,6 +188,8 @@ def mark_job_failed(db: Session, job: DataTransferJob, *, error_message: str, su
     job.error_message = error_message
     job.summary = summary or None
     job.completed_at = func.now()
+    job.progress_percent = min(max(job.progress_percent or 0, 0), 99)
+    job.progress_message = "Failed."
     db.add(job)
     db.commit()
     db.refresh(job)
@@ -182,12 +206,13 @@ def mark_job_failed(db: Session, job: DataTransferJob, *, error_message: str, su
 def list_data_transfer_jobs(
     db: Session,
     *,
+    tenant_id: int,
     actor_user_id: int | None = None,
     pagination: Pagination,
     module_key: str | None = None,
     operation_type: str | None = None,
 ):
-    query = db.query(DataTransferJob)
+    query = db.query(DataTransferJob).filter(DataTransferJob.tenant_id == tenant_id)
     if actor_user_id is not None:
         query = query.filter(DataTransferJob.actor_user_id == actor_user_id)
     if module_key:
@@ -209,10 +234,13 @@ def get_data_transfer_job_or_404(
     db: Session,
     *,
     job_id: int,
+    tenant_id: int | None = None,
     actor_user_id: int | None = None,
     is_admin: bool = False,
 ) -> DataTransferJob:
     query = db.query(DataTransferJob).filter(DataTransferJob.id == job_id)
+    if tenant_id is not None:
+        query = query.filter(DataTransferJob.tenant_id == tenant_id)
     if actor_user_id is not None and not is_admin:
         query = query.filter(DataTransferJob.actor_user_id == actor_user_id)
     job = query.first()
@@ -252,6 +280,7 @@ def process_import_job(*, job_id: int) -> None:
     try:
         job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
         mark_job_running(db, job)
+        update_job_progress(db, job, progress_percent=10, progress_message="Preparing import payload.")
 
         payload = job.payload or {}
         module_key = job.module_key
@@ -264,11 +293,13 @@ def process_import_job(*, job_id: int) -> None:
 
         current_user = db.query(User).filter(User.id == actor_user_id).first() if actor_user_id else None
         file_bytes = path.read_bytes()
+        update_job_progress(db, job, progress_percent=25, progress_message="Validating import file.")
 
         if module_key == "sales_contacts":
             from app.modules.sales.services.contacts_services import import_contacts_from_csv
             from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
 
+            update_job_progress(db, job, progress_percent=65, progress_message="Importing contacts.")
             summary = import_contacts_from_csv(
                 db,
                 file_bytes,
@@ -280,6 +311,7 @@ def process_import_job(*, job_id: int) -> None:
             from app.modules.sales.services.organizations_services import import_organizations_from_csv
             from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
 
+            update_job_progress(db, job, progress_percent=65, progress_message="Importing organizations.")
             summary = import_organizations_from_csv(
                 db=db,
                 file_bytes=file_bytes,
@@ -291,6 +323,7 @@ def process_import_job(*, job_id: int) -> None:
             from app.modules.sales.services.opportunities_services import import_opportunities_from_csv
             from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
 
+            update_job_progress(db, job, progress_percent=65, progress_message="Importing opportunities.")
             summary = import_opportunities_from_csv(
                 db=db,
                 file_bytes=file_bytes,
@@ -304,6 +337,7 @@ def process_import_job(*, job_id: int) -> None:
 
             import asyncio
 
+            update_job_progress(db, job, progress_percent=65, progress_message="Importing insertion orders.")
             summary = asyncio.run(
                 io_search_api.import_insertion_orders_csv(
                     db=db,
@@ -320,6 +354,7 @@ def process_import_job(*, job_id: int) -> None:
         else:
             raise ValueError(f"Unsupported import module '{module_key}'.")
 
+        update_job_progress(db, job, progress_percent=90, progress_message="Finalizing import summary.")
         mark_job_completed(db, job, summary=summary)
     except Exception as exc:
         try:
@@ -343,6 +378,7 @@ def process_export_job(*, job_id: int) -> None:
     try:
         job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
         mark_job_running(db, job)
+        update_job_progress(db, job, progress_percent=10, progress_message="Preparing export job.")
 
         payload = job.payload or {}
         module_key = job.module_key
@@ -352,6 +388,7 @@ def process_export_job(*, job_id: int) -> None:
         export_ids = selected_ids if mode == "selected" else current_page_ids if mode == "current" else None
         actor_user_id = job.actor_user_id
         current_user = db.query(User).filter(User.id == actor_user_id).first() if actor_user_id else None
+        update_job_progress(db, job, progress_percent=35, progress_message="Collecting records for export.")
 
         if module_key == "sales_contacts":
             from app.modules.sales.models import SalesContact
@@ -361,12 +398,14 @@ def process_export_job(*, job_id: int) -> None:
             if export_ids:
                 query = query.filter(SalesContact.contact_id.in_(export_ids))
             records = query.order_by(SalesContact.created_time.desc()).all()
+            update_job_progress(db, job, progress_percent=70, progress_message="Serializing contacts export.")
             content = export_contacts_to_csv(records)
             file_name = "sales_contacts.csv"
             media_type = "text/csv"
         elif module_key == "sales_organizations":
             from app.modules.sales.services.organizations_services import export_organizations
 
+            update_job_progress(db, job, progress_percent=70, progress_message="Building organizations export package.")
             content, _ = export_organizations(db=db, org_ids=export_ids)
             file_name = "organizations_export.zip"
             media_type = "application/zip"
@@ -378,6 +417,7 @@ def process_export_job(*, job_id: int) -> None:
             if export_ids:
                 query = query.filter(SalesOpportunity.opportunity_id.in_(export_ids))
             records = query.order_by(SalesOpportunity.created_time.desc()).all()
+            update_job_progress(db, job, progress_percent=70, progress_message="Serializing opportunities export.")
             content = export_opportunities_to_csv(records)
             file_name = "sales_opportunities.csv"
             media_type = "text/csv"
@@ -400,6 +440,7 @@ def process_export_job(*, job_id: int) -> None:
                 from app.modules.finance.services.io_search_api import INSERTION_ORDER_EXPORT_HEADERS
                 from app.core.module_export import dict_rows_to_csv_bytes
 
+                update_job_progress(db, job, progress_percent=70, progress_message="Serializing insertion orders export.")
                 content = dict_rows_to_csv_bytes(
                     headers=INSERTION_ORDER_EXPORT_HEADERS,
                     rows=(
@@ -428,12 +469,14 @@ def process_export_job(*, job_id: int) -> None:
                     ),
                 )
             else:
+                update_job_progress(db, job, progress_percent=70, progress_message="Serializing insertion orders export.")
                 content = export_generic_insertion_orders(db, current_user)
             file_name = "insertion_orders.csv"
             media_type = "text/csv"
         else:
             raise ValueError(f"Unsupported export module '{module_key}'.")
 
+        update_job_progress(db, job, progress_percent=90, progress_message="Writing export artifact.")
         result_path = persist_job_result(job_id=job.id, filename=file_name, content=content)
         summary = {
             "mode": mode,

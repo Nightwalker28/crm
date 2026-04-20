@@ -18,6 +18,7 @@ import {
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
+import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 
 type Props = {
   opportunities: Opportunity[];
@@ -54,15 +55,6 @@ const STAGE_LABELS: Record<string, string> = {
 function getStagePillStyle(stage?: string | null) {
   const key = (stage ?? "").toLowerCase().replace(/\s+/g, "_");
   return STAGE_STYLES[key] ?? { bg: "bg-neutral-800/60", text: "text-neutral-400", border: "border-neutral-700/50" };
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return "";
-  try {
-    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
-  } catch {
-    return value;
-  }
 }
 
 function isOverdue(dateStr?: string | null): boolean {
@@ -157,7 +149,7 @@ export default function OpportunitiesTable({
                   ? "text-red-400"
                   : "text-neutral-300"
               }`}>
-                {formatDate(opportunity.expected_close_date)}
+                {formatDateOnly(opportunity.expected_close_date)}
               </span>
             ) : (
               <span className="text-neutral-600 text-sm">—</span>
@@ -192,7 +184,7 @@ export default function OpportunitiesTable({
         return (
           <TableCell>
             <span className="text-sm text-neutral-500 tabular-nums">
-              {opportunity.created_time ? formatDate(opportunity.created_time) : <span className="text-neutral-600">—</span>}
+              {opportunity.created_time ? formatDateTime(opportunity.created_time, { hour: "numeric", minute: "2-digit" }) : <span className="text-neutral-600">—</span>}
             </span>
           </TableCell>
         );

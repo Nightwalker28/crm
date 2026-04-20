@@ -9,6 +9,7 @@ from app.modules.platform.models import UserNotification
 def create_notification(
     db: Session,
     *,
+    tenant_id: int,
     user_id: int,
     category: str,
     title: str,
@@ -17,6 +18,7 @@ def create_notification(
     metadata: dict | None = None,
 ) -> UserNotification:
     notification = UserNotification(
+        tenant_id=tenant_id,
         user_id=user_id,
         category=category,
         title=title,
@@ -34,11 +36,15 @@ def create_notification(
 def list_notifications(
     db: Session,
     *,
+    tenant_id: int,
     user_id: int,
     pagination: Pagination,
     status_filter: str | None = None,
 ):
-    query = db.query(UserNotification).filter(UserNotification.user_id == user_id)
+    query = db.query(UserNotification).filter(
+        UserNotification.tenant_id == tenant_id,
+        UserNotification.user_id == user_id,
+    )
     if status_filter in {"read", "unread"}:
         query = query.filter(UserNotification.status == status_filter)
 
@@ -46,6 +52,7 @@ def list_notifications(
     unread_count = (
         db.query(UserNotification)
         .filter(
+            UserNotification.tenant_id == tenant_id,
             UserNotification.user_id == user_id,
             UserNotification.status == "unread",
         )
@@ -60,11 +67,12 @@ def list_notifications(
     return items, total, unread_count
 
 
-def get_notification_or_404(db: Session, *, notification_id: int, user_id: int) -> UserNotification:
+def get_notification_or_404(db: Session, *, notification_id: int, tenant_id: int, user_id: int) -> UserNotification:
     notification = (
         db.query(UserNotification)
         .filter(
             UserNotification.id == notification_id,
+            UserNotification.tenant_id == tenant_id,
             UserNotification.user_id == user_id,
         )
         .first()
@@ -88,12 +96,13 @@ def mark_notification_read(db: Session, *, notification: UserNotification) -> Us
     return notification
 
 
-def mark_all_notifications_read(db: Session, *, user_id: int) -> int:
+def mark_all_notifications_read(db: Session, *, tenant_id: int, user_id: int) -> int:
     from sqlalchemy import func
 
     updated = (
         db.query(UserNotification)
         .filter(
+            UserNotification.tenant_id == tenant_id,
             UserNotification.user_id == user_id,
             UserNotification.status != "read",
         )

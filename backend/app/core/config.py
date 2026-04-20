@@ -65,6 +65,18 @@ class Settings:
     DEBUG: bool = os.getenv("DEBUG", "false")
 
     # -------------------------
+    # Deployment / cloud licensing
+    # -------------------------
+    DEPLOYMENT_LICENSE: str | None = os.getenv("DEPLOYMENT_LICENSE")
+    DEPLOYMENT_LICENSE_PUBLIC_KEY: str | None = os.getenv("DEPLOYMENT_LICENSE_PUBLIC_KEY")
+    DEPLOYMENT_LICENSE_ALGORITHM: str = os.getenv("DEPLOYMENT_LICENSE_ALGORITHM", "RS256")
+    SINGLE_TENANT_SLUG: str = os.getenv("SINGLE_TENANT_SLUG", "default")
+    SINGLE_TENANT_NAME: str = os.getenv("SINGLE_TENANT_NAME", "Default Tenant")
+    GOOGLE_OAUTH_STATE_EXPIRE_MINUTES: int = int(
+        os.getenv("GOOGLE_OAUTH_STATE_EXPIRE_MINUTES", "10")
+    )
+
+    # -------------------------
     # Frontend
     # -------------------------
     FRONTEND_ORIGIN: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")

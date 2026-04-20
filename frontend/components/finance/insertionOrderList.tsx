@@ -15,6 +15,8 @@ import { Pill } from "@/components/ui/Pill";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
+import { resolveMediaUrl } from "@/lib/media";
+import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 
 type InsertionOrdersListProps = {
   orders: InsertionOrder[];
@@ -50,15 +52,6 @@ function formatAmount(amount?: number | null, currency?: string): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 2,
   }).format(amount);
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return "";
-  try {
-    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(value));
-  } catch {
-    return value;
-  }
 }
 
 function isDuePast(dateStr?: string | null): boolean {
@@ -126,7 +119,7 @@ export default function InsertionOrdersList({
             <div className="flex items-center gap-2">
               {order.photo_url ? (
                 <img
-                  src={order.photo_url}
+                  src={resolveMediaUrl(order.photo_url)}
                   alt={order.user_name ?? ""}
                   className="h-6 w-6 rounded-full object-cover shrink-0"
                 />
@@ -174,7 +167,7 @@ export default function InsertionOrdersList({
         return (
           <TableCell>
             <span className="text-sm text-neutral-400 tabular-nums">
-              {order.issue_date ? formatDate(order.issue_date) : <span className="text-neutral-600">—</span>}
+              {order.issue_date ? formatDateOnly(order.issue_date) : <span className="text-neutral-600">—</span>}
             </span>
           </TableCell>
         );
@@ -187,7 +180,7 @@ export default function InsertionOrdersList({
                   ? "text-red-400"
                   : "text-neutral-300"
               }`}>
-                {formatDate(order.due_date)}
+                {formatDateOnly(order.due_date)}
               </span>
             ) : (
               <span className="text-neutral-600 text-sm">—</span>
@@ -214,7 +207,7 @@ export default function InsertionOrdersList({
         return (
           <TableCell>
             <span className="text-sm text-neutral-500 tabular-nums">
-              {order.updated_at ? formatDate(order.updated_at) : <span className="text-neutral-600">—</span>}
+              {order.updated_at ? formatDateTime(order.updated_at, { hour: "numeric", minute: "2-digit" }) : <span className="text-neutral-600">—</span>}
             </span>
           </TableCell>
         );

@@ -82,13 +82,21 @@ def _ensure_assigned_user(db: Session, user_id: int):
 
 def list_sales_contacts(
     db: Session,
+    tenant_id: int,
     pagination: Pagination,
     search: str | None = None,
     *,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> tuple[Sequence[SalesContact], int]:
-    query = db.query(SalesContact).outerjoin(SalesOrganization).filter(SalesContact.deleted_at.is_(None))
+    query = (
+        db.query(SalesContact)
+        .outerjoin(SalesOrganization)
+        .filter(
+            SalesContact.tenant_id == tenant_id,
+            SalesContact.deleted_at.is_(None),
+        )
+    )
     filter_field_map = {
         "first_name": {"expression": SalesContact.first_name, "type": "text"},
         "last_name": {"expression": SalesContact.last_name, "type": "text"},
@@ -101,6 +109,7 @@ def list_sales_contacts(
         "created_time": {"expression": SalesContact.created_time, "type": "date"},
         **build_custom_field_filter_map(
             db,
+            tenant_id=tenant_id,
             module_key="sales_contacts",
             record_id_expression=SalesContact.contact_id,
         ),
@@ -123,6 +132,7 @@ def list_sales_contacts(
     contacts = query.offset(pagination.offset).limit(pagination.limit).all()
     contacts = hydrate_custom_field_records(
         db,
+        tenant_id=tenant_id,
         module_key="sales_contacts",
         records=contacts,
         record_id_attr="contact_id",
@@ -130,8 +140,11 @@ def list_sales_contacts(
     return contacts, total_count
 
 
-def get_contact_or_404(db: Session, contact_id: int, *, include_deleted: bool = False) -> SalesContact:
-    query = db.query(SalesContact).filter(SalesContact.contact_id == contact_id)
+def get_contact_or_404(db: Session, contact_id: int, *, tenant_id: int, include_deleted: bool = False) -> SalesContact:
+    query = db.query(SalesContact).filter(
+        SalesContact.contact_id == contact_id,
+        SalesContact.tenant_id == tenant_id,
+    )
     if not include_deleted:
         query = query.filter(SalesContact.deleted_at.is_(None))
     contact = query.first()
@@ -139,6 +152,7 @@ def get_contact_or_404(db: Session, contact_id: int, *, include_deleted: bool = 
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
     return hydrate_custom_field_record(
         db,
+        tenant_id=tenant_id,
         module_key="sales_contacts",
         record=contact,
         record_id=contact.contact_id,
@@ -173,6 +187,7 @@ def create_sales_contact(
     data = dict(payload)
     custom_data = validate_custom_field_payload(
         db,
+        tenant_id=current_user.tenant_id,
         module_key="sales_contacts",
         payload=data.pop("custom_fields", None),
     )
@@ -194,6 +209,7 @@ def create_sales_contact(
     existing = (
         db.query(SalesContact)
         .filter(
+            SalesContact.tenant_id == current_user.tenant_id,
             SalesContact.deleted_at.is_(None),
             or_(
                 func.lower(SalesContact.primary_email) == _normalize_email(email),
@@ -210,6 +226,7 @@ def create_sales_contact(
         if skip_duplicates:
             return hydrate_custom_field_record(
                 db,
+                tenant_id=current_user.tenant_id,
                 module_key="sales_contacts",
                 record=existing,
                 record_id=existing.contact_id,
@@ -221,6 +238,7 @@ def create_sales_contact(
             db.refresh(existing)
             save_custom_field_values(
                 db,
+                tenant_id=current_user.tenant_id,
                 module_key="sales_contacts",
                 record_id=existing.contact_id,
                 values=existing.custom_data or {},
@@ -228,6 +246,7 @@ def create_sales_contact(
             db.commit()
             return hydrate_custom_field_record(
                 db,
+                tenant_id=current_user.tenant_id,
                 module_key="sales_contacts",
                 record=existing,
                 record_id=existing.contact_id,
@@ -242,14 +261,22 @@ def create_sales_contact(
             ),
         )
 
+    data["tenant_id"] = current_user.tenant_id
     contact = SalesContact(**data)
     db.add(contact)
     db.commit()
     db.refresh(contact)
-    save_custom_field_values(db, module_key="sales_contacts", record_id=contact.contact_id, values=custom_data)
+    save_custom_field_values(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_contacts",
+        record_id=contact.contact_id,
+        values=custom_data,
+    )
     db.commit()
     return hydrate_custom_field_record(
         db,
+        tenant_id=current_user.tenant_id,
         module_key="sales_contacts",
         record=contact,
         record_id=contact.contact_id,
@@ -260,10 +287,12 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
     if "custom_fields" in data:
         data["custom_data"] = validate_custom_field_payload(
             db,
+            tenant_id=contact.tenant_id,
             module_key="sales_contacts",
             payload=data.pop("custom_fields"),
             existing=load_custom_field_values_with_fallback(
                 db,
+                tenant_id=contact.tenant_id,
                 module_key="sales_contacts",
                 record_id=contact.contact_id,
                 fallback=contact.custom_data,
@@ -284,6 +313,7 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
             db.query(SalesContact)
             .filter(
                 SalesContact.deleted_at.is_(None),
+                SalesContact.tenant_id == contact.tenant_id,
                 func.lower(SalesContact.primary_email) == normalized_email,
                 SalesContact.contact_id != contact.contact_id,
             )
@@ -300,10 +330,17 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
     db.add(contact)
     db.commit()
     db.refresh(contact)
-    save_custom_field_values(db, module_key="sales_contacts", record_id=contact.contact_id, values=contact.custom_data or {})
+    save_custom_field_values(
+        db,
+        tenant_id=contact.tenant_id,
+        module_key="sales_contacts",
+        record_id=contact.contact_id,
+        values=contact.custom_data or {},
+    )
     db.commit()
     return hydrate_custom_field_record(
         db,
+        tenant_id=contact.tenant_id,
         module_key="sales_contacts",
         record=contact,
         record_id=contact.contact_id,
@@ -318,9 +355,13 @@ def delete_sales_contact(db: Session, contact: SalesContact) -> None:
 
 def list_deleted_sales_contacts(
     db: Session,
+    tenant_id: int,
     pagination: Pagination,
 ) -> tuple[Sequence[SalesContact], int]:
-    query = db.query(SalesContact).filter(SalesContact.deleted_at.is_not(None))
+    query = db.query(SalesContact).filter(
+        SalesContact.tenant_id == tenant_id,
+        SalesContact.deleted_at.is_not(None),
+    )
     total_count = query.count()
     contacts = (
         query.order_by(SalesContact.deleted_at.desc(), SalesContact.created_time.desc())
@@ -338,6 +379,7 @@ def restore_sales_contact(db: Session, contact: SalesContact) -> SalesContact:
     db.refresh(contact)
     return hydrate_custom_field_record(
         db,
+        tenant_id=contact.tenant_id,
         module_key="sales_contacts",
         record=contact,
         record_id=contact.contact_id,

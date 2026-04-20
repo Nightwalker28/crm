@@ -6,16 +6,21 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
-from fastapi import HTTPException, status
+from fastapi import HTTPException, Request, status
 from jose import jwt, JWTError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.passwords import hash_password, verify_password, validate_password_strength
+from app.core.tenancy import (
+    get_frontend_origin_for_request,
+    get_google_redirect_uri_for_request,
+)
 from app.modules.user_management.models import (
     Module,
     RefreshToken,
+    Tenant,
     Team,
     TeamModulePermission,
     User,
@@ -36,14 +41,47 @@ SCOPES = "openid email profile"
 # GOOGLE OAUTH
 # -------------------------------------------------------------------
 
-def get_google_auth_url() -> str:
+def _create_oauth_state(*, tenant: Tenant, frontend_origin: str) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "type": "google_oauth_state",
+        "tenant_id": tenant.id,
+        "frontend_origin": frontend_origin.rstrip("/"),
+        "iat": now,
+        "exp": now + timedelta(minutes=settings.GOOGLE_OAUTH_STATE_EXPIRE_MINUTES),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_oauth_state(state_token: str | None) -> dict | None:
+    if not state_token:
+        return None
+    try:
+        payload = jwt.decode(
+            state_token,
+            settings.JWT_SECRET,
+            algorithms=[settings.JWT_ALGORITHM],
+        )
+    except JWTError:
+        return None
+
+    if payload.get("type") != "google_oauth_state":
+        return None
+    return payload
+
+
+def get_google_auth_url(*, request: Request, tenant: Tenant) -> str:
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
-        "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+        "redirect_uri": get_google_redirect_uri_for_request(request),
         "response_type": "code",
         "scope": SCOPES,
         "access_type": "offline",
         "prompt": "consent",
+        "state": _create_oauth_state(
+            tenant=tenant,
+            frontend_origin=get_frontend_origin_for_request(request),
+        ),
     }
     return GOOGLE_AUTH_URL + "?" + urllib.parse.urlencode(params)
 
@@ -66,6 +104,7 @@ def _create_token(
 
     payload = {
         "sub": str(user.id),
+        "tenant_id": user.tenant_id,
         "type": token_type,
         "iat": now,
         "exp": now + expires_delta,
@@ -98,6 +137,7 @@ def create_refresh_token(user: User, db: Session) -> str:
 
     payload = {
         "sub": str(user.id),
+        "tenant_id": user.tenant_id,
         "type": "refresh",
         "jti": jti,
         "exp": expires_at,
@@ -137,7 +177,13 @@ def decode_token(token: str, expected_type: Literal["access", "refresh"]) -> dic
 # GOOGLE CALLBACK LOGIC (unchanged behavior, cleaner structure)
 # -------------------------------------------------------------------
 
-def handle_google_callback(code: str, db: Session):
+def handle_google_callback(
+    code: str,
+    db: Session,
+    *,
+    tenant: Tenant,
+    request: Request,
+):
     # 1) Exchange code for Google token
     token_res = requests.post(
         GOOGLE_TOKEN_URL,
@@ -145,7 +191,7 @@ def handle_google_callback(code: str, db: Session):
             "code": code,
             "client_id": settings.GOOGLE_CLIENT_ID,
             "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": settings.GOOGLE_REDIRECT_URI,
+            "redirect_uri": get_google_redirect_uri_for_request(request),
             "grant_type": "authorization_code",
         },
     )
@@ -182,7 +228,14 @@ def handle_google_callback(code: str, db: Session):
     last_name = profile.get("family_name")
 
     # 4) Find or create user
-    user = db.query(User).filter(func.lower(User.email) == email.strip().lower()).first()
+    user = (
+        db.query(User)
+        .filter(
+            User.tenant_id == tenant.id,
+            func.lower(User.email) == email.strip().lower(),
+        )
+        .first()
+    )
 
     if not user:
         raise HTTPException(
@@ -210,7 +263,12 @@ def handle_google_callback(code: str, db: Session):
     }
 
 
-def create_user_setup_link(db: Session, user: User) -> str:
+def create_user_setup_link(
+    db: Session,
+    user: User,
+    *,
+    frontend_origin: str | None = None,
+) -> str:
     raw_token = secrets.token_urlsafe(32)
     token_hash = _hash_setup_token(raw_token)
     expires_at = datetime.now(timezone.utc) + timedelta(
@@ -232,7 +290,8 @@ def create_user_setup_link(db: Session, user: User) -> str:
     db.commit()
 
     token_query = urllib.parse.urlencode({"token": raw_token})
-    return f"{settings.FRONTEND_ORIGIN}/auth/setup-password?{token_query}"
+    base_origin = (frontend_origin or settings.FRONTEND_ORIGIN).rstrip("/")
+    return f"{base_origin}/auth/setup-password?{token_query}"
 
 
 def set_initial_password(db: Session, *, token: str, password: str) -> User:
@@ -283,11 +342,20 @@ def set_initial_password(db: Session, *, token: str, password: str) -> User:
 def authenticate_manual_user(
     db: Session,
     *,
+    tenant_id: int,
     email: str,
     password: str,
+    frontend_origin: str | None = None,
 ) -> User:
     normalized_email = email.strip().lower()
-    user = db.query(User).filter(User.email == normalized_email).first()
+    user = (
+        db.query(User)
+        .filter(
+            User.tenant_id == tenant_id,
+            User.email == normalized_email,
+        )
+        .first()
+    )
 
     if not user or not verify_password(password, user.password_hash):
         if user and not user.password_hash:
@@ -297,7 +365,11 @@ def authenticate_manual_user(
                     "code": "password_setup_required",
                     "message": "This account does not have a password set yet",
                     "setup_link": (
-                        create_user_setup_link(db, user)
+                        create_user_setup_link(
+                            db,
+                            user,
+                            frontend_origin=frontend_origin,
+                        )
                         if user.auth_mode in {UserAuthMode.manual_only, UserAuthMode.manual_or_google}
                         else None
                     ),

@@ -263,6 +263,7 @@ def list_generic_insertion_orders_page(
     user_scope = get_finance_user_scope(db, current_user)
     records, total_count = list_insertion_orders(
         db,
+        tenant_id=current_user.tenant_id,
         module_id=module_id,
         user_id=user_scope.user_id_filter,
         pagination=pagination,
@@ -291,6 +292,7 @@ def export_generic_insertion_orders(
     user_scope = get_finance_user_scope(db, current_user)
     records, _ = list_insertion_orders(
         db,
+        tenant_id=current_user.tenant_id,
         module_id=module_id,
         user_id=user_scope.user_id_filter,
         pagination=Pagination(page=1, page_size=100000, offset=0, limit=100000),
@@ -362,6 +364,7 @@ def create_generic_insertion_order(
     serialized = _serialize_finance_record(record, request=request, current_user=current_user)
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="finance_insertion_orders",
         entity_type="finance_insertion_order",
@@ -385,8 +388,9 @@ def update_generic_insertion_order(
     user_scope = get_finance_user_scope(db, current_user)
     try:
         record = get_insertion_order_or_404(
-            db,
-            module_id=module_id,
+        db,
+        tenant_id=current_user.tenant_id,
+        module_id=module_id,
             io_id=io_id,
             user_id=user_scope.user_id_filter,
         )
@@ -397,6 +401,7 @@ def update_generic_insertion_order(
     serialized = _serialize_finance_record(updated, request=request, current_user=current_user)
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="finance_insertion_orders",
         entity_type="finance_insertion_order",
@@ -419,8 +424,9 @@ def delete_generic_insertion_order(
     user_scope = get_finance_user_scope(db, current_user)
     try:
         record = get_insertion_order_or_404(
-            db,
-            module_id=module_id,
+        db,
+        tenant_id=current_user.tenant_id,
+        module_id=module_id,
             io_id=io_id,
             user_id=user_scope.user_id_filter,
         )
@@ -430,6 +436,7 @@ def delete_generic_insertion_order(
     soft_delete_insertion_order(db, record=record)
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="finance_insertion_orders",
         entity_type="finance_insertion_order",

@@ -127,6 +127,7 @@ def list_contacts(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     contacts, total_count = list_sales_contacts(
         db,
+        current_user.tenant_id,
         pagination,
         search=None,
         all_filter_conditions=all_conditions,
@@ -162,6 +163,7 @@ def search_contacts(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     contacts, total_count = list_sales_contacts(
         db,
+        current_user.tenant_id,
         pagination,
         search=query,
         all_filter_conditions=all_conditions,
@@ -180,7 +182,7 @@ def list_deleted_contacts(
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "restore")),
 ):
-    contacts, total_count = list_deleted_sales_contacts(db, pagination)
+    contacts, total_count = list_deleted_sales_contacts(db, current_user.tenant_id, pagination)
     serialized = [SalesContactResponse.model_validate(contact) for contact in contacts]
     return build_paged_response(serialized, total_count, pagination)
 
@@ -207,6 +209,7 @@ def create_contact(
         )
         log_activity(
             db,
+            tenant_id=current_user.tenant_id,
             actor_user_id=current_user.id if current_user else None,
             module_key="sales_contacts",
             entity_type="sales_contact",
@@ -247,6 +250,7 @@ async def import_contacts(
     ):
         job = create_data_transfer_job(
             db,
+            tenant_id=current_user.tenant_id,
             actor_user_id=current_user.id,
             module_key="sales_contacts",
             operation_type="import",
@@ -321,6 +325,7 @@ def export_contacts(
 ):
     job = create_data_transfer_job(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_contacts",
         operation_type="export",
@@ -347,6 +352,7 @@ def search_organizations_for_contacts(
     items, total = search_organizations_pagianted(
         db,
         name,
+        tenant_id=current_user.tenant_id,
         offset=pagination.offset,
         limit=pagination.limit,
     )
@@ -361,7 +367,7 @@ def get_contact(
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
-    contact = get_contact_or_404(db, contact_id)
+    contact = get_contact_or_404(db, contact_id, tenant_id=current_user.tenant_id)
     return contact
 
 
@@ -373,7 +379,7 @@ def get_contact_summary(
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
-    contact = get_contact_or_404(db, contact_id)
+    contact = get_contact_or_404(db, contact_id, tenant_id=current_user.tenant_id)
     return build_contact_summary(db, contact)
 
 
@@ -386,7 +392,7 @@ def update_contact(
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "edit")),
 ):
-    contact = get_contact_or_404(db, contact_id)
+    contact = get_contact_or_404(db, contact_id, tenant_id=current_user.tenant_id)
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
         return contact
@@ -395,6 +401,7 @@ def update_contact(
     updated = update_sales_contact(db, contact, update_data)
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_contacts",
         entity_type="sales_contact",
@@ -415,11 +422,12 @@ def delete_contact(
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "delete")),
 ):
-    contact = get_contact_or_404(db, contact_id)
+    contact = get_contact_or_404(db, contact_id, tenant_id=current_user.tenant_id)
     before_state = _serialize_contact(contact)
     delete_sales_contact(db, contact)
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_contacts",
         entity_type="sales_contact",
@@ -438,10 +446,11 @@ def restore_contact(
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "restore")),
 ):
-    contact = get_contact_or_404(db, contact_id, include_deleted=True)
+    contact = get_contact_or_404(db, contact_id, tenant_id=current_user.tenant_id, include_deleted=True)
     restored = restore_sales_contact(db, contact)
     log_activity(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_contacts",
         entity_type="sales_contact",

@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import Pagination from "@/components/ui/Pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatDateTime } from "@/lib/datetime";
 
 type RecycleItem = {
   module_key: string;
@@ -136,7 +137,7 @@ export default function RecycleBinPage() {
                 <div className="min-w-0">
                   <div className="truncate text-sm font-semibold text-neutral-100">{item.title}</div>
                   <div className="mt-1 truncate text-sm text-neutral-500">
-                    {item.subtitle || "No secondary label"}{item.deleted_at ? ` · deleted ${new Date(item.deleted_at).toLocaleString()}` : ""}
+                    {item.subtitle || "No secondary label"}{item.deleted_at ? ` · deleted ${formatDateTime(item.deleted_at)}` : ""}
                   </div>
                 </div>
                 <Button

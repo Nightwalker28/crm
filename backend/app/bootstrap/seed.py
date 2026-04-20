@@ -4,6 +4,7 @@ from sqlalchemy import func, text
 
 from app.core.database import SessionLocal
 from app.core.passwords import hash_password
+from app.core.tenancy import get_or_create_single_tenant
 from app.modules.user_management.models import (
     Department,
     DepartmentModulePermission,
@@ -76,6 +77,7 @@ def seed_initial_data(
 
     db = SessionLocal()
     try:
+        tenant = get_or_create_single_tenant(db)
         _sync_pk_sequence(db, "roles", "roles_id_seq")
         _sync_pk_sequence(db, "departments", "departments_id_seq")
         _sync_pk_sequence(db, "teams", "teams_id_seq")
@@ -171,9 +173,17 @@ def seed_initial_data(
                 db.add(permission)
 
         admin_role = roles_by_name["Admin"]
-        admin_user = db.query(User).filter(func.lower(User.email) == admin_email).first()
+        admin_user = (
+            db.query(User)
+            .filter(
+                User.tenant_id == tenant.id,
+                func.lower(User.email) == admin_email,
+            )
+            .first()
+        )
         if not admin_user:
             admin_user = User(
+                tenant_id=tenant.id,
                 email=admin_email,
                 first_name=admin_first_name.strip() or None,
                 last_name=admin_last_name.strip() or None,
@@ -191,6 +201,7 @@ def seed_initial_data(
             admin_user.team_id = team.id
             admin_user.auth_mode = UserAuthMode.manual_or_google
             admin_user.is_active = UserStatus.active
+            admin_user.tenant_id = tenant.id
             if not admin_user.first_name:
                 admin_user.first_name = admin_first_name.strip() or None
             if not admin_user.last_name:

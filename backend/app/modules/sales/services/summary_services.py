@@ -42,6 +42,7 @@ def _collect_services(opportunities: list[SalesOpportunity]) -> list[str]:
 
 def _get_related_insertion_orders(
     db: Session,
+    tenant_id: int,
     organization_name: str | None,
     organization_id: int | None = None,
     contact_id: int | None = None,
@@ -51,7 +52,7 @@ def _get_related_insertion_orders(
         return []
 
     normalized = organization_name.strip().lower() if organization_name else None
-    filters = [FinanceIO.deleted_at.is_(None)]
+    filters = [FinanceIO.tenant_id == tenant_id, FinanceIO.deleted_at.is_(None)]
     if contact_id is not None and organization_id is not None and normalized is not None:
         filters.append(
             or_(
@@ -104,6 +105,7 @@ def _get_related_insertion_orders(
 def build_contact_summary(db: Session, contact: SalesContact) -> dict:
     contact = hydrate_custom_field_record(
         db,
+        tenant_id=contact.tenant_id,
         module_key="sales_contacts",
         record=contact,
         record_id=contact.contact_id,
@@ -112,12 +114,16 @@ def build_contact_summary(db: Session, contact: SalesContact) -> dict:
     if contact.organization_id:
         organization = (
             db.query(SalesOrganization)
-            .filter(SalesOrganization.org_id == contact.organization_id)
+            .filter(
+                SalesOrganization.org_id == contact.organization_id,
+                SalesOrganization.tenant_id == contact.tenant_id,
+            )
             .first()
         )
         if organization:
             organization = hydrate_custom_field_record(
                 db,
+                tenant_id=contact.tenant_id,
                 module_key="sales_organizations",
                 record=organization,
                 record_id=organization.org_id,
@@ -127,6 +133,7 @@ def build_contact_summary(db: Session, contact: SalesContact) -> dict:
         db.query(SalesOpportunity)
         .filter(
             SalesOpportunity.contact_id == contact.contact_id,
+            SalesOpportunity.tenant_id == contact.tenant_id,
             SalesOpportunity.deleted_at.is_(None),
         )
         .order_by(SalesOpportunity.created_time.desc())
@@ -135,12 +142,14 @@ def build_contact_summary(db: Session, contact: SalesContact) -> dict:
     )
     opportunities = hydrate_custom_field_records(
         db,
+        tenant_id=contact.tenant_id,
         module_key="sales_opportunities",
         records=opportunities,
         record_id_attr="opportunity_id",
     )
     insertion_orders = _get_related_insertion_orders(
         db,
+        contact.tenant_id,
         organization.org_name if organization else None,
         organization.org_id if organization else None,
         contact.contact_id,
@@ -160,6 +169,7 @@ def build_contact_summary(db: Session, contact: SalesContact) -> dict:
 def build_organization_summary(db: Session, organization: SalesOrganization) -> dict:
     organization = hydrate_custom_field_record(
         db,
+        tenant_id=organization.tenant_id,
         module_key="sales_organizations",
         record=organization,
         record_id=organization.org_id,
@@ -168,6 +178,7 @@ def build_organization_summary(db: Session, organization: SalesOrganization) -> 
         db.query(SalesContact)
         .filter(
             SalesContact.organization_id == organization.org_id,
+            SalesContact.tenant_id == organization.tenant_id,
             SalesContact.deleted_at.is_(None),
         )
         .order_by(SalesContact.created_time.desc())
@@ -176,6 +187,7 @@ def build_organization_summary(db: Session, organization: SalesOrganization) -> 
     )
     contacts = hydrate_custom_field_records(
         db,
+        tenant_id=organization.tenant_id,
         module_key="sales_contacts",
         records=contacts,
         record_id_attr="contact_id",
@@ -184,6 +196,7 @@ def build_organization_summary(db: Session, organization: SalesOrganization) -> 
         db.query(SalesOpportunity)
         .filter(
             SalesOpportunity.organization_id == organization.org_id,
+            SalesOpportunity.tenant_id == organization.tenant_id,
             SalesOpportunity.deleted_at.is_(None),
         )
         .order_by(SalesOpportunity.created_time.desc())
@@ -192,11 +205,12 @@ def build_organization_summary(db: Session, organization: SalesOrganization) -> 
     )
     opportunities = hydrate_custom_field_records(
         db,
+        tenant_id=organization.tenant_id,
         module_key="sales_opportunities",
         records=opportunities,
         record_id_attr="opportunity_id",
     )
-    insertion_orders = _get_related_insertion_orders(db, organization.org_name, organization.org_id)
+    insertion_orders = _get_related_insertion_orders(db, organization.tenant_id, organization.org_name, organization.org_id)
 
     return {
         "organization": organization,

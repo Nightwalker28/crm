@@ -77,6 +77,8 @@ class DataTransferJobResponse(BaseModel):
     result_file_name: str | None = None
     result_media_type: str | None = None
     error_message: str | None = None
+    progress_percent: int = 0
+    progress_message: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
     created_at: datetime

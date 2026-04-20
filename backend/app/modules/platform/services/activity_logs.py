@@ -9,6 +9,7 @@ from app.modules.platform.models import ActivityLog
 def log_activity(
     db: Session,
     *,
+    tenant_id: int,
     actor_user_id: int | None,
     module_key: str,
     entity_type: str,
@@ -19,6 +20,7 @@ def log_activity(
     after_state: dict[str, Any] | None = None,
 ) -> ActivityLog:
     entry = ActivityLog(
+        tenant_id=tenant_id,
         actor_user_id=actor_user_id,
         module_key=module_key,
         entity_type=entity_type,
@@ -37,12 +39,13 @@ def log_activity(
 def list_activity_logs(
     db: Session,
     *,
+    tenant_id: int,
     pagination: Pagination,
     module_key: str | None = None,
     entity_type: str | None = None,
     action: str | None = None,
 ) -> tuple[list[ActivityLog], int]:
-    query = db.query(ActivityLog)
+    query = db.query(ActivityLog).filter(ActivityLog.tenant_id == tenant_id)
     if module_key:
         query = query.filter(ActivityLog.module_key == module_key)
     if entity_type:
