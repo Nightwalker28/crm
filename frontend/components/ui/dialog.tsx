@@ -22,6 +22,15 @@ import {
 } from 'motion/react';
 import { cn } from "@/lib/utils";
 
+const dialogPanelSizeClasses = {
+  sm: "w-full max-w-sm",
+  md: "w-full max-w-md",
+  lg: "w-full max-w-lg",
+  xl: "w-full max-w-xl",
+  "2xl": "w-full max-w-2xl",
+  "3xl": "w-full max-w-3xl",
+} as const;
+
 type DialogProps<TTag extends React.ElementType = 'div'> = Omit<
   DialogPrimitiveProps<TTag>,
   'static'
@@ -92,6 +101,7 @@ type DialogPanelProps<TTag extends React.ElementType = typeof motion.div> =
       from?: DialogFlipDirection;
       transition?: Transition;
       as?: TTag;
+      size?: keyof typeof dialogPanelSizeClasses;
     };
 
 function DialogPanel<TTag extends React.ElementType = typeof motion.div>(
@@ -102,6 +112,7 @@ function DialogPanel<TTag extends React.ElementType = typeof motion.div>(
     as = motion.div,
     from = 'top',
     transition = { type: 'spring', stiffness: 700, damping: 30 },
+    size = 'lg',
     className,
     ...rest
   } = props;
@@ -118,6 +129,7 @@ function DialogPanel<TTag extends React.ElementType = typeof motion.div>(
       as={as as React.ElementType}
       className={cn(
         "bg-neutral-900 border border-neutral-800 rounded-md p-4",
+        dialogPanelSizeClasses[size],
         className
       )}
       initial={{
@@ -175,7 +187,7 @@ function DialogHeader<TTag extends React.ElementType = 'div'>({
   as: Component = 'div',
   ...props
 }: DialogHeaderProps<TTag>) {
-  return <Component data-slot="dialog-header" {...props} className={cn("flex justify-between items-center", props.className)}/>;
+  return <Component data-slot="dialog-header" {...props} className={cn("flex items-start justify-between gap-3", props.className)}/>;
 }
 
 type DialogFooterProps<TTag extends React.ElementType = 'div'> =

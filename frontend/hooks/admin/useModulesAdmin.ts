@@ -50,7 +50,7 @@ export function useModulesAdmin() {
 
   return {
     modules: query.data ?? [],
-    isLoading: query.isLoading || query.isFetching,
+    isLoading: query.isLoading,
     updateModule: (moduleId: number, payload: Partial<AdminModule>) => mutation.mutateAsync({ moduleId, payload }),
     isSaving: mutation.isPending,
   };

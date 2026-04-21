@@ -221,7 +221,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
     <Dialog open={open} onClose={handleClose}>
       <DialogBackdrop />
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel className="w-full max-w-3xl">
+        <DialogPanel size="3xl">
           <DialogHeader>
             <DialogTitle>{isEditMode ? "Edit Insertion Order" : "Create Insertion Order"}</DialogTitle>
             <DialogIconClose />

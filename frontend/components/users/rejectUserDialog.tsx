@@ -1,11 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogClose,
   DialogPanel,
   DialogHeader,
   DialogTitle,
@@ -13,6 +11,7 @@ import {
   DialogFooter,
   DialogBackdrop,
 } from "@/components/ui/dialog";
+import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { resolveMediaUrl } from "@/lib/media";
 
 type User = {
@@ -36,12 +35,10 @@ export default function RejectUserDialog({ open, user, onCancel, onConfirm }: Pr
       <DialogBackdrop />
 
       <div className="fixed inset-0 z-[30] flex items-center justify-center p-4">
-        <DialogPanel className="w-88 sm:max-w-[360px]">
+        <DialogPanel size="sm">
           <DialogHeader>
             <DialogTitle>Reject pending user</DialogTitle>
-            <DialogClose className="text-neutral-900 hover:bg-red-400/90 cursor-pointer p-0.5 bg-neutral-400/50 rounded-full">
-              <X size={12} />
-            </DialogClose>
+            <DialogIconClose />
           </DialogHeader>
 
           <DialogDescription>

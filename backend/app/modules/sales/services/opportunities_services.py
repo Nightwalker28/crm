@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 from datetime import date
+from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
 from sqlalchemy import func
@@ -52,6 +53,25 @@ OPPORTUNITY_EXPORT_HEADERS = [
     "attachments",
     "created_time",
 ]
+
+OPPORTUNITY_STAGE_ORDER = [
+    "lead",
+    "qualified",
+    "proposal",
+    "negotiation",
+    "closed_won",
+    "closed_lost",
+]
+
+OPPORTUNITY_STAGE_LABELS = {
+    "lead": "Lead",
+    "qualified": "Qualified",
+    "proposal": "Proposal",
+    "negotiation": "Negotiation",
+    "closed_won": "Closed Won",
+    "closed_lost": "Closed Lost",
+    "unstaged": "Unstaged",
+}
 
 
 def parse_attachment_paths(value: str | list[str] | None) -> list[str]:
@@ -124,6 +144,66 @@ def _apply_search_filter(query, search: str | None):
         default_order_column=SalesOpportunity.created_time,
     )
 
+
+def _build_opportunity_query(
+    db: Session,
+    tenant_id: int,
+    search: str | None = None,
+    *,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+):
+    query = db.query(SalesOpportunity).filter(
+        SalesOpportunity.tenant_id == tenant_id,
+        SalesOpportunity.deleted_at.is_(None),
+    )
+    filter_field_map = {
+        "opportunity_name": {"expression": SalesOpportunity.opportunity_name, "type": "text"},
+        "client": {"expression": SalesOpportunity.client, "type": "text"},
+        "sales_stage": {"expression": SalesOpportunity.sales_stage, "type": "text"},
+        "expected_close_date": {"expression": SalesOpportunity.expected_close_date, "type": "date"},
+        "total_cost_of_project": {"expression": SalesOpportunity.total_cost_of_project, "type": "number"},
+        "currency_type": {"expression": SalesOpportunity.currency_type, "type": "text"},
+        "target_geography": {"expression": SalesOpportunity.target_geography, "type": "text"},
+        "created_time": {"expression": SalesOpportunity.created_time, "type": "date"},
+        **build_custom_field_filter_map(
+            db,
+            tenant_id=tenant_id,
+            module_key="sales_opportunities",
+            record_id_expression=SalesOpportunity.opportunity_id,
+        ),
+    }
+    query = apply_filter_conditions(
+        query,
+        conditions=all_filter_conditions,
+        logic="all",
+        field_map=filter_field_map,
+    )
+    query = apply_filter_conditions(
+        query,
+        conditions=any_filter_conditions,
+        logic="any",
+        field_map=filter_field_map,
+    )
+    return _apply_search_filter(query, search)
+
+
+def _normalize_stage(stage: str | None) -> str:
+    normalized = (stage or "").strip().lower().replace(" ", "_")
+    return normalized or "unstaged"
+
+
+def _parse_numeric_value(raw_value: str | None) -> Decimal:
+    if raw_value is None:
+        return Decimal("0")
+    cleaned = str(raw_value).strip().replace(",", "")
+    if not cleaned:
+        return Decimal("0")
+    try:
+        return Decimal(cleaned)
+    except (InvalidOperation, ValueError):
+        return Decimal("0")
+
 def _contact_display_name(contact: SalesContact) -> str:
     full_name = " ".join(part for part in [contact.first_name, contact.last_name] if part).strip()
     return full_name or contact.primary_email or "Unnamed Contact"
@@ -170,39 +250,13 @@ def list_opportunities(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[SalesOpportunity], int]:
-    query = db.query(SalesOpportunity).filter(
-        SalesOpportunity.tenant_id == tenant_id,
-        SalesOpportunity.deleted_at.is_(None),
+    query = _build_opportunity_query(
+        db,
+        tenant_id,
+        search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
     )
-    filter_field_map = {
-        "opportunity_name": {"expression": SalesOpportunity.opportunity_name, "type": "text"},
-        "client": {"expression": SalesOpportunity.client, "type": "text"},
-        "sales_stage": {"expression": SalesOpportunity.sales_stage, "type": "text"},
-        "expected_close_date": {"expression": SalesOpportunity.expected_close_date, "type": "date"},
-        "total_cost_of_project": {"expression": SalesOpportunity.total_cost_of_project, "type": "number"},
-        "currency_type": {"expression": SalesOpportunity.currency_type, "type": "text"},
-        "target_geography": {"expression": SalesOpportunity.target_geography, "type": "text"},
-        "created_time": {"expression": SalesOpportunity.created_time, "type": "date"},
-        **build_custom_field_filter_map(
-            db,
-            tenant_id=tenant_id,
-            module_key="sales_opportunities",
-            record_id_expression=SalesOpportunity.opportunity_id,
-        ),
-    }
-    query = apply_filter_conditions(
-        query,
-        conditions=all_filter_conditions,
-        logic="all",
-        field_map=filter_field_map,
-    )
-    query = apply_filter_conditions(
-        query,
-        conditions=any_filter_conditions,
-        logic="any",
-        field_map=filter_field_map,
-    )
-    query = _apply_search_filter(query, search)
     total_count = query.count()
     items = query.offset(pagination.offset).limit(pagination.limit).all()
     items = hydrate_custom_field_records(
@@ -213,6 +267,56 @@ def list_opportunities(
         record_id_attr="opportunity_id",
     )
     return items, total_count
+
+
+def summarize_opportunity_pipeline(
+    db: Session,
+    tenant_id: int,
+    search: str | None = None,
+    *,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> dict:
+    query = _build_opportunity_query(
+        db,
+        tenant_id,
+        search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+    items = query.all()
+
+    summary = {
+        stage: {"stage_key": stage, "label": OPPORTUNITY_STAGE_LABELS[stage], "count": 0, "total_value": Decimal("0")}
+        for stage in OPPORTUNITY_STAGE_ORDER
+    }
+    summary["unstaged"] = {
+        "stage_key": "unstaged",
+        "label": OPPORTUNITY_STAGE_LABELS["unstaged"],
+        "count": 0,
+        "total_value": Decimal("0"),
+    }
+
+    for item in items:
+        stage_key = _normalize_stage(item.sales_stage)
+        bucket = summary.get(stage_key) or summary["unstaged"]
+        bucket["count"] += 1
+        bucket["total_value"] += _parse_numeric_value(item.total_cost_of_project)
+
+    ordered_keys = [*OPPORTUNITY_STAGE_ORDER, "unstaged"]
+    stages = [
+        {
+            "stage_key": key,
+            "label": summary[key]["label"],
+            "count": summary[key]["count"],
+            "total_value": float(summary[key]["total_value"]),
+        }
+        for key in ordered_keys
+    ]
+    return {
+        "total_count": len(items),
+        "stages": stages,
+    }
 
 
 def list_deleted_opportunities(

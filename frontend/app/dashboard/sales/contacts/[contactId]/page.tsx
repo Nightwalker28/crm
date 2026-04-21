@@ -8,6 +8,9 @@ import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
+import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
+import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
+import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -180,22 +183,17 @@ export default function ContactDetailPage() {
 
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <Link href="/dashboard/sales/contacts" className="text-xs uppercase tracking-wide text-neutral-500 hover:text-neutral-300">
-            Back to Contacts
-          </Link>
-          <h1 className="mt-2 text-2xl font-semibold leading-none">
-            {summary ? `${summary.contact.first_name || ""} ${summary.contact.last_name || ""}`.trim() || summary.contact.primary_email : "Contact"}
-          </h1>
-          <p className="mt-2 text-sm text-zinc-500">
-            Review the contact record, linked organization, related opportunities, and inferred service history.
-          </p>
-        </div>
-        <Button onClick={handleSave} disabled={saving || !form.primary_email.trim()}>
-          {saving ? "Saving..." : "Save Contact"}
-        </Button>
-      </div>
+      <RecordPageHeader
+        backHref="/dashboard/sales/contacts"
+        backLabel="Back to Contacts"
+        title={summary ? `${summary.contact.first_name || ""} ${summary.contact.last_name || ""}`.trim() || summary.contact.primary_email || "Contact" : "Contact"}
+        description="Review the contact record, linked organization, related opportunities, and inferred service history."
+        primaryAction={(
+          <Button onClick={handleSave} disabled={saving || !form.primary_email.trim()}>
+            {saving ? "Saving..." : "Save Contact"}
+          </Button>
+        )}
+      />
 
       {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}
 
@@ -328,6 +326,18 @@ export default function ContactDetailPage() {
                 )) : <div className="text-sm text-neutral-500">No related insertion orders yet.</div>}
               </div>
             </Card>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <RecordActivityTimeline
+              moduleKey="sales_contacts"
+              entityId={summary.contact.contact_id}
+              description="Contact-level create, update, delete, restore, and note history."
+            />
+            <RecordCommentsPanel
+              moduleKey="sales_contacts"
+              entityId={summary.contact.contact_id}
+            />
           </div>
         </>
       )}

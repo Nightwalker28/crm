@@ -82,7 +82,7 @@ export default function EditUserDialog({
       <DialogBackdrop />
 
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel className="w-88 sm:max-w-[380px]">
+        <DialogPanel size="md">
           <DialogHeader>
             <DialogTitle>Editing User</DialogTitle>
             <DialogIconClose />

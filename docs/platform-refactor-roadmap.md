@@ -17,6 +17,15 @@ Current phase:
 - Phase 8.5 in progress: tenant ownership rollout across existing modules and platform defaults for timezone-aware rendering
 
 Completed items:
+- Finished the remaining visual consistency cleanup by standardizing the saved-view management route and CRM detail-page headers on shared page-header patterns, while removing stale pre-launch copy from already-landed dashboard, sales, finance, and opportunity surfaces.
+- Replaced the old `/dashboard` redirect with a real dashboard home that surfaces KPI-style counts, recent activity, notifications, quick actions, and module entry points from live data sources.
+- Added opportunity pipeline visibility with stage summary cards, a pipeline/table toggle, and a shared kanban-style opportunity board tied into the same edit and finance-handoff flows.
+- Replaced the old placeholder sales and finance landing states with real summary pages that use live module data and actionable entry points.
+- Standardized shared dialog sizing through the shared dialog primitive, migrated the inconsistent creation/approval/edit modals onto those size tokens, and moved the finance upload flow onto the shared dialog shell so modal width and close behavior now follow one platform baseline.
+- Added shared table/pipeline skeleton loading states plus non-blocking pagination/refetch polish across the main module surfaces so contacts, organizations, opportunities, and insertion orders no longer fall back to coarse full-table loading on background refreshes.
+- Added a shared global search / command palette in the dashboard shell, backed by one permission-aware aggregate search API for CRM record lookup across contacts, organizations, and opportunities.
+- Added shared record notes/comments as a reusable tenant-scoped platform primitive, with one shared record-comments API and CRM detail-page integration across contacts, organizations, and opportunities.
+- Added shared per-record activity timelines as a reusable platform primitive, with one record-activity API path and record-page integration across contacts, organizations, and opportunities.
 - Fixed uploaded profile/company media URL resolution so backend-served `/media/...` assets are no longer incorrectly built under `/api/v1/...` on the frontend.
 - Replaced the profile timezone free-text field with a searchable timezone picker that stores the real timezone value while letting users search by country/city labels such as Sri Lanka / Colombo.
 - Added persisted progress fields to background data-transfer jobs so import/export flows can expose percentage and current-step text instead of only queued/completed/failed states.
@@ -147,6 +156,17 @@ In progress:
 - The data-transfer job foundation is now being moved onto Celery with Redis so import/export and future scheduled workloads use a real worker architecture instead of in-process request tasks.
 - Large imports now queue real Celery jobs through the shared data-transfer-job layer, and that path has been verified end to end with Redis and the dedicated worker service.
 - Apply the shared UI audit fixes across the dashboard shell, sidebar, page headers, and secondary action patterns while keeping the product on its monochrome palette.
+- Convert the UI audit into an explicit execution queue instead of one generic cleanup item:
+  - dashboard home with KPI cards, recent activity, quick actions, and module entry points
+  - opportunity kanban / pipeline view
+  - shared per-record activity timeline on contact, organization, and opportunity detail pages
+  - shared notes / comments on core CRM records where record pages exist
+  - global search / command palette
+  - replacement of placeholder sales/finance landing states
+  - skeleton loading states and pagination/refetch polish
+  - dialog-width standardization and remaining visual consistency cleanup
+- Treat audit-driven CRM features as shared platform patterns across applicable modules and complete each slice to production-grade before moving on to the next one.
+- Current active implementation slice: resume the tenant-isolation rollout underneath the shared UI work, starting with shared admin/config/activity/notification data that still assumes one global row set.
 - Finish the current export rebuild so contacts, organizations, opportunities, and insertion orders can export all rows, selected rows across pages, and the current visible page through the background-job flow.
 - Restore the branded splash/loading treatment in a controlled way for initial load and route-level loading states.
 - Rebuild imports into a proper staged workflow with preview/header mapping first, then duplicate-policy control, then richer result summaries.

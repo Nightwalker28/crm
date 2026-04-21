@@ -39,6 +39,7 @@ export default function OrganizationsPage() {
     rangeStart,
     rangeEnd,
     isLoading,
+    isFetching,
     error,
     goToPage,
     setPageSize,
@@ -127,6 +128,7 @@ export default function OrganizationsPage() {
       <OrganizationsTable
         organizations={organizations}
         isLoading={isLoading}
+        isRefreshing={isFetching && !isLoading}
         visibleColumns={visibleColumns}
         columnOptions={definition?.columns ?? []}
         selectedIds={selectedIds}
@@ -142,6 +144,7 @@ export default function OrganizationsPage() {
         rangeStart={rangeStart}
         rangeEnd={rangeEnd}
         pageSize={pageSize}
+        isRefreshing={isFetching && !isLoading}
         onPageChange={goToPage}
         onPageSizeChange={setPageSize}
       />

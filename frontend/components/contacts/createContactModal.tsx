@@ -24,6 +24,7 @@ import { COUNTRIES } from "@/lib/countries";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useCreateContact } from "@/hooks/sales/useCreateContact";
+import { DialogIconClose } from "@/components/ui/DialogIconClose";
 
 const REGIONS = ["APAC", "EMEA", "NA", "LATAM"];
 
@@ -71,9 +72,10 @@ export default function CreateContactModal({
       <DialogBackdrop />
 
       <div className="fixed inset-0 flex items-center justify-center p-4">
-        <DialogPanel className="w-full max-w-2xl">
+        <DialogPanel size="2xl">
           <DialogHeader>
             <DialogTitle>Create Contact</DialogTitle>
+            <DialogIconClose />
           </DialogHeader>
 
           <div className="mt-4 space-y-4">

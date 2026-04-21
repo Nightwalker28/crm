@@ -7,6 +7,7 @@ import { ClipboardList } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { Card } from "@/components/ui/Card";
 import Pagination from "@/components/ui/Pagination";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -54,32 +55,30 @@ export default function ActivityLogPage() {
 
   return (
     <div className="flex flex-col gap-5 text-neutral-200">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold leading-none">Activity Log</h1>
-          <p className="mt-2 text-sm text-neutral-500">
-            Audit trail of platform writes, restores, and configuration actions.
-          </p>
-        </div>
-        <Select
-          value={actionFilter}
-          onValueChange={(value) => {
-            setActionFilter(value);
-            setPage(1);
-          }}
-        >
-          <SelectTrigger className="w-48">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All actions</SelectItem>
-            <SelectItem value="create">Create</SelectItem>
-            <SelectItem value="update">Update</SelectItem>
-            <SelectItem value="soft_delete">Soft delete</SelectItem>
-            <SelectItem value="restore">Restore</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        title="Activity Log"
+        description="Audit trail of platform writes, restores, and configuration actions."
+        actions={
+          <Select
+            value={actionFilter}
+            onValueChange={(value) => {
+              setActionFilter(value);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All actions</SelectItem>
+              <SelectItem value="create">Create</SelectItem>
+              <SelectItem value="update">Update</SelectItem>
+              <SelectItem value="soft_delete">Soft delete</SelectItem>
+              <SelectItem value="restore">Restore</SelectItem>
+            </SelectContent>
+          </Select>
+        }
+      />
 
       <Card className="overflow-hidden px-0 py-0">
         {query.isLoading ? (

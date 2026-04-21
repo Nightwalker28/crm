@@ -1,9 +1,10 @@
 "use client";
 
 import { Fragment } from "react";
-import { HandCoins, Pencil, Trash2 } from "lucide-react";
+import { HandCoins } from "lucide-react";
 
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import {
@@ -19,43 +20,21 @@ import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { getOpportunityStageLabel, getOpportunityStageStyle } from "@/components/opportunities/opportunityStages";
 
 type Props = {
   opportunities: Opportunity[];
   isLoading: boolean;
+  isRefreshing?: boolean;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
   onEdit: (opportunity: Opportunity) => void;
-  onDelete: (opportunity: Opportunity) => void;
   onCreateFinanceIo: (opportunity: Opportunity) => void;
   selectedIds?: number[];
   currentPageSelectionState?: boolean | "indeterminate";
   onToggleRow?: (opportunityId: number, checked: boolean) => void;
   onToggleCurrentPage?: (checked: boolean) => void;
 };
-
-const STAGE_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  lead: { bg: "bg-neutral-800/60", text: "text-neutral-300", border: "border-neutral-700/50" },
-  qualified: { bg: "bg-sky-900/30", text: "text-sky-300", border: "border-sky-700/40" },
-  proposal: { bg: "bg-violet-900/30", text: "text-violet-300", border: "border-violet-700/40" },
-  negotiation: { bg: "bg-amber-900/30", text: "text-amber-300", border: "border-amber-700/40" },
-  closed_won: { bg: "bg-emerald-900/30", text: "text-emerald-300", border: "border-emerald-700/40" },
-  closed_lost: { bg: "bg-red-900/30", text: "text-red-300", border: "border-red-700/40" },
-};
-
-const STAGE_LABELS: Record<string, string> = {
-  lead: "Lead",
-  qualified: "Qualified",
-  proposal: "Proposal",
-  negotiation: "Negotiation",
-  closed_won: "Closed Won",
-  closed_lost: "Closed Lost",
-};
-
-function getStagePillStyle(stage?: string | null) {
-  const key = (stage ?? "").toLowerCase().replace(/\s+/g, "_");
-  return STAGE_STYLES[key] ?? { bg: "bg-neutral-800/60", text: "text-neutral-400", border: "border-neutral-700/50" };
-}
 
 function isOverdue(dateStr?: string | null): boolean {
   if (!dateStr) return false;
@@ -69,17 +48,17 @@ function isOverdue(dateStr?: string | null): boolean {
 export default function OpportunitiesTable({
   opportunities,
   isLoading,
+  isRefreshing = false,
   visibleColumns = [],
   columnOptions = [],
   onEdit,
-  onDelete,
   onCreateFinanceIo,
   selectedIds = [],
   currentPageSelectionState = false,
   onToggleRow,
   onToggleCurrentPage,
 }: Props) {
-  const columnCount = visibleColumns.length + 2;
+  const columnCount = visibleColumns.length + 1;
   const headers: Record<string, string> = {
     opportunity_name: "Opportunity",
     client: "Client",
@@ -130,8 +109,8 @@ export default function OpportunitiesTable({
         return (
           <TableCell>
             {opportunity.sales_stage ? (() => {
-              const style = getStagePillStyle(opportunity.sales_stage);
-              const label = STAGE_LABELS[opportunity.sales_stage.toLowerCase().replace(/\s+/g, "_")] ?? opportunity.sales_stage;
+              const style = getOpportunityStageStyle(opportunity.sales_stage);
+              const label = getOpportunityStageLabel(opportunity.sales_stage);
               return (
                 <Pill bg={style.bg} text={style.text} border={style.border} className="w-28">
                   {label}
@@ -194,7 +173,7 @@ export default function OpportunitiesTable({
   };
 
   return (
-    <ModuleTableShell>
+    <ModuleTableShell isRefreshing={isRefreshing}>
       <Table className="min-w-[1040px]">
         <TableHeader>
           <TableHeaderRow>
@@ -218,14 +197,7 @@ export default function OpportunitiesTable({
         </TableHeader>
         <TableBody>
           {isLoading ? (
-            <TableRow>
-              <TableCell colSpan={columnCount} className="py-16 text-center">
-                <div className="flex flex-col items-center gap-3 text-neutral-500">
-                  <div className="h-5 w-5 rounded-full border-2 border-neutral-700 border-t-neutral-400 animate-spin" />
-                  <span className="text-sm">Loading opportunities...</span>
-                </div>
-              </TableCell>
-            </TableRow>
+            <ModuleTableLoading columnCount={columnCount} />
           ) : opportunities.length === 0 ? (
             <TableRow>
               <TableCell colSpan={columnCount} className="py-16 text-center">
@@ -239,8 +211,15 @@ export default function OpportunitiesTable({
             </TableRow>
           ) : (
             opportunities.map((opportunity) => (
-              <TableRow key={opportunity.opportunity_id} className="group">
-                <TableCell className="w-12 pr-0">
+              <TableRow
+                key={opportunity.opportunity_id}
+                className="group cursor-pointer"
+                onClick={() => onEdit(opportunity)}
+              >
+                <TableCell
+                  className="w-12 pr-0"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <Checkbox
                     checked={selectedIds.includes(opportunity.opportunity_id)}
                     onCheckedChange={(checked) => onToggleRow?.(opportunity.opportunity_id, checked === true)}
@@ -253,28 +232,17 @@ export default function OpportunitiesTable({
                 {visibleColumns.map((column) => (
                   <Fragment key={column}>{renderCell(opportunity, column)}</Fragment>
                 ))}
-                <TableCell className="text-right pr-4">
-                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+                <TableCell
+                  className="text-right pr-4"
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <div className="flex items-center justify-end gap-1">
                     <button
                       onClick={() => onCreateFinanceIo(opportunity)}
                       className="p-1.5 rounded-md text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/40 transition-colors"
                       title="Create finance IO"
                     >
                       <HandCoins size={14} />
-                    </button>
-                    <button
-                      onClick={() => onEdit(opportunity)}
-                      className="p-1.5 rounded-md text-sky-400 hover:text-sky-300 hover:bg-sky-950/40 transition-colors"
-                      title="Edit opportunity"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      onClick={() => onDelete(opportunity)}
-                      className="p-1.5 rounded-md text-red-400 hover:text-red-300 hover:bg-red-950/40 transition-colors"
-                      title="Delete opportunity"
-                    >
-                      <Trash2 size={14} />
                     </button>
                   </div>
                 </TableCell>

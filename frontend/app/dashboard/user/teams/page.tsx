@@ -4,6 +4,7 @@ import { Building2, Pencil, Plus, Trash2, UsersRound, type LucideIcon } from "lu
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { PageHeader } from "@/components/ui/PageHeader";
 import {
   Dialog,
   DialogBackdrop,
@@ -86,7 +87,7 @@ function DepartmentDialog({
     <Dialog open={open} onClose={onClose}>
       <DialogBackdrop />
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel className="w-full max-w-lg">
+        <DialogPanel size="lg">
           <DialogHeader>
             <DialogTitle>{mode === "create" ? "Create Department" : "Edit Department"}</DialogTitle>
             <DialogIconClose />
@@ -148,7 +149,7 @@ function TeamDialog({
     <Dialog open={open} onClose={onClose}>
       <DialogBackdrop />
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel className="w-full max-w-lg">
+        <DialogPanel size="lg">
           <DialogHeader>
             <DialogTitle>{mode === "create" ? "Create Team" : "Edit Team"}</DialogTitle>
             <DialogIconClose />
@@ -272,12 +273,10 @@ export default function TeamsAndDepartmentsPage() {
 
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
-      <div>
-        <h1 className="text-2xl font-semibold leading-none">Teams & Departments</h1>
-        <p className="mt-2 text-sm text-zinc-500">
-          Manage the org structure that drives user assignment and module access.
-        </p>
-      </div>
+      <PageHeader
+        title="Teams & Departments"
+        description="Manage the org structure that drives user assignment and module access."
+      />
 
       {error && (
         <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">

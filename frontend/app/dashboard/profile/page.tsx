@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Textarea } from "@/components/ui/textarea";
 import { resolveMediaUrl } from "@/lib/media";
 import TimezonePicker from "@/components/ui/TimezonePicker";
@@ -161,12 +162,10 @@ export default function ProfilePage() {
 
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
-      <div>
-        <h1 className="text-2xl font-semibold leading-none">Profile</h1>
-        <p className="mt-2 text-sm text-zinc-500">
-          Manage your personal details and account-facing profile information.
-        </p>
-      </div>
+      <PageHeader
+        title="Profile"
+        description="Manage your personal details and account-facing profile information."
+      />
 
       {error ? (
         <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">

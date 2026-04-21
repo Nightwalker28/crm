@@ -59,6 +59,17 @@ This file captures the current intended technical patterns and constraints so ne
 
 - Important write actions should be logged with actor/module/entity/action metadata.
 - Logging is explicit in service/route flows rather than assumed by the ORM.
+- Activity logging should also be consumable as per-record timelines on record pages, not only as one global admin log.
+- When a module has a real record detail page, timeline/history should be exposed there if the activity model already captures that entity cleanly.
+- Per-record timeline APIs and UI should be shared primitives keyed by `module_key` and `entity_id` rather than bespoke per-module audit implementations.
+
+### Record Notes / Comments
+
+- Shared record notes/comments should use one tenant-scoped platform model and API rather than per-page local-only state or per-module note tables.
+- Record-note access should follow the record module permissions:
+  - `view` for reading notes
+  - `edit` for creating or deleting notes
+- Record-note create/delete actions should also write into the same per-record activity timeline so collaboration history stays in one place.
 
 ### Notifications
 
@@ -70,6 +81,8 @@ This file captures the current intended technical patterns and constraints so ne
 - Shared helpers exist for search, CSV parsing, uploads, and downloads.
 - Module-specific logic should be adapter/config driven, not duplicated.
 - Shared helpers should be extended rather than bypassed when new modules are wired in.
+- The dashboard shell should expose one shared global search / command palette that calls a backend aggregate search API rather than stitching together frontend-only per-page searches.
+- Global search results should be permission-aware and tenant-scoped, and should return direct record routes for the modules that already have detail pages.
 - Import/export should evolve toward one reusable framework with module adapters for:
   - preview/parse step
   - source-header normalization
@@ -188,6 +201,8 @@ This file captures the current intended technical patterns and constraints so ne
 ### Detail Pages
 
 - For existing records, prefer detail pages with summary/history/editing over modal-only editing.
+- Shared record-page capabilities such as summary cards, relationship panels, activity timelines, and notes should be implemented across all applicable detail-page modules in the same slice instead of landing in one module first and the rest later.
+- The current baseline set for shared CRM detail-page capabilities is contacts, organizations, and opportunities.
 
 ## Known Open Technical Work
 

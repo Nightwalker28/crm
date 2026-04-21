@@ -43,6 +43,7 @@ def list_activity_logs(
     pagination: Pagination,
     module_key: str | None = None,
     entity_type: str | None = None,
+    entity_id: str | None = None,
     action: str | None = None,
 ) -> tuple[list[ActivityLog], int]:
     query = db.query(ActivityLog).filter(ActivityLog.tenant_id == tenant_id)
@@ -50,6 +51,8 @@ def list_activity_logs(
         query = query.filter(ActivityLog.module_key == module_key)
     if entity_type:
         query = query.filter(ActivityLog.entity_type == entity_type)
+    if entity_id:
+        query = query.filter(ActivityLog.entity_id == entity_id)
     if action:
         query = query.filter(ActivityLog.action == action)
 

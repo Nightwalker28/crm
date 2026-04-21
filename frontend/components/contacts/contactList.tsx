@@ -1,8 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
-import Link from "next/link";
-import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 import {
   Table,
@@ -14,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { Contact } from "@/hooks/sales/useContacts";
@@ -23,6 +23,7 @@ import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColum
 interface ContactListProps {
   contacts: Contact[];
   isLoading: boolean;
+  isRefreshing?: boolean;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
   selectedIds?: number[];
@@ -51,6 +52,7 @@ function getRegionStyle(region?: string | null): { bg: string; text: string; bor
 export default function ContactList({
   contacts,
   isLoading,
+  isRefreshing = false,
   visibleColumns = [],
   columnOptions = [],
   selectedIds = [],
@@ -58,6 +60,7 @@ export default function ContactList({
   onToggleRow,
   onToggleCurrentPage,
 }: ContactListProps) {
+  const router = useRouter();
   const headers: Record<string, string> = {
     first_name: "First Name",
     last_name: "Last Name",
@@ -179,7 +182,7 @@ export default function ContactList({
   };
 
   return (
-    <ModuleTableShell>
+    <ModuleTableShell isRefreshing={isRefreshing}>
       <Table className="min-w-[920px]">
         <TableHeader>
           <TableHeaderRow>
@@ -198,23 +201,15 @@ export default function ContactList({
                 {headers[column] ?? getReadableColumnLabel(column, columnOptions)}
               </TableHead>
             ))}
-            <TableHead className="text-right pr-5">Record</TableHead>
           </TableHeaderRow>
         </TableHeader>
 
         <TableBody>
           {isLoading ? (
-            <TableRow>
-              <TableCell colSpan={visibleColumns.length + 2} className="py-16 text-center">
-                <div className="flex flex-col items-center gap-3 text-neutral-500">
-                  <div className="h-5 w-5 rounded-full border-2 border-neutral-700 border-t-neutral-400 animate-spin" />
-                  <span className="text-sm">Loading contacts...</span>
-                </div>
-              </TableCell>
-            </TableRow>
+            <ModuleTableLoading columnCount={visibleColumns.length + 1} />
           ) : contacts.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={visibleColumns.length + 2} className="py-16 text-center">
+              <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
                 <div className="flex flex-col items-center gap-2 text-neutral-500">
                   <svg className="w-8 h-8 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
@@ -225,8 +220,15 @@ export default function ContactList({
             </TableRow>
           ) : (
             contacts.map((contact) => (
-              <TableRow key={contact.contact_id} className="group">
-                <TableCell className="w-12 pr-0">
+              <TableRow
+                key={contact.contact_id}
+                className="group cursor-pointer"
+                onClick={() => router.push(`/dashboard/sales/contacts/${contact.contact_id}`)}
+              >
+                <TableCell
+                  className="w-12 pr-0"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <Checkbox
                     checked={selectedIds.includes(contact.contact_id)}
                     onCheckedChange={(checked) => onToggleRow?.(contact.contact_id, checked === true)}
@@ -239,14 +241,6 @@ export default function ContactList({
                 {visibleColumns.map((column) => (
                   <Fragment key={column}>{renderCell(contact, column)}</Fragment>
                 ))}
-                <TableCell className="text-right pr-5">
-                  <Link
-                    href={`/dashboard/sales/contacts/${contact.contact_id}`}
-                    className="text-xs font-medium uppercase tracking-widest text-neutral-500 group-hover:text-neutral-200 transition-colors"
-                  >
-                    Open →
-                  </Link>
-                </TableCell>
               </TableRow>
             ))
           )}

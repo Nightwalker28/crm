@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 import {
   Table,
@@ -13,6 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { Organization } from "@/hooks/sales/useOrganizations";
@@ -22,6 +23,7 @@ import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColum
 type Props = {
   organizations: Organization[];
   isLoading: boolean;
+  isRefreshing?: boolean;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
   selectedIds?: number[];
@@ -57,6 +59,7 @@ function formatRevenue(value?: string | null): string {
 export default function OrganizationsTable({
   organizations,
   isLoading,
+  isRefreshing = false,
   visibleColumns = [],
   columnOptions = [],
   selectedIds = [],
@@ -64,6 +67,7 @@ export default function OrganizationsTable({
   onToggleRow,
   onToggleCurrentPage,
 }: Props) {
+  const router = useRouter();
   const headers: Record<string, string> = {
     org_name: "Organization",
     primary_email: "Email",
@@ -175,7 +179,7 @@ export default function OrganizationsTable({
   };
 
   return (
-    <ModuleTableShell>
+    <ModuleTableShell isRefreshing={isRefreshing}>
       <Table className="min-w-[960px]">
         <TableHeader>
           <TableHeaderRow>
@@ -194,23 +198,15 @@ export default function OrganizationsTable({
                 {headers[column] ?? getReadableColumnLabel(column, columnOptions)}
               </TableHead>
             ))}
-            <TableHead className="text-right pr-5">Record</TableHead>
           </TableHeaderRow>
         </TableHeader>
 
         <TableBody>
           {isLoading ? (
-            <TableRow>
-              <TableCell colSpan={visibleColumns.length + 2} className="py-16 text-center">
-                <div className="flex flex-col items-center gap-3 text-neutral-500">
-                  <div className="h-5 w-5 rounded-full border-2 border-neutral-700 border-t-neutral-400 animate-spin" />
-                  <span className="text-sm">Loading organizations...</span>
-                </div>
-              </TableCell>
-            </TableRow>
+            <ModuleTableLoading columnCount={visibleColumns.length + 1} />
           ) : organizations.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={visibleColumns.length + 2} className="py-16 text-center">
+              <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
                 <div className="flex flex-col items-center gap-2 text-neutral-500">
                   <svg className="w-8 h-8 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
@@ -221,8 +217,15 @@ export default function OrganizationsTable({
             </TableRow>
           ) : (
             organizations.map((org) => (
-              <TableRow key={org.org_id} className="group">
-                <TableCell className="w-12 pr-0">
+              <TableRow
+                key={org.org_id}
+                className="group cursor-pointer"
+                onClick={() => router.push(`/dashboard/sales/organizations/${org.org_id}`)}
+              >
+                <TableCell
+                  className="w-12 pr-0"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <Checkbox
                     checked={selectedIds.includes(org.org_id ?? 0)}
                     onCheckedChange={(checked) => {
@@ -237,14 +240,6 @@ export default function OrganizationsTable({
                 {visibleColumns.map((column) => (
                   <Fragment key={column}>{renderCell(org, column)}</Fragment>
                 ))}
-                <TableCell className="text-right pr-5">
-                  <Link
-                    href={`/dashboard/sales/organizations/${org.org_id}`}
-                    className="text-xs font-medium uppercase tracking-widest text-neutral-500 group-hover:text-neutral-200 transition-colors"
-                  >
-                    Open →
-                  </Link>
-                </TableCell>
               </TableRow>
             ))
           )}

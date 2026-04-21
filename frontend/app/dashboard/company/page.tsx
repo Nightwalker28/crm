@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Textarea } from "@/components/ui/textarea";
 import { resolveMediaUrl } from "@/lib/media";
 
@@ -171,12 +172,10 @@ export default function CompanyPage() {
 
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
-      <div>
-        <h1 className="text-2xl font-semibold leading-none">Company</h1>
-        <p className="mt-2 text-sm text-zinc-500">
-          Manage the primary company record used across the admin and operations surfaces.
-        </p>
-      </div>
+      <PageHeader
+        title="Company"
+        description="Manage the primary company record used across the admin and operations surfaces."
+      />
 
       {error ? (
         <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">

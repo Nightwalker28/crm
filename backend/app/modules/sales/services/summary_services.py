@@ -222,3 +222,69 @@ def build_organization_summary(db: Session, organization: SalesOrganization) -> 
         "opportunity_count": len(opportunities),
         "insertion_order_count": len(insertion_orders),
     }
+
+
+def build_opportunity_summary(db: Session, opportunity: SalesOpportunity) -> dict:
+    opportunity = hydrate_custom_field_record(
+        db,
+        tenant_id=opportunity.tenant_id,
+        module_key="sales_opportunities",
+        record=opportunity,
+        record_id=opportunity.opportunity_id,
+    )
+
+    contact = None
+    if opportunity.contact_id:
+        contact = (
+            db.query(SalesContact)
+            .filter(
+                SalesContact.contact_id == opportunity.contact_id,
+                SalesContact.tenant_id == opportunity.tenant_id,
+                SalesContact.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if contact:
+            contact = hydrate_custom_field_record(
+                db,
+                tenant_id=contact.tenant_id,
+                module_key="sales_contacts",
+                record=contact,
+                record_id=contact.contact_id,
+            )
+
+    organization = None
+    if opportunity.organization_id:
+        organization = (
+            db.query(SalesOrganization)
+            .filter(
+                SalesOrganization.org_id == opportunity.organization_id,
+                SalesOrganization.tenant_id == opportunity.tenant_id,
+            )
+            .first()
+        )
+        if organization:
+            organization = hydrate_custom_field_record(
+                db,
+                tenant_id=organization.tenant_id,
+                module_key="sales_organizations",
+                record=organization,
+                record_id=organization.org_id,
+            )
+
+    insertion_orders = _get_related_insertion_orders(
+        db,
+        opportunity.tenant_id,
+        organization.org_name if organization else None,
+        organization.org_id if organization else None,
+        opportunity.contact_id,
+    )
+
+    return {
+        "opportunity": opportunity,
+        "contact": contact,
+        "organization": organization,
+        "related_insertion_orders": [_serialize_io(record) for record in insertion_orders],
+        "inferred_services": _collect_services([opportunity]),
+        "insertion_order_count": len(insertion_orders),
+    }

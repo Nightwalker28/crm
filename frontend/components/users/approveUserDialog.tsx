@@ -2,17 +2,16 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogClose,
   DialogPanel,
   DialogHeader,
   DialogTitle,
   DialogFooter,
   DialogBackdrop,
 } from "@/components/ui/dialog";
+import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import {
   Select,
   SelectContent,
@@ -59,12 +58,10 @@ export default function ApproveUserDialog({
       <DialogBackdrop />
 
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel className="w-88 sm:max-w-[380px]">
+        <DialogPanel size="md">
           <DialogHeader>
             <DialogTitle>Approve user</DialogTitle>
-            <DialogClose className="text-neutral-400/70 hover:text-red-400/90 cursor-pointer">
-              <X size={16} />
-            </DialogClose>
+            <DialogIconClose />
           </DialogHeader>
 
           <div className="flex flex-col gap-4 mt-2">

@@ -16,6 +16,7 @@ import {
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRolePermissions, type ModulePermission } from "@/hooks/admin/useRolePermissions";
 
@@ -67,15 +68,11 @@ export default function RolesPermissionsPage() {
 
   return (
     <div className="flex flex-col gap-5 text-neutral-200">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold leading-none">Roles & Permissions</h1>
-          <p className="mt-2 text-sm text-neutral-500">
-            Start from Admin, Superuser, or User templates, then customize module actions per role.
-          </p>
-        </div>
-        <Button onClick={() => setDialogOpen(true)}>Create Role</Button>
-      </div>
+      <PageHeader
+        title="Roles & Permissions"
+        description="Start from Admin, Superuser, or User templates, then customize module actions per role."
+        actions={<Button onClick={() => setDialogOpen(true)}>Create Role</Button>}
+      />
 
       <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
         <Card className="px-4 py-4">
@@ -186,7 +183,7 @@ export default function RolesPermissionsPage() {
       <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)}>
         <DialogBackdrop />
         <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-          <DialogPanel className="w-full max-w-xl">
+          <DialogPanel size="xl">
             <DialogHeader>
               <DialogTitle>Create Role</DialogTitle>
               <DialogIconClose />

@@ -1,0 +1,261 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: var(--font-sans); background: transparent; }
+
+.section { margin-bottom: 2rem; }
+.section-title {
+  font-size: 11px; font-weight: 500; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--color-text-tertiary); margin-bottom: 0.75rem; padding-bottom: 0.5rem;
+  border-bottom: 0.5px solid var(--color-border-tertiary);
+}
+
+.row { display: flex; gap: 10px; margin-bottom: 10px; flex-wrap: wrap; }
+
+.card {
+  background: var(--color-background-primary);
+  border: 0.5px solid var(--color-border-tertiary);
+  border-radius: var(--border-radius-lg);
+  padding: 14px 16px;
+  flex: 1; min-width: 140px;
+}
+.card.full { flex: 1 1 100%; }
+.card.half { flex: 1 1 calc(50% - 5px); min-width: 200px; }
+.card.third { flex: 1 1 calc(33% - 7px); min-width: 160px; }
+
+.card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.card-title { font-size: 13px; font-weight: 500; color: var(--color-text-primary); line-height: 1.3; }
+.card-sub { font-size: 12px; color: var(--color-text-secondary); line-height: 1.5; margin-top: 4px; }
+
+.badge {
+  font-size: 10px; font-weight: 500; padding: 2px 7px; border-radius: 20px;
+  white-space: nowrap; letter-spacing: 0.03em; flex-shrink: 0;
+}
+.badge-critical { background: #FCEBEB; color: #A32D2D; border: 0.5px solid #F09595; }
+.badge-high { background: #FAEEDA; color: #854F0B; border: 0.5px solid #FAC775; }
+.badge-medium { background: #E6F1FB; color: #185FA5; border: 0.5px solid #85B7EB; }
+.badge-low { background: #EAF3DE; color: #3B6D11; border: 0.5px solid #97C459; }
+.badge-done { background: #E1F5EE; color: #0F6E56; border: 0.5px solid #5DCAA5; }
+
+@media (prefers-color-scheme: dark) {
+  .badge-critical { background: #501313; color: #F7C1C1; border-color: #791F1F; }
+  .badge-high { background: #412402; color: #FAC775; border-color: #633806; }
+  .badge-medium { background: #042C53; color: #B5D4F4; border-color: #0C447C; }
+  .badge-low { background: #173404; color: #C0DD97; border-color: #3B6D11; }
+  .badge-done { background: #04342C; color: #9FE1CB; border-color: #0F6E56; }
+}
+
+.item-list { list-style: none; }
+.item-list li {
+  font-size: 12px; color: var(--color-text-secondary);
+  padding: 4px 0; border-bottom: 0.5px solid var(--color-border-tertiary);
+  line-height: 1.5;
+  display: flex; align-items: baseline; gap: 6px;
+}
+.item-list li:last-child { border-bottom: none; padding-bottom: 0; }
+.dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; margin-top: 5px; }
+.dot-red { background: #E24B4A; }
+.dot-amber { background: #EF9F27; }
+.dot-blue { background: #378ADD; }
+.dot-green { background: #639922; }
+
+.comparison-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0; }
+.cg-header {
+  font-size: 10px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--color-text-tertiary); padding: 6px 10px;
+  background: var(--color-background-secondary);
+  border: 0.5px solid var(--color-border-tertiary);
+}
+.cg-header:first-child { border-radius: 6px 0 0 0; }
+.cg-header:last-child { border-radius: 0 6px 0 0; border-left: none; }
+.cg-cell {
+  font-size: 12px; color: var(--color-text-secondary);
+  padding: 8px 10px; border: 0.5px solid var(--color-border-tertiary);
+  line-height: 1.5;
+}
+.cg-cell.left { border-right: none; }
+.cg-cell.last-row { border-top: none; }
+.cg-cell.last-row.left { border-radius: 0 0 0 6px; }
+.cg-cell.last-row.right { border-radius: 0 0 6px 0; }
+.cg-cell.right { border-top: none; }
+
+.priority-table { width: 100%; border-collapse: collapse; }
+.priority-table th {
+  font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--color-text-tertiary); padding: 6px 10px; text-align: left;
+  background: var(--color-background-secondary);
+  border: 0.5px solid var(--color-border-tertiary);
+}
+.priority-table td {
+  font-size: 12px; color: var(--color-text-secondary);
+  padding: 8px 10px; border: 0.5px solid var(--color-border-tertiary);
+  vertical-align: top; line-height: 1.5;
+}
+.priority-table tr:nth-child(even) td { background: var(--color-background-secondary); }
+
+.sparkbar { height: 4px; border-radius: 2px; background: var(--color-border-tertiary); margin-top: 8px; overflow: hidden; }
+.sparkbar-fill { height: 100%; border-radius: 2px; transition: width 0.6s ease; }
+
+.metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.metric { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 10px 12px; }
+.metric-val { font-size: 22px; font-weight: 500; color: var(--color-text-primary); line-height: 1; }
+.metric-lbl { font-size: 11px; color: var(--color-text-tertiary); margin-top: 4px; }
+
+.phase-row { display: flex; gap: 0; margin-top: 8px; height: 24px; border-radius: 6px; overflow: hidden; }
+.phase-seg { display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 500; }
+</style>
+
+<div class="section">
+  <div class="section-title">Overall platform health</div>
+  <div class="metric-grid">
+    <div class="metric"><div class="metric-val">7.2</div><div class="metric-lbl">UI consistency /10</div></div>
+    <div class="metric"><div class="metric-val">6.1</div><div class="metric-lbl">Workflow depth /10</div></div>
+    <div class="metric"><div class="metric-val">8.4</div><div class="metric-lbl">Component quality /10</div></div>
+    <div class="metric"><div class="metric-val">5.3</div><div class="metric-lbl">Dashboard intelligence /10</div></div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Critical gaps — address first</div>
+  <div class="row">
+    <div class="card half">
+      <div class="card-head"><span class="card-title">No real dashboard / home screen</span><span class="badge badge-critical">Critical</span></div>
+      <div class="card-sub">The dashboard home route immediately redirects to the first accessible module. Every major CRM/ERP (Salesforce, HubSpot, SAP, Zoho) opens to a summary view with KPIs, activity feed, and quick actions. Users landing on a raw table list lose immediate context.</div>
+      <div class="sparkbar"><div class="sparkbar-fill" style="width:5%;background:#E24B4A"></div></div>
+    </div>
+    <div class="card half">
+      <div class="card-head"><span class="card-title">Zero record relationship visualization</span><span class="badge badge-critical">Critical</span></div>
+      <div class="card-sub">Contact → Organization → Opportunity → IO exists in the DB but there is no visual relationship panel on any detail page. Users cannot see "this contact has 3 open opportunities worth $120k" in one glance. This is the core value prop of a CRM detail page.</div>
+      <div class="sparkbar"><div class="sparkbar-fill" style="width:10%;background:#E24B4A"></div></div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="card half">
+      <div class="card-head"><span class="card-title">No pipeline / kanban view for opportunities</span><span class="badge badge-critical">Critical</span></div>
+      <div class="card-sub">Opportunities only have a table view. Every CRM shows a drag-and-drop kanban by sales stage (Lead → Qualified → Proposal → Closed). This is the primary way sales teams manage pipeline. A table alone is a CRM anti-pattern for opportunities.</div>
+      <div class="sparkbar"><div class="sparkbar-fill" style="width:5%;background:#E24B4A"></div></div>
+    </div>
+    <div class="card half">
+      <div class="card-head"><span class="card-title">No inline activity / timeline on records</span><span class="badge badge-critical">Critical</span></div>
+      <div class="card-sub">Contact and org detail pages show related records but no chronological activity feed (calls, emails, notes, status changes). The activity log exists as a global admin view only. CRM users expect a per-record timeline showing everything that happened to that record.</div>
+      <div class="sparkbar"><div class="sparkbar-fill" style="width:8%;background:#E24B4A"></div></div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">High priority — significant UX impact</div>
+  <div class="row">
+    <div class="card third">
+      <div class="card-head"><span class="card-title">Empty state pages</span><span class="badge badge-high">High</span></div>
+      <div class="card-sub">Sales page and Finance page are `Widget A / Widget B` placeholders. These are visible to all users. Should show summary metrics or redirect properly until built out.</div>
+    </div>
+    <div class="card third">
+      <div class="card-head"><span class="card-title">No notes / comments on records</span><span class="badge badge-high">High</span></div>
+      <div class="card-sub">No way to add free-text notes to a contact, org, or opportunity. This is a daily-use CRM feature. Without it users default to external tools, defeating the platform.</div>
+    </div>
+    <div class="card third">
+      <div class="card-head"><span class="card-title">Opportunities table is flat</span><span class="badge badge-high">High</span></div>
+      <div class="card-sub">No visual indication of deal health — no due date urgency coloring, no stage progress bar, no value totals in the header. Pipeline totals by stage belong above the table.</div>
+    </div>
+  </div>
+  <div class="row">
+    <div class="card third">
+      <div class="card-head"><span class="card-title">Dialog max-width inconsistency</span><span class="badge badge-high">High</span></div>
+      <div class="card-sub">Create Contact is `max-w-2xl`, Create Org is `max-w-xl`, IO dialog is `max-w-3xl`, User dialog is `max-w-xl`. No shared size token. Pick two sizes: standard (xl) and large (2xl/3xl) and apply consistently.</div>
+    </div>
+    <div class="card third">
+      <div class="card-head"><span class="card-title">No global search</span><span class="badge badge-high">High</span></div>
+      <div class="card-sub">There is no cross-module search bar. Users cannot type "Acme" and see matching contacts, orgs, and opportunities together. This is essential for a multi-entity CRM.</div>
+    </div>
+    <div class="card third">
+      <div class="card-head"><span class="card-title">Recycle bin UX is confusing</span><span class="badge badge-high">High</span></div>
+      <div class="card-sub">Recycle bin is in the Admin section, not near the modules it serves. Deleted records are invisible until you navigate admin. Should surface a "deleted recently" indicator near each module or inside the filter bar.</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Medium priority — polish and efficiency</div>
+  <div class="row">
+    <div class="card half">
+      <div class="card-head"><span class="card-title">Finance page is a dead end</span><span class="badge badge-medium">Medium</span></div>
+      <ul class="item-list">
+        <li><span class="dot dot-blue"></span>No IO summary metrics (total value, by status, overdue count)</li>
+        <li><span class="dot dot-blue"></span>No chart showing IO trends over time</li>
+        <li><span class="dot dot-blue"></span>Widget A / B placeholders are user-facing</li>
+      </ul>
+    </div>
+    <div class="card half">
+      <div class="card-head"><span class="card-title">Table loading states</span><span class="badge badge-medium">Medium</span></div>
+      <ul class="item-list">
+        <li><span class="dot dot-blue"></span>Loading row shows only "Loading data..." text — no skeleton rows</li>
+        <li><span class="dot dot-blue"></span>Pagination shows stale numbers during refetch</li>
+        <li><span class="dot dot-blue"></span>No optimistic UI on status changes</li>
+      </ul>
+    </div>
+  </div>
+  <div class="row">
+    <div class="card third">
+      <div class="card-head"><span class="card-title">Breadcrumb / back nav</span><span class="badge badge-medium">Medium</span></div>
+      <div class="card-sub">Detail pages use plain text "Back to Contacts" links. No breadcrumb component. Contact → Org navigation loses context when traversing relationships.</div>
+    </div>
+    <div class="card third">
+      <div class="card-head"><span class="card-title">No keyboard shortcuts</span><span class="badge badge-medium">Medium</span></div>
+      <div class="card-sub">No cmd+K global command palette. No keyboard navigation for tables. Power users in CRMs spend 80% of time in keyboard flow — this is a significant productivity gap.</div>
+    </div>
+    <div class="card third">
+      <div class="card-head"><span class="card-title">Form validation UX</span><span class="badge badge-medium">Medium</span></div>
+      <div class="card-sub">Errors surface as a single red block at top of dialogs. No per-field inline validation. Required field markers exist but no real-time feedback until submit.</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="section-title">Recommended implementation order</div>
+  <table class="priority-table">
+    <thead>
+      <tr>
+        <th style="width:24px">#</th>
+        <th>Feature</th>
+        <th>Why now</th>
+        <th style="width:90px">Impact</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td>1</td><td>Dashboard home with KPI cards + activity feed</td><td>First thing every user sees; currently a redirect bug</td><td><span class="badge badge-critical">Critical</span></td></tr>
+      <tr><td>2</td><td>Opportunity kanban / pipeline view</td><td>Core CRM pattern missing entirely; defines the product</td><td><span class="badge badge-critical">Critical</span></td></tr>
+      <tr><td>3</td><td>Per-record activity timeline</td><td>Makes contact/org detail pages actually useful</td><td><span class="badge badge-critical">Critical</span></td></tr>
+      <tr><td>4</td><td>Notes / comments on records</td><td>Daily use; without it CRM is read-only for users</td><td><span class="badge badge-high">High</span></td></tr>
+      <tr><td>5</td><td>Global search (cmd+K)</td><td>Cross-module navigation; reduces time-to-record</td><td><span class="badge badge-high">High</span></td></tr>
+      <tr><td>6</td><td>Replace placeholder finance/sales pages</td><td>Visible to all users; damages credibility</td><td><span class="badge badge-high">High</span></td></tr>
+      <tr><td>7</td><td>Skeleton loading states</td><td>Perceived performance; tables flash on every refetch</td><td><span class="badge badge-medium">Medium</span></td></tr>
+      <tr><td>8</td><td>Standardize dialog widths</td><td>Quick fix; high visual consistency payoff</td><td><span class="badge badge-medium">Medium</span></td></tr>
+      <tr><td>9</td><td>Pipeline summary bar above opp table</td><td>Shows totals by stage; context for the list below</td><td><span class="badge badge-medium">Medium</span></td></tr>
+      <tr><td>10</td><td>Inline per-field form validation</td><td>Reduces form submission failures and user frustration</td><td><span class="badge badge-low">Polish</span></td></tr>
+    </tbody>
+  </table>
+</div>
+
+<div class="section">
+  <div class="section-title">Your platform vs industry standard (Salesforce / HubSpot / Zoho)</div>
+  <div class="comparison-grid">
+    <div class="cg-header">Feature</div>
+    <div class="cg-header">Lynk status</div>
+
+    <div class="cg-cell left">Dashboard home with KPIs</div><div class="cg-cell right">❌ Redirects to first module</div>
+    <div class="cg-cell left last-row">Opportunity kanban pipeline</div><div class="cg-cell right last-row">❌ Table only</div>
+    <div class="cg-cell left">Per-record activity timeline</div><div class="cg-cell right">❌ Global admin log only</div>
+    <div class="cg-cell left last-row">Notes on records</div><div class="cg-cell right last-row">❌ Not implemented</div>
+    <div class="cg-cell left">Global search / command palette</div><div class="cg-cell right">❌ Not implemented</div>
+    <div class="cg-cell left last-row">Relationship panels on detail</div><div class="cg-cell right last-row">⚠️ Partial (counts only)</div>
+    <div class="cg-cell left">Saved views / filters</div><div class="cg-cell right">✅ Full implementation</div>
+    <div class="cg-cell left last-row">Custom fields</div><div class="cg-cell right last-row">✅ Full implementation</div>
+    <div class="cg-cell left">Import / export with preview</div><div class="cg-cell right">✅ Full implementation</div>
+    <div class="cg-cell left last-row">Role-based permissions</div><div class="cg-cell right last-row">✅ Full implementation</div>
+    <div class="cg-cell left">Skeleton / loading states</div><div class="cg-cell right">⚠️ Text only, no skeletons</div>
+    <div class="cg-cell left last-row">Keyboard shortcuts / cmd+K</div><div class="cg-cell right last-row">❌ Not implemented</div>
+    <div class="cg-cell left">Background jobs + notifications</div><div class="cg-cell right">✅ Full implementation</div>
+    <div class="cg-cell left last-row" style="border-radius:0 0 0 6px">Recycle bin / audit log</div><div class="cg-cell right last-row" style="border-radius:0 0 6px 0">✅ Full implementation</div>
+  </div>
+</div>

@@ -111,7 +111,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
       <DialogBackdrop />
 
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel className="w-full max-w-xl">
+        <DialogPanel size="xl">
           <DialogHeader>
             <DialogTitle>{setupLink ? "User Created" : "Add User"}</DialogTitle>
             <DialogIconClose />

@@ -152,7 +152,7 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
     <Dialog open={open} onClose={onClose}>
       <DialogBackdrop />
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel className="w-full max-w-3xl">
+        <DialogPanel size="3xl">
           <DialogHeader>
             <DialogTitle>{opportunity ? "Edit Opportunity" : "Create Opportunity"}</DialogTitle>
             <DialogIconClose />

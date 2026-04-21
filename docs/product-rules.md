@@ -31,9 +31,11 @@ This file captures stable business and UX rules for the platform. These should b
 - Saved-view creation and editing should happen on a dedicated manage-view route rather than living as a large inline section on every module page.
 - Module pages should keep only a compact place to switch/change the active view.
 - Normal module search should combine with the selected saved-view conditions rather than acting as a disconnected separate mechanism.
+- The dashboard shell should provide one shared global search / command palette for cross-module record lookup instead of each module inventing its own shell-level search entry point.
 - Required fields in create/edit forms should be visually marked with `*`.
 - Quick creation can use dialogs where appropriate.
 - Once records exist, the preferred interaction is a record page with summary/history/editing rather than modal-only editing.
+- Shared record-page collaboration features such as activity timelines and notes/comments should land across the current CRM detail-page set together, not one module at a time.
 - Profile access should come from the sidebar identity block at the bottom.
 - Main module pages should support inline multi-condition filtering in addition to saved-view management.
 - Inline and saved-view filtering should support grouped `AND` and `OR` conditions together, not only one group at a time.

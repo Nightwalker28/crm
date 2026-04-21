@@ -78,7 +78,8 @@ export function useContacts(
     rangeStart,
     rangeEnd,
     pageSize,
-    isLoading: query.isLoading || query.isFetching,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
     error: query.error instanceof Error ? "Failed to load contacts" : null,
     goToPage: setPage,
     onPageSizeChange: (nextPageSize: number) => {

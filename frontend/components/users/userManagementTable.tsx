@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 import Image from "next/image";
-import { Pencil } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import Pagination from "../ui/Pagination";
 import UserFilters, { type UserFiltersValue } from "@/components/users/userFilters";
@@ -285,7 +284,7 @@ export function UserManagementTable({
     }));
   }, [users]);
 
-  const columnCount = visibleColumns.length + 1;
+  const columnCount = visibleColumns.length;
   const getUserName = (user: User) => [user.first_name, user.last_name].filter(Boolean).join(" ").trim() || user.email;
 
   const renderHead = (column: string) => {
@@ -491,7 +490,6 @@ export function UserManagementTable({
             <TableHeader >
               <TableHeaderRow className="">
                 {visibleColumns.map((column) => renderHead(column))}
-                <TableHead className="text-center">Actions</TableHead>
               </TableHeaderRow>
             </TableHeader>
 
@@ -519,22 +517,14 @@ export function UserManagementTable({
 
                     {users.map((u) => {
                       return (
-                        <TableRow key={u.id}>
+                        <TableRow
+                          key={u.id}
+                          className="cursor-pointer"
+                          onClick={() => onEdit(u)}
+                        >
                           {visibleColumns.map((column) => (
                             <Fragment key={column}>{renderUserCell(u, column)}</Fragment>
                           ))}
-
-                          <TableCell className="text-center">
-                            <div className="flex items-center justify-center gap-3 h-7">
-                              <button
-                                onClick={() => onEdit(u)}
-                                className="text-blue-300 hover:text-blue-200 cursor-pointer"
-                                title="Edit user"
-                              >
-                                <Pencil size={18} />
-                              </button>
-                            </div>
-                          </TableCell>
                         </TableRow>
                       );
                     })}

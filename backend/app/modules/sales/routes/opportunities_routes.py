@@ -18,6 +18,8 @@ from app.modules.platform.services.data_transfer_jobs import (
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
 from app.modules.user_management.services import admin_modules
 from app.modules.sales.schema import (
+    OpportunityPipelineSummaryResponse,
+    OpportunitySummaryResponse,
     SalesOpportunityCreate,
     SalesOpportunityListItem,
     SalesOpportunityListResponse,
@@ -25,6 +27,7 @@ from app.modules.sales.schema import (
     SalesOpportunityUpdate,
 )
 from app.modules.sales.services import opportunities_api
+from app.modules.sales.services.summary_services import build_opportunity_summary
 from app.modules.sales.services.opportunities_services import (
     create_opportunity,
     delete_opportunity,
@@ -34,6 +37,7 @@ from app.modules.sales.services.opportunities_services import (
     list_deleted_opportunities,
     list_opportunities,
     restore_opportunity,
+    summarize_opportunity_pipeline,
     update_opportunity,
 )
 
@@ -193,6 +197,33 @@ def search_sales_opportunities(
     return build_paged_response(serialized, total_count, pagination)
 
 
+@router.get("/pipeline-summary", response_model=OpportunityPipelineSummaryResponse)
+def get_sales_opportunity_pipeline_summary(
+    query: str | None = Query(default=None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access("sales_opportunities")),
+    require_permission = Depends(require_action_access("sales_opportunities", "view")),
+):
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return summarize_opportunity_pipeline(
+        db,
+        current_user.tenant_id,
+        search=query.strip() if isinstance(query, str) and query.strip() else None,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+    )
+
+
 @router.get("/recycle", response_model=SalesOpportunityListResponse)
 def list_deleted_sales_opportunities(
     pagination: Pagination = Depends(get_pagination),
@@ -274,6 +305,18 @@ def get_sales_opportunity(
 ):
     opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
     return SalesOpportunityResponse.model_validate(opportunity)
+
+
+@router.get("/{opportunity_id}/summary", response_model=OpportunitySummaryResponse)
+def get_sales_opportunity_summary(
+    opportunity_id: int,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access("sales_opportunities")),
+    require_permission = Depends(require_action_access("sales_opportunities", "view")),
+):
+    opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
+    return build_opportunity_summary(db, opportunity)
 
 
 @router.put("/{opportunity_id}", response_model=SalesOpportunityResponse)

@@ -6,6 +6,15 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import DuplicateConfirmation from "@/components/finance/duplicateConfirmation";
 import { apiFetch } from "@/lib/api";
+import {
+  Dialog,
+  DialogBackdrop,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { DialogIconClose } from "@/components/ui/DialogIconClose";
 
 interface UploadModalProps {
   isOpen: boolean;
@@ -192,104 +201,102 @@ const resendWithAction = async (
 
   return (
     <>
-      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-        <div className="bg-zinc-900 rounded-xl shadow-2xl max-w-lg w-full border border-zinc-800">
-
-          {/* HEADER */}
-          <div className="flex items-center justify-between p-6 border-b border-zinc-800">
-            <div>
-              <h2 className="text-xl font-semibold text-zinc-100">
-                Import Insertion Orders
-              </h2>
-              <p className="text-sm text-zinc-400 mt-1">
-                Import generic insertion orders from a CSV file
-              </p>
-            </div>
-            <Button onClick={handleClose} variant="ghost" size="icon-sm">
-              <X />
-            </Button>
-          </div>
-
-          <div className="p-6">
-            {/* DROP ZONE */}
-            {files.length === 0 && (
-              <div
-                onDragOver={handleDragOver}
-                onDragLeave={handleDragLeave}
-                onDrop={handleDrop}
-                className={`
-                  border-2 border-dashed rounded-lg p-6 text-center transition-all
-                  ${isDragging ? "border-blue-500 bg-blue-500/10" : "border-zinc-700"}
-                `}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                  id="file-upload"
-                />
-
-                <Upload className="mx-auto mb-3 text-zinc-400" size={40} />
-                <p className="text-zinc-100 font-medium">
-                  Drag & drop a CSV file here
+      <Dialog open={isOpen} onClose={handleClose}>
+        <DialogBackdrop />
+        <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
+          <DialogPanel size="lg" className="p-0 shadow-2xl">
+            <DialogHeader className="border-b border-zinc-800 px-6 py-6">
+              <div>
+                <DialogTitle className="text-xl font-semibold text-zinc-100">
+                  Import Insertion Orders
+                </DialogTitle>
+                <p className="mt-1 text-sm text-zinc-400">
+                  Import generic insertion orders from a CSV file
                 </p>
-                <p className="text-sm text-zinc-400 my-2">or</p>
-                <Button asChild variant="outline">
-                  <label htmlFor="file-upload" className="cursor-pointer">
-                    Browse Files
-                  </label>
-                </Button>
               </div>
-            )}
+              <DialogIconClose className="mt-0.5" />
+            </DialogHeader>
 
-            {/* FILE LIST */}
-            {files.length > 0 && (
-              <div className="max-h-48 overflow-y-auto pr-1">
-                <div className="flex flex-col gap-2">
-                  {files.map((file, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-center gap-3 bg-zinc-800/50 border border-zinc-700 rounded-md px-3 py-2"
-                    >
-                      <FileText className="text-blue-400 shrink-0" size={24} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm text-zinc-100 truncate">
-                          {file.name}
-                        </p>
-                        <p className="text-xs text-zinc-400">
-                          {(file.size / 1024).toFixed(1)} KB
-                        </p>
-                      </div>
-                      <Button
-                        onClick={() => removeFile(idx)}
-                        variant="ghost"
-                        size="icon-sm"
-                      >
-                        <X />
-                      </Button>
-                    </div>
-                  ))}
+            <div className="p-6">
+              {/* DROP ZONE */}
+              {files.length === 0 && (
+                <div
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  className={`
+                    border-2 border-dashed rounded-lg p-6 text-center transition-all
+                    ${isDragging ? "border-blue-500 bg-blue-500/10" : "border-zinc-700"}
+                  `}
+                >
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".csv"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    id="file-upload"
+                  />
+
+                  <Upload className="mx-auto mb-3 text-zinc-400" size={40} />
+                  <p className="text-zinc-100 font-medium">
+                    Drag & drop a CSV file here
+                  </p>
+                  <p className="text-sm text-zinc-400 my-2">or</p>
+                  <Button asChild variant="outline">
+                    <label htmlFor="file-upload" className="cursor-pointer">
+                      Browse Files
+                    </label>
+                  </Button>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
 
-          {/* FOOTER */}
-          <div className="flex items-center justify-end gap-3 p-6 border-t border-zinc-800">
-            <Button onClick={handleClose} variant="ghost">
-              Cancel
-            </Button>
-            <Button
-              onClick={handleUpload}
-              disabled={!files.length || uploadStatus === "uploading"}
-            >
-              {uploadStatus === "uploading" ? "Uploading..." : "Upload"}
-            </Button>
-          </div>
+              {/* FILE LIST */}
+              {files.length > 0 && (
+                <div className="max-h-48 overflow-y-auto pr-1">
+                  <div className="flex flex-col gap-2">
+                    {files.map((file, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center gap-3 bg-zinc-800/50 border border-zinc-700 rounded-md px-3 py-2"
+                      >
+                        <FileText className="text-blue-400 shrink-0" size={24} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-zinc-100 truncate">
+                            {file.name}
+                          </p>
+                          <p className="text-xs text-zinc-400">
+                            {(file.size / 1024).toFixed(1)} KB
+                          </p>
+                        </div>
+                        <Button
+                          onClick={() => removeFile(idx)}
+                          variant="ghost"
+                          size="icon-sm"
+                        >
+                          <X />
+                        </Button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <DialogFooter className="border-t border-zinc-800 px-6 py-6">
+              <Button onClick={handleClose} variant="ghost">
+                Cancel
+              </Button>
+              <Button
+                onClick={handleUpload}
+                disabled={!files.length || uploadStatus === "uploading"}
+              >
+                {uploadStatus === "uploading" ? "Uploading..." : "Upload"}
+              </Button>
+            </DialogFooter>
+          </DialogPanel>
         </div>
-      </div>
+      </Dialog>
 
       <DuplicateConfirmation
         open={duplicateDialog.open}

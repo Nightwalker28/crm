@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  LayoutGrid,
   UserRound,
   HandCoins,
   LogOut,
@@ -20,6 +21,7 @@ import {
   SidebarNav,
   SidebarGroup,
   SidebarMenu,
+  SidebarMenuItem,
   SidebarMenuItemCollapsible,
   SidebarMenuItemChild,
 } from "./SidebarNav";
@@ -104,6 +106,10 @@ export default function Sidebar() {
         <SidebarNav>
           <SidebarGroup>
             <SidebarMenu>
+              <SidebarMenuItem href="/dashboard" icon={LayoutGrid} collapsed={collapsed}>
+                Dashboard
+              </SidebarMenuItem>
+
               <SidebarMenuItemCollapsible icon={UserRound} label="Admin" collapsed={collapsed}>
                 <SidebarMenuItemChild href="/dashboard/users" collapsed={collapsed}>
                   Users
@@ -133,6 +139,9 @@ export default function Sidebar() {
 
               {financeIoModule?.base_route ? (
                 <SidebarMenuItemCollapsible icon={HandCoins} label="Finance" collapsed={collapsed}>
+                  <SidebarMenuItemChild href="/dashboard/finance" collapsed={collapsed}>
+                    Overview
+                  </SidebarMenuItemChild>
                   <SidebarMenuItemChild href={financeIoModule.base_route} collapsed={collapsed}>
                     Insertion Orders
                   </SidebarMenuItemChild>
@@ -141,6 +150,9 @@ export default function Sidebar() {
 
               {(organizationsModule?.base_route || contactsModule?.base_route || opportunitiesModule?.base_route) ? (
                 <SidebarMenuItemCollapsible icon={BriefcaseBusiness} label="Sales" collapsed={collapsed}>
+                  <SidebarMenuItemChild href="/dashboard/sales" collapsed={collapsed}>
+                    Overview
+                  </SidebarMenuItemChild>
                   {organizationsModule?.base_route ? (
                     <SidebarMenuItemChild href={organizationsModule.base_route} collapsed={collapsed}>
                       Organizations

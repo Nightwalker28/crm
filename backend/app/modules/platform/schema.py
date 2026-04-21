@@ -134,3 +134,43 @@ class UserNotificationListResponse(BaseModel):
     page: int
     page_size: int
     unread_count: int
+
+
+class RecordCommentResponse(BaseModel):
+    id: int
+    actor_user_id: int | None = None
+    module_key: str
+    entity_id: str
+    body: str
+    author_name: str
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RecordCommentCreateRequest(BaseModel):
+    body: str = Field(min_length=1, max_length=5000)
+
+
+class RecordCommentListResponse(BaseModel):
+    results: list[RecordCommentResponse]
+    range_start: int
+    range_end: int
+    total_count: int
+    total_pages: int
+    page: int
+
+
+class GlobalSearchResultResponse(BaseModel):
+    module_key: str
+    module_label: str
+    record_id: str
+    title: str
+    subtitle: str | None = None
+    href: str
+
+
+class GlobalSearchResponse(BaseModel):
+    query: str
+    results: list[GlobalSearchResultResponse]

@@ -2,6 +2,7 @@
 
 import { Switch } from "@/components/ui/switch";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useModulesAdmin } from "@/hooks/admin/useModulesAdmin";
@@ -11,10 +12,10 @@ export default function ModulesPage() {
 
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-neutral-100">Modules</h1>
-        <p className="mt-1 text-sm text-neutral-400">Enable or disable product modules globally. Disabled modules disappear from user navigation and accessible module lists.</p>
-      </div>
+      <PageHeader
+        title="Modules"
+        description="Enable or disable product modules globally. Disabled modules disappear from user navigation and accessible module lists."
+      />
 
       <ModuleTableShell>
         <Table className="min-w-[1100px]">

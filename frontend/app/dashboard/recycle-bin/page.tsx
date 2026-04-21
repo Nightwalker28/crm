@@ -8,6 +8,7 @@ import { Trash2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { PageHeader } from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDateTime } from "@/lib/datetime";
@@ -88,32 +89,30 @@ export default function RecycleBinPage() {
 
   return (
     <div className="flex flex-col gap-5 text-neutral-200">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold leading-none">Recycle Bin</h1>
-          <p className="mt-2 text-sm text-neutral-500">
-            One recovery area for the platform, with module-specific tables inside it.
-          </p>
-        </div>
-        <Select
-          value={moduleKey}
-          onValueChange={(value) => {
-            setModuleKey(value);
-            setPage(1);
-          }}
-        >
-          <SelectTrigger className="w-72">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MODULE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        title="Recycle Bin"
+        description="One recovery area for the platform, with module-specific tables inside it."
+        actions={
+          <Select
+            value={moduleKey}
+            onValueChange={(value) => {
+              setModuleKey(value);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-72">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MODULE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
+      />
 
       <Card className="overflow-hidden px-0 py-0">
         <div className="border-b border-neutral-800 px-5 py-4">

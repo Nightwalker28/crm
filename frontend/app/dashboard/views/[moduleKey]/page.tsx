@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { ColumnPicker } from "@/components/ui/ColumnPicker";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useSavedViews } from "@/hooks/useSavedViews";
@@ -122,37 +123,35 @@ export default function ManageModuleViewPage() {
 
   return (
     <div className="mx-auto flex max-w-5xl flex-col gap-6">
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <Button asChild type="button" variant="ghost" size="sm" className="mb-3 px-0 text-neutral-400 hover:text-neutral-100">
-            <Link href={definition.route}>
-              <ArrowLeft className="h-4 w-4" />
-              Back to {definition.label}
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-semibold text-neutral-100">Manage {definition.label} View</h1>
-          <p className="mt-1 text-sm text-neutral-400">
-            Define columns, default search, and AND/OR filter conditions for this module view.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Select value={selectedViewId} onValueChange={(value) => router.replace(`/dashboard/views/${moduleKey}?viewId=${value}`)}>
-            <SelectTrigger className="w-64">
-              <SelectValue placeholder="Select view" />
-            </SelectTrigger>
-            <SelectContent>
-              {views.map((view) => (
-                <SelectItem key={String(view.id ?? "system-default")} value={String(view.id ?? "system-default")}>
-                  {view.name}{view.is_default ? " (Default)" : ""}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button type="button" variant="outline" onClick={() => router.replace(`/dashboard/views/${moduleKey}?viewId=system-default`)}>
-            New From Default
-          </Button>
-        </div>
-      </div>
+      <PageHeader
+        title={`Manage ${definition.label} View`}
+        description="Define columns, default search, and shared AND/OR filter conditions for this module view."
+        actions={
+          <>
+            <Button asChild type="button" variant="ghost" size="sm">
+              <Link href={definition.route}>
+                <ArrowLeft className="h-4 w-4" />
+                Back to {definition.label}
+              </Link>
+            </Button>
+            <Select value={selectedViewId} onValueChange={(value) => router.replace(`/dashboard/views/${moduleKey}?viewId=${value}`)}>
+              <SelectTrigger className="w-64">
+                <SelectValue placeholder="Select view" />
+              </SelectTrigger>
+              <SelectContent>
+                {views.map((view) => (
+                  <SelectItem key={String(view.id ?? "system-default")} value={String(view.id ?? "system-default")}>
+                    {view.name}{view.is_default ? " (Default)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button type="button" variant="outline" onClick={() => router.replace(`/dashboard/views/${moduleKey}?viewId=system-default`)}>
+              New From Default
+            </Button>
+          </>
+        }
+      />
 
       <Card className="px-5 py-5">
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_220px]">

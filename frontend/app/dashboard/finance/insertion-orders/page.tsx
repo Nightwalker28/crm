@@ -44,6 +44,7 @@ export default function InsertionOrdersPage() {
     pageSize,
     totalPages,
     isLoading,
+    isFetching,
     error,
     goToPage,
     onPageSizeChange,
@@ -53,7 +54,6 @@ export default function InsertionOrdersPage() {
     rangeEnd,
     createOrder,
     updateOrder,
-    deleteOrder,
     isSaving,
     isDeleting,
   } = useInsertionOrders(visibleColumns, draftConfig.filters, 1, 10);
@@ -90,18 +90,6 @@ export default function InsertionOrdersPage() {
   const handleEdit = (order: InsertionOrder) => {
     setSelectedOrder(order);
     setDialogOpen(true);
-  };
-
-  const handleDelete = async (order: InsertionOrder) => {
-    const confirmed = window.confirm(`Move ${order.io_number} to the recycle state?`);
-    if (!confirmed) return;
-
-    try {
-      await deleteOrder(order.id);
-      toast.success("Insertion order moved out of the active list.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to delete insertion order");
-    }
   };
 
   const handleSubmit = async (payload: InsertionOrderPayload) => {
@@ -201,8 +189,8 @@ export default function InsertionOrdersPage() {
         <InsertionOrdersList
           orders={orders}
           isLoading={isLoading}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
+          isRefreshing={isFetching && !isLoading}
+          onRowClick={handleEdit}
           visibleColumns={visibleColumns}
           columnOptions={definition?.columns ?? []}
           selectedIds={selectedIds}
@@ -218,6 +206,7 @@ export default function InsertionOrdersPage() {
           rangeStart={rangeStart}
           rangeEnd={rangeEnd}
           pageSize={pageSize}
+          isRefreshing={isFetching && !isLoading}
           onPageChange={goToPage}
           onPageSizeChange={onPageSizeChange}
         />

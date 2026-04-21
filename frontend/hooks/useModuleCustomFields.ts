@@ -31,8 +31,8 @@ export function useModuleCustomFields(moduleKey: string, enabled = true) {
     queryKey: ["custom-fields", moduleKey],
     queryFn: () => fetchModuleCustomFields(moduleKey),
     enabled,
-    staleTime: 0,
-    refetchOnMount: "always",
-    refetchOnWindowFocus: true,
+    staleTime: 5 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
   });
 }

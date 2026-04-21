@@ -44,6 +44,7 @@ export default function ContactsPage() {
     pageSize,
     onPageSizeChange,
     isLoading,
+    isFetching,
     error,
     goToPage,
     refresh,
@@ -140,6 +141,7 @@ export default function ContactsPage() {
       <ContactList
         contacts={contacts}
         isLoading={isLoading}
+        isRefreshing={isFetching && !isLoading}
         visibleColumns={visibleColumns}
         columnOptions={definition?.columns ?? []}
         selectedIds={selectedIds}
@@ -155,6 +157,7 @@ export default function ContactsPage() {
         rangeStart={rangeStart}
         rangeEnd={rangeEnd}
         pageSize={pageSize}
+        isRefreshing={isFetching && !isLoading}
         onPageChange={goToPage}
         onPageSizeChange={onPageSizeChange}
       />

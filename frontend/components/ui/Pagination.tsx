@@ -19,6 +19,7 @@ type PaginationProps = {
   pageSize: number;
   rangeStart: number;
   rangeEnd: number;
+  isRefreshing?: boolean;
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
 };
@@ -53,6 +54,7 @@ export default function Pagination({
   pageSize,
   rangeStart,
   rangeEnd,
+  isRefreshing = false,
   onPageChange,
   onPageSizeChange,
 }: PaginationProps) {
@@ -90,6 +92,12 @@ export default function Pagination({
           <span className="text-neutral-200 font-medium">{totalCount}</span>{" "}
           entries
         </div>
+        {isRefreshing ? (
+          <div className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-neutral-900/80 px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
+            <span className="h-2 w-2 rounded-full bg-neutral-400 animate-pulse" />
+            Refreshing
+          </div>
+        ) : null}
       </div>
 
 

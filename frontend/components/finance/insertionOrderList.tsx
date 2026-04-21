@@ -1,6 +1,5 @@
 import { Fragment } from "react";
 import type { InsertionOrder } from "@/hooks/finance/useInsertionOrders";
-import { Pencil, Trash2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -11,6 +10,7 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
@@ -21,8 +21,8 @@ import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 type InsertionOrdersListProps = {
   orders: InsertionOrder[];
   isLoading: boolean;
-  onEdit: (order: InsertionOrder) => void;
-  onDelete: (order: InsertionOrder) => void;
+  isRefreshing?: boolean;
+  onRowClick: (order: InsertionOrder) => void;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
   selectedIds?: number[];
@@ -66,8 +66,8 @@ function isDuePast(dateStr?: string | null): boolean {
 export default function InsertionOrdersList({
   orders,
   isLoading,
-  onEdit,
-  onDelete,
+  isRefreshing = false,
+  onRowClick,
   visibleColumns,
   columnOptions = [],
   selectedIds = [],
@@ -75,7 +75,7 @@ export default function InsertionOrdersList({
   onToggleRow,
   onToggleCurrentPage,
 }: InsertionOrdersListProps) {
-  const columnCount = visibleColumns.length + 2;
+  const columnCount = visibleColumns.length + 1;
   const headers: Record<string, string> = {
     io_number: "IO Number",
     customer_name: "Customer",
@@ -217,7 +217,7 @@ export default function InsertionOrdersList({
   };
 
   return (
-    <ModuleTableShell>
+    <ModuleTableShell isRefreshing={isRefreshing}>
       <Table className="min-w-[1040px]">
         <TableHeader>
           <TableHeaderRow>
@@ -236,20 +236,12 @@ export default function InsertionOrdersList({
                 {headers[column] ?? getReadableColumnLabel(column, columnOptions)}
               </TableHead>
             ))}
-            <TableHead className="text-right pr-5">Actions</TableHead>
           </TableHeaderRow>
         </TableHeader>
 
         <TableBody>
           {isLoading ? (
-            <TableRow>
-              <TableCell colSpan={columnCount} className="py-16 text-center">
-                <div className="flex flex-col items-center gap-3 text-neutral-500">
-                  <div className="h-5 w-5 rounded-full border-2 border-neutral-700 border-t-neutral-400 animate-spin" />
-                  <span className="text-sm">Loading insertion orders...</span>
-                </div>
-              </TableCell>
-            </TableRow>
+            <ModuleTableLoading columnCount={columnCount} />
           ) : orders.length === 0 ? (
             <TableRow>
               <TableCell colSpan={columnCount} className="py-16 text-center">
@@ -263,8 +255,15 @@ export default function InsertionOrdersList({
             </TableRow>
           ) : (
             orders.map((order) => (
-              <TableRow key={order.id} className="group">
-                <TableCell className="w-12 pr-0">
+              <TableRow
+                key={order.id}
+                className="group cursor-pointer"
+                onClick={() => onRowClick(order)}
+              >
+                <TableCell
+                  className="w-12 pr-0"
+                  onClick={(event) => event.stopPropagation()}
+                >
                   <Checkbox
                     checked={selectedIds.includes(order.id)}
                     onCheckedChange={(checked) => onToggleRow?.(order.id, checked === true)}
@@ -277,24 +276,6 @@ export default function InsertionOrdersList({
                 {visibleColumns.map((column) => (
                   <Fragment key={column}>{renderCell(order, column)}</Fragment>
                 ))}
-                <TableCell className="text-right pr-4">
-                  <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
-                    <button
-                      onClick={() => onEdit(order)}
-                      className="p-1.5 rounded-md text-sky-400 hover:text-sky-300 hover:bg-sky-950/40 transition-colors"
-                      title="Edit insertion order"
-                    >
-                      <Pencil size={14} />
-                    </button>
-                    <button
-                      onClick={() => onDelete(order)}
-                      className="p-1.5 rounded-md text-red-400 hover:text-red-300 hover:bg-red-950/40 transition-colors"
-                      title="Delete insertion order"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                </TableCell>
               </TableRow>
             ))
           )}

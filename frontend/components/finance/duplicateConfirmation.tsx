@@ -2,12 +2,14 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogBackdrop,
+  DialogHeader,
   DialogPanel,
   DialogTitle,
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
 import { AlertTriangle } from "lucide-react";
+import { DialogIconClose } from "@/components/ui/DialogIconClose";
 
 interface DuplicateConfirmationProps {
   open: boolean;
@@ -27,9 +29,8 @@ export default function DuplicateConfirmation({
       <DialogBackdrop />
 
       <div className="fixed inset-0 flex items-center justify-center p-4">
-        <DialogPanel className="max-w-lg w-full">
-          {/* Header */}
-          <div className="flex items-start gap-4 mb-4">
+        <DialogPanel size="lg">
+          <DialogHeader className="mb-4">
             <div className="shrink-0 w-10 h-10 rounded-full bg-amber-500/10 flex items-center justify-center">
               <AlertTriangle className="w-5 h-5 text-amber-500" />
             </div>
@@ -44,7 +45,8 @@ export default function DuplicateConfirmation({
                 {items.length > 1 ? "s" : ""} already exist in your database:
               </DialogDescription>
             </div>
-          </div>
+            <DialogIconClose />
+          </DialogHeader>
 
           {/* duplicate list */}
           <div className="bg-zinc-800/50 border border-zinc-700 rounded-md p-4 mb-6 max-h-48 overflow-y-auto">

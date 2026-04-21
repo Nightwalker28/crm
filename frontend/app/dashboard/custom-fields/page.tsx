@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
@@ -107,26 +108,24 @@ export default function CustomFieldsPage() {
 
   return (
     <div className="flex flex-col gap-5 text-neutral-200">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold leading-none">Custom Fields</h1>
-          <p className="mt-2 text-sm text-neutral-500">
-            Add configurable fields to existing modules without changing the protected core schema.
-          </p>
-        </div>
-        <Select value={moduleKey} onValueChange={setModuleKey}>
-          <SelectTrigger className="w-72">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {MODULE_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {option.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <PageHeader
+        title="Custom Fields"
+        description="Add configurable fields to existing modules without changing the protected core schema."
+        actions={
+          <Select value={moduleKey} onValueChange={setModuleKey}>
+            <SelectTrigger className="w-72">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {MODULE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        }
+      />
 
       <div className="grid gap-5 lg:grid-cols-[360px_1fr]">
         <Card className="px-5 py-5">

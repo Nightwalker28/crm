@@ -456,7 +456,7 @@ export function ModuleImportExportControls({
       <Dialog open={isImportDialogOpen} onClose={resetImportState}>
         <DialogBackdrop />
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
-          <DialogPanel className="w-full max-w-3xl">
+          <DialogPanel size="3xl">
             <DialogHeader className="mb-4">
               <div>
                 <DialogTitle className="text-lg text-neutral-100">
@@ -653,7 +653,7 @@ export function ModuleImportExportControls({
       <Dialog open={isExportDialogOpen} onClose={resetExportState}>
         <DialogBackdrop />
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
-          <DialogPanel className="w-full max-w-xl">
+          <DialogPanel size="xl">
             <DialogHeader className="mb-4">
               <div>
                 <DialogTitle className="text-lg text-neutral-100">Export Records</DialogTitle>

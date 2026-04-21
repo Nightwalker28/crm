@@ -8,6 +8,9 @@ import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
+import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
+import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
+import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -196,20 +199,17 @@ export default function OrganizationDetailPage() {
 
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <Link href="/dashboard/sales/organizations" className="text-xs uppercase tracking-wide text-neutral-500 hover:text-neutral-300">
-            Back to Organizations
-          </Link>
-          <h1 className="mt-2 text-2xl font-semibold leading-none">{summary?.organization.org_name || "Organization"}</h1>
-          <p className="mt-2 text-sm text-zinc-500">
-            Review linked contacts, deals, insertion orders, and edit the organization record directly on the page.
-          </p>
-        </div>
-        <Button onClick={handleSave} disabled={saving || !form.org_name.trim()}>
-          {saving ? "Saving..." : "Save Organization"}
-        </Button>
-      </div>
+      <RecordPageHeader
+        backHref="/dashboard/sales/organizations"
+        backLabel="Back to Organizations"
+        title={summary?.organization.org_name || "Organization"}
+        description="Review linked contacts, deals, insertion orders, and edit the organization record directly on the page."
+        primaryAction={(
+          <Button onClick={handleSave} disabled={saving || !form.org_name.trim()}>
+            {saving ? "Saving..." : "Save Organization"}
+          </Button>
+        )}
+      />
 
       {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}
 
@@ -362,6 +362,18 @@ export default function OrganizationDetailPage() {
                 )) : <div className="text-sm text-neutral-500">No linked insertion orders.</div>}
               </div>
             </Card>
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <RecordActivityTimeline
+              moduleKey="sales_organizations"
+              entityId={summary.organization.org_id}
+              description="Organization-level create, update, delete, restore, and note history."
+            />
+            <RecordCommentsPanel
+              moduleKey="sales_organizations"
+              entityId={summary.organization.org_id}
+            />
           </div>
         </>
       )}

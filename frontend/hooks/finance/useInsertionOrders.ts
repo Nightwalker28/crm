@@ -216,7 +216,8 @@ export function useInsertionOrders(
     totalCount: query.data?.total_count ?? 0,
     rangeStart: query.data?.range_start ?? 0,
     rangeEnd: query.data?.range_end ?? 0,
-    isLoading: query.isLoading || query.isFetching,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
     error: query.error ? getErrorMessage(query.error) : null,
     goToPage: (nextPage: number) => setPage(Math.max(1, nextPage)),
     onPageSizeChange: (size: number) => {

@@ -142,7 +142,8 @@ export function useOpportunities(
     rangeStart: data?.range_start ?? 0,
     rangeEnd: data?.range_end ?? 0,
     pageSize,
-    isLoading: query.isLoading || query.isFetching,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
     error: query.error instanceof Error ? query.error.message : null,
     goToPage: setPage,
     onPageSizeChange: (nextPageSize: number) => {

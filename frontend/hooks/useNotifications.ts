@@ -66,9 +66,9 @@ export function useNotifications() {
   const query = useQuery({
     queryKey: ["user-notifications"],
     queryFn: fetchNotifications,
-    refetchInterval: 10000,
+    refetchInterval: 60000,
     refetchOnMount: true,
-    staleTime: 5000,
+    staleTime: 30000,
   });
 
   const markReadMutation = useMutation({

@@ -195,6 +195,16 @@ class OrganizationSummaryResponse(BaseModel):
     insertion_order_count: int
 
 
+class ContactCompactSummary(BaseModel):
+    contact_id: int
+    first_name: str | None = None
+    last_name: str | None = None
+    primary_email: str | None = None
+    current_title: str | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SalesContactImportSummary(BaseModel):
     inserted: int
     updated: int
@@ -309,3 +319,24 @@ class SalesOpportunityListResponse(BaseModel):
     total_count: int
     total_pages: int
     page: int
+
+
+class OpportunitySummaryResponse(BaseModel):
+    opportunity: SalesOpportunityResponse
+    contact: ContactCompactSummary | None = None
+    organization: OrganizationCompactSummary | None = None
+    related_insertion_orders: list[RelatedInsertionOrderSummary]
+    inferred_services: list[str]
+    insertion_order_count: int
+
+
+class OpportunityPipelineStageSummary(BaseModel):
+    stage_key: str
+    label: str
+    count: int
+    total_value: float
+
+
+class OpportunityPipelineSummaryResponse(BaseModel):
+    total_count: int
+    stages: list[OpportunityPipelineStageSummary]

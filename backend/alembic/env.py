@@ -15,6 +15,7 @@ from app.core.database import Base  # noqa: E402
 # Import models so Alembic's metadata knows about them
 from app.modules.user_management import models as user_management_models  # noqa: F401, E402
 from app.modules.finance import models as finance_models  # noqa: F401, E402
+from app.modules.platform import models as platform_models  # noqa: F401, E402
 from app.modules.sales import models as sales_models  # noqa: F401, E402
 
 # this is the Alembic Config object, which provides
