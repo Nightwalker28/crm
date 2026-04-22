@@ -60,8 +60,8 @@ ROLE_TEMPLATES: dict[str, dict] = {
 }
 
 
-def list_role_permission_overview(db: Session) -> RolePermissionOverviewResponse:
-    roles = db.query(Role).order_by(Role.level.desc(), Role.name.asc()).all()
+def list_role_permission_overview(db: Session, *, tenant_id: int) -> RolePermissionOverviewResponse:
+    roles = db.query(Role).filter(Role.tenant_id == tenant_id).order_by(Role.level.desc(), Role.name.asc()).all()
     modules = db.query(Module).order_by(Module.name.asc()).all()
 
     return RolePermissionOverviewResponse(
@@ -86,8 +86,8 @@ def list_role_permission_overview(db: Session) -> RolePermissionOverviewResponse
     )
 
 
-def get_role_permissions(db: Session, role_id: int) -> list[ModulePermissionSchema]:
-    role = _get_role_or_404(db, role_id)
+def get_role_permissions(db: Session, role_id: int, *, tenant_id: int) -> list[ModulePermissionSchema]:
+    role = _get_role_or_404(db, role_id, tenant_id=tenant_id)
     modules = db.query(Module).order_by(Module.name.asc()).all()
     permissions = {
         permission.module_id: permission
@@ -116,16 +116,17 @@ def get_role_permissions(db: Session, role_id: int) -> list[ModulePermissionSche
     ]
 
 
-def create_role(db: Session, payload: RoleCreateRequest) -> Role:
+def create_role(db: Session, payload: RoleCreateRequest, *, tenant_id: int) -> Role:
     template = ROLE_TEMPLATES.get(payload.template_key)
     if not template:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown role template")
 
-    existing = db.query(Role).filter(Role.name == payload.name.strip()).first()
+    existing = db.query(Role).filter(Role.tenant_id == tenant_id, Role.name == payload.name.strip()).first()
     if existing:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Role already exists")
 
     role = Role(
+        tenant_id=tenant_id,
         name=payload.name.strip(),
         description=payload.description.strip() if payload.description else template["description"],
         level=payload.level if payload.level is not None else template["level"],
@@ -155,14 +156,14 @@ def create_role(db: Session, payload: RoleCreateRequest) -> Role:
     return role
 
 
-def update_role(db: Session, role_id: int, payload: RoleUpdateRequest) -> Role:
-    role = _get_role_or_404(db, role_id)
+def update_role(db: Session, role_id: int, payload: RoleUpdateRequest, *, tenant_id: int) -> Role:
+    role = _get_role_or_404(db, role_id, tenant_id=tenant_id)
     update_data = payload.model_dump(exclude_unset=True)
 
     if "name" in update_data and update_data["name"]:
         duplicate = (
             db.query(Role)
-            .filter(Role.name == update_data["name"].strip(), Role.id != role.id)
+            .filter(Role.tenant_id == tenant_id, Role.name == update_data["name"].strip(), Role.id != role.id)
             .first()
         )
         if duplicate:
@@ -177,8 +178,8 @@ def update_role(db: Session, role_id: int, payload: RoleUpdateRequest) -> Role:
     return role
 
 
-def update_role_permissions(db: Session, role_id: int, payload: RolePermissionUpdateRequest) -> list[ModulePermissionSchema]:
-    role = _get_role_or_404(db, role_id)
+def update_role_permissions(db: Session, role_id: int, payload: RolePermissionUpdateRequest, *, tenant_id: int) -> list[ModulePermissionSchema]:
+    role = _get_role_or_404(db, role_id, tenant_id=tenant_id)
     modules = {module.id: module for module in db.query(Module).all()}
 
     for item in payload.permissions:
@@ -207,11 +208,11 @@ def update_role_permissions(db: Session, role_id: int, payload: RolePermissionUp
         db.add(permission)
 
     db.commit()
-    return get_role_permissions(db, role_id)
+    return get_role_permissions(db, role_id, tenant_id=tenant_id)
 
 
-def _get_role_or_404(db: Session, role_id: int) -> Role:
-    role = db.query(Role).filter(Role.id == role_id).first()
+def _get_role_or_404(db: Session, role_id: int, *, tenant_id: int) -> Role:
+    role = db.query(Role).filter(Role.id == role_id, Role.tenant_id == tenant_id).first()
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
     return role

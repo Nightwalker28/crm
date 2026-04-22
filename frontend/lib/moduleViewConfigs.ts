@@ -96,6 +96,11 @@ export const USER_COLUMNS: TableColumnOption[] = [
 ];
 
 export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
+  tasks: {
+    visible_columns: ["title", "priority", "status", "due_at", "assignees", "updated_at"],
+    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
+    sort: null,
+  },
   sales_contacts: {
     visible_columns: ["first_name", "last_name", "primary_email", "organization_name", "linkedin_url"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
@@ -134,6 +139,49 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
 };
 
 export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
+  tasks: {
+    key: "tasks",
+    label: "Tasks",
+    route: "/dashboard/tasks",
+    columns: [
+      { key: "title", label: "Title" },
+      { key: "priority", label: "Priority" },
+      { key: "status", label: "Status" },
+      { key: "due_at", label: "Due" },
+      { key: "assignees", label: "Assignees" },
+      { key: "updated_at", label: "Updated" },
+    ],
+    filterFields: [
+      { key: "title", label: "Title", type: "text", operators: TEXT_OPERATORS },
+      {
+        key: "priority",
+        label: "Priority",
+        type: "select",
+        operators: SELECT_OPERATORS,
+        options: [
+          { value: "high", label: "High" },
+          { value: "medium", label: "Medium" },
+          { value: "low", label: "Low" },
+        ],
+      },
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        operators: SELECT_OPERATORS,
+        options: [
+          { value: "todo", label: "To Do" },
+          { value: "in_progress", label: "In Progress" },
+          { value: "blocked", label: "Blocked" },
+          { value: "completed", label: "Completed" },
+        ],
+      },
+      { key: "due_at", label: "Due Date", type: "date", operators: DATE_OPERATORS },
+      { key: "start_at", label: "Start Date", type: "date", operators: DATE_OPERATORS },
+      { key: "created_at", label: "Created At", type: "date", operators: DATE_OPERATORS },
+    ],
+    defaultConfig: MODULE_VIEW_DEFAULTS.tasks,
+  },
   sales_contacts: {
     key: "sales_contacts",
     label: "Contacts",

@@ -1,6 +1,6 @@
 # Platform Refactor Roadmap
 
-Overall completion: 98%
+Overall completion: 99%
 
 Current phase:
 - Phase 1 complete: Finance IO refactor and immediate UX cleanup
@@ -15,8 +15,14 @@ Current phase:
 - Phase 7.5 in progress: auth/access-control correction, Google scope cleanup, and saved-view filter usability hardening
 - Phase 8 in progress: deployment licensing, hostname-based tenant resolution, and cloud-auth foundation
 - Phase 8.5 in progress: tenant ownership rollout across existing modules and platform defaults for timezone-aware rendering
+- Phase 9 in progress: collaboration and integrations foundation with tasks first, then calendar and mailbox connectivity
 
 Completed items:
+- Finished the shared export rebuild across contacts, organizations, opportunities, and insertion orders: the shared export dialog now sends active view filters into one background-job contract, “all records” exports now mean the current filtered dataset instead of an unfiltered module dump, current-page and selected-row modes stay aligned across modules, and export summaries now report real exported row counts.
+- Closed the current backend tenant-isolation rollout across the existing route and service surface by finishing the remaining worker-path and linked-record checks: background import/export jobs now resolve their actors and exported datasets inside the job tenant, finance linked-contact and linked-organization resolution stays inside the current tenant, contact assignment validation no longer accepts cross-tenant users, opportunity attachment and finance-handoff helpers are tenant-scoped, and custom-field definitions and values now have database-level tenant uniqueness.
+- Enforced database-level uniqueness for tenant company profiles and per-user table preferences, and tightened admin-user role/team joins so shared platform/profile state cannot quietly drift across tenants through duplicate singleton rows or loose relation joins.
+- Audited the current backend route surface for tenant scoping and closed the main shared-admin leaks by tenant-scoping module configuration, admin roles, departments, teams, and the related module-access/data-transfer route paths.
+- Moved module enablement and import duplicate-mode settings onto a tenant-scoped configuration path, while keeping the shared module catalog intact, so module admin changes and accessible-module resolution no longer have to bleed across tenants.
 - Finished the remaining visual consistency cleanup by standardizing the saved-view management route and CRM detail-page headers on shared page-header patterns, while removing stale pre-launch copy from already-landed dashboard, sales, finance, and opportunity surfaces.
 - Replaced the old `/dashboard` redirect with a real dashboard home that surfaces KPI-style counts, recent activity, notifications, quick actions, and module entry points from live data sources.
 - Added opportunity pipeline visibility with stage summary cards, a pipeline/table toggle, and a shared kanban-style opportunity board tied into the same edit and finance-handoff flows.
@@ -143,6 +149,10 @@ Completed items:
 - Expanded CSV import/export coverage so opportunities now have backend import/export routes, insertion orders now have CSV export, and the current business-module headers use shared authenticated import/export controls for contacts, organizations, opportunities, and finance export.
 
 In progress:
+- Start the collaboration and integrations rollout with tasks as the first concrete platform primitive, treating tasks as a backend module with frontend feature-style entry points so assignment, notifications, reminders, and later mailbox/calendar automation can share one foundation.
+- The first task slice is now landed in code with backend module registration, tenant-aware task and assignee persistence, assignment notifications, a `/dashboard/tasks` frontend surface, sidebar/dashboard wiring, and browser notification bridging; this slice now needs hardening and verification before calendar starts.
+- Tasks should support professional CRM-style priority and urgency states, assignment to self, users, teams, and later richer collaboration targets, with assignment events feeding both the existing in-app notification center and browser notification hooks.
+- Stage calendar integration immediately after the task foundation so due dates, scheduling, reminders, and sync behavior can anchor to one task/collaboration model before mailbox automation joins the same slice.
 - Keep extending timezone-aware timestamp formatting across remaining UI surfaces that still render raw browser-local or server-default times.
 - Keep normalizing uploaded/local media URLs across all avatar/logo consumers so uploaded profile/company assets behave the same as remote images everywhere.
 - Expand the new notification center beyond data-transfer jobs into broader per-user operational notifications over time.
@@ -166,7 +176,7 @@ In progress:
   - skeleton loading states and pagination/refetch polish
   - dialog-width standardization and remaining visual consistency cleanup
 - Treat audit-driven CRM features as shared platform patterns across applicable modules and complete each slice to production-grade before moving on to the next one.
-- Current active implementation slice: resume the tenant-isolation rollout underneath the shared UI work, starting with shared admin/config/activity/notification data that still assumes one global row set.
+- Current active implementation slice: move off the now-closed backend tenant-isolation and export-rebuild passes and continue broader runtime hardening plus browser-side verification on top of the corrected tenant-scoped platform baseline.
 - Finish the current export rebuild so contacts, organizations, opportunities, and insertion orders can export all rows, selected rows across pages, and the current visible page through the background-job flow.
 - Restore the branded splash/loading treatment in a controlled way for initial load and route-level loading states.
 - Rebuild imports into a proper staged workflow with preview/header mapping first, then duplicate-policy control, then richer result summaries.
@@ -184,6 +194,9 @@ In progress:
 - Finish the first tenant-aware backend pass beyond auth by scoping company profile, module configuration, and other cross-tenant admin data that still assumes a single shared row set.
 
 Next up:
+- Harden and verify the landed first task module slice end to end, then fill any remaining task lifecycle gaps before moving the collaboration roadmap onto calendar integration.
+- Build calendar integration on top of the task foundation so scheduling and sync use the same collaboration data model instead of a disconnected side path.
+- Add mailbox integration and automation after tasks and calendar have established the shared collaboration/assignment model.
 - Finish the dedicated saved-view management flow so module pages only need compact view switching.
 - Expand saved views over time to include richer per-module state beyond the current search, condition, status, and sort slices.
 - Add inline shared quick-filter UX on current module pages so users can apply multi-field conditions without leaving the module.
@@ -196,7 +209,7 @@ Next up:
 - Extend module availability from a global enabled or disabled flag into richer module configuration once the current control model is stable.
 - Start a separate hardening phase for tenant/company row ownership once the above platform work is stable.
 - Complete the post-auth tenant-isolation pass across non-auth tables and services before treating the hosted cloud mode as production-ready.
-- Finish remaining service/query call sites that still assume globally shared data now that the schema and shared-service tenant foundation is in place.
+- Keep future tenant/company ownership expansion as a separate later hardening phase now that the current existing-route/service tenant rollout is complete.
 
 Deferred items:
 - True tenant/company ownership at the data-model level for finance records.

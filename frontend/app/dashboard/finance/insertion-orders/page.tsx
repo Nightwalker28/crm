@@ -110,6 +110,7 @@ export default function InsertionOrdersPage() {
           onUploadSuccess={refresh}
           selectedIds={selectedIds}
           currentPageIds={currentPageIds}
+          exportFilters={draftConfig.filters}
           viewSelector={
             <SavedViewSelector
             moduleKey="finance_io"

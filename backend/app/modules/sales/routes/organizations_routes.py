@@ -381,7 +381,7 @@ async def import_sales_organizations(
         row_count=len(remapped_rows),
         file_size_bytes=len(remapped_content),
     ):
-        mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "sales_organizations")
+        mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "sales_organizations", tenant_id=current_user.tenant_id)
         job = create_data_transfer_job(
             db,
             tenant_id=current_user.tenant_id,
@@ -412,7 +412,7 @@ async def import_sales_organizations(
             file_bytes=remapped_content,
             current_user=current_user,
             duplicate_mode=duplicate_mode,
-            default_duplicate_mode=admin_modules.get_module_duplicate_mode(db, "sales_organizations"),
+            default_duplicate_mode=admin_modules.get_module_duplicate_mode(db, "sales_organizations", tenant_id=current_user.tenant_id),
             replace_duplicates=replace_duplicates,
             skip_duplicates=skip_duplicates,
             create_new_records=create_new_records,
@@ -441,7 +441,7 @@ async def preview_sales_organizations_import(
         "source_headers": source_headers,
         "target_headers": ORGANIZATION_IMPORT_TARGET_FIELDS,
         "required_headers": ["org_name", "primary_email"],
-        "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "sales_organizations"),
+        "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "sales_organizations", tenant_id=current_user.tenant_id),
         "suggested_mapping": suggest_header_mapping(
             source_headers=source_headers,
             target_headers=ORGANIZATION_IMPORT_TARGET_FIELDS,

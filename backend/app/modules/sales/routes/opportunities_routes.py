@@ -275,6 +275,7 @@ async def upload_opportunity_attachments(
     return await opportunities_api.upload_opportunity_attachments(
         db,
         opportunity_id=opportunity_id,
+        tenant_id=current_user.tenant_id,
         files=files,
     )
 
@@ -291,6 +292,7 @@ def delete_opportunity_attachments(
     return opportunities_api.delete_opportunity_attachments(
         db,
         opportunity_id=opportunity_id,
+        tenant_id=current_user.tenant_id,
         attachments=attachments,
     )
 
@@ -411,7 +413,7 @@ def create_finance_io(
     return opportunities_api.create_finance_io_for_opportunity(
         db,
         opportunity_id=opportunity_id,
-        user_id=current_user.id,
+        current_user=current_user,
     )
 
 
@@ -440,7 +442,7 @@ async def import_sales_opportunities(
         row_count=len(remapped_rows),
         file_size_bytes=len(remapped_content),
     ):
-        mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "sales_opportunities")
+        mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "sales_opportunities", tenant_id=current_user.tenant_id)
         job = create_data_transfer_job(
             db,
             tenant_id=current_user.tenant_id,
@@ -469,7 +471,7 @@ async def import_sales_opportunities(
         file_bytes=remapped_content,
         current_user=current_user,
         duplicate_mode=duplicate_mode,
-        default_duplicate_mode=admin_modules.get_module_duplicate_mode(db, "sales_opportunities"),
+        default_duplicate_mode=admin_modules.get_module_duplicate_mode(db, "sales_opportunities", tenant_id=current_user.tenant_id),
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
@@ -495,7 +497,7 @@ async def preview_sales_opportunities_import(
         "source_headers": source_headers,
         "target_headers": OPPORTUNITY_IMPORT_TARGET_FIELDS,
         "required_headers": ["opportunity_name", "contact_id"],
-        "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "sales_opportunities"),
+        "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "sales_opportunities", tenant_id=current_user.tenant_id),
         "suggested_mapping": suggest_header_mapping(
             source_headers=source_headers,
             target_headers=OPPORTUNITY_IMPORT_TARGET_FIELDS,

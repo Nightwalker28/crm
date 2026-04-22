@@ -20,6 +20,7 @@ from app.modules.platform.services.activity_logs import log_activity
 from app.modules.finance.models import FinanceIO
 from app.modules.finance.services.io_search_services import (
     IO_SEARCH_UPLOAD_DIR,
+    _build_insertion_orders_query,
     create_insertion_order,
     get_finance_module_id,
     get_insertion_order_or_404,
@@ -287,46 +288,48 @@ def export_generic_insertion_orders(
     status_filter: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
-) -> bytes:
+) -> tuple[bytes, int]:
     module_id = get_finance_module_id(db)
     user_scope = get_finance_user_scope(db, current_user)
-    records, _ = list_insertion_orders(
+    records = _build_insertion_orders_query(
         db,
         tenant_id=current_user.tenant_id,
         module_id=module_id,
         user_id=user_scope.user_id_filter,
-        pagination=Pagination(page=1, page_size=100000, offset=0, limit=100000),
         search=search,
         status_filter=status_filter,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
-    )
-    return dict_rows_to_csv_bytes(
-        headers=INSERTION_ORDER_EXPORT_HEADERS,
-        rows=(
-            {
-                "id": record.id,
-                "io_number": record.io_number or "",
-                "customer_name": record.customer_name or "",
-                "customer_contact_id": record.customer_contact_id or "",
-                "customer_organization_id": record.customer_organization_id or "",
-                "counterparty_reference": record.counterparty_reference or "",
-                "external_reference": record.external_reference or "",
-                "issue_date": record.issue_date.isoformat() if record.issue_date else "",
-                "effective_date": record.effective_date.isoformat() if record.effective_date else "",
-                "due_date": record.due_date.isoformat() if record.due_date else "",
-                "start_date": record.start_date.isoformat() if record.start_date else "",
-                "end_date": record.end_date.isoformat() if record.end_date else "",
-                "status": record.status or "",
-                "currency": record.currency or "",
-                "subtotal_amount": record.subtotal_amount if record.subtotal_amount is not None else "",
-                "tax_amount": record.tax_amount if record.tax_amount is not None else "",
-                "total_amount": record.total_amount if record.total_amount is not None else "",
-                "notes": record.notes or "",
-                "updated_at": record.updated_at.isoformat() if record.updated_at else "",
-            }
-            for record in records
+    ).order_by(FinanceIO.updated_at.desc()).all()
+    return (
+        dict_rows_to_csv_bytes(
+            headers=INSERTION_ORDER_EXPORT_HEADERS,
+            rows=(
+                {
+                    "id": record.id,
+                    "io_number": record.io_number or "",
+                    "customer_name": record.customer_name or "",
+                    "customer_contact_id": record.customer_contact_id or "",
+                    "customer_organization_id": record.customer_organization_id or "",
+                    "counterparty_reference": record.counterparty_reference or "",
+                    "external_reference": record.external_reference or "",
+                    "issue_date": record.issue_date.isoformat() if record.issue_date else "",
+                    "effective_date": record.effective_date.isoformat() if record.effective_date else "",
+                    "due_date": record.due_date.isoformat() if record.due_date else "",
+                    "start_date": record.start_date.isoformat() if record.start_date else "",
+                    "end_date": record.end_date.isoformat() if record.end_date else "",
+                    "status": record.status or "",
+                    "currency": record.currency or "",
+                    "subtotal_amount": record.subtotal_amount if record.subtotal_amount is not None else "",
+                    "tax_amount": record.tax_amount if record.tax_amount is not None else "",
+                    "total_amount": record.total_amount if record.total_amount is not None else "",
+                    "notes": record.notes or "",
+                    "updated_at": record.updated_at.isoformat() if record.updated_at else "",
+                }
+                for record in records
+            ),
         ),
+        len(records),
     )
 
 

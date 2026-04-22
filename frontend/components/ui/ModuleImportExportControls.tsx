@@ -286,6 +286,10 @@ export function ModuleImportExportControls({
       toast.error("Select at least one record before exporting selected rows.");
       return;
     }
+    if (exportMode === "current" && !currentPageIds.length) {
+      toast.error("There are no rows on the current page to export.");
+      return;
+    }
 
     setIsExporting(true);
     try {
@@ -715,7 +719,7 @@ export function ModuleImportExportControls({
                       }
                     >
                       <div className="text-sm font-medium">All records</div>
-                      <div className="mt-1 text-xs text-inherit/80">Export the full active dataset for this module.</div>
+                      <div className="mt-1 text-xs text-inherit/80">Export all records that match the active filters in this view.</div>
                     </button>
                     <button
                       type="button"

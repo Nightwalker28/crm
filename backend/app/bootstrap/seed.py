@@ -26,6 +26,7 @@ DEFAULT_ROLES = [
 ]
 
 DEFAULT_MODULES = [
+    {"name": "tasks", "base_route": "/dashboard/tasks", "description": "Collaborative task management and assignment"},
     {"name": "finance_io", "base_route": "/dashboard/finance/insertion-orders", "description": "Finance insertion orders"},
     {"name": "sales_contacts", "base_route": "/dashboard/sales/contacts", "description": "Sales contacts"},
     {"name": "sales_organizations", "base_route": "/dashboard/sales/organizations", "description": "Sales organizations"},
@@ -89,22 +90,22 @@ def seed_initial_data(
 
         roles_by_name: dict[str, Role] = {}
         for payload in DEFAULT_ROLES:
-            role = db.query(Role).filter(Role.name == payload["name"]).first()
+            role = db.query(Role).filter(Role.tenant_id == tenant.id, Role.name == payload["name"]).first()
             if not role:
-                role = Role(**payload)
+                role = Role(tenant_id=tenant.id, **payload)
                 db.add(role)
                 db.flush()
             roles_by_name[payload["name"]] = role
 
-        department = db.query(Department).filter(Department.name == DEFAULT_DEPARTMENT["name"]).first()
+        department = db.query(Department).filter(Department.tenant_id == tenant.id, Department.name == DEFAULT_DEPARTMENT["name"]).first()
         if not department:
-            department = Department(**DEFAULT_DEPARTMENT)
+            department = Department(tenant_id=tenant.id, **DEFAULT_DEPARTMENT)
             db.add(department)
             db.flush()
 
-        team = db.query(Team).filter(Team.name == DEFAULT_TEAM["name"]).first()
+        team = db.query(Team).filter(Team.tenant_id == tenant.id, Team.name == DEFAULT_TEAM["name"]).first()
         if not team:
-            team = Team(department_id=department.id, **DEFAULT_TEAM)
+            team = Team(tenant_id=tenant.id, department_id=department.id, **DEFAULT_TEAM)
             db.add(team)
             db.flush()
         elif team.department_id != department.id:

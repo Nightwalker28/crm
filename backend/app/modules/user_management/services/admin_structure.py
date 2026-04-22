@@ -46,26 +46,26 @@ def _sync_team_module_permissions_from_department(db: Session, team: Team) -> No
         db.add(TeamModulePermission(team_id=team.id, module_id=module_id))
 
 
-def create_department(db: Session, payload: DepartmentCreateRequest) -> Department:
+def create_department(db: Session, payload: DepartmentCreateRequest, *, tenant_id: int) -> Department:
     _sync_pk_sequence(db, Department, "departments_id_seq")
 
-    existing_department = db.query(Department).filter(Department.name == payload.name).first()
+    existing_department = db.query(Department).filter(Department.tenant_id == tenant_id, Department.name == payload.name).first()
     if existing_department:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Department already exists")
 
-    department = Department(**payload.model_dump())
+    department = Department(tenant_id=tenant_id, **payload.model_dump())
     db.add(department)
     db.commit()
     db.refresh(department)
     return department
 
 
-def list_departments(db: Session) -> list[Department]:
-    return db.query(Department).order_by(Department.name.asc()).all()
+def list_departments(db: Session, *, tenant_id: int) -> list[Department]:
+    return db.query(Department).filter(Department.tenant_id == tenant_id).order_by(Department.name.asc()).all()
 
 
-def update_department(db: Session, department_id: int, payload: DepartmentUpdateRequest) -> Department:
-    department = db.query(Department).filter(Department.id == department_id).first()
+def update_department(db: Session, department_id: int, payload: DepartmentUpdateRequest, *, tenant_id: int) -> Department:
+    department = db.query(Department).filter(Department.id == department_id, Department.tenant_id == tenant_id).first()
     if not department:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
 
@@ -73,7 +73,7 @@ def update_department(db: Session, department_id: int, payload: DepartmentUpdate
     if "name" in update_data:
         duplicate = (
             db.query(Department)
-            .filter(Department.name == update_data["name"], Department.id != department_id)
+            .filter(Department.tenant_id == tenant_id, Department.name == update_data["name"], Department.id != department_id)
             .first()
         )
         if duplicate:
@@ -88,12 +88,12 @@ def update_department(db: Session, department_id: int, payload: DepartmentUpdate
     return department
 
 
-def delete_department(db: Session, department_id: int) -> None:
-    department = db.query(Department).filter(Department.id == department_id).first()
+def delete_department(db: Session, department_id: int, *, tenant_id: int) -> None:
+    department = db.query(Department).filter(Department.id == department_id, Department.tenant_id == tenant_id).first()
     if not department:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
 
-    team_count = db.query(Team).filter(Team.department_id == department_id).count()
+    team_count = db.query(Team).filter(Team.tenant_id == tenant_id, Team.department_id == department_id).count()
     if team_count > 0:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -104,18 +104,18 @@ def delete_department(db: Session, department_id: int) -> None:
     db.commit()
 
 
-def create_team(db: Session, payload: TeamCreateRequest) -> Team:
+def create_team(db: Session, payload: TeamCreateRequest, *, tenant_id: int) -> Team:
     _sync_pk_sequence(db, Team, "teams_id_seq")
 
-    department = db.query(Department).filter(Department.id == payload.department_id).first()
+    department = db.query(Department).filter(Department.id == payload.department_id, Department.tenant_id == tenant_id).first()
     if not department:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
 
-    existing_team = db.query(Team).filter(Team.name == payload.name).first()
+    existing_team = db.query(Team).filter(Team.tenant_id == tenant_id, Team.name == payload.name).first()
     if existing_team:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Team already exists")
 
-    team = Team(**payload.model_dump())
+    team = Team(tenant_id=tenant_id, **payload.model_dump())
     db.add(team)
     db.commit()
     _sync_team_module_permissions_from_department(db, team)
@@ -124,26 +124,26 @@ def create_team(db: Session, payload: TeamCreateRequest) -> Team:
     return team
 
 
-def list_teams(db: Session) -> list[Team]:
-    return db.query(Team).order_by(Team.name.asc()).all()
+def list_teams(db: Session, *, tenant_id: int) -> list[Team]:
+    return db.query(Team).filter(Team.tenant_id == tenant_id).order_by(Team.name.asc()).all()
 
 
-def update_team(db: Session, team_id: int, payload: TeamUpdateRequest) -> Team:
-    team = db.query(Team).filter(Team.id == team_id).first()
+def update_team(db: Session, team_id: int, payload: TeamUpdateRequest, *, tenant_id: int) -> Team:
+    team = db.query(Team).filter(Team.id == team_id, Team.tenant_id == tenant_id).first()
     if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
 
     update_data = payload.model_dump(exclude_unset=True)
 
     if "department_id" in update_data and update_data["department_id"] is not None:
-        department = db.query(Department).filter(Department.id == update_data["department_id"]).first()
+        department = db.query(Department).filter(Department.id == update_data["department_id"], Department.tenant_id == tenant_id).first()
         if not department:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
 
     if "name" in update_data:
         duplicate = (
             db.query(Team)
-            .filter(Team.name == update_data["name"], Team.id != team_id)
+            .filter(Team.tenant_id == tenant_id, Team.name == update_data["name"], Team.id != team_id)
             .first()
         )
         if duplicate:
@@ -161,12 +161,12 @@ def update_team(db: Session, team_id: int, payload: TeamUpdateRequest) -> Team:
     return team
 
 
-def delete_team(db: Session, team_id: int) -> None:
-    team = db.query(Team).filter(Team.id == team_id).first()
+def delete_team(db: Session, team_id: int, *, tenant_id: int) -> None:
+    team = db.query(Team).filter(Team.id == team_id, Team.tenant_id == tenant_id).first()
     if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
 
-    db.query(User).filter(User.team_id == team_id).update({User.team_id: None})
+    db.query(User).filter(User.tenant_id == tenant_id, User.team_id == team_id).update({User.team_id: None})
 
     db.delete(team)
     db.commit()

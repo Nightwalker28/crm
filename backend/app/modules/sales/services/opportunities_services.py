@@ -98,22 +98,34 @@ def _serialize_attachment_paths(value: str | list[str] | None) -> str | None:
     return json.dumps(paths)
 
 
-def _ensure_user(db: Session, user_id: int):
-    exists = db.query(User.id).filter(User.id == user_id).first()
+def _ensure_user(db: Session, user_id: int, *, tenant_id: int):
+    exists = db.query(User.id).filter(User.id == user_id, User.tenant_id == tenant_id).first()
     if not exists:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assigned user not found")
 
 
-def _ensure_contact(db: Session, contact_id: int):
-    exists = db.query(SalesContact.contact_id).filter(SalesContact.contact_id == contact_id).first()
+def _ensure_contact(db: Session, contact_id: int, *, tenant_id: int):
+    exists = (
+        db.query(SalesContact.contact_id)
+        .filter(
+            SalesContact.contact_id == contact_id,
+            SalesContact.tenant_id == tenant_id,
+            SalesContact.deleted_at.is_(None),
+        )
+        .first()
+    )
     if not exists:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact not found")
 
 
-def _get_contact_or_404(db: Session, contact_id: int) -> SalesContact:
+def _get_contact_or_404(db: Session, contact_id: int, *, tenant_id: int) -> SalesContact:
     contact = (
         db.query(SalesContact)
-        .filter(SalesContact.contact_id == contact_id, SalesContact.deleted_at.is_(None))
+        .filter(
+            SalesContact.contact_id == contact_id,
+            SalesContact.tenant_id == tenant_id,
+            SalesContact.deleted_at.is_(None),
+        )
         .first()
     )
     if not contact:
@@ -121,8 +133,16 @@ def _get_contact_or_404(db: Session, contact_id: int) -> SalesContact:
     return contact
 
 
-def _ensure_organization(db: Session, organization_id: int):
-    exists = db.query(SalesOrganization.org_id).filter(SalesOrganization.org_id == organization_id).first()
+def _ensure_organization(db: Session, organization_id: int, *, tenant_id: int):
+    exists = (
+        db.query(SalesOrganization.org_id)
+        .filter(
+            SalesOrganization.org_id == organization_id,
+            SalesOrganization.tenant_id == tenant_id,
+            SalesOrganization.deleted_at.is_(None),
+        )
+        .first()
+    )
     if not exists:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not found")
 
@@ -186,6 +206,27 @@ def _build_opportunity_query(
         field_map=filter_field_map,
     )
     return _apply_search_filter(query, search)
+
+
+def list_all_opportunities(
+    db: Session,
+    tenant_id: int,
+    search: str | None = None,
+    *,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> list[SalesOpportunity]:
+    return (
+        _build_opportunity_query(
+            db,
+            tenant_id,
+            search,
+            all_filter_conditions=all_filter_conditions,
+            any_filter_conditions=any_filter_conditions,
+        )
+        .order_by(SalesOpportunity.created_time.desc())
+        .all()
+    )
 
 
 def _normalize_stage(stage: str | None) -> str:
@@ -383,20 +424,18 @@ def create_opportunity(db: Session, data: dict, *, current_user) -> SalesOpportu
     contact_id = data.get("contact_id")
     if contact_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="contact_id is required")
-    contact = _get_contact_or_404(db, contact_id)
-    if contact.tenant_id != current_user.tenant_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact not found")
+    contact = _get_contact_or_404(db, contact_id, tenant_id=current_user.tenant_id)
     data["client"] = _contact_display_name(contact)
     if not data.get("organization_id") and contact.organization_id is not None:
         data["organization_id"] = contact.organization_id
 
     organization_id = data.get("organization_id")
     if organization_id is not None:
-        _ensure_organization(db, organization_id)
+        _ensure_organization(db, organization_id, tenant_id=current_user.tenant_id)
 
     assigned_to = data.get("assigned_to")
     if assigned_to is not None:
-        _ensure_user(db, assigned_to)
+        _ensure_user(db, assigned_to, tenant_id=current_user.tenant_id)
 
     if "attachments" in data:
         data["attachments"] = _serialize_attachment_paths(data.get("attachments"))
@@ -443,16 +482,14 @@ def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict, *
     if "contact_id" in data:
         if data["contact_id"] is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="contact_id cannot be null")
-        contact = _get_contact_or_404(db, data["contact_id"])
-        if contact.tenant_id != opportunity.tenant_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact not found")
+        contact = _get_contact_or_404(db, data["contact_id"], tenant_id=opportunity.tenant_id)
         data["client"] = _contact_display_name(contact)
         if "organization_id" not in data and contact.organization_id is not None:
             data["organization_id"] = contact.organization_id
     if "organization_id" in data and data["organization_id"] is not None:
-        _ensure_organization(db, data["organization_id"])
+        _ensure_organization(db, data["organization_id"], tenant_id=opportunity.tenant_id)
     if "assigned_to" in data and data["assigned_to"] is not None:
-        _ensure_user(db, data["assigned_to"])
+        _ensure_user(db, data["assigned_to"], tenant_id=opportunity.tenant_id)
     if "attachments" in data:
         data["attachments"] = _serialize_attachment_paths(data.get("attachments"))
     if "currency_type" in data and data["currency_type"] is not None:

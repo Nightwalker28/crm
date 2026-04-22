@@ -166,21 +166,40 @@ def list_organizations(db: Session) -> list[SalesOrganization]:
         record_id_attr="org_id",
     )
 
-def list_organizations_paginated(
+
+def _build_organization_query(
     db: Session,
-    tenant_id: int,
-    offset: int,
-    limit: int,
     *,
+    tenant_id: int,
+    search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
-) -> tuple[list[SalesOrganization], int]:
-    """Return a page of organizations and the total count."""
-    base_query = db.query(SalesOrganization).filter(
-        SalesOrganization.tenant_id == tenant_id,
-        SalesOrganization.deleted_at.is_(None),
-    )
-    filter_field_map = {
+):
+    if search:
+        document = searchable_text(
+            SalesOrganization.org_name,
+            SalesOrganization.website,
+            SalesOrganization.primary_email,
+            SalesOrganization.industry,
+            SalesOrganization.billing_city,
+            SalesOrganization.billing_country,
+        )
+        base_query = apply_ranked_search(
+            db.query(SalesOrganization).filter(
+                SalesOrganization.tenant_id == tenant_id,
+                SalesOrganization.deleted_at.is_(None),
+            ),
+            search=search,
+            document=document,
+            default_order_column=SalesOrganization.created_time,
+        )
+    else:
+        base_query = db.query(SalesOrganization).filter(
+            SalesOrganization.tenant_id == tenant_id,
+            SalesOrganization.deleted_at.is_(None),
+        )
+
+    field_map = {
         "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
         "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
         "website": {"expression": SalesOrganization.website, "type": "text"},
@@ -200,13 +219,31 @@ def list_organizations_paginated(
         base_query,
         conditions=all_filter_conditions,
         logic="all",
-        field_map=filter_field_map,
+        field_map=field_map,
     )
     base_query = apply_filter_conditions(
         base_query,
         conditions=any_filter_conditions,
         logic="any",
-        field_map=filter_field_map,
+        field_map=field_map,
+    )
+    return base_query
+
+def list_organizations_paginated(
+    db: Session,
+    tenant_id: int,
+    offset: int,
+    limit: int,
+    *,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> tuple[list[SalesOrganization], int]:
+    """Return a page of organizations and the total count."""
+    base_query = _build_organization_query(
+        db,
+        tenant_id=tenant_id,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
     )
     total = base_query.count()
     items = (
@@ -236,64 +273,12 @@ def search_organizations_pagianted(
     any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[SalesOrganization], int]:
     """Return a page of organizations matching the name and the total count."""
-    document = searchable_text(
-        SalesOrganization.org_name,
-        SalesOrganization.website,
-        SalesOrganization.primary_email,
-        SalesOrganization.industry,
-        SalesOrganization.billing_city,
-        SalesOrganization.billing_country,
-    )
-    base_query = apply_ranked_search(
-        db.query(SalesOrganization).filter(
-            SalesOrganization.tenant_id == tenant_id,
-            SalesOrganization.deleted_at.is_(None),
-        ),
+    base_query = _build_organization_query(
+        db,
+        tenant_id=tenant_id,
         search=name,
-        document=document,
-        default_order_column=SalesOrganization.created_time,
-    )
-    base_query = apply_filter_conditions(
-        base_query,
-        conditions=all_filter_conditions,
-        logic="all",
-        field_map={
-            "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
-            "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
-            "website": {"expression": SalesOrganization.website, "type": "text"},
-            "industry": {"expression": SalesOrganization.industry, "type": "text"},
-            "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "number"},
-            "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
-            "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
-            "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
-            **build_custom_field_filter_map(
-                db,
-                tenant_id=tenant_id,
-                module_key="sales_organizations",
-                record_id_expression=SalesOrganization.org_id,
-            ),
-        },
-    )
-    base_query = apply_filter_conditions(
-        base_query,
-        conditions=any_filter_conditions,
-        logic="any",
-        field_map={
-            "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
-            "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
-            "website": {"expression": SalesOrganization.website, "type": "text"},
-            "industry": {"expression": SalesOrganization.industry, "type": "text"},
-            "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "number"},
-            "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
-            "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
-            "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
-            **build_custom_field_filter_map(
-                db,
-                tenant_id=tenant_id,
-                module_key="sales_organizations",
-                record_id_expression=SalesOrganization.org_id,
-            ),
-        },
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
     )
     total = base_query.count()
     items = (
@@ -632,16 +617,45 @@ def _serialize_orgs_to_csv(rows: list[SalesOrganization]) -> bytes:
     )
 
 
-def export_organizations(db: Session, org_ids: list[int] | None = None) -> tuple[bytes, dict]:
+def export_organizations(db: Session, *, tenant_id: int, org_ids: list[int] | None = None) -> tuple[bytes, dict]:
     """Export organizations to a ZIP of CSV batches (1k rows per batch)."""
     query = (
         db.query(SalesOrganization)
-        .filter(SalesOrganization.deleted_at.is_(None))
+        .filter(
+            SalesOrganization.tenant_id == tenant_id,
+            SalesOrganization.deleted_at.is_(None),
+        )
         .order_by(SalesOrganization.org_id.asc())
     )
     if org_ids:
         query = query.filter(SalesOrganization.org_id.in_(org_ids))
 
+    return batched_csv_zip_bytes(
+        rows=query.yield_per(500),
+        batch_size=EXPORT_BATCH_SIZE,
+        file_prefix="organizations",
+        serialize_row=_serialize_orgs_to_csv,
+    )
+
+
+def export_organizations_for_view(
+    db: Session,
+    *,
+    tenant_id: int,
+    search: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> tuple[bytes, dict]:
+    query = (
+        _build_organization_query(
+            db,
+            tenant_id=tenant_id,
+            search=search,
+            all_filter_conditions=all_filter_conditions,
+            any_filter_conditions=any_filter_conditions,
+        )
+        .order_by(SalesOrganization.org_id.asc())
+    )
     return batched_csv_zip_bytes(
         rows=query.yield_per(500),
         batch_size=EXPORT_BATCH_SIZE,

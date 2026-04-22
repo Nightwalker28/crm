@@ -84,6 +84,7 @@ export default function OrganizationsPage() {
         onImportSuccess={refresh}
         selectedIds={selectedIds}
         currentPageIds={currentPageIds}
+        exportFilters={draftConfig.filters}
         viewSelector={
           <SavedViewSelector
           moduleKey="sales_organizations"

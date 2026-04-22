@@ -1,7 +1,7 @@
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import func
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.core.module_filters import apply_filter_conditions
@@ -23,8 +23,8 @@ def list_all_users(db: Session, *, tenant_id: int, pagination: Pagination):
     query = (
         db.query(User)
         .options(joinedload(User.team), selectinload(User.role))
-        .outerjoin(Team)
-        .outerjoin(Role)
+        .outerjoin(Team, and_(Team.id == User.team_id, Team.tenant_id == User.tenant_id))
+        .outerjoin(Role, and_(Role.id == User.role_id, Role.tenant_id == User.tenant_id))
         .filter(User.tenant_id == tenant_id)
     )
     unassigned_label = "Unassigned"
@@ -59,8 +59,8 @@ def search_users(
     query = (
         db.query(User)
         .options(joinedload(User.team), selectinload(User.role))
-        .outerjoin(Team)
-        .outerjoin(Role)
+        .outerjoin(Team, and_(Team.id == User.team_id, Team.tenant_id == User.tenant_id))
+        .outerjoin(Role, and_(Role.id == User.role_id, Role.tenant_id == User.tenant_id))
         .filter(User.tenant_id == tenant_id)
     )
 
@@ -152,9 +152,9 @@ def search_users(
     return build_paged_response(serialized, total_count, pagination)
 
 
-def list_user_update_options(db: Session) -> UserUpdateOptions:
-    roles = db.query(Role).order_by(Role.name.asc()).all()
-    teams = db.query(Team).order_by(Team.name.asc()).all()
+def list_user_update_options(db: Session, *, tenant_id: int) -> UserUpdateOptions:
+    roles = db.query(Role).filter(Role.tenant_id == tenant_id).order_by(Role.name.asc()).all()
+    teams = db.query(Team).filter(Team.tenant_id == tenant_id).order_by(Team.name.asc()).all()
     statuses = [UserStatus.active.value, UserStatus.inactive.value]
     return UserUpdateOptions(roles=roles, teams=teams, statuses=statuses)
 
@@ -186,8 +186,8 @@ def create_user(
             detail="An account with this email already exists",
         )
 
-    _get_role_or_404(db, payload.role_id)
-    _get_team_or_404(db, payload.team_id)
+    _get_role_or_404(db, payload.role_id, tenant_id=tenant_id)
+    _get_team_or_404(db, payload.team_id, tenant_id=tenant_id)
 
     user = User(
         tenant_id=tenant_id,
@@ -232,9 +232,9 @@ def update_user(db: Session, user_id: int, payload: UpdateUserRequest, *, tenant
 
     update_data = payload.model_dump(exclude_unset=True)
     if "role_id" in update_data and update_data["role_id"] is not None:
-        _get_role_or_404(db, update_data["role_id"])
+        _get_role_or_404(db, update_data["role_id"], tenant_id=tenant_id)
     if "team_id" in update_data and update_data["team_id"] is not None:
-        _get_team_or_404(db, update_data["team_id"])
+        _get_team_or_404(db, update_data["team_id"], tenant_id=tenant_id)
     if "is_active" in update_data and update_data["is_active"] == UserStatus.pending:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -262,15 +262,15 @@ def _serialize_user_profiles(users: list[User], unassigned_label: str):
     return serialized
 
 
-def _get_role_or_404(db: Session, role_id: int) -> Role:
-    role = db.query(Role).filter(Role.id == role_id).first()
+def _get_role_or_404(db: Session, role_id: int, *, tenant_id: int) -> Role:
+    role = db.query(Role).filter(Role.id == role_id, Role.tenant_id == tenant_id).first()
     if not role:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role not found")
     return role
 
 
-def _get_team_or_404(db: Session, team_id: int) -> Team:
-    team = db.query(Team).filter(Team.id == team_id).first()
+def _get_team_or_404(db: Session, team_id: int, *, tenant_id: int) -> Team:
+    team = db.query(Team).filter(Team.id == team_id, Team.tenant_id == tenant_id).first()
     if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
     return team

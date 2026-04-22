@@ -90,6 +90,7 @@ export default function ContactsPage() {
         onImportSuccess={refresh}
         selectedIds={selectedIds}
         currentPageIds={currentPageIds}
+        exportFilters={draftConfig.filters}
         viewSelector={
           <SavedViewSelector
             moduleKey="sales_contacts"

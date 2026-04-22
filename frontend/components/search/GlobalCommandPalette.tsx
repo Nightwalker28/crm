@@ -25,6 +25,7 @@ type SearchResponse = {
 };
 
 const MODULE_LABELS: Record<string, string> = {
+  tasks: "Tasks",
   sales_organizations: "Organizations",
   sales_contacts: "Contacts",
   sales_opportunities: "Opportunities",
@@ -120,10 +121,10 @@ export default function GlobalCommandPalette() {
       >
         <div className="flex items-center gap-3">
           <Search className="h-4 w-4 text-neutral-500" />
-          <div>
-            <div className="text-sm font-medium text-neutral-100">Search records</div>
-            <div className="text-xs text-neutral-500">Jump across contacts, organizations, and opportunities.</div>
-          </div>
+            <div>
+              <div className="text-sm font-medium text-neutral-100">Search records</div>
+              <div className="text-xs text-neutral-500">Jump across tasks, contacts, organizations, and opportunities.</div>
+            </div>
         </div>
         <div className="hidden items-center gap-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-neutral-400 sm:flex">
           <CommandIcon className="h-3 w-3" />

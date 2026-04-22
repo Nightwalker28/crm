@@ -29,6 +29,8 @@ from app.modules.user_management.models import (
     UserStatus,
 )
 from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, get_user_role_level
+from app.modules.user_management.services.admin_modules import is_module_enabled_for_tenant
+from app.modules.user_management.services.admin_modules import build_module_schema
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -399,50 +401,63 @@ def authenticate_manual_user(
 # MODULE ACCESS 
 # -------------------------------------------------------------------
 
-def get_team_modules(team_id: int | None, db: Session) -> list[Module]:
+def get_team_modules(team_id: int | None, *, tenant_id: int, db: Session) -> list[Module]:
     if not team_id:
         return []
 
     return (
         db.query(Module)
         .join(TeamModulePermission, TeamModulePermission.module_id == Module.id)
+        .join(Team, Team.id == TeamModulePermission.team_id)
         .filter(TeamModulePermission.team_id == team_id)
-        .filter(Module.is_enabled == 1)
+        .filter(Team.id == team_id, Team.tenant_id == tenant_id)
         .order_by(Module.name.asc())
         .all()
     )
 
 
-def get_user_accessible_modules(user: User, db: Session) -> list[Module]:
+def get_user_accessible_modules(user: User, db: Session):
     role_level = get_user_role_level(db, user)
     if role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL:
-        return (
+        modules = (
             db.query(Module)
-            .filter(Module.is_enabled == 1)
             .order_by(Module.name.asc())
             .all()
         )
+        return [
+            build_module_schema(module, None).model_copy(update={"is_enabled": True})
+            for module in modules
+            if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
+        ]
 
     if user.team_id:
-        team_modules = get_team_modules(user.team_id, db)
+        team_modules = get_team_modules(user.team_id, tenant_id=user.tenant_id, db=db)
         if team_modules:
-            return team_modules
+            return [
+                build_module_schema(module, None).model_copy(update={"is_enabled": True})
+                for module in team_modules
+                if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
+            ]
 
         department_id = (
             db.query(Team.department_id)
-            .filter(Team.id == user.team_id)
+            .filter(Team.id == user.team_id, Team.tenant_id == user.tenant_id)
             .scalar()
         )
         if department_id:
             from app.modules.user_management.models import DepartmentModulePermission
 
-            return (
+            modules = (
                 db.query(Module)
                 .join(DepartmentModulePermission, DepartmentModulePermission.module_id == Module.id)
                 .filter(DepartmentModulePermission.department_id == department_id)
-                .filter(Module.is_enabled == 1)
                 .order_by(Module.name.asc())
                 .all()
             )
+            return [
+                build_module_schema(module, None).model_copy(update={"is_enabled": True})
+                for module in modules
+                if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
+            ]
 
     return []

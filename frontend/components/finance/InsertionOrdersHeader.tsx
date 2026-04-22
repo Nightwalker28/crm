@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
+import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
 import UploadModal from "@/components/finance/uploadModal";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { buildSavedViewExportPayload } from "@/lib/savedViewQuery";
 
 interface InsertionOrdersHeaderProps {
   onUploadSuccess: () => void;
@@ -13,6 +15,7 @@ interface InsertionOrdersHeaderProps {
   viewSelector?: ReactNode;
   selectedIds?: number[];
   currentPageIds?: number[];
+  exportFilters?: SavedViewFilters;
 }
 
 export default function InsertionOrdersHeader({
@@ -21,6 +24,7 @@ export default function InsertionOrdersHeader({
   viewSelector,
   selectedIds = [],
   currentPageIds = [],
+  exportFilters,
 }: InsertionOrdersHeaderProps) {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
 
@@ -37,20 +41,21 @@ export default function InsertionOrdersHeader({
         actions={
           <>
             {viewSelector}
-          <ModuleImportExportControls
-            exportEndpoint="/finance/insertion-orders/export"
-            exportMethod="POST"
-            exportLabel="Export"
-            onImportClick={() => setIsUploadModalOpen(true)}
-            importLabel="Import"
-            selectedIds={selectedIds}
-            currentPageIds={currentPageIds}
-          />
+            <ModuleImportExportControls
+              exportEndpoint="/finance/insertion-orders/export"
+              exportMethod="POST"
+              exportBody={buildSavedViewExportPayload(exportFilters)}
+              exportLabel="Export"
+              onImportClick={() => setIsUploadModalOpen(true)}
+              importLabel="Import"
+              selectedIds={selectedIds}
+              currentPageIds={currentPageIds}
+            />
 
-          <Button onClick={onCreateClick}>
-            <Plus />
-            <span className="hidden sm:inline">New Order</span>
-          </Button>
+            <Button onClick={onCreateClick}>
+              <Plus />
+              <span className="hidden sm:inline">New Order</span>
+            </Button>
           </>
         }
       />

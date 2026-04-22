@@ -7,6 +7,7 @@ import {
   LayoutGrid,
   UserRound,
   HandCoins,
+  ClipboardList,
   LogOut,
   BriefcaseBusiness,
   PanelLeftClose,
@@ -54,6 +55,7 @@ export default function Sidebar() {
 
   const moduleMap = new Map(modules.map((module) => [module.name, module]));
   const financeIoModule = moduleMap.get("finance_io");
+  const tasksModule = moduleMap.get("tasks");
   const contactsModule = moduleMap.get("sales_contacts");
   const organizationsModule = moduleMap.get("sales_organizations");
   const opportunitiesModule = moduleMap.get("sales_opportunities");
@@ -109,6 +111,12 @@ export default function Sidebar() {
               <SidebarMenuItem href="/dashboard" icon={LayoutGrid} collapsed={collapsed}>
                 Dashboard
               </SidebarMenuItem>
+
+              {tasksModule?.base_route ? (
+                <SidebarMenuItem href={tasksModule.base_route} icon={ClipboardList} collapsed={collapsed}>
+                  Tasks
+                </SidebarMenuItem>
+              ) : null}
 
               <SidebarMenuItemCollapsible icon={UserRound} label="Admin" collapsed={collapsed}>
                 <SidebarMenuItemChild href="/dashboard/users" collapsed={collapsed}>

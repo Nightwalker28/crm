@@ -244,7 +244,7 @@ async def import_insertion_orders(
         row_count=len(remapped_rows),
         file_size_bytes=len(remapped_file_bytes),
     ):
-        mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "finance_io")
+        mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "finance_io", tenant_id=current_user.tenant_id)
         job = create_data_transfer_job(
             db,
             tenant_id=current_user.tenant_id,
@@ -274,7 +274,7 @@ async def import_insertion_orders(
         file=None,
         file_bytes=remapped_file_bytes,
         duplicate_mode=duplicate_mode,
-        default_duplicate_mode=admin_modules.get_module_duplicate_mode(db, "finance_io"),
+        default_duplicate_mode=admin_modules.get_module_duplicate_mode(db, "finance_io", tenant_id=current_user.tenant_id),
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
@@ -298,7 +298,7 @@ async def preview_insertion_orders_import(
         "source_headers": source_headers,
         "target_headers": INSERTION_ORDER_IMPORT_TARGET_FIELDS,
         "required_headers": ["customer_name"],
-        "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "finance_io"),
+        "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "finance_io", tenant_id=current_user.tenant_id),
         "suggested_mapping": suggest_header_mapping(
             source_headers=source_headers,
             target_headers=INSERTION_ORDER_IMPORT_TARGET_FIELDS,

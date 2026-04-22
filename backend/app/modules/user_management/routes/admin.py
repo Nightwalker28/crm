@@ -119,7 +119,7 @@ def list_user_update_options(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_users.list_user_update_options(db)
+    return admin_users.list_user_update_options(db, tenant_id=admin.tenant_id)
 
 
 @router.get("/modules", response_model=list[ModuleSchema])
@@ -127,7 +127,7 @@ def list_modules(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_modules.list_modules(db)
+    return admin_modules.list_modules(db, tenant_id=admin.tenant_id)
 
 
 @router.put("/modules/{module_id}", response_model=ModuleSchema)
@@ -137,7 +137,7 @@ def update_module(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_modules.update_module(db, module_id, payload)
+    return admin_modules.update_module(db, module_id, payload, tenant_id=admin.tenant_id)
 
 
 @router.get("/roles/permissions", response_model=RolePermissionOverviewResponse)
@@ -145,7 +145,7 @@ def get_role_permission_overview(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return role_permissions.list_role_permission_overview(db)
+    return role_permissions.list_role_permission_overview(db, tenant_id=admin.tenant_id)
 
 
 @router.get("/roles/{role_id}/permissions", response_model=list[ModulePermissionSchema])
@@ -154,7 +154,7 @@ def get_role_permissions(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return role_permissions.get_role_permissions(db, role_id)
+    return role_permissions.get_role_permissions(db, role_id, tenant_id=admin.tenant_id)
 
 
 @router.post("/roles", response_model=RoleSchema, status_code=status.HTTP_201_CREATED)
@@ -163,7 +163,7 @@ def create_role(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return role_permissions.create_role(db, payload)
+    return role_permissions.create_role(db, payload, tenant_id=admin.tenant_id)
 
 
 @router.put("/roles/{role_id}", response_model=RoleSchema)
@@ -173,7 +173,7 @@ def update_role(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return role_permissions.update_role(db, role_id, payload)
+    return role_permissions.update_role(db, role_id, payload, tenant_id=admin.tenant_id)
 
 
 @router.put("/roles/{role_id}/permissions", response_model=list[ModulePermissionSchema])
@@ -183,7 +183,7 @@ def update_role_permissions(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return role_permissions.update_role_permissions(db, role_id, payload)
+    return role_permissions.update_role_permissions(db, role_id, payload, tenant_id=admin.tenant_id)
 
 
 @router.post("", response_model=AdminCreateUserResponse, status_code=status.HTTP_201_CREATED)
@@ -206,7 +206,7 @@ def create_department(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_structure.create_department(db, payload)
+    return admin_structure.create_department(db, payload, tenant_id=admin.tenant_id)
 
 
 @router.get("/departments", response_model=list[DepartmentSchema])
@@ -214,7 +214,7 @@ def list_departments(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_structure.list_departments(db)
+    return admin_structure.list_departments(db, tenant_id=admin.tenant_id)
 
 
 @router.put("/departments/{department_id}", response_model=DepartmentSchema)
@@ -224,7 +224,7 @@ def update_department(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_structure.update_department(db, department_id, payload)
+    return admin_structure.update_department(db, department_id, payload, tenant_id=admin.tenant_id)
 
 
 @router.delete("/departments/{department_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -233,7 +233,7 @@ def delete_department(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    admin_structure.delete_department(db, department_id)
+    admin_structure.delete_department(db, department_id, tenant_id=admin.tenant_id)
 
 
 @router.post("/teams", response_model=TeamSchema, status_code=status.HTTP_201_CREATED)
@@ -242,7 +242,7 @@ def create_team(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_structure.create_team(db, payload)
+    return admin_structure.create_team(db, payload, tenant_id=admin.tenant_id)
 
 
 @router.get("/teams", response_model=list[TeamSchema])
@@ -250,7 +250,7 @@ def list_teams(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_structure.list_teams(db)
+    return admin_structure.list_teams(db, tenant_id=admin.tenant_id)
 
 
 @router.put("/teams/{team_id}", response_model=TeamSchema)
@@ -260,7 +260,7 @@ def update_team(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_structure.update_team(db, team_id, payload)
+    return admin_structure.update_team(db, team_id, payload, tenant_id=admin.tenant_id)
 
 
 @router.delete("/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -269,7 +269,7 @@ def delete_team(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    admin_structure.delete_team(db, team_id)
+    admin_structure.delete_team(db, team_id, tenant_id=admin.tenant_id)
 
 @router.put("/{user_id}", response_model=UserProfile)
 def update_user(

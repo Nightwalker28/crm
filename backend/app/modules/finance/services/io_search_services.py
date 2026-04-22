@@ -247,6 +247,7 @@ def _resolve_customer_contact(
             db.query(SalesContact)
             .filter(
                 SalesContact.contact_id == customer_contact_id,
+                SalesContact.tenant_id == current_user.tenant_id,
                 SalesContact.deleted_at.is_(None),
             )
             .first()
@@ -260,6 +261,7 @@ def _resolve_customer_contact(
             db.query(SalesContact)
             .filter(
                 func.lower(SalesContact.primary_email) == normalized_email.lower(),
+                SalesContact.tenant_id == current_user.tenant_id,
                 SalesContact.deleted_at.is_(None),
             )
             .first()
@@ -275,6 +277,7 @@ def _resolve_customer_contact(
                 .filter(
                     func.lower(func.coalesce(SalesContact.first_name, "")) == first_name.lower(),
                     func.lower(func.coalesce(SalesContact.last_name, "")) == last_name.lower(),
+                    SalesContact.tenant_id == current_user.tenant_id,
                     SalesContact.deleted_at.is_(None),
                 )
                 .first()
@@ -290,6 +293,7 @@ def _resolve_customer_contact(
 
     first_name, last_name = _split_contact_name(normalized_name or normalized_email)
     contact = SalesContact(
+        tenant_id=current_user.tenant_id,
         first_name=first_name,
         last_name=last_name,
         primary_email=normalized_email,
@@ -315,6 +319,7 @@ def _resolve_customer_organization(
             db.query(SalesOrganization)
             .filter(
                 SalesOrganization.org_id == customer_organization_id,
+                SalesOrganization.tenant_id == current_user.tenant_id,
                 SalesOrganization.deleted_at.is_(None),
             )
             .first()
@@ -330,6 +335,7 @@ def _resolve_customer_organization(
         db.query(SalesOrganization)
         .filter(
             func.lower(SalesOrganization.org_name) == normalized_name.lower(),
+            SalesOrganization.tenant_id == current_user.tenant_id,
             SalesOrganization.deleted_at.is_(None),
         )
         .first()
@@ -341,6 +347,7 @@ def _resolve_customer_organization(
         return None
 
     organization = SalesOrganization(
+        tenant_id=current_user.tenant_id,
         org_name=normalized_name,
         assigned_to=current_user.id if current_user else None,
     )
@@ -591,6 +598,40 @@ def list_insertion_orders(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[FinanceIO], int]:
+    query = _build_insertion_orders_query(
+        db,
+        tenant_id=tenant_id,
+        module_id=module_id,
+        user_id=user_id,
+        search=search,
+        status_filter=status_filter,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+
+    total_count = query.count()
+    records = query.offset(pagination.offset).limit(pagination.limit).all()
+    records = hydrate_custom_field_records(
+        db,
+        tenant_id=tenant_id,
+        module_key="finance_io",
+        records=records,
+        record_id_attr="id",
+    )
+    return records, total_count
+
+
+def _build_insertion_orders_query(
+    db: Session,
+    *,
+    tenant_id: int,
+    module_id: int,
+    user_id: int | None,
+    search: str | None = None,
+    status_filter: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+):
     query = db.query(FinanceIO).filter(
         FinanceIO.tenant_id == tenant_id,
         FinanceIO.module_id == module_id,
@@ -649,17 +690,7 @@ def list_insertion_orders(
         ),
         default_order_column=FinanceIO.updated_at,
     )
-
-    total_count = query.count()
-    records = query.offset(pagination.offset).limit(pagination.limit).all()
-    records = hydrate_custom_field_records(
-        db,
-        tenant_id=tenant_id,
-        module_key="finance_io",
-        records=records,
-        record_id_attr="id",
-    )
-    return records, total_count
+    return query
 
 
 def get_insertion_order_or_404(

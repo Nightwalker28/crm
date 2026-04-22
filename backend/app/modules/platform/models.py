@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, func
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -24,6 +24,9 @@ class ActivityLog(Base):
 
 class CustomFieldDefinition(Base):
     __tablename__ = "custom_field_definitions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "module_key", "field_key", name="uq_custom_field_defs_tenant_module_key"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -44,6 +47,15 @@ class CustomFieldDefinition(Base):
 
 class CustomFieldValue(Base):
     __tablename__ = "custom_field_values"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "module_key",
+            "record_id",
+            "field_definition_id",
+            name="uq_custom_field_values_tenant_record_field",
+        ),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)

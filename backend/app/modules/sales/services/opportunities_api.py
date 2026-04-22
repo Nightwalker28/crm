@@ -13,16 +13,14 @@ from app.modules.sales.services.opportunities_services import (
     parse_attachment_paths,
     update_opportunity,
 )
-from app.modules.user_management.models import User
-
-
 async def upload_opportunity_attachments(
     db: Session,
     *,
     opportunity_id: int,
+    tenant_id: int,
     files: list[UploadFile],
 ) -> SalesOpportunityResponse:
-    opportunity = get_opportunity_or_404(db, opportunity_id)
+    opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=tenant_id)
 
     if not files:
         raise HTTPException(
@@ -63,9 +61,10 @@ def delete_opportunity_attachments(
     db: Session,
     *,
     opportunity_id: int,
+    tenant_id: int,
     attachments: list[str],
 ) -> SalesOpportunityResponse:
-    opportunity = get_opportunity_or_404(db, opportunity_id)
+    opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=tenant_id)
 
     if not attachments:
         raise HTTPException(
@@ -105,12 +104,9 @@ def create_finance_io_for_opportunity(
     db: Session,
     *,
     opportunity_id: int,
-    user_id: int,
+    current_user,
 ):
-    opportunity = get_opportunity_or_404(db, opportunity_id)
-    current_user = db.query(User).filter(User.id == user_id).first()
-    if not current_user:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
 
     finance_module_id = get_finance_module_id(db)
     record = create_insertion_order(

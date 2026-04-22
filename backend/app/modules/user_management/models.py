@@ -57,6 +57,11 @@ class Tenant(Base):
         cascade="all, delete-orphan",
     )
     users = relationship("User", back_populates="tenant")
+    module_configs = relationship(
+        "TenantModuleConfig",
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+    )
 
 
 class TenantDomain(Base):
@@ -77,12 +82,22 @@ class TenantDomain(Base):
 
 class Role(Base):
     __tablename__ = "roles"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_roles_tenant_name"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
-    name = Column(String(100), nullable=False, unique=True)
+    tenant_id = Column(
+        BigInteger,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name = Column(String(100), nullable=False)
     level = Column(SmallInteger, nullable=False, default=1)
     description = Column(String, nullable=True)
 
+    tenant = relationship("Tenant")
     users = relationship("User", back_populates="role")
     module_permissions = relationship(
         "RoleModulePermission",
@@ -93,8 +108,17 @@ class Role(Base):
 
 class Department(Base):
     __tablename__ = "departments"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_departments_tenant_name"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(
+        BigInteger,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -104,6 +128,7 @@ class Department(Base):
         onupdate=func.now(),
     )
 
+    tenant = relationship("Tenant")
     teams = relationship("Team", back_populates="department")
     module_permissions = relationship(
         "DepartmentModulePermission",
@@ -113,8 +138,17 @@ class Department(Base):
 
 class Team(Base):
     __tablename__ = "teams"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "name", name="uq_teams_tenant_name"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(
+        BigInteger,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
     department_id = Column(
         BigInteger,
         ForeignKey("departments.id", ondelete="RESTRICT"),
@@ -130,6 +164,7 @@ class Team(Base):
     )
 
     users = relationship("User", back_populates="team")
+    tenant = relationship("Tenant")
     department = relationship("Department", back_populates="teams")
     module_permissions = relationship(
         "TeamModulePermission",
@@ -203,6 +238,11 @@ class Module(Base):
     import_duplicate_mode = Column(String(20), nullable=False, server_default="skip")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
+    tenant_configs = relationship(
+        "TenantModuleConfig",
+        back_populates="module",
+        cascade="all, delete-orphan",
+    )
     department_permissions = relationship(
         "DepartmentModulePermission",
         back_populates="module",
@@ -217,6 +257,38 @@ class Module(Base):
         back_populates="module",
         cascade="all, delete-orphan",
     )
+
+
+class TenantModuleConfig(Base):
+    __tablename__ = "tenant_module_configs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "module_id", name="uq_tenant_module_configs_tenant_module"),
+    )
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(
+        BigInteger,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    module_id = Column(
+        BigInteger,
+        ForeignKey("modules.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    is_enabled = Column(SmallInteger, nullable=False, default=1)
+    import_duplicate_mode = Column(String(20), nullable=False, server_default="skip")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    tenant = relationship("Tenant", back_populates="module_configs")
+    module = relationship("Module", back_populates="tenant_configs")
 
 
 class DepartmentModulePermission(Base):
@@ -294,6 +366,9 @@ class UserSetupToken(Base):
 
 class CompanyProfile(Base):
     __tablename__ = "company_profiles"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_company_profiles_tenant_id"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -319,6 +394,9 @@ class CompanyProfile(Base):
 
 class UserTablePreference(Base):
     __tablename__ = "user_table_preferences"
+    __table_args__ = (
+        UniqueConstraint("user_id", "module_key", name="uq_user_table_preferences_user_module"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)

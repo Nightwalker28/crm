@@ -235,6 +235,8 @@ def load_custom_field_values(
             CustomFieldValue.tenant_id == tenant_id,
             CustomFieldValue.module_key == module_key,
             CustomFieldValue.record_id == record_id,
+            CustomFieldDefinition.tenant_id == tenant_id,
+            CustomFieldDefinition.module_key == module_key,
         )
         .all()
     )

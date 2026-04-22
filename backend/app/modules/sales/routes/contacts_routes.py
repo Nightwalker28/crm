@@ -257,7 +257,7 @@ async def import_contacts(
             payload={
                 "filename": file.filename,
                 "row_count": len(remapped_rows),
-                "duplicate_mode": duplicate_mode or admin_modules.get_module_duplicate_mode(db, "sales_contacts"),
+                "duplicate_mode": duplicate_mode or admin_modules.get_module_duplicate_mode(db, "sales_contacts", tenant_id=current_user.tenant_id),
             },
         )
         stored_path = persist_job_upload(job_id=job.id, filename="contacts-import.csv", file_bytes=remapped_file_bytes)
@@ -278,9 +278,10 @@ async def import_contacts(
     summary = import_contacts_from_csv(
         db,
         remapped_file_bytes,
+        tenant_id=current_user.tenant_id,
         default_assigned_to=current_user.id,
         duplicate_mode=duplicate_mode,
-        default_duplicate_mode=admin_modules.get_module_duplicate_mode(db, "sales_contacts"),
+        default_duplicate_mode=admin_modules.get_module_duplicate_mode(db, "sales_contacts", tenant_id=current_user.tenant_id),
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
@@ -306,7 +307,7 @@ async def preview_contact_import(
         "source_headers": source_headers,
         "target_headers": CONTACT_IMPORT_TARGET_FIELDS,
         "required_headers": ["primary_email"],
-        "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "sales_contacts"),
+        "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "sales_contacts", tenant_id=current_user.tenant_id),
         "suggested_mapping": suggest_header_mapping(
             source_headers=source_headers,
             target_headers=CONTACT_IMPORT_TARGET_FIELDS,

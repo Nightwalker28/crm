@@ -107,6 +107,10 @@ class DataTransferExportRequest(BaseModel):
     mode: str = "all"
     selected_ids: list[int] | None = None
     current_page_ids: list[int] | None = None
+    search: str | None = None
+    status: str | None = None
+    filters_all: list[dict[str, Any]] | None = None
+    filters_any: list[dict[str, Any]] | None = None
 
 
 class UserNotificationResponse(BaseModel):

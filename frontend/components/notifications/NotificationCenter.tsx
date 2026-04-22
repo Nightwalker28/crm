@@ -47,7 +47,7 @@ export default function NotificationCenter() {
           <div>
             <p className="text-sm font-semibold text-neutral-100">Notifications</p>
             <p className="text-xs text-neutral-400">
-              Background imports and exports will appear here first.
+              Task assignments and background jobs appear here first.
             </p>
           </div>
           <Button
@@ -130,7 +130,7 @@ export default function NotificationCenter() {
               <Bell className="h-5 w-5 text-neutral-600" />
               <p className="mt-3 text-sm font-medium text-neutral-200">No notifications yet</p>
               <p className="mt-1 text-xs leading-5 text-neutral-500">
-                Import and export background jobs will start writing updates here.
+                Task assignments and background jobs will start writing updates here.
               </p>
             </div>
           )}

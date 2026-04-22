@@ -108,6 +108,19 @@ def create_data_transfer_job(
     return job
 
 
+def _get_job_actor(db: Session, *, job: DataTransferJob) -> User | None:
+    if not job.actor_user_id:
+        return None
+    return (
+        db.query(User)
+        .filter(
+            User.id == job.actor_user_id,
+            User.tenant_id == job.tenant_id,
+        )
+        .first()
+    )
+
+
 def enqueue_import_job(job_id: int) -> None:
     from app.tasks.data_transfer_tasks import process_import_job_task
 
@@ -291,7 +304,9 @@ def process_import_job(*, job_id: int) -> None:
             raise ValueError("Job source file path is missing.")
         path = Path(file_path)
 
-        current_user = db.query(User).filter(User.id == actor_user_id).first() if actor_user_id else None
+        current_user = _get_job_actor(db, job=job)
+        if actor_user_id is not None and current_user is None:
+            raise ValueError("Job actor was not found in the job tenant.")
         file_bytes = path.read_bytes()
         update_job_progress(db, job, progress_percent=25, progress_message="Validating import file.")
 
@@ -303,9 +318,10 @@ def process_import_job(*, job_id: int) -> None:
             summary = import_contacts_from_csv(
                 db,
                 file_bytes,
+                tenant_id=job.tenant_id,
                 default_assigned_to=actor_user_id or 0,
                 duplicate_mode=duplicate_mode,
-                default_duplicate_mode=get_module_duplicate_mode(db, module_key),
+                default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
             )
         elif module_key == "sales_organizations":
             from app.modules.sales.services.organizations_services import import_organizations_from_csv
@@ -317,7 +333,7 @@ def process_import_job(*, job_id: int) -> None:
                 file_bytes=file_bytes,
                 current_user=current_user,
                 duplicate_mode=duplicate_mode,
-                default_duplicate_mode=get_module_duplicate_mode(db, module_key),
+                default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
             )
         elif module_key == "sales_opportunities":
             from app.modules.sales.services.opportunities_services import import_opportunities_from_csv
@@ -329,7 +345,7 @@ def process_import_job(*, job_id: int) -> None:
                 file_bytes=file_bytes,
                 current_user=current_user,
                 duplicate_mode=duplicate_mode,
-                default_duplicate_mode=get_module_duplicate_mode(db, module_key),
+                default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
             )
         elif module_key == "finance_io":
             from app.modules.finance.services import io_search_api
@@ -345,7 +361,7 @@ def process_import_job(*, job_id: int) -> None:
                     file=None,
                     file_bytes=file_bytes,
                     duplicate_mode=duplicate_mode,
-                    default_duplicate_mode=get_module_duplicate_mode(db, module_key),
+                    default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
                     replace_duplicates=False,
                     skip_duplicates=False,
                     create_new_records=False,
@@ -386,37 +402,81 @@ def process_export_job(*, job_id: int) -> None:
         selected_ids = list(payload.get("selected_ids") or [])
         current_page_ids = list(payload.get("current_page_ids") or [])
         export_ids = selected_ids if mode == "selected" else current_page_ids if mode == "current" else None
+        search = (payload.get("search") or "").strip() or None
+        status_filter = (payload.get("status") or "").strip() or None
+        all_filter_conditions = payload.get("filters_all") or None
+        any_filter_conditions = payload.get("filters_any") or None
         actor_user_id = job.actor_user_id
-        current_user = db.query(User).filter(User.id == actor_user_id).first() if actor_user_id else None
+        current_user = _get_job_actor(db, job=job)
+        if actor_user_id is not None and current_user is None:
+            raise ValueError("Job actor was not found in the job tenant.")
         update_job_progress(db, job, progress_percent=35, progress_message="Collecting records for export.")
+        exported_rows = 0
 
         if module_key == "sales_contacts":
             from app.modules.sales.models import SalesContact
             from app.modules.sales.services.contacts_services import export_contacts_to_csv
+            from app.modules.sales.services.contacts_services import list_all_sales_contacts
 
-            query = db.query(SalesContact).filter(SalesContact.deleted_at.is_(None))
-            if export_ids:
-                query = query.filter(SalesContact.contact_id.in_(export_ids))
-            records = query.order_by(SalesContact.created_time.desc()).all()
+            if export_ids is not None:
+                query = db.query(SalesContact).filter(
+                    SalesContact.tenant_id == job.tenant_id,
+                    SalesContact.deleted_at.is_(None),
+                    SalesContact.contact_id.in_(export_ids),
+                )
+                records = query.order_by(SalesContact.created_time.desc()).all()
+            else:
+                records = list_all_sales_contacts(
+                    db,
+                    job.tenant_id,
+                    search=search,
+                    all_filter_conditions=all_filter_conditions,
+                    any_filter_conditions=any_filter_conditions,
+                )
+            exported_rows = len(records)
             update_job_progress(db, job, progress_percent=70, progress_message="Serializing contacts export.")
             content = export_contacts_to_csv(records)
             file_name = "sales_contacts.csv"
             media_type = "text/csv"
         elif module_key == "sales_organizations":
             from app.modules.sales.services.organizations_services import export_organizations
+            from app.modules.sales.services.organizations_services import export_organizations_for_view
 
             update_job_progress(db, job, progress_percent=70, progress_message="Building organizations export package.")
-            content, _ = export_organizations(db=db, org_ids=export_ids)
+            if export_ids is not None:
+                content, export_meta = export_organizations(db=db, tenant_id=job.tenant_id, org_ids=export_ids)
+            else:
+                content, export_meta = export_organizations_for_view(
+                    db=db,
+                    tenant_id=job.tenant_id,
+                    search=search,
+                    all_filter_conditions=all_filter_conditions,
+                    any_filter_conditions=any_filter_conditions,
+                )
+            exported_rows = exported_rows or int(export_meta.get("rows") or 0)
             file_name = "organizations_export.zip"
             media_type = "application/zip"
         elif module_key == "sales_opportunities":
             from app.modules.sales.models import SalesOpportunity
             from app.modules.sales.services.opportunities_services import export_opportunities_to_csv
+            from app.modules.sales.services.opportunities_services import list_all_opportunities
 
-            query = db.query(SalesOpportunity).filter(SalesOpportunity.deleted_at.is_(None))
-            if export_ids:
-                query = query.filter(SalesOpportunity.opportunity_id.in_(export_ids))
-            records = query.order_by(SalesOpportunity.created_time.desc()).all()
+            if export_ids is not None:
+                query = db.query(SalesOpportunity).filter(
+                    SalesOpportunity.tenant_id == job.tenant_id,
+                    SalesOpportunity.deleted_at.is_(None),
+                    SalesOpportunity.opportunity_id.in_(export_ids),
+                )
+                records = query.order_by(SalesOpportunity.created_time.desc()).all()
+            else:
+                records = list_all_opportunities(
+                    db,
+                    job.tenant_id,
+                    search=search,
+                    all_filter_conditions=all_filter_conditions,
+                    any_filter_conditions=any_filter_conditions,
+                )
+            exported_rows = len(records)
             update_job_progress(db, job, progress_percent=70, progress_message="Serializing opportunities export.")
             content = export_opportunities_to_csv(records)
             file_name = "sales_opportunities.csv"
@@ -430,6 +490,7 @@ def process_export_job(*, job_id: int) -> None:
                 module_id = get_finance_module_id(db)
                 user_scope = get_finance_user_scope(db, current_user)
                 query = db.query(FinanceIO).filter(
+                    FinanceIO.tenant_id == job.tenant_id,
                     FinanceIO.module_id == module_id,
                     FinanceIO.deleted_at.is_(None),
                 )
@@ -437,6 +498,7 @@ def process_export_job(*, job_id: int) -> None:
                     query = query.filter(FinanceIO.user_id == user_scope.user_id_filter)
                 query = query.filter(FinanceIO.id.in_(export_ids))
                 records = query.order_by(FinanceIO.updated_at.desc()).all()
+                exported_rows = len(records)
                 from app.modules.finance.services.io_search_api import INSERTION_ORDER_EXPORT_HEADERS
                 from app.core.module_export import dict_rows_to_csv_bytes
 
@@ -470,7 +532,14 @@ def process_export_job(*, job_id: int) -> None:
                 )
             else:
                 update_job_progress(db, job, progress_percent=70, progress_message="Serializing insertion orders export.")
-                content = export_generic_insertion_orders(db, current_user)
+                content, exported_rows = export_generic_insertion_orders(
+                    db,
+                    current_user,
+                    search=search,
+                    status_filter=status_filter,
+                    all_filter_conditions=all_filter_conditions,
+                    any_filter_conditions=any_filter_conditions,
+                )
             file_name = "insertion_orders.csv"
             media_type = "text/csv"
         else:
@@ -480,7 +549,7 @@ def process_export_job(*, job_id: int) -> None:
         result_path = persist_job_result(job_id=job.id, filename=file_name, content=content)
         summary = {
             "mode": mode,
-            "exported_rows": len(export_ids) if export_ids is not None else None,
+            "exported_rows": exported_rows,
             "file_name": file_name,
         }
         mark_job_completed(

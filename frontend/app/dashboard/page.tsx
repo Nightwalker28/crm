@@ -68,6 +68,7 @@ export default function DashboardHomePage() {
 
   const quickActions = useMemo(() => {
     const actions = [
+      { href: "/dashboard/tasks", label: "Tasks", helper: "Open assigned and team work queues" },
       { href: "/dashboard/sales/contacts", label: "Contacts", helper: "Open the CRM contact list" },
       { href: "/dashboard/sales/organizations", label: "Organizations", helper: "Open account records" },
       { href: "/dashboard/sales/opportunities", label: "Opportunities", helper: "Review and update pipeline" },
@@ -117,7 +118,7 @@ export default function DashboardHomePage() {
               </Link>
             </Button>
             <Button asChild>
-              <Link href="/dashboard/sales/opportunities">
+              <Link href="/dashboard/tasks">
                 <Plus className="h-4 w-4" />
                 New Work
               </Link>
@@ -265,7 +266,7 @@ export default function DashboardHomePage() {
             <div>
               <h2 className="text-base font-semibold text-neutral-100">Notifications</h2>
               <p className="mt-1 text-sm text-neutral-400">
-                Recent per-user operational updates from imports, exports, and background work.
+                Recent per-user updates from tasks, imports, exports, and background work.
               </p>
             </div>
             <Bell className="h-4 w-4 text-neutral-500" />

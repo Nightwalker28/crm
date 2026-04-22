@@ -13,6 +13,7 @@ import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import Pagination from "@/components/ui/Pagination";
 import { Button } from "@/components/ui/button";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
+import { buildSavedViewExportPayload } from "@/lib/savedViewQuery";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
@@ -166,6 +167,7 @@ export default function OpportunitiesPage() {
               importEndpoint="/sales/opportunities/import"
               exportEndpoint="/sales/opportunities/export"
               exportMethod="POST"
+              exportBody={buildSavedViewExportPayload(draftConfig.filters)}
               selectedIds={selectedIds}
               currentPageIds={currentPageIds}
             />

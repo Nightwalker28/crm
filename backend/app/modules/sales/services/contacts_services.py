@@ -71,24 +71,14 @@ def _apply_search_filter(query, search: str | None):
     )
 
 
-def _ensure_assigned_user(db: Session, user_id: int):
-    exists = db.query(User.id).filter(User.id == user_id).first()
-    if not exists:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Assigned user not found",
-        )
-
-
-def list_sales_contacts(
+def _build_contacts_query(
     db: Session,
     tenant_id: int,
-    pagination: Pagination,
     search: str | None = None,
     *,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
-) -> tuple[Sequence[SalesContact], int]:
+):
     query = (
         db.query(SalesContact)
         .outerjoin(SalesOrganization)
@@ -126,7 +116,34 @@ def list_sales_contacts(
         logic="any",
         field_map=filter_field_map,
     )
-    query = _apply_search_filter(query, search)
+    return _apply_search_filter(query, search)
+
+
+def _ensure_assigned_user(db: Session, user_id: int, *, tenant_id: int):
+    exists = db.query(User.id).filter(User.id == user_id, User.tenant_id == tenant_id).first()
+    if not exists:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Assigned user not found",
+        )
+
+
+def list_sales_contacts(
+    db: Session,
+    tenant_id: int,
+    pagination: Pagination,
+    search: str | None = None,
+    *,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> tuple[Sequence[SalesContact], int]:
+    query = _build_contacts_query(
+        db,
+        tenant_id,
+        search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
 
     total_count = query.count()
     contacts = query.offset(pagination.offset).limit(pagination.limit).all()
@@ -138,6 +155,27 @@ def list_sales_contacts(
         record_id_attr="contact_id",
     )
     return contacts, total_count
+
+
+def list_all_sales_contacts(
+    db: Session,
+    tenant_id: int,
+    search: str | None = None,
+    *,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> Sequence[SalesContact]:
+    return (
+        _build_contacts_query(
+            db,
+            tenant_id,
+            search,
+            all_filter_conditions=all_filter_conditions,
+            any_filter_conditions=any_filter_conditions,
+        )
+        .order_by(SalesContact.created_time.desc())
+        .all()
+    )
 
 
 def get_contact_or_404(db: Session, contact_id: int, *, tenant_id: int, include_deleted: bool = False) -> SalesContact:
@@ -199,7 +237,7 @@ def create_sales_contact(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="assigned_to is required",
         )
-    _ensure_assigned_user(db, data["assigned_to"])
+    _ensure_assigned_user(db, data["assigned_to"], tenant_id=current_user.tenant_id)
 
     email = data.get("primary_email")
     if not email:
@@ -305,7 +343,7 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="assigned_to cannot be null",
             )
-        _ensure_assigned_user(db, data["assigned_to"])
+        _ensure_assigned_user(db, data["assigned_to"], tenant_id=contact.tenant_id)
 
     if "primary_email" in data and data["primary_email"]:
         normalized_email = _normalize_email(data["primary_email"])
@@ -407,6 +445,7 @@ def _parse_bool(value: str | None) -> bool | None:
 def import_contacts_from_csv(
     db: Session,
     file_bytes: bytes,
+    tenant_id: int,
     default_assigned_to: int,
     duplicate_mode: str | None = None,
     default_duplicate_mode: str | None = None,
@@ -461,7 +500,9 @@ def import_contacts_from_csv(
                 continue
 
         if assigned_to not in user_cache:
-            user_cache[assigned_to] = bool(db.query(User.id).filter(User.id == assigned_to).first())
+            user_cache[assigned_to] = bool(
+                db.query(User.id).filter(User.id == assigned_to, User.tenant_id == tenant_id).first()
+            )
         if not user_cache[assigned_to]:
             failures.append(
                 {
@@ -661,14 +702,18 @@ def export_contacts_to_csv(contacts: Iterable[SalesContact]) -> bytes:
     )
 
 
-def get_all_contacts(db: Session, search: str | None = None) -> list[SalesContact]:
+def get_all_contacts(db: Session, *, tenant_id: int, search: str | None = None) -> list[SalesContact]:
     query = _apply_search_filter(
-        db.query(SalesContact).filter(SalesContact.deleted_at.is_(None)),
+        db.query(SalesContact).filter(
+            SalesContact.tenant_id == tenant_id,
+            SalesContact.deleted_at.is_(None),
+        ),
         search,
     )
     contacts = query.order_by(SalesContact.created_time.desc()).all()
     return hydrate_custom_field_records(
         db,
+        tenant_id=tenant_id,
         module_key="sales_contacts",
         records=contacts,
         record_id_attr="contact_id",

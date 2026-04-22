@@ -2,11 +2,13 @@
 
 import type { ReactNode } from "react";
 import Sidebar from "@/components/sidebar/Sidebar";
+import BrowserNotificationsBridge from "@/components/notifications/BrowserNotificationsBridge";
 import GlobalCommandPalette from "@/components/search/GlobalCommandPalette";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   return (
     <div className="relative flex h-screen w-full overflow-hidden bg-neutral-950 text-neutral-200 font-sans">
+      <BrowserNotificationsBridge />
 
       <div className="pointer-events-none fixed inset-0 z-0">
         <div className="absolute inset-0 mix-blend-soft-light opacity-[0.3] bg-[linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] bg-size-[3px_3px]" />

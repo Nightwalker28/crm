@@ -25,6 +25,7 @@ def get_data_transfer_jobs(
 ):
     items, total = list_data_transfer_jobs(
         db,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         pagination=pagination,
         module_key=module_key,
@@ -43,6 +44,7 @@ def get_data_transfer_job(
     job = get_data_transfer_job_or_404(
         db,
         job_id=job_id,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
     )
     return DataTransferJobResponse.model_validate(job)
@@ -57,6 +59,7 @@ def download_data_transfer_job_result(
     job = get_data_transfer_job_or_404(
         db,
         job_id=job_id,
+        tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
     )
     path = get_job_result_path(job)

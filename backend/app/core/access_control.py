@@ -14,6 +14,7 @@ from app.modules.user_management.models import (
     Team,
     User,
 )
+from app.modules.user_management.services.admin_modules import is_module_enabled_for_tenant
 
 
 @dataclass(frozen=True)
@@ -34,7 +35,7 @@ def get_user_department_id(db: Session, user: User | None) -> int | None:
 
     return (
         db.query(Team.department_id)
-        .filter(Team.id == user.team_id)
+        .filter(Team.id == user.team_id, Team.tenant_id == user.tenant_id)
         .scalar()
     )
 
@@ -64,7 +65,7 @@ def user_has_module_assignment(
 ) -> bool:
     role_level = get_user_role_level(db, user)
     if role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL:
-        return bool(module.is_enabled)
+        return is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
 
     team_id = get_user_team_id(user)
     if team_id:
@@ -101,7 +102,7 @@ def require_department_module_access(
     module_key: str,
 ) -> None:
     module = _get_module_or_404(db, module_key)
-    if not bool(module.is_enabled):
+    if not is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module):
         raise PermissionError("This module is disabled")
     if not user_has_module_assignment(db, user=user, module=module):
         raise PermissionError("Access to this module is forbidden")
@@ -118,7 +119,7 @@ def require_role_module_action_access(
 
     role_level = get_user_role_level(db, user)
     if role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL:
-        if not bool(module.is_enabled):
+        if not is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module):
             raise PermissionError("This module is disabled")
         return
 
@@ -176,7 +177,7 @@ def get_user_role_level(db: Session, user: User | None) -> int | None:
 
     return (
         db.query(Role.level)
-        .filter(Role.id == user.role_id)
+        .filter(Role.id == user.role_id, Role.tenant_id == user.tenant_id)
         .scalar()
     )
 
