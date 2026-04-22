@@ -27,6 +27,18 @@ from app.modules.sales.services.opportunities_services import (
 )
 from app.modules.sales.schema import SalesContactResponse, SalesOrganizationResponse
 from app.modules.sales.schema import SalesOpportunityResponse
+from app.modules.calendar.services.calendar_services import (
+    get_calendar_event_or_404,
+    list_deleted_calendar_events,
+    restore_calendar_event,
+    serialize_calendar_event,
+)
+from app.modules.tasks.services.tasks_services import (
+    get_task_or_404,
+    list_deleted_tasks,
+    restore_task,
+    serialize_task,
+)
 
 
 SUPPORTED_RECYCLE_MODULES = {
@@ -34,6 +46,8 @@ SUPPORTED_RECYCLE_MODULES = {
     "sales_contacts",
     "sales_organizations",
     "sales_opportunities",
+    "calendar",
+    "tasks",
 }
 
 
@@ -110,6 +124,44 @@ def list_recycle_items(
                 "subtitle": item.client or item.sales_stage or "Opportunity",
                 "deleted_at": item.deleted_at,
                 "details": SalesOpportunityResponse.model_validate(item).model_dump(mode="json"),
+            }
+            for item in items
+        ]
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key == "tasks":
+        items, total = list_deleted_tasks(
+            db,
+            tenant_id=tenant_id,
+            pagination=pagination,
+        )
+        serialized = [
+            {
+                "module_key": module_key,
+                "record_id": item.id,
+                "title": item.title,
+                "subtitle": item.assigned_by.email if getattr(item, "assigned_by", None) and item.assigned_by.email else item.status,
+                "deleted_at": item.deleted_at,
+                "details": serialize_task(item),
+            }
+            for item in items
+        ]
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key == "calendar":
+        items, total = list_deleted_calendar_events(
+            db,
+            tenant_id=tenant_id,
+            pagination=pagination,
+        )
+        serialized = [
+            {
+                "module_key": module_key,
+                "record_id": item.id,
+                "title": item.title,
+                "subtitle": item.source_label or item.location or "Calendar event",
+                "deleted_at": item.deleted_at,
+                "details": serialize_calendar_event(item, current_user=item.owner),
             }
             for item in items
         ]
@@ -196,6 +248,53 @@ def restore_recycle_item(
             entity_id=restored.opportunity_id,
             action="restore",
             description=f"Restored opportunity {restored.opportunity_name} from recycle bin",
+            after_state=serialized,
+        )
+        return serialized
+
+    if module_key == "tasks":
+        task = get_task_or_404(
+            db,
+            record_id,
+            tenant_id=current_user.tenant_id,
+            current_user=current_user,
+            include_deleted=True,
+        )
+        restored = restore_task(db, task=task, current_user=current_user)
+        serialized = serialize_task(restored)
+        log_activity(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            module_key=module_key,
+            entity_type="task",
+            entity_id=restored.id,
+            action="restore",
+            description=f"Restored task {restored.title} from recycle bin",
+            after_state=serialized,
+        )
+        return serialized
+
+    if module_key == "calendar":
+        event = get_calendar_event_or_404(
+            db,
+            record_id,
+            tenant_id=current_user.tenant_id,
+            current_user=current_user,
+            include_deleted=True,
+            bypass_visibility=True,
+        )
+        restored = restore_calendar_event(db, event=event)
+        serialized = serialize_calendar_event(restored, current_user=current_user)
+        log_activity(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            module_key=module_key,
+            entity_type="calendar_event",
+            entity_id=restored.id,
+            action="restore",
+            description=f"Restored calendar event {restored.title} from recycle bin",
             after_state=serialized,
         )
         return serialized

@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import SearchBar from "@/components/ui/SearchBar";
 import { Button } from "@/components/ui/button";
+import { fetchTaskCalendarEvent, useCalendarActions } from "@/hooks/useCalendar";
 import { fetchTask, useTasks, type Task, type TaskPayload } from "@/hooks/useTasks";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
@@ -53,28 +54,38 @@ export default function TasksPage() {
     refresh,
     createTask,
     updateTask,
+    deleteTask,
     isSaving,
+    isDeleting,
   } = useTasks(draftConfig.filters);
+  const {
+    createEventFromTask,
+    deleteTaskCalendarEvent,
+    isCreatingFromTask,
+    isRemovingTaskCalendarEvent,
+  } = useCalendarActions();
   const taskDetailQuery = useQuery({
     queryKey: ["task", taskId],
     queryFn: () => fetchTask(taskId as number),
     enabled: Boolean(taskId),
     staleTime: 30_000,
   });
-
-  useEffect(() => {
-    if (!taskId) return;
-    if (taskDetailQuery.data) {
-      setSelectedTask(taskDetailQuery.data);
-      setDialogOpen(true);
-    }
-  }, [taskDetailQuery.data, taskId]);
+  const activeTask = taskId ? (taskDetailQuery.data ?? selectedTask) : selectedTask;
+  const linkedCalendarEventQuery = useQuery({
+    queryKey: ["task-calendar-event", activeTask?.id],
+    queryFn: () => fetchTaskCalendarEvent(activeTask!.id),
+    enabled: Boolean(activeTask?.id),
+    staleTime: 30_000,
+  });
 
   useEffect(() => {
     if (!taskId || !taskDetailQuery.error) return;
     toast.error(taskDetailQuery.error instanceof Error ? taskDetailQuery.error.message : "Failed to load task.");
     router.replace("/dashboard/tasks");
   }, [taskDetailQuery.error, taskId, router]);
+
+  const isDialogOpen = taskId ? Boolean(activeTask) : dialogOpen;
+  const dialogKey = `${isDialogOpen ? "open" : "closed"}-${activeTask?.id ?? "new"}-${activeTask?.updated_at ?? "none"}`;
 
   function openCreateDialog() {
     setSelectedTask(null);
@@ -95,13 +106,40 @@ export default function TasksPage() {
   }
 
   async function handleSubmit(payload: TaskPayload) {
-    if (selectedTask) {
-      await updateTask(selectedTask.id, payload);
+    if (activeTask) {
+      await updateTask(activeTask.id, payload);
       toast.success("Task updated.");
       return;
     }
     await createTask(payload);
     toast.success("Task created.");
+  }
+
+  async function handleDelete() {
+    if (!activeTask) return;
+    await deleteTask(activeTask.id);
+    toast.success("Task moved to the recycle bin.");
+  }
+
+  async function handleAddToCalendar() {
+    if (!activeTask) return;
+    const result = await createEventFromTask(activeTask.id);
+    toast.success(result.reused_existing ? "Opened existing calendar event for this task." : "Task added to calendar.");
+    closeDialog();
+    router.push(`/dashboard/calendar?eventId=${result.event.id}`);
+  }
+
+  async function handleRemoveFromCalendar() {
+    if (!activeTask) return;
+    await deleteTaskCalendarEvent(activeTask.id);
+    toast.success("Task event removed from calendar.");
+  }
+
+  function handleOpenCalendarEvent() {
+    const eventId = linkedCalendarEventQuery.data?.event?.id;
+    if (!eventId) return;
+    closeDialog();
+    router.push(`/dashboard/calendar?eventId=${eventId}`);
   }
 
   return (
@@ -143,7 +181,7 @@ export default function TasksPage() {
         <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 px-4 py-3 text-sm text-neutral-400">
           <div className="flex items-center gap-2 text-neutral-200">
             <CheckSquare className="h-4 w-4 text-neutral-500" />
-            Task notifications route into the shared notification center and browser alerts.
+            Default task views hide completed work. Use Manage View if you want a completed-task queue beside active work.
           </div>
         </div>
       </div>
@@ -189,11 +227,20 @@ export default function TasksPage() {
       />
 
       <TaskDialog
-        open={dialogOpen}
-        task={selectedTask}
+        key={dialogKey}
+        open={isDialogOpen}
+        task={activeTask}
         isSubmitting={isSaving}
+        isDeleting={isDeleting}
+        isAddingToCalendar={isCreatingFromTask}
+        isRemovingFromCalendar={isRemovingTaskCalendarEvent}
+        linkedCalendarEvent={linkedCalendarEventQuery.data?.event ?? null}
         onClose={closeDialog}
         onSubmit={handleSubmit}
+        onDelete={activeTask ? handleDelete : undefined}
+        onAddToCalendar={activeTask ? handleAddToCalendar : undefined}
+        onRemoveFromCalendar={activeTask ? handleRemoveFromCalendar : undefined}
+        onOpenCalendarEvent={linkedCalendarEventQuery.data?.event ? handleOpenCalendarEvent : undefined}
       />
     </div>
   );

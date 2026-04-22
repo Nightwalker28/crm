@@ -14,6 +14,7 @@ from app.core.pagination import Pagination
 from app.core.postgres_search import searchable_text
 from app.modules.platform.services.notifications import create_notification
 from app.modules.tasks.models import Task, TaskAssignee
+from app.modules.tasks.schema import TaskResponse
 from app.modules.user_management.models import Team, User
 
 
@@ -22,6 +23,10 @@ TASK_ASSIGNMENT_NOTIFICATION_CATEGORY = "task_assignment"
 
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _serialize_datetime(value: datetime | None) -> str | None:
+    return value.isoformat() if value else None
 
 
 def _display_user_name(user: User | None) -> str | None:
@@ -40,6 +45,8 @@ def _build_task_query(
     *,
     tenant_id: int,
     current_user,
+    include_deleted: bool = False,
+    only_deleted: bool = False,
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
@@ -52,9 +59,12 @@ def _build_task_query(
         )
         .filter(
             Task.tenant_id == tenant_id,
-            Task.deleted_at.is_(None),
         )
     )
+    if only_deleted:
+        query = query.filter(Task.deleted_at.is_not(None))
+    elif not include_deleted:
+        query = query.filter(Task.deleted_at.is_(None))
 
     role_level = get_user_role_level(db, current_user)
     if role_level is None or role_level < ADMIN_MIN_ROLE_LEVEL:
@@ -73,6 +83,7 @@ def _build_task_query(
         "priority": {"expression": Task.priority, "type": "text"},
         "start_at": {"expression": Task.start_at, "type": "date"},
         "due_at": {"expression": Task.due_at, "type": "date"},
+        "assigned_at": {"expression": Task.assigned_at, "type": "date"},
         "created_at": {"expression": Task.created_at, "type": "date"},
     }
     query = apply_filter_conditions(
@@ -124,11 +135,19 @@ def list_tasks(
     return tasks, total_count
 
 
-def get_task_or_404(db: Session, task_id: int, *, tenant_id: int, current_user) -> Task:
+def get_task_or_404(
+    db: Session,
+    task_id: int,
+    *,
+    tenant_id: int,
+    current_user,
+    include_deleted: bool = False,
+) -> Task:
     query = _build_task_query(
         db,
         tenant_id=tenant_id,
         current_user=current_user,
+        only_deleted=include_deleted,
     ).filter(Task.id == task_id)
     task = query.first()
     if not task:
@@ -144,8 +163,6 @@ def _normalize_assignees(
     current_user,
 ) -> list[dict]:
     raw_assignees = assignees_payload or []
-    if not raw_assignees:
-        raw_assignees = [{"assignee_type": "user", "user_id": current_user.id}]
 
     normalized: list[dict] = []
     seen_keys: set[str] = set()
@@ -214,7 +231,7 @@ def _sync_task_assignees(
     tenant_id: int,
     current_user,
     assignees_payload: list[dict] | None,
-) -> tuple[list[str], list[str]]:
+) -> tuple[list[str], list[str], bool]:
     normalized = _normalize_assignees(
         db,
         tenant_id=tenant_id,
@@ -242,7 +259,24 @@ def _sync_task_assignees(
             )
         )
 
-    return added_keys, removed_keys
+    return added_keys, removed_keys, bool(next_map)
+
+
+def _update_assignment_metadata(
+    *,
+    task: Task,
+    current_user,
+    assignees_changed: bool,
+    has_assignees: bool,
+) -> None:
+    if not assignees_changed:
+        return
+    if has_assignees:
+        task.assigned_by_user_id = current_user.id
+        task.assigned_at = _utcnow()
+    else:
+        task.assigned_by_user_id = None
+        task.assigned_at = None
 
 
 def _resolve_notification_user_ids(db: Session, *, tenant_id: int, assignee_keys: list[str]) -> list[int]:
@@ -296,21 +330,25 @@ def _notify_task_assignees(
 
 
 def serialize_task(task: Task) -> dict:
-    return {
+    return TaskResponse.model_validate(
+        {
         "id": task.id,
         "title": task.title,
         "description": task.description,
         "status": task.status,
         "priority": task.priority,
-        "start_at": task.start_at,
-        "due_at": task.due_at,
-        "completed_at": task.completed_at,
+        "start_at": _serialize_datetime(task.start_at),
+        "due_at": _serialize_datetime(task.due_at),
+        "completed_at": _serialize_datetime(task.completed_at),
         "created_by_user_id": task.created_by_user_id,
         "updated_by_user_id": task.updated_by_user_id,
+        "assigned_by_user_id": task.assigned_by_user_id,
         "created_by_name": _display_user_name(task.creator),
         "updated_by_name": _display_user_name(task.updated_by),
-        "created_at": task.created_at,
-        "updated_at": task.updated_at,
+        "assigned_by_name": _display_user_name(task.assigned_by),
+        "assigned_at": _serialize_datetime(task.assigned_at),
+        "created_at": _serialize_datetime(task.created_at),
+        "updated_at": _serialize_datetime(task.updated_at),
         "assignees": [
             {
                 "assignee_type": assignee.assignee_type,
@@ -321,7 +359,8 @@ def serialize_task(task: Task) -> dict:
             }
             for assignee in sorted(task.assignees, key=lambda item: item.assignee_key)
         ],
-    }
+        }
+    ).model_dump(mode="json")
 
 
 def create_task(db: Session, *, payload: dict, current_user) -> tuple[Task, list[str]]:
@@ -341,13 +380,20 @@ def create_task(db: Session, *, payload: dict, current_user) -> tuple[Task, list
     )
     db.add(task)
     db.flush()
-    added_keys, _ = _sync_task_assignees(
+    added_keys, _, has_assignees = _sync_task_assignees(
         db,
         task=task,
         tenant_id=current_user.tenant_id,
         current_user=current_user,
         assignees_payload=assignees_payload,
     )
+    _update_assignment_metadata(
+        task=task,
+        current_user=current_user,
+        assignees_changed=bool(added_keys),
+        has_assignees=has_assignees,
+    )
+    db.add(task)
     db.commit()
     db.refresh(task)
     return get_task_or_404(db, task.id, tenant_id=current_user.tenant_id, current_user=current_user), added_keys
@@ -368,13 +414,20 @@ def update_task(db: Session, *, task: Task, payload: dict, current_user) -> tupl
     task.updated_by_user_id = current_user.id
 
     added_keys: list[str] = []
+    removed_keys: list[str] = []
     if assignees_payload is not None:
-        added_keys, _ = _sync_task_assignees(
+        added_keys, removed_keys, has_assignees = _sync_task_assignees(
             db,
             task=task,
             tenant_id=current_user.tenant_id,
             current_user=current_user,
             assignees_payload=assignees_payload,
+        )
+        _update_assignment_metadata(
+            task=task,
+            current_user=current_user,
+            assignees_changed=bool(added_keys or removed_keys),
+            has_assignees=has_assignees,
         )
 
     db.add(task)
@@ -385,6 +438,42 @@ def update_task(db: Session, *, task: Task, payload: dict, current_user) -> tupl
 
 def delete_task(db: Session, *, task: Task, current_user) -> Task:
     task.deleted_at = _utcnow()
+    task.updated_by_user_id = current_user.id
+    db.add(task)
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+def list_deleted_tasks(
+    db: Session,
+    *,
+    tenant_id: int,
+    pagination: Pagination,
+) -> tuple[Sequence[Task], int]:
+    query = (
+        db.query(Task)
+        .options(
+            selectinload(Task.assignees).selectinload(TaskAssignee.user),
+            selectinload(Task.assignees).selectinload(TaskAssignee.team),
+        )
+        .filter(
+            Task.tenant_id == tenant_id,
+            Task.deleted_at.is_not(None),
+        )
+    )
+    total_count = query.count()
+    tasks = (
+        query.order_by(Task.deleted_at.desc(), Task.updated_at.desc())
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+        .all()
+    )
+    return tasks, total_count
+
+
+def restore_task(db: Session, *, task: Task, current_user) -> Task:
+    task.deleted_at = None
     task.updated_by_user_id = current_user.id
     db.add(task)
     db.commit()

@@ -6,6 +6,7 @@ from app.modules.user_management.models import CompanyProfile, User, UserSavedVi
 
 
 TABLE_PREFERENCE_MODULES = {
+    "tasks",
     "sales_contacts",
     "sales_organizations",
     "sales_opportunities",
@@ -255,17 +256,29 @@ def _is_system_saved_view(view: UserSavedView | dict | None) -> bool:
 
 
 def _build_system_default_config(module_key: str, visible_columns: list[str]) -> dict:
+    filters = {
+        "search": "",
+        "logic": "all",
+        "conditions": [],
+        "all_conditions": [],
+        "any_conditions": [],
+    }
+    if module_key == "tasks":
+        filters["all_conditions"] = [
+            {
+                "id": "system-hide-completed",
+                "field": "status",
+                "operator": "is_not",
+                "value": "completed",
+                "values": None,
+            }
+        ]
+
     config = _normalize_saved_view_config(
         module_key,
         {
             "visible_columns": visible_columns,
-            "filters": {
-                "search": "",
-                "logic": "all",
-                "conditions": [],
-                "all_conditions": [],
-                "any_conditions": [],
-            },
+            "filters": filters,
             "sort": None,
         },
     )

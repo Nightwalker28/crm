@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Command } from "cmdk";
 import { CommandIcon, CornerDownLeft, Search } from "lucide-react";
@@ -26,6 +26,7 @@ type SearchResponse = {
 
 const MODULE_LABELS: Record<string, string> = {
   tasks: "Tasks",
+  calendar: "Calendar",
   sales_organizations: "Organizations",
   sales_contacts: "Contacts",
   sales_opportunities: "Opportunities",
@@ -48,6 +49,7 @@ async function fetchGlobalSearch(query: string): Promise<SearchResponse> {
 export default function GlobalCommandPalette() {
   const router = useRouter();
   const { modules } = useAccessibleModules();
+  const inputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query.trim());
@@ -66,8 +68,13 @@ export default function GlobalCommandPalette() {
 
   useEffect(() => {
     if (!open) {
-      setQuery("");
+      return;
     }
+    const frame = window.requestAnimationFrame(() => {
+      inputRef.current?.focus();
+      inputRef.current?.select();
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, [open]);
 
   const searchQuery = useQuery({
@@ -84,7 +91,7 @@ export default function GlobalCommandPalette() {
         .filter((module) => module.base_route)
         .map((module) => ({
           label: MODULE_LABELS[module.name] ?? module.description ?? module.name,
-          subtitle: module.base_route,
+          subtitle: module.base_route ?? "",
           href: module.base_route as string,
           group: "Modules",
         })),
@@ -108,8 +115,14 @@ export default function GlobalCommandPalette() {
   }, [searchQuery.data?.results]);
 
   function handleNavigate(href: string) {
+    setQuery("");
     setOpen(false);
     router.push(href);
+  }
+
+  function handleClose() {
+    setQuery("");
+    setOpen(false);
   }
 
   return (
@@ -132,7 +145,7 @@ export default function GlobalCommandPalette() {
         </div>
       </button>
 
-      <Dialog open={open} onClose={setOpen} className="z-50">
+      <Dialog open={open} onClose={handleClose} className="z-50">
         <DialogBackdrop />
         <div className="fixed inset-0 flex items-start justify-center px-4 pt-[12vh]">
           <DialogPanel className="w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#090909] p-0 shadow-[0_32px_100px_rgba(0,0,0,0.55)]">
@@ -140,6 +153,7 @@ export default function GlobalCommandPalette() {
               <div className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
                 <Search className="h-4 w-4 text-neutral-500" />
                 <Command.Input
+                  ref={inputRef}
                   value={query}
                   onValueChange={setQuery}
                   placeholder="Search records across the workspace..."
@@ -174,7 +188,7 @@ export default function GlobalCommandPalette() {
                   </>
                 ) : deferredQuery.length < 2 ? (
                   <div className="px-3 py-8 text-center text-sm text-neutral-500">
-                    Type at least 2 characters to search records.
+                    Type at least 2 characters to search tasks, calendar events, contacts, organizations, opportunities, and other workspace records.
                   </div>
                 ) : searchQuery.isLoading ? (
                   <div className="px-3 py-8 text-center text-sm text-neutral-500">Searching…</div>

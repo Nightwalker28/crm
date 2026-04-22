@@ -35,8 +35,11 @@ export type Task = {
   completed_at?: string | null;
   created_by_user_id?: number | null;
   updated_by_user_id?: number | null;
+  assigned_by_user_id?: number | null;
   created_by_name?: string | null;
   updated_by_name?: string | null;
+  assigned_by_name?: string | null;
+  assigned_at?: string | null;
   created_at: string;
   updated_at: string;
   assignees: TaskAssignee[];
@@ -136,6 +139,16 @@ async function updateTask(taskId: number, payload: TaskPayload) {
   return body as Task;
 }
 
+async function deleteTask(taskId: number) {
+  const res = await apiFetch(`/tasks/${taskId}`, {
+    method: "DELETE",
+  });
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to delete task.");
+  }
+}
+
 export async function fetchTask(taskId: number) {
   const res = await apiFetch(`/tasks/${taskId}`);
   const body = await res.json().catch(() => null);
@@ -186,6 +199,16 @@ export function useTasks(filters?: SavedViewFilters) {
     },
   });
 
+  const deleteMutation = useMutation({
+    mutationFn: deleteTask,
+    onSuccess: async (_, taskId) => {
+      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
+      await queryClient.invalidateQueries({ queryKey: ["task", taskId] });
+      await queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
+      await queryClient.invalidateQueries({ queryKey: ["recycle-bin"] });
+    },
+  });
+
   return {
     tasks: query.data?.results ?? [],
     page: query.data?.page ?? page,
@@ -209,6 +232,8 @@ export function useTasks(filters?: SavedViewFilters) {
     createTask: createMutation.mutateAsync,
     updateTask: (taskId: number, payload: TaskPayload) =>
       updateMutation.mutateAsync({ taskId, payload }),
+    deleteTask: deleteMutation.mutateAsync,
     isSaving: createMutation.isPending || updateMutation.isPending,
+    isDeleting: deleteMutation.isPending,
   };
 }

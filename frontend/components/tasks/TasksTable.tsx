@@ -91,6 +91,22 @@ export default function TasksTable({
           </TableCell>
         );
       }
+      case "assigned_by_name":
+        return (
+          <TableCell>
+            <span className="text-sm text-neutral-300">
+              {task.assigned_by_name || <span className="text-neutral-600">Unassigned</span>}
+            </span>
+          </TableCell>
+        );
+      case "assigned_at":
+        return (
+          <TableCell>
+            <span className="text-sm text-neutral-400">
+              {task.assigned_at ? formatDateTime(task.assigned_at) : <span className="text-neutral-600">—</span>}
+            </span>
+          </TableCell>
+        );
       case "due_at":
         return (
           <TableCell>
@@ -155,6 +171,10 @@ export default function TasksTable({
                   ? "Due"
                   : column === "start_at"
                     ? "Start"
+                    : column === "assigned_by_name"
+                      ? "Assigned By"
+                      : column === "assigned_at"
+                        ? "Assigned"
                     : column === "updated_at"
                       ? "Updated"
                       : column === "assignees"

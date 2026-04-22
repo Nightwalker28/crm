@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   ArrowRight,
   Bell,
+  CalendarDays,
   ClipboardList,
   LayoutGrid,
   Plus,
@@ -69,6 +70,7 @@ export default function DashboardHomePage() {
   const quickActions = useMemo(() => {
     const actions = [
       { href: "/dashboard/tasks", label: "Tasks", helper: "Open assigned and team work queues" },
+      { href: "/dashboard/calendar", label: "Calendar", helper: "Schedule internal events and review invites" },
       { href: "/dashboard/sales/contacts", label: "Contacts", helper: "Open the CRM contact list" },
       { href: "/dashboard/sales/organizations", label: "Organizations", helper: "Open account records" },
       { href: "/dashboard/sales/opportunities", label: "Opportunities", helper: "Review and update pipeline" },
@@ -121,6 +123,12 @@ export default function DashboardHomePage() {
               <Link href="/dashboard/tasks">
                 <Plus className="h-4 w-4" />
                 New Work
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href="/dashboard/calendar">
+                <CalendarDays className="h-4 w-4" />
+                Calendar
               </Link>
             </Button>
           </>

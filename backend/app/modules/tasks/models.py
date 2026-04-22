@@ -33,12 +33,20 @@ class Task(Base):
         nullable=True,
         index=True,
     )
+    assigned_by_user_id = Column(
+        BigInteger,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    assigned_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     creator = relationship("User", foreign_keys=[created_by_user_id], lazy="joined")
     updated_by = relationship("User", foreign_keys=[updated_by_user_id], lazy="joined")
+    assigned_by = relationship("User", foreign_keys=[assigned_by_user_id], lazy="joined")
     assignees = relationship(
         "TaskAssignee",
         back_populates="task",

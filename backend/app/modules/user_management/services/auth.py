@@ -17,6 +17,11 @@ from app.core.tenancy import (
     get_frontend_origin_for_request,
     get_google_redirect_uri_for_request,
 )
+from app.modules.calendar.services.calendar_services import (
+    GOOGLE_CALENDAR_EVENTS_SCOPE,
+    GOOGLE_CALENDAR_METADATA_SCOPE,
+    upsert_google_calendar_connection,
+)
 from app.modules.user_management.models import (
     Module,
     RefreshToken,
@@ -36,7 +41,15 @@ GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 
-SCOPES = "openid email profile"
+SCOPES = " ".join(
+    [
+        "openid",
+        "email",
+        "profile",
+        GOOGLE_CALENDAR_EVENTS_SCOPE,
+        GOOGLE_CALENDAR_METADATA_SCOPE,
+    ]
+)
 
 
 # -------------------------------------------------------------------
@@ -257,7 +270,16 @@ def handle_google_callback(
     # 5) Active user
     if picture and user.photo_url != picture:
         user.photo_url = picture
-        db.commit()
+    user.last_login_provider = "google"
+    db.add(user)
+    db.commit()
+    upsert_google_calendar_connection(
+        db,
+        tenant_id=tenant.id,
+        user=user,
+        token_json=token_json,
+        account_email=email,
+    )
 
     return {
         "status": "active",
@@ -394,6 +416,10 @@ def authenticate_manual_user(
             detail="Manual sign-in is not enabled for this account",
         )
 
+    user.last_login_provider = "manual"
+    db.add(user)
+    db.commit()
+    db.refresh(user)
     return user
 
 

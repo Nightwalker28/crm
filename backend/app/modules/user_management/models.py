@@ -202,6 +202,7 @@ class User(Base):
         nullable=False,
         server_default=UserAuthMode.manual_or_google.value,
     )
+    last_login_provider = Column(String(20), nullable=True, index=True)
 
     is_active = Column(
         Enum(UserStatus, name="user_status"),

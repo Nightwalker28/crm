@@ -150,9 +150,9 @@ Completed items:
 
 In progress:
 - Start the collaboration and integrations rollout with tasks as the first concrete platform primitive, treating tasks as a backend module with frontend feature-style entry points so assignment, notifications, reminders, and later mailbox/calendar automation can share one foundation.
-- The first task slice is now landed in code with backend module registration, tenant-aware task and assignee persistence, assignment notifications, a `/dashboard/tasks` frontend surface, sidebar/dashboard wiring, and browser notification bridging; this slice now needs hardening and verification before calendar starts.
+- The first task slice is now landed in code with backend module registration, tenant-aware task and assignee persistence, assignment notifications, a `/dashboard/tasks` frontend surface, sidebar/dashboard wiring, and browser notification bridging; the next collaboration slice now moves onto calendar foundations on top of that task baseline.
 - Tasks should support professional CRM-style priority and urgency states, assignment to self, users, teams, and later richer collaboration targets, with assignment events feeding both the existing in-app notification center and browser notification hooks.
-- Stage calendar integration immediately after the task foundation so due dates, scheduling, reminders, and sync behavior can anchor to one task/collaboration model before mailbox automation joins the same slice.
+- Stage calendar integration immediately after the task foundation so due dates, scheduling, reminders, attendee sharing, and provider sync behavior can anchor to one task/collaboration model before mailbox automation joins the same slice.
 - Keep extending timezone-aware timestamp formatting across remaining UI surfaces that still render raw browser-local or server-default times.
 - Keep normalizing uploaded/local media URLs across all avatar/logo consumers so uploaded profile/company assets behave the same as remote images everywhere.
 - Expand the new notification center beyond data-transfer jobs into broader per-user operational notifications over time.
@@ -195,7 +195,7 @@ In progress:
 
 Next up:
 - Harden and verify the landed first task module slice end to end, then fill any remaining task lifecycle gaps before moving the collaboration roadmap onto calendar integration.
-- Build calendar integration on top of the task foundation so scheduling and sync use the same collaboration data model instead of a disconnected side path.
+- Build calendar integration on top of the task foundation so scheduling, attendee sharing, task-to-calendar handoff, and provider sync use the same collaboration data model instead of a disconnected side path.
 - Add mailbox integration and automation after tasks and calendar have established the shared collaboration/assignment model.
 - Finish the dedicated saved-view management flow so module pages only need compact view switching.
 - Expand saved views over time to include richer per-module state beyond the current search, condition, status, and sort slices.

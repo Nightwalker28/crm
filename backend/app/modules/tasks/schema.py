@@ -87,8 +87,11 @@ class TaskResponse(BaseModel):
     completed_at: datetime | None = None
     created_by_user_id: int | None = None
     updated_by_user_id: int | None = None
+    assigned_by_user_id: int | None = None
     created_by_name: str | None = None
     updated_by_name: str | None = None
+    assigned_by_name: str | None = None
+    assigned_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
     assignees: list[TaskAssigneeResponse]

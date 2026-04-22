@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
+import TaskAssigneePicker from "@/components/tasks/TaskAssigneePicker";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Button } from "@/components/ui/button";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogBackdrop,
@@ -21,24 +21,28 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   fetchTaskAssignmentOptions,
   type Task,
-  type TaskAssigneeInput,
   type TaskPayload,
 } from "@/hooks/useTasks";
+import type { CalendarEvent } from "@/hooks/useCalendar";
+import { formatDateTime } from "@/lib/datetime";
 
 type Props = {
   open: boolean;
   task: Task | null;
   isSubmitting?: boolean;
+  isDeleting?: boolean;
+  isAddingToCalendar?: boolean;
+  isRemovingFromCalendar?: boolean;
+  linkedCalendarEvent?: CalendarEvent | null;
   onClose: () => void;
   onSubmit: (payload: TaskPayload) => Promise<void>;
+  onDelete?: () => Promise<void>;
+  onAddToCalendar?: () => Promise<void>;
+  onRemoveFromCalendar?: () => Promise<void>;
+  onOpenCalendarEvent?: () => void;
 };
 
 type FormState = TaskPayload;
-
-type SessionUser = {
-  id?: number;
-  team_id?: number | null;
-};
 
 const emptyForm: FormState = {
   title: "",
@@ -51,15 +55,25 @@ const emptyForm: FormState = {
   assignees: [],
 };
 
-function readSessionUser(): SessionUser | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = window.sessionStorage.getItem("lynk_user");
-    if (!raw) return null;
-    return JSON.parse(raw) as SessionUser;
-  } catch {
-    return null;
+function buildFormState(task: Task | null): FormState {
+  if (!task) {
+    return emptyForm;
   }
+
+  return {
+    title: task.title ?? "",
+    description: task.description ?? "",
+    status: task.status,
+    priority: task.priority,
+    start_at: task.start_at ?? null,
+    due_at: task.due_at ?? null,
+    completed_at: task.completed_at ?? null,
+    assignees: task.assignees.map((assignee) => ({
+      assignee_type: assignee.assignee_type,
+      user_id: assignee.user_id ?? null,
+      team_id: assignee.team_id ?? null,
+    })),
+  };
 }
 
 function toDatetimeLocalValue(value?: string | null) {
@@ -77,27 +91,23 @@ function toIsoOrNull(value: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
-function hasAssignee(
-  assignees: TaskAssigneeInput[],
-  assigneeType: TaskAssigneeInput["assignee_type"],
-  targetId: number,
-) {
-  return assignees.some((assignee) =>
-    assignee.assignee_type === assigneeType &&
-    (assigneeType === "user" ? assignee.user_id === targetId : assignee.team_id === targetId),
-  );
-}
-
 export default function TaskDialog({
   open,
   task,
   isSubmitting = false,
+  isDeleting = false,
+  isAddingToCalendar = false,
+  isRemovingFromCalendar = false,
+  linkedCalendarEvent = null,
   onClose,
   onSubmit,
+  onDelete,
+  onAddToCalendar,
+  onRemoveFromCalendar,
+  onOpenCalendarEvent,
 }: Props) {
-  const [form, setForm] = useState<FormState>(emptyForm);
+  const [form, setForm] = useState<FormState>(() => buildFormState(task));
   const [error, setError] = useState<string | null>(null);
-  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const optionsQuery = useQuery({
     queryKey: ["task-assignment-options"],
     queryFn: fetchTaskAssignmentOptions,
@@ -105,63 +115,7 @@ export default function TaskDialog({
     staleTime: 5 * 60_000,
   });
 
-  useEffect(() => {
-    if (!open) return;
-    setSessionUser(readSessionUser());
-    setForm(
-      task
-        ? {
-            title: task.title ?? "",
-            description: task.description ?? "",
-            status: task.status,
-            priority: task.priority,
-            start_at: task.start_at ?? null,
-            due_at: task.due_at ?? null,
-            completed_at: task.completed_at ?? null,
-            assignees: task.assignees.map((assignee) => ({
-              assignee_type: assignee.assignee_type,
-              user_id: assignee.user_id ?? null,
-              team_id: assignee.team_id ?? null,
-            })),
-          }
-        : {
-            ...emptyForm,
-            assignees: sessionUser?.id
-              ? [{ assignee_type: "user", user_id: sessionUser.id, team_id: null }]
-              : [],
-          },
-    );
-    setError(null);
-  }, [open, task, sessionUser?.id]);
-
   const selectedAssigneeCount = form.assignees.length;
-
-  const myUserOption = useMemo(
-    () => optionsQuery.data?.users.find((user) => user.id === sessionUser?.id) ?? null,
-    [optionsQuery.data?.users, sessionUser?.id],
-  );
-  const myTeamOption = useMemo(
-    () => optionsQuery.data?.teams.find((team) => team.id === sessionUser?.team_id) ?? null,
-    [optionsQuery.data?.teams, sessionUser?.team_id],
-  );
-
-  function toggleAssignee(assigneeType: TaskAssigneeInput["assignee_type"], targetId: number, checked: boolean) {
-    setForm((current) => {
-      const nextAssignees = checked
-        ? [
-            ...current.assignees,
-            assigneeType === "user"
-              ? { assignee_type: "user", user_id: targetId, team_id: null }
-              : { assignee_type: "team", team_id: targetId, user_id: null },
-          ]
-        : current.assignees.filter((assignee) =>
-            assigneeType === "user"
-              ? !(assignee.assignee_type === "user" && assignee.user_id === targetId)
-              : !(assignee.assignee_type === "team" && assignee.team_id === targetId),
-          );
-      return { ...current, assignees: nextAssignees };
-    });
-  }
 
   async function handleSubmit() {
     try {
@@ -174,6 +128,18 @@ export default function TaskDialog({
       onClose();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Failed to save task");
+    }
+  }
+
+  async function handleDelete() {
+    if (!task || !onDelete) return;
+    if (!window.confirm(`Move "${task.title}" to the recycle bin?`)) return;
+    try {
+      setError(null);
+      await onDelete();
+      onClose();
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete task");
     }
   }
 
@@ -288,37 +254,12 @@ export default function TaskDialog({
                 <div>
                   <div className="text-sm font-semibold text-neutral-100">Assignments</div>
                   <FieldDescription>
-                    Assign tasks to yourself, individual users, and teams. Team assignments notify the full team.
+                    Search and assign individual users or whole teams. Team assignments notify the full team.
                   </FieldDescription>
                 </div>
                 <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">
                   {selectedAssigneeCount} selected
                 </div>
-              </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {myUserOption ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => toggleAssignee("user", myUserOption.id, !hasAssignee(form.assignees, "user", myUserOption.id))}
-                  >
-                    {hasAssignee(form.assignees, "user", myUserOption.id) ? "Remove Me" : "Assign To Me"}
-                  </Button>
-                ) : null}
-                {myTeamOption ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      toggleAssignee("team", myTeamOption.id, !hasAssignee(form.assignees, "team", myTeamOption.id))
-                    }
-                  >
-                    {hasAssignee(form.assignees, "team", myTeamOption.id) ? "Remove My Team" : "Assign My Team"}
-                  </Button>
-                ) : null}
               </div>
 
               {optionsQuery.isLoading ? (
@@ -330,76 +271,69 @@ export default function TaskDialog({
                     : "Failed to load assignment options."}
                 </div>
               ) : (
-                <div className="mt-4 grid gap-4 lg:grid-cols-2">
-                  <div className="rounded-lg border border-neutral-800 bg-black/20">
-                    <div className="border-b border-neutral-800 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                      Teams
+                <div className="mt-4 space-y-3">
+                  <TaskAssigneePicker
+                    users={optionsQuery.data?.users ?? []}
+                    teams={optionsQuery.data?.teams ?? []}
+                    value={form.assignees}
+                    onChange={(assignees) => setForm((current) => ({ ...current, assignees }))}
+                    disabled={isSubmitting || isDeleting}
+                  />
+                  {task?.assigned_by_name ? (
+                    <div className="text-xs text-neutral-500">
+                      Last assigned by {task.assigned_by_name}
+                      {task.assigned_at ? ` on ${formatDateTime(task.assigned_at)}` : ""}
                     </div>
-                    <div className="max-h-60 space-y-2 overflow-y-auto p-3">
-                      {(optionsQuery.data?.teams ?? []).map((team) => (
-                        <label
-                          key={team.id}
-                          className="flex cursor-pointer items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/50 px-3 py-2"
-                        >
-                          <Checkbox
-                            checked={hasAssignee(form.assignees, "team", team.id)}
-                            onCheckedChange={(checked) => toggleAssignee("team", team.id, checked === true)}
-                            className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
-                          >
-                            <CheckboxIndicator className="h-3 w-3" />
-                          </Checkbox>
-                          <div>
-                            <div className="text-sm text-neutral-100">{team.name}</div>
-                            <div className="text-xs text-neutral-500">
-                              Team assignment notifies everyone currently in this team.
-                            </div>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="rounded-lg border border-neutral-800 bg-black/20">
-                    <div className="border-b border-neutral-800 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-neutral-500">
-                      Users
-                    </div>
-                    <div className="max-h-60 space-y-2 overflow-y-auto p-3">
-                      {(optionsQuery.data?.users ?? []).map((user) => (
-                        <label
-                          key={user.id}
-                          className="flex cursor-pointer items-center gap-3 rounded-lg border border-neutral-800 bg-neutral-950/50 px-3 py-2"
-                        >
-                          <Checkbox
-                            checked={hasAssignee(form.assignees, "user", user.id)}
-                            onCheckedChange={(checked) => toggleAssignee("user", user.id, checked === true)}
-                            className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
-                          >
-                            <CheckboxIndicator className="h-3 w-3" />
-                          </Checkbox>
-                          <div className="min-w-0">
-                            <div className="truncate text-sm text-neutral-100">{user.name}</div>
-                            <div className="truncate text-xs text-neutral-500">
-                              {user.team_name ? `${user.team_name} · ` : ""}
-                              {user.email || "No email"}
-                            </div>
-                          </div>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
+                  ) : null}
                 </div>
               )}
             </div>
           </div>
 
           <DialogFooter className="mt-6">
+            {task && onDelete ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="mr-auto border-red-800/70 text-red-200 hover:bg-red-950/40 hover:text-red-100"
+                onClick={() => void handleDelete()}
+                disabled={isSubmitting || isDeleting}
+              >
+                Move To Recycle Bin
+              </Button>
+            ) : null}
+            {task && onAddToCalendar ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void onAddToCalendar()}
+                disabled={isSubmitting || isDeleting || isAddingToCalendar || Boolean(linkedCalendarEvent)}
+              >
+                {linkedCalendarEvent ? "Already On Calendar" : isAddingToCalendar ? "Adding..." : "Add To Calendar"}
+              </Button>
+            ) : null}
+            {task && linkedCalendarEvent && onOpenCalendarEvent ? (
+              <Button type="button" variant="outline" onClick={onOpenCalendarEvent} disabled={isSubmitting || isDeleting}>
+                Open Calendar Event
+              </Button>
+            ) : null}
+            {task && linkedCalendarEvent && onRemoveFromCalendar ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => void onRemoveFromCalendar()}
+                disabled={isSubmitting || isDeleting || isRemovingFromCalendar}
+              >
+                {isRemovingFromCalendar ? "Removing..." : "Remove From Calendar"}
+              </Button>
+            ) : null}
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
             <Button
               type="button"
               onClick={() => void handleSubmit()}
-              disabled={isSubmitting || !form.title.trim()}
+              disabled={isSubmitting || isDeleting || !form.title.trim()}
             >
               {task ? "Save Task" : "Create Task"}
             </Button>

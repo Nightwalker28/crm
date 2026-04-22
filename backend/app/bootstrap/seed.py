@@ -26,6 +26,7 @@ DEFAULT_ROLES = [
 ]
 
 DEFAULT_MODULES = [
+    {"name": "calendar", "base_route": "/dashboard/calendar", "description": "Shared user calendar and scheduling"},
     {"name": "tasks", "base_route": "/dashboard/tasks", "description": "Collaborative task management and assignment"},
     {"name": "finance_io", "base_route": "/dashboard/finance/insertion-orders", "description": "Finance insertion orders"},
     {"name": "sales_contacts", "base_route": "/dashboard/sales/contacts", "description": "Sales contacts"},

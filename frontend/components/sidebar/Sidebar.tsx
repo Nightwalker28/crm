@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
+  CalendarDays,
   LayoutGrid,
   UserRound,
   HandCoins,
@@ -27,22 +28,47 @@ import {
   SidebarMenuItemChild,
 } from "./SidebarNav";
 
+const SIDEBAR_COLLAPSE_KEY = "lynk:sidebar-collapsed";
+const SIDEBAR_COLLAPSE_EVENT = "lynk:sidebar-collapsed-change";
+
+function subscribeToSidebarCollapse(onStoreChange: () => void) {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+
+  const handleStorage = (event: StorageEvent) => {
+    if (!event.key || event.key === SIDEBAR_COLLAPSE_KEY) {
+      onStoreChange();
+    }
+  };
+  const handleCustomEvent = () => onStoreChange();
+
+  window.addEventListener("storage", handleStorage);
+  window.addEventListener(SIDEBAR_COLLAPSE_EVENT, handleCustomEvent);
+  return () => {
+    window.removeEventListener("storage", handleStorage);
+    window.removeEventListener(SIDEBAR_COLLAPSE_EVENT, handleCustomEvent);
+  };
+}
+
+function getSidebarCollapsedSnapshot() {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "true";
+}
+
 export default function Sidebar() {
   const { user, logout } = useSidebarUser();
   const { modules } = useAccessibleModules();
-  const [collapsed, setCollapsed] = useState(false);
-
-  useEffect(() => {
-    const stored = window.localStorage.getItem("lynk:sidebar-collapsed");
-    setCollapsed(stored === "true");
-  }, []);
+  const collapsed = useSyncExternalStore(
+    subscribeToSidebarCollapse,
+    getSidebarCollapsedSnapshot,
+    () => false,
+  );
 
   function toggleCollapsed() {
-    setCollapsed((current) => {
-      const next = !current;
-      window.localStorage.setItem("lynk:sidebar-collapsed", String(next));
-      return next;
-    });
+    const next = !collapsed;
+    window.localStorage.setItem(SIDEBAR_COLLAPSE_KEY, String(next));
+    window.dispatchEvent(new Event(SIDEBAR_COLLAPSE_EVENT));
   }
 
   const displayName =
@@ -56,6 +82,7 @@ export default function Sidebar() {
   const moduleMap = new Map(modules.map((module) => [module.name, module]));
   const financeIoModule = moduleMap.get("finance_io");
   const tasksModule = moduleMap.get("tasks");
+  const calendarModule = moduleMap.get("calendar");
   const contactsModule = moduleMap.get("sales_contacts");
   const organizationsModule = moduleMap.get("sales_organizations");
   const opportunitiesModule = moduleMap.get("sales_opportunities");
@@ -115,6 +142,12 @@ export default function Sidebar() {
               {tasksModule?.base_route ? (
                 <SidebarMenuItem href={tasksModule.base_route} icon={ClipboardList} collapsed={collapsed}>
                   Tasks
+                </SidebarMenuItem>
+              ) : null}
+
+              {calendarModule?.base_route ? (
+                <SidebarMenuItem href={calendarModule.base_route} icon={CalendarDays} collapsed={collapsed}>
+                  Calendar
                 </SidebarMenuItem>
               ) : null}
 

@@ -29,6 +29,7 @@ class UserProfile(BaseModel):
     timezone: Optional[str] = None
     bio: Optional[str] = None
     auth_mode: UserAuthMode
+    last_login_provider: Optional[str] = None
     is_active: UserStatus
 
     model_config = ConfigDict(from_attributes=True)

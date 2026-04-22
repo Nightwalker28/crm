@@ -98,7 +98,13 @@ export const USER_COLUMNS: TableColumnOption[] = [
 export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
   tasks: {
     visible_columns: ["title", "priority", "status", "due_at", "assignees", "updated_at"],
-    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
+    filters: {
+      search: "",
+      logic: "all",
+      conditions: [],
+      all_conditions: [{ id: "default-hide-completed", field: "status", operator: "is_not", value: "completed" }],
+      any_conditions: [],
+    },
     sort: null,
   },
   sales_contacts: {
@@ -147,6 +153,8 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "title", label: "Title" },
       { key: "priority", label: "Priority" },
       { key: "status", label: "Status" },
+      { key: "assigned_by_name", label: "Assigned By" },
+      { key: "assigned_at", label: "Assigned" },
       { key: "due_at", label: "Due" },
       { key: "assignees", label: "Assignees" },
       { key: "updated_at", label: "Updated" },
@@ -178,6 +186,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       },
       { key: "due_at", label: "Due Date", type: "date", operators: DATE_OPERATORS },
       { key: "start_at", label: "Start Date", type: "date", operators: DATE_OPERATORS },
+      { key: "assigned_at", label: "Assigned At", type: "date", operators: DATE_OPERATORS },
       { key: "created_at", label: "Created At", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.tasks,

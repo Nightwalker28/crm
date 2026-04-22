@@ -1,5 +1,6 @@
 from typing import Any
 
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination
@@ -27,8 +28,8 @@ def log_activity(
         entity_id=str(entity_id),
         action=action,
         description=description,
-        before_state=before_state,
-        after_state=after_state,
+        before_state=jsonable_encoder(before_state) if before_state is not None else None,
+        after_state=jsonable_encoder(after_state) if after_state is not None else None,
     )
     db.add(entry)
     db.commit()
