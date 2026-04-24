@@ -9,6 +9,11 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.tenancy import get_frontend_origin_for_request, is_cloud_mode_enabled
 from app.modules.user_management.models import RefreshToken, User
+from app.modules.mail.services.mail_services import (
+    decode_mail_oauth_state,
+    handle_google_mail_callback,
+    handle_microsoft_mail_callback,
+)
 from app.modules.user_management.schema import ManualLoginRequest, SetupPasswordRequest
 from app.modules.user_management.services.auth import (
     authenticate_manual_user,
@@ -162,6 +167,30 @@ def google_callback(
     state: str | None = None,
     db: Session = Depends(get_db),
 ):
+    mail_state_payload = decode_mail_oauth_state(state)
+    if mail_state_payload and mail_state_payload.get("provider") == "google":
+        tenant = getattr(request.state, "tenant", None)
+        frontend_origin = (
+            mail_state_payload.get("frontend_origin")
+            or get_frontend_origin_for_request(request)
+        )
+        if not tenant or mail_state_payload.get("tenant_id") != tenant.id or not code:
+            query = urllib.parse.urlencode({"mailConnect": "error"})
+            return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
+        try:
+            handle_google_mail_callback(
+                code,
+                db,
+                tenant=tenant,
+                request=request,
+                state_payload=mail_state_payload,
+            )
+        except HTTPException:
+            query = urllib.parse.urlencode({"mailConnect": "error"})
+            return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
+        query = urllib.parse.urlencode({"mailConnect": "connected"})
+        return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
+
     state_payload = decode_oauth_state(state)
     tenant = getattr(request.state, "tenant", None)
     frontend_origin = (
@@ -202,6 +231,42 @@ def google_callback(
         refresh_token=refresh_token,
     )
     return response
+
+
+@router.get("/microsoft/callback")
+def microsoft_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+):
+    mail_state_payload = decode_mail_oauth_state(state)
+    frontend_origin = (
+        (mail_state_payload or {}).get("frontend_origin")
+        or get_frontend_origin_for_request(request)
+    )
+    if not mail_state_payload or mail_state_payload.get("provider") != "microsoft":
+        query = urllib.parse.urlencode({"mailConnect": "error"})
+        return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
+
+    tenant = getattr(request.state, "tenant", None)
+    if not tenant or mail_state_payload.get("tenant_id") != tenant.id or not code:
+        query = urllib.parse.urlencode({"mailConnect": "error"})
+        return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
+
+    try:
+        handle_microsoft_mail_callback(
+            code,
+            db,
+            tenant=tenant,
+            request=request,
+            state_payload=mail_state_payload,
+        )
+    except HTTPException:
+        query = urllib.parse.urlencode({"mailConnect": "error"})
+        return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
+    query = urllib.parse.urlencode({"mailConnect": "connected"})
+    return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
 
 
 @router.post("/logout")

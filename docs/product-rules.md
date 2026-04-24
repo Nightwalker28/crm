@@ -72,6 +72,8 @@ This file captures stable business and UX rules for the platform. These should b
 - Company and user profiles should support uploaded logos/images rather than relying only on raw URL entry where file upload is the expected product behavior.
 - User timezone should be stored in the user profile and used to display time-based data in the user’s local timezone instead of raw server/database time where the UI is user-facing.
 - Google sign-in should request only the minimum scopes needed for authentication unless a specific product workflow explicitly requires more.
+- Mailbox sync should be opt-in per provider account and should not be silently granted through normal sign-in.
+- Gmail inbox reading should stay disabled by default because Gmail read scopes are restricted; Gmail sending can use the narrower `gmail.send` scope when users explicitly connect mail.
 
 ## Import / Export Rules
 

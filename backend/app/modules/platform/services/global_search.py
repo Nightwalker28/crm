@@ -7,6 +7,7 @@ from app.core.access_control import require_department_module_access, require_ro
 from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
 from app.modules.calendar.models import CalendarEvent, CalendarEventParticipant
+from app.modules.mail.models import MailMessage
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization
 from app.modules.tasks.models import Task, TaskAssignee
 
@@ -19,6 +20,10 @@ GLOBAL_SEARCH_MODULES = (
     {
         "module_key": "calendar",
         "module_label": "Calendar",
+    },
+    {
+        "module_key": "mail",
+        "module_label": "Mail",
     },
     {
         "module_key": "sales_contacts",
@@ -130,6 +135,43 @@ def _calendar_results(db: Session, *, tenant_id: int, current_user, query: str, 
     ]
 
 
+def _mail_results(db: Session, *, tenant_id: int, current_user, query: str, limit: int) -> list[dict]:
+    ranked = apply_ranked_search(
+        db.query(MailMessage)
+        .filter(
+            MailMessage.tenant_id == tenant_id,
+            MailMessage.owner_user_id == current_user.id,
+            MailMessage.deleted_at.is_(None),
+        ),
+        search=query,
+        document=searchable_text(
+            MailMessage.subject,
+            MailMessage.snippet,
+            MailMessage.from_email,
+            MailMessage.from_name,
+            MailMessage.source_label,
+        ),
+        default_order_column=MailMessage.created_at,
+    )
+    items = (
+        ranked
+        .order_by(MailMessage.received_at.desc().nullslast(), MailMessage.sent_at.desc().nullslast(), MailMessage.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "module_key": "mail",
+            "module_label": "Mail",
+            "record_id": str(record.id),
+            "title": record.subject or "(no subject)",
+            "subtitle": " · ".join(part for part in [record.from_email, record.source_label, record.folder] if part) or None,
+            "href": f"/dashboard/mail?messageId={record.id}",
+        }
+        for record in items
+    ]
+
+
 def _contact_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
     ranked = apply_ranked_search(
         db.query(SalesContact)
@@ -230,6 +272,7 @@ def _opportunity_results(db: Session, *, tenant_id: int, query: str, limit: int,
 SEARCH_BUILDERS = {
     "tasks": _task_results,
     "calendar": _calendar_results,
+    "mail": _mail_results,
     "sales_contacts": _contact_results,
     "sales_organizations": _organization_results,
     "sales_opportunities": _opportunity_results,

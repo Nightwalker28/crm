@@ -2,6 +2,7 @@ from fastapi import APIRouter
 
 from app.modules.finance.routes.io_search_routes import router as io_search_router
 from app.modules.calendar.routes.calendar_routes import router as calendar_router
+from app.modules.mail.routes.mail_routes import router as mail_router
 from app.modules.platform.routes.activity_logs import router as activity_log_router
 from app.modules.platform.routes.custom_fields import router as custom_fields_router, public_router as public_custom_fields_router
 from app.modules.platform.routes.data_transfer_jobs import router as data_transfer_job_router
@@ -32,6 +33,7 @@ router.include_router(notifications_router)
 router.include_router(record_comments_router)
 router.include_router(recycle_bin_router)
 router.include_router(calendar_router)
+router.include_router(mail_router)
 router.include_router(io_search_router,  prefix="/finance",)
 router.include_router(sales_contacts_router, prefix="/sales")
 router.include_router(sales_organization_router, prefix="/sales")

@@ -26,6 +26,7 @@ DEFAULT_ROLES = [
 ]
 
 DEFAULT_MODULES = [
+    {"name": "mail", "base_route": "/dashboard/mail", "description": "Mailbox integration and CRM communication history"},
     {"name": "calendar", "base_route": "/dashboard/calendar", "description": "Shared user calendar and scheduling"},
     {"name": "tasks", "base_route": "/dashboard/tasks", "description": "Collaborative task management and assignment"},
     {"name": "finance_io", "base_route": "/dashboard/finance/insertion-orders", "description": "Finance insertion orders"},
@@ -113,6 +114,7 @@ def seed_initial_data(
             team.department_id = department.id
 
         module_ids: list[int] = []
+        module_names_by_id: dict[int, str] = {}
         for payload in DEFAULT_MODULES:
             module = db.query(Module).filter(Module.name == payload["name"]).first()
             if not module:
@@ -123,6 +125,7 @@ def seed_initial_data(
                 module.base_route = payload["base_route"]
                 module.description = payload["description"]
             module_ids.append(module.id)
+            module_names_by_id[module.id] = payload["name"]
 
         for module_id in module_ids:
             permission = (
@@ -172,6 +175,8 @@ def seed_initial_data(
                     permission = RoleModulePermission(role_id=role.id, module_id=module_id)
                 for key, value in template.items():
                     setattr(permission, key, value)
+                if module_names_by_id.get(module_id) == "mail" and role_name == "User":
+                    permission.can_edit = 1
                 db.add(permission)
 
         admin_role = roles_by_name["Admin"]

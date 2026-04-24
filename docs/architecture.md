@@ -134,6 +134,9 @@ This file captures the current intended technical patterns and constraints so ne
 ### Auth and Google Integration
 
 - Google OAuth should request only identity scopes unless a specific product workflow explicitly depends on broader scopes.
+- Mailbox provider access should use an explicit mail-connect workflow rather than being bundled into basic sign-in, so Gmail/Outlook scopes are only requested from users who opt into mailbox sync.
+- Google Calendar sync should prefer `calendar.app.created` so the app manages only its own CRM calendar instead of asking for broad access to all user calendars.
+- Gmail inbox read/sync requires restricted Google scopes and must remain behind an explicit environment flag plus verification plan; default Gmail mail integration should use send-only scope where possible.
 - If broader Google workflows are removed from the product, their scope requests, token persistence, and dependent service code should be removed rather than left partially dormant.
 - Manual-capable users created by admins should have a reliable password-setup flow:
   - admin user creation should generate a setup link

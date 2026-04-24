@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   CalendarDays,
+  Mail,
   LayoutGrid,
   UserRound,
   HandCoins,
@@ -83,6 +84,7 @@ export default function Sidebar() {
   const financeIoModule = moduleMap.get("finance_io");
   const tasksModule = moduleMap.get("tasks");
   const calendarModule = moduleMap.get("calendar");
+  const mailModule = moduleMap.get("mail");
   const contactsModule = moduleMap.get("sales_contacts");
   const organizationsModule = moduleMap.get("sales_organizations");
   const opportunitiesModule = moduleMap.get("sales_opportunities");
@@ -148,6 +150,12 @@ export default function Sidebar() {
               {calendarModule?.base_route ? (
                 <SidebarMenuItem href={calendarModule.base_route} icon={CalendarDays} collapsed={collapsed}>
                   Calendar
+                </SidebarMenuItem>
+              ) : null}
+
+              {mailModule?.base_route ? (
+                <SidebarMenuItem href={mailModule.base_route} icon={Mail} collapsed={collapsed}>
+                  Mail
                 </SidebarMenuItem>
               ) : null}
 

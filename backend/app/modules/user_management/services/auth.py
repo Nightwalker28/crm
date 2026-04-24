@@ -18,8 +18,7 @@ from app.core.tenancy import (
     get_google_redirect_uri_for_request,
 )
 from app.modules.calendar.services.calendar_services import (
-    GOOGLE_CALENDAR_EVENTS_SCOPE,
-    GOOGLE_CALENDAR_METADATA_SCOPE,
+    GOOGLE_CALENDAR_APP_CREATED_SCOPE,
     upsert_google_calendar_connection,
 )
 from app.modules.user_management.models import (
@@ -46,8 +45,7 @@ SCOPES = " ".join(
         "openid",
         "email",
         "profile",
-        GOOGLE_CALENDAR_EVENTS_SCOPE,
-        GOOGLE_CALENDAR_METADATA_SCOPE,
+        GOOGLE_CALENDAR_APP_CREATED_SCOPE,
     ]
 )
 

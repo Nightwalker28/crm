@@ -30,6 +30,7 @@ function clearAuthStorage() {
   if (typeof window === "undefined") return;
   sessionStorage.removeItem("lynk_user");
   sessionStorage.removeItem("lynk_modules");
+  sessionStorage.removeItem("lynk_modules:v2");
 }
 
 export function useSidebarUser() {

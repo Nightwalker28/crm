@@ -44,6 +44,7 @@ export function useModulesAdmin() {
       await queryClient.invalidateQueries({ queryKey: ["admin-modules"] });
       if (typeof window !== "undefined") {
         sessionStorage.removeItem("lynk_modules");
+        sessionStorage.removeItem("lynk_modules:v2");
       }
     },
   });

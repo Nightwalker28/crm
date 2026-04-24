@@ -16,6 +16,7 @@ from app.modules.user_management.models import Team, User
 from app.core.config import settings
 
 
+GOOGLE_CALENDAR_APP_CREATED_SCOPE = "https://www.googleapis.com/auth/calendar.app.created"
 GOOGLE_CALENDAR_EVENTS_SCOPE = "https://www.googleapis.com/auth/calendar.events"
 GOOGLE_CALENDAR_METADATA_SCOPE = "https://www.googleapis.com/auth/calendar.calendars"
 GOOGLE_CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
@@ -447,9 +448,9 @@ def _google_calendar_events_url(calendar_id: str) -> str:
 def _ensure_google_app_calendar(db: Session, connection: UserCalendarConnection) -> str | None:
     granted_scopes = set(connection.scopes or [])
     calendar_management_scopes = {
+        GOOGLE_CALENDAR_APP_CREATED_SCOPE,
         GOOGLE_CALENDAR_METADATA_SCOPE,
         "https://www.googleapis.com/auth/calendar",
-        "https://www.googleapis.com/auth/calendar.app.created",
     }
     if not granted_scopes.intersection(calendar_management_scopes):
         connection.status = "error"

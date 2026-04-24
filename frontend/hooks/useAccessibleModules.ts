@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
 
+const MODULE_CACHE_KEY = "lynk_modules:v2";
+const LEGACY_MODULE_CACHE_KEY = "lynk_modules";
+
 export type AccessibleModule = {
   id: number;
   name: string;
@@ -14,13 +17,14 @@ export type AccessibleModule = {
 
 function readCachedModules(): AccessibleModule[] {
   if (typeof window === "undefined") return [];
-  const raw = sessionStorage.getItem("lynk_modules");
+  sessionStorage.removeItem(LEGACY_MODULE_CACHE_KEY);
+  const raw = sessionStorage.getItem(MODULE_CACHE_KEY);
   if (!raw) return [];
   try {
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
   } catch {
-    sessionStorage.removeItem("lynk_modules");
+    sessionStorage.removeItem(MODULE_CACHE_KEY);
     return [];
   }
 }
@@ -44,7 +48,7 @@ export function useAccessibleModules() {
         const body = await res.json();
         if (cancelled) return;
         const next = Array.isArray(body) ? body : [];
-        sessionStorage.setItem("lynk_modules", JSON.stringify(next));
+        sessionStorage.setItem(MODULE_CACHE_KEY, JSON.stringify(next));
         setModules(next);
       } catch {
         if (cancelled) return;

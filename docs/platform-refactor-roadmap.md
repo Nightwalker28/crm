@@ -152,7 +152,9 @@ In progress:
 - Start the collaboration and integrations rollout with tasks as the first concrete platform primitive, treating tasks as a backend module with frontend feature-style entry points so assignment, notifications, reminders, and later mailbox/calendar automation can share one foundation.
 - The first task slice is now landed in code with backend module registration, tenant-aware task and assignee persistence, assignment notifications, a `/dashboard/tasks` frontend surface, sidebar/dashboard wiring, and browser notification bridging; the next collaboration slice now moves onto calendar foundations on top of that task baseline.
 - Tasks should support professional CRM-style priority and urgency states, assignment to self, users, teams, and later richer collaboration targets, with assignment events feeding both the existing in-app notification center and browser notification hooks.
-- Stage calendar integration immediately after the task foundation so due dates, scheduling, reminders, attendee sharing, and provider sync behavior can anchor to one task/collaboration model before mailbox automation joins the same slice.
+- The first calendar foundation is now landed with internal user calendars, invite/share behavior, task-to-calendar handoff, soft-delete support, and provider-aware Google sync groundwork; the active collaboration slice now moves into mailbox integration on top of the same model.
+- Start mailbox integration as a dedicated tenant-aware module with explicit provider mail connections, CRM-linked message records, and soft-delete/recovery behavior before adding live Gmail or Microsoft Graph sync.
+- Production-grade calendar and mailbox provider sync should move into the shared background-job architecture: immediate sync on write where possible, queued provider sync jobs, and periodic reconciliation rather than request-only sync.
 - Keep extending timezone-aware timestamp formatting across remaining UI surfaces that still render raw browser-local or server-default times.
 - Keep normalizing uploaded/local media URLs across all avatar/logo consumers so uploaded profile/company assets behave the same as remote images everywhere.
 - Expand the new notification center beyond data-transfer jobs into broader per-user operational notifications over time.
@@ -195,8 +197,8 @@ In progress:
 
 Next up:
 - Harden and verify the landed first task module slice end to end, then fill any remaining task lifecycle gaps before moving the collaboration roadmap onto calendar integration.
-- Build calendar integration on top of the task foundation so scheduling, attendee sharing, task-to-calendar handoff, and provider sync use the same collaboration data model instead of a disconnected side path.
-- Add mailbox integration and automation after tasks and calendar have established the shared collaboration/assignment model.
+- Add explicit mailbox provider connection flows for Google Gmail and Microsoft Graph mail after the mailbox data/API foundation is in place.
+- Add mailbox automation after messages can be synced safely, including CRM source-linking, task/event handoff, and permission-aware global search results.
 - Finish the dedicated saved-view management flow so module pages only need compact view switching.
 - Expand saved views over time to include richer per-module state beyond the current search, condition, status, and sort slices.
 - Add inline shared quick-filter UX on current module pages so users can apply multi-field conditions without leaving the module.

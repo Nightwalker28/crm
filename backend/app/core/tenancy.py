@@ -98,6 +98,21 @@ def get_google_redirect_uri_for_request(request: Request) -> str:
     return redirect_uri
 
 
+def get_microsoft_redirect_uri_for_request(request: Request) -> str:
+    redirect_uri = (settings.MICROSOFT_REDIRECT_URI or "").strip()
+    if not redirect_uri:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Microsoft redirect URI is not configured",
+        )
+    if "{host}" in redirect_uri or "{scheme}" in redirect_uri:
+        return redirect_uri.format(
+            host=request.headers.get("host", ""),
+            scheme=get_request_scheme(request),
+        )
+    return redirect_uri
+
+
 def get_or_create_single_tenant(db: Session) -> Tenant:
     tenant = (
         db.query(Tenant)
