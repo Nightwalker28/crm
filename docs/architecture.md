@@ -32,9 +32,9 @@ This file captures the current intended technical patterns and constraints so ne
 ### Permissions
 
 - Use module-level access checks and action-level permission checks at the route layer.
-- Separate module assignment from action permissions:
-  - team/module mapping should determine whether a team can access a module
-  - role/module permissions should determine what actions a role can perform inside an accessible module
+- Separate module availability from action permissions:
+  - tenant module configuration determines whether a module is enabled for that tenant at all
+  - role/module permissions determine whether a role can view a module and what actions it can perform inside that enabled module
 - Action permissions currently include:
   - `view`
   - `create`
@@ -43,11 +43,10 @@ This file captures the current intended technical patterns and constraints so ne
   - `restore`
   - `export`
   - `configure`
-- Module-level access currently exists as a broad gate and still has department-based legacy coupling.
+- Module-level access is a broad gate composed of tenant enablement and role `view` permission.
 - The transition direction is:
-  - admin-role users bypass module-assignment restrictions for enabled operational modules
-  - team-module permissions become the primary source of module assignment
-  - department-module permissions remain only as a compatibility fallback until the transition is complete
+  - admin-role users bypass role/module action restrictions for enabled operational modules
+  - tenant-disabled modules remain unavailable even to admin-role users
 - Action-level enforcement is partially rolled out and should be expanded rather than replaced.
 
 ### Soft Delete and Recovery
@@ -220,7 +219,7 @@ This file captures the current intended technical patterns and constraints so ne
 - Add a shared persisted background-job layer for large imports/exports and integrate it into the import/export workflow.
 - Ensure user timezone settings are honored in UI-facing time rendering.
 - Keep timezone-aware rendering as a shared platform concern instead of per-page formatting.
-- Complete the transition from department-based module assignment to team-based module assignment.
+- Keep module availability tenant-scoped while role permissions remain the source of truth for module access levels.
 - Remove unneeded Google Docs/Drive integration code if those product capabilities are no longer active.
 
 ## Things To Avoid

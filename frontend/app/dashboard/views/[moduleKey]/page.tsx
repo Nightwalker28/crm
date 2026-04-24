@@ -57,14 +57,6 @@ export default function ManageModuleViewPage() {
     isSaving,
   } = useSavedViews(moduleKey, safeDefinition.defaultConfig);
 
-  if (!definition) {
-    return (
-      <div className="mx-auto max-w-4xl">
-        <Card className="px-6 py-6 text-neutral-200">Unsupported module view.</Card>
-      </div>
-    );
-  }
-
   useEffect(() => {
     if (requestedViewId === "system-default" && selectedView?.is_system) {
       return;
@@ -75,11 +67,20 @@ export default function ManageModuleViewPage() {
   }, [requestedViewId, selectedView, selectedViewId, setSelectedViewId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setViewName(selectedView && !selectedView.is_system ? selectedView.name : "");
   }, [selectedView]);
 
-  const filterFields = definition.filterFields;
-  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : definition.defaultConfig.visible_columns;
+  if (!definition) {
+    return (
+      <div className="mx-auto max-w-4xl">
+        <Card className="px-6 py-6 text-neutral-200">Unsupported module view.</Card>
+      </div>
+    );
+  }
+
+  const filterFields = safeDefinition.filterFields;
+  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : safeDefinition.defaultConfig.visible_columns;
   async function handleSave() {
     if (!selectedView) return;
     if (selectedView.id == null) return;

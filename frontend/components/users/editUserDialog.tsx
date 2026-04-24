@@ -69,6 +69,7 @@ export default function EditUserDialog({
   const [status, setStatus] = useState<"active" | "inactive">(user.is_active);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRole(user.role_id);
     setTeam(user.team_id);
     setAuthMode(user.auth_mode ?? "manual_or_google");

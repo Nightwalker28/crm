@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Sparkles } from "lucide-react";
@@ -102,17 +102,19 @@ export default function CustomFieldsPage() {
     },
   });
 
-  useEffect(() => {
-    setDraft(emptyDraft);
-  }, [moduleKey]);
-
   return (
     <div className="flex flex-col gap-5 text-neutral-200">
       <PageHeader
         title="Custom Fields"
         description="Add configurable fields to existing modules without changing the protected core schema."
         actions={
-          <Select value={moduleKey} onValueChange={setModuleKey}>
+          <Select
+            value={moduleKey}
+            onValueChange={(nextModuleKey) => {
+              setModuleKey(nextModuleKey);
+              setDraft(emptyDraft);
+            }}
+          >
             <SelectTrigger className="w-72">
               <SelectValue />
             </SelectTrigger>

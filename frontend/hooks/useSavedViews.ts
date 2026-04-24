@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
@@ -121,19 +121,20 @@ export function useSavedViews(
     staleTime: 5 * 60_000,
   });
 
-  const views = query.data?.views ?? [];
+  const views = useMemo(() => query.data?.views ?? [], [query.data?.views]);
   const systemView = views.find((view) => view.is_system) ?? null;
 
-  const resolveViewId = (rawViewId: string) => {
+  const resolveViewId = useCallback((rawViewId: string) => {
     if (rawViewId === "system-default") {
       return systemView ? String(systemView.id) : "system-default";
     }
     return rawViewId;
-  };
+  }, [systemView]);
 
   useEffect(() => {
     if (!views.length) return;
     const defaultView = views.find((view) => view.is_default) ?? views[0];
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedViewId((current) => {
       const normalizedCurrent = resolveViewId(current);
       if (!normalizedCurrent) {
@@ -142,14 +143,14 @@ export function useSavedViews(
       const exists = views.some((view) => String(view.id ?? "system-default") === normalizedCurrent);
       return exists ? normalizedCurrent : String(defaultView.id ?? "system-default");
     });
-  }, [systemView, views]);
+  }, [resolveViewId, views]);
 
   const selectedView = useMemo(
     () => {
       const normalizedSelectedViewId = resolveViewId(selectedViewId);
       return views.find((view) => String(view.id ?? "system-default") === normalizedSelectedViewId) ?? views[0] ?? null;
     },
-    [selectedViewId, systemView, views],
+    [resolveViewId, selectedViewId, views],
   );
 
   useEffect(() => {
@@ -171,6 +172,7 @@ export function useSavedViews(
         return;
       }
       lastAppliedViewKeyRef.current = viewKey;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraftConfig((current) => (JSON.stringify(current) === JSON.stringify(nextConfig) ? current : nextConfig));
     }
   }, [defaultConfig.visible_columns, selectedView]);

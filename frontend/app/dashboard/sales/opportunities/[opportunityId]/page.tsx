@@ -225,6 +225,7 @@ export default function OpportunityDetailPage() {
     return () => {
       signal.cancelled = true;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.opportunityId]);
 
   async function handleSave() {

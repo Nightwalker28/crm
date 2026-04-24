@@ -63,6 +63,7 @@ export function useUserManagement() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setCurrentUserId(parseStoredUser(sessionStorage.getItem("lynk_user")));
   }, []);
 

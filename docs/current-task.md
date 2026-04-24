@@ -21,9 +21,10 @@ Execute the UI-audit CRM feature work as shared platform patterns across every a
 3. shared record notes/comments are now landed across contacts, organizations, and opportunities
 4. shared global search / command palette is now landed in the dashboard shell for cross-module CRM record lookup
 5. shared skeleton loading states and pagination/refetch polish are now landed across the main shared module surfaces
-6. current active slice: start the first mailbox integration foundation on top of the landed task/calendar collaboration baseline, including tenant-aware mail connections, soft-deletable message records, CRM source-linking, and provider-aware sync groundwork
-7. keep the tenant-isolation rollout moving underneath that UI work, especially for shared admin/config/activity/notification data
-8. keep platform docs aligned so the active frontend roadmap, architecture rules, and implementation scope stay in sync
+6. current active slice: pause mailbox feature expansion because Google mailbox scopes need a separate verification plan, then clear the current lint blockers
+7. next implementation slice: keep tenant-specific module configuration simple so admins can enable or disable whole modules, while role/action permissions handle access levels
+8. keep the tenant-isolation rollout moving underneath that admin/config work, especially for shared module availability data
+9. keep platform docs aligned so the active frontend roadmap, architecture rules, and implementation scope stay in sync
 
 ## Immediate Notes
 
@@ -43,10 +44,12 @@ Execute the UI-audit CRM feature work as shared platform patterns across every a
 - The first end-to-end tasks slice is now in the codebase with a backend `tasks` module, `/dashboard/tasks`, assignment to users and teams, in-app notifications, and browser-notification bridging; the next collaboration slice now shifts onto calendar foundations on top of that task baseline.
 - Calendar should start as a real tenant-aware collaboration module with one internal calendar per user, optional sharing/invite paths for users and teams, and source-linking back to tasks and future module events instead of being a disconnected side feature.
 - Calendar sync should be modeled as provider-aware account linkage so the current Google auth path can drive sync where available, future Microsoft / Entra auth can plug into the same shape, and manual-login users simply stay on the internal calendar until they connect an external provider later.
-- Mailbox integration is now the active collaboration slice after the first calendar foundation: it should use explicit provider mail connections rather than silently adding Gmail/Outlook scopes to basic sign-in, keep message records tenant/user scoped, and soft-delete mail records into recovery flows instead of hard deleting.
+- Mailbox integration is parked after the first foundation because Google mailbox scopes need a separate verification/compliance plan before product work continues.
 - Each user should be able to connect their own Google Gmail or Microsoft Outlook inbox through the mail module. Google uses the existing Google OAuth client, while Microsoft requires Entra app settings before the Microsoft Graph mail flow can complete.
 - Gmail read/reply-from-inbox features require restricted Google scopes; default Google mail should avoid inbox sync and use send-only scope unless restricted-scope verification is intentionally planned. Microsoft Graph can support delegated read/send with least-privilege `Mail.Read` and `Mail.Send`.
 - Production-grade calendar and mail sync should move toward the shared background-job architecture: immediate sync on user writes where possible, queued provider sync work, and periodic reconciliation jobs instead of relying only on interactive requests.
+- Module enablement must be tenant-specific: one tenant can disable a whole module, such as finance insertion orders, without disabling that module for another tenant.
+- Module access levels should be handled from Roles & Permissions; the Modules page should stay focused on tenant-wide enable/disable and module defaults.
 - Auth and host-based tenant resolution are already in place; the remaining backend work is still row ownership and query scoping across existing modules.
 - Single-tenant mode still needs to work without extra tenant setup, so the default tenant bootstrap path must stay intact.
 - Timezone handling should remain: store normalized values, render in the user timezone by default, and document that as a platform rule instead of repeating it per feature.

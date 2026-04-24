@@ -107,6 +107,7 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
 
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setForm(
       opportunity
         ? {

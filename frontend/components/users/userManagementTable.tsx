@@ -459,6 +459,7 @@ export function UserManagementTable({
       selectedRoles: initialFilters?.selectedRoles ?? [],
       selectedStatuses: initialFilters?.selectedStatuses ?? [],
     };
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setFilters((current) => (filtersEqual(current, nextFilters) ? current : nextFilters));
     setSortKey((current) => (current === initialSortKey ? current : initialSortKey));
     setSortDirection((current) => (current === initialSortDirection ? current : initialSortDirection));

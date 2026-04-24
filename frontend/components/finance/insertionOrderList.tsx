@@ -1,4 +1,5 @@
 import { Fragment } from "react";
+import Image from "next/image";
 import type { InsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import {
   Table,
@@ -118,9 +119,12 @@ export default function InsertionOrdersList({
           <TableCell>
             <div className="flex items-center gap-2">
               {order.photo_url ? (
-                <img
+                <Image
                   src={resolveMediaUrl(order.photo_url)}
                   alt={order.user_name ?? ""}
+                  width={24}
+                  height={24}
+                  unoptimized
                   className="h-6 w-6 rounded-full object-cover shrink-0"
                 />
               ) : null}

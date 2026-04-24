@@ -6,11 +6,9 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.modules.user_management.models import (
-    DepartmentModulePermission,
     Module,
     Role,
     RoleModulePermission,
-    TeamModulePermission,
     Team,
     User,
 )
@@ -67,32 +65,18 @@ def user_has_module_assignment(
     if role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL:
         return is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
 
-    team_id = get_user_team_id(user)
-    if team_id:
-        team_assignment = (
-            db.query(TeamModulePermission.id)
-            .filter(
-                TeamModulePermission.team_id == team_id,
-                TeamModulePermission.module_id == module.id,
-            )
-            .first()
-        )
-        if team_assignment:
-            return True
-
-    department_id = get_user_department_id(db, user)
-    if not department_id:
+    if not user.role_id:
         return False
 
-    department_assignment = (
-        db.query(DepartmentModulePermission.id)
+    permission = (
+        db.query(RoleModulePermission)
         .filter(
-            DepartmentModulePermission.department_id == department_id,
-            DepartmentModulePermission.module_id == module.id,
+            RoleModulePermission.role_id == user.role_id,
+            RoleModulePermission.module_id == module.id,
         )
         .first()
     )
-    return department_assignment is not None
+    return bool(permission and permission.can_view)
 
 
 def require_department_module_access(

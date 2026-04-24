@@ -64,6 +64,7 @@ export default function CreateContactModal({
   const customFieldsQuery = useModuleCustomFields("sales_contacts", isOpen);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (isOpen) setCustomFieldValues({});
   }, [isOpen]);
 

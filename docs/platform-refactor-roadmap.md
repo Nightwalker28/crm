@@ -18,6 +18,7 @@ Current phase:
 - Phase 9 in progress: collaboration and integrations foundation with tasks first, then calendar and mailbox connectivity
 
 Completed items:
+- Cleared the current frontend lint blockers and simplified tenant module administration: Modules now exposes tenant-specific enablement and module defaults only, while role/module permissions remain the source of truth for user access levels and enabled modules are blocked at both navigation and API gates.
 - Finished the shared export rebuild across contacts, organizations, opportunities, and insertion orders: the shared export dialog now sends active view filters into one background-job contract, “all records” exports now mean the current filtered dataset instead of an unfiltered module dump, current-page and selected-row modes stay aligned across modules, and export summaries now report real exported row counts.
 - Closed the current backend tenant-isolation rollout across the existing route and service surface by finishing the remaining worker-path and linked-record checks: background import/export jobs now resolve their actors and exported datasets inside the job tenant, finance linked-contact and linked-organization resolution stays inside the current tenant, contact assignment validation no longer accepts cross-tenant users, opportunity attachment and finance-handoff helpers are tenant-scoped, and custom-field definitions and values now have database-level tenant uniqueness.
 - Enforced database-level uniqueness for tenant company profiles and per-user table preferences, and tightened admin-user role/team joins so shared platform/profile state cannot quietly drift across tenants through duplicate singleton rows or loose relation joins.
@@ -152,13 +153,13 @@ In progress:
 - Start the collaboration and integrations rollout with tasks as the first concrete platform primitive, treating tasks as a backend module with frontend feature-style entry points so assignment, notifications, reminders, and later mailbox/calendar automation can share one foundation.
 - The first task slice is now landed in code with backend module registration, tenant-aware task and assignee persistence, assignment notifications, a `/dashboard/tasks` frontend surface, sidebar/dashboard wiring, and browser notification bridging; the next collaboration slice now moves onto calendar foundations on top of that task baseline.
 - Tasks should support professional CRM-style priority and urgency states, assignment to self, users, teams, and later richer collaboration targets, with assignment events feeding both the existing in-app notification center and browser notification hooks.
-- The first calendar foundation is now landed with internal user calendars, invite/share behavior, task-to-calendar handoff, soft-delete support, and provider-aware Google sync groundwork; the active collaboration slice now moves into mailbox integration on top of the same model.
-- Start mailbox integration as a dedicated tenant-aware module with explicit provider mail connections, CRM-linked message records, and soft-delete/recovery behavior before adding live Gmail or Microsoft Graph sync.
+- The first calendar foundation is now landed with internal user calendars, invite/share behavior, task-to-calendar handoff, soft-delete support, and provider-aware Google sync groundwork; mailbox integration is parked until Google mailbox scope verification/compliance is intentionally planned.
+- Keep the first mailbox integration foundation parked as a dedicated tenant-aware module with explicit provider mail connections, CRM-linked message records, and soft-delete/recovery behavior before adding more live Gmail or Microsoft Graph product depth.
 - Production-grade calendar and mailbox provider sync should move into the shared background-job architecture: immediate sync on write where possible, queued provider sync jobs, and periodic reconciliation rather than request-only sync.
 - Keep extending timezone-aware timestamp formatting across remaining UI surfaces that still render raw browser-local or server-default times.
 - Keep normalizing uploaded/local media URLs across all avatar/logo consumers so uploaded profile/company assets behave the same as remote images everywhere.
 - Expand the new notification center beyond data-transfer jobs into broader per-user operational notifications over time.
-- Start replacing department-based module assignment with team-based module assignment while keeping department access only as a compatibility fallback during transition.
+- Continue hardening tenant module enablement while keeping user access levels inside Roles & Permissions.
 - Replace one-off table preferences with saved module views over time.
 - Add richer dashboard-view configurability so users can control visible columns and presentation order more flexibly.
 - Extend dashboard-view configurability beyond column reordering into richer per-view presentation settings where useful.
@@ -220,7 +221,7 @@ Deferred items:
 - User-created modules stay deferred until the shared module utility layer and relational custom-field architecture are stable enough to support them safely.
 
 Risks and migration notes:
-- Auth and module-access logic is still in a transitional state until team-based module assignment fully replaces the department gate.
+- Auth and module-access logic now separates tenant module enablement from role action permissions; remaining risk is route-by-route action-permission coverage.
 - The finance cleanup has already removed the original campaign-centric compatibility path; future finance work should assume the generic insertion-order model is the only supported contract.
 - The platform-wide tenant/company model is not implemented in this increment yet, so this remains phaseable rather than complete.
 - Hosted cloud mode now has a backend auth foundation, but the rest of the business tables are not tenant-scoped yet, so this is not full SaaS isolation yet.

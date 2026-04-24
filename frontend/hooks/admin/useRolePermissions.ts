@@ -63,6 +63,7 @@ export function useRolePermissions() {
 
   useEffect(() => {
     if (selectedRoleId == null && overviewQuery.data?.roles?.length) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedRoleId(overviewQuery.data.roles[0].id);
     }
   }, [overviewQuery.data, selectedRoleId]);

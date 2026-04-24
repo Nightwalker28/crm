@@ -11,11 +11,15 @@ export default function ModulesPage() {
   const { modules, isLoading, updateModule, isSaving } = useModulesAdmin();
 
   return (
-    <div className="max-w-5xl mx-auto flex flex-col gap-6">
+    <div className="mx-auto flex max-w-5xl flex-col gap-6">
       <PageHeader
         title="Modules"
-        description="Enable or disable product modules globally. Disabled modules disappear from user navigation and accessible module lists."
+        description="Enable or disable modules for this tenant. Role-level access is managed from Roles & Permissions."
       />
+
+      <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-3 text-sm text-neutral-400">
+        Disabled modules disappear from navigation and are blocked at the API level for everyone in this tenant.
+      </div>
 
       <ModuleTableShell>
         <Table className="min-w-[1100px]">
@@ -36,9 +40,12 @@ export default function ModulesPage() {
             ) : (
               modules.map((module) => (
                 <TableRow key={module.id}>
-                  <TableCell>{module.name}</TableCell>
-                  <TableCell>{module.base_route || "-"}</TableCell>
-                  <TableCell>{module.description || "-"}</TableCell>
+                  <TableCell>
+                    <div className="font-medium text-neutral-100">{module.name}</div>
+                    {!module.is_enabled ? <div className="mt-1 text-xs text-red-300">Disabled for this tenant</div> : null}
+                  </TableCell>
+                  <TableCell className="text-neutral-400">{module.base_route || "-"}</TableCell>
+                  <TableCell className="max-w-sm text-neutral-400">{module.description || "-"}</TableCell>
                   <TableCell>
                     <Select
                       value={module.import_duplicate_mode}

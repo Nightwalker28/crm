@@ -143,6 +143,7 @@ export default function ContactDetailPage() {
     return () => {
       signal.cancelled = true;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.contactId]);
 
   async function handleSave() {

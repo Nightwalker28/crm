@@ -25,8 +25,7 @@ from app.modules.user_management.models import (
     Module,
     RefreshToken,
     Tenant,
-    Team,
-    TeamModulePermission,
+    RoleModulePermission,
     User,
     UserAuthMode,
     UserSetupToken,
@@ -422,19 +421,20 @@ def authenticate_manual_user(
 
 
 # -------------------------------------------------------------------
-# MODULE ACCESS 
+# MODULE ACCESS
 # -------------------------------------------------------------------
 
-def get_team_modules(team_id: int | None, *, tenant_id: int, db: Session) -> list[Module]:
-    if not team_id:
+def get_role_visible_modules(role_id: int | None, *, db: Session) -> list[Module]:
+    if not role_id:
         return []
 
     return (
         db.query(Module)
-        .join(TeamModulePermission, TeamModulePermission.module_id == Module.id)
-        .join(Team, Team.id == TeamModulePermission.team_id)
-        .filter(TeamModulePermission.team_id == team_id)
-        .filter(Team.id == team_id, Team.tenant_id == tenant_id)
+        .join(RoleModulePermission, RoleModulePermission.module_id == Module.id)
+        .filter(
+            RoleModulePermission.role_id == role_id,
+            RoleModulePermission.can_view == 1,
+        )
         .order_by(Module.name.asc())
         .all()
     )
@@ -454,34 +454,9 @@ def get_user_accessible_modules(user: User, db: Session):
             if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
         ]
 
-    if user.team_id:
-        team_modules = get_team_modules(user.team_id, tenant_id=user.tenant_id, db=db)
-        if team_modules:
-            return [
-                build_module_schema(module, None).model_copy(update={"is_enabled": True})
-                for module in team_modules
-                if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
-            ]
-
-        department_id = (
-            db.query(Team.department_id)
-            .filter(Team.id == user.team_id, Team.tenant_id == user.tenant_id)
-            .scalar()
-        )
-        if department_id:
-            from app.modules.user_management.models import DepartmentModulePermission
-
-            modules = (
-                db.query(Module)
-                .join(DepartmentModulePermission, DepartmentModulePermission.module_id == Module.id)
-                .filter(DepartmentModulePermission.department_id == department_id)
-                .order_by(Module.name.asc())
-                .all()
-            )
-            return [
-                build_module_schema(module, None).model_copy(update={"is_enabled": True})
-                for module in modules
-                if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
-            ]
-
-    return []
+    visible_modules = get_role_visible_modules(user.role_id, db=db)
+    return [
+        build_module_schema(module, None).model_copy(update={"is_enabled": True})
+        for module in visible_modules
+        if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
+    ]

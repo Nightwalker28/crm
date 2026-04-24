@@ -154,6 +154,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
 
   useEffect(() => {
     if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setForm(toFormState(order));
       setCustomFieldValues(order?.custom_fields ?? {});
       setError(null);

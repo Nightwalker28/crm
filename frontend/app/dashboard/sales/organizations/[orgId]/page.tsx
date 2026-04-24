@@ -164,6 +164,7 @@ export default function OrganizationDetailPage() {
     return () => {
       signal.cancelled = true;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.orgId]);
 
   async function handleSave() {
