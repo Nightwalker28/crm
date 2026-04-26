@@ -34,6 +34,12 @@ def _validate_request_tenant(request: Request, payload: dict) -> int:
 
     return user_id
 
+
+def _revoke_refresh_token(db: Session, refresh_token_id: int) -> None:
+    db.query(RefreshToken).filter(RefreshToken.id == refresh_token_id).delete()
+    db.commit()
+
+
 def get_current_user(
     request: Request,
     db: Session = Depends(get_db),
@@ -109,9 +115,10 @@ def get_current_user(
 
         user = db.query(User).filter(User.id == user_id).first()
         if not user or user.is_active != UserStatus.active:
+            _revoke_refresh_token(db, db_token.id)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Inactive or missing user",
+                detail="Inactive account" if user else "Inactive or missing user",
             )
         request_tenant = getattr(request.state, "tenant", None)
         if request_tenant and user.tenant_id != request_tenant.id:

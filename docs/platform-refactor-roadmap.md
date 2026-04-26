@@ -18,7 +18,7 @@ Current phase:
 - Phase 9 in progress: collaboration and integrations foundation with tasks first, then calendar and mailbox connectivity
 
 Completed items:
-- Cleared the current frontend lint blockers and simplified tenant module administration: Modules now exposes tenant-specific enablement and module defaults only, while role/module permissions remain the source of truth for user access levels and enabled modules are blocked at both navigation and API gates.
+- Cleared the current frontend lint blockers and expanded tenant module administration: Modules now exposes tenant-specific enablement, module defaults, and department/team module availability, while role/module permissions remain the source of truth for action levels inside modules and disabled/unassigned modules are blocked at both navigation and API gates.
 - Finished the shared export rebuild across contacts, organizations, opportunities, and insertion orders: the shared export dialog now sends active view filters into one background-job contract, “all records” exports now mean the current filtered dataset instead of an unfiltered module dump, current-page and selected-row modes stay aligned across modules, and export summaries now report real exported row counts.
 - Closed the current backend tenant-isolation rollout across the existing route and service surface by finishing the remaining worker-path and linked-record checks: background import/export jobs now resolve their actors and exported datasets inside the job tenant, finance linked-contact and linked-organization resolution stays inside the current tenant, contact assignment validation no longer accepts cross-tenant users, opportunity attachment and finance-handoff helpers are tenant-scoped, and custom-field definitions and values now have database-level tenant uniqueness.
 - Enforced database-level uniqueness for tenant company profiles and per-user table preferences, and tightened admin-user role/team joins so shared platform/profile state cannot quietly drift across tenants through duplicate singleton rows or loose relation joins.
@@ -159,7 +159,7 @@ In progress:
 - Keep extending timezone-aware timestamp formatting across remaining UI surfaces that still render raw browser-local or server-default times.
 - Keep normalizing uploaded/local media URLs across all avatar/logo consumers so uploaded profile/company assets behave the same as remote images everywhere.
 - Expand the new notification center beyond data-transfer jobs into broader per-user operational notifications over time.
-- Continue hardening tenant module enablement while keeping user access levels inside Roles & Permissions.
+- Continue hardening tenant module enablement plus department/team module availability while keeping per-action access levels inside Roles & Permissions.
 - Replace one-off table preferences with saved module views over time.
 - Add richer dashboard-view configurability so users can control visible columns and presentation order more flexibly.
 - Extend dashboard-view configurability beyond column reordering into richer per-view presentation settings where useful.

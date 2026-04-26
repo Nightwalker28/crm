@@ -8,6 +8,8 @@ from app.core.pagination import Pagination, get_pagination
 from app.modules.user_management.schema import (
     AdminCreateUserRequest,
     AdminCreateUserResponse,
+    ModuleAccessSchema,
+    ModuleAccessUpdateRequest,
     ModuleSchema,
     ModuleUpdateRequest,
     DepartmentCreateRequest,
@@ -138,6 +140,25 @@ def update_module(
     admin = Depends(require_admin),
 ):
     return admin_modules.update_module(db, module_id, payload, tenant_id=admin.tenant_id)
+
+
+@router.get("/modules/{module_id}/access", response_model=ModuleAccessSchema)
+def get_module_access(
+    module_id: int,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return admin_modules.get_module_access(db, module_id, tenant_id=admin.tenant_id)
+
+
+@router.put("/modules/{module_id}/access", response_model=ModuleAccessSchema)
+def update_module_access(
+    module_id: int,
+    payload: ModuleAccessUpdateRequest,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return admin_modules.update_module_access(db, module_id, payload, tenant_id=admin.tenant_id)
 
 
 @router.get("/roles/permissions", response_model=RolePermissionOverviewResponse)

@@ -23,6 +23,8 @@ class UserProfile(BaseModel):
     role_id: Optional[int]
     team_name: Optional[str] = None
     role_name: Optional[str] = None
+    role_level: Optional[int] = None
+    is_admin: bool = False
     photo_url: Optional[str]
     phone_number: Optional[str] = None
     job_title: Optional[str] = None
@@ -194,6 +196,33 @@ class ModuleUpdateRequest(BaseModel):
     description: str | None = None
     is_enabled: bool | None = None
     import_duplicate_mode: str | None = None
+
+
+class ModuleAccessDepartmentOption(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    has_access: bool = False
+
+
+class ModuleAccessTeamOption(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+    department_id: Optional[int] = None
+    department_name: Optional[str] = None
+    has_access: bool = False
+
+
+class ModuleAccessSchema(BaseModel):
+    module: ModuleSchema
+    departments: list[ModuleAccessDepartmentOption]
+    teams: list[ModuleAccessTeamOption]
+
+
+class ModuleAccessUpdateRequest(BaseModel):
+    department_ids: list[int] = []
+    team_ids: list[int] = []
 
 class AuthResponse(BaseModel):
     status: str

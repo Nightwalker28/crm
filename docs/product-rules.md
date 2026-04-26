@@ -15,10 +15,11 @@ This file captures stable business and UX rules for the platform. These should b
 - Important write actions should be logged in the activity/audit system.
 - Permissions should be enforceable per action, not only per module.
 - Core records and core fields should be protected from destructive user customization.
-- Role permissions and module availability should be separate concerns.
+- Role permissions, tenant-wide module enablement, and team/department module availability should be separate concerns.
 - Module enablement should be tenant-specific so one tenant can disable a whole module without affecting another tenant.
-- Module access levels should be controlled by role/module action permissions.
-- Admin-role users should have full access to enabled operational modules, but disabled tenant modules should remain unavailable.
+- Enabled modules can be restricted to specific departments and teams from the admin Modules area.
+- Module action levels should be controlled by role/module action permissions after tenant/team/department availability allows the module to open.
+- Admin-role users should have full access to enabled operational modules for their tenant, but disabled tenant modules should remain unavailable.
 
 ## UI and UX Rules
 

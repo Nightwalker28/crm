@@ -6,10 +6,15 @@ import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 
 type UserProfile = {
+  id?: number;
   email?: string;
   first_name?: string;
   last_name?: string;
   photo_url?: string;
+  role_id?: number | null;
+  role_name?: string | null;
+  role_level?: number | null;
+  is_admin?: boolean;
 };
 
 function safeReadCachedUser(): UserProfile | null {
@@ -37,6 +42,8 @@ export function useSidebarUser() {
   const router = useRouter();
   const [user, setUser] = useState<UserProfile | null>(null);
   const [hydrated, setHydrated] = useState(false);
+  const [verified, setVerified] = useState(false);
+  const needsFreshUser = hydrated && !verified;
 
   useEffect(() => {
     setUser(safeReadCachedUser());
@@ -44,7 +51,7 @@ export function useSidebarUser() {
   }, []);
 
   useEffect(() => {
-    if (!hydrated || user) return;
+    if (!needsFreshUser) return;
 
     let cancelled = false;
 
@@ -58,6 +65,7 @@ export function useSidebarUser() {
 
         sessionStorage.setItem("lynk_user", JSON.stringify(me));
         setUser(me);
+        setVerified(true);
       } catch {
         if (cancelled) return;
         clearAuthStorage();
@@ -68,7 +76,7 @@ export function useSidebarUser() {
     return () => {
       cancelled = true;
     };
-  }, [hydrated, router, user]);
+  }, [needsFreshUser, router]);
 
   async function logout() {
     await apiFetch("/auth/logout", {
@@ -76,11 +84,14 @@ export function useSidebarUser() {
     });
 
     sessionStorage.clear();
+    setVerified(false);
     router.push("/auth/login");
   }
 
   return {
     user,
+    isLoading: !hydrated || needsFreshUser,
+    isAdmin: verified && Boolean(user?.is_admin),
     logout,
   };
 }

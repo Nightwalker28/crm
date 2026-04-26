@@ -84,26 +84,34 @@ export default function DashboardHomePage() {
     () => [
       {
         label: "Accessible modules",
-        value: String(modules.length),
+        value: isModulesLoading ? "..." : String(modules.length),
         helper: "Enabled and available from your current access scope",
       },
       {
         label: "Unread notifications",
-        value: String(unreadCount),
+        value: isNotificationsLoading ? "..." : String(unreadCount),
         helper: "Background jobs and operational events needing attention",
       },
       {
         label: "Recent activity items",
-        value: String(activityQuery.data?.results.length ?? 0),
+        value: activityQuery.isLoading ? "..." : String(activityQuery.data?.results.length ?? 0),
         helper: "Latest platform writes visible in the audit stream",
       },
       {
         label: "Quick actions",
-        value: String(quickActions.length),
+        value: isModulesLoading ? "..." : String(quickActions.length),
         helper: "Fast entry points into the most common operational flows",
       },
     ],
-    [activityQuery.data?.results.length, modules.length, quickActions.length, unreadCount],
+    [
+      activityQuery.data?.results.length,
+      activityQuery.isLoading,
+      isModulesLoading,
+      isNotificationsLoading,
+      modules.length,
+      quickActions.length,
+      unreadCount,
+    ],
   );
 
   return (

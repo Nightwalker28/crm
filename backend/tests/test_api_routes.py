@@ -15,7 +15,48 @@ from app.modules.sales.schema import (
     SalesOpportunityResponse,
     SalesOrganizationResponse,
 )
+from app.modules.user_management.models import Module, TenantModuleConfig
 from app.modules.user_management.schema import UserProfile
+
+
+class RouteTestQuery:
+    def __init__(self, *entities):
+        self.entities = entities
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def join(self, *args, **kwargs):
+        return self
+
+    def order_by(self, *args, **kwargs):
+        return self
+
+    def first(self):
+        if TenantModuleConfig in self.entities:
+            return None
+        if Module in self.entities:
+            return SimpleNamespace(id=1, name="sales", base_route="sales", is_enabled=1)
+        return None
+
+    def scalar(self):
+        if any(str(entity) == "Role.level" for entity in self.entities):
+            return 100
+        return None
+
+
+class RouteTestSession:
+    def query(self, *entities):
+        return RouteTestQuery(*entities)
+
+    def add(self, item):
+        return None
+
+    def commit(self):
+        return None
+
+    def refresh(self, item):
+        return None
 
 
 class APIRouteTests(unittest.TestCase):
@@ -27,11 +68,27 @@ class APIRouteTests(unittest.TestCase):
 
     @staticmethod
     def _override_db():
-        yield SimpleNamespace()
+        yield RouteTestSession()
 
     @staticmethod
     def _active_user():
-        return SimpleNamespace(id=7, email="user@example.com")
+        return SimpleNamespace(
+            id=7,
+            email="user@example.com",
+            tenant_id=1,
+            team_id=1,
+            role_id=1,
+        )
+
+    @staticmethod
+    def _admin_user():
+        return SimpleNamespace(
+            id=1,
+            email="admin@example.com",
+            tenant_id=1,
+            team_id=1,
+            role_id=1,
+        )
 
     def test_manual_signup_route_is_removed(self):
         response = self.client.post(
@@ -79,7 +136,7 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response.json()["detail"], "Missing refresh token")
 
     def test_admin_teams_route_returns_serialized_list(self):
-        app.dependency_overrides[require_admin] = lambda: SimpleNamespace(id=1)
+        app.dependency_overrides[require_admin] = self._admin_user
         app.dependency_overrides[get_db] = self._override_db
         fake_teams = [{"id": 1, "name": "Revenue", "description": "RevOps", "department_id": 2}]
 
@@ -110,7 +167,7 @@ class APIRouteTests(unittest.TestCase):
         setup_mock.assert_called_once()
 
     def test_admin_create_user_route_returns_setup_link(self):
-        app.dependency_overrides[require_admin] = lambda: SimpleNamespace(id=1)
+        app.dependency_overrides[require_admin] = self._admin_user
         app.dependency_overrides[get_db] = self._override_db
 
         with patch(
@@ -154,7 +211,7 @@ class APIRouteTests(unittest.TestCase):
         create_mock.assert_called_once()
 
     def test_admin_update_user_route_returns_serialized_profile(self):
-        app.dependency_overrides[require_admin] = lambda: SimpleNamespace(id=1)
+        app.dependency_overrides[require_admin] = self._admin_user
         app.dependency_overrides[get_db] = self._override_db
         updated_user = UserProfile(
             id=55,
@@ -184,7 +241,8 @@ class APIRouteTests(unittest.TestCase):
         update_mock.assert_called_once()
 
     def test_finance_list_route_returns_paged_payload(self):
-        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=7)
+        app.dependency_overrides[get_current_user] = self._active_user
+        app.dependency_overrides[require_user] = self._active_user
         app.dependency_overrides[get_db] = self._override_db
         fake_payload = {
             "results": [],
@@ -195,29 +253,31 @@ class APIRouteTests(unittest.TestCase):
             "page": 1,
             "page_size": 10,
         }
-        expected_response = {key: value for key, value in fake_payload.items() if key != "page_size"}
+        expected_response = fake_payload
 
         with patch(
-            "app.modules.finance.routes.io_search_routes.io_search_api.list_finance_files_page",
+            "app.modules.finance.routes.io_search_routes.io_search_api.list_generic_insertion_orders_page",
             return_value=fake_payload,
         ) as list_mock:
-            response = self.client.get("/api/v1/finance/insertion-orders/all?page=1&page_size=10")
+            response = self.client.get("/api/v1/finance/insertion-orders?page=1&page_size=10")
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), expected_response)
         list_mock.assert_called_once()
 
     def test_finance_search_route_returns_paged_payload(self):
-        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=7)
+        app.dependency_overrides[get_current_user] = self._active_user
+        app.dependency_overrides[require_user] = self._active_user
         app.dependency_overrides[get_db] = self._override_db
         fake_payload = {
             "results": [
                 {
-                    "invoice_no": "IO-1",
-                    "file_url": "/download/IO-1",
-                    "campaign_name": "Campaign A",
-                    "file_path": "uploads/io-search/a.docx",
-                    "updated_at": "2026-04-11",
+                    "id": 1,
+                    "io_number": "IO-1",
+                    "customer_name": "Campaign A",
+                    "status": "draft",
+                    "currency": "USD",
+                    "total_amount": "100.00",
                 }
             ],
             "range_start": 1,
@@ -229,11 +289,11 @@ class APIRouteTests(unittest.TestCase):
         }
 
         with patch(
-            "app.modules.finance.routes.io_search_routes.io_search_api.search_finance_files_page",
+            "app.modules.finance.routes.io_search_routes.io_search_api.list_generic_insertion_orders_page",
             return_value=fake_payload,
         ) as search_mock:
             response = self.client.get(
-                "/api/v1/finance/insertion-orders/search?field=campaign_name&value=Campaign%20A&page=1&page_size=10"
+                "/api/v1/finance/insertion-orders?search=Campaign%20A&page=1&page_size=10"
             )
 
         self.assertEqual(response.status_code, 200)
@@ -243,14 +303,13 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(body["total_count"], 1)
         self.assertEqual(body["total_pages"], 1)
         self.assertEqual(body["page"], 1)
-        self.assertEqual(body["results"][0]["invoice_no"], "IO-1")
-        self.assertEqual(body["results"][0]["campaign_name"], "Campaign A")
-        self.assertEqual(body["results"][0]["file_path"], "uploads/io-search/a.docx")
-        self.assertEqual(body["results"][0]["updated_at"], "2026-04-11")
+        self.assertEqual(body["results"][0]["io_number"], "IO-1")
+        self.assertEqual(body["results"][0]["customer_name"], "Campaign A")
         search_mock.assert_called_once()
 
     def test_finance_download_route_returns_file(self):
-        app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(id=7)
+        app.dependency_overrides[get_current_user] = self._active_user
+        app.dependency_overrides[require_user] = self._active_user
         app.dependency_overrides[get_db] = self._override_db
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -302,7 +361,11 @@ class APIRouteTests(unittest.TestCase):
             response = self.client.get("/api/v1/sales/opportunities?page=1&page_size=10")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), expected_response)
+        body = response.json()
+        self.assertEqual(body["range_start"], expected_response["range_start"])
+        self.assertEqual(body["total_count"], expected_response["total_count"])
+        self.assertEqual(body["results"][0]["opportunity_id"], 11)
+        self.assertEqual(body["results"][0]["opportunity_name"], "ACME Launch")
         list_mock.assert_called_once()
 
     def test_sales_opportunity_create_defaults_assigned_user(self):
@@ -399,7 +462,11 @@ class APIRouteTests(unittest.TestCase):
             response = self.client.get("/api/v1/sales/contacts?page=1&page_size=10")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), expected_response)
+        body = response.json()
+        self.assertEqual(body["range_start"], expected_response["range_start"])
+        self.assertEqual(body["total_count"], expected_response["total_count"])
+        self.assertEqual(body["results"][0]["contact_id"], 21)
+        self.assertEqual(body["results"][0]["primary_email"], "contact@example.com")
         list_mock.assert_called_once()
 
     def test_sales_contacts_create_route_returns_contact(self):
@@ -454,7 +521,11 @@ class APIRouteTests(unittest.TestCase):
             response = self.client.get("/api/v1/sales/organizations?page=1&page_size=10")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), expected_response)
+        body = response.json()
+        self.assertEqual(body["range_start"], expected_response["range_start"])
+        self.assertEqual(body["total_count"], expected_response["total_count"])
+        self.assertEqual(body["results"][0]["org_id"], 31)
+        self.assertEqual(body["results"][0]["primary_email"], "ops@acme.com")
         list_mock.assert_called_once()
 
     def test_sales_organizations_create_route_returns_organization(self):

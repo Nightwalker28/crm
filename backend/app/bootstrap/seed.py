@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import func, text
+from sqlalchemy import func
 
 from app.core.database import SessionLocal
 from app.core.passwords import hash_password
@@ -44,28 +44,6 @@ DEFAULT_ROLE_TEMPLATE_ACTIONS = {
 }
 
 
-def _sync_pk_sequence(db, table_name: str, sequence_name: str) -> None:
-    max_id = db.execute(text(f"SELECT COALESCE(MAX(id), 0) FROM {table_name}")).scalar()
-    if max_id is None:
-        max_id = 0
-    db.execute(text("SELECT setval(:sequence_name, :value, :is_called)"), {
-        "sequence_name": sequence_name,
-        "value": max(max_id, 1),
-        "is_called": max_id > 0,
-    })
-
-
-def _sync_named_pk_sequence(db, table_name: str, pk_name: str, sequence_name: str) -> None:
-    max_id = db.execute(text(f"SELECT COALESCE(MAX({pk_name}), 0) FROM {table_name}")).scalar()
-    if max_id is None:
-        max_id = 0
-    db.execute(text("SELECT setval(:sequence_name, :value, :is_called)"), {
-        "sequence_name": sequence_name,
-        "value": max(max_id, 1),
-        "is_called": max_id > 0,
-    })
-
-
 def seed_initial_data(
     *,
     admin_email: str | None,
@@ -81,14 +59,6 @@ def seed_initial_data(
     db = SessionLocal()
     try:
         tenant = get_or_create_single_tenant(db)
-        _sync_pk_sequence(db, "roles", "roles_id_seq")
-        _sync_pk_sequence(db, "departments", "departments_id_seq")
-        _sync_pk_sequence(db, "teams", "teams_id_seq")
-        _sync_pk_sequence(db, "users", "users_id_seq")
-        _sync_pk_sequence(db, "modules", "modules_id_seq")
-        _sync_pk_sequence(db, "department_module_permissions", "department_module_permissions_id_seq")
-        _sync_pk_sequence(db, "team_module_permissions", "team_module_permissions_id_seq")
-        _sync_pk_sequence(db, "role_module_permissions", "role_module_permissions_id_seq")
 
         roles_by_name: dict[str, Role] = {}
         for payload in DEFAULT_ROLES:

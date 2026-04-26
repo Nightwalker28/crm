@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from app.modules.user_management.models import UserAuthMode, UserStatus
+from app.modules.user_management.models import Role, Team, User, UserAuthMode, UserStatus
 from app.modules.user_management.services import admin_users
 
 
@@ -35,6 +35,8 @@ class FakeDB:
         return self.query_builder(model)
 
     def add(self, _value):
+        if isinstance(_value, User) and _value.id is None:
+            _value.id = 99
         return None
 
     def commit(self):
@@ -58,7 +60,7 @@ class CreateUserTests(unittest.TestCase):
         )
 
         with self.assertRaises(HTTPException) as exc:
-            admin_users.create_user(db, payload)
+            admin_users.create_user(db, payload, tenant_id=1)
 
         self.assertEqual(exc.exception.status_code, 404)
         self.assertEqual(exc.exception.detail, "Role not found")
@@ -77,7 +79,7 @@ class CreateUserTests(unittest.TestCase):
         )
 
         with self.assertRaises(HTTPException) as exc:
-            admin_users.create_user(db, payload)
+            admin_users.create_user(db, payload, tenant_id=1)
 
         self.assertEqual(exc.exception.status_code, 404)
         self.assertEqual(exc.exception.detail, "Team not found")
@@ -89,7 +91,7 @@ class CreateUserTests(unittest.TestCase):
         payload = SimpleNamespace(model_dump=lambda exclude_unset=True: {"is_active": UserStatus.pending})
 
         with self.assertRaises(HTTPException) as exc:
-            admin_users.update_user(db, user_id=1, payload=payload)
+            admin_users.update_user(db, user_id=1, payload=payload, tenant_id=1)
 
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "Pending status is no longer supported")
@@ -110,10 +112,48 @@ class CreateUserTests(unittest.TestCase):
             "app.modules.user_management.services.admin_users.create_user_setup_link",
             return_value="http://localhost:3000/auth/setup-password?token=abc",
         ):
-            response = admin_users.create_user(db, payload)
+            response = admin_users.create_user(db, payload, tenant_id=1)
 
         self.assertTrue(db.committed)
         self.assertEqual(response.setup_link, "http://localhost:3000/auth/setup-password?token=abc")
+
+
+class UserSerializationTests(unittest.TestCase):
+    def test_serialize_user_profiles_uses_model_relationship_properties_once(self):
+        user = User(
+            id=1,
+            tenant_id=1,
+            email="ops@example.com",
+            team_id=2,
+            role_id=3,
+            photo_url=None,
+            auth_mode=UserAuthMode.manual_only,
+            is_active=UserStatus.active,
+        )
+        user.team = Team(id=2, tenant_id=1, name="Operations")
+        user.role = Role(id=3, tenant_id=1, name="Superuser", level=90)
+
+        [profile] = admin_users._serialize_user_profiles([user])
+
+        self.assertEqual(profile.team_name, "Operations")
+        self.assertEqual(profile.role_name, "Superuser")
+
+    def test_serialize_user_profiles_uses_unassigned_fallback_properties(self):
+        user = User(
+            id=1,
+            tenant_id=1,
+            email="unassigned@example.com",
+            team_id=None,
+            role_id=None,
+            photo_url=None,
+            auth_mode=UserAuthMode.manual_only,
+            is_active=UserStatus.active,
+        )
+
+        [profile] = admin_users._serialize_user_profiles([user])
+
+        self.assertEqual(profile.team_name, "Unassigned")
+        self.assertEqual(profile.role_name, "Unassigned")
 
 
 if __name__ == "__main__":

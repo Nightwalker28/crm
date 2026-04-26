@@ -8,7 +8,7 @@ from typing import Literal
 
 from fastapi import HTTPException, Request, status
 from jose import jwt, JWTError
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -31,7 +31,7 @@ from app.modules.user_management.models import (
     UserSetupToken,
     UserStatus,
 )
-from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, get_user_role_level
+from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, get_user_role_level, user_has_module_assignment
 from app.modules.user_management.services.admin_modules import is_module_enabled_for_tenant
 from app.modules.user_management.services.admin_modules import build_module_schema
 
@@ -47,6 +47,12 @@ SCOPES = " ".join(
         GOOGLE_CALENDAR_APP_CREATED_SCOPE,
     ]
 )
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 # -------------------------------------------------------------------
@@ -290,6 +296,8 @@ def create_user_setup_link(
     *,
     frontend_origin: str | None = None,
 ) -> str:
+    _cleanup_stale_user_setup_tokens(db)
+
     raw_token = secrets.token_urlsafe(32)
     token_hash = _hash_setup_token(raw_token)
     expires_at = datetime.now(timezone.utc) + timedelta(
@@ -315,6 +323,22 @@ def create_user_setup_link(
     return f"{base_origin}/auth/setup-password?{token_query}"
 
 
+def _cleanup_stale_user_setup_tokens(db: Session) -> int:
+    retention_days = max(settings.USER_SETUP_TOKEN_RETENTION_DAYS, 1)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+
+    return (
+        db.query(UserSetupToken)
+        .filter(
+            or_(
+                UserSetupToken.consumed_at < cutoff,
+                UserSetupToken.expires_at < cutoff,
+            )
+        )
+        .delete(synchronize_session=False)
+    )
+
+
 def set_initial_password(db: Session, *, token: str, password: str) -> User:
     validate_password_strength(password)
 
@@ -334,9 +358,7 @@ def set_initial_password(db: Session, *, token: str, password: str) -> User:
             detail="Setup link is invalid or has already been used",
         )
 
-    expires_at = db_token.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    expires_at = _as_utc(db_token.expires_at)
 
     if expires_at <= datetime.now(timezone.utc):
         raise HTTPException(
@@ -459,4 +481,5 @@ def get_user_accessible_modules(user: User, db: Session):
         build_module_schema(module, None).model_copy(update={"is_enabled": True})
         for module in visible_modules
         if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
+        and user_has_module_assignment(db, user=user, module=module)
     ]

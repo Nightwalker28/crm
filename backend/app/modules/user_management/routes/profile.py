@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, get_user_role_level
 from app.core.security import get_current_user, require_admin, require_user
 from app.modules.user_management.schema import (
     CompanyProfileResponse,
@@ -37,8 +38,15 @@ from app.modules.user_management.services.profile import (
 router = APIRouter(tags=["Users"])
 
 @router.get("/me", response_model=UserProfile)
-def get_me(current_user = Depends(require_user)):
-    return current_user
+def get_me(
+    current_user = Depends(require_user),
+    db: Session = Depends(get_db),
+):
+    role_level = get_user_role_level(db, current_user)
+    profile = UserProfile.model_validate(current_user).model_dump()
+    profile["role_level"] = role_level
+    profile["is_admin"] = bool(role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL)
+    return profile
 
 
 @router.put("/me", response_model=UserProfile)

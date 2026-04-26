@@ -58,7 +58,7 @@ function getSidebarCollapsedSnapshot() {
 }
 
 export default function Sidebar() {
-  const { user, logout } = useSidebarUser();
+  const { user, isAdmin, logout } = useSidebarUser();
   const { modules } = useAccessibleModules();
   const collapsed = useSyncExternalStore(
     subscribeToSidebarCollapse,
@@ -159,32 +159,34 @@ export default function Sidebar() {
                 </SidebarMenuItem>
               ) : null}
 
-              <SidebarMenuItemCollapsible icon={UserRound} label="Admin" collapsed={collapsed}>
-                <SidebarMenuItemChild href="/dashboard/users" collapsed={collapsed}>
-                  Users
-                </SidebarMenuItemChild>
-                <SidebarMenuItemChild href="/dashboard/user/teams" collapsed={collapsed}>
-                  Teams & Departments
-                </SidebarMenuItemChild>
-                <SidebarMenuItemChild href="/dashboard/company" collapsed={collapsed}>
-                  Company
-                </SidebarMenuItemChild>
-                <SidebarMenuItemChild href="/dashboard/roles-permissions" collapsed={collapsed}>
-                  Roles & Permissions
-                </SidebarMenuItemChild>
-                <SidebarMenuItemChild href="/dashboard/custom-fields" collapsed={collapsed}>
-                  Custom Fields
-                </SidebarMenuItemChild>
-                <SidebarMenuItemChild href="/dashboard/modules" collapsed={collapsed}>
-                  Modules
-                </SidebarMenuItemChild>
-                <SidebarMenuItemChild href="/dashboard/recycle-bin" collapsed={collapsed}>
-                  Recycle Bin
-                </SidebarMenuItemChild>
-                <SidebarMenuItemChild href="/dashboard/activity-log" collapsed={collapsed}>
-                  Activity Log
-                </SidebarMenuItemChild>
-              </SidebarMenuItemCollapsible>
+              {isAdmin ? (
+                <SidebarMenuItemCollapsible icon={UserRound} label="Admin" collapsed={collapsed}>
+                  <SidebarMenuItemChild href="/dashboard/users" collapsed={collapsed}>
+                    Users
+                  </SidebarMenuItemChild>
+                  <SidebarMenuItemChild href="/dashboard/user/teams" collapsed={collapsed}>
+                    Teams & Departments
+                  </SidebarMenuItemChild>
+                  <SidebarMenuItemChild href="/dashboard/company" collapsed={collapsed}>
+                    Company
+                  </SidebarMenuItemChild>
+                  <SidebarMenuItemChild href="/dashboard/roles-permissions" collapsed={collapsed}>
+                    Roles & Permissions
+                  </SidebarMenuItemChild>
+                  <SidebarMenuItemChild href="/dashboard/custom-fields" collapsed={collapsed}>
+                    Custom Fields
+                  </SidebarMenuItemChild>
+                  <SidebarMenuItemChild href="/dashboard/modules" collapsed={collapsed}>
+                    Modules
+                  </SidebarMenuItemChild>
+                  <SidebarMenuItemChild href="/dashboard/recycle-bin" collapsed={collapsed}>
+                    Recycle Bin
+                  </SidebarMenuItemChild>
+                  <SidebarMenuItemChild href="/dashboard/activity-log" collapsed={collapsed}>
+                    Activity Log
+                  </SidebarMenuItemChild>
+                </SidebarMenuItemCollapsible>
+              ) : null}
 
               {financeIoModule?.base_route ? (
                 <SidebarMenuItemCollapsible icon={HandCoins} label="Finance" collapsed={collapsed}>

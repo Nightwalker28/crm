@@ -6,10 +6,12 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.modules.user_management.models import (
+    DepartmentModulePermission,
     Module,
     Role,
     RoleModulePermission,
     Team,
+    TeamModulePermission,
     User,
 )
 from app.modules.user_management.services.admin_modules import is_module_enabled_for_tenant
@@ -31,11 +33,11 @@ def get_user_department_id(db: Session, user: User | None) -> int | None:
     if not user or not getattr(user, "team_id", None):
         return None
 
-    return (
-        db.query(Team.department_id)
-        .filter(Team.id == user.team_id, Team.tenant_id == user.tenant_id)
-        .scalar()
-    )
+    query = db.query(Team.department_id).filter(Team.id == user.team_id)
+    tenant_id = getattr(user, "tenant_id", None)
+    if tenant_id is not None:
+        query = query.filter(Team.tenant_id == tenant_id)
+    return query.scalar()
 
 
 def get_user_team_id(user: User | None) -> int | None:
@@ -65,18 +67,53 @@ def user_has_module_assignment(
     if role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL:
         return is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
 
-    if not user.role_id:
+    role_id = getattr(user, "role_id", None)
+    if not role_id:
         return False
 
-    permission = (
+    role_permission = (
         db.query(RoleModulePermission)
         .filter(
-            RoleModulePermission.role_id == user.role_id,
+            RoleModulePermission.role_id == role_id,
             RoleModulePermission.module_id == module.id,
         )
         .first()
     )
-    return bool(permission and permission.can_view)
+    if not bool(role_permission and role_permission.can_view):
+        return False
+
+    team_id = get_user_team_id(user)
+    department_id = get_user_department_id(db, user)
+    if not team_id and not department_id:
+        return False
+
+    if team_id:
+        team_permission = (
+            db.query(TeamModulePermission)
+            .join(Team, Team.id == TeamModulePermission.team_id)
+            .filter(
+                Team.tenant_id == user.tenant_id,
+                TeamModulePermission.team_id == team_id,
+                TeamModulePermission.module_id == module.id,
+            )
+            .first()
+        )
+        if team_permission:
+            return True
+
+    if department_id:
+        department_permission = (
+            db.query(DepartmentModulePermission)
+            .filter(
+                DepartmentModulePermission.department_id == department_id,
+                DepartmentModulePermission.module_id == module.id,
+            )
+            .first()
+        )
+        if department_permission:
+            return True
+
+    return False
 
 
 def require_department_module_access(
@@ -156,12 +193,13 @@ def get_finance_user_scope(db: Session, user: User | None) -> UserDepartmentScop
 
 
 def get_user_role_level(db: Session, user: User | None) -> int | None:
-    if not user or not user.role_id:
+    role_id = getattr(user, "role_id", None)
+    if not user or not role_id:
         return None
 
     return (
         db.query(Role.level)
-        .filter(Role.id == user.role_id, Role.tenant_id == user.tenant_id)
+        .filter(Role.id == role_id, Role.tenant_id == user.tenant_id)
         .scalar()
     )
 

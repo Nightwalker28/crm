@@ -19,6 +19,17 @@ from app.modules.user_management.schema import (
 from app.modules.user_management.services.auth import create_user_setup_link
 
 
+USER_FILTER_FIELD_MAP = {
+    "first_name": {"expression": User.first_name, "type": "text"},
+    "last_name": {"expression": User.last_name, "type": "text"},
+    "email": {"expression": User.email, "type": "text"},
+    "team_name": {"expression": Team.name, "type": "text"},
+    "role_name": {"expression": Role.name, "type": "text"},
+    "auth_mode": {"expression": User.auth_mode, "type": "text"},
+    "is_active": {"expression": User.is_active, "type": "text"},
+}
+
+
 def list_all_users(db: Session, *, tenant_id: int, pagination: Pagination):
     query = (
         db.query(User)
@@ -38,7 +49,7 @@ def list_all_users(db: Session, *, tenant_id: int, pagination: Pagination):
 
     total_count = query.count()
     items = query.offset(pagination.offset).limit(pagination.limit).all()
-    serialized = _serialize_user_profiles(items, unassigned_label)
+    serialized = _serialize_user_profiles(items)
     return build_paged_response(serialized, total_count, pagination)
 
 
@@ -98,29 +109,13 @@ def search_users(
         query,
         conditions=all_filter_conditions,
         logic="all",
-        field_map={
-            "first_name": {"expression": User.first_name, "type": "text"},
-            "last_name": {"expression": User.last_name, "type": "text"},
-            "email": {"expression": User.email, "type": "text"},
-            "team_name": {"expression": Team.name, "type": "text"},
-            "role_name": {"expression": Role.name, "type": "text"},
-            "auth_mode": {"expression": User.auth_mode, "type": "text"},
-            "is_active": {"expression": User.is_active, "type": "text"},
-        },
+        field_map=USER_FILTER_FIELD_MAP,
     )
     query = apply_filter_conditions(
         query,
         conditions=any_filter_conditions,
         logic="any",
-        field_map={
-            "first_name": {"expression": User.first_name, "type": "text"},
-            "last_name": {"expression": User.last_name, "type": "text"},
-            "email": {"expression": User.email, "type": "text"},
-            "team_name": {"expression": Team.name, "type": "text"},
-            "role_name": {"expression": Role.name, "type": "text"},
-            "auth_mode": {"expression": User.auth_mode, "type": "text"},
-            "is_active": {"expression": User.is_active, "type": "text"},
-        },
+        field_map=USER_FILTER_FIELD_MAP,
     )
 
     team_sort = func.coalesce(Team.name, unassigned_label)
@@ -148,7 +143,7 @@ def search_users(
 
     total_count = query.count()
     items = query.offset(pagination.offset).limit(pagination.limit).all()
-    serialized = _serialize_user_profiles(items, unassigned_label)
+    serialized = _serialize_user_profiles(items)
     return build_paged_response(serialized, total_count, pagination)
 
 
@@ -249,17 +244,8 @@ def update_user(db: Session, user_id: int, payload: UpdateUserRequest, *, tenant
     db.refresh(user)
     return user
 
-def _serialize_user_profiles(users: list[User], unassigned_label: str):
-    serialized = []
-    for user in users:
-        profile = UserProfile.model_validate(user)
-        if not profile.team_name:
-            profile.team_name = unassigned_label
-        if not profile.role_name:
-            profile.role_name = "Unassigned"
-        serialized.append(profile)
-
-    return serialized
+def _serialize_user_profiles(users: list[User]):
+    return [UserProfile.model_validate(user) for user in users]
 
 
 def _get_role_or_404(db: Session, role_id: int, *, tenant_id: int) -> Role:

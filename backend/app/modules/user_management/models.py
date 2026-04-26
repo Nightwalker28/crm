@@ -1,5 +1,4 @@
 import enum
-import uuid
 from sqlalchemy import (
     Column,
     BigInteger,
@@ -23,7 +22,7 @@ class RefreshToken(Base):
     id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     token_jti = Column(String(64), unique=True, index=True, nullable=False)
-    expires_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class UserStatus(enum.Enum):
@@ -220,12 +219,12 @@ class User(Base):
     )
 
     @property
-    def team_name(self) -> str | None:
-        return self.team.name if self.team else None
+    def team_name(self) -> str:
+        return self.team.name if self.team else "Unassigned"
 
     @property
-    def role_name(self) -> str | None:
-        return self.role.name if self.role else None
+    def role_name(self) -> str:
+        return self.role.name if self.role else "Unassigned"
 
 
 class Module(Base):
@@ -355,10 +354,10 @@ class RoleModulePermission(Base):
 class UserSetupToken(Base):
     __tablename__ = "user_setup_tokens"
 
-    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     token_hash = Column(String(64), nullable=False, unique=True, index=True)
-    expires_at = Column(DateTime, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
     consumed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 

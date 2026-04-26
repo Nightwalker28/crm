@@ -34,7 +34,8 @@ This file captures the current intended technical patterns and constraints so ne
 - Use module-level access checks and action-level permission checks at the route layer.
 - Separate module availability from action permissions:
   - tenant module configuration determines whether a module is enabled for that tenant at all
-  - role/module permissions determine whether a role can view a module and what actions it can perform inside that enabled module
+  - department/team module permissions determine which org units can open that enabled module
+  - role/module permissions determine what actions a role can perform inside a module the user is allowed to open
 - Action permissions currently include:
   - `view`
   - `create`
@@ -43,9 +44,9 @@ This file captures the current intended technical patterns and constraints so ne
   - `restore`
   - `export`
   - `configure`
-- Module-level access is a broad gate composed of tenant enablement and role `view` permission.
+- Module-level access is a broad gate composed of tenant enablement, department/team assignment, and role `view` permission.
 - The transition direction is:
-  - admin-role users bypass role/module action restrictions for enabled operational modules
+  - admin-role users bypass role/module and department/team restrictions for enabled operational modules in their tenant
   - tenant-disabled modules remain unavailable even to admin-role users
 - Action-level enforcement is partially rolled out and should be expanded rather than replaced.
 
@@ -140,6 +141,7 @@ This file captures the current intended technical patterns and constraints so ne
 - Manual-capable users created by admins should have a reliable password-setup flow:
   - admin user creation should generate a setup link
   - manual sign-in for an account without a password should return a setup-required response, not a dead-end generic failure
+- Consumed and long-expired password setup tokens should be removed by a bounded retention cleanup so token history does not grow forever while current setup-link invalidation stays immediate.
 
 ### Finance / IO
 

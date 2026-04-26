@@ -110,7 +110,7 @@ function DepartmentDialog({
                 onChange={(event) => onChange({ ...form, description: event.target.value })}
                 placeholder="Optional description"
               />
-              <FieldDescription>Departments control which modules teams can access.</FieldDescription>
+              <FieldDescription>Departments organize teams for assignment and can be selected for module access from Modules.</FieldDescription>
             </Field>
           </FieldGroup>
 
@@ -188,7 +188,7 @@ function TeamDialog({
                 onChange={(event) => onChange({ ...form, description: event.target.value })}
                 placeholder="Optional description"
               />
-              <FieldDescription>Teams carry module access; department linkage remains a compatibility/defaulting layer while team-based access is rolled out.</FieldDescription>
+              <FieldDescription>Teams place users in the org structure and can be selected for module access from Modules.</FieldDescription>
             </Field>
           </FieldGroup>
 
@@ -275,7 +275,7 @@ export default function TeamsAndDepartmentsPage() {
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
         title="Teams & Departments"
-        description="Manage the org structure that drives user assignment and module access."
+        description="Manage the org structure used for user assignment, ownership, reporting, and module access targeting."
       />
 
       {error && (
@@ -289,7 +289,7 @@ export default function TeamsAndDepartmentsPage() {
           <SectionHeader
             icon={Building2}
             title="Departments"
-            description="Departments act as the permission boundary for modules."
+            description="Departments group teams and can be granted module availability from Modules."
             actionLabel="Create Department"
             onAction={openCreateDepartment}
           />
@@ -321,7 +321,7 @@ export default function TeamsAndDepartmentsPage() {
           <SectionHeader
             icon={UsersRound}
             title="Teams"
-            description="Teams place users inside departments and determine module access."
+            description="Teams place users inside departments and can be granted module availability from Modules."
             actionLabel="Create Team"
             onAction={openCreateTeam}
           />

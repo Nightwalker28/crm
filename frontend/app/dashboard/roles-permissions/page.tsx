@@ -104,7 +104,7 @@ export default function RolesPermissionsPage() {
               {selectedRole ? `${selectedRole.name} Permissions` : "Role Permissions"}
             </h2>
             <p className="mt-1 text-sm text-neutral-500">
-              One unified permission matrix per role. Team/module assignment controls which modules a team can open; these action flags control what each role can do inside those modules.
+              One unified permission matrix per role. Modules controls tenant, department, and team availability; these action flags control what each role can do inside available modules.
             </p>
           </div>
 

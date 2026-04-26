@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 
 const MODULE_CACHE_KEY = "lynk_modules:v2";
-const LEGACY_MODULE_CACHE_KEY = "lynk_modules";
 
 export type AccessibleModule = {
   id: number;
@@ -15,29 +14,14 @@ export type AccessibleModule = {
   is_enabled: boolean;
 };
 
-function readCachedModules(): AccessibleModule[] {
-  if (typeof window === "undefined") return [];
-  sessionStorage.removeItem(LEGACY_MODULE_CACHE_KEY);
-  const raw = sessionStorage.getItem(MODULE_CACHE_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    sessionStorage.removeItem(MODULE_CACHE_KEY);
-    return [];
-  }
-}
-
 export function useAccessibleModules() {
   const [modules, setModules] = useState<AccessibleModule[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const cached = readCachedModules();
-    if (cached.length) {
-      setModules(cached);
-      setIsLoading(false);
+    if (typeof window !== "undefined") {
+      sessionStorage.removeItem("lynk_modules");
+      sessionStorage.removeItem(MODULE_CACHE_KEY);
     }
 
     let cancelled = false;

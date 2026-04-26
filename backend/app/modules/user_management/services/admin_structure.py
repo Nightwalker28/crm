@@ -1,5 +1,4 @@
 from fastapi import HTTPException, status
-from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.modules.user_management.models import Department, DepartmentModulePermission, Team, TeamModulePermission, User
@@ -11,44 +10,48 @@ from app.modules.user_management.schema import (
 )
 
 
-def _sync_pk_sequence(db: Session, model, sequence_name: str) -> None:
-    """Ensure Postgres sequence is at least the current max(id) for the model."""
-    max_id = db.query(func.coalesce(func.max(model.id), 0)).scalar()
-    seq_state = db.execute(text(f"SELECT last_value, is_called FROM {sequence_name}")).first()
-
-    if not seq_state:
-        return
-
-    current_value = seq_state.last_value if seq_state.is_called else 0
-
-    if max_id == 0 and current_value == 0:
-        db.execute(text(f"SELECT setval('{sequence_name}', 1, false)"))
-    elif max_id >= current_value:
-        db.execute(text(f"SELECT setval('{sequence_name}', :value, true)"), {"value": max_id})
-
-
 def _sync_team_module_permissions_from_department(db: Session, team: Team) -> None:
-    if not team.department_id:
-        db.query(TeamModulePermission).filter(TeamModulePermission.team_id == team.id).delete()
-        return
+    desired_module_ids: set[int] = set()
+    if team.department_id:
+        desired_module_ids = {
+            module_id
+            for (module_id,) in (
+                db.query(DepartmentModulePermission.module_id)
+                .filter(DepartmentModulePermission.department_id == team.department_id)
+                .all()
+            )
+        }
 
-    department_module_ids = [
-        module_id
-        for (module_id,) in (
-            db.query(DepartmentModulePermission.module_id)
-            .filter(DepartmentModulePermission.department_id == team.department_id)
-            .all()
+    existing_permissions = (
+        db.query(TeamModulePermission)
+        .filter(TeamModulePermission.team_id == team.id)
+        .all()
+    )
+    existing_by_module_id: dict[int, TeamModulePermission] = {}
+    permission_ids_to_delete: list[int] = []
+    for permission in existing_permissions:
+        if permission.module_id in existing_by_module_id:
+            permission_ids_to_delete.append(permission.id)
+            continue
+        existing_by_module_id[permission.module_id] = permission
+
+    for module_id, permission in existing_by_module_id.items():
+        if module_id not in desired_module_ids:
+            permission_ids_to_delete.append(permission.id)
+
+    if permission_ids_to_delete:
+        (
+            db.query(TeamModulePermission)
+            .filter(TeamModulePermission.id.in_(permission_ids_to_delete))
+            .delete(synchronize_session=False)
         )
-    ]
 
-    db.query(TeamModulePermission).filter(TeamModulePermission.team_id == team.id).delete()
-    for module_id in department_module_ids:
+    existing_module_ids = set(existing_by_module_id)
+    for module_id in desired_module_ids - existing_module_ids:
         db.add(TeamModulePermission(team_id=team.id, module_id=module_id))
 
 
 def create_department(db: Session, payload: DepartmentCreateRequest, *, tenant_id: int) -> Department:
-    _sync_pk_sequence(db, Department, "departments_id_seq")
-
     existing_department = db.query(Department).filter(Department.tenant_id == tenant_id, Department.name == payload.name).first()
     if existing_department:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Department already exists")
@@ -105,8 +108,6 @@ def delete_department(db: Session, department_id: int, *, tenant_id: int) -> Non
 
 
 def create_team(db: Session, payload: TeamCreateRequest, *, tenant_id: int) -> Team:
-    _sync_pk_sequence(db, Team, "teams_id_seq")
-
     department = db.query(Department).filter(Department.id == payload.department_id, Department.tenant_id == tenant_id).first()
     if not department:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Department not found")
@@ -117,7 +118,7 @@ def create_team(db: Session, payload: TeamCreateRequest, *, tenant_id: int) -> T
 
     team = Team(tenant_id=tenant_id, **payload.model_dump())
     db.add(team)
-    db.commit()
+    db.flush()
     _sync_team_module_permissions_from_department(db, team)
     db.commit()
     db.refresh(team)
@@ -153,10 +154,9 @@ def update_team(db: Session, team_id: int, payload: TeamUpdateRequest, *, tenant
         setattr(team, field, value)
 
     db.add(team)
-    db.commit()
     if "department_id" in update_data:
         _sync_team_module_permissions_from_department(db, team)
-        db.commit()
+    db.commit()
     db.refresh(team)
     return team
 

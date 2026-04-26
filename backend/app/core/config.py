@@ -45,6 +45,9 @@ class Settings:
     USER_SETUP_TOKEN_EXPIRE_HOURS: int = int(
         os.getenv("USER_SETUP_TOKEN_EXPIRE_HOURS", "72")
     )
+    USER_SETUP_TOKEN_RETENTION_DAYS: int = int(
+        os.getenv("USER_SETUP_TOKEN_RETENTION_DAYS", "30")
+    )
 
     # -------------------------
     # Cookie configuration

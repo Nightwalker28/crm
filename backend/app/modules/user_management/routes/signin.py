@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.tenancy import get_frontend_origin_for_request, is_cloud_mode_enabled
-from app.modules.user_management.models import RefreshToken, User
+from app.modules.user_management.models import RefreshToken, User, UserStatus
 from app.modules.mail.services.mail_services import (
     decode_mail_oauth_state,
     handle_google_mail_callback,
@@ -319,14 +319,25 @@ def refresh_access_token(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
 
     now = datetime.now(timezone.utc)
-    if db_row.expires_at.replace(tzinfo=timezone.utc) <= now:
+    expires_at = db_row.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    else:
+        expires_at = expires_at.astimezone(timezone.utc)
+
+    if expires_at <= now:
         db.query(RefreshToken).filter(RefreshToken.id == db_row.id).delete()
         db.commit()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired")
 
     user = db.query(User).filter(User.id == int(user_id)).first()
-    if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+    if not user or user.is_active != UserStatus.active:
+        db.query(RefreshToken).filter(RefreshToken.id == db_row.id).delete()
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Inactive account" if user else "User not found",
+        )
 
     access_token = create_access_token(user)
     response = JSONResponse(

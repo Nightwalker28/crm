@@ -22,7 +22,7 @@ Execute the UI-audit CRM feature work as shared platform patterns across every a
 4. shared global search / command palette is now landed in the dashboard shell for cross-module CRM record lookup
 5. shared skeleton loading states and pagination/refetch polish are now landed across the main shared module surfaces
 6. current active slice: pause mailbox feature expansion because Google mailbox scopes need a separate verification plan, then clear the current lint blockers
-7. next implementation slice: keep tenant-specific module configuration simple so admins can enable or disable whole modules, while role/action permissions handle access levels
+7. current implementation slice: expand tenant-specific module configuration so admins can enable/disable whole modules and define which departments/teams can open enabled modules, while role/action permissions handle per-action access inside allowed modules
 8. keep the tenant-isolation rollout moving underneath that admin/config work, especially for shared module availability data
 9. keep platform docs aligned so the active frontend roadmap, architecture rules, and implementation scope stay in sync
 
@@ -49,7 +49,7 @@ Execute the UI-audit CRM feature work as shared platform patterns across every a
 - Gmail read/reply-from-inbox features require restricted Google scopes; default Google mail should avoid inbox sync and use send-only scope unless restricted-scope verification is intentionally planned. Microsoft Graph can support delegated read/send with least-privilege `Mail.Read` and `Mail.Send`.
 - Production-grade calendar and mail sync should move toward the shared background-job architecture: immediate sync on user writes where possible, queued provider sync work, and periodic reconciliation jobs instead of relying only on interactive requests.
 - Module enablement must be tenant-specific: one tenant can disable a whole module, such as finance insertion orders, without disabling that module for another tenant.
-- Module access levels should be handled from Roles & Permissions; the Modules page should stay focused on tenant-wide enable/disable and module defaults.
+- Module availability must combine tenant-wide enablement with department/team module access. Roles & Permissions still handle action-level capabilities inside modules a user is allowed to open.
 - Auth and host-based tenant resolution are already in place; the remaining backend work is still row ownership and query scoping across existing modules.
 - Single-tenant mode still needs to work without extra tenant setup, so the default tenant bootstrap path must stay intact.
 - Timezone handling should remain: store normalized values, render in the user timezone by default, and document that as a platform rule instead of repeating it per feature.
