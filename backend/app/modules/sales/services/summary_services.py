@@ -103,13 +103,6 @@ def _get_related_insertion_orders(
 
 
 def build_contact_summary(db: Session, contact: SalesContact) -> dict:
-    contact = hydrate_custom_field_record(
-        db,
-        tenant_id=contact.tenant_id,
-        module_key="sales_contacts",
-        record=contact,
-        record_id=contact.contact_id,
-    )
     organization = None
     if contact.organization_id:
         organization = (
@@ -167,13 +160,6 @@ def build_contact_summary(db: Session, contact: SalesContact) -> dict:
 
 
 def build_organization_summary(db: Session, organization: SalesOrganization) -> dict:
-    organization = hydrate_custom_field_record(
-        db,
-        tenant_id=organization.tenant_id,
-        module_key="sales_organizations",
-        record=organization,
-        record_id=organization.org_id,
-    )
     contacts = (
         db.query(SalesContact)
         .filter(
@@ -225,14 +211,6 @@ def build_organization_summary(db: Session, organization: SalesOrganization) -> 
 
 
 def build_opportunity_summary(db: Session, opportunity: SalesOpportunity) -> dict:
-    opportunity = hydrate_custom_field_record(
-        db,
-        tenant_id=opportunity.tenant_id,
-        module_key="sales_opportunities",
-        record=opportunity,
-        record_id=opportunity.opportunity_id,
-    )
-
     contact = None
     if opportunity.contact_id:
         contact = (

@@ -3,6 +3,7 @@ from datetime import datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
@@ -244,19 +245,23 @@ def create_sales_contact(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="primary_email is required")
 
     normalized_name = _normalize_name(data.get("first_name"), data.get("last_name"))
+    duplicate_filters = [
+        func.lower(SalesContact.primary_email) == _normalize_email(email),
+    ]
+    if normalized_name:
+        duplicate_filters.append(
+            and_(
+                func.lower(SalesContact.first_name) == (data.get("first_name") or "").strip().lower(),
+                func.lower(SalesContact.last_name) == (data.get("last_name") or "").strip().lower(),
+            )
+        )
+
     existing = (
         db.query(SalesContact)
         .filter(
             SalesContact.tenant_id == current_user.tenant_id,
             SalesContact.deleted_at.is_(None),
-            or_(
-                func.lower(SalesContact.primary_email) == _normalize_email(email),
-                and_(
-                    normalized_name != "",
-                    func.lower(SalesContact.first_name) == (data.get("first_name") or "").strip().lower(),
-                    func.lower(SalesContact.last_name) == (data.get("last_name") or "").strip().lower(),
-                ),
-            )
+            or_(*duplicate_filters),
         )
         .first()
     )
@@ -366,7 +371,14 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
     _apply_sales_contact_payload(contact, data)
 
     db.add(contact)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Another contact already uses this email",
+        ) from exc
     db.refresh(contact)
     save_custom_field_values(
         db,
@@ -562,6 +574,7 @@ def import_contacts_from_csv(
         row.primary_email.lower()
         for row in db.query(SalesContact.primary_email)
         .filter(
+            SalesContact.tenant_id == tenant_id,
             func.lower(SalesContact.primary_email).in_(normalized_emails),
             SalesContact.deleted_at.is_(None),
         )
@@ -576,6 +589,7 @@ def import_contacts_from_csv(
             for row in db.query(SalesContact.first_name, SalesContact.last_name)
             .filter(
                 and_(
+                    SalesContact.tenant_id == tenant_id,
                     func.lower(SalesContact.first_name).in_(first_names),
                     func.lower(SalesContact.last_name).in_(last_names),
                     SalesContact.deleted_at.is_(None),
@@ -608,6 +622,7 @@ def import_contacts_from_csv(
         row.primary_email.lower(): row
         for row in db.query(SalesContact)
         .filter(
+            SalesContact.tenant_id == tenant_id,
             func.lower(SalesContact.primary_email).in_(normalized_emails),
             SalesContact.deleted_at.is_(None),
         )
@@ -620,6 +635,7 @@ def import_contacts_from_csv(
             for row in db.query(SalesContact)
             .filter(
                 and_(
+                    SalesContact.tenant_id == tenant_id,
                     func.lower(SalesContact.first_name).in_(first_names),
                     func.lower(SalesContact.last_name).in_(last_names),
                     SalesContact.deleted_at.is_(None),
@@ -628,6 +644,7 @@ def import_contacts_from_csv(
             .all()
         }
 
+    new_contact_rows: list[dict] = []
     for payload in rows:
         normalized_email = _normalize_email(payload["primary_email"])
         normalized_name = _normalize_name(payload.get("first_name"), payload.get("last_name"))
@@ -653,9 +670,11 @@ def import_contacts_from_csv(
             merged_rows += 1
             continue
 
-        contact = SalesContact(**payload)
-        db.add(contact)
-        new_rows += 1
+        new_contact_rows.append({**payload, "tenant_id": tenant_id})
+
+    if new_contact_rows:
+        db.bulk_insert_mappings(SalesContact, new_contact_rows)
+        new_rows += len(new_contact_rows)
 
     db.commit()
 
@@ -679,26 +698,27 @@ def _parse_int_or_none(value: str | None) -> int | None:
 
 
 def export_contacts_to_csv(contacts: Iterable[SalesContact]) -> bytes:
+    rows = [
+        {
+            "contact_id": contact.contact_id,
+            "first_name": contact.first_name or "",
+            "last_name": contact.last_name or "",
+            "contact_telephone": contact.contact_telephone or "",
+            "linkedin_url": contact.linkedin_url or "",
+            "primary_email": contact.primary_email or "",
+            "current_title": contact.current_title or "",
+            "region": contact.region or "",
+            "country": contact.country or "",
+            "email_opt_out": str(contact.email_opt_out).lower(),
+            "assigned_to": contact.assigned_to,
+            "organization_id": contact.organization_id or "",
+            "created_time": contact.created_time.isoformat() if contact.created_time else "",
+        }
+        for contact in contacts
+    ]
     return dict_rows_to_csv_bytes(
         headers=EXPORT_COLUMNS,
-        rows=(
-            {
-                "contact_id": contact.contact_id,
-                "first_name": contact.first_name or "",
-                "last_name": contact.last_name or "",
-                "contact_telephone": contact.contact_telephone or "",
-                "linkedin_url": contact.linkedin_url or "",
-                "primary_email": contact.primary_email or "",
-                "current_title": contact.current_title or "",
-                "region": contact.region or "",
-                "country": contact.country or "",
-                "email_opt_out": str(contact.email_opt_out).lower(),
-                "assigned_to": contact.assigned_to,
-                "organization_id": contact.organization_id or "",
-                "created_time": contact.created_time.isoformat() if contact.created_time else "",
-            }
-            for contact in contacts
-        ),
+        rows=rows,
     )
 
 

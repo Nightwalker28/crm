@@ -23,6 +23,11 @@ class FakeDB:
         return FakeQuery(self.scalar_value)
 
 
+class FailingQueryDB:
+    def query(self, *_args, **_kwargs):
+        raise AssertionError("unexpected database query")
+
+
 class FinanceScopeTests(unittest.TestCase):
     def test_finance_scope_full_access_for_finance_department(self):
         user = SimpleNamespace(id=7, team_id=10)
@@ -41,6 +46,15 @@ class FinanceScopeTests(unittest.TestCase):
 
         self.assertEqual(scope.department_id, 3)
         self.assertEqual(scope.user_id_filter, 7)
+
+
+class RoleLevelTests(unittest.TestCase):
+    def test_get_user_role_level_prefers_access_token_claim(self):
+        user = SimpleNamespace(id=7, tenant_id=1, role_id=5, _token_role_level=100)
+
+        role_level = access_control.get_user_role_level(FailingQueryDB(), user)
+
+        self.assertEqual(role_level, 100)
 
 
 if __name__ == "__main__":

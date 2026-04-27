@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { apiFetch } from "@/lib/api";
 import type { Opportunity, OpportunityPayload } from "@/hooks/sales/useOpportunities";
@@ -95,13 +96,13 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
   const [error, setError] = useState<string | null>(null);
   const [contactSearch, setContactSearch] = useState("");
   const [isContactDropdownOpen, setIsContactDropdownOpen] = useState(false);
-  const deferredContactSearch = useDeferredValue(contactSearch.trim());
+  const debouncedContactSearch = useDebouncedValue(contactSearch.trim(), 300);
   const customFieldsQuery = useModuleCustomFields("sales_opportunities", open);
   const currenciesQuery = useCompanyCurrencies(open);
   const contactQuery = useQuery({
-    queryKey: ["opportunity-contact-options", deferredContactSearch],
-    queryFn: () => fetchContactOptions(deferredContactSearch),
-    enabled: open && deferredContactSearch.length > 0,
+    queryKey: ["opportunity-contact-options", debouncedContactSearch],
+    queryFn: () => fetchContactOptions(debouncedContactSearch),
+    enabled: open && debouncedContactSearch.length > 0,
     staleTime: 30_000,
   });
 
@@ -189,7 +190,7 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
                     placeholder="Search existing contact"
                   />
 
-                  {isContactDropdownOpen && deferredContactSearch ? (
+                  {isContactDropdownOpen && contactSearch.trim() ? (
                     <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 rounded-md border border-neutral-800 bg-neutral-950 shadow-2xl">
                       {contactQuery.isLoading ? (
                         <div className="px-3 py-2 text-sm text-neutral-500">Searching contacts…</div>

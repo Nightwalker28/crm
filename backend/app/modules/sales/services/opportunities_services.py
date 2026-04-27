@@ -1,10 +1,9 @@
 import json
 from pathlib import Path
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
@@ -518,7 +517,7 @@ def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict, *
 
 
 def delete_opportunity(db: Session, opportunity: SalesOpportunity) -> SalesOpportunity:
-    opportunity.deleted_at = func.now()
+    opportunity.deleted_at = datetime.utcnow()
     db.commit()
     db.refresh(opportunity)
     return hydrate_custom_field_record(

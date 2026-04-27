@@ -127,28 +127,23 @@ def create_organization(
     _apply_org_payload(organization, payload, current_user)
 
     db.add(organization)
-    try:
-        db.commit()
-        db.refresh(organization)
-        save_custom_field_values(
-            db,
-            tenant_id=current_user.tenant_id,
-            module_key="sales_organizations",
-            record_id=organization.org_id,
-            values=organization.custom_data or {},
-        )
-        db.commit()
-        return hydrate_custom_field_record(
-            db,
-            tenant_id=current_user.tenant_id,
-            module_key="sales_organizations",
-            record=organization,
-            record_id=organization.org_id,
-        )
-    except Exception as e:
-        # If DB commit fails undo all the changes made in the transaction and restore the state 
-        db.rollback()
-        raise 
+    db.flush()
+    save_custom_field_values(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_organizations",
+        record_id=organization.org_id,
+        values=organization.custom_data or {},
+    )
+    db.commit()
+    db.refresh(organization)
+    return hydrate_custom_field_record(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_organizations",
+        record=organization,
+        record_id=organization.org_id,
+    )
 
 def list_organizations(db: Session) -> list[SalesOrganization]:
     """Return all organizations sorted by creation time (newest first)."""
@@ -175,29 +170,24 @@ def _build_organization_query(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ):
-    if search:
-        document = searchable_text(
-            SalesOrganization.org_name,
-            SalesOrganization.website,
-            SalesOrganization.primary_email,
-            SalesOrganization.industry,
-            SalesOrganization.billing_city,
-            SalesOrganization.billing_country,
-        )
-        base_query = apply_ranked_search(
-            db.query(SalesOrganization).filter(
-                SalesOrganization.tenant_id == tenant_id,
-                SalesOrganization.deleted_at.is_(None),
-            ),
-            search=search,
-            document=document,
-            default_order_column=SalesOrganization.created_time,
-        )
-    else:
-        base_query = db.query(SalesOrganization).filter(
-            SalesOrganization.tenant_id == tenant_id,
-            SalesOrganization.deleted_at.is_(None),
-        )
+    document = searchable_text(
+        SalesOrganization.org_name,
+        SalesOrganization.website,
+        SalesOrganization.primary_email,
+        SalesOrganization.industry,
+        SalesOrganization.billing_city,
+        SalesOrganization.billing_country,
+    )
+    base_query = db.query(SalesOrganization).filter(
+        SalesOrganization.tenant_id == tenant_id,
+        SalesOrganization.deleted_at.is_(None),
+    )
+    base_query = apply_ranked_search(
+        base_query,
+        search=search,
+        document=document,
+        default_order_column=SalesOrganization.created_time,
+    )
 
     field_map = {
         "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
@@ -262,7 +252,7 @@ def list_organizations_paginated(
     )
     return items, total
 
-def search_organizations_pagianted(
+def search_organizations_paginated(
     db: Session,
     tenant_id: int,
     name: str,

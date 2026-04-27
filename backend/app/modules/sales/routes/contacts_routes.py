@@ -38,7 +38,7 @@ from app.modules.platform.services.data_transfer_jobs import (
     should_background_data_transfer_with_size,
 )
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
-from app.modules.sales.services.organizations_services import search_organizations_pagianted
+from app.modules.sales.services.organizations_services import search_organizations_paginated
 from app.modules.sales.services.summary_services import build_contact_summary
 from app.modules.user_management.services import admin_modules
 
@@ -350,10 +350,10 @@ def search_organizations_for_contacts(
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
-    items, total = search_organizations_pagianted(
-        db,
-        name,
+    items, total = search_organizations_paginated(
+        db=db,
         tenant_id=current_user.tenant_id,
+        name=name,
         offset=pagination.offset,
         limit=pagination.limit,
     )

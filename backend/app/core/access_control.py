@@ -197,6 +197,10 @@ def get_user_role_level(db: Session, user: User | None) -> int | None:
     if not user or not role_id:
         return None
 
+    token_role_level = getattr(user, "_token_role_level", None)
+    if token_role_level is not None:
+        return int(token_role_level)
+
     return (
         db.query(Role.level)
         .filter(Role.id == role_id, Role.tenant_id == user.tenant_id)

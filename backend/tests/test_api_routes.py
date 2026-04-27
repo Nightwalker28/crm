@@ -8,8 +8,10 @@ from unittest.mock import patch
 from fastapi.testclient import TestClient
 
 from app.core.database import get_db
+from app.core.pagination import Pagination
 from app.core.security import get_current_user, require_admin, require_user
 from app.main import app
+from app.modules.sales.routes import contacts_routes, organizations_routes
 from app.modules.sales.schema import (
     SalesContactResponse,
     SalesOpportunityResponse,
@@ -239,6 +241,75 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["email"], "ada@example.com")
         update_mock.assert_called_once()
+
+    def test_contact_organization_search_passes_tenant_and_name_by_keyword(self):
+        pagination = Pagination(page=1, page_size=10, offset=0, limit=10)
+        db = object()
+        user = SimpleNamespace(id=7, tenant_id=42)
+
+        with patch.object(
+            contacts_routes,
+            "search_organizations_paginated",
+            return_value=([], 0),
+        ) as search_mock:
+            response = contacts_routes.search_organizations_for_contacts(
+                name="Acme",
+                pagination=pagination,
+                db=db,
+                current_user=user,
+            )
+
+        self.assertEqual(response["total_count"], 0)
+        search_mock.assert_called_once_with(
+            db=db,
+            tenant_id=42,
+            name="Acme",
+            offset=0,
+            limit=10,
+        )
+
+    def test_organization_search_route_passes_tenant_and_name_by_keyword(self):
+        pagination = Pagination(page=1, page_size=10, offset=0, limit=10)
+        db = object()
+        user = SimpleNamespace(id=7, tenant_id=42)
+
+        with patch.object(
+            organizations_routes,
+            "search_organizations_paginated",
+            return_value=([], 0),
+        ) as search_mock:
+            response = organizations_routes.search_sales_organizations(
+                name="Acme",
+                fields=None,
+                filter_logic="all",
+                filters=None,
+                filters_all=None,
+                filters_any=None,
+                pagination=pagination,
+                db=db,
+                current_user=user,
+            )
+
+        self.assertEqual(response["total_count"], 0)
+        search_mock.assert_called_once_with(
+            db=db,
+            tenant_id=42,
+            name="Acme",
+            offset=0,
+            limit=10,
+            all_filter_conditions=[],
+            any_filter_conditions=[],
+        )
+
+    def test_organizations_import_route_is_registered_once(self):
+        matches = [
+            route
+            for route in organizations_routes.router.routes
+            if getattr(route, "path", None) == "/organizations/import" and "POST" in getattr(route, "methods", set())
+        ]
+
+        self.assertEqual(len(matches), 1)
+        self.assertEqual(matches[0].status_code, 201)
 
     def test_finance_list_route_returns_paged_payload(self):
         app.dependency_overrides[get_current_user] = self._active_user

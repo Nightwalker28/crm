@@ -29,7 +29,7 @@ from app.modules.sales.services.organizations_services import (
     create_organization,
     list_deleted_organizations_paginated,
     list_organizations_paginated,
-    search_organizations_pagianted,
+    search_organizations_paginated,
     get_organization,
     restore_organization,
     update_organization,
@@ -162,7 +162,7 @@ def get_sales_organizations(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if search:
-        items, total = search_organizations_pagianted(
+        items, total = search_organizations_paginated(
             db=db,
             tenant_id=current_user.tenant_id,
             name=search,
@@ -222,10 +222,10 @@ def search_sales_organizations(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    items, total = search_organizations_pagianted(
-        db,
-        name,
+    items, total = search_organizations_paginated(
+        db=db,
         tenant_id=current_user.tenant_id,
+        name=name,
         offset=pagination.offset,
         limit=pagination.limit,
         all_filter_conditions=all_conditions,
@@ -355,8 +355,7 @@ def restore_sales_organization(
     return org
 
 # import
-@router.post("/import", status_code=status.HTTP_201_CREATED)
-@router.post("/import", response_model=ImportExecutionResponse)
+@router.post("/import", response_model=ImportExecutionResponse, status_code=status.HTTP_201_CREATED)
 async def import_sales_organizations(
     file: UploadFile = File(...),
     mapping_json: str | None = Form(default=None),

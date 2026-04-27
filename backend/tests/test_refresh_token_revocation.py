@@ -53,7 +53,28 @@ def _request_with_refresh_cookie():
     )
 
 
+def _request_with_access_cookie():
+    return SimpleNamespace(
+        cookies={settings.ACCESS_TOKEN_COOKIE_NAME: "access-token"},
+        state=SimpleNamespace(tenant=None),
+    )
+
+
 class RefreshTokenRevocationTests(unittest.TestCase):
+    def test_get_current_user_attaches_access_token_role_level_claim(self):
+        db = FakeDB(
+            user=SimpleNamespace(id=7, tenant_id=1, is_active=UserStatus.active),
+            refresh_token=None,
+        )
+
+        with patch(
+            "app.core.security.decode_token",
+            return_value={"sub": "7", "role_level": 100},
+        ):
+            user = get_current_user(_request_with_access_cookie(), db)
+
+        self.assertEqual(user._token_role_level, 100)
+
     def test_get_current_user_revokes_refresh_token_for_inactive_user(self):
         db = FakeDB(
             user=SimpleNamespace(id=7, tenant_id=1, is_active=UserStatus.inactive),

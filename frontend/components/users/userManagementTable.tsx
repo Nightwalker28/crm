@@ -221,6 +221,7 @@ export function UserManagementTable({
   const [sortDirection, setSortDirection] = useState<SortDirection>(initialSortDirection);
   const emptyUsers: User[] = [];
   const onStateChangeRef = useRef(onStateChange);
+  const isMountedRef = useRef(false);
 
   const [filters, setFilters] = useState<UserFiltersValue>({
     search: initialFilters?.search ?? "",
@@ -467,6 +468,10 @@ export function UserManagementTable({
   }, [stateKey, initialFilters, initialSortDirection, initialSortKey]);
 
   useEffect(() => {
+    if (!isMountedRef.current) {
+      isMountedRef.current = true;
+      return;
+    }
     onStateChangeRef.current?.({ filters, sortKey, sortDirection });
   }, [filters, sortDirection, sortKey]);
 

@@ -1,6 +1,8 @@
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.uploads import build_media_url, delete_local_media_file, persist_media_file, read_image_upload
 from app.modules.user_management.models import CompanyProfile, User, UserSavedView, UserTablePreference
 
@@ -16,6 +18,7 @@ TABLE_PREFERENCE_MODULES = {
 
 SAVED_VIEW_MODULES = TABLE_PREFERENCE_MODULES
 SYSTEM_DEFAULT_VIEW_NAME = "Default View"
+COMPANY_OPERATING_CURRENCIES_CACHE_TTL_SECONDS = 300
 
 
 def _clean(value: str | None) -> str | None:
@@ -34,6 +37,14 @@ def _clean_currency_list(values: list[str] | None) -> list[str]:
         if cleaned and cleaned not in normalized:
             normalized.append(cleaned)
     return normalized or ["USD"]
+
+
+def _company_operating_currencies_cache_key(tenant_id: int) -> str:
+    return f"company-operating-currencies:{tenant_id}"
+
+
+def invalidate_company_operating_currencies_cache(tenant_id: int) -> None:
+    cache_delete(_company_operating_currencies_cache_key(tenant_id))
 
 
 def update_user_profile(db: Session, user: User, payload: dict) -> User:
@@ -92,6 +103,7 @@ def get_or_create_company_profile(db: Session, current_user: User) -> CompanyPro
 
 def update_company_profile(db: Session, current_user: User, payload: dict) -> CompanyProfile:
     profile = get_or_create_company_profile(db, current_user)
+    should_invalidate_currencies = "operating_currencies" in payload
 
     for field in {"name", "primary_email", "website", "primary_phone", "industry", "country", "billing_address", "logo_url"}:
         if field in payload:
@@ -103,6 +115,8 @@ def update_company_profile(db: Session, current_user: User, payload: dict) -> Co
     db.add(profile)
     db.commit()
     db.refresh(profile)
+    if should_invalidate_currencies:
+        invalidate_company_operating_currencies_cache(current_user.tenant_id)
     return profile
 
 
@@ -129,8 +143,15 @@ async def upload_company_logo(db: Session, current_user: User, file: UploadFile)
 
 
 def get_company_operating_currencies(db: Session, current_user: User) -> list[str]:
+    cache_key = _company_operating_currencies_cache_key(current_user.tenant_id)
+    cached = cache_get_json(cache_key)
+    if isinstance(cached, list):
+        return _clean_currency_list(cached)
+
     profile = get_or_create_company_profile(db, current_user)
-    return _clean_currency_list(getattr(profile, "operating_currencies", None))
+    currencies = _clean_currency_list(getattr(profile, "operating_currencies", None))
+    cache_set_json(cache_key, currencies, ttl_seconds=COMPANY_OPERATING_CURRENCIES_CACHE_TTL_SECONDS)
+    return currencies
 
 
 def get_user_table_preference(
@@ -299,6 +320,16 @@ def _serialize_saved_view(module_key: str, view: UserSavedView) -> dict:
     }
 
 
+def _find_system_saved_view(db: Session, user: User, module_key: str) -> UserSavedView | None:
+    saved_views = (
+        db.query(UserSavedView)
+        .filter(UserSavedView.user_id == user.id, UserSavedView.module_key == module_key)
+        .order_by(UserSavedView.id.asc())
+        .all()
+    )
+    return next((view for view in saved_views if _is_system_saved_view(view)), None)
+
+
 def _get_or_create_system_saved_view(
     db: Session,
     user: User,
@@ -306,14 +337,7 @@ def _get_or_create_system_saved_view(
     *,
     visible_columns: list[str],
 ) -> UserSavedView:
-    saved_views = (
-        db.query(UserSavedView)
-        .filter(UserSavedView.user_id == user.id, UserSavedView.module_key == module_key)
-        .order_by(UserSavedView.id.asc())
-        .all()
-    )
-
-    system_view = next((view for view in saved_views if _is_system_saved_view(view)), None)
+    system_view = _find_system_saved_view(db, user, module_key)
     if system_view:
         return system_view
 
@@ -325,8 +349,14 @@ def _get_or_create_system_saved_view(
         is_default=0,
     )
     db.add(system_view)
-    db.commit()
-    db.refresh(system_view)
+    try:
+        db.commit()
+        db.refresh(system_view)
+    except IntegrityError:
+        db.rollback()
+        system_view = _find_system_saved_view(db, user, module_key)
+        if not system_view:
+            raise
     return system_view
 
 

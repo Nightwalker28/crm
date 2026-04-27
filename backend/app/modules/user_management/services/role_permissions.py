@@ -12,6 +12,7 @@ from app.modules.user_management.schema import (
     RoleTemplateSummary,
     RoleUpdateRequest,
 )
+from app.modules.user_management.services.admin_modules import is_module_enabled_for_tenant
 
 
 ROLE_TEMPLATES: dict[str, dict] = {
@@ -134,7 +135,11 @@ def create_role(db: Session, payload: RoleCreateRequest, *, tenant_id: int) -> R
     db.add(role)
     db.flush()
 
-    modules = db.query(Module).all()
+    modules = [
+        module
+        for module in db.query(Module).all()
+        if is_module_enabled_for_tenant(db, tenant_id=tenant_id, module=module)
+    ]
     template_actions: RolePermissionActions = template["actions"]
     for module in modules:
         db.add(

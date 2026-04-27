@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,7 @@ import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
+import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { apiFetch } from "@/lib/api";
 import type { InsertionOrder, InsertionOrderPayload } from "@/hooks/finance/useInsertionOrders";
@@ -141,14 +142,14 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
-  const deferredCustomerSearch = useDeferredValue(form.customer_name.trim());
+  const debouncedCustomerSearch = useDebouncedValue(form.customer_name.trim(), 300);
   const customFieldsQuery = useModuleCustomFields("finance_io", open);
   const currenciesQuery = useCompanyCurrencies(open);
 
   const customerQuery = useQuery({
-    queryKey: ["finance-io-customer-options", deferredCustomerSearch],
-    queryFn: () => fetchCustomerOptions(deferredCustomerSearch),
-    enabled: open && deferredCustomerSearch.length > 0 && form.customer_contact_id == null,
+    queryKey: ["finance-io-customer-options", debouncedCustomerSearch],
+    queryFn: () => fetchCustomerOptions(debouncedCustomerSearch),
+    enabled: open && debouncedCustomerSearch.length > 0 && form.customer_contact_id == null,
     staleTime: 30_000,
   });
 
@@ -260,7 +261,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                     placeholder="Search contact by name or email"
                   />
 
-                  {form.customer_contact_id == null && deferredCustomerSearch && isCustomerDropdownOpen ? (
+                  {form.customer_contact_id == null && form.customer_name.trim() && isCustomerDropdownOpen ? (
                     <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 rounded-md border border-neutral-800 bg-neutral-950 shadow-2xl">
                       {customerQuery.isLoading ? (
                         <div className="px-3 py-2 text-sm text-neutral-500">Searching contacts…</div>

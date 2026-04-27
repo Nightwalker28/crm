@@ -40,6 +40,16 @@ def _revoke_refresh_token(db: Session, refresh_token_id: int) -> None:
     db.commit()
 
 
+def _attach_access_token_claims(user: User, payload: dict) -> User:
+    role_level = payload.get("role_level")
+    if role_level is not None:
+        try:
+            user._token_role_level = int(role_level)
+        except (TypeError, ValueError):
+            pass
+    return user
+
+
 def get_current_user(
     request: Request,
     db: Session = Depends(get_db),
@@ -75,7 +85,7 @@ def get_current_user(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Session tenant mismatch",
                 )
-            return user
+            return _attach_access_token_claims(user, payload)
 
     # 2. Access token missing or expired → try refresh
     if refresh_token:
@@ -129,6 +139,8 @@ def get_current_user(
 
         # Issue new access token
         new_access_token = create_access_token(user)
+        decoded_new_access_token = decode_token(new_access_token, expected_type="access")
+        _attach_access_token_claims(user, decoded_new_access_token)
 
         # Attach cookie to response (middleware in main.py will set it)
         request.state._new_access_token = new_access_token

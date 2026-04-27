@@ -112,6 +112,14 @@ def _hash_setup_token(token: str) -> str:
 # TOKEN CREATION
 # -------------------------------------------------------------------
 
+def _role_level_claim_for_user(user: User) -> int | None:
+    role = getattr(user, "role", None)
+    level = getattr(role, "level", None) if role else None
+    if level is None:
+        return None
+    return int(level)
+
+
 def _create_token(
     *,
     user: User,
@@ -127,6 +135,8 @@ def _create_token(
         "iat": now,
         "exp": now + expires_delta,
     }
+    if token_type == "access":
+        payload["role_level"] = _role_level_claim_for_user(user)
 
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
