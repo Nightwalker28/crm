@@ -51,6 +51,14 @@ This file captures stable business and UX rules for the platform. These should b
 - Company operating currencies should be managed from the Company section and reused anywhere the system asks for currency.
 - Active custom fields must work inside the module they belong to, including create/edit, detail, table views, saved views, and filters.
 
+## Communication Rules
+
+- WhatsApp starts as a manual click-to-chat integration. The CRM may prepare links, templates, logs, and reminders, but users send the message in WhatsApp themselves until an explicit provider integration is added.
+- WhatsApp access must be controlled as its own module through tenant enablement, department/team availability, and role/action permissions.
+- WhatsApp activity initiated from a CRM record should be logged to the record activity timeline and should update a last-contacted-on-WhatsApp marker where the record supports it.
+- Message templates are a global tenant-scoped platform capability. They should be reusable across modules and channels, editable by users with the right permissions, and support controlled CRM variable placeholders.
+- CRM-generated reminder rules for WhatsApp should create or suggest tasks first; automated WhatsApp sending is not part of the initial workflow.
+
 ## Finance / Insertion Order Rules
 
 - Finance insertion orders use the generic insertion-order model, not the old campaign-specific finance model.

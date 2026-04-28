@@ -20,6 +20,7 @@ from app.modules.sales import models as sales_models  # noqa: F401, E402
 from app.modules.tasks import models as tasks_models  # noqa: F401, E402
 from app.modules.calendar import models as calendar_models  # noqa: F401, E402
 from app.modules.mail import models as mail_models  # noqa: F401, E402
+from app.modules.whatsapp import models as whatsapp_models  # noqa: F401, E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.

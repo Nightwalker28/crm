@@ -178,3 +178,44 @@ class GlobalSearchResultResponse(BaseModel):
 class GlobalSearchResponse(BaseModel):
     query: str
     results: list[GlobalSearchResultResponse]
+
+
+class MessageTemplateResponse(BaseModel):
+    id: int
+    template_key: str
+    name: str
+    description: str | None = None
+    channel: str
+    module_key: str | None = None
+    body: str
+    variables: list[str]
+    is_system: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class MessageTemplateCreateRequest(BaseModel):
+    template_key: str | None = None
+    name: str = Field(min_length=1, max_length=180)
+    description: str | None = None
+    channel: str = Field(min_length=1, max_length=40)
+    module_key: str | None = Field(default=None, max_length=100)
+    body: str = Field(min_length=1)
+    variables: list[str] = Field(default_factory=list)
+    is_active: bool = True
+
+
+class MessageTemplateUpdateRequest(BaseModel):
+    template_key: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=180)
+    description: str | None = None
+    channel: str | None = Field(default=None, min_length=1, max_length=40)
+    module_key: str | None = Field(default=None, max_length=100)
+    body: str | None = Field(default=None, min_length=1)
+    variables: list[str] | None = None
+    is_active: bool | None = None
+
+
+class MessageTemplateListResponse(BaseModel):
+    results: list[MessageTemplateResponse]

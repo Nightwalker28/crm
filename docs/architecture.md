@@ -76,6 +76,23 @@ This file captures the current intended technical patterns and constraints so ne
 - User-facing operational notifications should use one shared persisted notification model and API instead of each background workflow inventing its own UI state.
 - Background job systems such as import/export should write queued/completed/failed notifications into that shared center so users can leave and come back without losing status visibility.
 
+### Message Templates
+
+- Message templates are a shared platform module, not a WhatsApp-specific implementation detail.
+- Templates must be tenant-scoped and should support system-seeded templates plus user-created templates.
+- Template records should declare the channel they are intended for, the source module they can render against, and the allowed variable keys that the frontend can offer.
+- Template rendering should use explicit variable maps from trusted CRM serializers rather than evaluating arbitrary user expressions.
+- WhatsApp should consume this template platform first for click-to-chat links; mail, finance, sales, tasks, and reminder workflows can reuse the same model later.
+
+### WhatsApp
+
+- WhatsApp is a dedicated tenant-aware module with normal module availability and role/action permission enforcement.
+- The first integration phase is click-to-chat only: the backend prepares a rendered message and records a manual-send log, while the browser opens a WhatsApp URL controlled by the user.
+- WhatsApp actions linked to CRM records should write activity-log events keyed to the source module and entity ID so record timelines show the communication.
+- Contact-level WhatsApp interactions should update contact metadata for last WhatsApp contact time.
+- Follow-up reminders should use the existing tasks module instead of introducing a separate reminder store.
+- Provider credentials, inbound message sync, webhooks, and automated sending are deferred until an explicit WhatsApp provider integration phase.
+
 ### Search / Import / Export
 
 - Shared helpers exist for search, CSV parsing, uploads, and downloads.

@@ -114,6 +114,7 @@ class SalesContactResponse(SalesContactBase):
     primary_email: EmailStr
     assigned_to: int
     created_time: datetime
+    whatsapp_last_contacted_at: datetime | None = None
     organization_name: Optional[str] = None
 
     model_config = ConfigDict(from_attributes=True)

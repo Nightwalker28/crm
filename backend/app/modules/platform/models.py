@@ -140,3 +140,30 @@ class RecordComment(Base):
             if self.actor.email:
                 return self.actor.email
         return "Unknown user"
+
+
+class MessageTemplate(Base):
+    __tablename__ = "message_templates"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "template_key", name="uq_message_templates_tenant_key"),
+    )
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    template_key = Column(String(120), nullable=False, index=True)
+    name = Column(String(180), nullable=False)
+    description = Column(Text, nullable=True)
+    channel = Column(String(40), nullable=False, index=True)
+    module_key = Column(String(100), nullable=True, index=True)
+    body = Column(Text, nullable=False)
+    variables = Column(JSON, nullable=True)
+    is_system = Column(Boolean, nullable=False, server_default="false")
+    is_active = Column(Boolean, nullable=False, server_default="true", index=True)
+    created_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    updated_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    creator = relationship("User", foreign_keys=[created_by_user_id])
+    updated_by = relationship("User", foreign_keys=[updated_by_user_id])

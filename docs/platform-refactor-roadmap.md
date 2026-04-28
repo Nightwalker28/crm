@@ -156,6 +156,8 @@ In progress:
 - The first calendar foundation is now landed with internal user calendars, invite/share behavior, task-to-calendar handoff, soft-delete support, and provider-aware Google sync groundwork; mailbox integration is parked until Google mailbox scope verification/compliance is intentionally planned.
 - Keep the first mailbox integration foundation parked as a dedicated tenant-aware module with explicit provider mail connections, CRM-linked message records, and soft-delete/recovery behavior before adding more live Gmail or Microsoft Graph product depth.
 - Production-grade calendar and mailbox provider sync should move into the shared background-job architecture: immediate sync on write where possible, queued provider sync jobs, and periodic reconciliation rather than request-only sync.
+- Start WhatsApp as the next collaboration integration, but keep Phase 1 manual-send/click-to-chat only: register it as a tenant-aware module, expose contact-profile click-to-chat, log activity, update last WhatsApp contact, and create optional follow-up tasks.
+- Add a global tenant-scoped message-template platform so WhatsApp templates are reusable across future mail, finance, sales, tasks, and reminder workflows instead of becoming a channel-specific one-off.
 - Keep extending timezone-aware timestamp formatting across remaining UI surfaces that still render raw browser-local or server-default times.
 - Keep normalizing uploaded/local media URLs across all avatar/logo consumers so uploaded profile/company assets behave the same as remote images everywhere.
 - Expand the new notification center beyond data-transfer jobs into broader per-user operational notifications over time.
@@ -200,6 +202,8 @@ Next up:
 - Harden and verify the landed first task module slice end to end, then fill any remaining task lifecycle gaps before moving the collaboration roadmap onto calendar integration.
 - Add explicit mailbox provider connection flows for Google Gmail and Microsoft Graph mail after the mailbox data/API foundation is in place.
 - Add mailbox automation after messages can be synced safely, including CRM source-linking, task/event handoff, and permission-aware global search results.
+- Build WhatsApp Phase 2 template management after the click-to-chat MVP: editable quote follow-up, payment reminder, delivery confirmation, meeting reminder, and service reminder templates with controlled CRM variables.
+- Build WhatsApp Phase 3 reminder rules through Celery/tasks while keeping message sending manual until a provider integration is intentionally planned.
 - Finish the dedicated saved-view management flow so module pages only need compact view switching.
 - Expand saved views over time to include richer per-module state beyond the current search, condition, status, and sort slices.
 - Add inline shared quick-filter UX on current module pages so users can apply multi-field conditions without leaving the module.

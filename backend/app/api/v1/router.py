@@ -9,6 +9,7 @@ from app.modules.platform.routes.data_transfer_jobs import router as data_transf
 from app.modules.platform.routes.global_search import router as global_search_router
 from app.modules.platform.routes.notifications import router as notifications_router
 from app.modules.platform.routes.record_comments import router as record_comments_router
+from app.modules.platform.routes.message_templates import router as message_templates_router
 from app.modules.platform.routes.recycle_bin import router as recycle_bin_router
 from app.modules.user_management.routes.signin import router as signin_router
 from app.modules.user_management.routes.profile import router as profile_router
@@ -17,6 +18,7 @@ from app.modules.sales.routes.contacts_routes import router as sales_contacts_ro
 from app.modules.sales.routes.organizations_routes import router as sales_organization_router
 from app.modules.sales.routes.opportunities_routes import router as sales_opportunities_router
 from app.modules.tasks.routes.tasks_routes import router as tasks_router
+from app.modules.whatsapp.routes.whatsapp_routes import router as whatsapp_router
 
 
 router = APIRouter(prefix="/api/v1")
@@ -31,6 +33,7 @@ router.include_router(data_transfer_job_router)
 router.include_router(global_search_router)
 router.include_router(notifications_router)
 router.include_router(record_comments_router)
+router.include_router(message_templates_router)
 router.include_router(recycle_bin_router)
 router.include_router(calendar_router)
 router.include_router(mail_router)
@@ -39,3 +42,4 @@ router.include_router(sales_contacts_router, prefix="/sales")
 router.include_router(sales_organization_router, prefix="/sales")
 router.include_router(sales_opportunities_router, prefix="/sales")
 router.include_router(tasks_router)
+router.include_router(whatsapp_router)

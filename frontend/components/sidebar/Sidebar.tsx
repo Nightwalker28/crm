@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   CalendarDays,
+  MessageCircle,
   Mail,
   LayoutGrid,
   UserRound,
@@ -85,6 +86,7 @@ export default function Sidebar() {
   const tasksModule = moduleMap.get("tasks");
   const calendarModule = moduleMap.get("calendar");
   const mailModule = moduleMap.get("mail");
+  const whatsappModule = moduleMap.get("whatsapp");
   const contactsModule = moduleMap.get("sales_contacts");
   const organizationsModule = moduleMap.get("sales_organizations");
   const opportunitiesModule = moduleMap.get("sales_opportunities");
@@ -156,6 +158,12 @@ export default function Sidebar() {
               {mailModule?.base_route ? (
                 <SidebarMenuItem href={mailModule.base_route} icon={Mail} collapsed={collapsed}>
                   Mail
+                </SidebarMenuItem>
+              ) : null}
+
+              {whatsappModule?.base_route ? (
+                <SidebarMenuItem href={whatsappModule.base_route} icon={MessageCircle} collapsed={collapsed}>
+                  WhatsApp
                 </SidebarMenuItem>
               ) : null}
 

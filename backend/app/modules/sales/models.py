@@ -92,6 +92,7 @@ class SalesContact(Base):
         nullable=True,
     )
     created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    whatsapp_last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
 
     assigned_user = relationship("User", lazy="joined")

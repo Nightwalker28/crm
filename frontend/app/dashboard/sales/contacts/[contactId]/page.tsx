@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+import { MessageCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
@@ -16,6 +17,8 @@ import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { formatDateTime } from "@/lib/datetime";
 
 type RelatedOpportunity = {
   opportunity_id: number;
@@ -55,6 +58,7 @@ type ContactSummary = {
     region?: string | null;
     country?: string | null;
     organization_id?: number | null;
+    whatsapp_last_contacted_at?: string | null;
     custom_fields?: Record<string, unknown> | null;
   };
   organization?: OrganizationCompact | null;
@@ -63,6 +67,13 @@ type ContactSummary = {
   inferred_services: string[];
   opportunity_count: number;
   insertion_order_count: number;
+};
+
+type MessageTemplate = {
+  id: number;
+  name: string;
+  body: string;
+  variables: string[];
 };
 
 type ContactForm = {
@@ -103,8 +114,13 @@ export default function ContactDetailPage() {
   const [form, setForm] = useState<ContactForm>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [whatsAppSending, setWhatsAppSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
+  const [whatsAppTemplates, setWhatsAppTemplates] = useState<MessageTemplate[]>([]);
+  const [selectedWhatsAppTemplateId, setSelectedWhatsAppTemplateId] = useState<string>("");
+  const [createWhatsAppReminder, setCreateWhatsAppReminder] = useState(true);
+  const [whatsAppReminderDueAt, setWhatsAppReminderDueAt] = useState("");
   const customFieldsQuery = useModuleCustomFields("sales_contacts", true);
 
   async function loadSummary(signal?: { cancelled: boolean }) {
@@ -146,6 +162,27 @@ export default function ContactDetailPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.contactId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadWhatsAppTemplates() {
+      try {
+        const res = await apiFetch("/message-templates?channel=whatsapp&module_key=sales_contacts");
+        const body = await res.json().catch(() => null);
+        if (!res.ok) return;
+        if (cancelled) return;
+        const templates = (body?.results ?? []) as MessageTemplate[];
+        setWhatsAppTemplates(templates);
+        setSelectedWhatsAppTemplateId((current) => current || (templates[0]?.id ? String(templates[0].id) : ""));
+      } catch {
+        if (!cancelled) setWhatsAppTemplates([]);
+      }
+    }
+    void loadWhatsAppTemplates();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   async function handleSave() {
     try {
       setSaving(true);
@@ -179,6 +216,34 @@ export default function ContactDetailPage() {
       setError(saveError instanceof Error ? saveError.message : "Failed to save contact");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleWhatsAppClick() {
+    if (!summary?.contact.contact_telephone) {
+      toast.error("Add a phone number before starting WhatsApp chat.");
+      return;
+    }
+    try {
+      setWhatsAppSending(true);
+      const res = await apiFetch(`/whatsapp/contacts/${summary.contact.contact_id}/click`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template_id: selectedWhatsAppTemplateId ? Number(selectedWhatsAppTemplateId) : null,
+          create_follow_up_task: createWhatsAppReminder,
+          follow_up_due_at: createWhatsAppReminder && whatsAppReminderDueAt ? new Date(whatsAppReminderDueAt).toISOString() : null,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      window.open(body.whatsapp_url, "_blank", "noopener,noreferrer");
+      toast.success(body.follow_up_task ? "WhatsApp chat opened and follow-up task created." : "WhatsApp chat opened.");
+      await loadSummary();
+    } catch (sendError) {
+      toast.error(sendError instanceof Error ? sendError.message : "Failed to start WhatsApp chat.");
+    } finally {
+      setWhatsAppSending(false);
     }
   }
 
@@ -290,6 +355,57 @@ export default function ContactDetailPage() {
                         {item}
                       </span>
                     )) : <span className="text-sm text-neutral-500">No service history yet</span>}
+                  </div>
+                </div>
+                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-neutral-500">WhatsApp</div>
+                      <div className="mt-2 text-sm text-neutral-300">
+                        {summary.contact.whatsapp_last_contacted_at
+                          ? `Last contacted ${formatDateTime(summary.contact.whatsapp_last_contacted_at)}`
+                          : "No WhatsApp contact logged yet"}
+                      </div>
+                    </div>
+                    <MessageCircle className="h-5 w-5 text-emerald-400" />
+                  </div>
+                  <div className="mt-4 grid gap-3">
+                    <Select value={selectedWhatsAppTemplateId} onValueChange={setSelectedWhatsAppTemplateId} disabled={!whatsAppTemplates.length}>
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder={whatsAppTemplates.length ? "Select template" : "No templates available"} />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {whatsAppTemplates.map((template) => (
+                          <SelectItem key={template.id} value={String(template.id)}>
+                            {template.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <label className="flex items-center gap-2 text-sm text-neutral-300">
+                      <input
+                        type="checkbox"
+                        checked={createWhatsAppReminder}
+                        onChange={(event) => setCreateWhatsAppReminder(event.target.checked)}
+                        className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+                      />
+                      Create follow-up task
+                    </label>
+                    {createWhatsAppReminder ? (
+                      <Input
+                        type="datetime-local"
+                        value={whatsAppReminderDueAt}
+                        onChange={(event) => setWhatsAppReminderDueAt(event.target.value)}
+                      />
+                    ) : null}
+                    <Button
+                      type="button"
+                      onClick={handleWhatsAppClick}
+                      disabled={whatsAppSending || !summary.contact.contact_telephone || !whatsAppTemplates.length}
+                    >
+                      <MessageCircle />
+                      {whatsAppSending ? "Opening..." : "Open WhatsApp"}
+                    </Button>
                   </div>
                 </div>
               </div>
