@@ -95,6 +95,12 @@ class Settings:
     DATA_TRANSFER_BACKGROUND_FILE_BYTES_THRESHOLD: int = int(
         os.getenv("DATA_TRANSFER_BACKGROUND_FILE_BYTES_THRESHOLD", str(5 * 1024 * 1024))
     )
+    DATA_TRANSFER_RESULT_RETENTION_DAYS: int = int(
+        os.getenv("DATA_TRANSFER_RESULT_RETENTION_DAYS", "7")
+    )
+    DATA_TRANSFER_RESULT_CLEANUP_INTERVAL_SECONDS: int = int(
+        os.getenv("DATA_TRANSFER_RESULT_CLEANUP_INTERVAL_SECONDS", str(24 * 60 * 60))
+    )
 
     # -------------------------
     # Allowed email domains

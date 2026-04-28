@@ -17,5 +17,10 @@ celery_app.conf.update(
     task_track_started=True,
     timezone="UTC",
     enable_utc=True,
-    beat_schedule={},
+    beat_schedule={
+        "cleanup-expired-data-transfer-results": {
+            "task": "app.tasks.data_transfer.cleanup_expired_results",
+            "schedule": settings.DATA_TRANSFER_RESULT_CLEANUP_INTERVAL_SECONDS,
+        },
+    },
 )

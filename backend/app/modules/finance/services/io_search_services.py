@@ -10,7 +10,7 @@ from typing import Any, IO
 
 from docx import Document
 import pdfplumber
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from app.core.module_search import apply_ranked_search
@@ -30,7 +30,10 @@ from app.modules.user_management.services.profile import get_company_operating_c
 from app.modules.user_management.models import Module
 
 # Single folder override via env
-IO_SEARCH_UPLOAD_DIR = Path(os.environ["IO_SEARCH_UPLOAD_DIR"]).resolve()
+_upload_dir = os.getenv("IO_SEARCH_UPLOAD_DIR")
+if not _upload_dir:
+    raise RuntimeError("IO_SEARCH_UPLOAD_DIR environment variable is required")
+IO_SEARCH_UPLOAD_DIR = Path(_upload_dir).resolve()
 IO_SEARCH_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # IO module_id in the modules table
@@ -76,21 +79,39 @@ def get_finance_module_id(db: Session) -> int:
     return int(module_id) if module_id is not None else DEFAULT_MODULE_ID
 
 
-def _get_max_io_sequence(db: Session, prefix: str = IO_NUMBER_PREFIX) -> int:
+def _get_max_io_sequence(
+    db: Session,
+    prefix: str = IO_NUMBER_PREFIX,
+    *,
+    tenant_id: int | None = None,
+) -> int:
     """Return the highest existing io_number sequence for the prefix."""
-    max_seq = 0
-    for (io_number,) in db.query(FinanceIO.io_number).filter(FinanceIO.io_number.like(f"{prefix}%")).all():
-        if not io_number:
-            continue
-        match = IO_NUMBER_REGEX.match(io_number)
-        if not match:
-            continue
-        try:
-            seq = int(match.group(1))
-        except ValueError:
-            continue
-        max_seq = max(max_seq, seq)
-    return max_seq
+    where_clause = "io_number ~ :pattern"
+    params: dict[str, Any] = {
+        "offset": len(prefix) + 1,
+        "pattern": f"^{re.escape(prefix)}\\d+$",
+    }
+    if tenant_id is not None:
+        where_clause = f"{where_clause} AND tenant_id = :tenant_id"
+        params["tenant_id"] = tenant_id
+
+    result = db.execute(
+        text(
+            f"""
+            SELECT COALESCE(MAX(CAST(SUBSTRING(io_number FROM :offset) AS BIGINT)), 0)
+            FROM finance_io
+            WHERE {where_clause}
+            """
+        ),
+        params,
+    ).scalar()
+    return int(result or 0)
+
+
+def _get_next_io_sequence(db: Session) -> int:
+    """Allocate the next insertion-order number from the database sequence."""
+    result = db.execute(text("SELECT nextval('finance_io_number_seq')")).scalar()
+    return int(result or 0)
 
 
 def sanitize_file_name(file_name: str) -> str:
@@ -178,7 +199,7 @@ def _finance_record_total(record: FinanceIO) -> Decimal | None:
     return record.total_amount
 
 
-def _serialize_finance_record(record: FinanceIO, *, request, current_user) -> dict[str, Any]:
+def _serialize_finance_record_state(record: FinanceIO, *, current_user=None) -> dict[str, Any]:
     full_name = None
     if getattr(record, "assigned_user", None):
         first_name = getattr(record.assigned_user, "first_name", None)
@@ -186,10 +207,6 @@ def _serialize_finance_record(record: FinanceIO, *, request, current_user) -> di
         full_name = " ".join([part for part in (first_name, last_name) if part]) or None
 
     user_name = "You" if current_user and record.user_id == current_user.id else full_name
-    file_url = None
-    if request is not None and record.io_number:
-        file_url = str(request.url_for("download_insertion_order_file", io_number=record.io_number))
-
     total_amount = _finance_record_total(record)
 
     return {
@@ -213,11 +230,21 @@ def _serialize_finance_record(record: FinanceIO, *, request, current_user) -> di
         "notes": _normalize_text(record.notes),
         "custom_fields": record.custom_data or None,
         "file_name": _normalize_text(record.file_name),
-        "file_url": file_url,
         "user_name": user_name,
         "photo_url": getattr(getattr(record, "assigned_user", None), "photo_url", None),
         "updated_at": _date_to_iso(record.updated_at),
     }
+
+
+def _serialize_finance_record_response(record: FinanceIO, *, request, current_user) -> dict[str, Any]:
+    data = _serialize_finance_record_state(record, current_user=current_user)
+    data["file_url"] = (
+        str(request.url_for("download_insertion_order_file", io_number=record.io_number))
+        if request is not None and record.io_number
+        else None
+    )
+    return data
+
 
 
 def _split_contact_name(value: str | None) -> tuple[str | None, str | None]:
@@ -735,8 +762,15 @@ def create_insertion_order(
         module_key="finance_io",
         payload=data.pop("custom_fields", None),
     )
-    next_io_sequence = _get_max_io_sequence(db) + 1
     requested_io_number = _normalize_text(data.get("io_number"))
+    next_io_sequence = None
+    if requested_io_number:
+        io_number = requested_io_number
+        file_sequence_label = requested_io_number
+    else:
+        next_io_sequence = _get_next_io_sequence(db)
+        io_number = f"{IO_NUMBER_PREFIX}{next_io_sequence:0{IO_NUMBER_PAD}d}"
+        file_sequence_label = str(next_io_sequence)
     customer_contact = _resolve_customer_contact(
         db,
         current_user=current_user,
@@ -777,8 +811,8 @@ def create_insertion_order(
         tenant_id=current_user.tenant_id,
         module_id=module_id,
         user_id=current_user.id if current_user else None,
-        io_number=requested_io_number or f"{IO_NUMBER_PREFIX}{next_io_sequence:0{IO_NUMBER_PAD}d}",
-        file_name=data.get("external_reference") or f"insertion-order-{next_io_sequence}.manual",
+        io_number=io_number,
+        file_name=data.get("external_reference") or f"insertion-order-{file_sequence_label}.manual",
         customer_contact_id=customer_contact.contact_id if customer_contact else None,
         customer_organization_id=customer_organization.org_id if customer_organization else None,
         customer_name=resolved_customer_name,
@@ -824,8 +858,9 @@ def update_insertion_order(
     current_user=None,
     data: dict[str, Any],
 ) -> FinanceIO:
+    custom_data_to_save: dict[str, Any] | None = None
     if "custom_fields" in data:
-        record.custom_data = validate_custom_field_payload(
+        custom_data_to_save = validate_custom_field_payload(
             db,
             tenant_id=record.tenant_id,
             module_key="finance_io",
@@ -838,6 +873,7 @@ def update_insertion_order(
                 fallback=record.custom_data,
             ),
         )
+        record.custom_data = custom_data_to_save
 
     if (
         "customer_name" in data
@@ -912,14 +948,15 @@ def update_insertion_order(
     db.add(record)
     db.commit()
     db.refresh(record)
-    save_custom_field_values(
-        db,
-        tenant_id=record.tenant_id,
-        module_key="finance_io",
-        record_id=record.id,
-        values=record.custom_data or {},
-    )
-    db.commit()
+    if custom_data_to_save is not None:
+        save_custom_field_values(
+            db,
+            tenant_id=record.tenant_id,
+            module_key="finance_io",
+            record_id=record.id,
+            values=custom_data_to_save,
+        )
+        db.commit()
     return hydrate_custom_field_record(
         db,
         tenant_id=record.tenant_id,

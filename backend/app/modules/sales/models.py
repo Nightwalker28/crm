@@ -4,6 +4,15 @@ from sqlalchemy.sql import expression
 
 from app.core.database import Base
 
+
+def _get_custom_field_cache(record) -> dict | None:
+    return getattr(record, "_custom_field_cache", None)
+
+
+def _set_custom_field_cache(record, value: dict | None) -> None:
+    record._custom_field_cache = value or None
+
+
 # organization model
 
 class SalesOrganization(Base):
@@ -42,11 +51,11 @@ class SalesOrganization(Base):
 
     @property
     def custom_data(self) -> dict | None:
-        return getattr(self, "_custom_field_cache", None)
+        return _get_custom_field_cache(self)
 
     @custom_data.setter
     def custom_data(self, value: dict | None) -> None:
-        self._custom_field_cache = value or None
+        _set_custom_field_cache(self, value)
 
     @property
     def custom_fields(self) -> dict | None:
@@ -90,11 +99,11 @@ class SalesContact(Base):
 
     @property
     def custom_data(self) -> dict | None:
-        return getattr(self, "_custom_field_cache", None)
+        return _get_custom_field_cache(self)
 
     @custom_data.setter
     def custom_data(self, value: dict | None) -> None:
-        self._custom_field_cache = value or None
+        _set_custom_field_cache(self, value)
 
     @property
     def custom_fields(self) -> dict | None:
@@ -160,11 +169,11 @@ class SalesOpportunity(Base):
 
     @property
     def custom_data(self) -> dict | None:
-        return getattr(self, "_custom_field_cache", None)
+        return _get_custom_field_cache(self)
 
     @custom_data.setter
     def custom_data(self, value: dict | None) -> None:
-        self._custom_field_cache = value or None
+        _set_custom_field_cache(self, value)
 
     @property
     def custom_fields(self) -> dict | None:

@@ -284,7 +284,7 @@ def create_sales_contact(
                 tenant_id=current_user.tenant_id,
                 module_key="sales_contacts",
                 record_id=existing.contact_id,
-                values=existing.custom_data or {},
+                values=custom_data,
             )
             db.commit()
             return hydrate_custom_field_record(
@@ -327,8 +327,9 @@ def create_sales_contact(
 
 
 def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> SalesContact:
+    custom_data_to_save: dict | None = None
     if "custom_fields" in data:
-        data["custom_data"] = validate_custom_field_payload(
+        custom_data_to_save = validate_custom_field_payload(
             db,
             tenant_id=contact.tenant_id,
             module_key="sales_contacts",
@@ -341,6 +342,7 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
                 fallback=contact.custom_data,
             ),
         )
+        data["custom_data"] = custom_data_to_save
 
     if "assigned_to" in data:
         if data["assigned_to"] is None:
@@ -380,14 +382,15 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
             detail="Another contact already uses this email",
         ) from exc
     db.refresh(contact)
-    save_custom_field_values(
-        db,
-        tenant_id=contact.tenant_id,
-        module_key="sales_contacts",
-        record_id=contact.contact_id,
-        values=contact.custom_data or {},
-    )
-    db.commit()
+    if custom_data_to_save is not None:
+        save_custom_field_values(
+            db,
+            tenant_id=contact.tenant_id,
+            module_key="sales_contacts",
+            record_id=contact.contact_id,
+            values=custom_data_to_save,
+        )
+        db.commit()
     return hydrate_custom_field_record(
         db,
         tenant_id=contact.tenant_id,

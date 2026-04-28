@@ -268,10 +268,9 @@ async def import_insertion_orders(
             job_id=job.id,
             job_status=job.status,
         )
-    summary = await io_search_api.import_insertion_orders_csv(
+    summary = io_search_api.import_insertion_orders_csv_bytes(
         db,
         current_user,
-        file=None,
         file_bytes=remapped_file_bytes,
         duplicate_mode=duplicate_mode,
         default_duplicate_mode=admin_modules.get_module_duplicate_mode(db, "finance_io", tenant_id=current_user.tenant_id),

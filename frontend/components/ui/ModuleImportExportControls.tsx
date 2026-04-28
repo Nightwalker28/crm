@@ -76,7 +76,6 @@ type Props = {
   exportLabel?: string;
   fileAccept?: string;
   onImportSuccess?: () => void;
-  onImportClick?: () => void;
   selectedIds?: number[];
   currentPageIds?: number[];
   onExportSuccess?: () => void;
@@ -110,7 +109,6 @@ export function ModuleImportExportControls({
   exportLabel = "Export",
   fileAccept = ".csv",
   onImportSuccess,
-  onImportClick,
   selectedIds = [],
   currentPageIds = [],
   onExportSuccess,
@@ -202,6 +200,9 @@ export function ModuleImportExportControls({
         const res = await apiFetch(`/jobs/data-transfer/${importJobId}`);
         const body = (await res.json().catch(() => null)) as DataTransferJobResponse | null;
         if (!res.ok || !body || cancelled) return;
+        if (body.status === "completed" || body.status === "failed") {
+          window.clearInterval(timer);
+        }
         setImportJobStatus(body.status);
         setImportJobProgress(body.progress_percent ?? 0);
         setImportJobMessage(body.progress_message ?? null);
@@ -233,6 +234,9 @@ export function ModuleImportExportControls({
         const res = await apiFetch(`/jobs/data-transfer/${exportJobId}`);
         const body = (await res.json().catch(() => null)) as DataTransferJobResponse | null;
         if (!res.ok || !body || cancelled) return;
+        if (body.status === "completed" || body.status === "failed") {
+          window.clearInterval(timer);
+        }
         setExportJobStatus(body.status);
         setExportJobProgress(body.progress_percent ?? 0);
         setExportJobMessage(body.progress_message ?? null);
@@ -375,7 +379,7 @@ export function ModuleImportExportControls({
 
   return (
     <div className="flex items-center gap-3">
-      {importEndpoint || onImportClick ? (
+      {importEndpoint ? (
         <input
           ref={inputRef}
           type="file"
@@ -395,7 +399,7 @@ export function ModuleImportExportControls({
         />
       ) : null}
 
-      {importEndpoint || exportEndpoint || onImportClick ? (
+      {importEndpoint || exportEndpoint ? (
         <Menu as="div" className="relative">
           <MenuButton
             as={Button}
@@ -411,16 +415,12 @@ export function ModuleImportExportControls({
             anchor="bottom end"
             className="z-50 mt-2 w-44 rounded-lg border border-neutral-800 bg-[#0d0d0d] p-1 shadow-2xl outline-none"
           >
-            {importEndpoint || onImportClick ? (
+            {importEndpoint ? (
               <MenuItem>
                 {({ focus }) => (
                   <button
                     type="button"
                     onClick={() => {
-                      if (onImportClick) {
-                        onImportClick();
-                        return;
-                      }
                       inputRef.current?.click();
                     }}
                     className={

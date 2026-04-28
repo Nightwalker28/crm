@@ -1,5 +1,9 @@
 from app.core.celery_app import celery_app
-from app.modules.platform.services.data_transfer_jobs import process_export_job, process_import_job
+from app.modules.platform.services.data_transfer_jobs import (
+    cleanup_expired_data_transfer_results_job,
+    process_export_job,
+    process_import_job,
+)
 
 
 @celery_app.task(
@@ -22,3 +26,8 @@ def process_import_job_task(job_id: int) -> None:
 )
 def process_export_job_task(job_id: int) -> None:
     process_export_job(job_id=job_id)
+
+
+@celery_app.task(name="app.tasks.data_transfer.cleanup_expired_results")
+def cleanup_expired_data_transfer_results_task() -> int:
+    return cleanup_expired_data_transfer_results_job()

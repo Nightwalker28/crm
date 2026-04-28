@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, status
@@ -287,6 +288,58 @@ def persist_job_result(*, job_id: int, filename: str, content: bytes) -> str:
     return str(path)
 
 
+def _delete_data_transfer_file(path: Path) -> bool:
+    resolved_path = path.resolve()
+    allowed_root = DATA_TRANSFER_UPLOAD_DIR.resolve()
+    if allowed_root not in resolved_path.parents and resolved_path != allowed_root:
+        return False
+    try:
+        if resolved_path.exists():
+            resolved_path.unlink()
+        parent = resolved_path.parent
+        if parent.exists() and parent != allowed_root and not any(parent.iterdir()):
+            parent.rmdir()
+        return True
+    except OSError:
+        return False
+
+
+def cleanup_expired_data_transfer_results(db: Session) -> int:
+    retention_days = max(settings.DATA_TRANSFER_RESULT_RETENTION_DAYS, 1)
+    cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
+    jobs = (
+        db.query(DataTransferJob)
+        .filter(
+            DataTransferJob.operation_type == "export",
+            DataTransferJob.status == "completed",
+            DataTransferJob.result_file_path.isnot(None),
+            DataTransferJob.completed_at.isnot(None),
+            DataTransferJob.completed_at < cutoff,
+        )
+        .all()
+    )
+    cleaned = 0
+    for job in jobs:
+        path = Path(job.result_file_path)
+        if _delete_data_transfer_file(path):
+            cleaned += 1
+        job.result_file_path = None
+        job.result_file_name = None
+        job.result_media_type = None
+        db.add(job)
+    if jobs:
+        db.commit()
+    return cleaned
+
+
+def cleanup_expired_data_transfer_results_job() -> int:
+    db = SessionLocal()
+    try:
+        return cleanup_expired_data_transfer_results(db)
+    finally:
+        db.close()
+
+
 def process_import_job(*, job_id: int) -> None:
     db = SessionLocal()
     path: Path | None = None
@@ -351,21 +404,16 @@ def process_import_job(*, job_id: int) -> None:
             from app.modules.finance.services import io_search_api
             from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
 
-            import asyncio
-
             update_job_progress(db, job, progress_percent=65, progress_message="Importing insertion orders.")
-            summary = asyncio.run(
-                io_search_api.import_insertion_orders_csv(
-                    db=db,
-                    current_user=current_user,
-                    file=None,
-                    file_bytes=file_bytes,
-                    duplicate_mode=duplicate_mode,
-                    default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
-                    replace_duplicates=False,
-                    skip_duplicates=False,
-                    create_new_records=False,
-                )
+            summary = io_search_api.import_insertion_orders_csv_bytes(
+                db=db,
+                current_user=current_user,
+                file_bytes=file_bytes,
+                duplicate_mode=duplicate_mode,
+                default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                replace_duplicates=False,
+                skip_duplicates=False,
+                create_new_records=False,
             )
         else:
             raise ValueError(f"Unsupported import module '{module_key}'.")

@@ -464,8 +464,9 @@ def create_opportunity(db: Session, data: dict, *, current_user) -> SalesOpportu
 
 
 def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict, *, current_user) -> SalesOpportunity:
+    custom_data_to_save: dict | None = None
     if "custom_fields" in data:
-        data["custom_data"] = validate_custom_field_payload(
+        custom_data_to_save = validate_custom_field_payload(
             db,
             tenant_id=opportunity.tenant_id,
             module_key="sales_opportunities",
@@ -478,6 +479,7 @@ def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict, *
                 fallback=opportunity.custom_data,
             ),
         )
+        data["custom_data"] = custom_data_to_save
     if "contact_id" in data:
         if data["contact_id"] is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="contact_id cannot be null")
@@ -499,14 +501,15 @@ def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict, *
 
     db.commit()
     db.refresh(opportunity)
-    save_custom_field_values(
-        db,
-        tenant_id=opportunity.tenant_id,
-        module_key="sales_opportunities",
-        record_id=opportunity.opportunity_id,
-        values=opportunity.custom_data or {},
-    )
-    db.commit()
+    if custom_data_to_save is not None:
+        save_custom_field_values(
+            db,
+            tenant_id=opportunity.tenant_id,
+            module_key="sales_opportunities",
+            record_id=opportunity.opportunity_id,
+            values=custom_data_to_save,
+        )
+        db.commit()
     return hydrate_custom_field_record(
         db,
         tenant_id=opportunity.tenant_id,

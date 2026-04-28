@@ -49,6 +49,9 @@ class FinanceIO(Base):
     customer_contact = relationship("SalesContact", lazy="joined")
     customer_organization = relationship("SalesOrganization", lazy="joined")
 
+    # Runtime cache populated by custom-field hydration. Values are persisted in
+    # platform custom-field tables, so services must hydrate this last before
+    # serializing and must not treat it as durable across session refreshes.
     @property
     def custom_data(self) -> dict | None:
         return getattr(self, "_custom_field_cache", None)

@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 from app.core.pagination import Pagination, build_paged_response
 from app.modules.finance.services.io_search_services import (
     _finance_record_customer_name,
-    _serialize_finance_record,
+    _serialize_finance_record_state,
     get_deleted_insertion_order_or_404,
     get_finance_module_id,
     list_deleted_insertion_orders,
@@ -73,7 +73,7 @@ def list_recycle_items(
                 "title": item.io_number,
                 "subtitle": _finance_record_customer_name(item),
                 "deleted_at": item.deleted_at,
-                "details": _serialize_finance_record(item, request=None, current_user=None),
+                "details": _serialize_finance_record_state(item),
             }
             for item in items
         ]
@@ -186,7 +186,7 @@ def restore_recycle_item(
             io_id=record_id,
         )
         restored = restore_insertion_order(db, record=record)
-        serialized = _serialize_finance_record(restored, request=None, current_user=current_user)
+        serialized = _serialize_finance_record_state(restored, current_user=current_user)
         log_activity(
             db,
             tenant_id=current_user.tenant_id,

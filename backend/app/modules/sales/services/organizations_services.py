@@ -100,7 +100,7 @@ def create_organization(
                 tenant_id=current_user.tenant_id,
                 module_key="sales_organizations",
                 record_id=existing.org_id,
-                values=existing.custom_data or {},
+                values=payload.custom_fields or {},
             )
             db.commit()
             return hydrate_custom_field_record(
@@ -133,7 +133,7 @@ def create_organization(
         tenant_id=current_user.tenant_id,
         module_key="sales_organizations",
         record_id=organization.org_id,
-        values=organization.custom_data or {},
+        values=payload.custom_fields or {},
     )
     db.commit()
     db.refresh(organization)
@@ -314,8 +314,9 @@ def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpda
         return None
 
     data = payload.model_dump(exclude_unset=True)
+    custom_data_to_save: dict | None = None
     if "custom_fields" in data:
-        data["custom_data"] = validate_custom_field_payload(
+        custom_data_to_save = validate_custom_field_payload(
             db,
             tenant_id=tenant_id,
             module_key="sales_organizations",
@@ -328,20 +329,22 @@ def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpda
                 fallback=organization.custom_data,
             ),
         )
+        data["custom_data"] = custom_data_to_save
 
     for field, value in data.items():
         setattr(organization, field, value)
 
     db.commit()
     db.refresh(organization)
-    save_custom_field_values(
-        db,
-        tenant_id=tenant_id,
-        module_key="sales_organizations",
-        record_id=organization.org_id,
-        values=organization.custom_data or {},
-    )
-    db.commit()
+    if custom_data_to_save is not None:
+        save_custom_field_values(
+            db,
+            tenant_id=tenant_id,
+            module_key="sales_organizations",
+            record_id=organization.org_id,
+            values=custom_data_to_save,
+        )
+        db.commit()
     return hydrate_custom_field_record(
         db,
         tenant_id=tenant_id,
