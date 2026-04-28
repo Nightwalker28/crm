@@ -1,6 +1,6 @@
 from pathlib import Path
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
 from fastapi import HTTPException, Request, UploadFile, status
@@ -19,6 +19,7 @@ from app.core.duplicates import (
 )
 from app.core.pagination import Pagination, build_paged_response
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
 from app.modules.finance.models import FinanceIO
 from app.modules.finance.services.io_search_services import (
     IO_SEARCH_UPLOAD_DIR,
@@ -719,6 +720,38 @@ def get_generic_insertion_order(
     return _serialize_finance_record_response(record, request=request, current_user=current_user)
 
 
+def _is_overdue_invoice(record: FinanceIO) -> bool:
+    status_value = _finance_record_status(record).strip().lower()
+    if status_value in {"paid", "completed", "closed", "cancelled", "void"}:
+        return False
+    if status_value in {"overdue", "past_due"}:
+        return True
+    return bool(record.due_date and record.due_date < date.today())
+
+
+def _emit_invoice_overdue_event_if_needed(db: Session, *, current_user, record: FinanceIO) -> None:
+    if not _is_overdue_invoice(record):
+        return
+    safe_emit_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        event_type="invoice.overdue",
+        entity_type="finance_insertion_order",
+        entity_id=record.id,
+        payload={
+            **actor_payload(current_user),
+            "invoice_number": record.io_number,
+            "customer_name": _finance_record_customer_name(record),
+            "amount": float(record.total_amount) if record.total_amount is not None else None,
+            "currency": _finance_record_currency(record),
+            "due_date": _date_to_iso(record.due_date),
+            "status": _finance_record_status(record),
+            "href": f"/dashboard/finance/insertion-orders?ioId={record.id}",
+        },
+    )
+
+
 def create_generic_insertion_order(
     db: Session,
     current_user,
@@ -740,6 +773,7 @@ def create_generic_insertion_order(
         description=f"Created insertion order {record.io_number}",
         after_state=_serialize_finance_record_state(record, current_user=current_user),
     )
+    _emit_invoice_overdue_event_if_needed(db, current_user=current_user, record=record)
     return serialized
 
 
@@ -778,6 +812,7 @@ def update_generic_insertion_order(
         before_state=before_state,
         after_state=_serialize_finance_record_state(updated, current_user=current_user),
     )
+    _emit_invoice_overdue_event_if_needed(db, current_user=current_user, record=updated)
     return serialized
 
 

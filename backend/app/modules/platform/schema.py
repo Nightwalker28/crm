@@ -140,6 +140,39 @@ class UserNotificationListResponse(BaseModel):
     unread_count: int
 
 
+class NotificationChannelResponse(BaseModel):
+    id: int
+    provider: str
+    channel_name: str | None = None
+    webhook_url_masked: str
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+
+
+class NotificationChannelCreateRequest(BaseModel):
+    provider: str = Field(default="slack", min_length=1, max_length=40)
+    webhook_url: str = Field(min_length=1)
+    channel_name: str | None = Field(default=None, max_length=120)
+    is_active: bool = True
+
+
+class NotificationChannelUpdateRequest(BaseModel):
+    provider: str | None = Field(default=None, min_length=1, max_length=40)
+    webhook_url: str | None = Field(default=None, min_length=1)
+    channel_name: str | None = Field(default=None, max_length=120)
+    is_active: bool | None = None
+
+
+class NotificationChannelListResponse(BaseModel):
+    results: list[NotificationChannelResponse]
+
+
+class NotificationChannelTestResponse(BaseModel):
+    ok: bool
+    message: str
+
+
 class RecordCommentResponse(BaseModel):
     id: int
     actor_user_id: int | None = None

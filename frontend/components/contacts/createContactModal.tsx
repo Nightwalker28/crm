@@ -103,7 +103,7 @@ export default function CreateContactModal({
               </Field>
             </div>
 
-            {/* EMAIL + TITLE */}
+            {/* EMAIL + PHONE */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Email" required>
                 <Input
@@ -116,6 +116,20 @@ export default function CreateContactModal({
                 />
               </Field>
 
+              <Field label="Phone">
+                <Input
+                  value={form.contact_telephone}
+                  onChange={(e) =>
+                    setForm({ ...form, contact_telephone: e.target.value })
+                  }
+                  type="tel"
+                  placeholder="+94771234567"
+                />
+              </Field>
+            </div>
+
+            {/* TITLE */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Job title">
                 <Input
                   value={form.current_title}

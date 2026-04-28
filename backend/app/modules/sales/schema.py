@@ -125,6 +125,7 @@ class SalesContactListItem(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     primary_email: EmailStr | None = None
+    contact_telephone: Optional[str] = None
     linkedin_url: Optional[str] = None
     current_title: Optional[str] = None
     region: Optional[str] = None

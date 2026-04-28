@@ -75,6 +75,11 @@ This file captures the current intended technical patterns and constraints so ne
 
 - User-facing operational notifications should use one shared persisted notification model and API instead of each background workflow inventing its own UI state.
 - Background job systems such as import/export should write queued/completed/failed notifications into that shared center so users can leave and come back without losing status visibility.
+- External chat alerts should be built on a shared CRM event layer rather than one-off webhook calls inside individual modules.
+- The first Slack/Microsoft Teams integration should use tenant/company-scoped incoming webhook channels only. OAuth, marketplace app installation, bidirectional chat sync, and provider credential vaulting are deferred until the simple webhook path is proven useful.
+- Event records should capture event type, entity type, entity ID, structured payload JSON, tenant/company ownership, and creation time so webhooks, activity timelines, notification preferences, and later smart rules can reuse the same source event.
+- Notification-channel records should capture provider (`slack` or `teams`), webhook URL, channel display name, active status, and tenant/company ownership. Send-test behavior should validate the channel without requiring a full provider integration.
+- Smart notification rules should sit after the basic event/channel layer and evaluate explicit structured conditions such as field/operator/value, not arbitrary user expressions.
 
 ### Message Templates
 

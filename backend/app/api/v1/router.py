@@ -10,6 +10,7 @@ from app.modules.platform.routes.global_search import router as global_search_ro
 from app.modules.platform.routes.notifications import router as notifications_router
 from app.modules.platform.routes.record_comments import router as record_comments_router
 from app.modules.platform.routes.message_templates import router as message_templates_router
+from app.modules.platform.routes.notification_channels import router as notification_channels_router
 from app.modules.platform.routes.recycle_bin import router as recycle_bin_router
 from app.modules.user_management.routes.signin import router as signin_router
 from app.modules.user_management.routes.profile import router as profile_router
@@ -34,6 +35,7 @@ router.include_router(global_search_router)
 router.include_router(notifications_router)
 router.include_router(record_comments_router)
 router.include_router(message_templates_router)
+router.include_router(notification_channels_router)
 router.include_router(recycle_bin_router)
 router.include_router(calendar_router)
 router.include_router(mail_router)

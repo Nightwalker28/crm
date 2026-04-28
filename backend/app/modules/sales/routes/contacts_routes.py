@@ -30,6 +30,7 @@ from app.modules.sales.services.contacts_services import (
     update_sales_contact,
 )
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
 from app.modules.platform.services.data_transfer_jobs import (
     create_data_transfer_job,
     enqueue_export_job,
@@ -48,6 +49,7 @@ CONTACT_LIST_FIELDS = {
     "first_name",
     "last_name",
     "primary_email",
+    "contact_telephone",
     "linkedin_url",
     "current_title",
     "region",
@@ -89,6 +91,18 @@ CONTACT_IMPORT_ALIASES = {
 
 def _serialize_contact(contact) -> dict:
     return SalesContactResponse.model_validate(contact).model_dump(mode="json")
+
+
+def _display_user_name(user) -> str | None:
+    if not user:
+        return None
+    full_name = " ".join(part for part in [getattr(user, "first_name", None), getattr(user, "last_name", None)] if part).strip()
+    return full_name or getattr(user, "email", None) or None
+
+
+def _display_contact_name(contact) -> str:
+    full_name = " ".join(part for part in [getattr(contact, "first_name", None), getattr(contact, "last_name", None)] if part).strip()
+    return full_name or getattr(contact, "primary_email", None) or "New lead"
 
 
 def _parse_list_fields(raw_fields: str | None, allowed_fields: set[str]) -> set[str]:
@@ -217,6 +231,27 @@ def create_contact(
             action="create",
             description=f"Created contact {created.primary_email}",
             after_state=_serialize_contact(created),
+        )
+        safe_emit_crm_event(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            event_type="lead.created",
+            entity_type="sales_contact",
+            entity_id=created.contact_id,
+            payload={
+                **actor_payload(current_user),
+                "lead_name": _display_contact_name(created),
+                "primary_email": created.primary_email,
+                "company": created.organization_name,
+                "organization_name": created.organization_name,
+                "source": "CRM",
+                "status": "New",
+                "assigned_to": created.assigned_to,
+                "assigned_to_name": _display_user_name(getattr(created, "assigned_user", None)),
+                "action": "Follow up today",
+                "href": f"/dashboard/sales/contacts/{created.contact_id}",
+            },
         )
         return created
     except ValueError as exc:

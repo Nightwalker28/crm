@@ -14,19 +14,23 @@ Before making substantial code changes:
 
 ## Current Focus
 
-Start the WhatsApp collaboration integration as a tenant-aware module and shared template platform capability:
+Start the basic Slack alert integration as the next collaboration primitive, with WhatsApp deliberately paused as good enough for now:
 
-1. register WhatsApp as its own backend module so tenant enablement, department/team availability, and role/action permissions can control access like tasks, calendar, and mail
-2. build Phase 1 click-to-chat MVP on contact profiles: WhatsApp button, pre-filled template message, manual activity logging, last-contacted-on-WhatsApp timestamp, and optional follow-up task reminder
-3. introduce global message templates as a reusable tenant-scoped platform primitive, not a WhatsApp-only helper, so multiple modules can expose editable templates with CRM variables
-4. seed the first WhatsApp template set for quote follow-up, payment reminder, delivery confirmation, meeting reminder, and service reminder
-5. keep Phase 2 focused on template management and variable rendering before adding automated sending or provider webhooks
-6. keep Phase 3 reminder rules manual-send only at first: Celery/scheduler may create suggested tasks, but users remain responsible for sending WhatsApp messages
-7. do not request or store WhatsApp provider credentials in the first slice; click-to-chat uses user-controlled WhatsApp URLs and logs only the user's CRM action
-8. keep platform docs aligned as this integration becomes a shared collaboration/integration primitive
+1. add a shared CRM event foundation so important CRM events can be persisted once and reused by Slack/Teams, activity timelines, notification preferences, and later smart rules
+2. add tenant/company notification channels for simple incoming webhooks, starting with Slack and leaving Teams compatible in the data model
+3. add admin setup and test-message support for Slack webhook URLs; do not add OAuth, app marketplace flows, or bidirectional chat sync in this slice
+4. send best-effort Slack alerts for the first concrete events that already exist in the product surface, without letting webhook failures break the CRM write path
+5. start with new lead/contact created, deal assigned, invoice overdue, task assigned, and task due today events where the current modules can provide reliable payloads
+6. leave WhatsApp-reply-received semantics as follow-up because the current WhatsApp slice is manual click-to-chat and has no inbound provider webhook yet
+7. keep Slack/Teams alerting as external notifications, not an internal chat replacement
+8. keep platform docs aligned as this becomes the shared external-alert foundation
 
 ## Immediate Notes
 
+- WhatsApp is deliberately paused as sufficient for now; do not expand provider webhooks or automated WhatsApp sending before the Slack webhook foundation.
+- Slack alerts must be best-effort: persist the CRM event, attempt active webhook sends, record delivery state, and never fail the originating CRM create/update solely because Slack is unavailable.
+- The first Slack slice should start with simple webhook-based alerts only: shared CRM event creation, tenant/company notification channels, test message support, and first alerts for new lead/contact created, deal assigned, invoice overdue, task assigned, and task due today.
+- Keep the requested future event list visible for follow-up: WhatsApp reply received and richer scheduled task-due scanning.
 - The audit-driven CRM features should be treated as platform primitives for all modules where they make product sense, not as isolated fixes inside one module.
 - Do not leave features half-landed across modules: when a shared record-page capability is started, finish the applicable module coverage, backend support, and architecture/docs updates in the same slice.
 - The current record-page modules are contacts, organizations, and opportunities; new shared detail-page capabilities should land across that set unless a module-specific constraint blocks it.

@@ -65,6 +65,7 @@ export default function ContactList({
     first_name: "First Name",
     last_name: "Last Name",
     primary_email: "Email",
+    contact_telephone: "Phone",
     current_title: "Job Title",
     organization_name: "Organization",
     region: "Region",
@@ -114,6 +115,14 @@ export default function ContactList({
           <TableCell>
             <span className="text-sm text-neutral-300 font-mono tracking-tight">
               {contact.primary_email || <span className="text-neutral-600">—</span>}
+            </span>
+          </TableCell>
+        );
+      case "contact_telephone":
+        return (
+          <TableCell>
+            <span className="text-sm text-neutral-300 font-mono tracking-tight">
+              {contact.contact_telephone || <span className="text-neutral-600">—</span>}
             </span>
           </TableCell>
         );

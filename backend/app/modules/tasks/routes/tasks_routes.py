@@ -1,3 +1,6 @@
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
@@ -7,6 +10,7 @@ from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
 from app.modules.tasks.schema import (
     TaskAssignmentOptionsResponse,
     TaskCreateRequest,
@@ -27,6 +31,68 @@ from app.modules.tasks.services.tasks_services import (
 
 
 router = APIRouter(prefix="/tasks", tags=["Tasks"])
+
+
+def _user_today(current_user) -> object:
+    timezone_name = getattr(current_user, "timezone", None) or "UTC"
+    try:
+        tzinfo = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        tzinfo = timezone.utc
+    return datetime.now(tzinfo).date()
+
+
+def _is_due_today(task, current_user) -> bool:
+    if not task.due_at:
+        return False
+    due_at = task.due_at
+    if due_at.tzinfo is None:
+        due_at = due_at.replace(tzinfo=timezone.utc)
+    timezone_name = getattr(current_user, "timezone", None) or "UTC"
+    try:
+        due_at = due_at.astimezone(ZoneInfo(timezone_name))
+    except ZoneInfoNotFoundError:
+        due_at = due_at.astimezone(timezone.utc)
+    return due_at.date() == _user_today(current_user)
+
+
+def _task_assignee_labels(task) -> str:
+    labels = [getattr(assignee, "label", None) for assignee in getattr(task, "assignees", [])]
+    return ", ".join(label for label in labels if label) or "Unassigned"
+
+
+def _emit_task_alert_events(db: Session, *, current_user, task, added_keys: list[str]) -> None:
+    payload = {
+        **actor_payload(current_user),
+        "task_id": task.id,
+        "task_title": task.title,
+        "priority": task.priority,
+        "status": task.status,
+        "due_at": task.due_at,
+        "assignees": _task_assignee_labels(task),
+        "assigned_by_name": getattr(task, "assigned_by_name", None),
+        "href": f"/dashboard/tasks?taskId={task.id}",
+    }
+    if added_keys:
+        safe_emit_crm_event(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            event_type="task.assigned",
+            entity_type="task",
+            entity_id=task.id,
+            payload=payload,
+        )
+    if _is_due_today(task, current_user):
+        safe_emit_crm_event(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            event_type="task.due_today",
+            entity_type="task",
+            entity_id=task.id,
+            payload=payload,
+        )
 
 
 @router.get("", response_model=TaskListResponse)
@@ -108,6 +174,7 @@ def create_task_route(
         description=f"Created task {task.title}",
         after_state=serialize_task(task),
     )
+    _emit_task_alert_events(db, current_user=current_user, task=task, added_keys=added_keys)
     return TaskResponse.model_validate(serialize_task(task))
 
 
@@ -141,6 +208,7 @@ def update_task_route(
         before_state=before_state,
         after_state=serialize_task(updated),
     )
+    _emit_task_alert_events(db, current_user=current_user, task=updated, added_keys=added_keys)
     return TaskResponse.model_validate(serialize_task(updated))
 
 

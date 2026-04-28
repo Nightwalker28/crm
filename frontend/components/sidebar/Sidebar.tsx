@@ -5,6 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   CalendarDays,
+  FileText,
   MessageCircle,
   Mail,
   LayoutGrid,
@@ -87,6 +88,7 @@ export default function Sidebar() {
   const calendarModule = moduleMap.get("calendar");
   const mailModule = moduleMap.get("mail");
   const whatsappModule = moduleMap.get("whatsapp");
+  const messageTemplatesModule = moduleMap.get("message_templates");
   const contactsModule = moduleMap.get("sales_contacts");
   const organizationsModule = moduleMap.get("sales_organizations");
   const opportunitiesModule = moduleMap.get("sales_opportunities");
@@ -167,6 +169,12 @@ export default function Sidebar() {
                 </SidebarMenuItem>
               ) : null}
 
+              {messageTemplatesModule?.base_route ? (
+                <SidebarMenuItem href={messageTemplatesModule.base_route} icon={FileText} collapsed={collapsed}>
+                  Templates
+                </SidebarMenuItem>
+              ) : null}
+
               {isAdmin ? (
                 <SidebarMenuItemCollapsible icon={UserRound} label="Admin" collapsed={collapsed}>
                   <SidebarMenuItemChild href="/dashboard/users" collapsed={collapsed}>
@@ -183,6 +191,9 @@ export default function Sidebar() {
                   </SidebarMenuItemChild>
                   <SidebarMenuItemChild href="/dashboard/custom-fields" collapsed={collapsed}>
                     Custom Fields
+                  </SidebarMenuItemChild>
+                  <SidebarMenuItemChild href="/dashboard/integrations" collapsed={collapsed}>
+                    Integrations
                   </SidebarMenuItemChild>
                   <SidebarMenuItemChild href="/dashboard/modules" collapsed={collapsed}>
                     Modules

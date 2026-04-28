@@ -92,6 +92,7 @@ def _build_contacts_query(
         "first_name": {"expression": SalesContact.first_name, "type": "text"},
         "last_name": {"expression": SalesContact.last_name, "type": "text"},
         "primary_email": {"expression": SalesContact.primary_email, "type": "text"},
+        "contact_telephone": {"expression": SalesContact.contact_telephone, "type": "text"},
         "current_title": {"expression": SalesContact.current_title, "type": "text"},
         "region": {"expression": SalesContact.region, "type": "text"},
         "country": {"expression": SalesContact.country, "type": "text"},

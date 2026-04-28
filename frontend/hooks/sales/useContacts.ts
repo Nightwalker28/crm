@@ -12,6 +12,7 @@ export type Contact = {
   first_name: string | null;
   last_name: string | null;
   primary_email: string | null;
+  contact_telephone: string | null;
   linkedin_url: string | null;
   current_title: string | null;
   region: string | null;

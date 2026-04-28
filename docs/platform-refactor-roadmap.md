@@ -15,7 +15,7 @@ Current phase:
 - Phase 7.5 in progress: auth/access-control correction, Google scope cleanup, and saved-view filter usability hardening
 - Phase 8 in progress: deployment licensing, hostname-based tenant resolution, and cloud-auth foundation
 - Phase 8.5 in progress: tenant ownership rollout across existing modules and platform defaults for timezone-aware rendering
-- Phase 9 in progress: collaboration and integrations foundation with tasks first, then calendar and mailbox connectivity
+- Phase 9 in progress: collaboration and integrations foundation with tasks, calendar/mail foundations, WhatsApp click-to-chat, and the next external alert pipeline
 
 Completed items:
 - Cleared the current frontend lint blockers and expanded tenant module administration: Modules now exposes tenant-specific enablement, module defaults, and department/team module availability, while role/module permissions remain the source of truth for action levels inside modules and disabled/unassigned modules are blocked at both navigation and API gates.
@@ -33,6 +33,7 @@ Completed items:
 - Added a shared global search / command palette in the dashboard shell, backed by one permission-aware aggregate search API for CRM record lookup across contacts, organizations, and opportunities.
 - Added shared record notes/comments as a reusable tenant-scoped platform primitive, with one shared record-comments API and CRM detail-page integration across contacts, organizations, and opportunities.
 - Added shared per-record activity timelines as a reusable platform primitive, with one record-activity API path and record-page integration across contacts, organizations, and opportunities.
+- Added the first WhatsApp/manual-send foundation with a tenant-aware WhatsApp module, contact-profile click-to-chat, WhatsApp interaction persistence, contact last-contacted timestamps, optional follow-up task creation, seeded WhatsApp templates, and a tenant-scoped message-template management surface.
 - Fixed uploaded profile/company media URL resolution so backend-served `/media/...` assets are no longer incorrectly built under `/api/v1/...` on the frontend.
 - Replaced the profile timezone free-text field with a searchable timezone picker that stores the real timezone value while letting users search by country/city labels such as Sri Lanka / Colombo.
 - Added persisted progress fields to background data-transfer jobs so import/export flows can expose percentage and current-step text instead of only queued/completed/failed states.
@@ -158,6 +159,9 @@ In progress:
 - Production-grade calendar and mailbox provider sync should move into the shared background-job architecture: immediate sync on write where possible, queued provider sync jobs, and periodic reconciliation rather than request-only sync.
 - Start WhatsApp as the next collaboration integration, but keep Phase 1 manual-send/click-to-chat only: register it as a tenant-aware module, expose contact-profile click-to-chat, log activity, update last WhatsApp contact, and create optional follow-up tasks.
 - Add a global tenant-scoped message-template platform so WhatsApp templates are reusable across future mail, finance, sales, tasks, and reminder workflows instead of becoming a channel-specific one-off.
+- Treat the remaining WhatsApp work as the gate before starting the Slack/Teams alert pipeline: verify the manual click-to-chat flow end to end, harden template variables/default-template behavior, and decide whether "WhatsApp reply received" means manual reply logging now or a later provider webhook event.
+- Queue the external chat-alert foundation as the next collaboration/integration track after the WhatsApp slice: start with simple tenant/company webhooks for Slack and Microsoft Teams, no OAuth or marketplace app flow.
+- Basic Slack webhook alerts are now the active follow-up to the paused WhatsApp slice: add shared CRM events, admin-managed notification channels, test sends, and best-effort Slack delivery for the first concrete event producers.
 - Keep extending timezone-aware timestamp formatting across remaining UI surfaces that still render raw browser-local or server-default times.
 - Keep normalizing uploaded/local media URLs across all avatar/logo consumers so uploaded profile/company assets behave the same as remote images everywhere.
 - Expand the new notification center beyond data-transfer jobs into broader per-user operational notifications over time.
@@ -204,6 +208,15 @@ Next up:
 - Add mailbox automation after messages can be synced safely, including CRM source-linking, task/event handoff, and permission-aware global search results.
 - Build WhatsApp Phase 2 template management after the click-to-chat MVP: editable quote follow-up, payment reminder, delivery confirmation, meeting reminder, and service reminder templates with controlled CRM variables.
 - Build WhatsApp Phase 3 reminder rules through Celery/tasks while keeping message sending manual until a provider integration is intentionally planned.
+- Continue Phase 1 Slack/Teams alerts now that WhatsApp is deliberately paused:
+  - create a shared `crm_events` foundation with event creation helpers for `lead.created`, `deal.assigned`, `invoice.overdue`, `whatsapp.reply_received`, `task.due_today`, `task.assigned`, and `comment.mentioned`
+  - add tenant/company notification channels for simple Slack/Teams incoming webhook URLs with provider, channel name, active status, and a test-message action
+  - send first webhook alerts for new lead created, deal assigned, invoice overdue, task assigned, and task due today
+  - keep WhatsApp reply received for a later manual-reply/provider-webhook decision
+  - keep OAuth, app marketplace setup, bidirectional chat sync, and provider credentials out of this first slice
+- Follow Slack/Teams alerts with contextual comments and mentions: extend shared record comments toward leads, deals, contacts, invoices, tickets, projects, orders, and tasks; parse `@user` mentions into `comment_mentions`; create in-app notifications first, then optional Slack/email alerts.
+- Add notification preferences after mentions: let users choose in-app, email, Slack, and per-record mute behavior.
+- Add smart notification rules last: `notification_rules` with event type, structured condition JSON, destination provider/channel, and active status; support rules such as overdue invoices to finance, high-value deals to managers, untouched leads to salespeople, and urgent tickets to support channels.
 - Finish the dedicated saved-view management flow so module pages only need compact view switching.
 - Expand saved views over time to include richer per-module state beyond the current search, condition, status, and sort slices.
 - Add inline shared quick-filter UX on current module pages so users can apply multi-field conditions without leaving the module.

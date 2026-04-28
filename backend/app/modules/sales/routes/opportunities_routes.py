@@ -8,6 +8,7 @@ from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
 from app.modules.platform.services.data_transfer_jobs import (
     create_data_transfer_job,
     enqueue_export_job,
@@ -96,6 +97,36 @@ OPPORTUNITY_IMPORT_ALIASES = {
 
 def _serialize_opportunity(opportunity) -> dict:
     return SalesOpportunityResponse.model_validate(opportunity).model_dump(mode="json")
+
+
+def _display_user_name(user) -> str | None:
+    if not user:
+        return None
+    full_name = " ".join(part for part in [getattr(user, "first_name", None), getattr(user, "last_name", None)] if part).strip()
+    return full_name or getattr(user, "email", None) or None
+
+
+def _emit_deal_assigned_event(db: Session, *, current_user, opportunity) -> None:
+    if not getattr(opportunity, "assigned_to", None):
+        return
+    safe_emit_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        event_type="deal.assigned",
+        entity_type="sales_opportunity",
+        entity_id=opportunity.opportunity_id,
+        payload={
+            **actor_payload(current_user),
+            "deal_name": opportunity.opportunity_name,
+            "company": getattr(getattr(opportunity, "organization", None), "org_name", None) or opportunity.client,
+            "deal_value": opportunity.total_cost_of_project,
+            "stage": opportunity.sales_stage,
+            "assigned_to": opportunity.assigned_to,
+            "assigned_to_name": _display_user_name(getattr(opportunity, "assigned_user", None)),
+            "href": f"/dashboard/sales/opportunities/{opportunity.opportunity_id}",
+        },
+    )
 
 
 def _parse_list_fields(raw_fields: str | None) -> set[str]:
@@ -260,6 +291,7 @@ def create_sales_opportunity(
         description=f"Created opportunity {opportunity.opportunity_name}",
         after_state=_serialize_opportunity(opportunity),
     )
+    _emit_deal_assigned_event(db, current_user=current_user, opportunity=opportunity)
     return SalesOpportunityResponse.model_validate(opportunity)
 
 
@@ -349,6 +381,8 @@ def update_sales_opportunity(
         before_state=before_state,
         after_state=_serialize_opportunity(updated),
     )
+    if "assigned_to" in update_data and before_state.get("assigned_to") != updated.assigned_to:
+        _emit_deal_assigned_event(db, current_user=current_user, opportunity=updated)
     return SalesOpportunityResponse.model_validate(updated)
 
 

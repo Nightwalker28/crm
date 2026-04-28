@@ -117,6 +117,56 @@ class UserNotification(Base):
     user = relationship("User")
 
 
+class CrmEvent(Base):
+    __tablename__ = "crm_events"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    event_type = Column(String(100), nullable=False, index=True)
+    entity_type = Column(String(100), nullable=False, index=True)
+    entity_id = Column(String(100), nullable=False, index=True)
+    payload = Column("payload_json", JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    actor = relationship("User")
+
+
+class NotificationChannel(Base):
+    __tablename__ = "notification_channels"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(40), nullable=False, index=True)
+    webhook_url = Column(Text, nullable=False)
+    channel_name = Column(String(120), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true", index=True)
+    created_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    updated_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    creator = relationship("User", foreign_keys=[created_by_user_id])
+    updated_by = relationship("User", foreign_keys=[updated_by_user_id])
+
+
+class CrmEventDelivery(Base):
+    __tablename__ = "crm_event_deliveries"
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_id = Column(BigInteger, ForeignKey("crm_events.id", ondelete="CASCADE"), nullable=False, index=True)
+    channel_id = Column(BigInteger, ForeignKey("notification_channels.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(40), nullable=False, index=True)
+    status = Column(String(30), nullable=False, index=True)
+    error_message = Column(Text, nullable=True)
+    delivered_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    event = relationship("CrmEvent")
+    channel = relationship("NotificationChannel")
+
+
 class RecordComment(Base):
     __tablename__ = "record_comments"
 

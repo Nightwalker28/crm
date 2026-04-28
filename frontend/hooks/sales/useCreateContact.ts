@@ -14,6 +14,7 @@ export type ContactForm = {
   first_name: string;
   last_name: string;
   primary_email: string;
+  contact_telephone: string;
   linkedin_url: string;
   current_title: string;
   region: string;
@@ -26,6 +27,7 @@ const emptyForm: ContactForm = {
   first_name: "",
   last_name: "",
   primary_email: "",
+  contact_telephone: "",
   linkedin_url: "",
   current_title: "",
   region: "",
