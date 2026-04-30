@@ -21,7 +21,7 @@ Start the basic Slack alert integration as the next collaboration primitive, wit
 3. add admin setup and test-message support for Slack webhook URLs; do not add OAuth, app marketplace flows, or bidirectional chat sync in this slice
 4. send best-effort Slack alerts for the first concrete events that already exist in the product surface, without letting webhook failures break the CRM write path
 5. start with new lead/contact created, deal assigned, invoice overdue, task assigned, and task due today events where the current modules can provide reliable payloads
-6. leave WhatsApp-reply-received semantics as follow-up because the current WhatsApp slice is manual click-to-chat and has no inbound provider webhook yet
+6. keep WhatsApp reply handling out of scope because the current WhatsApp slice is manual click-to-chat and has no inbound provider webhook
 7. keep Slack/Teams alerting as external notifications, not an internal chat replacement
 8. keep platform docs aligned as this becomes the shared external-alert foundation
 
@@ -30,7 +30,7 @@ Start the basic Slack alert integration as the next collaboration primitive, wit
 - WhatsApp is deliberately paused as sufficient for now; do not expand provider webhooks or automated WhatsApp sending before the Slack webhook foundation.
 - Slack alerts must be best-effort: persist the CRM event, attempt active webhook sends, record delivery state, and never fail the originating CRM create/update solely because Slack is unavailable.
 - The first Slack slice should start with simple webhook-based alerts only: shared CRM event creation, tenant/company notification channels, test message support, and first alerts for new lead/contact created, deal assigned, invoice overdue, task assigned, and task due today.
-- Keep the requested future event list visible for follow-up: WhatsApp reply received and richer scheduled task-due scanning.
+- Keep richer scheduled task-due scanning visible as follow-up; do not add WhatsApp reply handling in the current manual click-to-chat slice.
 - The audit-driven CRM features should be treated as platform primitives for all modules where they make product sense, not as isolated fixes inside one module.
 - Do not leave features half-landed across modules: when a shared record-page capability is started, finish the applicable module coverage, backend support, and architecture/docs updates in the same slice.
 - The current record-page modules are contacts, organizations, and opportunities; new shared detail-page capabilities should land across that set unless a module-specific constraint blocks it.

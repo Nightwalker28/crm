@@ -173,6 +173,38 @@ class NotificationChannelTestResponse(BaseModel):
     message: str
 
 
+class CrmEventDeliveryResponse(BaseModel):
+    id: int
+    channel_id: int
+    provider: str
+    status: str
+    channel_name: str | None = None
+    error_message: str | None = None
+    delivered_at: datetime | None = None
+    created_at: datetime
+
+
+class CrmEventResponse(BaseModel):
+    id: int
+    actor_user_id: int | None = None
+    event_type: str
+    entity_type: str
+    entity_id: str
+    payload: dict[str, Any] | None = None
+    created_at: datetime
+    deliveries: list[CrmEventDeliveryResponse] = Field(default_factory=list)
+
+
+class CrmEventListResponse(BaseModel):
+    results: list[CrmEventResponse]
+    range_start: int
+    range_end: int
+    total_count: int
+    total_pages: int
+    page: int
+    page_size: int
+
+
 class RecordCommentResponse(BaseModel):
     id: int
     actor_user_id: int | None = None
@@ -188,6 +220,7 @@ class RecordCommentResponse(BaseModel):
 
 class RecordCommentCreateRequest(BaseModel):
     body: str = Field(min_length=1, max_length=5000)
+    mentioned_user_ids: list[int] = Field(default_factory=list)
 
 
 class RecordCommentListResponse(BaseModel):
@@ -197,6 +230,16 @@ class RecordCommentListResponse(BaseModel):
     total_count: int
     total_pages: int
     page: int
+
+
+class RecordMentionableUserResponse(BaseModel):
+    id: int
+    label: str
+    email: str
+
+
+class RecordMentionableUserListResponse(BaseModel):
+    results: list[RecordMentionableUserResponse]
 
 
 class GlobalSearchResultResponse(BaseModel):

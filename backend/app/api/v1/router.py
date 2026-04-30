@@ -7,6 +7,7 @@ from app.modules.platform.routes.activity_logs import router as activity_log_rou
 from app.modules.platform.routes.app_config import router as app_config_router
 from app.modules.platform.routes.custom_fields import router as custom_fields_router, public_router as public_custom_fields_router
 from app.modules.platform.routes.data_transfer_jobs import router as data_transfer_job_router
+from app.modules.platform.routes.crm_events import router as crm_events_router
 from app.modules.platform.routes.global_search import router as global_search_router
 from app.modules.platform.routes.notifications import router as notifications_router
 from app.modules.platform.routes.record_comments import router as record_comments_router
@@ -33,6 +34,7 @@ router.include_router(activity_log_router)
 router.include_router(custom_fields_router)
 router.include_router(public_custom_fields_router)
 router.include_router(data_transfer_job_router)
+router.include_router(crm_events_router)
 router.include_router(global_search_router)
 router.include_router(notifications_router)
 router.include_router(record_comments_router)

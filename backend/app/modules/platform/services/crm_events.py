@@ -6,8 +6,9 @@ from typing import Any
 import requests
 from fastapi import HTTPException, status
 from fastapi.encoders import jsonable_encoder
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
+from app.core.pagination import Pagination
 from app.modules.platform.models import CrmEvent, CrmEventDelivery, NotificationChannel
 
 
@@ -16,7 +17,6 @@ SLACK_ALERT_EVENT_TYPES = {
     "lead.created",
     "deal.assigned",
     "invoice.overdue",
-    "whatsapp.reply_received",
     "task.due_today",
     "task.assigned",
 }
@@ -105,16 +105,6 @@ def format_event_message(event_type: str, payload: dict[str, Any]) -> str:
             ],
             action=payload.get("action") or "Follow up on payment",
         )
-    if event_type == "whatsapp.reply_received":
-        return _message_lines(
-            "WhatsApp reply received",
-            [
-                ("Contact", payload.get("contact_name")),
-                ("Company", payload.get("company")),
-                ("Message", payload.get("message_preview")),
-            ],
-            action=payload.get("action") or "Open contact",
-        )
     if event_type == "task.due_today":
         return _message_lines(
             "Task due today",
@@ -168,6 +158,88 @@ def serialize_notification_channel(channel: NotificationChannel) -> dict[str, An
         "created_at": channel.created_at,
         "updated_at": channel.updated_at,
     }
+
+
+def serialize_crm_event_delivery(delivery: CrmEventDelivery) -> dict[str, Any]:
+    channel = getattr(delivery, "channel", None)
+    return {
+        "id": delivery.id,
+        "channel_id": delivery.channel_id,
+        "provider": delivery.provider,
+        "status": delivery.status,
+        "channel_name": getattr(channel, "channel_name", None),
+        "error_message": delivery.error_message,
+        "delivered_at": delivery.delivered_at,
+        "created_at": delivery.created_at,
+    }
+
+
+def serialize_crm_event(event: CrmEvent, deliveries: list[CrmEventDelivery] | None = None) -> dict[str, Any]:
+    return {
+        "id": event.id,
+        "actor_user_id": event.actor_user_id,
+        "event_type": event.event_type,
+        "entity_type": event.entity_type,
+        "entity_id": event.entity_id,
+        "payload": event.payload or {},
+        "created_at": event.created_at,
+        "deliveries": [
+            serialize_crm_event_delivery(delivery)
+            for delivery in (deliveries or [])
+        ],
+    }
+
+
+def list_crm_events(
+    db: Session,
+    *,
+    tenant_id: int,
+    pagination: Pagination,
+    event_type: str | None = None,
+    entity_type: str | None = None,
+    delivery_provider: str | None = None,
+    delivery_status: str | None = None,
+) -> tuple[list[CrmEvent], dict[int, list[CrmEventDelivery]], int]:
+    query = db.query(CrmEvent).filter(CrmEvent.tenant_id == tenant_id)
+    if event_type:
+        query = query.filter(CrmEvent.event_type == event_type.strip())
+    if entity_type:
+        query = query.filter(CrmEvent.entity_type == entity_type.strip())
+
+    normalized_provider = (delivery_provider or "").strip().lower()
+    normalized_status = (delivery_status or "").strip().lower()
+    if normalized_provider or normalized_status:
+        delivery_query = db.query(CrmEventDelivery.event_id).filter(CrmEventDelivery.tenant_id == tenant_id)
+        if normalized_provider:
+            delivery_query = delivery_query.filter(CrmEventDelivery.provider == normalized_provider)
+        if normalized_status:
+            delivery_query = delivery_query.filter(CrmEventDelivery.status == normalized_status)
+        query = query.filter(CrmEvent.id.in_(delivery_query.distinct()))
+
+    total = query.count()
+    events = (
+        query
+        .order_by(CrmEvent.created_at.desc(), CrmEvent.id.desc())
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+        .all()
+    )
+    event_ids = [event.id for event in events]
+    deliveries_by_event_id: dict[int, list[CrmEventDelivery]] = {event_id: [] for event_id in event_ids}
+    if event_ids:
+        deliveries = (
+            db.query(CrmEventDelivery)
+            .options(joinedload(CrmEventDelivery.channel))
+            .filter(
+                CrmEventDelivery.tenant_id == tenant_id,
+                CrmEventDelivery.event_id.in_(event_ids),
+            )
+            .order_by(CrmEventDelivery.created_at.desc(), CrmEventDelivery.id.desc())
+            .all()
+        )
+        for delivery in deliveries:
+            deliveries_by_event_id.setdefault(delivery.event_id, []).append(delivery)
+    return events, deliveries_by_event_id, total
 
 
 def list_notification_channels(db: Session, *, tenant_id: int) -> list[NotificationChannel]:

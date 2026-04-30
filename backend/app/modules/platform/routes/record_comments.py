@@ -6,6 +6,8 @@ from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.schema import (
+    RecordMentionableUserListResponse,
+    RecordMentionableUserResponse,
     RecordCommentCreateRequest,
     RecordCommentListResponse,
     RecordCommentResponse,
@@ -13,13 +15,38 @@ from app.modules.platform.schema import (
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.record_comments import (
     create_record_comment,
+    create_record_mention_notifications,
     delete_record_comment,
     get_record_comment_module_config,
     get_record_comment_or_404,
+    list_mentionable_record_users,
+    validate_record_mentions,
     list_record_comments,
 )
 
 router = APIRouter(prefix="/record-comments", tags=["Record Comments"])
+
+
+@router.get("/mentionable-users", response_model=RecordMentionableUserListResponse)
+def get_record_mentionable_users(
+    module_key: str,
+    entity_id: str,
+    query: str | None = None,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+):
+    get_record_comment_module_config(module_key)
+    require_module_access(module_key)(current_user=current_user, db=db)
+    require_action_access(module_key, "view")(current_user=current_user, db=db)
+
+    users = list_mentionable_record_users(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key=module_key,
+        entity_id=entity_id,
+        query=query,
+    )
+    return {"results": [RecordMentionableUserResponse.model_validate(user) for user in users]}
 
 
 @router.get("", response_model=RecordCommentListResponse)
@@ -56,6 +83,13 @@ def post_record_comment(
     config = get_record_comment_module_config(module_key)
     require_module_access(module_key)(current_user=current_user, db=db)
     require_action_access(module_key, "edit")(current_user=current_user, db=db)
+    mentioned_users = validate_record_mentions(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key=module_key,
+        entity_id=entity_id,
+        mentioned_user_ids=payload.mentioned_user_ids,
+    )
 
     comment, record = create_record_comment(
         db,
@@ -75,6 +109,18 @@ def post_record_comment(
         entity_id=entity_id,
         action="comment_added",
         description=f"Added a note on {record_label}",
+    )
+    actor_name = " ".join(part for part in [getattr(current_user, "first_name", None), getattr(current_user, "last_name", None)] if part).strip()
+    create_record_mention_notifications(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        actor_name=actor_name or current_user.email,
+        module_key=module_key,
+        entity_id=entity_id,
+        record_label=record_label,
+        mentioned_users=mentioned_users,
+        comment_id=comment.id,
     )
     return RecordCommentResponse.model_validate(comment)
 

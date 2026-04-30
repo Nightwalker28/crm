@@ -159,7 +159,7 @@ In progress:
 - Production-grade calendar and mailbox provider sync should move into the shared background-job architecture: immediate sync on write where possible, queued provider sync jobs, and periodic reconciliation rather than request-only sync.
 - Start WhatsApp as the next collaboration integration, but keep Phase 1 manual-send/click-to-chat only: register it as a tenant-aware module, expose contact-profile click-to-chat, log activity, update last WhatsApp contact, and create optional follow-up tasks.
 - Add a global tenant-scoped message-template platform so WhatsApp templates are reusable across future mail, finance, sales, tasks, and reminder workflows instead of becoming a channel-specific one-off.
-- Treat the remaining WhatsApp work as the gate before starting the Slack/Teams alert pipeline: verify the manual click-to-chat flow end to end, harden template variables/default-template behavior, and decide whether "WhatsApp reply received" means manual reply logging now or a later provider webhook event.
+- Treat WhatsApp as paused after the manual click-to-chat flow; do not add reply logging or provider webhook handling until a dedicated provider-integration phase is intentionally opened.
 - Queue the external chat-alert foundation as the next collaboration/integration track after the WhatsApp slice: start with simple tenant/company webhooks for Slack and Microsoft Teams, no OAuth or marketplace app flow.
 - Basic Slack webhook alerts are now the active follow-up to the paused WhatsApp slice: add shared CRM events, admin-managed notification channels, test sends, and best-effort Slack delivery for the first concrete event producers.
 - Keep extending timezone-aware timestamp formatting across remaining UI surfaces that still render raw browser-local or server-default times.
@@ -209,12 +209,13 @@ Next up:
 - Build WhatsApp Phase 2 template management after the click-to-chat MVP: editable quote follow-up, payment reminder, delivery confirmation, meeting reminder, and service reminder templates with controlled CRM variables.
 - Build WhatsApp Phase 3 reminder rules through Celery/tasks while keeping message sending manual until a provider integration is intentionally planned.
 - Continue Phase 1 Slack/Teams alerts now that WhatsApp is deliberately paused:
-  - create a shared `crm_events` foundation with event creation helpers for `lead.created`, `deal.assigned`, `invoice.overdue`, `whatsapp.reply_received`, `task.due_today`, `task.assigned`, and `comment.mentioned`
+  - create a shared `crm_events` foundation with event creation helpers for `lead.created`, `deal.assigned`, `invoice.overdue`, `task.due_today`, `task.assigned`, and `comment.mentioned`
   - add tenant/company notification channels for simple Slack/Teams incoming webhook URLs with provider, channel name, active status, and a test-message action
   - send first webhook alerts for new lead created, deal assigned, invoice overdue, task assigned, and task due today
-  - keep WhatsApp reply received for a later manual-reply/provider-webhook decision
+  - expose CRM event and webhook delivery history in the admin integration surface so alert delivery is inspectable
+  - keep WhatsApp reply handling out of this slice unless a later provider-webhook phase is explicitly opened
   - keep OAuth, app marketplace setup, bidirectional chat sync, and provider credentials out of this first slice
-- Follow Slack/Teams alerts with contextual comments and mentions: extend shared record comments toward leads, deals, contacts, invoices, tickets, projects, orders, and tasks; parse `@user` mentions into `comment_mentions`; create in-app notifications first, then optional Slack/email alerts.
+- Follow Slack/Teams alerts with contextual comments and mentions: shared record comments now support access-limited `@user` mention suggestions and in-app mention notifications; later work can expand this toward more modules, mention persistence, and optional Slack/email alerts.
 - Add notification preferences after mentions: let users choose in-app, email, Slack, and per-record mute behavior.
 - Add smart notification rules last: `notification_rules` with event type, structured condition JSON, destination provider/channel, and active status; support rules such as overdue invoices to finance, high-value deals to managers, untouched leads to salespeople, and urgent tickets to support channels.
 - Finish the dedicated saved-view management flow so module pages only need compact view switching.

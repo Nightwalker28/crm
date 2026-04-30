@@ -71,6 +71,7 @@ This file captures the current intended technical patterns and constraints so ne
   - `view` for reading notes
   - `edit` for creating or deleting notes
 - Record-note create/delete actions should also write into the same per-record activity timeline so collaboration history stays in one place.
+- Record-note mentions should only suggest and notify active users who can view the record's module; the backend must reject mentioned user IDs that do not pass that access check.
 
 ### Notifications
 
@@ -80,6 +81,7 @@ This file captures the current intended technical patterns and constraints so ne
 - The first Slack/Microsoft Teams integration should use tenant/company-scoped incoming webhook channels only. OAuth, marketplace app installation, bidirectional chat sync, and provider credential vaulting are deferred until the simple webhook path is proven useful.
 - Event records should capture event type, entity type, entity ID, structured payload JSON, tenant/company ownership, and creation time so webhooks, activity timelines, notification preferences, and later smart rules can reuse the same source event.
 - Notification-channel records should capture provider (`slack` or `teams`), webhook URL, channel display name, active status, and tenant/company ownership. Send-test behavior should validate the channel without requiring a full provider integration.
+- Admins should be able to inspect recent CRM events and webhook delivery attempts, including failed delivery errors, so external alerts are auditable instead of invisible background side effects.
 - Smart notification rules should sit after the basic event/channel layer and evaluate explicit structured conditions such as field/operator/value, not arbitrary user expressions.
 
 ### Message Templates
