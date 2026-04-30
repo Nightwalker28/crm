@@ -5,7 +5,8 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from sqlalchemy import Date, DateTime, Numeric, Text, and_, cast, func, not_, or_
+from fastapi import HTTPException, status
+from sqlalchemy import Date, DateTime, Float, Integer, Numeric, Text, and_, cast, func, not_, or_
 
 FILTER_OPERATORS = {
     "is",
@@ -43,11 +44,15 @@ def parse_filter_conditions(raw_filters: str | None) -> list[dict[str, Any]]:
     normalized: list[dict[str, Any]] = []
     for item in parsed:
         if not isinstance(item, dict):
-            continue
+            raise ValueError("Invalid filter condition")
         field = str(item.get("field") or "").strip()
         operator = str(item.get("operator") or "").strip()
-        if not field or operator not in FILTER_OPERATORS:
+        if not field:
             continue
+        if operator and operator not in FILTER_OPERATORS:
+            raise ValueError(f"Unknown filter operator: {operator!r}")
+        if not operator:
+            raise ValueError("Filter operator is required")
         entry = {
             "field": field,
             "operator": operator,
@@ -130,17 +135,10 @@ def _build_text_expression(expression, operator: str, value: Any, values: Any):
             return None
         return not_(lowered.in_([item.lower() for item in normalized_values]))
     if operator in {"gt", "gte", "lt", "lte"}:
-        comparable = _coerce_decimal(value)
-        if comparable is None:
-            return None
-        numeric_expression = _numeric_expression(expression)
-        if operator == "gt":
-            return numeric_expression > comparable
-        if operator == "gte":
-            return numeric_expression >= comparable
-        if operator == "lt":
-            return numeric_expression < comparable
-        return numeric_expression <= comparable
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Operator {operator!r} is not supported for text fields",
+        )
     return None
 
 
@@ -325,5 +323,10 @@ def _coerce_bool_values(values: Any, *, fallback: Any = None) -> list[bool]:
 
 
 def _numeric_expression(expression):
-    sanitized = func.nullif(func.regexp_replace(cast(expression, Text), r"[^0-9.\-]", "", "g"), "")
-    return cast(sanitized, Numeric)
+    expression_type = getattr(expression, "type", None)
+    if isinstance(expression_type, (Integer, Numeric, Float)):
+        return expression
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="Numeric filters are only supported for numeric fields",
+    )

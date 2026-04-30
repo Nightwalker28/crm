@@ -4,6 +4,26 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _env_int_list(name: str, default: list[int]) -> list[int]:
+    raw_value = os.getenv(name)
+    if not raw_value:
+        return default
+    values: list[int] = []
+    for item in raw_value.split(","):
+        stripped = item.strip()
+        if not stripped:
+            continue
+        values.append(int(stripped))
+    return values or default
+
+
 class Settings:
     # -------------------------
     # Database
@@ -27,7 +47,7 @@ class Settings:
     # -------------------------
     # JWT configuration
     # -------------------------
-    JWT_SECRET: str = os.getenv("JWT_SECRET", "change-me")
+    JWT_SECRET: str = os.getenv("JWT_SECRET", "").strip()
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")
 
     # -------------------------
@@ -41,6 +61,9 @@ class Settings:
     # Hard session limit (Changed to minutes for testing/granularity)
     REFRESH_TOKEN_EXPIRE_HOURS: int = int(
         os.getenv("REFRESH_TOKEN_EXPIRE_HOURS", "8")
+    )
+    REFRESH_TOKEN_REISSUE_MIN_SECONDS: int = int(
+        os.getenv("REFRESH_TOKEN_REISSUE_MIN_SECONDS", "30")
     )
     USER_SETUP_TOKEN_EXPIRE_HOURS: int = int(
         os.getenv("USER_SETUP_TOKEN_EXPIRE_HOURS", "72")
@@ -62,14 +85,14 @@ class Settings:
     COOKIE_HTTPONLY: bool = True
 
     # Must be False for local http, True for https in production
-    COOKIE_SECURE: bool = os.getenv("COOKIE_SECURE", "false").lower() == "true"
+    COOKIE_SECURE: bool = _env_bool("COOKIE_SECURE")
 
     # Lax is correct for same-site frontend/backend
     COOKIE_SAMESITE: str = os.getenv("COOKIE_SAMESITE", "lax")
 
     COOKIE_PATH: str = os.getenv("COOKIE_PATH", "/")
 
-    DEBUG: bool = os.getenv("DEBUG", "false")
+    DEBUG: bool = _env_bool("DEBUG")
 
     # -------------------------
     # Deployment / cloud licensing
@@ -101,6 +124,18 @@ class Settings:
     DATA_TRANSFER_RESULT_CLEANUP_INTERVAL_SECONDS: int = int(
         os.getenv("DATA_TRANSFER_RESULT_CLEANUP_INTERVAL_SECONDS", str(24 * 60 * 60))
     )
+    PAGINATION_DEFAULT_PAGE_SIZE: int = int(os.getenv("PAGINATION_DEFAULT_PAGE_SIZE", "10"))
+    PAGINATION_PAGE_SIZE_OPTIONS: list[int] = _env_int_list(
+        "PAGINATION_PAGE_SIZE_OPTIONS",
+        [10, 25, 50],
+    )
+    PAGINATION_MAX_PUBLIC_PAGE_SIZE: int = int(os.getenv("PAGINATION_MAX_PUBLIC_PAGE_SIZE", "100"))
+    POSTGRES_TRIGRAM_SIMILARITY_THRESHOLD: float = float(
+        os.getenv("POSTGRES_TRIGRAM_SIMILARITY_THRESHOLD", "0.3")
+    )
+    POSTGRES_TRIGRAM_MIN_SEARCH_LENGTH: int = int(
+        os.getenv("POSTGRES_TRIGRAM_MIN_SEARCH_LENGTH", "3")
+    )
 
     # -------------------------
     # Allowed email domains
@@ -118,6 +153,13 @@ class Settings:
     INITIAL_ADMIN_PASSWORD: str | None = os.getenv("INITIAL_ADMIN_PASSWORD")
     INITIAL_ADMIN_FIRST_NAME: str = os.getenv("INITIAL_ADMIN_FIRST_NAME", "System")
     INITIAL_ADMIN_LAST_NAME: str = os.getenv("INITIAL_ADMIN_LAST_NAME", "Admin")
+    PASSWORD_MIN_LENGTH: int = int(os.getenv("PASSWORD_MIN_LENGTH", "12"))
+    PBKDF2_ITERATIONS: int = int(os.getenv("PBKDF2_ITERATIONS", "310000"))
 
 
 settings = Settings()
+
+
+def validate_startup_settings() -> None:
+    if not settings.DEBUG and not settings.JWT_SECRET:
+        raise RuntimeError("JWT_SECRET must be set when DEBUG is false")

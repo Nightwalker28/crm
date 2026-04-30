@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.core.access_control import (
     ADMIN_MIN_ROLE_LEVEL,
@@ -50,10 +50,30 @@ def _attach_access_token_claims(user: User, payload: dict) -> User:
     return user
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _should_reissue_access_token(db_token: RefreshToken, now: datetime) -> bool:
+    last_used_at = _as_utc(getattr(db_token, "last_used_at", None))
+    if last_used_at is None:
+        return True
+    min_interval = timedelta(seconds=settings.REFRESH_TOKEN_REISSUE_MIN_SECONDS)
+    return now - last_used_at >= min_interval
+
+
 def get_current_user(
     request: Request,
     db: Session = Depends(get_db),
 ) -> User:
+    cached_user = getattr(request.state, "_current_user", None)
+    if cached_user is not None:
+        return cached_user
+
     access_token = request.cookies.get(settings.ACCESS_TOKEN_COOKIE_NAME)
     refresh_token = request.cookies.get(settings.REFRESH_TOKEN_COOKIE_NAME)
 
@@ -85,7 +105,8 @@ def get_current_user(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Session tenant mismatch",
                 )
-            return _attach_access_token_claims(user, payload)
+            request.state._current_user = _attach_access_token_claims(user, payload)
+            return request.state._current_user
 
     # 2. Access token missing or expired → try refresh
     if refresh_token:
@@ -137,15 +158,19 @@ def get_current_user(
                 detail="Session tenant mismatch",
             )
 
-        # Issue new access token
-        new_access_token = create_access_token(user)
-        decoded_new_access_token = decode_token(new_access_token, expected_type="access")
-        _attach_access_token_claims(user, decoded_new_access_token)
+        if _should_reissue_access_token(db_token, now):
+            new_access_token = create_access_token(user)
+            decoded_new_access_token = decode_token(new_access_token, expected_type="access")
+            _attach_access_token_claims(user, decoded_new_access_token)
+            db_token.last_used_at = now
+            db.commit()
 
-        # Attach cookie to response (middleware in main.py will set it)
-        request.state._new_access_token = new_access_token
+            # Attach cookie to response (middleware in main.py will set it)
+            request.state._new_access_token = new_access_token
 
-        return user
+        request.state._current_user = user
+
+        return request.state._current_user
 
     raise HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,

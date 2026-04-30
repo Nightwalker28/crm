@@ -23,6 +23,7 @@ class RefreshToken(Base):
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
     token_jti = Column(String(64), unique=True, index=True, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
+    last_used_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 class UserStatus(enum.Enum):

@@ -48,9 +48,12 @@ def persist_media_file(*, category: str, owner_key: str, extension: str, content
 
 
 def delete_local_media_file(relative_media_path: str | None) -> None:
-    if not relative_media_path or not relative_media_path.startswith("/media/"):
+    if not relative_media_path:
         return
-    path = (MEDIA_ROOT_DIR / relative_media_path.removeprefix("/media/")).resolve()
+    normalized_path = relative_media_path.lstrip("/")
+    if not normalized_path.startswith("media/"):
+        return
+    path = (MEDIA_ROOT_DIR / normalized_path.removeprefix("media/")).resolve()
     media_root = MEDIA_ROOT_DIR.resolve()
     if media_root not in path.parents:
         return

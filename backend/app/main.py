@@ -4,12 +4,17 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import router as v1_router
-from app.core.config import settings
+from app.core.config import settings, validate_startup_settings
 from app.core.database import SessionLocal
 from app.core.tenancy import is_cloud_mode_enabled, resolve_request_tenant, to_request_tenant_context
 from app.core.uploads import UPLOADS_DIR
 
 app = FastAPI(title="Lynk")
+
+
+@app.on_event("startup")
+def validate_runtime_configuration():
+    validate_startup_settings()
 
 # -------------------------
 # CORS

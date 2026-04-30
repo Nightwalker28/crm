@@ -12,7 +12,12 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
-from app.core.passwords import hash_password, verify_password, validate_password_strength
+from app.core.passwords import (
+    hash_password,
+    password_hash_needs_upgrade,
+    validate_password_strength,
+    verify_password,
+)
 from app.core.tenancy import (
     get_frontend_origin_for_request,
     get_google_redirect_uri_for_request,
@@ -350,7 +355,13 @@ def _cleanup_stale_user_setup_tokens(db: Session) -> int:
 
 
 def set_initial_password(db: Session, *, token: str, password: str) -> User:
-    validate_password_strength(password)
+    try:
+        validate_password_strength(password)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
 
     token_hash = _hash_setup_token(token)
     db_token = (
@@ -445,6 +456,8 @@ def authenticate_manual_user(
             detail="Manual sign-in is not enabled for this account",
         )
 
+    if password_hash_needs_upgrade(user.password_hash):
+        user.password_hash = hash_password(password)
     user.last_login_provider = "manual"
     db.add(user)
     db.commit()

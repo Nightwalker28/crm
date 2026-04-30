@@ -21,6 +21,11 @@ class RequestTenantContext:
 
 @lru_cache(maxsize=1)
 def get_verified_deployment_license() -> dict | None:
+    """Return the verified deployment license, cached for the process lifetime.
+
+    Deployment license changes intentionally require a process restart. Tests
+    that patch license settings must call this function's cache_clear() first.
+    """
     token = (settings.DEPLOYMENT_LICENSE or "").strip()
     public_key = (settings.DEPLOYMENT_LICENSE_PUBLIC_KEY or "").strip()
     if not token or not public_key:

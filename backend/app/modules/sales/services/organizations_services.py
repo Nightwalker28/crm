@@ -194,7 +194,7 @@ def _build_organization_query(
         "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
         "website": {"expression": SalesOrganization.website, "type": "text"},
         "industry": {"expression": SalesOrganization.industry, "type": "text"},
-        "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "number"},
+        "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "text"},
         "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
         "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
         "created_time": {"expression": SalesOrganization.created_time, "type": "date"},

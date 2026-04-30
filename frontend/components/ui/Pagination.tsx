@@ -2,6 +2,7 @@
 
 "use client";
 
+import { useEffect, useState } from "react";
 import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import {
   Select,
@@ -11,6 +12,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
+import { apiFetch } from "@/lib/api";
 
 type PaginationProps = {
   page: number;
@@ -22,6 +24,12 @@ type PaginationProps = {
   isRefreshing?: boolean;
   onPageChange: (page: number) => void;
   onPageSizeChange: (size: number) => void;
+};
+
+const FALLBACK_PAGE_SIZE_OPTIONS = [10, 25, 50];
+
+type PaginationConfig = {
+  page_size_options: number[];
 };
 
 function getPageNumbers(current: number, total: number): (number | "...")[] {
@@ -59,6 +67,31 @@ export default function Pagination({
   onPageSizeChange,
 }: PaginationProps) {
   const pages = getPageNumbers(page, totalPages);
+  const [pageSizeOptions, setPageSizeOptions] = useState(FALLBACK_PAGE_SIZE_OPTIONS);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPaginationConfig() {
+      try {
+        const res = await apiFetch("/config/pagination");
+        if (!res.ok) {
+          return;
+        }
+        const data = (await res.json()) as PaginationConfig;
+        if (isMounted && Array.isArray(data.page_size_options) && data.page_size_options.length > 0) {
+          setPageSizeOptions(data.page_size_options);
+        }
+      } catch {
+        // Keep fallback options if the config endpoint is unavailable.
+      }
+    }
+
+    loadPaginationConfig();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   return (
     <div className="flex flex-col md:flex-row items-center justify-between gap-4 w-full text-xs md:text-sm text-neutral-400">
@@ -75,7 +108,7 @@ export default function Pagination({
               <SelectValue placeholder={pageSize} />
             </SelectTrigger>
             <SelectContent className="">
-              {[10, 25, 50].map((size) => (
+              {pageSizeOptions.map((size) => (
                 <SelectItem key={size} value={String(size)} className="text-xs">
                   {size}
                 </SelectItem>

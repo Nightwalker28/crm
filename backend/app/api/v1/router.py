@@ -4,6 +4,7 @@ from app.modules.finance.routes.io_search_routes import router as io_search_rout
 from app.modules.calendar.routes.calendar_routes import router as calendar_router
 from app.modules.mail.routes.mail_routes import router as mail_router
 from app.modules.platform.routes.activity_logs import router as activity_log_router
+from app.modules.platform.routes.app_config import router as app_config_router
 from app.modules.platform.routes.custom_fields import router as custom_fields_router, public_router as public_custom_fields_router
 from app.modules.platform.routes.data_transfer_jobs import router as data_transfer_job_router
 from app.modules.platform.routes.global_search import router as global_search_router
@@ -25,6 +26,7 @@ from app.modules.whatsapp.routes.whatsapp_routes import router as whatsapp_route
 router = APIRouter(prefix="/api/v1")
 
 router.include_router(signin_router, prefix="/auth")
+router.include_router(app_config_router)
 router.include_router(profile_router, prefix="/users")
 router.include_router(admin_user_router)
 router.include_router(activity_log_router)

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
+from collections import OrderedDict
 from time import monotonic
 from typing import Any
 
@@ -16,8 +18,10 @@ except ImportError:  # pragma: no cover - dependency can be absent in local dev 
 
 
 LOCAL_CACHE_TTL_SECONDS = 300
-_local_cache: dict[str, tuple[float, str]] = {}
+MAX_LOCAL_CACHE_SIZE = 1000
+_local_cache: OrderedDict[str, tuple[float, str]] = OrderedDict()
 _redis_client = None
+_redis_lock = threading.Lock()
 _redis_failure_logged = False
 
 
@@ -27,21 +31,24 @@ def _get_redis_client():
         return _redis_client
     if not settings.REDIS_URL or redis is None:
         return None
-    try:
-        _redis_client = redis.Redis.from_url(
-            settings.REDIS_URL,
-            decode_responses=True,
-            socket_timeout=0.2,
-            socket_connect_timeout=0.2,
-        )
-        _redis_client.ping()
-        return _redis_client
-    except Exception as exc:  # pragma: no cover - network/service dependent
-        if not _redis_failure_logged:
-            logger.warning("Redis unavailable, falling back to local cache: %s", exc)
-            _redis_failure_logged = True
-        _redis_client = None
-        return None
+    with _redis_lock:
+        if _redis_client is not None:
+            return _redis_client
+        try:
+            _redis_client = redis.Redis.from_url(
+                settings.REDIS_URL,
+                decode_responses=True,
+                socket_timeout=0.2,
+                socket_connect_timeout=0.2,
+            )
+            _redis_client.ping()
+            return _redis_client
+        except Exception as exc:  # pragma: no cover - network/service dependent
+            if not _redis_failure_logged:
+                logger.warning("Redis unavailable, falling back to local cache: %s", exc)
+                _redis_failure_logged = True
+            _redis_client = None
+            return None
 
 
 def cache_get_json(key: str) -> Any | None:
@@ -61,6 +68,7 @@ def cache_get_json(key: str) -> Any | None:
     if expires_at <= monotonic():
         _local_cache.pop(key, None)
         return None
+    _local_cache.move_to_end(key)
     return json.loads(serialized)
 
 
@@ -73,6 +81,9 @@ def cache_set_json(key: str, value: Any, *, ttl_seconds: int = LOCAL_CACHE_TTL_S
         except Exception as exc:  # pragma: no cover - network/service dependent
             logger.warning("Redis set failed for key %s: %s", key, exc)
     _local_cache[key] = (monotonic() + ttl_seconds, serialized)
+    _local_cache.move_to_end(key)
+    while len(_local_cache) > MAX_LOCAL_CACHE_SIZE:
+        _local_cache.popitem(last=False)
 
 
 def cache_delete(key: str) -> None:

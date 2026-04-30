@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.passwords import get_password_policy
 from app.core.tenancy import get_frontend_origin_for_request, is_cloud_mode_enabled
 from app.modules.user_management.models import RefreshToken, User, UserStatus
 from app.modules.mail.services.mail_services import (
@@ -27,6 +28,11 @@ from app.modules.user_management.services.auth import (
 )
 
 router = APIRouter(tags=["Auth"])
+
+
+@router.get("/password-policy")
+def password_policy():
+    return get_password_policy()
 
 
 def _validate_request_tenant(request: Request, payload: dict) -> int | None:

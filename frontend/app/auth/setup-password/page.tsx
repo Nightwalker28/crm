@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { Input } from "@/components/ui/input";
@@ -11,6 +11,11 @@ import { apiFetch } from "@/lib/api";
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Failed to set password";
 }
+
+type PasswordPolicy = {
+  min_length: number;
+  requirements: string[];
+};
 
 function SetupPasswordPageContent() {
   const router = useRouter();
@@ -22,6 +27,31 @@ function SetupPasswordPageContent() {
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [passwordPolicy, setPasswordPolicy] = useState<PasswordPolicy | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadPasswordPolicy() {
+      try {
+        const res = await apiFetch("/auth/password-policy");
+        if (!res.ok) {
+          return;
+        }
+        const data = (await res.json()) as PasswordPolicy;
+        if (isMounted && Array.isArray(data.requirements)) {
+          setPasswordPolicy(data);
+        }
+      } catch {
+        // Keep generic copy if the policy endpoint is unavailable.
+      }
+    }
+
+    loadPasswordPolicy();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -79,7 +109,15 @@ function SetupPasswordPageContent() {
             onChange={(event) => setPassword(event.target.value)}
             required
           />
-          <p className="text-xs text-slate-300/80">Use at least 12 characters.</p>
+          {passwordPolicy ? (
+            <ul className="space-y-1 text-xs text-slate-300/80">
+              {passwordPolicy.requirements.map((requirement) => (
+                <li key={requirement}>{requirement}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-xs text-slate-300/80">Password must meet the current security policy.</p>
+          )}
         </div>
 
         <div className="space-y-2">

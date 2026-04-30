@@ -10,6 +10,14 @@ from pydantic import BaseModel, Field
 from app.core.module_export import dict_rows_to_csv_bytes
 
 
+CSV_CONTENT_TYPES = {
+    "text/csv",
+    "application/csv",
+    "text/plain",
+    "application/vnd.ms-excel",
+}
+
+
 class ImportFailureItem(BaseModel):
     row_number: int | None = None
     record_identifier: str | None = None
@@ -76,12 +84,21 @@ async def read_upload_bytes(
     *,
     allowed_extensions: set[str],
 ) -> bytes:
-    filename = (file.filename or "").lower()
+    original_filename = file.filename or ""
+    filename = original_filename.lower()
     if not any(filename.endswith(f".{extension.lower().lstrip('.')}") for extension in allowed_extensions):
         allowed_text = ", ".join(sorted(f".{extension.lower().lstrip('.')}" for extension in allowed_extensions))
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Only {allowed_text} files are supported.",
+            detail=f"Only {allowed_text} files are supported for '{original_filename or 'upload'}'.",
+        )
+
+    normalized_extensions = {extension.lower().lstrip(".") for extension in allowed_extensions}
+    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+    if "csv" in normalized_extensions and content_type and content_type not in CSV_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid file content type.",
         )
 
     content = await file.read()

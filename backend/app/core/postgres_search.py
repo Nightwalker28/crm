@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from sqlalchemy import func, literal, or_
 
+from app.core.config import settings
 
-TRIGRAM_SIMILARITY_THRESHOLD = 0.12
+TRIGRAM_SIMILARITY_THRESHOLD = settings.POSTGRES_TRIGRAM_SIMILARITY_THRESHOLD
+TRIGRAM_MIN_SEARCH_LENGTH = settings.POSTGRES_TRIGRAM_MIN_SEARCH_LENGTH
 
 
 def searchable_text(*columns):
@@ -26,6 +28,9 @@ def apply_trigram_search(query, *, search: str | None, document):
 
     rank = func.similarity(document, normalized)
     pattern = f"%{normalized}%"
+    if len(normalized) < TRIGRAM_MIN_SEARCH_LENGTH:
+        return query.filter(document.ilike(pattern)), None
+
     filtered_query = query.filter(
         or_(
             document.ilike(pattern),

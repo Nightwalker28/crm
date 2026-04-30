@@ -28,6 +28,7 @@ This file captures the current intended technical patterns and constraints so ne
   - all records belong to that tenant
   - cloud mode simply resolves different tenants by host/domain
 - Future modules must be designed as tenant-aware on day one rather than retrofitted later.
+- Verified deployment licenses are process-cached. Renewed or changed license tokens require an application restart, and tests that patch deployment-license settings must clear `get_verified_deployment_license`'s cache before asserting new behavior.
 
 ### Permissions
 
@@ -121,6 +122,7 @@ This file captures the current intended technical patterns and constraints so ne
   - confirm duplicate policy
   - execute import
   - return structured import summary
+- CSV import upload validation should check both allowed extensions and known CSV/plain-text content types before parsing.
 - The intended export flow is:
   - export all
   - export current filtered result set
@@ -164,6 +166,8 @@ This file captures the current intended technical patterns and constraints so ne
   - admin user creation should generate a setup link
   - manual sign-in for an account without a password should return a setup-required response, not a dead-end generic failure
 - Consumed and long-expired password setup tokens should be removed by a bounded retention cleanup so token history does not grow forever while current setup-link invalidation stays immediate.
+- Password strength policy should be enforced by the backend and exposed to the frontend through an API endpoint so setup UI copy does not drift from server validation.
+- PBKDF2 password hashes store their iteration count in the hash string. Verification must use the stored count for backward compatibility, new hashes should use the configured `PBKDF2_ITERATIONS`, and successful manual logins should opportunistically rehash older lower-iteration hashes.
 
 ### Finance / IO
 
@@ -175,6 +179,7 @@ This file captures the current intended technical patterns and constraints so ne
 - User-facing image/file uploads such as company logo and profile image should use explicit upload flows rather than assuming users will always paste remote URLs.
 - Upload metadata should remain tied to the owning record and stay compatible with soft-delete/audit expectations where relevant.
 - Uploaded assets tied to tenant-owned records should be treated as tenant-owned operational data even if the storage path itself is generic.
+- Local media cleanup should normalize `/media/...` and `media/...` paths while ignoring external URLs and enforcing that resolved files stay under the media root.
 
 ### Time and Timezones
 
@@ -187,9 +192,12 @@ This file captures the current intended technical patterns and constraints so ne
 ### PostgreSQL Optimization Direction
 
 - Use PostgreSQL-native capabilities deliberately instead of treating Postgres like a generic SQL box.
+- Database session dependencies should explicitly roll back on unhandled exceptions before closing the session.
+- SQLAlchemy pool sizing must be deployment-tuned across all web, Celery, migration, and admin processes that share the same Postgres instance. Treat `DB_POOL_SIZE + DB_MAX_OVERFLOW` as a per-process upper bound, not a platform-wide cap.
 - Favor proper indexes for high-traffic filters, joins, and restore/list paths.
 - Favor targeted composite indexes where query patterns are stable and justified by actual workload.
 - Use Postgres text-search/trigram features for ranked search where they fit instead of inventing parallel search logic.
+- Trigram search should use a production-grade similarity threshold and should be skipped for very short search terms, which should fall back to substring matching only.
 - Push visible-column optimization deeper into ORM/select behavior on heavy endpoints rather than only trimming serialized payloads.
 - Prefer batching and relationship loading strategies that avoid N+1 query patterns on list/detail pages.
 - Validate migrations and cleanup steps carefully because Postgres makes it easy to evolve schemas, but rollback/data-safety still needs discipline.
@@ -212,9 +220,12 @@ This file captures the current intended technical patterns and constraints so ne
   - `all_conditions`: list of field/operator/value rules that must all pass
   - `any_conditions`: list of field/operator/value rules where any may pass
   - optional free-text search layered on top
+- Malformed saved-view or inline filter conditions should fail with a clear 400 instead of being silently dropped, because ignored filters can widen result sets unexpectedly.
+- Numeric filter operators should only be enabled for fields backed by numeric database expressions. Text fields that happen to contain money-like strings must not be coerced with regex/casts for numeric comparison.
 - Inline quick filters on module pages should use the same shared condition model as saved views instead of inventing a second filter grammar.
 - Module-specific list/search backends should accept the shared saved-view filter payload and map it through module-specific allowed-field definitions rather than each module inventing its own ad hoc filter shape.
 - Send `fields` to the backend on list endpoints so payload shaping can follow visible columns.
+- Public pagination request validation should enforce a configured maximum page size, while frontend selectable page-size options are exposed by the backend config API. Internal bulk callers that need larger windows should construct `Pagination` explicitly instead of going through the HTTP dependency.
 - Current payload shaping is serializer-level in many places; deeper ORM select/load optimization is still open.
 - Treat `docs/shared-platform-primitives.md` as the onboarding checklist for future module list/dashboard-style surfaces.
 
