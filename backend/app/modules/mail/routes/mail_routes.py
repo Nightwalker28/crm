@@ -6,6 +6,8 @@ from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.mail.schema import (
     MailContextResponse,
+    MailDisconnectResponse,
+    MailImapSmtpConnectRequest,
     MailMessageListResponse,
     MailMessageResponse,
     MailProvider,
@@ -15,6 +17,7 @@ from app.modules.mail.schema import (
 )
 from app.modules.mail.services.mail_services import (
     build_mail_context,
+    disconnect_mail_connection,
     get_google_mail_connect_url,
     get_mail_message_or_404,
     get_microsoft_mail_connect_url,
@@ -22,7 +25,9 @@ from app.modules.mail.services.mail_services import (
     send_mail_message,
     serialize_mail_message,
     sync_google_inbox,
+    sync_imap_smtp_inbox,
     sync_microsoft_inbox,
+    upsert_imap_smtp_mail_connection,
 )
 
 
@@ -89,6 +94,23 @@ def send_mail(
     return MailMessageResponse.model_validate(serialize_mail_message(message))
 
 
+@router.post("/connect/imap-smtp", response_model=MailContextResponse)
+def connect_imap_smtp_provider(
+    payload: MailImapSmtpConnectRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("mail")),
+    require_permission=Depends(require_action_access("mail", "edit")),
+):
+    upsert_imap_smtp_mail_connection(
+        db,
+        tenant_id=current_user.tenant_id,
+        user=current_user,
+        payload=payload.model_dump(mode="json"),
+    )
+    return build_mail_context(db, tenant_id=current_user.tenant_id, current_user=current_user)
+
+
 @router.post("/connect/{provider}", response_model=MailProviderConnectResponse)
 def connect_mail_provider(
     provider: MailProvider,
@@ -105,6 +127,8 @@ def connect_mail_provider(
             "provider": provider,
             "auth_url": get_google_mail_connect_url(request=request, tenant=tenant, user=current_user),
         }
+    if provider == MailProvider.imap_smtp:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Use /mail/connect/imap-smtp for IMAP/SMTP mail.")
     return {
         "provider": provider,
         "auth_url": get_microsoft_mail_connect_url(request=request, tenant=tenant, user=current_user),
@@ -121,4 +145,23 @@ def sync_mail_provider(
 ):
     if provider == MailProvider.google:
         return MailSyncResponse.model_validate(sync_google_inbox(db, current_user=current_user))
+    if provider == MailProvider.imap_smtp:
+        return MailSyncResponse.model_validate(sync_imap_smtp_inbox(db, current_user=current_user))
     return MailSyncResponse.model_validate(sync_microsoft_inbox(db, current_user=current_user))
+
+
+@router.delete("/connect/{provider}", response_model=MailDisconnectResponse)
+def disconnect_mail_provider(
+    provider: MailProvider,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("mail")),
+    require_permission=Depends(require_action_access("mail", "edit")),
+):
+    connection = disconnect_mail_connection(
+        db,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        provider=provider,
+    )
+    return {"provider": provider, "status": connection.status}

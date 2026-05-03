@@ -83,6 +83,7 @@ export default function Sidebar() {
     ((user?.first_name?.[0] ?? "") + (user?.last_name?.[0] ?? "")) || "US";
 
   const moduleMap = new Map(modules.map((module) => [module.name, module]));
+  const documentsModule = moduleMap.get("documents");
   const financeIoModule = moduleMap.get("finance_io");
   const tasksModule = moduleMap.get("tasks");
   const calendarModule = moduleMap.get("calendar");
@@ -160,6 +161,12 @@ export default function Sidebar() {
               {mailModule?.base_route ? (
                 <SidebarMenuItem href={mailModule.base_route} icon={Mail} collapsed={collapsed}>
                   Mail
+                </SidebarMenuItem>
+              ) : null}
+
+              {documentsModule?.base_route ? (
+                <SidebarMenuItem href={documentsModule.base_route} icon={FileText} collapsed={collapsed}>
+                  Documents
                 </SidebarMenuItem>
               ) : null}
 

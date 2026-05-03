@@ -163,6 +163,8 @@ This file captures the current intended technical patterns and constraints so ne
 - Mailbox provider access should use an explicit mail-connect workflow rather than being bundled into basic sign-in, so Gmail/Outlook scopes are only requested from users who opt into mailbox sync.
 - Google Calendar sync should prefer `calendar.app.created` so the app manages only its own CRM calendar instead of asking for broad access to all user calendars.
 - Gmail inbox read/sync requires restricted Google scopes and must remain behind an explicit environment flag plus verification plan; default Gmail mail integration should use send-only scope where possible.
+- IMAP/SMTP mailbox connections are per-user mail connections, not tenant-wide provider credentials. Saved IMAP/SMTP passwords must be encrypted with `MAIL_CREDENTIAL_SECRET` when configured, falling back to `JWT_SECRET` only for local/dev compatibility.
+- IMAP sync should use provider UIDs and store a cursor after the first sync so repeated manual syncs do not refetch the whole mailbox. SMTP send should persist the local sent message and best-effort append to the provider sent folder without failing the send if folder append is unavailable.
 - If broader Google workflows are removed from the product, their scope requests, token persistence, and dependent service code should be removed rather than left partially dormant.
 - Manual-capable users created by admins should have a reliable password-setup flow:
   - admin user creation should generate a setup link
@@ -182,6 +184,11 @@ This file captures the current intended technical patterns and constraints so ne
 - Upload metadata should remain tied to the owning record and stay compatible with soft-delete/audit expectations where relevant.
 - Uploaded assets tied to tenant-owned records should be treated as tenant-owned operational data even if the storage path itself is generic.
 - Local media cleanup should normalize `/media/...` and `media/...` paths while ignoring external URLs and enforcing that resolved files stay under the media root.
+- The Documents module stores controlled business documents under backend-owned document storage rather than the public `/media` mount. Downloads must resolve the path under the document storage root and return through authenticated API routes.
+- Record-linked documents should use a shared `document_links` table keyed by `module_key` and `entity_id`, with linked-record validation staying inside the current tenant.
+- Document upload validation should enforce extension, content type, lightweight file signature checks, per-file size, and tenant storage quota before persistence.
+- Document metadata stores a `storage_provider` so the local backend remains the default while S3-compatible, Google Drive, and Microsoft OneDrive providers can be added behind the same service contract.
+- Deleted documents stay in metadata and local storage, appear in the unified recycle bin, and restore by clearing `deleted_at`; physical file deletion is not part of the normal user-facing delete path.
 
 ### Time and Timezones
 

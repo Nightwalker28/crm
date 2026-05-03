@@ -5,11 +5,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 
 export type MailConnection = {
-  provider: "google" | "microsoft";
+  provider: MailProvider;
   status: "connected" | "disconnected" | "error";
   account_email?: string | null;
   provider_mailbox_id?: string | null;
   provider_mailbox_name?: string | null;
+  sync_cursor?: string | null;
   can_send: boolean;
   can_sync: boolean;
   last_synced_at?: string | null;
@@ -24,7 +25,7 @@ export type MailContext = {
 
 export type MailMessage = {
   id: number;
-  provider?: "google" | "microsoft" | null;
+  provider?: MailProvider | null;
   provider_message_id?: string | null;
   provider_thread_id?: string | null;
   direction: "inbound" | "outbound" | "internal";
@@ -51,20 +52,25 @@ export type MailMessageList = {
 };
 
 export type MailProviderConnectResponse = {
-  provider: "google" | "microsoft";
+  provider: MailProvider;
   auth_url: string;
 };
 
 export type MailSyncResponse = {
-  provider: "google" | "microsoft";
+  provider: MailProvider;
   synced_message_count: number;
   status: "connected" | "disconnected" | "error";
   last_synced_at?: string | null;
   last_error?: string | null;
 };
 
+export type MailDisconnectResponse = {
+  provider: MailProvider;
+  status: "connected" | "disconnected" | "error";
+};
+
 export type MailSendPayload = {
-  provider: "google" | "microsoft";
+  provider: MailProvider;
   to: string[];
   cc?: string[];
   bcc?: string[];
@@ -73,6 +79,21 @@ export type MailSendPayload = {
   source_module_key?: string | null;
   source_entity_id?: string | null;
   source_label?: string | null;
+};
+
+export type MailProvider = "google" | "microsoft" | "imap_smtp";
+
+export type ImapSmtpConnectPayload = {
+  account_email: string;
+  imap_host: string;
+  imap_port: number;
+  imap_security: "ssl" | "starttls" | "none";
+  imap_username: string;
+  smtp_host: string;
+  smtp_port: number;
+  smtp_security: "ssl" | "starttls" | "none";
+  smtp_username?: string | null;
+  password: string;
 };
 
 async function readJsonSafely(res: Response) {
@@ -122,13 +143,35 @@ export async function connectMailProvider(provider: "google" | "microsoft"): Pro
   return body as MailProviderConnectResponse;
 }
 
-export async function syncMailProvider(provider: "google" | "microsoft"): Promise<MailSyncResponse> {
+export async function connectImapSmtpProvider(payload: ImapSmtpConnectPayload): Promise<MailContext> {
+  const res = await apiFetch("/mail/connect/imap-smtp", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await readJsonSafely(res);
+  if (!res.ok) {
+    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to connect IMAP/SMTP mail.");
+  }
+  return body as MailContext;
+}
+
+export async function syncMailProvider(provider: MailProvider): Promise<MailSyncResponse> {
   const res = await apiFetch(`/mail/sync/${provider}`, { method: "POST" });
   const body = await readJsonSafely(res);
   if (!res.ok) {
     throw new Error((body && typeof body.detail === "string" && body.detail) || `Failed to sync ${provider} mail.`);
   }
   return body as MailSyncResponse;
+}
+
+export async function disconnectMailProvider(provider: MailProvider): Promise<MailDisconnectResponse> {
+  const res = await apiFetch(`/mail/connect/${provider}`, { method: "DELETE" });
+  const body = await readJsonSafely(res);
+  if (!res.ok) {
+    throw new Error((body && typeof body.detail === "string" && body.detail) || `Failed to disconnect ${provider} mail.`);
+  }
+  return body as MailDisconnectResponse;
 }
 
 export async function sendMailMessage(payload: MailSendPayload): Promise<MailMessage> {
@@ -165,8 +208,21 @@ export function useMailActions() {
   const connectMutation = useMutation({
     mutationFn: connectMailProvider,
   });
+  const connectImapSmtpMutation = useMutation({
+    mutationFn: connectImapSmtpProvider,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["mail-context"] });
+    },
+  });
   const syncMutation = useMutation({
     mutationFn: syncMailProvider,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["mail-context"] });
+      await queryClient.invalidateQueries({ queryKey: ["mail-messages"] });
+    },
+  });
+  const disconnectMutation = useMutation({
+    mutationFn: disconnectMailProvider,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["mail-context"] });
       await queryClient.invalidateQueries({ queryKey: ["mail-messages"] });
@@ -181,10 +237,13 @@ export function useMailActions() {
 
   return {
     connectMail: connectMutation.mutateAsync,
+    connectImapSmtp: connectImapSmtpMutation.mutateAsync,
     syncMail: syncMutation.mutateAsync,
+    disconnectMail: disconnectMutation.mutateAsync,
     sendMail: sendMutation.mutateAsync,
-    isConnectingMail: connectMutation.isPending,
+    isConnectingMail: connectMutation.isPending || connectImapSmtpMutation.isPending,
     isSyncingMail: syncMutation.isPending,
+    isDisconnectingMail: disconnectMutation.isPending,
     isSendingMail: sendMutation.isPending,
   };
 }

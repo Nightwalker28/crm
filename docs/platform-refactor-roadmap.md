@@ -18,6 +18,8 @@ Current phase:
 - Phase 9 in progress: collaboration and integrations foundation with tasks, calendar/mail foundations, WhatsApp click-to-chat, and the next external alert pipeline
 
 Completed items:
+- Added the first tenant-aware Documents module with authenticated document storage, PDF/DOC/DOCX/TXT/RTF/ODT upload validation, file and tenant storage limits, a standalone `/dashboard/documents` surface, and record-linked document panels for contacts, organizations, and opportunities.
+- Hardened the Documents module with linked-record authorization, audit logging, recycle-bin restore, tenant quota visibility, stronger PDF/Office/OpenDocument validation, and a local storage-provider seam for future tenant-owned storage backends.
 - Cleared the current frontend lint blockers and expanded tenant module administration: Modules now exposes tenant-specific enablement, module defaults, and department/team module availability, while role/module permissions remain the source of truth for action levels inside modules and disabled/unassigned modules are blocked at both navigation and API gates.
 - Finished the shared export rebuild across contacts, organizations, opportunities, and insertion orders: the shared export dialog now sends active view filters into one background-job contract, “all records” exports now mean the current filtered dataset instead of an unfiltered module dump, current-page and selected-row modes stay aligned across modules, and export summaries now report real exported row counts.
 - Closed the current backend tenant-isolation rollout across the existing route and service surface by finishing the remaining worker-path and linked-record checks: background import/export jobs now resolve their actors and exported datasets inside the job tenant, finance linked-contact and linked-organization resolution stays inside the current tenant, contact assignment validation no longer accepts cross-tenant users, opportunity attachment and finance-handoff helpers are tenant-scoped, and custom-field definitions and values now have database-level tenant uniqueness.
@@ -151,17 +153,18 @@ Completed items:
 - Expanded CSV import/export coverage so opportunities now have backend import/export routes, insertion orders now have CSV export, and the current business-module headers use shared authenticated import/export controls for contacts, organizations, opportunities, and finance export.
 
 In progress:
+- Move external document-storage provider connection flows into a dedicated follow-up slice after the local Documents backend contract.
 - Start the collaboration and integrations rollout with tasks as the first concrete platform primitive, treating tasks as a backend module with frontend feature-style entry points so assignment, notifications, reminders, and later mailbox/calendar automation can share one foundation.
 - The first task slice is now landed in code with backend module registration, tenant-aware task and assignee persistence, assignment notifications, a `/dashboard/tasks` frontend surface, sidebar/dashboard wiring, and browser notification bridging; the next collaboration slice now moves onto calendar foundations on top of that task baseline.
 - Tasks should support professional CRM-style priority and urgency states, assignment to self, users, teams, and later richer collaboration targets, with assignment events feeding both the existing in-app notification center and browser notification hooks.
 - The first calendar foundation is now landed with internal user calendars, invite/share behavior, task-to-calendar handoff, soft-delete support, and provider-aware Google sync groundwork; mailbox integration is parked until Google mailbox scope verification/compliance is intentionally planned.
-- Keep the first mailbox integration foundation parked as a dedicated tenant-aware module with explicit provider mail connections, CRM-linked message records, and soft-delete/recovery behavior before adding more live Gmail or Microsoft Graph product depth.
+- Move the mailbox integration forward through per-user IMAP/SMTP connections while keeping restricted Gmail inbox scopes parked unless verification is intentionally planned.
 - Production-grade calendar and mailbox provider sync should move into the shared background-job architecture: immediate sync on write where possible, queued provider sync jobs, and periodic reconciliation rather than request-only sync.
 - Start WhatsApp as the next collaboration integration, but keep Phase 1 manual-send/click-to-chat only: register it as a tenant-aware module, expose contact-profile click-to-chat, log activity, update last WhatsApp contact, and create optional follow-up tasks.
 - Add a global tenant-scoped message-template platform so WhatsApp templates are reusable across future mail, finance, sales, tasks, and reminder workflows instead of becoming a channel-specific one-off.
 - Treat WhatsApp as paused after the manual click-to-chat flow; do not add reply logging or provider webhook handling until a dedicated provider-integration phase is intentionally opened.
 - Queue the external chat-alert foundation as the next collaboration/integration track after the WhatsApp slice: start with simple tenant/company webhooks for Slack and Microsoft Teams, no OAuth or marketplace app flow.
-- Basic Slack webhook alerts are now the active follow-up to the paused WhatsApp slice: add shared CRM events, admin-managed notification channels, test sends, and best-effort Slack delivery for the first concrete event producers.
+- Basic Slack/Teams webhook alerts are now landed enough to leave the active path: shared CRM events, admin-managed notification channels, test sends, best-effort delivery, and admin delivery history exist, with scheduled `task.due_today` scanning and more event producers left as follow-up.
 - Keep extending timezone-aware timestamp formatting across remaining UI surfaces that still render raw browser-local or server-default times.
 - Keep normalizing uploaded/local media URLs across all avatar/logo consumers so uploaded profile/company assets behave the same as remote images everywhere.
 - Expand the new notification center beyond data-transfer jobs into broader per-user operational notifications over time.
@@ -203,19 +206,18 @@ In progress:
 - Finish the first tenant-aware backend pass beyond auth by scoping company profile, module configuration, and other cross-tenant admin data that still assumes a single shared row set.
 
 Next up:
+- Add full external document-storage provider connection flows after the Documents storage seam is stable: S3/R2-style object stores can use access-key configuration, while Google Drive and Microsoft OneDrive need explicit OAuth/consent and token storage.
 - Harden and verify the landed first task module slice end to end, then fill any remaining task lifecycle gaps before moving the collaboration roadmap onto calendar integration.
-- Add explicit mailbox provider connection flows for Google Gmail and Microsoft Graph mail after the mailbox data/API foundation is in place.
-- Add mailbox automation after messages can be synced safely, including CRM source-linking, task/event handoff, and permission-aware global search results.
+- Harden per-user IMAP/SMTP mailbox support with Gmail presets, disconnect/reconfigure, UID-cursored manual sync, safer provider errors, and best-effort sent-folder append on top of the existing mailbox data/API foundation.
+- Add mailbox automation after messages can be synced safely, including Celery-backed background reconciliation jobs, CRM source-linking, task/event handoff, and permission-aware global search results.
 - Build WhatsApp Phase 2 template management after the click-to-chat MVP: editable quote follow-up, payment reminder, delivery confirmation, meeting reminder, and service reminder templates with controlled CRM variables.
 - Build WhatsApp Phase 3 reminder rules through Celery/tasks while keeping message sending manual until a provider integration is intentionally planned.
-- Continue Phase 1 Slack/Teams alerts now that WhatsApp is deliberately paused:
-  - create a shared `crm_events` foundation with event creation helpers for `lead.created`, `deal.assigned`, `invoice.overdue`, `task.due_today`, `task.assigned`, and `comment.mentioned`
-  - add tenant/company notification channels for simple Slack/Teams incoming webhook URLs with provider, channel name, active status, and a test-message action
-  - send first webhook alerts for new lead created, deal assigned, invoice overdue, task assigned, and task due today
-  - expose CRM event and webhook delivery history in the admin integration surface so alert delivery is inspectable
-  - keep WhatsApp reply handling out of this slice unless a later provider-webhook phase is explicitly opened
-  - keep OAuth, app marketplace setup, bidirectional chat sync, and provider credentials out of this first slice
-- Follow Slack/Teams alerts with contextual comments and mentions: shared record comments now support access-limited `@user` mention suggestions and in-app mention notifications; later work can expand this toward more modules, mention persistence, and optional Slack/email alerts.
+- Follow the landed Slack/Teams and mentions slices with later notification polish:
+  - add scheduled `task.due_today` event production through Celery
+  - optionally emit `comment.mentioned` CRM events for Slack/email alert fanout
+  - expand mentions toward richer persistence and more record-bearing modules
+  - keep WhatsApp reply handling out unless a later provider-webhook phase is explicitly opened
+- Shared record comments now support access-limited `@user` mention suggestions and in-app mention notifications; later work can expand this toward optional Slack/email alerts.
 - Add notification preferences after mentions: let users choose in-app, email, Slack, and per-record mute behavior.
 - Add smart notification rules last: `notification_rules` with event type, structured condition JSON, destination provider/channel, and active status; support rules such as overdue invoices to finance, high-value deals to managers, untouched leads to salespeople, and urgent tickets to support channels.
 - Finish the dedicated saved-view management flow so module pages only need compact view switching.

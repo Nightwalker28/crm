@@ -2,12 +2,13 @@
 
 import { useDeferredValue, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Inbox, Mail, RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { Inbox, KeyRound, Mail, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/button";
 import { useMailActions, useMailContext, useMailMessages } from "@/hooks/useMail";
+import type { MailProvider } from "@/hooks/useMail";
 import { formatDateTime } from "@/lib/datetime";
 
 const FOLDERS = [
@@ -35,19 +36,31 @@ export default function MailPage() {
   const [folder, setFolder] = useState("");
   const [search, setSearch] = useState("");
   const [composeOpen, setComposeOpen] = useState(false);
-  const [composeProvider, setComposeProvider] = useState<"google" | "microsoft">("google");
+  const [composeProvider, setComposeProvider] = useState<MailProvider>("google");
   const [composeTo, setComposeTo] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
+  const [imapFormOpen, setImapFormOpen] = useState(false);
+  const [imapAccountEmail, setImapAccountEmail] = useState("");
+  const [imapHost, setImapHost] = useState("");
+  const [imapPort, setImapPort] = useState("993");
+  const [imapSecurity, setImapSecurity] = useState<"ssl" | "starttls" | "none">("ssl");
+  const [imapUsername, setImapUsername] = useState("");
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("587");
+  const [smtpSecurity, setSmtpSecurity] = useState<"ssl" | "starttls" | "none">("starttls");
+  const [smtpUsername, setSmtpUsername] = useState("");
+  const [mailPassword, setMailPassword] = useState("");
   const deferredSearch = useDeferredValue(search);
 
   const contextQuery = useMailContext();
   const messagesQuery = useMailMessages(folder || undefined, deferredSearch);
-  const { connectMail, syncMail, sendMail, isConnectingMail, isSyncingMail, isSendingMail } = useMailActions();
+  const { connectMail, connectImapSmtp, syncMail, disconnectMail, sendMail, isConnectingMail, isSyncingMail, isDisconnectingMail, isSendingMail } = useMailActions();
   const messages = messagesQuery.data?.results ?? [];
   const googleConnection = contextQuery.data?.connections.find((connection) => connection.provider === "google");
   const microsoftConnection = contextQuery.data?.connections.find((connection) => connection.provider === "microsoft");
-  const hasSendProvider = Boolean(googleConnection?.can_send || microsoftConnection?.can_send);
+  const imapSmtpConnection = contextQuery.data?.connections.find((connection) => connection.provider === "imap_smtp");
+  const hasSendProvider = Boolean(googleConnection?.can_send || microsoftConnection?.can_send || imapSmtpConnection?.can_send);
 
   useEffect(() => {
     const status = searchParams.get("mailConnect");
@@ -97,6 +110,75 @@ export default function MailPage() {
     }
   }
 
+  async function handleSyncImapSmtp() {
+    try {
+      const result = await syncMail("imap_smtp");
+      toast.success(`Synced ${result.synced_message_count} new IMAP message${result.synced_message_count === 1 ? "" : "s"}.`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to sync IMAP mailbox."));
+    }
+  }
+
+  async function handleConnectImapSmtp() {
+    if (!imapAccountEmail.trim() || !imapHost.trim() || !imapUsername.trim() || !smtpHost.trim() || !mailPassword) {
+      toast.error("Fill in the IMAP/SMTP account, server, username, and password fields.");
+      return;
+    }
+    const parsedImapPort = Number(imapPort);
+    const parsedSmtpPort = Number(smtpPort);
+    if (!Number.isInteger(parsedImapPort) || parsedImapPort < 1 || parsedImapPort > 65535 || !Number.isInteger(parsedSmtpPort) || parsedSmtpPort < 1 || parsedSmtpPort > 65535) {
+      toast.error("Use valid IMAP and SMTP ports.");
+      return;
+    }
+    try {
+      await connectImapSmtp({
+        account_email: imapAccountEmail.trim(),
+        imap_host: imapHost.trim(),
+        imap_port: parsedImapPort,
+        imap_security: imapSecurity,
+        imap_username: imapUsername.trim(),
+        smtp_host: smtpHost.trim(),
+        smtp_port: parsedSmtpPort,
+        smtp_security: smtpSecurity,
+        smtp_username: smtpUsername.trim() || null,
+        password: mailPassword,
+      });
+      toast.success("IMAP/SMTP mailbox connected.");
+      setMailPassword("");
+      setImapFormOpen(false);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to connect IMAP/SMTP mailbox."));
+    }
+  }
+
+  async function handleDisconnectMail(provider: MailProvider) {
+    try {
+      await disconnectMail(provider);
+      toast.success("Mailbox disconnected.");
+      if (provider === "imap_smtp") {
+        setImapFormOpen(false);
+        setMailPassword("");
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to disconnect mailbox."));
+    }
+  }
+
+  function useGmailImapPreset() {
+    setImapHost("imap.gmail.com");
+    setImapPort("993");
+    setImapSecurity("ssl");
+    setSmtpHost("smtp.gmail.com");
+    setSmtpPort("587");
+    setSmtpSecurity("starttls");
+    if (imapAccountEmail.trim() && !imapUsername.trim()) {
+      setImapUsername(imapAccountEmail.trim());
+    }
+    if (imapAccountEmail.trim() && !smtpUsername.trim()) {
+      setSmtpUsername(imapAccountEmail.trim());
+    }
+  }
+
   async function handleSendMail() {
     const recipients = composeTo.split(",").map((value) => value.trim()).filter(Boolean);
     if (!recipients.length) {
@@ -125,6 +207,8 @@ export default function MailPage() {
     if (!composeOpen) {
       if (!googleConnection?.can_send && microsoftConnection?.can_send) {
         setComposeProvider("microsoft");
+      } else if (!googleConnection?.can_send && !microsoftConnection?.can_send && imapSmtpConnection?.can_send) {
+        setComposeProvider("imap_smtp");
       } else if (googleConnection?.can_send) {
         setComposeProvider("google");
       }
@@ -171,6 +255,23 @@ export default function MailPage() {
                 Connect Microsoft
               </Button>
             )}
+            {imapSmtpConnection?.can_sync ? (
+              <>
+                <Button type="button" variant="outline" onClick={() => void handleSyncImapSmtp()} disabled={isSyncingMail}>
+                  <RefreshCw className={"h-4 w-4 " + (isSyncingMail ? "animate-spin" : "")} />
+                  Sync IMAP
+                </Button>
+                <Button type="button" variant="outline" onClick={() => setImapFormOpen((current) => !current)} disabled={isConnectingMail}>
+                  <KeyRound className="h-4 w-4" />
+                  Reconfigure IMAP
+                </Button>
+              </>
+            ) : (
+              <Button type="button" variant="outline" onClick={() => setImapFormOpen((current) => !current)} disabled={isConnectingMail}>
+                <KeyRound className="h-4 w-4" />
+                IMAP/SMTP
+              </Button>
+            )}
             <Button type="button" onClick={toggleCompose} disabled={!hasSendProvider}>
               New Mail
             </Button>
@@ -188,11 +289,12 @@ export default function MailPage() {
               </div>
               <select
                 value={composeProvider}
-                onChange={(event) => setComposeProvider(event.target.value as "google" | "microsoft")}
+                onChange={(event) => setComposeProvider(event.target.value as MailProvider)}
                 className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none"
               >
                 <option value="google" disabled={!googleConnection?.can_send}>Gmail</option>
                 <option value="microsoft" disabled={!microsoftConnection?.can_send}>Microsoft</option>
+                <option value="imap_smtp" disabled={!imapSmtpConnection?.can_send}>IMAP/SMTP</option>
               </select>
             </div>
             <input
@@ -236,6 +338,58 @@ export default function MailPage() {
         </section>
       ) : null}
 
+      {imapFormOpen ? (
+        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/70 p-5">
+          <div className="flex flex-col gap-4">
+            <div>
+              <h2 className="text-base font-semibold text-neutral-100">Connect IMAP/SMTP</h2>
+              <p className="mt-1 text-sm text-neutral-500">Credentials are saved per user and verified against both servers before the mailbox is marked connected. Gmail requires IMAP enabled and a Google app password.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" onClick={useGmailImapPreset}>
+                Use Gmail IMAP/SMTP
+              </Button>
+              {imapSmtpConnection ? (
+                <Button type="button" variant="outline" onClick={() => void handleDisconnectMail("imap_smtp")} disabled={isDisconnectingMail}>
+                  <Trash2 className="h-4 w-4" />
+                  Disconnect IMAP
+                </Button>
+              ) : null}
+            </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              <input value={imapAccountEmail} onChange={(event) => setImapAccountEmail(event.target.value)} placeholder="Mailbox email" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+              <input value={imapUsername} onChange={(event) => setImapUsername(event.target.value)} placeholder="IMAP username" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+              <input value={imapHost} onChange={(event) => setImapHost(event.target.value)} placeholder="IMAP host" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+              <div className="grid grid-cols-[1fr_140px] gap-2">
+                <input value={imapPort} onChange={(event) => setImapPort(event.target.value)} placeholder="IMAP port" inputMode="numeric" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+                <select value={imapSecurity} onChange={(event) => setImapSecurity(event.target.value as "ssl" | "starttls" | "none")} className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none">
+                  <option value="ssl">SSL</option>
+                  <option value="starttls">STARTTLS</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+              <input value={smtpHost} onChange={(event) => setSmtpHost(event.target.value)} placeholder="SMTP host" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+              <div className="grid grid-cols-[1fr_140px] gap-2">
+                <input value={smtpPort} onChange={(event) => setSmtpPort(event.target.value)} placeholder="SMTP port" inputMode="numeric" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+                <select value={smtpSecurity} onChange={(event) => setSmtpSecurity(event.target.value as "ssl" | "starttls" | "none")} className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none">
+                  <option value="ssl">SSL</option>
+                  <option value="starttls">STARTTLS</option>
+                  <option value="none">None</option>
+                </select>
+              </div>
+              <input value={smtpUsername} onChange={(event) => setSmtpUsername(event.target.value)} placeholder="SMTP username, defaults to IMAP username" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+              <input value={mailPassword} onChange={(event) => setMailPassword(event.target.value)} placeholder="Mailbox password or app password" type="password" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setImapFormOpen(false)}>Cancel</Button>
+              <Button type="button" onClick={() => void handleConnectImapSmtp()} disabled={isConnectingMail}>
+                {isConnectingMail ? "Verifying..." : "Save Connection"}
+              </Button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
       <section className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
         <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-5">
           <div className="flex items-center gap-3">
@@ -258,12 +412,24 @@ export default function MailPage() {
                     <div className="text-sm font-semibold capitalize text-neutral-100">{connection.provider}</div>
                     <div className="mt-1 text-xs text-neutral-500">{connection.account_email || "No mailbox account connected"}</div>
                     <div className="mt-2 text-[11px] text-neutral-500">
-                      {connection.can_send ? "Send enabled" : "Send not granted"} · {connection.can_sync ? "Inbox sync enabled" : "Inbox sync not enabled"}
+                      {connection.can_send ? "Send enabled" : "Send not granted"} / {connection.can_sync ? "Inbox sync enabled" : "Inbox sync not enabled"}
                     </div>
                   </div>
                   <span className="rounded-full border border-neutral-700 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
                     {connection.status}
                   </span>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {connection.provider === "imap_smtp" && connection.status === "connected" ? (
+                    <Button type="button" variant="outline" onClick={() => void handleSyncImapSmtp()} disabled={isSyncingMail}>
+                      <RefreshCw className={"h-4 w-4 " + (isSyncingMail ? "animate-spin" : "")} />
+                      Sync
+                    </Button>
+                  ) : null}
+                  <Button type="button" variant="outline" onClick={() => void handleDisconnectMail(connection.provider)} disabled={isDisconnectingMail}>
+                    <Trash2 className="h-4 w-4" />
+                    Disconnect
+                  </Button>
                 </div>
                 {connection.last_error ? <div className="mt-3 text-xs text-red-300">{connection.last_error}</div> : null}
               </div>
@@ -271,7 +437,7 @@ export default function MailPage() {
 
             {!contextQuery.data?.connections.length ? (
               <div className="rounded-xl border border-dashed border-neutral-800 bg-neutral-900/30 p-4 text-sm text-neutral-500">
-                No mailbox provider is connected yet. Connect Gmail now, or connect Microsoft once Entra settings are added.
+                No mailbox provider is connected yet. Connect Gmail send, Microsoft Graph, or IMAP/SMTP for mailbox sync.
               </div>
             ) : null}
           </div>
@@ -281,7 +447,7 @@ export default function MailPage() {
           </div>
 
           <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 text-sm text-neutral-400">
-            Gmail uses send-only access by default to avoid restricted inbox scopes. Microsoft inbox connect uses Microsoft Graph and needs `MICROSOFT_CLIENT_ID`, `MICROSOFT_CLIENT_SECRET`, and `MICROSOFT_REDIRECT_URI` in the environment.
+            For Gmail IMAP, use `imap.gmail.com` port `993` with SSL and `smtp.gmail.com` port `587` with STARTTLS. Use the full Gmail address as username and a Google app password.
           </div>
         </div>
 
@@ -337,7 +503,7 @@ export default function MailPage() {
                       <h3 className="truncate text-sm font-semibold text-neutral-100">{message.subject || "(no subject)"}</h3>
                       <p className="mt-1 truncate text-xs text-neutral-500">
                         {message.from_name || message.from_email || "Unknown sender"}
-                        {message.source_label ? ` · ${message.source_label}` : ""}
+                        {message.source_label ? ` / ${message.source_label}` : ""}
                       </p>
                     </div>
                     <div className="shrink-0 text-xs text-neutral-500">
@@ -355,7 +521,7 @@ export default function MailPage() {
               </div>
               <h3 className="mt-4 text-sm font-semibold text-neutral-200">No mail messages yet</h3>
               <p className="mt-2 max-w-md text-sm text-neutral-500">
-                Connect Gmail or Microsoft to sync recent inbox messages into this view.
+                Connect Gmail, Microsoft, or IMAP/SMTP to sync recent inbox messages into this view.
               </p>
             </div>
           )}

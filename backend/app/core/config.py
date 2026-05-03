@@ -43,6 +43,7 @@ class Settings:
     MICROSOFT_CLIENT_SECRET: str | None = os.getenv("MICROSOFT_CLIENT_SECRET")
     MICROSOFT_REDIRECT_URI: str | None = os.getenv("MICROSOFT_REDIRECT_URI")
     GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED: bool = os.getenv("GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED", "false").lower() == "true"
+    MAIL_CREDENTIAL_SECRET: str = os.getenv("MAIL_CREDENTIAL_SECRET", "").strip()
 
     # -------------------------
     # JWT configuration
@@ -155,6 +156,10 @@ class Settings:
     INITIAL_ADMIN_LAST_NAME: str = os.getenv("INITIAL_ADMIN_LAST_NAME", "Admin")
     PASSWORD_MIN_LENGTH: int = int(os.getenv("PASSWORD_MIN_LENGTH", "12"))
     PBKDF2_ITERATIONS: int = int(os.getenv("PBKDF2_ITERATIONS", "310000"))
+    DOCUMENT_MAX_UPLOAD_BYTES: int = int(os.getenv("DOCUMENT_MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
+    DOCUMENT_TENANT_STORAGE_LIMIT_BYTES: int = int(
+        os.getenv("DOCUMENT_TENANT_STORAGE_LIMIT_BYTES", str(250 * 1024 * 1024))
+    )
 
 
 settings = Settings()

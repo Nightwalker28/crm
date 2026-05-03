@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
+import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
 import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
@@ -532,6 +533,10 @@ export default function OpportunityDetailPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
+            <RecordDocumentsPanel
+              moduleKey="sales_opportunities"
+              entityId={summary.opportunity.opportunity_id}
+            />
             <RecordActivityTimeline
               moduleKey="sales_opportunities"
               entityId={summary.opportunity.opportunity_id}

@@ -7,6 +7,13 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 class MailProvider(str, Enum):
     google = "google"
     microsoft = "microsoft"
+    imap_smtp = "imap_smtp"
+
+
+class MailConnectionSecurity(str, Enum):
+    ssl = "ssl"
+    starttls = "starttls"
+    none = "none"
 
 
 class MailConnectionStatus(str, Enum):
@@ -27,6 +34,7 @@ class MailConnectionSummaryResponse(BaseModel):
     account_email: str | None = None
     provider_mailbox_id: str | None = None
     provider_mailbox_name: str | None = None
+    sync_cursor: str | None = None
     can_send: bool = False
     can_sync: bool = False
     last_synced_at: datetime | None = None
@@ -86,9 +94,27 @@ class MailProviderConnectResponse(BaseModel):
     auth_url: str
 
 
+class MailImapSmtpConnectRequest(BaseModel):
+    account_email: EmailStr
+    imap_host: str = Field(min_length=1, max_length=255)
+    imap_port: int = Field(ge=1, le=65535)
+    imap_security: MailConnectionSecurity = MailConnectionSecurity.ssl
+    imap_username: str = Field(min_length=1, max_length=255)
+    smtp_host: str = Field(min_length=1, max_length=255)
+    smtp_port: int = Field(ge=1, le=65535)
+    smtp_security: MailConnectionSecurity = MailConnectionSecurity.starttls
+    smtp_username: str | None = Field(default=None, max_length=255)
+    password: str = Field(min_length=1, max_length=4096)
+
+
 class MailSyncResponse(BaseModel):
     provider: MailProvider
     synced_message_count: int = 0
     status: MailConnectionStatus
     last_synced_at: datetime | None = None
     last_error: str | None = None
+
+
+class MailDisconnectResponse(BaseModel):
+    provider: MailProvider
+    status: MailConnectionStatus

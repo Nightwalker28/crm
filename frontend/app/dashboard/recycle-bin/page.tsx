@@ -38,6 +38,7 @@ const MODULE_OPTIONS = [
   { value: "sales_organizations", label: "Sales Organizations" },
   { value: "sales_opportunities", label: "Sales Opportunities" },
   { value: "tasks", label: "Tasks" },
+  { value: "documents", label: "Documents" },
 ];
 
 async function fetchRecycleItems(moduleKey: string, page: number, pageSize: number): Promise<RecycleResponse> {
@@ -83,6 +84,7 @@ export default function RecycleBinPage() {
       queryClient.invalidateQueries({ queryKey: ["sales-contacts"] }),
       queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
       queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+      queryClient.invalidateQueries({ queryKey: ["documents"] }),
     ]);
     toast.success("Item restored.");
   }

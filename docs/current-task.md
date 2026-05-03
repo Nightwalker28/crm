@@ -14,23 +14,35 @@ Before making substantial code changes:
 
 ## Current Focus
 
-Start the basic Slack alert integration as the next collaboration primitive, with WhatsApp deliberately paused as good enough for now:
+Stabilize the hardened Documents module and then move external document-storage providers into their own integration slice.
 
-1. add a shared CRM event foundation so important CRM events can be persisted once and reused by Slack/Teams, activity timelines, notification preferences, and later smart rules
-2. add tenant/company notification channels for simple incoming webhooks, starting with Slack and leaving Teams compatible in the data model
-3. add admin setup and test-message support for Slack webhook URLs; do not add OAuth, app marketplace flows, or bidirectional chat sync in this slice
-4. send best-effort Slack alerts for the first concrete events that already exist in the product surface, without letting webhook failures break the CRM write path
-5. start with new lead/contact created, deal assigned, invoice overdue, task assigned, and task due today events where the current modules can provide reliable payloads
-6. keep WhatsApp reply handling out of scope because the current WhatsApp slice is manual click-to-chat and has no inbound provider webhook
-7. keep Slack/Teams alerting as external notifications, not an internal chat replacement
-8. keep platform docs aligned as this becomes the shared external-alert foundation
+Recently landed in the Documents slice:
+
+1. linked-record authorization on record-linked document list, upload, download, and delete paths
+2. activity/audit entries for upload, linked upload, download, soft-delete, and restore
+3. unified recycle-bin listing and restore for deleted documents
+4. tenant document quota status in the backend and Documents UI
+5. stronger PDF, Office, and OpenDocument validation before persistence
+6. a storage-provider seam and `storage_provider` metadata, with local storage as the only active provider
+
+Next provider work:
+
+1. add tenant-owned S3/R2-style connection configuration and credential encryption
+2. add Google Drive and Microsoft OneDrive OAuth/consent flows with scoped token storage
+3. add provider-specific upload/download/delete implementations behind the storage backend contract
 
 ## Immediate Notes
 
-- WhatsApp is deliberately paused as sufficient for now; do not expand provider webhooks or automated WhatsApp sending before the Slack webhook foundation.
-- Slack alerts must be best-effort: persist the CRM event, attempt active webhook sends, record delivery state, and never fail the originating CRM create/update solely because Slack is unavailable.
-- The first Slack slice should start with simple webhook-based alerts only: shared CRM event creation, tenant/company notification channels, test message support, and first alerts for new lead/contact created, deal assigned, invoice overdue, task assigned, and task due today.
-- Keep richer scheduled task-due scanning visible as follow-up; do not add WhatsApp reply handling in the current manual click-to-chat slice.
+- WhatsApp is deliberately paused as sufficient for now; keep it to manual click-to-chat and do not add reply handling or provider webhooks in this phase.
+- The Slack/Teams webhook foundation is landed enough to stop being the active slice: CRM events, notification channels, test sends, best-effort delivery, and admin delivery history now exist.
+- Keep richer scheduled `task.due_today` scanning as follow-up instead of blocking the mail provider slice.
+- Keep optional `comment.mentioned` CRM events and Slack/email mention alerts as follow-up; the current comments slice already supports access-limited mention suggestions plus in-app notifications.
+- Add notification preferences and smart notification rules later, after the mailbox provider work is stable.
+- Per-user IMAP/SMTP hardening is complete enough to stop being the active slice; real Gmail smoke testing and Celery background mailbox reconciliation remain follow-up.
+- Documents must be tenant-scoped and permission-gated at the route layer. Linked document operations must validate the target record exists inside the same tenant.
+- Document downloads must go through authenticated API routes instead of direct static file serving.
+- Deleted documents should appear in the unified recycle bin and restore without physically deleting the file.
+- Local document storage is the working provider in this slice; S3/Drive/OneDrive support should be built through the new provider seam and explicit provider connection flows.
 - The audit-driven CRM features should be treated as platform primitives for all modules where they make product sense, not as isolated fixes inside one module.
 - Do not leave features half-landed across modules: when a shared record-page capability is started, finish the applicable module coverage, backend support, and architecture/docs updates in the same slice.
 - The current record-page modules are contacts, organizations, and opportunities; new shared detail-page capabilities should land across that set unless a module-specific constraint blocks it.

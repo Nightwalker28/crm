@@ -61,6 +61,17 @@ This file captures stable business and UX rules for the platform. These should b
 - Slack and Microsoft Teams alerts should start as simple company/tenant webhook notifications driven by CRM events. OAuth, marketplace apps, bidirectional chat sync, and chat-style internal messaging are deferred.
 - Contextual record comments, mentions, activity timelines, and notification preferences should be prioritized over building a standalone internal chat system.
 
+## Document Rules
+
+- Documents are their own tenant-aware module and can also be linked to existing CRM records where the record has a detail page.
+- Document uploads should allow only professional document/text formats by default, starting with PDF, DOC, DOCX, TXT, RTF, and ODT.
+- Document upload limits must be enforced server-side, including a per-file size limit and tenant storage quota.
+- Document downloads must go through authenticated API routes instead of unauthenticated static media paths.
+- Document deletes should be soft-delete first so uploaded files can remain recoverable in later recycle/recovery workflows.
+- Record-linked document actions must enforce both Documents module permissions and the linked record module permission. Listing and downloading require linked-record view access; linked uploads and deletes require linked-record edit access.
+- Document upload validation should inspect the actual file shape where practical, including PDF markers and Office/OpenDocument archive structure, instead of trusting extensions alone.
+- Document storage should support tenant-owned storage backends over time. Local backend storage is acceptable as the default provider, but the domain model should not assume it is the only provider forever.
+
 ## Finance / Insertion Order Rules
 
 - Finance insertion orders use the generic insertion-order model, not the old campaign-specific finance model.

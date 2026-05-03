@@ -9,6 +9,8 @@ from app.modules.finance.services.io_search_services import (
     list_deleted_insertion_orders,
     restore_insertion_order,
 )
+from app.modules.documents.schema import DocumentResponse
+from app.modules.documents.services.document_services import list_deleted_documents, restore_document
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.services.contacts_services import (
     get_contact_or_404,
@@ -48,6 +50,7 @@ SUPPORTED_RECYCLE_MODULES = {
     "sales_opportunities",
     "calendar",
     "tasks",
+    "documents",
 }
 
 
@@ -162,6 +165,25 @@ def list_recycle_items(
                 "subtitle": item.source_label or item.location or "Calendar event",
                 "deleted_at": item.deleted_at,
                 "details": serialize_calendar_event(item, current_user=item.owner),
+            }
+            for item in items
+        ]
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key == "documents":
+        items, total = list_deleted_documents(
+            db,
+            tenant_id=tenant_id,
+            pagination=pagination,
+        )
+        serialized = [
+            {
+                "module_key": module_key,
+                "record_id": item.id,
+                "title": item.title,
+                "subtitle": item.original_filename,
+                "deleted_at": item.deleted_at,
+                "details": DocumentResponse.model_validate(item).model_dump(mode="json"),
             }
             for item in items
         ]
@@ -298,5 +320,14 @@ def restore_recycle_item(
             after_state=serialized,
         )
         return serialized
+
+    if module_key == "documents":
+        restored = restore_document(
+            db,
+            tenant_id=current_user.tenant_id,
+            document_id=record_id,
+            current_user=current_user,
+        )
+        return DocumentResponse.model_validate(restored).model_dump(mode="json")
 
     raise ValueError("Unsupported recycle module")

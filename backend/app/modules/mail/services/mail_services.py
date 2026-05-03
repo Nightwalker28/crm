@@ -1,10 +1,17 @@
 from __future__ import annotations
 
 import base64
+import email
+import imaplib
 import email.utils
-import urllib.parse
+import smtplib
+import ssl
 from datetime import datetime, timedelta, timezone
+from email.header import decode_header, make_header
 from email.message import EmailMessage
+from email.policy import default as default_email_policy
+from email.utils import make_msgid
+import urllib.parse
 
 import requests
 from fastapi import HTTPException, Request, status
@@ -15,6 +22,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
+from app.core.secrets import decrypt_secret, encrypt_secret
 from app.core.tenancy import (
     get_frontend_origin_for_request,
     get_google_redirect_uri_for_request,
@@ -35,6 +43,8 @@ MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/autho
 MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 MICROSOFT_GRAPH_BASE = "https://graph.microsoft.com/v1.0"
 MICROSOFT_MAIL_SCOPES = "offline_access User.Read Mail.Read Mail.Send"
+IMAP_FULL_SYNC_SEARCH = "ALL"
+SMTP_SENT_FOLDER_CANDIDATES = ("Sent", "Sent Mail", "[Gmail]/Sent Mail", "INBOX.Sent")
 MAIL_CONNECT_STATE_TYPES = {
     MailProvider.google.value: "google_mail_oauth_state",
     MailProvider.microsoft.value: "microsoft_mail_oauth_state",
@@ -49,11 +59,13 @@ def _serialize_connection(connection: UserMailConnection) -> dict:
         "account_email": connection.account_email,
         "provider_mailbox_id": connection.provider_mailbox_id,
         "provider_mailbox_name": connection.provider_mailbox_name,
+        "sync_cursor": connection.sync_cursor,
         "can_send": (
             connection.status == "connected"
             and (
                 (connection.provider == MailProvider.google.value and GMAIL_SEND_SCOPE in scopes)
                 or (connection.provider == MailProvider.microsoft.value and "Mail.Send" in scopes)
+                or connection.provider == MailProvider.imap_smtp.value
             )
         ),
         "can_sync": (
@@ -65,6 +77,7 @@ def _serialize_connection(connection: UserMailConnection) -> dict:
                     and GMAIL_READONLY_SCOPE in scopes
                 )
                 or (connection.provider == MailProvider.microsoft.value and "Mail.Read" in scopes)
+                or connection.provider == MailProvider.imap_smtp.value
             )
         ),
         "last_synced_at": connection.last_synced_at,
@@ -351,6 +364,184 @@ def upsert_microsoft_mail_connection(
     return connection
 
 
+def _mail_ssl_context() -> ssl.SSLContext:
+    return ssl.create_default_context()
+
+
+def _connect_imap(host: str, port: int, security: str):
+    if security == "ssl":
+        return imaplib.IMAP4_SSL(host, port, ssl_context=_mail_ssl_context())
+    client = imaplib.IMAP4(host, port)
+    if security == "starttls":
+        client.starttls(ssl_context=_mail_ssl_context())
+    return client
+
+
+def _connect_smtp(host: str, port: int, security: str):
+    if security == "ssl":
+        return smtplib.SMTP_SSL(host, port, timeout=20, context=_mail_ssl_context())
+    client = smtplib.SMTP(host, port, timeout=20)
+    if security == "starttls":
+        client.starttls(context=_mail_ssl_context())
+    return client
+
+
+def _mail_provider_error(exc: Exception, *, protocol: str) -> str:
+    if isinstance(exc, imaplib.IMAP4.error):
+        raw = str(exc).lower()
+        if "invalid credentials" in raw or "authenticationfailed" in raw or "auth" in raw:
+            return f"{protocol} authentication failed. For Gmail IMAP/SMTP, enable IMAP and use a Google app password."
+        return f"{protocol} server rejected the request: {exc}"
+    if isinstance(exc, smtplib.SMTPAuthenticationError):
+        return f"{protocol} authentication failed. For Gmail SMTP, use a Google app password instead of the normal account password."
+    if isinstance(exc, (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, TimeoutError, OSError)):
+        return f"{protocol} server connection failed. Check host, port, security mode, and firewall access."
+    if isinstance(exc, ssl.SSLError):
+        return f"{protocol} TLS negotiation failed. Check the selected security mode and port."
+    return str(exc)
+
+
+def _test_imap_connection(*, host: str, port: int, security: str, username: str, password: str) -> None:
+    client = None
+    try:
+        client = _connect_imap(host, port, security)
+        client.login(username, password)
+        client.logout()
+    finally:
+        if client is not None:
+            try:
+                client.shutdown()
+            except Exception:
+                pass
+
+
+def _test_smtp_connection(*, host: str, port: int, security: str, username: str, password: str) -> None:
+    client = None
+    try:
+        client = _connect_smtp(host, port, security)
+        client.login(username, password)
+    finally:
+        if client is not None:
+            try:
+                client.quit()
+            except Exception:
+                pass
+
+
+def upsert_imap_smtp_mail_connection(
+    db: Session,
+    *,
+    tenant_id: int,
+    user: User,
+    payload: dict,
+) -> UserMailConnection:
+    imap_username = payload["imap_username"].strip()
+    smtp_username = (payload.get("smtp_username") or imap_username).strip()
+    password = payload["password"]
+    try:
+        _test_imap_connection(
+            host=payload["imap_host"].strip(),
+            port=int(payload["imap_port"]),
+            security=payload["imap_security"],
+            username=imap_username,
+            password=password,
+        )
+        _test_smtp_connection(
+            host=payload["smtp_host"].strip(),
+            port=int(payload["smtp_port"]),
+            security=payload["smtp_security"],
+            username=smtp_username,
+            password=password,
+        )
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to verify IMAP/SMTP settings: {_mail_provider_error(exc, protocol='Mailbox')}",
+        ) from exc
+
+    connection = (
+        db.query(UserMailConnection)
+        .filter(
+            UserMailConnection.tenant_id == tenant_id,
+            UserMailConnection.user_id == user.id,
+            UserMailConnection.provider == MailProvider.imap_smtp.value,
+        )
+        .first()
+    )
+    if not connection:
+        connection = UserMailConnection(
+            tenant_id=tenant_id,
+            user_id=user.id,
+            provider=MailProvider.imap_smtp.value,
+        )
+    connection.status = "connected"
+    connection.account_email = str(payload["account_email"]).strip()
+    connection.scopes = ["imap.read", "smtp.send"]
+    connection.imap_host = payload["imap_host"].strip()
+    connection.imap_port = int(payload["imap_port"])
+    connection.imap_security = payload["imap_security"]
+    connection.imap_username = imap_username
+    connection.smtp_host = payload["smtp_host"].strip()
+    connection.smtp_port = int(payload["smtp_port"])
+    connection.smtp_security = payload["smtp_security"]
+    connection.smtp_username = smtp_username
+    connection.encrypted_password = encrypt_secret(password)
+    connection.provider_mailbox_id = connection.account_email
+    connection.provider_mailbox_name = "IMAP/SMTP Mailbox"
+    connection.sync_cursor = None
+    connection.last_error = None
+    db.add(connection)
+    db.commit()
+    db.refresh(connection)
+    return connection
+
+
+def disconnect_mail_connection(
+    db: Session,
+    *,
+    tenant_id: int,
+    user_id: int,
+    provider: MailProvider,
+) -> UserMailConnection:
+    connection = (
+        db.query(UserMailConnection)
+        .filter(
+            UserMailConnection.tenant_id == tenant_id,
+            UserMailConnection.user_id == user_id,
+            UserMailConnection.provider == provider.value,
+        )
+        .first()
+    )
+    if not connection:
+        connection = UserMailConnection(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            provider=provider.value,
+        )
+    connection.status = "disconnected"
+    connection.scopes = None
+    connection.access_token = None
+    connection.refresh_token = None
+    connection.token_expires_at = None
+    connection.provider_mailbox_id = None
+    connection.provider_mailbox_name = None
+    connection.imap_host = None
+    connection.imap_port = None
+    connection.imap_security = None
+    connection.imap_username = None
+    connection.smtp_host = None
+    connection.smtp_port = None
+    connection.smtp_security = None
+    connection.smtp_username = None
+    connection.encrypted_password = None
+    connection.sync_cursor = None
+    connection.last_error = None
+    db.add(connection)
+    db.commit()
+    db.refresh(connection)
+    return connection
+
+
 def _refresh_google_mail_token(db: Session, connection: UserMailConnection) -> str:
     expires_at = connection.token_expires_at
     if connection.access_token and expires_at:
@@ -523,6 +714,68 @@ def _send_microsoft_message(db: Session, *, connection: UserMailConnection, payl
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=body.get("error", {}).get("message") or "Failed to send Microsoft message.")
 
 
+def _append_sent_imap_message(*, connection: UserMailConnection, password: str, message: EmailMessage) -> None:
+    if not connection.imap_host or not connection.imap_port or not connection.imap_username:
+        return
+    client = None
+    try:
+        client = _connect_imap(connection.imap_host, int(connection.imap_port), connection.imap_security or "ssl")
+        client.login(connection.imap_username, password)
+        raw_message = message.as_bytes()
+        for folder in SMTP_SENT_FOLDER_CANDIDATES:
+            try:
+                status_text, _ = client.append(folder, None, None, raw_message)
+            except Exception:
+                continue
+            if status_text == "OK":
+                return
+    finally:
+        if client is not None:
+            try:
+                client.logout()
+            except Exception:
+                pass
+
+
+def _send_imap_smtp_message(*, connection: UserMailConnection, payload: dict, sender_email: str) -> str | None:
+    password = decrypt_secret(connection.encrypted_password)
+    if not password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reconnect IMAP/SMTP mail to save mailbox credentials.")
+    if not connection.smtp_host or not connection.smtp_port or not connection.smtp_username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reconnect IMAP/SMTP mail to complete SMTP settings.")
+
+    message = EmailMessage()
+    message_id = make_msgid()
+    message["From"] = sender_email
+    message["To"] = ", ".join(payload["to"])
+    if payload.get("cc"):
+        message["Cc"] = ", ".join(payload["cc"])
+    if payload.get("bcc"):
+        message["Bcc"] = ", ".join(payload["bcc"])
+    message["Subject"] = payload.get("subject") or ""
+    message["Message-ID"] = message_id
+    message.set_content(payload.get("body_text") or "")
+
+    try:
+        client = _connect_smtp(connection.smtp_host, int(connection.smtp_port), connection.smtp_security or "starttls")
+        try:
+            client.login(connection.smtp_username, password)
+            client.send_message(message)
+        finally:
+            client.quit()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Failed to send SMTP message: {_mail_provider_error(exc, protocol='SMTP')}",
+        ) from exc
+
+    try:
+        _append_sent_imap_message(connection=connection, password=password, message=message)
+    except Exception:
+        pass
+    return message_id
+
+
 def send_mail_message(db: Session, *, current_user: User, payload: dict) -> MailMessage:
     provider = MailProvider(payload["provider"])
     connection = _mail_connection_for_user(
@@ -539,8 +792,14 @@ def send_mail_message(db: Session, *, current_user: User, payload: dict) -> Mail
             payload=payload,
             sender_email=connection.account_email or current_user.email,
         )
-    else:
+    elif provider == MailProvider.microsoft:
         _send_microsoft_message(db, connection=connection, payload=payload)
+    else:
+        provider_message_id = _send_imap_smtp_message(
+            connection=connection,
+            payload=payload,
+            sender_email=connection.account_email or current_user.email,
+        )
 
     now = _utcnow()
     message = MailMessage(
@@ -732,6 +991,18 @@ def sync_google_inbox(db: Session, *, current_user: User, max_results: int = 25)
         db.add(connection)
         db.commit()
     except Exception as exc:
+        db.rollback()
+        connection = (
+            db.query(UserMailConnection)
+            .filter(
+                UserMailConnection.tenant_id == current_user.tenant_id,
+                UserMailConnection.user_id == current_user.id,
+                UserMailConnection.provider == MailProvider.google.value,
+            )
+            .first()
+        )
+        if connection is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         connection.status = "error"
         connection.last_error = str(exc)
         db.add(connection)
@@ -740,6 +1011,185 @@ def sync_google_inbox(db: Session, *, current_user: User, max_results: int = 25)
 
     return {
         "provider": MailProvider.google.value,
+        "synced_message_count": synced,
+        "status": connection.status,
+        "last_synced_at": connection.last_synced_at,
+        "last_error": connection.last_error,
+    }
+
+
+def _decoded_header(value: str | None) -> str | None:
+    if not value:
+        return None
+    try:
+        return str(make_header(decode_header(value)))
+    except Exception:
+        return value
+
+
+def _extract_email_text(message: email.message.Message) -> str | None:
+    if message.is_multipart():
+        for part in message.walk():
+            if part.get_content_disposition() == "attachment":
+                continue
+            if part.get_content_type() != "text/plain":
+                continue
+            payload = part.get_payload(decode=True)
+            if payload is None:
+                continue
+            charset = part.get_content_charset() or "utf-8"
+            return payload.decode(charset, errors="replace")
+        return None
+    payload = message.get_payload(decode=True)
+    if payload is None:
+        body = message.get_payload()
+        return body if isinstance(body, str) else None
+    charset = message.get_content_charset() or "utf-8"
+    return payload.decode(charset, errors="replace")
+
+
+def _sync_imap_message(
+    db: Session,
+    *,
+    tenant_id: int,
+    user_id: int,
+    connection: UserMailConnection,
+    uid: str,
+    raw_message: bytes,
+) -> bool:
+    provider_message_id = f"imap:{uid}"
+    parsed = email.message_from_bytes(raw_message, policy=default_email_policy)
+    from_email, from_name = _parse_address(str(parsed.get("From") or ""))
+    subject = _decoded_header(str(parsed.get("Subject") or "")) or None
+    body_text = _extract_email_text(parsed)
+    existing = (
+        db.query(MailMessage)
+        .filter(
+            MailMessage.tenant_id == tenant_id,
+            MailMessage.connection_id == connection.id,
+            MailMessage.provider_message_id == provider_message_id,
+        )
+        .first()
+    )
+    message = existing or MailMessage(
+        tenant_id=tenant_id,
+        owner_user_id=user_id,
+        connection_id=connection.id,
+        provider=MailProvider.imap_smtp.value,
+        provider_message_id=provider_message_id,
+    )
+    message.provider_thread_id = str(parsed.get("Message-ID") or "")[:255] or None
+    message.direction = "inbound"
+    message.folder = "inbox"
+    message.from_email = from_email
+    message.from_name = from_name
+    message.to_recipients = _parse_recipients(str(parsed.get("To") or ""))
+    message.cc_recipients = _parse_recipients(str(parsed.get("Cc") or ""))
+    message.bcc_recipients = _parse_recipients(str(parsed.get("Bcc") or ""))
+    message.subject = subject
+    message.snippet = (body_text or "")[:300] or None
+    message.body_text = body_text
+    message.received_at = _parse_message_datetime(str(parsed.get("Date") or ""))
+    message.deleted_at = None
+    db.add(message)
+    return existing is None
+
+
+def sync_imap_smtp_inbox(db: Session, *, current_user: User, max_results: int = 25) -> dict:
+    connection = (
+        db.query(UserMailConnection)
+        .filter(
+            UserMailConnection.tenant_id == current_user.tenant_id,
+            UserMailConnection.user_id == current_user.id,
+            UserMailConnection.provider == MailProvider.imap_smtp.value,
+        )
+        .first()
+    )
+    if not connection or connection.status != "connected":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect IMAP/SMTP mail before syncing the inbox.")
+    password = decrypt_secret(connection.encrypted_password)
+    if not password:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reconnect IMAP/SMTP mail to save mailbox credentials.")
+    if not connection.imap_host or not connection.imap_port or not connection.imap_username:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reconnect IMAP/SMTP mail to complete IMAP settings.")
+
+    client = None
+    synced = 0
+    try:
+        client = _connect_imap(connection.imap_host, int(connection.imap_port), connection.imap_security or "ssl")
+        client.login(connection.imap_username, password)
+        status_text, _ = client.select("INBOX")
+        if status_text != "OK":
+            raise RuntimeError("Failed to open IMAP inbox.")
+        search_criteria = IMAP_FULL_SYNC_SEARCH
+        last_seen_uid = int(connection.sync_cursor) if str(connection.sync_cursor or "").isdigit() else None
+        if last_seen_uid:
+            search_criteria = f"UID {last_seen_uid + 1}:*"
+        status_text, data = client.uid("search", None, search_criteria)
+        if status_text != "OK":
+            raise RuntimeError("Failed to list IMAP messages.")
+        uids = (data[0] or b"").split()
+        selected_uids = uids[-max_results:] if not last_seen_uid else uids[:max_results]
+        max_seen_uid = last_seen_uid or 0
+        for uid_bytes in selected_uids:
+            uid = uid_bytes.decode("ascii", errors="ignore")
+            if not uid:
+                continue
+            if uid.isdigit():
+                max_seen_uid = max(max_seen_uid, int(uid))
+            status_text, fetch_data = client.uid("fetch", uid, "(RFC822)")
+            if status_text != "OK":
+                continue
+            raw_message = None
+            for item in fetch_data:
+                if isinstance(item, tuple) and len(item) >= 2 and isinstance(item[1], bytes):
+                    raw_message = item[1]
+                    break
+            if not raw_message:
+                continue
+            if _sync_imap_message(
+                db,
+                tenant_id=current_user.tenant_id,
+                user_id=current_user.id,
+                connection=connection,
+                uid=uid,
+                raw_message=raw_message,
+            ):
+                synced += 1
+        connection.status = "connected"
+        if max_seen_uid:
+            connection.sync_cursor = str(max_seen_uid)
+        connection.last_synced_at = _utcnow()
+        connection.last_error = None
+        db.add(connection)
+        db.commit()
+    except Exception as exc:
+        db.rollback()
+        connection = (
+            db.query(UserMailConnection)
+            .filter(
+                UserMailConnection.tenant_id == current_user.tenant_id,
+                UserMailConnection.user_id == current_user.id,
+                UserMailConnection.provider == MailProvider.imap_smtp.value,
+            )
+            .first()
+        )
+        if connection is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        connection.status = "error"
+        connection.last_error = str(exc)
+        db.add(connection)
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error) from exc
+    finally:
+        if client is not None:
+            try:
+                client.logout()
+            except Exception:
+                pass
+
+    return {
+        "provider": MailProvider.imap_smtp.value,
         "synced_message_count": synced,
         "status": connection.status,
         "last_synced_at": connection.last_synced_at,
