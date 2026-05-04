@@ -20,6 +20,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.access_control import require_role_module_action_access
 from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
 from app.core.secrets import decrypt_secret, encrypt_secret
@@ -30,6 +31,8 @@ from app.core.tenancy import (
 )
 from app.modules.mail.models import MailMessage, UserMailConnection
 from app.modules.mail.schema import MailProvider
+from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.record_comments import get_record_comment_module_config, get_record_reference
 from app.modules.user_management.models import Tenant, User, UserStatus
 
 
@@ -656,6 +659,67 @@ def _recipient_dicts(emails: list[str]) -> list[dict] | None:
     return [{"email": value, "name": None} for value in emails] or None
 
 
+def _normalize_source_value(value) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _resolve_mail_source_context(db: Session, *, current_user: User, payload: dict) -> dict | None:
+    module_key = _normalize_source_value(payload.get("source_module_key"))
+    entity_id = _normalize_source_value(payload.get("source_entity_id"))
+    if not module_key and not entity_id:
+        return None
+    if not module_key or not entity_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mail source requires both module and record.")
+
+    try:
+        require_role_module_action_access(db, user=current_user, module_key=module_key, action="view")
+        config = get_record_comment_module_config(module_key)
+        get_record_reference(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key=module_key,
+            entity_id=entity_id,
+        )
+    except HTTPException:
+        raise
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+    return {
+        "module_key": module_key,
+        "entity_type": config["entity_type"],
+        "entity_id": entity_id,
+    }
+
+
+def _log_mail_source_activity(
+    db: Session,
+    *,
+    current_user: User,
+    message: MailMessage,
+    source_context: dict | None,
+) -> None:
+    if not source_context:
+        return
+    subject = message.subject or "(no subject)"
+    log_activity(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        module_key=source_context["module_key"],
+        entity_type=source_context["entity_type"],
+        entity_id=source_context["entity_id"],
+        action="mail.sent",
+        description=f"Sent email: {subject}",
+        after_state=serialize_mail_message(message),
+    )
+
+
 def _send_gmail_message(
     db: Session,
     *,
@@ -778,6 +842,7 @@ def _send_imap_smtp_message(*, connection: UserMailConnection, payload: dict, se
 
 def send_mail_message(db: Session, *, current_user: User, payload: dict) -> MailMessage:
     provider = MailProvider(payload["provider"])
+    source_context = _resolve_mail_source_context(db, current_user=current_user, payload=payload)
     connection = _mail_connection_for_user(
         db,
         tenant_id=current_user.tenant_id,
@@ -825,6 +890,7 @@ def send_mail_message(db: Session, *, current_user: User, payload: dict) -> Mail
     db.add(message)
     db.commit()
     db.refresh(message)
+    _log_mail_source_activity(db, current_user=current_user, message=message, source_context=source_context)
     return message
 
 

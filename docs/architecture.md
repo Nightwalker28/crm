@@ -73,6 +73,16 @@ This file captures the current intended technical patterns and constraints so ne
 - Record-note create/delete actions should also write into the same per-record activity timeline so collaboration history stays in one place.
 - Record-note mentions should only suggest and notify active users who can view the record's module; the backend must reject mentioned user IDs that do not pass that access check.
 
+### Client Portal Access
+
+- Client-facing access is separate from CRM user access. Client accounts should have their own auth/session model and must not be accepted by dashboard user dependencies.
+- Client accounts are tenant-scoped and linked to exactly one CRM customer identity: a sales contact or a sales organization.
+- Client login resolves tenant, client account, linked record, and customer group server-side before returning personalized pricing or private client-page data.
+- Unauthenticated public client-page reads may return only public/default pricing and non-sensitive content.
+- Signed public links should be scoped to one client-page/proposal/document bundle, carry expiry, and avoid exposing personalized pricing unless paired with authenticated client identity or an explicit snapshot intended for that recipient.
+- Personalized pricing rules should be evaluated from stored group/rule configuration and linked customer context, never from client-supplied group or discount fields.
+- Client-page accept/request-changes actions should persist auditable records with tenant, client account when present, public token/page ID, action, timestamp, and request metadata.
+
 ### Notifications
 
 - User-facing operational notifications should use one shared persisted notification model and API instead of each background workflow inventing its own UI state.

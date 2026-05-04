@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
 from fastapi import HTTPException, status
@@ -12,6 +12,8 @@ from app.core.module_filters import apply_filter_conditions
 from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination
 from app.core.postgres_search import searchable_text
+from app.modules.platform.models import CrmEvent
+from app.modules.platform.services.crm_events import safe_emit_crm_event
 from app.modules.platform.services.notifications import create_notification
 from app.modules.tasks.models import Task, TaskAssignee
 from app.modules.tasks.schema import TaskResponse
@@ -19,6 +21,7 @@ from app.modules.user_management.models import Team, User
 
 
 TASK_ASSIGNMENT_NOTIFICATION_CATEGORY = "task_assignment"
+TASK_DUE_TODAY_NOTIFICATION_CATEGORY = "task_due_today"
 
 
 def _utcnow() -> datetime:
@@ -34,6 +37,11 @@ def _display_user_name(user: User | None) -> str | None:
         return None
     full_name = " ".join(part for part in [user.first_name, user.last_name] if part).strip()
     return full_name or user.email or None
+
+
+def _task_assignee_labels(task: Task) -> str:
+    labels = [getattr(assignee, "label", None) for assignee in getattr(task, "assignees", [])]
+    return ", ".join(label for label in labels if label) or "Unassigned"
 
 
 def _assignee_key(assignee_type: str, target_id: int) -> str:
@@ -81,6 +89,9 @@ def _build_task_query(
         "description": {"expression": Task.description, "type": "text"},
         "status": {"expression": Task.status, "type": "text"},
         "priority": {"expression": Task.priority, "type": "text"},
+        "source_label": {"expression": Task.source_label, "type": "text"},
+        "source_module_key": {"expression": Task.source_module_key, "type": "text"},
+        "source_entity_id": {"expression": Task.source_entity_id, "type": "text"},
         "start_at": {"expression": Task.start_at, "type": "date"},
         "due_at": {"expression": Task.due_at, "type": "date"},
         "assigned_at": {"expression": Task.assigned_at, "type": "date"},
@@ -102,7 +113,7 @@ def _build_task_query(
     return apply_ranked_search(
         query,
         search=search,
-        document=searchable_text(Task.title, Task.description, Task.status, Task.priority),
+        document=searchable_text(Task.title, Task.description, Task.status, Task.priority, Task.source_label),
         default_order_column=Task.created_at,
     )
 
@@ -299,6 +310,119 @@ def _resolve_notification_user_ids(db: Session, *, tenant_id: int, assignee_keys
     return sorted(user_ids)
 
 
+def _task_due_alert_exists(db: Session, *, tenant_id: int, task_id: int, day_start: datetime, day_end: datetime) -> bool:
+    return (
+        db.query(CrmEvent.id)
+        .filter(
+            CrmEvent.tenant_id == tenant_id,
+            CrmEvent.event_type == "task.due_today",
+            CrmEvent.entity_type == "task",
+            CrmEvent.entity_id == str(task_id),
+            CrmEvent.created_at >= day_start,
+            CrmEvent.created_at < day_end,
+        )
+        .first()
+        is not None
+    )
+
+
+def _task_due_alert_payload(task: Task) -> dict:
+    return {
+        "task_id": task.id,
+        "task_title": task.title,
+        "priority": task.priority,
+        "status": task.status,
+        "due_at": task.due_at,
+        "assignees": _task_assignee_labels(task),
+        "assigned_by_name": _display_user_name(task.assigned_by),
+        "href": f"/dashboard/tasks?taskId={task.id}",
+    }
+
+
+def _task_due_notification_user_ids(db: Session, *, task: Task) -> list[int]:
+    assignee_keys = [assignee.assignee_key for assignee in getattr(task, "assignees", [])]
+    user_ids = set(_resolve_notification_user_ids(db, tenant_id=task.tenant_id, assignee_keys=assignee_keys))
+    if not user_ids and task.created_by_user_id:
+        user_ids.add(int(task.created_by_user_id))
+    return sorted(user_ids)
+
+
+def scan_due_task_alerts(db: Session, *, now: datetime | None = None) -> dict:
+    scan_time = now or _utcnow()
+    if scan_time.tzinfo is None:
+        scan_time = scan_time.replace(tzinfo=timezone.utc)
+    scan_time = scan_time.astimezone(timezone.utc)
+    day_start = scan_time.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_end = day_start + timedelta(days=1)
+
+    due_tasks = (
+        db.query(Task)
+        .options(
+            selectinload(Task.assignees).selectinload(TaskAssignee.user),
+            selectinload(Task.assignees).selectinload(TaskAssignee.team),
+            selectinload(Task.assigned_by),
+        )
+        .filter(
+            Task.deleted_at.is_(None),
+            Task.status != "completed",
+            Task.due_at >= day_start,
+            Task.due_at < day_end,
+        )
+        .order_by(Task.due_at.asc(), Task.id.asc())
+        .all()
+    )
+
+    alerts_created = 0
+    notifications_created = 0
+    for task in due_tasks:
+        if _task_due_alert_exists(
+            db,
+            tenant_id=task.tenant_id,
+            task_id=task.id,
+            day_start=day_start,
+            day_end=day_end,
+        ):
+            continue
+
+        payload = _task_due_alert_payload(task)
+        event = safe_emit_crm_event(
+            db,
+            tenant_id=task.tenant_id,
+            actor_user_id=task.assigned_by_user_id or task.updated_by_user_id or task.created_by_user_id,
+            event_type="task.due_today",
+            entity_type="task",
+            entity_id=task.id,
+            payload=payload,
+        )
+        if event is None:
+            continue
+        alerts_created += 1
+
+        for user_id in _task_due_notification_user_ids(db, task=task):
+            create_notification(
+                db,
+                tenant_id=task.tenant_id,
+                user_id=user_id,
+                category=TASK_DUE_TODAY_NOTIFICATION_CATEGORY,
+                title=f"Task due today: {task.title}",
+                message="A task assigned to you or your team is due today.",
+                link_url=f"/dashboard/tasks?taskId={task.id}",
+                metadata={
+                    "task_id": task.id,
+                    "due_at": _serialize_datetime(task.due_at),
+                    "alert_date": day_start.date().isoformat(),
+                },
+            )
+            notifications_created += 1
+
+    return {
+        "scan_date": day_start.date().isoformat(),
+        "due_tasks": len(due_tasks),
+        "alerts_created": alerts_created,
+        "notifications_created": notifications_created,
+    }
+
+
 def _notify_task_assignees(
     db: Session,
     *,
@@ -340,6 +464,9 @@ def serialize_task(task: Task) -> dict:
         "start_at": _serialize_datetime(task.start_at),
         "due_at": _serialize_datetime(task.due_at),
         "completed_at": _serialize_datetime(task.completed_at),
+        "source_module_key": task.source_module_key,
+        "source_entity_id": task.source_entity_id,
+        "source_label": task.source_label,
         "created_by_user_id": task.created_by_user_id,
         "updated_by_user_id": task.updated_by_user_id,
         "assigned_by_user_id": task.assigned_by_user_id,
@@ -375,6 +502,9 @@ def create_task(db: Session, *, payload: dict, current_user) -> tuple[Task, list
         start_at=data.get("start_at"),
         due_at=data.get("due_at"),
         completed_at=data.get("completed_at"),
+        source_module_key=(data.get("source_module_key") or "").strip() or None,
+        source_entity_id=str(data.get("source_entity_id")).strip() if data.get("source_entity_id") not in {None, ""} else None,
+        source_label=(data.get("source_label") or "").strip() or None,
         created_by_user_id=current_user.id,
         updated_by_user_id=current_user.id,
     )
@@ -403,11 +533,11 @@ def update_task(db: Session, *, task: Task, payload: dict, current_user) -> tupl
     data = dict(payload)
     assignees_payload = data.pop("assignees", None)
 
-    for field in ("title", "description", "status", "priority", "start_at", "due_at", "completed_at"):
+    for field in ("title", "description", "status", "priority", "start_at", "due_at", "completed_at", "source_module_key", "source_entity_id", "source_label"):
         if field not in data:
             continue
         value = data[field]
-        if field in {"title", "description"} and isinstance(value, str):
+        if field in {"title", "description", "source_module_key", "source_entity_id", "source_label"} and isinstance(value, str):
             value = value.strip() or None
         setattr(task, field, value)
 

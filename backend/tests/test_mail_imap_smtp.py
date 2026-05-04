@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -18,8 +19,9 @@ from app.modules.mail.services.mail_services import (
     sync_imap_smtp_inbox,
     upsert_imap_smtp_mail_connection,
 )
+from app.modules.sales.models import SalesContact
 from app.modules.user_management import models as user_management_models  # noqa: F401
-from app.modules.user_management.models import Role, Tenant, User, UserStatus
+from app.modules.user_management.models import Module, Role, Tenant, User, UserStatus
 
 
 class FakeImapClient:
@@ -81,6 +83,7 @@ class MailImapSmtpTests(unittest.TestCase):
         self.db.add_all(
             [
                 Tenant(id=10, slug="default", name="Default"),
+                Module(id=1, name="sales_contacts", base_route="sales_contacts", is_enabled=1),
                 Role(id=1, tenant_id=10, name="Admin", level=100),
                 User(
                     id=1,
@@ -90,6 +93,18 @@ class MailImapSmtpTests(unittest.TestCase):
                     last_name="Admin",
                     role_id=1,
                     is_active=UserStatus.active,
+                ),
+                SalesContact(
+                    contact_id=7,
+                    tenant_id=10,
+                    primary_email="lead@example.com",
+                    assigned_to=1,
+                ),
+                SalesContact(
+                    contact_id=8,
+                    tenant_id=99,
+                    primary_email="other@example.com",
+                    assigned_to=1,
                 ),
             ]
         )
@@ -242,6 +257,72 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(fake_smtp.username, "ava@example.com")
         self.assertEqual(fake_smtp.sent_message["Subject"], "Quote")
         self.assertEqual(fake_imap.appended_folder, "Sent")
+
+    def test_mail_source_context_resolves_existing_tenant_record(self):
+        context = mail_services._resolve_mail_source_context(
+            self.db,
+            current_user=self.user,
+            payload={"source_module_key": "sales_contacts", "source_entity_id": "7"},
+        )
+
+        self.assertEqual(
+            context,
+            {"module_key": "sales_contacts", "entity_type": "sales_contact", "entity_id": "7"},
+        )
+
+    def test_mail_source_context_rejects_partial_source(self):
+        with self.assertRaises(HTTPException) as exc:
+            mail_services._resolve_mail_source_context(
+                self.db,
+                current_user=self.user,
+                payload={"source_module_key": "sales_contacts"},
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Mail source requires both module and record.")
+
+    def test_mail_source_context_rejects_cross_tenant_record(self):
+        with self.assertRaises(HTTPException) as exc:
+            mail_services._resolve_mail_source_context(
+                self.db,
+                current_user=self.user,
+                payload={"source_module_key": "sales_contacts", "source_entity_id": "8"},
+            )
+
+        self.assertEqual(exc.exception.status_code, 404)
+
+    def test_mail_source_activity_logs_to_record_timeline(self):
+        message = MailMessage(
+            id=77,
+            tenant_id=10,
+            owner_user_id=1,
+            provider=MailProvider.imap_smtp.value,
+            direction="outbound",
+            folder="sent",
+            from_email="ava@example.com",
+            to_recipients=[{"email": "lead@example.com", "name": None}],
+            subject="Quote",
+            body_text="Quote body",
+            source_module_key="sales_contacts",
+            source_entity_id="7",
+            source_label="lead@example.com",
+        )
+
+        with patch.object(mail_services, "log_activity") as log_mock:
+            mail_services._log_mail_source_activity(
+                self.db,
+                current_user=self.user,
+                message=message,
+                source_context={"module_key": "sales_contacts", "entity_type": "sales_contact", "entity_id": "7"},
+            )
+
+        log_mock.assert_called_once()
+        call_kwargs = log_mock.call_args.kwargs
+        self.assertEqual(call_kwargs["tenant_id"], 10)
+        self.assertEqual(call_kwargs["module_key"], "sales_contacts")
+        self.assertEqual(call_kwargs["entity_type"], "sales_contact")
+        self.assertEqual(call_kwargs["entity_id"], "7")
+        self.assertEqual(call_kwargs["action"], "mail.sent")
 
     @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
     def test_disconnect_mail_connection_clears_credentials_and_disables_capabilities(self):

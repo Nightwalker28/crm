@@ -21,6 +21,9 @@ class Task(Base):
     start_at = Column(DateTime(timezone=True), nullable=True)
     due_at = Column(DateTime(timezone=True), nullable=True, index=True)
     completed_at = Column(DateTime(timezone=True), nullable=True)
+    source_module_key = Column(String(100), nullable=True, index=True)
+    source_entity_id = Column(String(100), nullable=True, index=True)
+    source_label = Column(String(255), nullable=True)
     created_by_user_id = Column(
         BigInteger,
         ForeignKey("users.id", ondelete="SET NULL"),

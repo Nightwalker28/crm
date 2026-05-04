@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import expression
 
 from app.core.database import Base
+from app.modules.client_portal.models import CustomerGroup  # noqa: F401
 
 
 def _get_custom_field_cache(record) -> dict | None:
@@ -36,6 +37,12 @@ class SalesOrganization(Base):
         ForeignKey("users.id", ondelete="SET NULL"),
         nullable=True,
     )
+    customer_group_id = Column(
+        BigInteger,
+        ForeignKey("customer_groups.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     created_time = Column(
         TIMESTAMP(timezone=True),
@@ -48,6 +55,7 @@ class SalesOrganization(Base):
     billing_state = Column(Text, nullable=True)
     billing_postal_code = Column(Text, nullable=True)
     billing_country = Column(Text, nullable=True)
+    customer_group = relationship("CustomerGroup", lazy="joined")
 
     @property
     def custom_data(self) -> dict | None:
@@ -91,12 +99,23 @@ class SalesContact(Base):
         ForeignKey("sales_organizations.org_id", ondelete="SET NULL"),
         nullable=True,
     )
+    customer_group_id = Column(
+        BigInteger,
+        ForeignKey("customer_groups.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    last_contacted_channel = Column(Text, nullable=True)
+    last_contacted_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     whatsapp_last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
 
-    assigned_user = relationship("User", lazy="joined")
+    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
+    last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="joined")
     organization = relationship("SalesOrganization", lazy="joined")
+    customer_group = relationship("CustomerGroup", lazy="joined")
 
     @property
     def custom_data(self) -> dict | None:
@@ -162,11 +181,15 @@ class SalesOpportunity(Base):
         TIMESTAMP(timezone=True),
         server_default=func.now(),
     )
+    last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    last_contacted_channel = Column(Text, nullable=True)
+    last_contacted_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
 
     contact = relationship("SalesContact", lazy="joined")
     organization = relationship("SalesOrganization", lazy="joined")
-    assigned_user = relationship("User", lazy="joined")
+    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
+    last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="joined")
 
     @property
     def custom_data(self) -> dict | None:

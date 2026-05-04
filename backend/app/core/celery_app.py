@@ -6,7 +6,10 @@ from app.core.config import settings
 celery_app = Celery(
     "lynk",
     broker=settings.CELERY_BROKER_URL,
-    include=["app.tasks.data_transfer_tasks"],
+    include=[
+        "app.tasks.data_transfer_tasks",
+        "app.tasks.task_reminder_tasks",
+    ],
 )
 
 celery_app.conf.update(
@@ -21,6 +24,14 @@ celery_app.conf.update(
         "cleanup-expired-data-transfer-results": {
             "task": "app.tasks.data_transfer.cleanup_expired_results",
             "schedule": settings.DATA_TRANSFER_RESULT_CLEANUP_INTERVAL_SECONDS,
+        },
+        "scan-due-task-alerts": {
+            "task": "app.tasks.task_reminders.scan_due_task_alerts",
+            "schedule": settings.TASK_DUE_ALERT_SCAN_INTERVAL_SECONDS,
+        },
+        "scan-follow-up-reminders": {
+            "task": "app.tasks.task_reminders.scan_follow_up_reminders",
+            "schedule": settings.FOLLOW_UP_REMINDER_SCAN_INTERVAL_SECONDS,
         },
     },
 )

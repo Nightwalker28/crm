@@ -1,19 +1,25 @@
 from __future__ import annotations
 
 import io
+import urllib.parse
 import zipfile
+from datetime import datetime, timedelta, timezone
 
-from fastapi import HTTPException, UploadFile, status
+import requests
+from fastapi import HTTPException, Request, UploadFile, status
+from jose import JWTError, jwt
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.core.access_control import require_role_module_action_access
-from app.modules.documents.models import Document, DocumentLink
+from app.core.tenancy import get_frontend_origin_for_request, get_google_redirect_uri_for_request
+from app.modules.documents.models import Document, DocumentLink, DocumentStorageConnection
 from app.modules.documents.schema import DocumentResponse
 from app.modules.documents.services.storage_backends import get_document_storage_backend, supported_storage_providers
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.record_comments import get_record_comment_module_config, get_record_reference
+from app.modules.user_management.models import Tenant, User, UserStatus
 
 ALLOWED_DOCUMENT_EXTENSIONS = {"pdf", "doc", "docx", "txt", "rtf", "odt"}
 ALLOWED_DOCUMENT_CONTENT_TYPES = {
@@ -25,6 +31,17 @@ ALLOWED_DOCUMENT_CONTENT_TYPES = {
     "text/plain",
     "text/rtf",
 }
+GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+GOOGLE_DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
+GOOGLE_DRIVE_CONNECT_STATE_TYPE = "google_drive_document_storage_state"
+DOCUMENT_PROVIDER_LOCAL = "local"
+DOCUMENT_PROVIDER_GOOGLE_DRIVE = "google_drive"
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
 
 
 def document_upload_limits() -> dict:
@@ -49,6 +66,173 @@ def document_storage_usage(db: Session, *, tenant_id: int) -> dict:
 
 def document_storage_providers() -> list[dict]:
     return supported_storage_providers()
+
+
+def list_document_storage_connections(db: Session, *, tenant_id: int, user_id: int) -> list[DocumentStorageConnection]:
+    return (
+        db.query(DocumentStorageConnection)
+        .filter(DocumentStorageConnection.tenant_id == tenant_id, DocumentStorageConnection.user_id == user_id)
+        .order_by(DocumentStorageConnection.provider.asc())
+        .all()
+    )
+
+
+def _create_drive_oauth_state(*, tenant: Tenant, user, frontend_origin: str) -> str:
+    now = _utcnow()
+    payload = {
+        "type": GOOGLE_DRIVE_CONNECT_STATE_TYPE,
+        "provider": DOCUMENT_PROVIDER_GOOGLE_DRIVE,
+        "tenant_id": tenant.id,
+        "user_id": user.id,
+        "frontend_origin": frontend_origin.rstrip("/"),
+        "iat": now,
+        "exp": now + timedelta(minutes=settings.GOOGLE_OAUTH_STATE_EXPIRE_MINUTES),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_drive_oauth_state(state_token: str | None) -> dict | None:
+    if not state_token:
+        return None
+    try:
+        payload = jwt.decode(state_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    except JWTError:
+        return None
+    if payload.get("type") != GOOGLE_DRIVE_CONNECT_STATE_TYPE:
+        return None
+    if payload.get("provider") != DOCUMENT_PROVIDER_GOOGLE_DRIVE:
+        return None
+    return payload
+
+
+def get_google_drive_connect_url(*, request: Request, tenant: Tenant, user) -> str:
+    params = {
+        "client_id": settings.GOOGLE_CLIENT_ID,
+        "redirect_uri": get_google_redirect_uri_for_request(request),
+        "response_type": "code",
+        "scope": " ".join(["openid", "email", "profile", GOOGLE_DRIVE_FILE_SCOPE]),
+        "access_type": "offline",
+        "prompt": "consent",
+        "state": _create_drive_oauth_state(
+            tenant=tenant,
+            user=user,
+            frontend_origin=get_frontend_origin_for_request(request),
+        ),
+    }
+    return GOOGLE_AUTH_URL + "?" + urllib.parse.urlencode(params)
+
+
+def _token_expiry(token_json: dict) -> datetime | None:
+    expires_in = token_json.get("expires_in")
+    if not expires_in:
+        return None
+    return _utcnow() + timedelta(seconds=int(expires_in))
+
+
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
+def _upsert_google_drive_connection(
+    db: Session,
+    *,
+    tenant_id: int,
+    user: User,
+    token_json: dict,
+    account_email: str,
+) -> DocumentStorageConnection:
+    connection = (
+        db.query(DocumentStorageConnection)
+        .filter(
+            DocumentStorageConnection.tenant_id == tenant_id,
+            DocumentStorageConnection.user_id == user.id,
+            DocumentStorageConnection.provider == DOCUMENT_PROVIDER_GOOGLE_DRIVE,
+        )
+        .first()
+    )
+    if not connection:
+        connection = DocumentStorageConnection(
+            tenant_id=tenant_id,
+            user_id=user.id,
+            provider=DOCUMENT_PROVIDER_GOOGLE_DRIVE,
+        )
+        db.add(connection)
+    connection.status = "connected"
+    connection.account_email = account_email
+    connection.scopes = token_json.get("scope", "").split()
+    connection.access_token = token_json.get("access_token") or connection.access_token
+    if token_json.get("refresh_token"):
+        connection.refresh_token = token_json["refresh_token"]
+    connection.token_expires_at = _token_expiry(token_json)
+    connection.provider_root_id = "drive"
+    connection.provider_root_name = "Google Drive"
+    connection.last_error = None
+    db.commit()
+    db.refresh(connection)
+    return connection
+
+
+def handle_google_drive_callback(code: str, db: Session, *, tenant: Tenant, request: Request, state_payload: dict) -> dict:
+    user = db.query(User).filter(User.tenant_id == tenant.id, User.id == int(state_payload["user_id"])).first()
+    if not user or user.is_active != UserStatus.active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Document storage user is not active")
+    token_res = requests.post(
+        GOOGLE_TOKEN_URL,
+        data={
+            "code": code,
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "redirect_uri": get_google_redirect_uri_for_request(request),
+            "grant_type": "authorization_code",
+        },
+        timeout=20,
+    )
+    token_json = token_res.json()
+    if not token_res.ok or "access_token" not in token_json:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to connect Google Drive")
+    scopes = set(token_json.get("scope", "").split())
+    if GOOGLE_DRIVE_FILE_SCOPE not in scopes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Drive file scope was not granted")
+    profile_res = requests.get(
+        GOOGLE_USERINFO_URL,
+        headers={"Authorization": f"Bearer {token_json['access_token']}"},
+        timeout=20,
+    )
+    profile = profile_res.json() if profile_res.ok else {}
+    account_email = profile.get("email") or user.email
+    connection = _upsert_google_drive_connection(
+        db,
+        tenant_id=tenant.id,
+        user=user,
+        token_json=token_json,
+        account_email=account_email,
+    )
+    return {"provider": connection.provider, "status": connection.status}
+
+
+def disconnect_document_storage_connection(
+    db: Session,
+    *,
+    tenant_id: int,
+    user_id: int,
+    provider: str,
+) -> DocumentStorageConnection:
+    if provider != DOCUMENT_PROVIDER_GOOGLE_DRIVE:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported document storage provider.")
+    connection = _document_storage_connection(db, tenant_id=tenant_id, user_id=user_id, provider=provider, connected_only=False)
+    connection.status = "disconnected"
+    connection.access_token = None
+    connection.refresh_token = None
+    connection.token_expires_at = None
+    connection.last_error = None
+    db.add(connection)
+    db.commit()
+    db.refresh(connection)
+    return connection
 
 
 async def read_document_upload(file: UploadFile) -> tuple[bytes, str, str, str]:
@@ -138,6 +322,75 @@ def _tenant_storage_used(db: Session, *, tenant_id: int) -> int:
     return int(value or 0)
 
 
+def _document_storage_connection(
+    db: Session,
+    *,
+    tenant_id: int,
+    user_id: int,
+    provider: str,
+    connected_only: bool = True,
+) -> DocumentStorageConnection:
+    query = db.query(DocumentStorageConnection).filter(
+        DocumentStorageConnection.tenant_id == tenant_id,
+        DocumentStorageConnection.user_id == user_id,
+        DocumentStorageConnection.provider == provider,
+    )
+    if connected_only:
+        query = query.filter(DocumentStorageConnection.status == "connected")
+    connection = query.first()
+    if not connection:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Drive is not connected.")
+    return connection
+
+
+def _refresh_google_drive_access_token(db: Session, connection: DocumentStorageConnection) -> str:
+    expires_at = _as_utc(connection.token_expires_at)
+    if connection.access_token and expires_at and expires_at > _utcnow() + timedelta(minutes=1):
+        return connection.access_token
+    if not connection.refresh_token:
+        connection.status = "error"
+        connection.last_error = "Reconnect Google Drive to restore document storage access."
+        db.add(connection)
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
+    token_res = requests.post(
+        GOOGLE_TOKEN_URL,
+        data={
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "refresh_token": connection.refresh_token,
+            "grant_type": "refresh_token",
+        },
+        timeout=20,
+    )
+    token_json = token_res.json()
+    if not token_res.ok or not token_json.get("access_token"):
+        connection.status = "error"
+        connection.last_error = "Failed to refresh Google Drive access."
+        db.add(connection)
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
+    connection.access_token = token_json["access_token"]
+    connection.token_expires_at = _token_expiry(token_json)
+    connection.status = "connected"
+    connection.last_error = None
+    db.add(connection)
+    db.commit()
+    db.refresh(connection)
+    return connection.access_token
+
+
+def _google_drive_backend_for_user(db: Session, *, tenant_id: int, user_id: int):
+    connection = _document_storage_connection(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        provider=DOCUMENT_PROVIDER_GOOGLE_DRIVE,
+    )
+    token = _refresh_google_drive_access_token(db, connection)
+    return get_document_storage_backend(DOCUMENT_PROVIDER_GOOGLE_DRIVE, access_token=token)
+
+
 def _require_linked_record_access(db: Session, *, user, module_key: str, entity_id: str | int, action: str) -> None:
     try:
         require_role_module_action_access(db, user=user, module_key=module_key, action=action)
@@ -180,6 +433,16 @@ def _serialize_document(document: Document) -> dict:
 def resolve_document_storage_path(document: Document):
     backend = get_document_storage_backend(document.storage_provider)
     return backend.resolve_path(document.storage_path)
+
+
+def resolve_document_download(db: Session, *, document: Document, current_user) -> dict:
+    if document.storage_provider == DOCUMENT_PROVIDER_LOCAL:
+        return {"kind": "path", "path": resolve_document_storage_path(document)}
+    if document.storage_provider == DOCUMENT_PROVIDER_GOOGLE_DRIVE:
+        storage_user_id = document.uploaded_by_user_id or current_user.id
+        backend = _google_drive_backend_for_user(db, tenant_id=document.tenant_id, user_id=storage_user_id)
+        return {"kind": "bytes", "content": backend.download(document.storage_path)}
+    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Document storage provider is not configured.")
 
 
 def list_documents(
@@ -267,6 +530,7 @@ async def create_document(
     description: str | None = None,
     linked_module_key: str | None = None,
     linked_entity_id: str | int | None = None,
+    storage_provider: str = DOCUMENT_PROVIDER_LOCAL,
     current_user=None,
 ) -> Document:
     content, extension, content_type, original_filename = await read_document_upload(file)
@@ -287,7 +551,22 @@ async def create_document(
     elif linked_module_key or linked_entity_id is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Both linked module and linked record are required.")
 
-    stored = get_document_storage_backend("local").save(tenant_id=tenant_id, extension=extension, content=content)
+    normalized_provider = (storage_provider or DOCUMENT_PROVIDER_LOCAL).strip().lower()
+    if normalized_provider == DOCUMENT_PROVIDER_LOCAL:
+        stored = get_document_storage_backend(DOCUMENT_PROVIDER_LOCAL).save(tenant_id=tenant_id, extension=extension, content=content)
+    elif normalized_provider == DOCUMENT_PROVIDER_GOOGLE_DRIVE:
+        if current_user is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Drive uploads require a connected user.")
+        backend = _google_drive_backend_for_user(db, tenant_id=tenant_id, user_id=current_user.id)
+        stored = backend.save(
+            tenant_id=tenant_id,
+            extension=extension,
+            content=content,
+            filename=original_filename,
+            content_type=content_type,
+        )
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported document storage provider.")
     normalized_title = (title or original_filename).strip()
     if not normalized_title:
         normalized_title = f"Untitled.{extension}"

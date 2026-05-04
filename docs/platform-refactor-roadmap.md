@@ -15,7 +15,7 @@ Current phase:
 - Phase 7.5 in progress: auth/access-control correction, Google scope cleanup, and saved-view filter usability hardening
 - Phase 8 in progress: deployment licensing, hostname-based tenant resolution, and cloud-auth foundation
 - Phase 8.5 in progress: tenant ownership rollout across existing modules and platform defaults for timezone-aware rendering
-- Phase 9 in progress: collaboration and integrations foundation with tasks, calendar/mail foundations, WhatsApp click-to-chat, and the next external alert pipeline
+- Phase 9 in progress: collaboration and integrations foundation with tasks, calendar/mail foundations, WhatsApp click-to-chat, external alerts, and external document storage starting with Google Drive
 
 Completed items:
 - Added the first tenant-aware Documents module with authenticated document storage, PDF/DOC/DOCX/TXT/RTF/ODT upload validation, file and tenant storage limits, a standalone `/dashboard/documents` surface, and record-linked document panels for contacts, organizations, and opportunities.
@@ -153,8 +153,11 @@ Completed items:
 - Expanded CSV import/export coverage so opportunities now have backend import/export routes, insertion orders now have CSV export, and the current business-module headers use shared authenticated import/export controls for contacts, organizations, opportunities, and finance export.
 
 In progress:
-- Move external document-storage provider connection flows into a dedicated follow-up slice after the local Documents backend contract.
-- Start the collaboration and integrations rollout with tasks as the first concrete platform primitive, treating tasks as a backend module with frontend feature-style entry points so assignment, notifications, reminders, and later mailbox/calendar automation can share one foundation.
+- Move external document-storage provider connection flows into the active Documents slice, starting with per-user Google Drive OAuth/consent and Drive-backed uploads/downloads through the existing storage backend contract.
+- Follow-up tracking is now landed enough for the current CRM loop: contacts and opportunities have last-contacted metadata, manual WhatsApp/email/call quick actions, source-linked task reminders, and record-page follow-up/task panels.
+- Activity timeline expansion is now landed enough for the current CRM loop: source-linked task create/update/delete events and source-linked sent mail feed the relevant CRM record timeline, while messages, invoices, and other modules can follow the same pattern once they expose stable source links.
+- Task/reminder polish is now landed enough for the current CRM loop: Celery beat scans due tasks, stale contacted contacts, and inactive open deals, then creates source-linked task reminders without introducing a parallel reminder store.
+- Shareable client pages are now the active CRM growth slice: client accounts, customer groups, personalized pricing/discount access, proposal/pricing/document links, and accept/request-changes flows, while payment links stay deferred.
 - The first task slice is now landed in code with backend module registration, tenant-aware task and assignee persistence, assignment notifications, a `/dashboard/tasks` frontend surface, sidebar/dashboard wiring, and browser notification bridging; the next collaboration slice now moves onto calendar foundations on top of that task baseline.
 - Tasks should support professional CRM-style priority and urgency states, assignment to self, users, teams, and later richer collaboration targets, with assignment events feeding both the existing in-app notification center and browser notification hooks.
 - The first calendar foundation is now landed with internal user calendars, invite/share behavior, task-to-calendar handoff, soft-delete support, and provider-aware Google sync groundwork; mailbox integration is parked until Google mailbox scope verification/compliance is intentionally planned.
@@ -206,7 +209,12 @@ In progress:
 - Finish the first tenant-aware backend pass beyond auth by scoping company profile, module configuration, and other cross-tenant admin data that still assumes a single shared row set.
 
 Next up:
-- Add full external document-storage provider connection flows after the Documents storage seam is stable: S3/R2-style object stores can use access-key configuration, while Google Drive and Microsoft OneDrive need explicit OAuth/consent and token storage.
+- Build shareable client pages with separate client login, customer groups, personalized pricing/discount resolution, signed public links for non-sensitive previews, expiry, and accept/request-changes actions.
+- Expand activity timelines later so messages, invoices, and other source-linked work consistently log to the relevant CRM record timeline once those modules expose stable source links.
+- Add the remaining external document-storage providers later: S3/R2-style object stores through access-key configuration and Microsoft OneDrive through explicit OAuth/consent.
+- Build differentiators after the CRM operating loop is stable: shareable client pages for proposals/pricing/docs, a website/WordPress integration API for approved catalog/service/pricing/media pulls, accept/request-changes actions, custom client domains via CNAME, and client-facing branding.
+- Keep website/WordPress customer-specific discounts and pricing behind signed/authenticated access with expiry, tenant scoping, and rate limits; public catalog data can be a simpler scoped read API.
+- Build money features after client pages: invoice generator first, then Stripe and PayPal payment links.
 - Harden and verify the landed first task module slice end to end, then fill any remaining task lifecycle gaps before moving the collaboration roadmap onto calendar integration.
 - Harden per-user IMAP/SMTP mailbox support with Gmail presets, disconnect/reconfigure, UID-cursored manual sync, safer provider errors, and best-effort sent-folder append on top of the existing mailbox data/API foundation.
 - Add mailbox automation after messages can be synced safely, including Celery-backed background reconciliation jobs, CRM source-linking, task/event handoff, and permission-aware global search results.

@@ -114,6 +114,9 @@ class SalesContactResponse(SalesContactBase):
     primary_email: EmailStr
     assigned_to: int
     created_time: datetime
+    last_contacted_at: datetime | None = None
+    last_contacted_channel: str | None = None
+    last_contacted_by_user_id: int | None = None
     whatsapp_last_contacted_at: datetime | None = None
     organization_name: Optional[str] = None
 
@@ -134,6 +137,9 @@ class SalesContactListItem(BaseModel):
     organization_name: Optional[str] = None
     assigned_to: Optional[int] = None
     created_time: datetime | None = None
+    last_contacted_at: datetime | None = None
+    last_contacted_channel: str | None = None
+    last_contacted_by_user_id: int | None = None
     custom_fields: dict[str, Any] | None = None
 
 
@@ -186,6 +192,21 @@ class ContactSummaryResponse(BaseModel):
     insertion_order_count: int
 
 
+class FollowUpActionRequest(BaseModel):
+    channel: str = Field(pattern="^(whatsapp|email|call)$")
+    note: str | None = Field(default=None, max_length=1000)
+    create_follow_up_task: bool = False
+    follow_up_due_at: datetime | None = None
+
+
+class FollowUpActionResponse(BaseModel):
+    module_key: str
+    entity_id: str
+    channel: str
+    last_contacted_at: datetime
+    follow_up_task_id: int | None = None
+
+
 class OrganizationSummaryResponse(BaseModel):
     organization: SalesOrganizationResponse
     related_contacts: list[SalesContactResponse]
@@ -202,6 +223,7 @@ class ContactCompactSummary(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     primary_email: str | None = None
+    contact_telephone: str | None = None
     current_title: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -285,6 +307,9 @@ class SalesOpportunityUpdate(BaseModel):
 class SalesOpportunityResponse(SalesOpportunityBase):
     opportunity_id: int
     created_time: datetime | None = None
+    last_contacted_at: datetime | None = None
+    last_contacted_channel: str | None = None
+    last_contacted_by_user_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -298,6 +323,9 @@ class SalesOpportunityListItem(BaseModel):
     total_cost_of_project: str | None = None
     currency_type: str | None = None
     created_time: datetime | None = None
+    last_contacted_at: datetime | None = None
+    last_contacted_channel: str | None = None
+    last_contacted_by_user_id: int | None = None
     assigned_to: int | None = None
     contact_id: int | None = None
     organization_id: int | None = None

@@ -12,6 +12,8 @@ import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
 import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
+import FollowUpPanel from "@/components/recordActivity/FollowUpPanel";
+import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -59,6 +61,8 @@ type ContactSummary = {
     region?: string | null;
     country?: string | null;
     organization_id?: number | null;
+    last_contacted_at?: string | null;
+    last_contacted_channel?: string | null;
     whatsapp_last_contacted_at?: string | null;
     custom_fields?: Record<string, unknown> | null;
   };
@@ -447,6 +451,18 @@ export default function ContactDetailPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
+            <FollowUpPanel
+              endpoint={`/sales/contacts/${summary.contact.contact_id}/follow-up`}
+              lastContactedAt={summary.contact.last_contacted_at}
+              lastContactedChannel={summary.contact.last_contacted_channel}
+              email={summary.contact.primary_email}
+              phone={summary.contact.contact_telephone}
+              onLogged={() => loadSummary()}
+            />
+            <RecordTasksPanel
+              moduleKey="sales_contacts"
+              entityId={summary.contact.contact_id}
+            />
             <RecordDocumentsPanel
               moduleKey="sales_contacts"
               entityId={summary.contact.contact_id}

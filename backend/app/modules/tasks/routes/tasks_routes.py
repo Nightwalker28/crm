@@ -4,6 +4,7 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.access_control import require_role_module_action_access
 from app.core.database import get_db
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
@@ -11,6 +12,7 @@ from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
+from app.modules.platform.services.record_comments import get_record_comment_module_config, get_record_reference
 from app.modules.tasks.schema import (
     TaskAssignmentOptionsResponse,
     TaskCreateRequest,
@@ -95,6 +97,118 @@ def _emit_task_alert_events(db: Session, *, current_user, task, added_keys: list
         )
 
 
+def _normalize_source_value(value) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip()
+    return normalized or None
+
+
+def _resolve_task_source_context(
+    db: Session,
+    *,
+    current_user,
+    source_module_key: str | None,
+    source_entity_id: str | None,
+    strict: bool,
+) -> dict | None:
+    module_key = _normalize_source_value(source_module_key)
+    entity_id = _normalize_source_value(source_entity_id)
+    if not module_key and not entity_id:
+        return None
+    if not module_key or not entity_id:
+        if strict:
+            raise HTTPException(status_code=400, detail="Task source requires both module and record.")
+        return None
+
+    try:
+        require_role_module_action_access(db, user=current_user, module_key=module_key, action="view")
+        config = get_record_comment_module_config(module_key)
+        get_record_reference(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key=module_key,
+            entity_id=entity_id,
+        )
+    except HTTPException:
+        if strict:
+            raise
+        return None
+    except PermissionError as exc:
+        if strict:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        return None
+    except ValueError as exc:
+        if strict:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        return None
+
+    return {
+        "module_key": module_key,
+        "entity_type": config["entity_type"],
+        "entity_id": entity_id,
+    }
+
+
+def _resolve_payload_source_context(
+    db: Session,
+    *,
+    current_user,
+    payload: dict,
+    existing_task=None,
+) -> dict | None:
+    source_module_key = payload.get(
+        "source_module_key",
+        getattr(existing_task, "source_module_key", None),
+    )
+    source_entity_id = payload.get(
+        "source_entity_id",
+        getattr(existing_task, "source_entity_id", None),
+    )
+    return _resolve_task_source_context(
+        db,
+        current_user=current_user,
+        source_module_key=source_module_key,
+        source_entity_id=source_entity_id,
+        strict=True,
+    )
+
+
+def _mirror_task_source_activity(
+    db: Session,
+    *,
+    current_user,
+    task,
+    action: str,
+    description: str,
+    before_state: dict | None = None,
+    after_state: dict | None = None,
+    source_context: dict | None = None,
+) -> None:
+    context = source_context or _resolve_task_source_context(
+        db,
+        current_user=current_user,
+        source_module_key=getattr(task, "source_module_key", None),
+        source_entity_id=getattr(task, "source_entity_id", None),
+        strict=False,
+    )
+    if not context:
+        return
+
+    log_activity(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        module_key=context["module_key"],
+        entity_type=context["entity_type"],
+        entity_id=context["entity_id"],
+        action=action,
+        description=description,
+        before_state=before_state,
+        after_state=after_state,
+    )
+
+
 @router.get("", response_model=TaskListResponse)
 def get_tasks(
     query: str | None = Query(default=None),
@@ -161,8 +275,11 @@ def create_task_route(
     require_module=Depends(require_module_access("tasks")),
     require_permission=Depends(require_action_access("tasks", "create")),
 ):
-    task, added_keys = create_task(db, payload=payload.model_dump(mode="json"), current_user=current_user)
+    payload_data = payload.model_dump(mode="json")
+    source_context = _resolve_payload_source_context(db, current_user=current_user, payload=payload_data)
+    task, added_keys = create_task(db, payload=payload_data, current_user=current_user)
     create_task_assignment_notifications(db, task=task, current_user=current_user, assignee_keys=added_keys)
+    task_state = serialize_task(task)
     log_activity(
         db,
         tenant_id=current_user.tenant_id,
@@ -172,10 +289,19 @@ def create_task_route(
         entity_id=str(task.id),
         action="create",
         description=f"Created task {task.title}",
-        after_state=serialize_task(task),
+        after_state=task_state,
+    )
+    _mirror_task_source_activity(
+        db,
+        current_user=current_user,
+        task=task,
+        action="task.create",
+        description=f"Created task {task.title}",
+        after_state=task_state,
+        source_context=source_context,
     )
     _emit_task_alert_events(db, current_user=current_user, task=task, added_keys=added_keys)
-    return TaskResponse.model_validate(serialize_task(task))
+    return TaskResponse.model_validate(task_state)
 
 
 @router.put("/{task_id}", response_model=TaskResponse)
@@ -189,13 +315,21 @@ def update_task_route(
 ):
     existing = get_task_or_404(db, task_id, tenant_id=current_user.tenant_id, current_user=current_user)
     before_state = serialize_task(existing)
+    payload_data = payload.model_dump(exclude_unset=True, mode="json")
+    source_context = _resolve_payload_source_context(
+        db,
+        current_user=current_user,
+        payload=payload_data,
+        existing_task=existing,
+    )
     updated, added_keys = update_task(
         db,
         task=existing,
-        payload=payload.model_dump(exclude_unset=True, mode="json"),
+        payload=payload_data,
         current_user=current_user,
     )
     create_task_assignment_notifications(db, task=updated, current_user=current_user, assignee_keys=added_keys)
+    task_state = serialize_task(updated)
     log_activity(
         db,
         tenant_id=current_user.tenant_id,
@@ -206,10 +340,20 @@ def update_task_route(
         action="update",
         description=f"Updated task {updated.title}",
         before_state=before_state,
-        after_state=serialize_task(updated),
+        after_state=task_state,
+    )
+    _mirror_task_source_activity(
+        db,
+        current_user=current_user,
+        task=updated,
+        action="task.update",
+        description=f"Updated task {updated.title}",
+        before_state=before_state,
+        after_state=task_state,
+        source_context=source_context,
     )
     _emit_task_alert_events(db, current_user=current_user, task=updated, added_keys=added_keys)
-    return TaskResponse.model_validate(serialize_task(updated))
+    return TaskResponse.model_validate(task_state)
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -222,7 +366,15 @@ def delete_task_route(
 ):
     existing = get_task_or_404(db, task_id, tenant_id=current_user.tenant_id, current_user=current_user)
     before_state = serialize_task(existing)
+    source_context = _resolve_task_source_context(
+        db,
+        current_user=current_user,
+        source_module_key=existing.source_module_key,
+        source_entity_id=existing.source_entity_id,
+        strict=False,
+    )
     deleted = delete_task(db, task=existing, current_user=current_user)
+    deleted_state = serialize_task(deleted)
     log_activity(
         db,
         tenant_id=current_user.tenant_id,
@@ -233,6 +385,16 @@ def delete_task_route(
         action="delete",
         description=f"Deleted task {deleted.title}",
         before_state=before_state,
-        after_state=serialize_task(deleted),
+        after_state=deleted_state,
+    )
+    _mirror_task_source_activity(
+        db,
+        current_user=current_user,
+        task=deleted,
+        action="task.delete",
+        description=f"Deleted task {deleted.title}",
+        before_state=before_state,
+        after_state=deleted_state,
+        source_context=source_context,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

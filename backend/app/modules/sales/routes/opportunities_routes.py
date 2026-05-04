@@ -19,6 +19,8 @@ from app.modules.platform.services.data_transfer_jobs import (
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
 from app.modules.user_management.services import admin_modules
 from app.modules.sales.schema import (
+    FollowUpActionRequest,
+    FollowUpActionResponse,
     OpportunityPipelineSummaryResponse,
     OpportunitySummaryResponse,
     SalesOpportunityCreate,
@@ -27,6 +29,7 @@ from app.modules.sales.schema import (
     SalesOpportunityResponse,
     SalesOpportunityUpdate,
 )
+from app.modules.sales.services.followups import log_opportunity_follow_up
 from app.modules.sales.services import opportunities_api
 from app.modules.sales.services.summary_services import build_opportunity_summary
 from app.modules.sales.services.opportunities_services import (
@@ -351,6 +354,24 @@ def get_sales_opportunity_summary(
 ):
     opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
     return build_opportunity_summary(db, opportunity)
+
+
+@router.post("/{opportunity_id}/follow-up", response_model=FollowUpActionResponse)
+def log_opportunity_follow_up_route(
+    opportunity_id: int,
+    payload: FollowUpActionRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access("sales_opportunities")),
+    require_permission = Depends(require_action_access("sales_opportunities", "edit")),
+):
+    opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
+    return log_opportunity_follow_up(
+        db,
+        opportunity=opportunity,
+        payload=payload.model_dump(),
+        current_user=current_user,
+    )
 
 
 @router.put("/{opportunity_id}", response_model=SalesOpportunityResponse)

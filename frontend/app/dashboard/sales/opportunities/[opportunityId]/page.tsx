@@ -11,6 +11,8 @@ import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
 import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
+import FollowUpPanel from "@/components/recordActivity/FollowUpPanel";
+import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -55,12 +57,15 @@ type OpportunitySummary = {
     attachments?: string[] | null;
     custom_fields?: Record<string, unknown> | null;
     created_time?: string | null;
+    last_contacted_at?: string | null;
+    last_contacted_channel?: string | null;
   };
   contact?: {
     contact_id: number;
     first_name?: string | null;
     last_name?: string | null;
     primary_email?: string | null;
+    contact_telephone?: string | null;
     current_title?: string | null;
   } | null;
   organization?: {
@@ -533,6 +538,18 @@ export default function OpportunityDetailPage() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
+            <FollowUpPanel
+              endpoint={`/sales/opportunities/${summary.opportunity.opportunity_id}/follow-up`}
+              lastContactedAt={summary.opportunity.last_contacted_at}
+              lastContactedChannel={summary.opportunity.last_contacted_channel}
+              email={summary.contact?.primary_email}
+              phone={summary.contact?.contact_telephone}
+              onLogged={() => loadSummary()}
+            />
+            <RecordTasksPanel
+              moduleKey="sales_opportunities"
+              entityId={summary.opportunity.opportunity_id}
+            />
             <RecordDocumentsPanel
               moduleKey="sales_opportunities"
               entityId={summary.opportunity.opportunity_id}

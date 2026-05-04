@@ -12,6 +12,11 @@ function formatBytes(value: number) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+function providerLabel(provider: string) {
+  if (provider === "google_drive") return "Google Drive";
+  return "Local backend";
+}
+
 type Props = {
   documents: DocumentItem[];
   emptyText?: string;
@@ -39,7 +44,7 @@ export default function DocumentList({ documents, emptyText = "No documents yet.
             <div className="min-w-0">
               <div className="truncate text-sm font-semibold text-neutral-100">{document.title}</div>
               <div className="mt-1 text-xs text-neutral-500">
-                {document.original_filename} / {document.extension.toUpperCase()} / {formatBytes(document.file_size_bytes)}
+                {document.original_filename} / {document.extension.toUpperCase()} / {formatBytes(document.file_size_bytes)} / {providerLabel(document.storage_provider)}
               </div>
               <div className="mt-1 text-xs text-neutral-600">Uploaded {formatDateTime(document.created_at)}</div>
               {document.description ? <div className="mt-2 line-clamp-2 text-sm text-neutral-400">{document.description}</div> : null}

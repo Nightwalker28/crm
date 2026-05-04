@@ -1,7 +1,8 @@
 "use client";
 
-import { useRef, useState } from "react";
-import { Upload } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { HardDrive, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import DocumentList from "@/components/documents/DocumentList";
@@ -10,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { useDocumentActions, useDocuments, useDocumentStorageUsage } from "@/hooks/useDocuments";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useDocumentActions, useDocuments, useDocumentStorageConnections, useDocumentStorageUsage } from "@/hooks/useDocuments";
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -24,22 +26,47 @@ function formatBytes(bytes: number) {
 }
 
 export default function DocumentsPage() {
+  const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [storageProvider, setStorageProvider] = useState("local");
   const documentsQuery = useDocuments({ search, limit: 100 });
   const storageUsageQuery = useDocumentStorageUsage();
-  const { uploadDocument, deleteDocument, isUploadingDocument, isDeletingDocument } = useDocumentActions();
+  const storageConnectionsQuery = useDocumentStorageConnections();
+  const {
+    uploadDocument,
+    deleteDocument,
+    connectGoogleDriveStorage,
+    disconnectGoogleDriveStorage,
+    isUploadingDocument,
+    isDeletingDocument,
+    isConnectingGoogleDrive,
+    isDisconnectingGoogleDrive,
+  } = useDocumentActions();
   const storageUsage = storageUsageQuery.data;
+  const googleDriveConnection = storageConnectionsQuery.data?.find((connection) => connection.provider === "google_drive");
+  const googleDriveConnected = googleDriveConnection?.status === "connected";
+
+  useEffect(() => {
+    const driveConnect = searchParams.get("driveConnect");
+    if (driveConnect === "connected") toast.success("Google Drive connected.");
+    if (driveConnect === "error") toast.error("Failed to connect Google Drive.");
+  }, [searchParams]);
 
   async function handleSelectedFile(file: File | undefined) {
     if (!file) return;
+    if (storageProvider === "google_drive" && !googleDriveConnected) {
+      toast.error("Connect Google Drive before uploading to Drive.");
+      return;
+    }
     try {
       await uploadDocument({
         file,
         title: title.trim() || undefined,
         description: description.trim() || undefined,
+        storage_provider: storageProvider,
       });
       setTitle("");
       setDescription("");
@@ -56,6 +83,25 @@ export default function DocumentsPage() {
       toast.success("Document removed.");
     } catch (error) {
       toast.error(errorMessage(error, "Failed to delete document."));
+    }
+  }
+
+  async function handleConnectDrive() {
+    try {
+      const result = await connectGoogleDriveStorage();
+      window.location.href = result.auth_url;
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to connect Google Drive."));
+    }
+  }
+
+  async function handleDisconnectDrive() {
+    try {
+      await disconnectGoogleDriveStorage();
+      if (storageProvider === "google_drive") setStorageProvider("local");
+      toast.success("Google Drive disconnected.");
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to disconnect Google Drive."));
     }
   }
 
@@ -90,7 +136,30 @@ export default function DocumentsPage() {
       </div>
 
       <Card className="px-5 py-5">
-        <div className="grid gap-3 md:grid-cols-[1fr_1fr_auto] md:items-end">
+        <div className="mb-5 flex flex-col gap-3 rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-start gap-3">
+            <HardDrive className="mt-0.5 h-5 w-5 text-neutral-400" />
+            <div>
+              <div className="text-sm font-semibold text-neutral-100">Google Drive storage</div>
+              <FieldDescription className="mt-1">
+                {googleDriveConnected
+                  ? `Connected${googleDriveConnection?.account_email ? ` as ${googleDriveConnection.account_email}` : ""}.`
+                  : "Connect Drive to store selected document uploads in your own Google Drive."}
+              </FieldDescription>
+            </div>
+          </div>
+          {googleDriveConnected ? (
+            <Button type="button" variant="outline" onClick={() => void handleDisconnectDrive()} disabled={isDisconnectingGoogleDrive}>
+              Disconnect
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" onClick={() => void handleConnectDrive()} disabled={isConnectingGoogleDrive}>
+              Connect Drive
+            </Button>
+          )}
+        </div>
+
+        <div className="grid gap-3 md:grid-cols-[1fr_1fr_220px_auto] md:items-end">
           <div>
             <label className="mb-2 block text-sm font-medium text-neutral-200">Title</label>
             <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Optional title" />
@@ -98,6 +167,20 @@ export default function DocumentsPage() {
           <div>
             <label className="mb-2 block text-sm font-medium text-neutral-200">Description</label>
             <Input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Optional description" />
+          </div>
+          <div>
+            <label className="mb-2 block text-sm font-medium text-neutral-200">Storage</label>
+            <Select value={storageProvider} onValueChange={setStorageProvider}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="local">Local backend</SelectItem>
+                <SelectItem value="google_drive" disabled={!googleDriveConnected}>
+                  Google Drive
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div>
             <input

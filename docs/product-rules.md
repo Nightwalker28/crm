@@ -51,6 +51,18 @@ This file captures stable business and UX rules for the platform. These should b
 - Company operating currencies should be managed from the Company section and reused anywhere the system asks for currency.
 - Active custom fields must work inside the module they belong to, including create/edit, detail, table views, saved views, and filters.
 
+## Client Portal / Personalized Pricing Rules
+
+- Public client-facing pages may show only public/default pricing and non-sensitive content.
+- Personalized prices, negotiated discounts, private documents, proposals, and customer-specific terms require an authenticated client account or a short-lived signed link scoped to one client-facing record.
+- Client accounts are tenant-owned and must be manually linked by CRM users to one sales contact or one sales organization.
+- A client account must never grant access to the CRM dashboard or internal APIs.
+- Contacts and organizations can belong to a customer group such as default, wholesale, retailer, VIP, friends/family, or tenant-defined groups later.
+- Pricing and discount rules should resolve from the authenticated client identity and linked contact/organization group, not from user-supplied request fields.
+- Public/default pricing remains the fallback when no client is authenticated.
+- Proposal/client-page pricing should be snapshot-friendly so a previously shared offer does not silently change unless the CRM user intentionally republishes it.
+- Payment links remain deferred until invoice/payment work is explicitly opened.
+
 ## Communication Rules
 
 - WhatsApp starts as a manual click-to-chat integration. The CRM may prepare links, templates, logs, and reminders, but users send the message in WhatsApp themselves until an explicit provider integration is added.

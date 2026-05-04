@@ -15,6 +15,10 @@ from app.modules.mail.services.mail_services import (
     handle_google_mail_callback,
     handle_microsoft_mail_callback,
 )
+from app.modules.documents.services.document_services import (
+    decode_drive_oauth_state,
+    handle_google_drive_callback,
+)
 from app.modules.user_management.schema import ManualLoginRequest, SetupPasswordRequest
 from app.modules.user_management.services.auth import (
     authenticate_manual_user,
@@ -196,6 +200,30 @@ def google_callback(
             return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
         query = urllib.parse.urlencode({"mailConnect": "connected"})
         return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
+
+    drive_state_payload = decode_drive_oauth_state(state)
+    if drive_state_payload and drive_state_payload.get("provider") == "google_drive":
+        tenant = getattr(request.state, "tenant", None)
+        frontend_origin = (
+            drive_state_payload.get("frontend_origin")
+            or get_frontend_origin_for_request(request)
+        )
+        if not tenant or drive_state_payload.get("tenant_id") != tenant.id or not code:
+            query = urllib.parse.urlencode({"driveConnect": "error"})
+            return RedirectResponse(url=f"{frontend_origin}/dashboard/documents?{query}")
+        try:
+            handle_google_drive_callback(
+                code,
+                db,
+                tenant=tenant,
+                request=request,
+                state_payload=drive_state_payload,
+            )
+        except HTTPException:
+            query = urllib.parse.urlencode({"driveConnect": "error"})
+            return RedirectResponse(url=f"{frontend_origin}/dashboard/documents?{query}")
+        query = urllib.parse.urlencode({"driveConnect": "connected"})
+        return RedirectResponse(url=f"{frontend_origin}/dashboard/documents?{query}")
 
     state_payload = decode_oauth_state(state)
     tenant = getattr(request.state, "tenant", None)

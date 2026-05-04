@@ -58,6 +58,9 @@ class TaskBase(BaseModel):
     start_at: datetime | None = None
     due_at: datetime | None = None
     completed_at: datetime | None = None
+    source_module_key: str | None = None
+    source_entity_id: str | None = None
+    source_label: str | None = None
     assignees: list[TaskAssigneeInput] = Field(default_factory=list)
 
 
@@ -73,6 +76,9 @@ class TaskUpdateRequest(BaseModel):
     start_at: datetime | None = None
     due_at: datetime | None = None
     completed_at: datetime | None = None
+    source_module_key: str | None = None
+    source_entity_id: str | None = None
+    source_label: str | None = None
     assignees: list[TaskAssigneeInput] | None = None
 
 
@@ -85,6 +91,9 @@ class TaskResponse(BaseModel):
     start_at: datetime | None = None
     due_at: datetime | None = None
     completed_at: datetime | None = None
+    source_module_key: str | None = None
+    source_entity_id: str | None = None
+    source_label: str | None = None
     created_by_user_id: int | None = None
     updated_by_user_id: int | None = None
     assigned_by_user_id: int | None = None

@@ -33,6 +33,9 @@ export type Task = {
   start_at?: string | null;
   due_at?: string | null;
   completed_at?: string | null;
+  source_module_key?: string | null;
+  source_entity_id?: string | null;
+  source_label?: string | null;
   created_by_user_id?: number | null;
   updated_by_user_id?: number | null;
   assigned_by_user_id?: number | null;
@@ -53,6 +56,9 @@ export type TaskPayload = {
   start_at?: string | null;
   due_at?: string | null;
   completed_at?: string | null;
+  source_module_key?: string | null;
+  source_entity_id?: string | null;
+  source_label?: string | null;
   assignees: TaskAssigneeInput[];
 };
 
@@ -168,6 +174,23 @@ export async function fetchTaskAssignmentOptions() {
     );
   }
   return body as TaskAssignmentOptions;
+}
+
+export async function fetchRecordTasks(moduleKey: string, entityId: string | number) {
+  const params = new URLSearchParams({
+    page: "1",
+    page_size: "10",
+    filters_all: JSON.stringify([
+      { field: "source_module_key", operator: "is", value: moduleKey },
+      { field: "source_entity_id", operator: "is", value: String(entityId) },
+    ]),
+  });
+  const res = await apiFetch(`/tasks?${params.toString()}`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load record tasks.");
+  }
+  return body as TaskListResponse;
 }
 
 export function useTasks(filters?: SavedViewFilters) {

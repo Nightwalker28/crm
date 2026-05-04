@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, BigInteger, Column, DateTime, ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -24,6 +24,31 @@ class Document(Base):
 
     uploaded_by = relationship("User")
     links = relationship("DocumentLink", back_populates="document", cascade="all, delete-orphan")
+
+
+class DocumentStorageConnection(Base):
+    __tablename__ = "document_storage_connections"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "provider", name="uq_document_storage_connections_user_provider"),
+    )
+
+    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(40), nullable=False, index=True)
+    status = Column(String(20), nullable=False, server_default="connected", index=True)
+    account_email = Column(String(255), nullable=True)
+    scopes = Column(JSON, nullable=True)
+    access_token = Column(Text, nullable=True)
+    refresh_token = Column(Text, nullable=True)
+    token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    provider_root_id = Column(String(255), nullable=True)
+    provider_root_name = Column(String(255), nullable=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User")
 
 
 class DocumentLink(Base):

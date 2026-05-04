@@ -52,3 +52,20 @@ class DocumentStorageProviderResponse(BaseModel):
     label: str
     status: str
     requires_oauth: bool
+
+
+class DocumentStorageConnectionResponse(BaseModel):
+    provider: str
+    status: str
+    account_email: str | None = None
+    provider_root_id: str | None = None
+    provider_root_name: str | None = None
+    last_error: str | None = None
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentStorageConnectResponse(BaseModel):
+    provider: str
+    auth_url: str

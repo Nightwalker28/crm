@@ -9,6 +9,8 @@ from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.security import require_user
 from app.core.permissions import require_action_access, require_module_access
 from app.modules.sales.schema import (
+    FollowUpActionRequest,
+    FollowUpActionResponse,
     SalesContactCreateRequest,
     SalesContactListItem,
     SalesContactListResponse,
@@ -17,6 +19,7 @@ from app.modules.sales.schema import (
     SalesContactUpdateRequest,
     SalesOrganizationListResponse,
 )
+from app.modules.sales.services.followups import log_contact_follow_up
 from app.modules.sales.services.contacts_services import (
     create_sales_contact,
     delete_sales_contact,
@@ -417,6 +420,24 @@ def get_contact_summary(
 ):
     contact = get_contact_or_404(db, contact_id, tenant_id=current_user.tenant_id)
     return build_contact_summary(db, contact)
+
+
+@router.post("/{contact_id}/follow-up", response_model=FollowUpActionResponse)
+def log_contact_follow_up_route(
+    contact_id: int,
+    payload: FollowUpActionRequest,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "edit")),
+):
+    contact = get_contact_or_404(db, contact_id, tenant_id=current_user.tenant_id)
+    return log_contact_follow_up(
+        db,
+        contact=contact,
+        payload=payload.model_dump(),
+        current_user=current_user,
+    )
 
 
 @router.put("/{contact_id}", response_model=SalesContactResponse)
