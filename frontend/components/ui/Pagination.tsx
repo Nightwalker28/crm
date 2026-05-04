@@ -2,7 +2,7 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import {
   Select,
@@ -31,6 +31,18 @@ const FALLBACK_PAGE_SIZE_OPTIONS = [10, 25, 50];
 type PaginationConfig = {
   page_size_options: number[];
 };
+
+async function fetchPaginationConfig() {
+  try {
+    const res = await apiFetch("/config/pagination");
+    if (!res.ok) {
+      return { page_size_options: FALLBACK_PAGE_SIZE_OPTIONS };
+    }
+    return res.json() as Promise<PaginationConfig>;
+  } catch {
+    return { page_size_options: FALLBACK_PAGE_SIZE_OPTIONS };
+  }
+}
 
 function getPageNumbers(current: number, total: number): (number | "...")[] {
   if (total <= 4) {
@@ -67,31 +79,16 @@ export default function Pagination({
   onPageSizeChange,
 }: PaginationProps) {
   const pages = getPageNumbers(page, totalPages);
-  const [pageSizeOptions, setPageSizeOptions] = useState(FALLBACK_PAGE_SIZE_OPTIONS);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadPaginationConfig() {
-      try {
-        const res = await apiFetch("/config/pagination");
-        if (!res.ok) {
-          return;
-        }
-        const data = (await res.json()) as PaginationConfig;
-        if (isMounted && Array.isArray(data.page_size_options) && data.page_size_options.length > 0) {
-          setPageSizeOptions(data.page_size_options);
-        }
-      } catch {
-        // Keep fallback options if the config endpoint is unavailable.
-      }
-    }
-
-    loadPaginationConfig();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const { data: paginationConfig } = useQuery({
+    queryKey: ["pagination-config"],
+    queryFn: fetchPaginationConfig,
+    staleTime: Infinity,
+    gcTime: Infinity,
+  });
+  const pageSizeOptions =
+    Array.isArray(paginationConfig?.page_size_options) && paginationConfig.page_size_options.length > 0
+      ? paginationConfig.page_size_options
+      : FALLBACK_PAGE_SIZE_OPTIONS;
 
   return (
     <div className="flex flex-col md:flex-row items-center justify-between gap-4 w-full text-xs md:text-sm text-neutral-400">

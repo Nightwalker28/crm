@@ -64,6 +64,53 @@ Active client portal and personalized pricing sequence:
 6. expose signed public links with expiry for non-sensitive previews, plus accept/request-changes actions
 7. keep payment links out of this slice
 
+Recently landed in the client portal hardening pass:
+
+1. enforce one client account per linked customer identity inside a tenant
+2. add database constraints for client account status and customer-group discount rules
+3. audit-log client portal writes and customer group assignments
+4. prevent inactive client accounts from receiving usable setup links
+5. ensure client access tokens are accepted only inside the resolved tenant context
+
+Recently landed in the client page and pricing slice:
+
+1. add tenant-scoped client page records linked to one contact or organization
+2. store pricing as page-level snapshots so shared offers do not silently drift
+3. expose signed public page links that show only public/default pricing by default
+4. resolve authenticated client pricing from the linked client account and customer group server-side
+5. record accept/request-changes actions without adding payment links
+
+Recently landed in the client page UI slice:
+
+1. add a CRM-facing client page management screen for creating pricing snapshots and publishing links
+2. add a client setup-password screen for manually created client accounts
+3. add a client login screen separate from CRM dashboard auth
+4. add a public signed client page screen with login-aware personalized pricing
+5. keep payments out of the client page UI
+
+Client page polish queued for later:
+
+1. replace raw customer IDs with customer lookup selectors
+2. improve document display/download handling inside client pages
+3. add tenant branding controls for client-facing pages
+4. add richer proposal sections beyond the first pricing snapshot
+5. expose tighter client-page activity visibility for CRM users
+
+Production-readiness issue queue:
+
+1. [done] frontend media URL sanitizer rejects unsafe protocols such as `javascript:`
+2. [done] frontend API fetch retries transient network and `5xx` failures without retrying `4xx`
+3. [done] frontend API fetch deduplicates simultaneous identical GET requests
+4. [done] controlled-state setter remains stable while calling the latest `onChange`
+5. [done] saved-view apply guard avoids `JSON.stringify(selectedView.config)` on render
+6. [done] saved-view draft config update avoids full `JSON.stringify` comparison
+7. [done] user management table groups users by team in a single pass
+8. [done] accessible-modules hook preserves session cache across mounts
+9. [done] shared paged-list hook removes duplicated module pagination boilerplate
+10. [done] saved-view condition editor reuses precomputed condition groups
+11. [done] import/export controls split import, export, and shared job polling responsibilities
+12. [done] pagination config is cached once per session instead of fetched on every mount
+
 After shareable client pages are complete, resume CRM growth in this order:
 
 1. website and WordPress integration: let customer websites pull approved catalog/service/pricing/media data from Lynk through a public integration API and later a WordPress plugin

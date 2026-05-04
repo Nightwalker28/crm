@@ -245,6 +245,11 @@ export default function Sidebar() {
                       Opportunities
                     </SidebarMenuItemChild>
                   ) : null}
+                  {(contactsModule?.base_route || organizationsModule?.base_route) ? (
+                    <SidebarMenuItemChild href="/dashboard/client-portal" collapsed={collapsed}>
+                      Client Pages
+                    </SidebarMenuItemChild>
+                  ) : null}
                 </SidebarMenuItemCollapsible>
               ) : null}
             </SidebarMenu>

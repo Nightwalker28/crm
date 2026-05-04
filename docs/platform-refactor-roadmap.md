@@ -151,13 +151,15 @@ Completed items:
 - Fixed the custom-field definition cache serialization bug so module pages and the custom-fields admin page can load created fields again without fetch failures.
 - Fixed saved-view correctness so edited contacts and organizations invalidate/refetch their list queries and the platform-provided default view is now backed by a real persisted saved view rather than a synthetic special case.
 - Expanded CSV import/export coverage so opportunities now have backend import/export routes, insertion orders now have CSV export, and the current business-module headers use shared authenticated import/export controls for contacts, organizations, opportunities, and finance export.
+- Added the backend client-page foundation with tenant-scoped signed pages, page-level pricing snapshots, public/default pricing reads, authenticated customer-group discount resolution, and persisted accept/request-changes actions without payment links.
+- Added the first client-page UI foundation: CRM users can create pricing snapshots, publish/copy signed links, and create client setup links; clients can set passwords, sign in separately from the CRM dashboard, view signed pages, see login-aware personalized pricing, and accept or request changes.
 
 In progress:
 - Move external document-storage provider connection flows into the active Documents slice, starting with per-user Google Drive OAuth/consent and Drive-backed uploads/downloads through the existing storage backend contract.
 - Follow-up tracking is now landed enough for the current CRM loop: contacts and opportunities have last-contacted metadata, manual WhatsApp/email/call quick actions, source-linked task reminders, and record-page follow-up/task panels.
 - Activity timeline expansion is now landed enough for the current CRM loop: source-linked task create/update/delete events and source-linked sent mail feed the relevant CRM record timeline, while messages, invoices, and other modules can follow the same pattern once they expose stable source links.
 - Task/reminder polish is now landed enough for the current CRM loop: Celery beat scans due tasks, stale contacted contacts, and inactive open deals, then creates source-linked task reminders without introducing a parallel reminder store.
-- Shareable client pages are now the active CRM growth slice: client accounts, customer groups, personalized pricing/discount access, proposal/pricing/document links, and accept/request-changes flows, while payment links stay deferred.
+- Shareable client pages are now landed as a first backend/frontend foundation: client accounts, customer groups, signed page links, pricing snapshots, login-aware personalized pricing display, and accept/request-changes actions exist; richer document/proposal presentation and polish can continue while payment links stay deferred.
 - The first task slice is now landed in code with backend module registration, tenant-aware task and assignee persistence, assignment notifications, a `/dashboard/tasks` frontend surface, sidebar/dashboard wiring, and browser notification bridging; the next collaboration slice now moves onto calendar foundations on top of that task baseline.
 - Tasks should support professional CRM-style priority and urgency states, assignment to self, users, teams, and later richer collaboration targets, with assignment events feeding both the existing in-app notification center and browser notification hooks.
 - The first calendar foundation is now landed with internal user calendars, invite/share behavior, task-to-calendar handoff, soft-delete support, and provider-aware Google sync groundwork; mailbox integration is parked until Google mailbox scope verification/compliance is intentionally planned.
@@ -209,7 +211,7 @@ In progress:
 - Finish the first tenant-aware backend pass beyond auth by scoping company profile, module configuration, and other cross-tenant admin data that still assumes a single shared row set.
 
 Next up:
-- Build shareable client pages with separate client login, customer groups, personalized pricing/discount resolution, signed public links for non-sensitive previews, expiry, and accept/request-changes actions.
+- Polish shareable client pages with richer document/proposal presentation, customer lookup instead of raw IDs, branding controls, and tighter client-page activity visibility.
 - Expand activity timelines later so messages, invoices, and other source-linked work consistently log to the relevant CRM record timeline once those modules expose stable source links.
 - Add the remaining external document-storage providers later: S3/R2-style object stores through access-key configuration and Microsoft OneDrive through explicit OAuth/consent.
 - Build differentiators after the CRM operating loop is stable: shareable client pages for proposals/pricing/docs, a website/WordPress integration API for approved catalog/service/pricing/media pulls, accept/request-changes actions, custom client domains via CNAME, and client-facing branding.

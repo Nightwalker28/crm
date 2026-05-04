@@ -1,11 +1,9 @@
 "use client";
 
-import { useDeferredValue, useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
-
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
+import { usePagedList } from "@/hooks/usePagedList";
 
 export type Contact = {
   contact_id: number;
@@ -57,36 +55,29 @@ export function useContacts(
   initialPage = 1,
   initialPageSize = 10,
 ) {
-  const [page, setPage] = useState(initialPage);
-  const [pageSize, setPageSize] = useState(initialPageSize);
-  const deferredFilters = useDeferredValue(viewFilters);
-
-  const query = useQuery({
-    queryKey: ["sales-contacts", page, pageSize, visibleColumns, deferredFilters],
-    queryFn: () => fetchContacts(page, pageSize, visibleColumns, deferredFilters),
-    placeholderData: keepPreviousData,
+  const paged = usePagedList<Contact, ContactsResponse>({
+    queryKey: ["sales-contacts"],
+    fetcher: (page, pageSize, filters, columns) => fetchContacts(page, pageSize, columns, filters),
+    visibleColumns,
+    filters: viewFilters,
+    initialPage,
+    initialPageSize,
+    errorMessage: () => "Failed to load contacts",
   });
 
-  const data = query.data;
-  const rangeStart = data?.range_start ?? 0;
-  const rangeEnd = data?.range_end ?? 0;
-
   return {
-    contacts: data?.results ?? [],
-    page: data?.page ?? page,
-    totalPages: data?.total_pages ?? 1,
-    totalCount: data?.total_count ?? 0,
-    rangeStart,
-    rangeEnd,
-    pageSize,
-    isLoading: query.isLoading,
-    isFetching: query.isFetching,
-    error: query.error instanceof Error ? "Failed to load contacts" : null,
-    goToPage: setPage,
-    onPageSizeChange: (nextPageSize: number) => {
-      setPage(1);
-      setPageSize(nextPageSize);
-    },
-    refresh: () => query.refetch(),
+    contacts: paged.items,
+    page: paged.page,
+    totalPages: paged.totalPages,
+    totalCount: paged.totalCount,
+    rangeStart: paged.rangeStart,
+    rangeEnd: paged.rangeEnd,
+    pageSize: paged.pageSize,
+    isLoading: paged.isLoading,
+    isFetching: paged.isFetching,
+    error: paged.error,
+    goToPage: paged.goToPage,
+    onPageSizeChange: paged.onPageSizeChange,
+    refresh: paged.refresh,
   };
 }

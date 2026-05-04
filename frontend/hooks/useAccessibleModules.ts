@@ -19,11 +19,6 @@ export function useAccessibleModules() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      sessionStorage.removeItem("lynk_modules");
-      sessionStorage.removeItem(MODULE_CACHE_KEY);
-    }
-
     let cancelled = false;
     (async () => {
       try {

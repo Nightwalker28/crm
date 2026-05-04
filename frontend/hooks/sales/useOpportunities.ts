@@ -1,11 +1,11 @@
 "use client";
 
-import { useDeferredValue, useState } from "react";
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
+import { usePagedList } from "@/hooks/usePagedList";
 
 export type Opportunity = {
   opportunity_id: number;
@@ -101,14 +101,13 @@ export function useOpportunities(
   initialPageSize = 10,
 ) {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(initialPage);
-  const [pageSize, setPageSize] = useState(initialPageSize);
-  const deferredFilters = useDeferredValue(viewFilters);
-
-  const query = useQuery({
-    queryKey: ["sales-opportunities", page, pageSize, deferredFilters, visibleColumns],
-    queryFn: () => fetchOpportunities(page, pageSize, deferredFilters, visibleColumns),
-    placeholderData: keepPreviousData,
+  const paged = usePagedList<Opportunity, OpportunitiesResponse>({
+    queryKey: ["sales-opportunities"],
+    fetcher: fetchOpportunities,
+    visibleColumns,
+    filters: viewFilters,
+    initialPage,
+    initialPageSize,
   });
 
   const refreshLists = async () => {
@@ -132,25 +131,20 @@ export function useOpportunities(
     mutationFn: createFinanceIo,
   });
 
-  const data = query.data;
-
   return {
-    opportunities: data?.results ?? [],
-    page: data?.page ?? page,
-    totalPages: data?.total_pages ?? 1,
-    totalCount: data?.total_count ?? 0,
-    rangeStart: data?.range_start ?? 0,
-    rangeEnd: data?.range_end ?? 0,
-    pageSize,
-    isLoading: query.isLoading,
-    isFetching: query.isFetching,
-    error: query.error instanceof Error ? query.error.message : null,
-    goToPage: setPage,
-    onPageSizeChange: (nextPageSize: number) => {
-      setPage(1);
-      setPageSize(nextPageSize);
-    },
-    refresh: () => query.refetch(),
+    opportunities: paged.items,
+    page: paged.page,
+    totalPages: paged.totalPages,
+    totalCount: paged.totalCount,
+    rangeStart: paged.rangeStart,
+    rangeEnd: paged.rangeEnd,
+    pageSize: paged.pageSize,
+    isLoading: paged.isLoading,
+    isFetching: paged.isFetching,
+    error: paged.error,
+    goToPage: paged.goToPage,
+    onPageSizeChange: paged.onPageSizeChange,
+    refresh: paged.refresh,
     createOpportunity: (payload: OpportunityPayload) => createMutation.mutateAsync(payload),
     updateOpportunity: (opportunityId: number, payload: Partial<OpportunityPayload>) =>
       updateMutation.mutateAsync({ opportunityId, payload }),

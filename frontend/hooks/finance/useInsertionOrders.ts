@@ -1,11 +1,11 @@
 "use client";
 
-import { useDeferredValue, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
+import { usePagedList } from "@/hooks/usePagedList";
 
 export type InsertionOrderStatus = "draft" | "issued" | "active" | "completed" | "cancelled" | "imported";
 
@@ -164,16 +164,15 @@ export function useInsertionOrders(
   initialPageSize = 10,
 ) {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(initialPage);
-  const [pageSize, setPageSize] = useState(initialPageSize);
-
-  const deferredFilters = useDeferredValue(viewFilters);
-
-  const query = useQuery<InsertionOrdersResponse>({
-    queryKey: ["insertion-orders", page, pageSize, deferredFilters, visibleColumns],
-    queryFn: () => fetchInsertionOrders(page, pageSize, deferredFilters, visibleColumns),
-    placeholderData: (previousData) => previousData,
+  const paged = usePagedList<InsertionOrder, InsertionOrdersResponse>({
+    queryKey: ["insertion-orders"],
+    fetcher: fetchInsertionOrders,
+    visibleColumns,
+    filters: viewFilters,
+    initialPage,
+    initialPageSize,
     refetchOnWindowFocus: false,
+    errorMessage: getErrorMessage,
   });
 
   const createMutation = useMutation({
@@ -209,22 +208,19 @@ export function useInsertionOrders(
   });
 
   return {
-    orders: query.data?.results ?? [],
-    page: query.data?.page ?? page,
-    pageSize,
-    totalPages: query.data?.total_pages ?? 1,
-    totalCount: query.data?.total_count ?? 0,
-    rangeStart: query.data?.range_start ?? 0,
-    rangeEnd: query.data?.range_end ?? 0,
-    isLoading: query.isLoading,
-    isFetching: query.isFetching,
-    error: query.error ? getErrorMessage(query.error) : null,
-    goToPage: (nextPage: number) => setPage(Math.max(1, nextPage)),
-    onPageSizeChange: (size: number) => {
-      setPage(1);
-      setPageSize(Math.max(1, size));
-    },
-    refresh: () => query.refetch(),
+    orders: paged.items,
+    page: paged.page,
+    pageSize: paged.pageSize,
+    totalPages: paged.totalPages,
+    totalCount: paged.totalCount,
+    rangeStart: paged.rangeStart,
+    rangeEnd: paged.rangeEnd,
+    isLoading: paged.isLoading,
+    isFetching: paged.isFetching,
+    error: paged.error,
+    goToPage: paged.goToPage,
+    onPageSizeChange: paged.onPageSizeChange,
+    refresh: paged.refresh,
     createOrder: (payload: InsertionOrderPayload) => createMutation.mutateAsync(payload),
     updateOrder: (id: number, payload: InsertionOrderPayload) => updateMutation.mutateAsync({ id, payload }),
     deleteOrder: (id: number) => deleteMutation.mutateAsync(id),

@@ -5,6 +5,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     Numeric,
     SmallInteger,
     String,
@@ -21,6 +22,13 @@ class CustomerGroup(Base):
     __tablename__ = "customer_groups"
     __table_args__ = (
         UniqueConstraint("tenant_id", "group_key", name="uq_customer_groups_tenant_key"),
+        CheckConstraint("discount_type IN ('none', 'percent', 'fixed')", name="ck_customer_groups_discount_type"),
+        CheckConstraint(
+            "((discount_type = 'none' AND discount_value IS NULL) OR "
+            "(discount_type IN ('percent', 'fixed') AND discount_value IS NOT NULL AND discount_value >= 0))",
+            name="ck_customer_groups_discount_value_required",
+        ),
+        CheckConstraint("discount_type != 'percent' OR discount_value <= 100", name="ck_customer_groups_percent_discount_max"),
     )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
@@ -42,11 +50,14 @@ class ClientAccount(Base):
     __tablename__ = "client_accounts"
     __table_args__ = (
         UniqueConstraint("tenant_id", "email", name="uq_client_accounts_tenant_email"),
+        UniqueConstraint("tenant_id", "contact_id", name="uq_client_accounts_tenant_contact"),
+        UniqueConstraint("tenant_id", "organization_id", name="uq_client_accounts_tenant_organization"),
         CheckConstraint(
             "(contact_id IS NOT NULL AND organization_id IS NULL) OR "
             "(contact_id IS NULL AND organization_id IS NOT NULL)",
             name="ck_client_accounts_one_linked_record",
         ),
+        CheckConstraint("status IN ('pending', 'active', 'inactive')", name="ck_client_accounts_status"),
     )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
@@ -69,3 +80,62 @@ class ClientAccount(Base):
     organization = relationship("SalesOrganization")
     creator = relationship("User", foreign_keys=[created_by_user_id])
     updated_by = relationship("User", foreign_keys=[updated_by_user_id])
+
+
+class ClientPage(Base):
+    __tablename__ = "client_pages"
+    __table_args__ = (
+        CheckConstraint(
+            "(contact_id IS NOT NULL AND organization_id IS NULL) OR "
+            "(contact_id IS NULL AND organization_id IS NOT NULL)",
+            name="ck_client_pages_one_linked_record",
+        ),
+        CheckConstraint("status IN ('draft', 'published', 'archived')", name="ck_client_pages_status"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    contact_id = Column(BigInteger, ForeignKey("sales_contacts.contact_id", ondelete="CASCADE"), nullable=True, index=True)
+    organization_id = Column(BigInteger, ForeignKey("sales_organizations.org_id", ondelete="CASCADE"), nullable=True, index=True)
+    title = Column(String(180), nullable=False)
+    summary = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, server_default="draft", index=True)
+    pricing_items = Column(JSON, nullable=False)
+    document_ids = Column(JSON, nullable=True)
+    source_module_key = Column(String(100), nullable=True, index=True)
+    source_entity_id = Column(String(100), nullable=True, index=True)
+    public_token_hash = Column(String(64), nullable=True, unique=True, index=True)
+    public_token_expires_at = Column(DateTime(timezone=True), nullable=True)
+    published_at = Column(DateTime(timezone=True), nullable=True)
+    created_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    updated_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    tenant = relationship("Tenant")
+    contact = relationship("SalesContact")
+    organization = relationship("SalesOrganization")
+    creator = relationship("User", foreign_keys=[created_by_user_id])
+    updated_by = relationship("User", foreign_keys=[updated_by_user_id])
+
+
+class ClientPageAction(Base):
+    __tablename__ = "client_page_actions"
+    __table_args__ = (
+        CheckConstraint("action IN ('accept', 'request_changes')", name="ck_client_page_actions_action"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_page_id = Column(BigInteger, ForeignKey("client_pages.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_account_id = Column(BigInteger, ForeignKey("client_accounts.id", ondelete="SET NULL"), nullable=True, index=True)
+    action = Column(String(30), nullable=False, index=True)
+    message = Column(Text, nullable=True)
+    actor_name = Column(String(150), nullable=True)
+    actor_email = Column(String(150), nullable=True)
+    request_metadata = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    tenant = relationship("Tenant")
+    client_page = relationship("ClientPage")
+    client_account = relationship("ClientAccount")

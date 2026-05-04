@@ -1,12 +1,12 @@
 "use client";
 
-import { useDeferredValue, useState } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
+import { usePagedList } from "@/hooks/usePagedList";
 
 export type Organization = {
   org_id?: number;
@@ -67,20 +67,17 @@ export function useOrganizations(
   initialPage = 1,
   initialPageSize = 10,
 ) {
-  const [page, setPage] = useState(initialPage);
-  const [pageSize, setPageSizeState] = useState(initialPageSize);
   const [createOpen, setCreateOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-
-  const deferredFilters = useDeferredValue(viewFilters);
-
-  const query = useQuery({
-    queryKey: ["sales-organizations", page, pageSize, deferredFilters, visibleColumns],
-    queryFn: () => fetchOrganizations(page, pageSize, deferredFilters, visibleColumns),
-    placeholderData: keepPreviousData,
+  const paged = usePagedList<Organization, OrganizationsResponse>({
+    queryKey: ["sales-organizations"],
+    fetcher: fetchOrganizations,
+    visibleColumns,
+    filters: viewFilters,
+    initialPage,
+    initialPageSize,
+    errorMessage: getErrorMessage,
   });
-
-  const data = query.data;
 
   async function createOrganization(payload: Record<string, unknown>) {
     try {
@@ -96,7 +93,7 @@ export function useOrganizations(
         throw new Error(body?.detail ?? `Failed with ${res.status}`);
       }
 
-      await query.refetch();
+      await paged.refresh();
       setCreateOpen(false);
       toast.success("Organization created.");
     } catch (error) {
@@ -108,25 +105,22 @@ export function useOrganizations(
   }
 
   return {
-    organizations: data?.results ?? [],
-    page: data?.page ?? page,
-    pageSize,
-    totalPages: data?.total_pages ?? 1,
-    totalCount: data?.total_count ?? 0,
-    rangeStart: data?.range_start ?? 0,
-    rangeEnd: data?.range_end ?? 0,
-    isLoading: query.isLoading,
-    isFetching: query.isFetching,
-    error: query.error ? getErrorMessage(query.error) : null,
+    organizations: paged.items,
+    page: paged.page,
+    pageSize: paged.pageSize,
+    totalPages: paged.totalPages,
+    totalCount: paged.totalCount,
+    rangeStart: paged.rangeStart,
+    rangeEnd: paged.rangeEnd,
+    isLoading: paged.isLoading,
+    isFetching: paged.isFetching,
+    error: paged.error,
     createOpen,
     isCreating,
 
-    goToPage: setPage,
-    setPageSize: (size: number) => {
-      setPage(1);
-      setPageSizeState(size);
-    },
-    refresh: () => query.refetch(),
+    goToPage: paged.goToPage,
+    setPageSize: paged.onPageSizeChange,
+    refresh: paged.refresh,
     setCreateOpen,
     createOrganization,
   };

@@ -57,6 +57,8 @@ type Props = {
   filterFields: ModuleFilterField[];
   filters: SavedViewFilters;
   onChange: (next: SavedViewFilters) => void;
+  allConditions?: SavedViewCondition[];
+  anyConditions?: SavedViewCondition[];
   title?: string;
   description?: string;
   wrapInCard?: boolean;
@@ -66,10 +68,11 @@ function ConditionGroupsContent({
   filterFields,
   filters,
   onChange,
+  allConditions,
+  anyConditions,
   title,
   description,
-}: Omit<Props, "wrapInCard">) {
-  const { allConditions, anyConditions } = getConditionGroups(filters);
+}: Required<Pick<Props, "allConditions" | "anyConditions">> & Omit<Props, "wrapInCard" | "allConditions" | "anyConditions">) {
   const selectedFieldMap = new Map(filterFields.map((field) => [field.key, field]));
 
   function updateGroup(
@@ -269,10 +272,17 @@ export function SavedViewConditionEditor({
   filterFields,
   filters,
   onChange,
+  allConditions: providedAllConditions,
+  anyConditions: providedAnyConditions,
   title,
   description,
   wrapInCard = true,
 }: Props) {
+  const conditionGroups =
+    providedAllConditions && providedAnyConditions
+      ? { allConditions: providedAllConditions, anyConditions: providedAnyConditions }
+      : getConditionGroups(filters);
+
   if (wrapInCard) {
     return (
       <Card className="px-5 py-5">
@@ -280,6 +290,8 @@ export function SavedViewConditionEditor({
           filterFields={filterFields}
           filters={filters}
           onChange={onChange}
+          allConditions={conditionGroups.allConditions}
+          anyConditions={conditionGroups.anyConditions}
           title={title}
           description={description}
         />
@@ -292,6 +304,8 @@ export function SavedViewConditionEditor({
       filterFields={filterFields}
       filters={filters}
       onChange={onChange}
+      allConditions={conditionGroups.allConditions}
+      anyConditions={conditionGroups.anyConditions}
       title={title}
       description={description}
     />

@@ -73,6 +73,8 @@ export function InlineSavedViewFilters({ filterFields, filters, onChange }: Prop
           filterFields={filterFields}
           filters={filters}
           onChange={onChange}
+          allConditions={allConditions}
+          anyConditions={anyConditions}
           title="Filter Conditions"
           description="Use both groups together when needed: AND conditions must all pass, OR conditions allow any match."
         />

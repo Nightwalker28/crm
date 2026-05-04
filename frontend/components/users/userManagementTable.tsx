@@ -270,18 +270,21 @@ export function UserManagementTable({
 
   const groupedByTeam = useMemo(() => {
     if (!users.length) return [];
-    
-    const map: Record<string, User[]> = {};
-    users.forEach((u: User) => {
-      const key = u.team_name || "Untitled Team";
-      if (!map[key]) map[key] = [];
-      map[key].push(u);
-    });
 
-    const uniqueTeams = Array.from(new Set(users.map((u: User) => u.team_name || "Untitled Team")));
-    return uniqueTeams.map((teamName) => ({
-      teamName: teamName as string,
-      users: map[teamName as string] || []
+    const map = new Map<string, User[]>();
+    const order: string[] = [];
+    for (const u of users) {
+      const key = u.team_name || "Untitled Team";
+      if (!map.has(key)) {
+        map.set(key, []);
+        order.push(key);
+      }
+      map.get(key)!.push(u);
+    }
+
+    return order.map((teamName) => ({
+      teamName,
+      users: map.get(teamName)!
     }));
   }, [users]);
 

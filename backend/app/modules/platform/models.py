@@ -7,7 +7,7 @@ from app.core.database import Base
 class ActivityLog(Base):
     __tablename__ = "activity_logs"
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     actor_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     module_key = Column(String(100), nullable=False, index=True)

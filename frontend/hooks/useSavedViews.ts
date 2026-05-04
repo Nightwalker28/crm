@@ -51,11 +51,34 @@ export type SavedView = {
   config: SavedViewConfig;
   is_default: boolean;
   is_system: boolean;
+  updated_at?: string | null;
 };
 
 type SavedViewsResponse = {
   views: SavedView[];
 };
+
+function sameStringArray(left: string[] = [], right: string[] = []) {
+  if (left.length !== right.length) return false;
+  return left.every((value, index) => value === right[index]);
+}
+
+function sameSort(left: SavedViewConfig["sort"], right: SavedViewConfig["sort"]) {
+  if (left === right) return true;
+  if (!left || !right) return false;
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) => Object.is(left[key], right[key]));
+}
+
+function sameAppliedConfig(left: SavedViewConfig, right: SavedViewConfig) {
+  return (
+    sameStringArray(left.visible_columns, right.visible_columns) &&
+    sameSort(left.sort ?? null, right.sort ?? null) &&
+    (left.filters?.search ?? "") === (right.filters?.search ?? "")
+  );
+}
 
 async function fetchSavedViews(moduleKey: string, defaultColumns: string[]): Promise<SavedViewsResponse> {
   const params = new URLSearchParams();
@@ -167,13 +190,18 @@ export function useSavedViews(
         },
         sort: selectedView.config.sort ?? null,
       };
-      const viewKey = `${selectedView.id ?? "system-default"}:${selectedView.is_default ? "default" : "custom"}:${JSON.stringify(selectedView.config)}`;
+      const viewKey = [
+        selectedView.id ?? "system-default",
+        selectedView.updated_at ?? "no-version",
+        selectedView.is_default ? "default" : "custom",
+        selectedView.is_system ? "system" : "user",
+      ].join(":");
       if (lastAppliedViewKeyRef.current === viewKey) {
         return;
       }
       lastAppliedViewKeyRef.current = viewKey;
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDraftConfig((current) => (JSON.stringify(current) === JSON.stringify(nextConfig) ? current : nextConfig));
+      setDraftConfig((current) => (sameAppliedConfig(current, nextConfig) ? current : nextConfig));
     }
   }, [defaultConfig.visible_columns, selectedView]);
 

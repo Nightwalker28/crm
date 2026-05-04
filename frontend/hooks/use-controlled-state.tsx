@@ -16,6 +16,11 @@ export function useControlledState<T, Rest extends any[] = []>(
   const [state, setInternalState] = React.useState<T>(
     value !== undefined ? value : (defaultValue as T),
   );
+  const onChangeRef = React.useRef(onChange);
+
+  React.useLayoutEffect(() => {
+    onChangeRef.current = onChange;
+  });
 
   React.useEffect(() => {
     if (value !== undefined) setInternalState(value);
@@ -24,9 +29,9 @@ export function useControlledState<T, Rest extends any[] = []>(
   const setState = React.useCallback(
     (next: T, ...args: Rest) => {
       setInternalState(next);
-      onChange?.(next, ...args);
+      onChangeRef.current?.(next, ...args);
     },
-    [onChange],
+    [],
   );
 
   return [state, setState] as const;
