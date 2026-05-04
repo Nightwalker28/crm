@@ -30,14 +30,29 @@ ADMIN_MIN_ROLE_LEVEL = 100
 
 
 def get_user_department_id(db: Session, user: User | None) -> int | None:
-    if not user or not getattr(user, "team_id", None):
+    if not user:
         return None
+    if getattr(user, "_department_id_loaded", False):
+        return getattr(user, "_department_id", None)
+    if not getattr(user, "team_id", None):
+        user._department_id_loaded = True
+        user._department_id = None
+        return None
+
+    team = getattr(user, "team", None)
+    if team is not None:
+        user._department_id_loaded = True
+        user._department_id = getattr(team, "department_id", None)
+        return user._department_id
 
     query = db.query(Team.department_id).filter(Team.id == user.team_id)
     tenant_id = getattr(user, "tenant_id", None)
     if tenant_id is not None:
         query = query.filter(Team.tenant_id == tenant_id)
-    return query.scalar()
+    department_id = query.scalar()
+    user._department_id_loaded = True
+    user._department_id = department_id
+    return department_id
 
 
 def get_user_team_id(user: User | None) -> int | None:

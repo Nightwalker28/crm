@@ -22,6 +22,7 @@ import type {
   CalendarEvent,
   CalendarEventPayload,
 } from "@/hooks/useCalendar";
+import { useConfirm } from "@/hooks/useConfirm";
 
 type Props = {
   open: boolean;
@@ -103,6 +104,7 @@ export default function CalendarEventDialog({
   onSubmit,
   onDelete,
 }: Props) {
+  const { confirm } = useConfirm();
   const [form, setForm] = useState<CalendarEventPayload>(() => buildInitialState(event, draftStartAt, draftEndAt));
   const [error, setError] = useState<string | null>(null);
 
@@ -131,7 +133,13 @@ export default function CalendarEventDialog({
 
   async function handleDelete() {
     if (!event || !onDelete) return;
-    if (!window.confirm(`Move "${event.title}" to the recycle bin?`)) return;
+    const confirmed = await confirm({
+      title: "Move event to recycle bin?",
+      description: `Move "${event.title}" to the recycle bin?`,
+      confirmLabel: "Move to Recycle Bin",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
     try {
       setError(null);
       await onDelete();

@@ -4,6 +4,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.v1.router import router as v1_router
+from app.core.cache import warn_if_local_cache_multi_worker
 from app.core.config import settings, validate_startup_settings
 from app.core.database import SessionLocal
 from app.core.tenancy import is_cloud_mode_enabled, resolve_request_tenant, to_request_tenant_context
@@ -15,6 +16,7 @@ app = FastAPI(title="Lynk")
 @app.on_event("startup")
 def validate_runtime_configuration():
     validate_startup_settings()
+    warn_if_local_cache_multi_worker()
 
 # -------------------------
 # CORS

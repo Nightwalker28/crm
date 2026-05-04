@@ -265,6 +265,7 @@ export function useCalendarActions() {
 
   const invalidateCalendar = async () => {
     await queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
+    await queryClient.invalidateQueries({ queryKey: ["calendar-event"] });
     await queryClient.invalidateQueries({ queryKey: ["calendar-context"] });
     await queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
     await queryClient.invalidateQueries({ queryKey: ["recycle-bin"] });
@@ -278,10 +279,7 @@ export function useCalendarActions() {
   const updateMutation = useMutation({
     mutationFn: ({ eventId, payload }: { eventId: number; payload: CalendarEventPayload }) =>
       updateCalendarEvent(eventId, payload),
-    onSuccess: async (_, variables) => {
-      await invalidateCalendar();
-      await queryClient.invalidateQueries({ queryKey: ["calendar-event", variables.eventId] });
-    },
+    onSuccess: invalidateCalendar,
   });
 
   const respondMutation = useMutation({
@@ -295,10 +293,7 @@ export function useCalendarActions() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteCalendarEvent,
-    onSuccess: async (_, eventId) => {
-      await invalidateCalendar();
-      await queryClient.invalidateQueries({ queryKey: ["calendar-event", eventId] });
-    },
+    onSuccess: invalidateCalendar,
   });
 
   const createFromTaskMutation = useMutation({

@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, BigInteger, Column, DateTime, ForeignKey, String, Text, UniqueConstraint, func
+from sqlalchemy import JSON, BigInteger, Column, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -6,6 +6,9 @@ from app.core.database import Base
 
 class Document(Base):
     __tablename__ = "documents"
+    __table_args__ = (
+        Index("ix_documents_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -55,6 +58,7 @@ class DocumentLink(Base):
     __tablename__ = "document_links"
     __table_args__ = (
         UniqueConstraint("tenant_id", "document_id", "module_key", "entity_id", name="uq_document_links_document_record"),
+        Index("ix_document_links_module_entity", "module_key", "entity_id"),
     )
 
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)

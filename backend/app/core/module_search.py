@@ -15,7 +15,7 @@ def apply_ranked_search(
     default_order_column: ColumnElement | None = None,
     default_order_by: Sequence[ColumnElement] | None = None,
 ):
-    order_by = list(default_order_by or [])
+    order_by = list(default_order_by) if default_order_by is not None else []
     if not order_by:
         if default_order_column is None:
             raise ValueError("Either default_order_column or default_order_by is required")

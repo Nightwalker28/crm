@@ -25,16 +25,22 @@ export default function ClientLayout(props: ClientLayoutProps) {
   const authLoading = false;
 
   useEffect(() => {
-    if (DEV_ALWAYS_SHOW_SPLASH || authLoading) return;
+    let timeoutId: number | undefined;
 
-    const elapsed = Date.now() - mountedAt;
-    const remaining = Math.max(MIN_SPLASH_TIME - elapsed, 0);
+    if (!DEV_ALWAYS_SHOW_SPLASH && !authLoading) {
+      const elapsed = Date.now() - mountedAt;
+      const remaining = Math.max(MIN_SPLASH_TIME - elapsed, 0);
 
-    const timeoutId = window.setTimeout(() => {
-      setShowSplash(false);
-    }, remaining);
+      timeoutId = window.setTimeout(() => {
+        setShowSplash(false);
+      }, remaining);
+    }
 
-    return () => window.clearTimeout(timeoutId);
+    return () => {
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    };
   }, [authLoading, mountedAt]);
 
   if (DEV_ALWAYS_SHOW_SPLASH) {

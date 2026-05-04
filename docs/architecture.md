@@ -165,6 +165,7 @@ This file captures the current intended technical patterns and constraints so ne
 - Cache abstraction exists and can use Redis or local in-process fallback.
 - Redis support exists, but runtime validation and failure-path hardening are still open work.
 - Redis is the preferred cache/session/reference-data acceleration layer in the current architecture.
+- Multi-worker deployments should set `REDIS_URL`; without Redis, the local fallback cache is per process and invalidations do not propagate between workers.
 - Elasticsearch is not the default choice for the current platform needs because the main open need is caching and fast key/value or short-lived derived data, not distributed search indexing as the primary bottleneck.
 
 ### Auth and Google Integration

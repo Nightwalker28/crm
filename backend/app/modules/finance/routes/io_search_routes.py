@@ -7,7 +7,7 @@ from app.core.module_filters import normalize_filter_logic, parse_filter_conditi
 from app.core.security import get_current_user
 from app.core.permissions import require_action_access
 from app.core.database import get_db
-from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, parse_mapping_json, read_csv_upload, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
+from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, count_csv_rows_bytes, parse_mapping_json, read_csv_upload, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
 from app.modules.finance.schema import (
     InsertionOrderCreateRequest,
     InsertionOrderListItem,
@@ -239,9 +239,9 @@ async def import_insertion_orders(
         target_headers=INSERTION_ORDER_IMPORT_TARGET_FIELDS,
         mapping=mapping,
     )
-    _, remapped_rows = rows_from_csv_bytes(remapped_file_bytes)
+    row_count = count_csv_rows_bytes(remapped_file_bytes)
     if should_background_data_transfer_with_size(
-        row_count=len(remapped_rows),
+        row_count=row_count,
         file_size_bytes=len(remapped_file_bytes),
     ):
         mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "finance_io", tenant_id=current_user.tenant_id)
@@ -251,7 +251,7 @@ async def import_insertion_orders(
             actor_user_id=current_user.id if current_user else None,
             module_key="finance_io",
             operation_type="import",
-            payload={"filename": file.filename, "row_count": len(remapped_rows), "duplicate_mode": mode},
+            payload={"filename": file.filename, "row_count": row_count, "duplicate_mode": mode},
         )
         stored_path = persist_job_upload(job_id=job.id, filename="insertion-orders-import.csv", file_bytes=remapped_file_bytes)
         job.payload = {

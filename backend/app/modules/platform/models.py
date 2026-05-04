@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -6,6 +6,9 @@ from app.core.database import Base
 
 class ActivityLog(Base):
     __tablename__ = "activity_logs"
+    __table_args__ = (
+        Index("ix_activity_logs_module_entity", "module_key", "entity_id"),
+    )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -55,6 +58,8 @@ class CustomFieldValue(Base):
             "field_definition_id",
             name="uq_custom_field_values_tenant_record_field",
         ),
+        Index("ix_custom_field_values_module_record", "module_key", "record_id"),
+        Index("ix_custom_field_values_definition_record", "field_definition_id", "record_id"),
     )
 
     id = Column(BigInteger, primary_key=True, index=True)
@@ -100,6 +105,10 @@ class DataTransferJob(Base):
 
 class UserNotification(Base):
     __tablename__ = "user_notifications"
+    __table_args__ = (
+        Index("ix_user_notifications_user_status", "user_id", "status"),
+        Index("ix_user_notifications_user_created", "user_id", "created_at"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)

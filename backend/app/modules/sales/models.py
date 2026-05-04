@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, ForeignKey, Text, func, TIMESTAMP
+from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, ForeignKey, Index, Text, func, TIMESTAMP, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import expression
 
@@ -18,6 +18,9 @@ def _set_custom_field_cache(record, value: dict | None) -> None:
 
 class SalesOrganization(Base):
     __tablename__ = "sales_organizations"
+    __table_args__ = (
+        Index("ix_sales_organizations_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+    )
     
     org_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -77,6 +80,9 @@ class SalesOrganization(Base):
 
 class SalesContact(Base):
     __tablename__ = "sales_contacts"
+    __table_args__ = (
+        Index("ix_sales_contacts_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+    )
 
     contact_id = Column(BigInteger, primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -140,6 +146,11 @@ class SalesContact(Base):
 
 class SalesOpportunity(Base):
     __tablename__ = "sales_opportunities"
+    __table_args__ = (
+        Index("ix_sales_opportunities_tenant_stage_active", "tenant_id", "sales_stage", postgresql_where=text("deleted_at IS NULL")),
+        Index("ix_sales_opportunities_tenant_contact", "tenant_id", "contact_id"),
+        Index("ix_sales_opportunities_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+    )
 
     opportunity_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)

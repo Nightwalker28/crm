@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { useConfirm } from "@/hooks/useConfirm";
 import { apiFetch } from "@/lib/api";
 
 export type Department = {
@@ -65,6 +66,7 @@ async function fetchTeams(): Promise<Team[]> {
 
 export function useTeamsAndDepartments() {
   const queryClient = useQueryClient();
+  const { confirm } = useConfirm();
 
   const [error, setError] = useState<string | null>(null);
   const [departmentDialogOpen, setDepartmentDialogOpen] = useState(false);
@@ -248,7 +250,12 @@ export function useTeamsAndDepartments() {
   }
 
   async function removeDepartment(department: Department) {
-    const confirmed = window.confirm(`Delete department "${department.name}"?`);
+    const confirmed = await confirm({
+      title: "Delete department?",
+      description: `Delete department "${department.name}"?`,
+      confirmLabel: "Delete Department",
+      variant: "destructive",
+    });
     if (!confirmed) return;
 
     try {
@@ -267,7 +274,12 @@ export function useTeamsAndDepartments() {
   }
 
   async function removeTeam(team: Team) {
-    const confirmed = window.confirm(`Delete team "${team.name}"? Users assigned to it will become unassigned.`);
+    const confirmed = await confirm({
+      title: "Delete team?",
+      description: `Delete team "${team.name}"? Users assigned to it will become unassigned.`,
+      confirmLabel: "Delete Team",
+      variant: "destructive",
+    });
     if (!confirmed) return;
 
     try {

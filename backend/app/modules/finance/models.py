@@ -1,10 +1,15 @@
-from sqlalchemy import Column, BigInteger, Text, Date, TIMESTAMP, func, ForeignKey, Numeric
+from sqlalchemy import Column, BigInteger, Text, Date, TIMESTAMP, func, ForeignKey, Index, Numeric, text
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
 class FinanceIO(Base):
     __tablename__ = "finance_io"
+    __table_args__ = (
+        Index("ix_finance_io_tenant_status_active", "tenant_id", "status", postgresql_where=text("deleted_at IS NULL")),
+        Index("ix_finance_io_tenant_contact", "tenant_id", "customer_contact_id"),
+        Index("ix_finance_io_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)

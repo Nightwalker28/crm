@@ -8,7 +8,7 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import Column, Numeric, String
 from starlette.datastructures import Headers
 
-from app.core import cache, module_csv, module_filters, pagination, postgres_search, uploads
+from app.core import cache, module_csv, module_export, module_filters, module_search, pagination, postgres_search, uploads
 from app.core.passwords import (
     PBKDF2_ALGORITHM,
     PBKDF2_ITERATIONS,
@@ -33,14 +33,22 @@ class CacheTests(unittest.TestCase):
 
     def test_local_cache_evicts_oldest_when_max_size_is_exceeded(self):
         with patch.object(cache, "_get_redis_client", return_value=None), \
+             patch.object(cache.settings, "REDIS_URL", None), \
              patch.object(cache, "MAX_LOCAL_CACHE_SIZE", 2):
             cache.cache_set_json("a", {"value": 1})
             cache.cache_set_json("b", {"value": 2})
             cache.cache_set_json("c", {"value": 3})
 
-        self.assertNotIn("a", cache._local_cache)
-        self.assertEqual(cache.cache_get_json("b"), {"value": 2})
-        self.assertEqual(cache.cache_get_json("c"), {"value": 3})
+            self.assertNotIn("a", cache._local_cache)
+            self.assertEqual(cache.cache_get_json("b"), {"value": 2})
+            self.assertEqual(cache.cache_get_json("c"), {"value": 3})
+
+    def test_redis_configured_does_not_fall_back_to_local_cache_when_unavailable(self):
+        with patch.object(cache.settings, "REDIS_URL", "redis://redis:6379/0"), \
+             patch.object(cache, "_get_redis_client", return_value=None):
+            cache.cache_set_json("redis-key", {"value": 1})
+
+        self.assertNotIn("redis-key", cache._local_cache)
 
 
 class ModuleCsvTests(unittest.IsolatedAsyncioTestCase):
@@ -68,8 +76,30 @@ class ModuleCsvTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(content, b"name\nAcme\n")
 
+    async def test_dict_rows_to_csv_bytes_sanitizes_formula_cells(self):
+        content = module_export.dict_rows_to_csv_bytes(
+            headers=["name", "amount"],
+            rows=[
+                {"name": "=cmd", "amount": "+10"},
+                {"name": "Safe", "amount": 5},
+            ],
+        ).decode("utf-8")
+
+        self.assertIn("'=cmd", content)
+        self.assertIn("'+10", content)
+        self.assertIn("Safe,5", content)
+
+    async def test_count_csv_rows_bytes_streams_non_blank_rows(self):
+        content = b"name\nAcme\n\nBeta\n"
+
+        self.assertEqual(module_csv.count_csv_rows_bytes(content), 2)
+
 
 class ModuleFilterTests(unittest.TestCase):
+    def test_parse_filter_conditions_rejects_large_payload(self):
+        with self.assertRaisesRegex(ValueError, "Filter payload too large"):
+            module_filters.parse_filter_conditions(" " * 64_001)
+
     def test_parse_filter_conditions_rejects_unknown_operator(self):
         with self.assertRaisesRegex(ValueError, "Unknown filter operator"):
             module_filters.parse_filter_conditions(
@@ -170,6 +200,30 @@ class PostgresSearchTests(unittest.TestCase):
         self.assertEqual(len(query.filters), 1)
 
 
+class ModuleSearchTests(unittest.TestCase):
+    def test_default_order_by_uses_explicit_none_check(self):
+        class OrderQuery:
+            def __init__(self):
+                self.ordering = None
+
+            def order_by(self, *ordering):
+                self.ordering = ordering
+                return self
+
+        query = OrderQuery()
+        ordering = [Column("created_at", String())]
+
+        result = module_search.apply_ranked_search(
+            query,
+            search=None,
+            document=Column("document", String()),
+            default_order_by=ordering,
+        )
+
+        self.assertIs(result, query)
+        self.assertEqual(query.ordering, tuple(ordering))
+
+
 class UploadCleanupTests(unittest.TestCase):
     def test_delete_local_media_file_accepts_media_path_without_leading_slash(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -194,6 +248,32 @@ class UploadCleanupTests(unittest.TestCase):
                 uploads.delete_local_media_file("https://example.com/photo.jpg")
 
             self.assertTrue(target.exists())
+
+
+class ImageUploadTests(unittest.IsolatedAsyncioTestCase):
+    async def test_read_image_upload_accepts_png_magic_bytes(self):
+        upload = UploadFile(
+            file=io.BytesIO(b"\x89PNG\r\n\x1a\npayload"),
+            filename="logo.png",
+            headers=Headers({"content-type": "image/png"}),
+        )
+
+        content, extension = await uploads.read_image_upload(upload)
+
+        self.assertEqual(content, b"\x89PNG\r\n\x1a\npayload")
+        self.assertEqual(extension, "png")
+
+    async def test_read_image_upload_rejects_spoofed_image(self):
+        upload = UploadFile(
+            file=io.BytesIO(b"not really an image"),
+            filename="logo.png",
+            headers=Headers({"content-type": "image/png"}),
+        )
+
+        with self.assertRaises(HTTPException) as exc:
+            await uploads.read_image_upload(upload)
+
+        self.assertEqual(exc.exception.status_code, 400)
 
 
 if __name__ == "__main__":

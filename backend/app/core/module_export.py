@@ -8,12 +8,19 @@ from collections.abc import Iterable, Sequence
 from fastapi.responses import StreamingResponse
 
 
+def _sanitize_csv_cell(value) -> str:
+    text = str(value) if value is not None else ""
+    if text and text[0] in {"=", "+", "-", "@", "\t", "\r"}:
+        return "'" + text
+    return text
+
+
 def dict_rows_to_csv_bytes(*, headers: Sequence[str], rows: Iterable[dict]) -> bytes:
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=list(headers))
     writer.writeheader()
     for row in rows:
-        writer.writerow(row)
+        writer.writerow({header: _sanitize_csv_cell(row.get(header)) for header in headers})
     return output.getvalue().encode("utf-8")
 
 

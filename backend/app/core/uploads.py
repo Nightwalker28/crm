@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import imghdr
 from pathlib import Path
 from uuid import uuid4
 
@@ -16,13 +15,23 @@ ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 ALLOWED_IMAGE_TYPES = {"jpeg": "jpg", "png": "png", "webp": "webp"}
 
 
+def _detect_image_type(file_bytes: bytes) -> str | None:
+    if file_bytes.startswith(b"\xff\xd8\xff"):
+        return "jpeg"
+    if file_bytes.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if file_bytes.startswith(b"RIFF") and file_bytes[8:12] == b"WEBP":
+        return "webp"
+    return None
+
+
 async def read_image_upload(file: UploadFile) -> tuple[bytes, str]:
     raw_extension = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
     file_bytes = await file.read()
     if not file_bytes:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded image is empty.")
 
-    detected_type = imghdr.what(None, file_bytes)
+    detected_type = _detect_image_type(file_bytes)
     if detected_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

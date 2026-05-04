@@ -67,6 +67,7 @@ export function useNotifications() {
     queryKey: ["user-notifications"],
     queryFn: fetchNotifications,
     refetchInterval: 60000,
+    refetchIntervalInBackground: false,
     refetchOnMount: true,
     staleTime: 30000,
   });

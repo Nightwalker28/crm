@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
 from app.core.module_filters import apply_filter_conditions
-from app.core.module_csv import build_import_summary, require_csv_headers, rows_from_csv_bytes
+from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.module_export import batched_csv_zip_bytes, dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
@@ -431,15 +431,17 @@ def import_organizations_from_csv(
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
     )
-    headers, parsed_rows = rows_from_csv_bytes(file_bytes)
+    headers, row_iter = iter_csv_rows_from_bytes(file_bytes)
     require_csv_headers(headers, required=REQUIRED_IMPORT_FIELDS)
 
     new_rows = overwritten_rows = merged_rows = skipped_rows = 0
+    total_rows = 0
     failures: list[dict[str, str | int | None]] = []
     rows: list[dict[str, str | None]] = []
     org_names: list[str] = []
 
-    for idx, row in enumerate(parsed_rows, start=2):
+    for idx, row in enumerate(row_iter, start=2):
+        total_rows += 1
         if row is None:
             continue
         data = {k.strip(): (v.strip() if v is not None else None) for k, v in row.items() if k is not None}
@@ -553,7 +555,7 @@ def import_organizations_from_csv(
         db.commit()
 
     return build_import_summary(
-        total_rows=len(parsed_rows),
+        total_rows=total_rows,
         new_rows=new_rows,
         skipped_rows=skipped_rows,
         overwritten_rows=overwritten_rows,

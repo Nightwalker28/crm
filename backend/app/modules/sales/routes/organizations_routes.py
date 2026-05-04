@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.pagination import Pagination, get_pagination, build_paged_response
 from app.core.database import get_db
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
-from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
+from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, count_csv_rows_bytes, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
 from app.core.security import require_user
 from app.core.permissions import require_action_access, require_module_access
 from app.modules.platform.services.activity_logs import log_activity
@@ -375,9 +375,9 @@ async def import_sales_organizations(
         target_headers=ORGANIZATION_IMPORT_TARGET_FIELDS,
         mapping=mapping,
     )
-    _, remapped_rows = rows_from_csv_bytes(remapped_content)
+    row_count = count_csv_rows_bytes(remapped_content)
     if should_background_data_transfer_with_size(
-        row_count=len(remapped_rows),
+        row_count=row_count,
         file_size_bytes=len(remapped_content),
     ):
         mode = duplicate_mode or admin_modules.get_module_duplicate_mode(db, "sales_organizations", tenant_id=current_user.tenant_id)
@@ -387,7 +387,7 @@ async def import_sales_organizations(
             actor_user_id=current_user.id,
             module_key="sales_organizations",
             operation_type="import",
-            payload={"filename": file.filename, "row_count": len(remapped_rows), "duplicate_mode": mode},
+            payload={"filename": file.filename, "row_count": row_count, "duplicate_mode": mode},
         )
         stored_path = persist_job_upload(job_id=job.id, filename="organizations-import.csv", file_bytes=remapped_content)
         job.payload = {

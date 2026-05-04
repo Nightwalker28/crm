@@ -3,6 +3,7 @@
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
+import { ConfirmProvider } from "@/hooks/useConfirm";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   // Ensure QueryClient is created only once per client lifecycle
@@ -24,7 +25,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {children}
+      <ConfirmProvider>{children}</ConfirmProvider>
     </QueryClientProvider>
   );
 }

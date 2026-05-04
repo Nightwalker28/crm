@@ -24,6 +24,7 @@ FILTER_OPERATORS = {
 }
 
 FILTER_LOGIC_VALUES = {"all", "any"}
+MAX_FILTER_PAYLOAD_BYTES = 64_000
 
 
 def normalize_filter_logic(logic: str | None) -> str:
@@ -33,6 +34,8 @@ def normalize_filter_logic(logic: str | None) -> str:
 def parse_filter_conditions(raw_filters: str | None) -> list[dict[str, Any]]:
     if not raw_filters:
         return []
+    if len(raw_filters.encode("utf-8")) > MAX_FILTER_PAYLOAD_BYTES:
+        raise ValueError("Filter payload too large")
     try:
         parsed = json.loads(raw_filters)
     except json.JSONDecodeError as exc:

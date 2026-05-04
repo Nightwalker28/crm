@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { SavedViewConditionEditor } from "@/components/ui/SavedViewConditionEditor";
@@ -22,6 +23,7 @@ export default function ManageModuleViewPage() {
   const params = useParams<{ moduleKey: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { confirm } = useConfirm();
   const moduleKey = params.moduleKey;
   const { data: customFields = [] } = useModuleCustomFields(
     moduleKey,
@@ -116,7 +118,13 @@ export default function ManageModuleViewPage() {
 
   async function handleDelete() {
     if (!selectedView || selectedView.id == null) return;
-    if (!window.confirm(`Delete the view "${selectedView.name}"?`)) return;
+    const confirmed = await confirm({
+      title: "Delete saved view?",
+      description: `Delete the view "${selectedView.name}"?`,
+      confirmLabel: "Delete View",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
     await deleteCurrentView();
     toast.success("Saved view deleted.");
     router.replace(`/dashboard/views/${moduleKey}?viewId=system-default`);

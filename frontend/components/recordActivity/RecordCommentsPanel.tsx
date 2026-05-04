@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Textarea } from "@/components/ui/textarea";
+import { useConfirm } from "@/hooks/useConfirm";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -82,6 +83,7 @@ export default function RecordCommentsPanel({
   title = "Notes & Comments",
   description = "Shared record notes for internal collaboration and context.",
 }: Props) {
+  const { confirm } = useConfirm();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState("");
   const [mentionStart, setMentionStart] = useState<number | null>(null);
@@ -185,7 +187,13 @@ export default function RecordCommentsPanel({
   }
 
   async function handleDelete(commentId: number) {
-    if (!window.confirm("Delete this note?")) {
+    const confirmed = await confirm({
+      title: "Delete note?",
+      description: "Delete this note?",
+      confirmLabel: "Delete Note",
+      variant: "destructive",
+    });
+    if (!confirmed) {
       return;
     }
 

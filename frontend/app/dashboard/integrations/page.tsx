@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { PlugZap, RefreshCw, Send, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -137,7 +137,7 @@ export default function IntegrationsPage() {
     }
   }
 
-  async function loadEvents(filters: EventFilters = eventFilters) {
+  const loadEvents = useCallback(async (filters: EventFilters) => {
     try {
       setEventsLoading(true);
       const params = new URLSearchParams({ page: "1", page_size: "10" });
@@ -152,7 +152,7 @@ export default function IntegrationsPage() {
     } finally {
       setEventsLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     void loadChannels();
@@ -160,7 +160,7 @@ export default function IntegrationsPage() {
 
   useEffect(() => {
     void loadEvents(eventFilters);
-  }, [eventFilters]);
+  }, [eventFilters, loadEvents]);
 
   async function createChannel() {
     try {

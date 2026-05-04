@@ -250,7 +250,6 @@ export function useTasks(filters?: SavedViewFilters) {
     },
     refresh: async () => {
       await queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      await query.refetch();
     },
     createTask: createMutation.mutateAsync,
     updateTask: (taskId: number, payload: TaskPayload) =>

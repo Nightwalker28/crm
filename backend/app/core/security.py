@@ -1,5 +1,5 @@
 from fastapi import Depends, HTTPException, status, Request
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 from datetime import datetime, timedelta, timezone
 
 from app.core.access_control import (
@@ -50,6 +50,17 @@ def _attach_access_token_claims(user: User, payload: dict) -> User:
     return user
 
 
+def _load_user_with_team(db: Session, user_id: int) -> User | None:
+    return db.query(User).options(joinedload(User.team)).filter(User.id == user_id).first()
+
+
+def _attach_department_context(user: User) -> User:
+    team = getattr(user, "team", None)
+    user._department_id_loaded = True
+    user._department_id = getattr(team, "department_id", None) if team else None
+    return user
+
+
 def _as_utc(value: datetime | None) -> datetime | None:
     if value is None:
         return None
@@ -93,7 +104,7 @@ def get_current_user(
             payload = None
 
         if payload:
-            user = db.query(User).filter(User.id == user_id).first()
+            user = _load_user_with_team(db, user_id)
             if not user or user.is_active != UserStatus.active:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -105,7 +116,9 @@ def get_current_user(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Session tenant mismatch",
                 )
-            request.state._current_user = _attach_access_token_claims(user, payload)
+            request.state._current_user = _attach_department_context(
+                _attach_access_token_claims(user, payload)
+            )
             return request.state._current_user
 
     # 2. Access token missing or expired → try refresh
@@ -144,7 +157,7 @@ def get_current_user(
                 detail="Session expired",
             )
 
-        user = db.query(User).filter(User.id == user_id).first()
+        user = _load_user_with_team(db, user_id)
         if not user or user.is_active != UserStatus.active:
             _revoke_refresh_token(db, db_token.id)
             raise HTTPException(
@@ -168,7 +181,7 @@ def get_current_user(
             # Attach cookie to response (middleware in main.py will set it)
             request.state._new_access_token = new_access_token
 
-        request.state._current_user = user
+        request.state._current_user = _attach_department_context(user)
 
         return request.state._current_user
 

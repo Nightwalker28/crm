@@ -339,7 +339,10 @@ def setup_client_password_route(
     payload: ClientSetupPasswordRequest,
     db: Session = Depends(get_db),
 ):
-    account = setup_client_password(db, token=payload.token, password=payload.password)
+    try:
+        account = setup_client_password(db, token=payload.token, password=payload.password)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return ClientAccountResponse.model_validate(serialize_client_account(account))
 
 

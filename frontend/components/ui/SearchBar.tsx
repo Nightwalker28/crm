@@ -30,8 +30,6 @@ export default function SearchBar({
           type="text"
           placeholder={placeholder}
           value={value}
-          // ✅ CRITICAL FIX: Intercept the event 'e' and only pass the string string 'e.target.value'
-          // This prevents the parent state from becoming an [object Object], which causes the .trim() crash.
           onChange={(e) => onChange(e.target.value)}
         />
       </InputGroup>

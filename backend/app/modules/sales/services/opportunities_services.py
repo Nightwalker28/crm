@@ -7,7 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
-from app.core.module_csv import build_import_summary, require_csv_headers, rows_from_csv_bytes
+from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.pagination import Pagination
 from app.core.module_filters import apply_filter_conditions
 from app.core.module_export import dict_rows_to_csv_bytes
@@ -562,15 +562,17 @@ def import_opportunities_from_csv(
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
     )
-    headers, parsed_rows = rows_from_csv_bytes(file_bytes)
+    headers, row_iter = iter_csv_rows_from_bytes(file_bytes)
     require_csv_headers(headers, required=OPPORTUNITY_IMPORT_HEADERS)
 
     new_rows = overwritten_rows = merged_rows = skipped_rows = 0
+    total_rows = 0
     failures: list[dict[str, str | int | None]] = []
     rows: list[tuple[int, dict]] = []
     names: list[str] = []
 
-    for row_number, row in enumerate(parsed_rows, start=2):
+    for row_number, row in enumerate(row_iter, start=2):
+        total_rows += 1
         normalized = {k.strip().lower(): (v.strip() if isinstance(v, str) else v) for k, v in row.items() if k}
         opportunity_name = (normalized.get("opportunity_name") or "").strip()
         contact_id_raw = (normalized.get("contact_id") or "").strip()
@@ -708,7 +710,7 @@ def import_opportunities_from_csv(
             )
 
     return build_import_summary(
-        total_rows=len(parsed_rows),
+        total_rows=total_rows,
         new_rows=new_rows,
         skipped_rows=skipped_rows,
         overwritten_rows=overwritten_rows,

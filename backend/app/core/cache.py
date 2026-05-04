@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import threading
 from collections import OrderedDict
 from time import monotonic
@@ -51,6 +52,26 @@ def _get_redis_client():
             return None
 
 
+def warn_if_local_cache_multi_worker() -> None:
+    if settings.REDIS_URL:
+        return
+    worker_count = 1
+    for variable in ("WEB_CONCURRENCY", "UVICORN_WORKERS", "GUNICORN_WORKERS"):
+        raw_value = os.getenv(variable)
+        if not raw_value:
+            continue
+        try:
+            worker_count = max(worker_count, int(raw_value))
+        except ValueError:
+            continue
+    if worker_count > 1:
+        logger.warning(
+            "REDIS_URL is not set while %s workers are configured; local in-process cache "
+            "invalidation is per worker and may serve stale cached data.",
+            worker_count,
+        )
+
+
 def cache_get_json(key: str) -> Any | None:
     client = _get_redis_client()
     if client is not None:
@@ -60,6 +81,9 @@ def cache_get_json(key: str) -> Any | None:
                 return json.loads(cached)
         except Exception as exc:  # pragma: no cover - network/service dependent
             logger.warning("Redis get failed for key %s: %s", key, exc)
+        return None
+    if settings.REDIS_URL:
+        return None
 
     cached = _local_cache.get(key)
     if not cached:
@@ -80,6 +104,9 @@ def cache_set_json(key: str, value: Any, *, ttl_seconds: int = LOCAL_CACHE_TTL_S
             client.setex(key, ttl_seconds, serialized)
         except Exception as exc:  # pragma: no cover - network/service dependent
             logger.warning("Redis set failed for key %s: %s", key, exc)
+        return
+    if settings.REDIS_URL:
+        return
     _local_cache[key] = (monotonic() + ttl_seconds, serialized)
     _local_cache.move_to_end(key)
     while len(_local_cache) > MAX_LOCAL_CACHE_SIZE:
@@ -93,6 +120,9 @@ def cache_delete(key: str) -> None:
             client.delete(key)
         except Exception as exc:  # pragma: no cover - network/service dependent
             logger.warning("Redis delete failed for key %s: %s", key, exc)
+        return
+    if settings.REDIS_URL:
+        return
     _local_cache.pop(key, None)
 
 
@@ -105,6 +135,9 @@ def cache_delete_prefix(prefix: str) -> None:
                 client.delete(*keys)
         except Exception as exc:  # pragma: no cover - network/service dependent
             logger.warning("Redis delete prefix failed for %s: %s", prefix, exc)
+        return
+    if settings.REDIS_URL:
+        return
 
     for key in list(_local_cache.keys()):
         if key.startswith(prefix):

@@ -7,8 +7,10 @@ from sqlalchemy import (
     ForeignKey,
     String,
     Text,
+    Index,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.orm import relationship
 
@@ -43,6 +45,9 @@ class UserCalendarConnection(Base):
 
 class CalendarEvent(Base):
     __tablename__ = "calendar_events"
+    __table_args__ = (
+        Index("ix_calendar_events_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)

@@ -4,6 +4,7 @@ import csv
 import io
 import json
 import re
+from collections.abc import Iterator
 
 from fastapi import HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
@@ -124,6 +125,11 @@ async def read_csv_upload(file: UploadFile) -> tuple[list[str], list[dict[str, s
 
 
 def rows_from_csv_text(text: str) -> tuple[list[str], list[dict[str, str | None]]]:
+    headers, row_iter = iter_csv_rows_from_text(text)
+    return headers, list(row_iter)
+
+
+def iter_csv_rows_from_text(text: str) -> tuple[list[str], Iterator[dict[str, str | None]]]:
     reader = csv.DictReader(io.StringIO(text))
     if not reader.fieldnames:
         raise HTTPException(
@@ -132,21 +138,27 @@ def rows_from_csv_text(text: str) -> tuple[list[str], list[dict[str, str | None]
         )
 
     headers = [str(header).strip() for header in reader.fieldnames if header is not None]
-    rows: list[dict[str, str | None]] = []
-    for row in reader:
-        normalized = {
-            str(key).strip(): (value.strip() if isinstance(value, str) else value)
-            for key, value in row.items()
-            if key is not None
-        }
-        if all(not (value or "").strip() for value in normalized.values()):
-            continue
-        rows.append(normalized)
 
-    return headers, rows
+    def generate_rows() -> Iterator[dict[str, str | None]]:
+        for row in reader:
+            normalized = {
+                str(key).strip(): (value.strip() if isinstance(value, str) else value)
+                for key, value in row.items()
+                if key is not None
+            }
+            if all(not (value or "").strip() for value in normalized.values()):
+                continue
+            yield normalized
+
+    return headers, generate_rows()
 
 
 def rows_from_csv_bytes(file_bytes: bytes) -> tuple[list[str], list[dict[str, str | None]]]:
+    headers, row_iter = iter_csv_rows_from_bytes(file_bytes)
+    return headers, list(row_iter)
+
+
+def iter_csv_rows_from_bytes(file_bytes: bytes) -> tuple[list[str], Iterator[dict[str, str | None]]]:
     try:
         text = file_bytes.decode("utf-8-sig")
     except UnicodeDecodeError as exc:
@@ -154,7 +166,12 @@ def rows_from_csv_bytes(file_bytes: bytes) -> tuple[list[str], list[dict[str, st
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unable to decode CSV file as UTF-8.",
         ) from exc
-    return rows_from_csv_text(text)
+    return iter_csv_rows_from_text(text)
+
+
+def count_csv_rows_bytes(file_bytes: bytes) -> int:
+    _, row_iter = iter_csv_rows_from_bytes(file_bytes)
+    return sum(1 for _ in row_iter)
 
 
 def require_csv_headers(headers: list[str], *, required: set[str]) -> None:

@@ -23,6 +23,7 @@ import {
   type Task,
   type TaskPayload,
 } from "@/hooks/useTasks";
+import { useConfirm } from "@/hooks/useConfirm";
 import type { CalendarEvent } from "@/hooks/useCalendar";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -106,6 +107,7 @@ export default function TaskDialog({
   onRemoveFromCalendar,
   onOpenCalendarEvent,
 }: Props) {
+  const { confirm } = useConfirm();
   const [form, setForm] = useState<FormState>(() => buildFormState(task));
   const [error, setError] = useState<string | null>(null);
   const optionsQuery = useQuery({
@@ -133,7 +135,13 @@ export default function TaskDialog({
 
   async function handleDelete() {
     if (!task || !onDelete) return;
-    if (!window.confirm(`Move "${task.title}" to the recycle bin?`)) return;
+    const confirmed = await confirm({
+      title: "Move task to recycle bin?",
+      description: `Move "${task.title}" to the recycle bin?`,
+      confirmLabel: "Move to Recycle Bin",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
     try {
       setError(null);
       await onDelete();

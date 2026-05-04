@@ -8,7 +8,7 @@ from sqlalchemy import func, tuple_
 from sqlalchemy.orm import Session
 
 from app.core.access_control import get_finance_user_scope
-from app.core.module_csv import build_import_summary, read_upload_bytes, require_csv_headers, rows_from_csv_bytes
+from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, read_upload_bytes, require_csv_headers, rows_from_csv_bytes
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.duplicates import (
     DuplicateMode,
@@ -412,13 +412,15 @@ def import_insertion_orders_csv_bytes(
             detail=str(exc),
         )
 
-    headers, rows = rows_from_csv_bytes(file_bytes)
+    headers, row_iter = iter_csv_rows_from_bytes(file_bytes)
     require_csv_headers(headers, required={"customer_name"})
 
     import_io_numbers: list[str] = []
+    total_rows = 0
     failures: list[dict[str, str | int | None]] = []
     valid_rows: list[tuple[int, dict[str, str | None]]] = []
-    for index, row in enumerate(rows, start=2):
+    for index, row in enumerate(row_iter, start=2):
+        total_rows += 1
         if not (row.get("customer_name") or "").strip():
             failures.append(
                 {
@@ -557,7 +559,7 @@ def import_insertion_orders_csv_bytes(
             )
 
     return build_import_summary(
-        total_rows=len(rows),
+        total_rows=total_rows,
         new_rows=new_rows,
         skipped_rows=skipped_rows,
         overwritten_rows=overwritten_rows,

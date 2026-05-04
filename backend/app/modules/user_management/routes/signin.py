@@ -114,11 +114,14 @@ def setup_password(
     payload: SetupPasswordRequest,
     db: Session = Depends(get_db),
 ):
-    set_initial_password(
-        db,
-        token=payload.token,
-        password=payload.password,
-    )
+    try:
+        set_initial_password(
+            db,
+            token=payload.token,
+            password=payload.password,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return JSONResponse({"status": "ok", "message": "Password set successfully"})
 
 

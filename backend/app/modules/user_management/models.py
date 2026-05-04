@@ -7,6 +7,7 @@ from sqlalchemy import (
     SmallInteger,
     Text,
     DateTime,
+    Index,
     func,
     Enum,
     JSON,
@@ -18,6 +19,10 @@ from datetime import datetime
 
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
+    __table_args__ = (
+        Index("ix_refresh_tokens_user_jti", "user_id", "token_jti"),
+        Index("ix_refresh_tokens_expires_at", "expires_at"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
@@ -415,6 +420,9 @@ class UserTablePreference(Base):
 
 class UserSavedView(Base):
     __tablename__ = "user_saved_views"
+    __table_args__ = (
+        Index("ix_user_saved_views_user_module", "user_id", "module_key"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
