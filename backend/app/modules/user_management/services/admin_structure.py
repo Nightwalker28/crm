@@ -156,6 +156,9 @@ def update_team(db: Session, team_id: int, payload: TeamUpdateRequest, *, tenant
     db.add(team)
     if "department_id" in update_data:
         _sync_team_module_permissions_from_department(db, team)
+        db.query(User).filter(User.tenant_id == tenant_id, User.team_id == team_id).update(
+            {User.department_id: team.department_id}
+        )
     db.commit()
     db.refresh(team)
     return team
@@ -166,7 +169,9 @@ def delete_team(db: Session, team_id: int, *, tenant_id: int) -> None:
     if not team:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Team not found")
 
-    db.query(User).filter(User.tenant_id == tenant_id, User.team_id == team_id).update({User.team_id: None})
+    db.query(User).filter(User.tenant_id == tenant_id, User.team_id == team_id).update(
+        {User.team_id: None, User.department_id: None}
+    )
 
     db.delete(team)
     db.commit()

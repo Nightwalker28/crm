@@ -17,6 +17,7 @@ CSV_CONTENT_TYPES = {
     "text/plain",
     "application/vnd.ms-excel",
 }
+MAX_CSV_ROWS = 500_000
 
 
 class ImportFailureItem(BaseModel):
@@ -126,7 +127,15 @@ async def read_csv_upload(file: UploadFile) -> tuple[list[str], list[dict[str, s
 
 def rows_from_csv_text(text: str) -> tuple[list[str], list[dict[str, str | None]]]:
     headers, row_iter = iter_csv_rows_from_text(text)
-    return headers, list(row_iter)
+    rows: list[dict[str, str | None]] = []
+    for index, row in enumerate(row_iter, start=1):
+        if index > MAX_CSV_ROWS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="CSV exceeds maximum row limit.",
+            )
+        rows.append(row)
+    return headers, rows
 
 
 def iter_csv_rows_from_text(text: str) -> tuple[list[str], Iterator[dict[str, str | None]]]:
@@ -140,7 +149,12 @@ def iter_csv_rows_from_text(text: str) -> tuple[list[str], Iterator[dict[str, st
     headers = [str(header).strip() for header in reader.fieldnames if header is not None]
 
     def generate_rows() -> Iterator[dict[str, str | None]]:
-        for row in reader:
+        for index, row in enumerate(reader, start=1):
+            if index > MAX_CSV_ROWS:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="CSV exceeds maximum row limit.",
+                )
             normalized = {
                 str(key).strip(): (value.strip() if isinstance(value, str) else value)
                 for key, value in row.items()

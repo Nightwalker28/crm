@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import lru_cache
+import time
 
 from fastapi import HTTPException, Request, status
 from jose import JWTError, jwt
@@ -19,16 +19,27 @@ class RequestTenantContext:
     is_active: bool
 
 
-@lru_cache(maxsize=1)
-def get_verified_deployment_license() -> dict | None:
-    """Return the verified deployment license, cached for the process lifetime.
+_license_cache: tuple[float, dict | None] | None = None
 
-    Deployment license changes intentionally require a process restart. Tests
-    that patch license settings must call this function's cache_clear() first.
-    """
+
+def _clear_verified_deployment_license_cache() -> None:
+    global _license_cache
+    _license_cache = None
+
+
+def get_verified_deployment_license() -> dict | None:
+    """Return the verified deployment license, refreshing the process cache by TTL."""
+    global _license_cache
+    now = time.monotonic()
+    if _license_cache is not None:
+        verified_at, cached_payload = _license_cache
+        if now - verified_at < settings.DEPLOYMENT_LICENSE_CACHE_TTL_SECONDS:
+            return cached_payload
+
     token = (settings.DEPLOYMENT_LICENSE or "").strip()
     public_key = (settings.DEPLOYMENT_LICENSE_PUBLIC_KEY or "").strip()
     if not token or not public_key:
+        _license_cache = (now, None)
         return None
 
     try:
@@ -38,12 +49,18 @@ def get_verified_deployment_license() -> dict | None:
             algorithms=[settings.DEPLOYMENT_LICENSE_ALGORITHM],
         )
     except JWTError:
+        _license_cache = (now, None)
         return None
 
     if payload.get("deployment_mode") != "cloud":
+        _license_cache = (now, None)
         return None
 
+    _license_cache = (now, payload)
     return payload
+
+
+get_verified_deployment_license.cache_clear = _clear_verified_deployment_license_cache
 
 
 def is_cloud_mode_enabled() -> bool:

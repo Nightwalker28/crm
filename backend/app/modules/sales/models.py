@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, ForeignKey, Index, Text, func, TIMESTAMP, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, Date, DateTime, ForeignKey, Index, Text, func, TIMESTAMP, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import expression
 
@@ -58,6 +58,16 @@ class SalesOrganization(Base):
     billing_state = Column(Text, nullable=True)
     billing_postal_code = Column(Text, nullable=True)
     billing_country = Column(Text, nullable=True)
+    search_doc = Column(
+        Text,
+        Computed(
+            "lower(coalesce(org_name, '') || ' ' || coalesce(website, '') || ' ' || "
+            "coalesce(primary_email, '') || ' ' || coalesce(industry, '') || ' ' || "
+            "coalesce(billing_city, '') || ' ' || coalesce(billing_country, ''))",
+            persisted=True,
+        ),
+        nullable=True,
+    )
     customer_group = relationship("CustomerGroup", lazy="joined")
 
     @property
@@ -117,6 +127,17 @@ class SalesContact(Base):
     last_contacted_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     whatsapp_last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    search_doc = Column(
+        Text,
+        Computed(
+            "lower(coalesce(first_name, '') || ' ' || coalesce(last_name, '') || ' ' || "
+            "coalesce(contact_telephone, '') || ' ' || coalesce(primary_email, '') || ' ' || "
+            "coalesce(current_title, '') || ' ' || coalesce(region, '') || ' ' || "
+            "coalesce(country, '') || ' ' || coalesce(linkedin_url, ''))",
+            persisted=True,
+        ),
+        nullable=True,
+    )
 
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
     last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="joined")
@@ -147,6 +168,10 @@ class SalesContact(Base):
 class SalesOpportunity(Base):
     __tablename__ = "sales_opportunities"
     __table_args__ = (
+        CheckConstraint(
+            "sales_stage IS NULL OR sales_stage IN ('lead', 'qualified', 'proposal', 'negotiation', 'closed_won', 'closed_lost')",
+            name="ck_sales_opportunities_sales_stage",
+        ),
         Index("ix_sales_opportunities_tenant_stage_active", "tenant_id", "sales_stage", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_sales_opportunities_tenant_contact", "tenant_id", "contact_id"),
         Index("ix_sales_opportunities_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),

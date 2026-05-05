@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -23,6 +24,7 @@ MODULE_DISPLAY_NAMES = {
     "sales_opportunities": "Opportunities",
     "finance_io": "Insertion Orders",
 }
+TRANSIENT_JOB_ERRORS = (OSError, ConnectionError, TimeoutError)
 
 
 MODULE_LINKS = {
@@ -217,6 +219,15 @@ def mark_job_failed(db: Session, job: DataTransferJob, *, error_message: str, su
     return job
 
 
+def mark_data_transfer_job_failed_by_id(*, job_id: int, error_message: str) -> None:
+    db = SessionLocal()
+    try:
+        job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
+        mark_job_failed(db, job, error_message=error_message)
+    finally:
+        db.close()
+
+
 def list_data_transfer_jobs(
     db: Session,
     *,
@@ -280,11 +291,15 @@ def persist_job_upload(*, job_id: int, filename: str, file_bytes: bytes) -> str:
     return str(path)
 
 
-def persist_job_result(*, job_id: int, filename: str, content: bytes) -> str:
+def persist_job_result(*, job_id: int, filename: str, content: bytes | Path) -> str:
     job_dir = DATA_TRANSFER_UPLOAD_DIR / str(job_id)
     job_dir.mkdir(parents=True, exist_ok=True)
     path = job_dir / filename
-    path.write_bytes(content)
+    if isinstance(content, Path):
+        with content.open("rb") as source, path.open("wb") as target:
+            shutil.copyfileobj(source, target)
+    else:
+        path.write_bytes(content)
     return str(path)
 
 
@@ -420,12 +435,6 @@ def process_import_job(*, job_id: int) -> None:
 
         update_job_progress(db, job, progress_percent=90, progress_message="Finalizing import summary.")
         mark_job_completed(db, job, summary=summary)
-    except Exception as exc:
-        try:
-            job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
-            mark_job_failed(db, job, error_message=str(exc))
-        except Exception:
-            pass
     finally:
         try:
             if path and path.exists():
@@ -595,6 +604,8 @@ def process_export_job(*, job_id: int) -> None:
 
         update_job_progress(db, job, progress_percent=90, progress_message="Writing export artifact.")
         result_path = persist_job_result(job_id=job.id, filename=file_name, content=content)
+        if isinstance(content, Path):
+            content.unlink(missing_ok=True)
         summary = {
             "mode": mode,
             "exported_rows": exported_rows,
@@ -608,11 +619,5 @@ def process_export_job(*, job_id: int) -> None:
             result_file_name=file_name,
             result_media_type=media_type,
         )
-    except Exception as exc:
-        try:
-            job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
-            mark_job_failed(db, job, error_message=str(exc))
-        except Exception:
-            pass
     finally:
         db.close()

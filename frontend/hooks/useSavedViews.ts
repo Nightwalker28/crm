@@ -137,6 +137,7 @@ export function useSavedViews(
   const [selectedViewId, setSelectedViewId] = useState<string>("");
   const [draftConfig, setDraftConfig] = useState<SavedViewConfig>(defaultConfig);
   const lastAppliedViewKeyRef = useRef<string | null>(null);
+  const lastResolvedSelectedViewIdRef = useRef<string | null>(null);
 
   const query = useQuery({
     queryKey: ["saved-views", moduleKey, defaultConfig.visible_columns],
@@ -157,16 +158,22 @@ export function useSavedViews(
   useEffect(() => {
     if (!views.length) return;
     const defaultView = views.find((view) => view.is_default) ?? views[0];
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSelectedViewId((current) => {
-      const normalizedCurrent = resolveViewId(current);
-      if (!normalizedCurrent) {
-        return String(defaultView.id ?? "system-default");
-      }
-      const exists = views.some((view) => String(view.id ?? "system-default") === normalizedCurrent);
-      return exists ? normalizedCurrent : String(defaultView.id ?? "system-default");
-    });
-  }, [resolveViewId, views]);
+    const defaultViewId = String(defaultView.id ?? "system-default");
+    const normalizedCurrent = resolveViewId(selectedViewId);
+    const nextViewId = normalizedCurrent && views.some((view) => String(view.id ?? "system-default") === normalizedCurrent)
+      ? normalizedCurrent
+      : defaultViewId;
+
+    if (lastResolvedSelectedViewIdRef.current === nextViewId && normalizedCurrent === nextViewId) {
+      return;
+    }
+    lastResolvedSelectedViewIdRef.current = nextViewId;
+
+    if (selectedViewId !== nextViewId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setSelectedViewId(nextViewId);
+    }
+  }, [resolveViewId, selectedViewId, views]);
 
   const selectedView = useMemo(
     () => {

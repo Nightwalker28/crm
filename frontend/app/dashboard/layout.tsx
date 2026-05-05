@@ -50,6 +50,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const requiresAdmin = isAdminOnlyPath(pathname);
   const moduleRoute = matchedModuleRoute(pathname);
   const allowedModuleRoutes = new Set(modules.map((module) => module.base_route).filter(Boolean));
+  const isCheckingAdminAccess = requiresAdmin && isLoading;
+  const isCheckingModuleAccess = Boolean(moduleRoute && modulesLoading);
+  const isCheckingAccess = isCheckingAdminAccess || isCheckingModuleAccess;
   const isBlocked = requiresAdmin && !isLoading && !isAdmin;
   const isModuleBlocked = Boolean(moduleRoute && !modulesLoading && !allowedModuleRoutes.has(moduleRoute));
 
@@ -76,7 +79,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <GlobalCommandPalette />
           </div>
           <div className="relative z-30 h-full w-full overflow-y-auto px-6 py-5 custom-scrollbar">
-            {(requiresAdmin && isLoading) || (moduleRoute && modulesLoading) ? (
+            {isCheckingAccess ? (
               <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-6 text-sm text-neutral-500">
                 Checking access...
               </div>

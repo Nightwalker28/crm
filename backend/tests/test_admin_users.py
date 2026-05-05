@@ -13,14 +13,17 @@ class FakeQuery:
         self.mapping = mapping
         self.model = None
 
-    def __call__(self, model):
-        self.model = model
+    def __call__(self, *models):
+        self.model = models[0] if len(models) == 1 else models
         return self
 
     def filter(self, *conditions):
         return self
 
     def first(self):
+        if isinstance(self.model, tuple):
+            values = tuple(self.mapping.get(model.__name__.lower()) for model in self.model)
+            return values if all(values) else None
         model_name = self.model.__name__
         return self.mapping.get(model_name.lower())
 
@@ -31,8 +34,8 @@ class FakeDB:
         self.query_builder = FakeQuery(self.mapping)
         self.committed = False
 
-    def query(self, model):
-        return self.query_builder(model)
+    def query(self, *models):
+        return self.query_builder(*models)
 
     def add(self, _value):
         if isinstance(_value, User) and _value.id is None:
@@ -41,6 +44,9 @@ class FakeDB:
 
     def commit(self):
         self.committed = True
+
+    def flush(self):
+        return None
 
     def refresh(self, _value):
         return None

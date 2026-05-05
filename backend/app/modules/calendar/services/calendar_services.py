@@ -812,7 +812,7 @@ def build_calendar_context(db: Session, *, tenant_id: int, current_user) -> dict
                 "name": _display_user_name(user) or f"User {user.id}",
                 "email": user.email,
                 "team_id": user.team_id,
-                "team_name": user.team_name,
+                "team_name": getattr(getattr(user, "team", None), "name", None),
             }
             for user in users
         ],

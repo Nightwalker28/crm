@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from app.core.database import get_db
-from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
+from app.core.module_filters import parse_filter_conditions
 from app.core.security import require_admin
 from app.core.tenancy import get_frontend_origin_for_request
 from app.core.pagination import Pagination, get_pagination
@@ -86,8 +86,6 @@ def search_users(
     sort_by: str = Query("name"),
     sort_order: str = Query("asc"),
     fields: Optional[str] = Query(None),
-    filter_logic: str = Query(default="all"),
-    filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
     filters_any: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
@@ -95,8 +93,8 @@ def search_users(
     admin = Depends(require_admin),
 ):
     try:
-        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
-        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+        all_conditions = parse_filter_conditions(filters_all)
+        any_conditions = parse_filter_conditions(filters_any)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     response = admin_users.search_users(
@@ -184,7 +182,9 @@ def create_role(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return role_permissions.create_role(db, payload, tenant_id=admin.tenant_id)
+    role = role_permissions.create_role(db, payload, tenant_id=admin.tenant_id)
+    admin_users.invalidate_user_update_options_cache(admin.tenant_id)
+    return role
 
 
 @router.put("/roles/{role_id}", response_model=RoleSchema)
@@ -194,7 +194,9 @@ def update_role(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return role_permissions.update_role(db, role_id, payload, tenant_id=admin.tenant_id)
+    role = role_permissions.update_role(db, role_id, payload, tenant_id=admin.tenant_id)
+    admin_users.invalidate_user_update_options_cache(admin.tenant_id)
+    return role
 
 
 @router.put("/roles/{role_id}/permissions", response_model=list[ModulePermissionSchema])
@@ -263,7 +265,9 @@ def create_team(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_structure.create_team(db, payload, tenant_id=admin.tenant_id)
+    team = admin_structure.create_team(db, payload, tenant_id=admin.tenant_id)
+    admin_users.invalidate_user_update_options_cache(admin.tenant_id)
+    return team
 
 
 @router.get("/teams", response_model=list[TeamSchema])
@@ -281,7 +285,9 @@ def update_team(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_structure.update_team(db, team_id, payload, tenant_id=admin.tenant_id)
+    team = admin_structure.update_team(db, team_id, payload, tenant_id=admin.tenant_id)
+    admin_users.invalidate_user_update_options_cache(admin.tenant_id)
+    return team
 
 
 @router.delete("/teams/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -291,6 +297,7 @@ def delete_team(
     admin = Depends(require_admin),
 ):
     admin_structure.delete_team(db, team_id, tenant_id=admin.tenant_id)
+    admin_users.invalidate_user_update_options_cache(admin.tenant_id)
 
 @router.put("/{user_id}", response_model=UserProfile)
 def update_user(
@@ -299,4 +306,6 @@ def update_user(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_users.update_user(db, user_id, payload, tenant_id=admin.tenant_id)
+    return admin_users.serialize_user_profile(
+        admin_users.update_user(db, user_id, payload, tenant_id=admin.tenant_id)
+    )

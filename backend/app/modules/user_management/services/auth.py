@@ -121,7 +121,7 @@ def _role_level_claim_for_user(user: User) -> int | None:
     role = getattr(user, "role", None)
     level = getattr(role, "level", None) if role else None
     if level is None:
-        return None
+        raise ValueError("Cannot issue access token without role_level claim")
     return int(level)
 
 
@@ -178,6 +178,16 @@ def create_refresh_token(user: User, db: Session) -> str:
 
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
+
+def rotate_refresh_token(user: User, db: Session, *, old_refresh_token_id: int) -> str:
+    deleted = db.query(RefreshToken).filter(
+        RefreshToken.id == old_refresh_token_id,
+        RefreshToken.user_id == user.id,
+    ).delete()
+    if deleted != 1:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
+    return create_refresh_token(user, db)
 
 
 # -------------------------------------------------------------------
@@ -310,6 +320,7 @@ def create_user_setup_link(
     user: User,
     *,
     frontend_origin: str | None = None,
+    commit: bool = True,
 ) -> str:
     _cleanup_stale_user_setup_tokens(db)
 
@@ -331,7 +342,10 @@ def create_user_setup_link(
             expires_at=expires_at,
         )
     )
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
 
     token_query = urllib.parse.urlencode({"token": raw_token})
     base_origin = (frontend_origin or settings.FRONTEND_ORIGIN).rstrip("/")

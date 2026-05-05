@@ -2,7 +2,7 @@ from typing import Optional, List, Any
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
 class UserStatus(str, Enum):
     pending = "pending"
@@ -51,6 +51,8 @@ class UserListItem(BaseModel):
 
 class UserListResponse(BaseModel):
     results: List[UserListItem]  # Renamed from 'users' to match pagination.py helper
+    range_start: int = 0
+    range_end: int = 0
     total_count: int
     total_pages: int
     page: int
@@ -138,6 +140,13 @@ class UpdateUserRequest(BaseModel):
     role_id: Optional[int] = None
     is_active: Optional[UserStatus] = None
     auth_mode: Optional[UserAuthMode] = None
+
+    @field_validator("is_active")
+    @classmethod
+    def reject_pending_status(cls, value: Optional[UserStatus]) -> Optional[UserStatus]:
+        if value == UserStatus.pending:
+            raise ValueError("Pending status is no longer supported")
+        return value
     
 class DepartmentSchema(BaseModel):
     id: int

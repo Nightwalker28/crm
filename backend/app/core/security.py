@@ -1,6 +1,6 @@
 from fastapi import Depends, HTTPException, status, Request
 from sqlalchemy.orm import Session, joinedload
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 
 from app.core.access_control import (
     ADMIN_MIN_ROLE_LEVEL,
@@ -8,11 +8,57 @@ from app.core.access_control import (
     USER_MIN_ROLE_LEVEL,
     require_minimum_role_level,
 )
+from app.core.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.tenancy import is_cloud_mode_enabled
 from app.modules.user_management.models import User, UserStatus, RefreshToken
-from app.modules.user_management.services.auth import decode_token, create_access_token
+from app.modules.user_management.services.auth import decode_token, create_access_token, rotate_refresh_token
+
+REFRESH_RATE_LIMIT_PREFIX = "auth:refresh_failed"
+
+
+def _refresh_attempt_ip(request: Request) -> str:
+    forwarded_for = request.headers.get("x-forwarded-for") if hasattr(request, "headers") else None
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip() or "unknown"
+    client = getattr(request, "client", None)
+    return getattr(client, "host", None) or "unknown"
+
+
+def _refresh_attempt_keys(request: Request, user_id: int | str | None = None) -> list[str]:
+    tenant = getattr(getattr(request, "state", None), "tenant", None)
+    tenant_id = getattr(tenant, "id", "global")
+    keys = [f"{REFRESH_RATE_LIMIT_PREFIX}:tenant:{tenant_id}:ip:{_refresh_attempt_ip(request)}"]
+    if user_id is not None:
+        keys.append(f"{REFRESH_RATE_LIMIT_PREFIX}:tenant:{tenant_id}:user:{user_id}")
+    return keys
+
+
+def check_refresh_token_rate_limit(request: Request, user_id: int | str | None = None) -> None:
+    for key in _refresh_attempt_keys(request, user_id):
+        payload = cache_get_json(key) or {}
+        if int(payload.get("count") or 0) >= settings.REFRESH_TOKEN_FAILED_ATTEMPT_LIMIT:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed refresh attempts",
+            )
+
+
+def record_failed_refresh_attempt(request: Request, user_id: int | str | None = None) -> None:
+    for key in _refresh_attempt_keys(request, user_id):
+        payload = cache_get_json(key) or {}
+        count = int(payload.get("count") or 0) + 1
+        cache_set_json(
+            key,
+            {"count": count},
+            ttl_seconds=settings.REFRESH_TOKEN_FAILED_ATTEMPT_WINDOW_SECONDS,
+        )
+
+
+def clear_failed_refresh_attempts(request: Request, user_id: int | str | None = None) -> None:
+    for key in _refresh_attempt_keys(request, user_id):
+        cache_delete(key)
 
 
 def _validate_request_tenant(request: Request, payload: dict) -> int:
@@ -51,30 +97,23 @@ def _attach_access_token_claims(user: User, payload: dict) -> User:
 
 
 def _load_user_with_team(db: Session, user_id: int) -> User | None:
-    return db.query(User).options(joinedload(User.team)).filter(User.id == user_id).first()
+    return (
+        db.query(User)
+        .options(joinedload(User.team), joinedload(User.role))
+        .filter(User.id == user_id)
+        .first()
+    )
 
 
 def _attach_department_context(user: User) -> User:
+    if getattr(user, "department_id", None) is not None:
+        user._department_id_loaded = True
+        user._department_id = user.department_id
+        return user
     team = getattr(user, "team", None)
     user._department_id_loaded = True
     user._department_id = getattr(team, "department_id", None) if team else None
     return user
-
-
-def _as_utc(value: datetime | None) -> datetime | None:
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
-
-
-def _should_reissue_access_token(db_token: RefreshToken, now: datetime) -> bool:
-    last_used_at = _as_utc(getattr(db_token, "last_used_at", None))
-    if last_used_at is None:
-        return True
-    min_interval = timedelta(seconds=settings.REFRESH_TOKEN_REISSUE_MIN_SECONDS)
-    return now - last_used_at >= min_interval
 
 
 def get_current_user(
@@ -171,15 +210,14 @@ def get_current_user(
                 detail="Session tenant mismatch",
             )
 
-        if _should_reissue_access_token(db_token, now):
-            new_access_token = create_access_token(user)
-            decoded_new_access_token = decode_token(new_access_token, expected_type="access")
-            _attach_access_token_claims(user, decoded_new_access_token)
-            db_token.last_used_at = now
-            db.commit()
+        new_access_token = create_access_token(user)
+        decoded_new_access_token = decode_token(new_access_token, expected_type="access")
+        _attach_access_token_claims(user, decoded_new_access_token)
+        new_refresh_token = rotate_refresh_token(user, db, old_refresh_token_id=db_token.id)
 
-            # Attach cookie to response (middleware in main.py will set it)
-            request.state._new_access_token = new_access_token
+        # Attach cookies to response (middleware in main.py will set them)
+        request.state._new_access_token = new_access_token
+        request.state._new_refresh_token = new_refresh_token
 
         request.state._current_user = _attach_department_context(user)
 

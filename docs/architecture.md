@@ -28,7 +28,7 @@ This file captures the current intended technical patterns and constraints so ne
   - all records belong to that tenant
   - cloud mode simply resolves different tenants by host/domain
 - Future modules must be designed as tenant-aware on day one rather than retrofitted later.
-- Verified deployment licenses are process-cached. Renewed or changed license tokens require an application restart, and tests that patch deployment-license settings must clear `get_verified_deployment_license`'s cache before asserting new behavior.
+- Verified deployment licenses are process-cached with a bounded TTL so renewed, rotated, or expired license tokens are rechecked without a process restart. Tests that patch deployment-license settings must clear `get_verified_deployment_license`'s cache before asserting new behavior.
 
 ### Permissions
 
@@ -165,6 +165,7 @@ This file captures the current intended technical patterns and constraints so ne
 - Cache abstraction exists and can use Redis or local in-process fallback.
 - Redis support exists, but runtime validation and failure-path hardening are still open work.
 - Redis is the preferred cache/session/reference-data acceleration layer in the current architecture.
+- Redis cache connections use a circuit breaker so degraded Redis does not trigger a reconnect attempt on every request.
 - Multi-worker deployments should set `REDIS_URL`; without Redis, the local fallback cache is per process and invalidations do not propagate between workers.
 - Elasticsearch is not the default choice for the current platform needs because the main open need is caching and fast key/value or short-lived derived data, not distributed search indexing as the primary bottleneck.
 
@@ -217,7 +218,13 @@ This file captures the current intended technical patterns and constraints so ne
 - Favor proper indexes for high-traffic filters, joins, and restore/list paths.
 - Favor targeted composite indexes where query patterns are stable and justified by actual workload.
 - Use Postgres text-search/trigram features for ranked search where they fit instead of inventing parallel search logic.
+- Fresh Postgres installs should create `pg_trgm` for trigram search and `unaccent` for normalized search support through migrations where privileges allow it.
+- Application database sessions set `statement_timeout` and `idle_in_transaction_session_timeout` through connection options by default; production deployments may also enforce these on the database role.
+- Production deployments with multiple web and worker processes should put PgBouncer or an equivalent transaction pooler between Lynk and Postgres, then tune SQLAlchemy `DB_POOL_SIZE`/`DB_MAX_OVERFLOW` as per-process limits instead of letting every process hold many direct Postgres connections.
+- CI should validate Alembic chain integrity with `alembic history --verbose` and model/migration drift with `alembic check` where the installed Alembic version supports it.
 - Trigram search should use a production-grade similarity threshold and should be skipped for very short search terms, which should fall back to substring matching only.
+- Production Postgres deployments should enable `pg_stat_statements` and periodically inspect slow/high-total-time queries, for example by ordering `pg_stat_statements` by `total_exec_time`.
+- Append-heavy operational tables such as activity logs, notifications, refresh tokens, and data-transfer jobs should use more aggressive autovacuum settings than the cluster default.
 - Push visible-column optimization deeper into ORM/select behavior on heavy endpoints rather than only trimming serialized payloads.
 - Prefer batching and relationship loading strategies that avoid N+1 query patterns on list/detail pages.
 - Validate migrations and cleanup steps carefully because Postgres makes it easy to evolve schemas, but rollback/data-safety still needs discipline.

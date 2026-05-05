@@ -24,17 +24,40 @@ _local_cache: OrderedDict[str, tuple[float, str]] = OrderedDict()
 _redis_client = None
 _redis_lock = threading.Lock()
 _redis_failure_logged = False
+_redis_consecutive_failures = 0
+_redis_circuit_open_until = 0.0
+
+
+def _record_redis_failure(exc: Exception) -> None:
+    global _redis_client, _redis_failure_logged, _redis_consecutive_failures, _redis_circuit_open_until
+    _redis_consecutive_failures += 1
+    if _redis_consecutive_failures >= settings.REDIS_CIRCUIT_BREAKER_FAILURE_THRESHOLD:
+        _redis_circuit_open_until = monotonic() + settings.REDIS_CIRCUIT_BREAKER_COOLDOWN_SECONDS
+    if not _redis_failure_logged:
+        logger.warning("Redis unavailable, cache operations will bypass Redis temporarily: %s", exc)
+        _redis_failure_logged = True
+    _redis_client = None
+
+
+def _record_redis_success() -> None:
+    global _redis_consecutive_failures, _redis_circuit_open_until
+    _redis_consecutive_failures = 0
+    _redis_circuit_open_until = 0.0
 
 
 def _get_redis_client():
-    global _redis_client, _redis_failure_logged
+    global _redis_client
     if _redis_client is not None:
         return _redis_client
     if not settings.REDIS_URL or redis is None:
         return None
+    if monotonic() < _redis_circuit_open_until:
+        return None
     with _redis_lock:
         if _redis_client is not None:
             return _redis_client
+        if monotonic() < _redis_circuit_open_until:
+            return None
         try:
             _redis_client = redis.Redis.from_url(
                 settings.REDIS_URL,
@@ -43,12 +66,10 @@ def _get_redis_client():
                 socket_connect_timeout=0.2,
             )
             _redis_client.ping()
+            _record_redis_success()
             return _redis_client
         except Exception as exc:  # pragma: no cover - network/service dependent
-            if not _redis_failure_logged:
-                logger.warning("Redis unavailable, falling back to local cache: %s", exc)
-                _redis_failure_logged = True
-            _redis_client = None
+            _record_redis_failure(exc)
             return None
 
 
@@ -81,6 +102,7 @@ def cache_get_json(key: str) -> Any | None:
                 return json.loads(cached)
         except Exception as exc:  # pragma: no cover - network/service dependent
             logger.warning("Redis get failed for key %s: %s", key, exc)
+            _record_redis_failure(exc)
         return None
     if settings.REDIS_URL:
         return None
@@ -104,6 +126,7 @@ def cache_set_json(key: str, value: Any, *, ttl_seconds: int = LOCAL_CACHE_TTL_S
             client.setex(key, ttl_seconds, serialized)
         except Exception as exc:  # pragma: no cover - network/service dependent
             logger.warning("Redis set failed for key %s: %s", key, exc)
+            _record_redis_failure(exc)
         return
     if settings.REDIS_URL:
         return
@@ -120,6 +143,7 @@ def cache_delete(key: str) -> None:
             client.delete(key)
         except Exception as exc:  # pragma: no cover - network/service dependent
             logger.warning("Redis delete failed for key %s: %s", key, exc)
+            _record_redis_failure(exc)
         return
     if settings.REDIS_URL:
         return
@@ -135,6 +159,7 @@ def cache_delete_prefix(prefix: str) -> None:
                 client.delete(*keys)
         except Exception as exc:  # pragma: no cover - network/service dependent
             logger.warning("Redis delete prefix failed for %s: %s", prefix, exc)
+            _record_redis_failure(exc)
         return
     if settings.REDIS_URL:
         return

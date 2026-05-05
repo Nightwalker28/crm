@@ -20,6 +20,7 @@ from app.modules.user_management.schema import (
     UserProfileUpdateRequest,
 )
 from app.modules.user_management.services.auth import get_user_accessible_modules
+from app.modules.user_management.services.admin_users import serialize_user_profile
 from app.modules.user_management.services.profile import (
     get_or_create_company_profile,
     list_saved_views,
@@ -43,7 +44,7 @@ def get_me(
     db: Session = Depends(get_db),
 ):
     role_level = get_user_role_level(db, current_user)
-    profile = UserProfile.model_validate(current_user).model_dump()
+    profile = serialize_user_profile(current_user).model_dump()
     profile["role_level"] = role_level
     profile["is_admin"] = bool(role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL)
     return profile
@@ -55,7 +56,7 @@ def update_me(
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
 ):
-    return update_user_profile(db, current_user, payload.model_dump(exclude_unset=True))
+    return serialize_user_profile(update_user_profile(db, current_user, payload.model_dump(exclude_unset=True)))
 
 
 @router.post("/me/photo", response_model=UserImageUploadResponse)
@@ -65,7 +66,7 @@ async def upload_me_photo(
     current_user=Depends(require_user),
 ):
     user = await upload_user_photo(db, current_user, file)
-    return UserImageUploadResponse(photo_url=user.photo_url or "", user=user)
+    return UserImageUploadResponse(photo_url=user.photo_url or "", user=serialize_user_profile(user))
 
 
 @router.get("/me/modules", response_model=list[ModuleSchema])

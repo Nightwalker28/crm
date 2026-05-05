@@ -5,7 +5,6 @@ from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from fastapi import HTTPException, status
 from sqlalchemy import Date, DateTime, Float, Integer, Numeric, Text, and_, cast, func, not_, or_
 
 FILTER_OPERATORS = {
@@ -138,10 +137,7 @@ def _build_text_expression(expression, operator: str, value: Any, values: Any):
             return None
         return not_(lowered.in_([item.lower() for item in normalized_values]))
     if operator in {"gt", "gte", "lt", "lte"}:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Operator {operator!r} is not supported for text fields",
-        )
+        raise ValueError(f"Operator {operator!r} is not supported for text fields")
     return None
 
 
@@ -329,7 +325,4 @@ def _numeric_expression(expression):
     expression_type = getattr(expression, "type", None)
     if isinstance(expression_type, (Integer, Numeric, Float)):
         return expression
-    raise HTTPException(
-        status_code=status.HTTP_400_BAD_REQUEST,
-        detail="Numeric filters are only supported for numeric fields",
-    )
+    raise ValueError("Numeric filters are only supported for numeric fields")

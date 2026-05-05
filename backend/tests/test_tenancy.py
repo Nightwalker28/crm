@@ -44,6 +44,34 @@ class DeploymentLicenseCacheTests(unittest.TestCase):
                 {"deployment_mode": "cloud", "license_id": "b"},
             )
 
+    def test_verified_deployment_license_cache_refreshes_after_ttl(self):
+        with patch.object(tenancy.settings, "DEPLOYMENT_LICENSE", "token-a"), \
+             patch.object(tenancy.settings, "DEPLOYMENT_LICENSE_PUBLIC_KEY", "public-key"), \
+             patch.object(tenancy.settings, "DEPLOYMENT_LICENSE_CACHE_TTL_SECONDS", 10), \
+             patch.object(tenancy.time, "monotonic", side_effect=[100.0, 105.0, 111.0]), \
+             patch.object(
+                 tenancy.jwt,
+                 "decode",
+                 side_effect=[
+                     {"deployment_mode": "cloud", "license_id": "a"},
+                     {"deployment_mode": "cloud", "license_id": "b"},
+                 ],
+             ) as decode:
+            self.assertEqual(
+                tenancy.get_verified_deployment_license(),
+                {"deployment_mode": "cloud", "license_id": "a"},
+            )
+            self.assertEqual(
+                tenancy.get_verified_deployment_license(),
+                {"deployment_mode": "cloud", "license_id": "a"},
+            )
+            self.assertEqual(
+                tenancy.get_verified_deployment_license(),
+                {"deployment_mode": "cloud", "license_id": "b"},
+            )
+
+        self.assertEqual(decode.call_count, 2)
+
 
 if __name__ == "__main__":
     unittest.main()

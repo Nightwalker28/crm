@@ -81,6 +81,28 @@ export function useNotifications() {
 
   const markAllReadMutation = useMutation({
     mutationFn: markAllNotificationsRead,
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: ["user-notifications"] });
+      const previous = queryClient.getQueryData<NotificationListResponse>(["user-notifications"]);
+      queryClient.setQueryData<NotificationListResponse>(["user-notifications"], (current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          unread_count: 0,
+          results: current.results.map((notification) => (
+            notification.status === "unread"
+              ? { ...notification, status: "read" }
+              : notification
+          )),
+        };
+      });
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["user-notifications"], context.previous);
+      }
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
     },

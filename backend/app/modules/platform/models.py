@@ -79,6 +79,9 @@ class CustomFieldValue(Base):
 
 class DataTransferJob(Base):
     __tablename__ = "data_transfer_jobs"
+    __table_args__ = (
+        Index("ix_data_transfer_jobs_tenant_status", "tenant_id", "status"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)

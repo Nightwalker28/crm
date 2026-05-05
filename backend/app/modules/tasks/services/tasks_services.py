@@ -638,7 +638,7 @@ def list_task_assignment_options(db: Session, *, tenant_id: int) -> dict:
                 "name": _display_user_name(user) or f"User {user.id}",
                 "email": user.email,
                 "team_id": user.team_id,
-                "team_name": user.team_name,
+                "team_name": getattr(getattr(user, "team", None), "name", None),
             }
             for user in users
         ],

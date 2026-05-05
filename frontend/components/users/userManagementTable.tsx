@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState, Fragment } from "react";
 import Image from "next/image";
-import { useQuery } from "@tanstack/react-query";
 import Pagination from "../ui/Pagination";
 import UserFilters, { type UserFiltersValue } from "@/components/users/userFilters";
 import { Pill } from "@/components/ui/Pill"; 
 import { apiFetch } from "@/lib/api";
-import type { SavedViewCondition } from "@/hooks/useSavedViews";
+import type { SavedViewCondition, SavedViewFilters } from "@/hooks/useSavedViews";
+import { usePagedList } from "@/hooks/usePagedList";
+import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 
 import {
   Table,
@@ -51,13 +52,11 @@ type UserOptionsData = {
 
 type UsersResponse = {
   results: User[];
+  range_start: number;
+  range_end: number;
   total_count: number;
   total_pages: number;
-};
-
-type OptionMaps = {
-  teamMap: Map<string, number>;
-  roleMap: Map<string, number>;
+  page: number;
 };
 
 type Props = {
@@ -135,69 +134,34 @@ const fetchUsers = async ({
   page, 
   pageSize, 
   filters, 
-  sortKey, 
-  sortDirection,
-  maps,
   visibleColumns,
-  allViewConditions,
-  anyViewConditions,
 }: {
   page: number;
   pageSize: number;
-  filters: UserFiltersValue;
-  sortKey: SortKey;
-  sortDirection: SortDirection;
-  maps: OptionMaps;
+  filters: SavedViewFilters;
   visibleColumns: string[];
-  allViewConditions?: SavedViewCondition[];
-  anyViewConditions?: SavedViewCondition[];
 }): Promise<UsersResponse> => {
-  const totalViewConditions = (allViewConditions?.length ?? 0) + (anyViewConditions?.length ?? 0);
-  const isSearchMode = 
-      !!filters.search || 
-      filters.selectedTeams.length > 0 || 
-      filters.selectedRoles.length > 0 || 
-      filters.selectedStatuses.length > 0 ||
-      totalViewConditions > 0 ||
-      sortKey !== "name" || 
-      sortDirection !== "asc";
-
-  const endpoint = isSearchMode ? "/admin/users/search" : "/admin/users";
-
   const params = new URLSearchParams();
   params.append("page", page.toString());
   params.append("page_size", pageSize.toString());
   if (visibleColumns.length) params.append("fields", visibleColumns.join(","));
+  appendSavedViewFilterParams(params, filters);
 
-  if (isSearchMode) {
-    if (filters.search) params.append("search", filters.search);
-    
-    const teamIds = filters.selectedTeams
-        .map(name => maps.teamMap.get(name))
-        .filter(id => id !== undefined);
-        
-    const roleIds = filters.selectedRoles
-        .map(name => maps.roleMap.get(name))
-        .filter(id => id !== undefined);
+  const teamIds = Array.isArray(filters.team_ids) ? filters.team_ids.filter((id): id is number => typeof id === "number") : [];
+  const roleIds = Array.isArray(filters.role_ids) ? filters.role_ids.filter((id): id is number => typeof id === "number") : [];
+  const selectedStatuses = Array.isArray(filters.statuses) ? filters.statuses.filter((value): value is string => typeof value === "string") : [];
+  const sortBy = typeof filters.sort_by === "string" ? filters.sort_by : "name";
+  const sortOrder = typeof filters.sort_order === "string" ? filters.sort_order : "asc";
 
-    if (teamIds.length) params.append("teams", teamIds.join(","));
-    if (roleIds.length) params.append("roles", roleIds.join(","));
-
-    if (filters.selectedStatuses.length > 0) {
-       params.append("status", filters.selectedStatuses.join(","));
-    }
-    if (allViewConditions?.length) {
-      params.append("filters_all", JSON.stringify(allViewConditions));
-    }
-    if (anyViewConditions?.length) {
-      params.append("filters_any", JSON.stringify(anyViewConditions));
-    }
-    
-    params.append("sort_by", sortKey);
-    params.append("sort_order", sortDirection);
+  if (teamIds.length) params.append("teams", teamIds.join(","));
+  if (roleIds.length) params.append("roles", roleIds.join(","));
+  if (selectedStatuses.length > 0) {
+    params.append("status", selectedStatuses.join(","));
   }
+  params.append("sort_by", sortBy);
+  params.append("sort_order", sortOrder);
 
-  const res = await apiFetch(`${endpoint}?${params.toString()}`);
+  const res = await apiFetch(`/admin/users/search?${params.toString()}`);
   if (!res.ok) throw new Error("Network response was not ok");
   return res.json();
 };
@@ -215,11 +179,8 @@ export function UserManagementTable({
   anyViewConditions = [],
   onStateChange,
 }: Props) {
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
   const [sortKey, setSortKey] = useState<SortKey>(initialSortKey);
   const [sortDirection, setSortDirection] = useState<SortDirection>(initialSortDirection);
-  const emptyUsers: User[] = [];
   const onStateChangeRef = useRef(onStateChange);
   const isMountedRef = useRef(false);
 
@@ -235,14 +196,7 @@ export function UserManagementTable({
     onStateChangeRef.current = onStateChange;
   }, [onStateChange]);
 
-  const apiFilters = useMemo(() => ({
-    search: filters.search,
-    selectedTeams: filters.selectedTeams,
-    selectedRoles: filters.selectedRoles,
-    selectedStatuses: filters.selectedStatuses,
-  }), [filters.search, filters.selectedTeams, filters.selectedRoles, filters.selectedStatuses]);
-
-  const maps = useMemo(() => {
+  const { teamIdsByName, roleIdsByName } = useMemo(() => {
     const teamMap = new Map<string, number>();
     const roleMap = new Map<string, number>();
     
@@ -252,21 +206,61 @@ export function UserManagementTable({
     if (optionsData?.roles) {
         optionsData.roles.forEach((role) => roleMap.set(role.name, role.id));
     }
-    return { teamMap, roleMap };
+    return { teamIdsByName: teamMap, roleIdsByName: roleMap };
   }, [optionsData]);
 
-  const { data, isLoading, isFetching } = useQuery({
-    queryKey: ["users-paged", page, pageSize, apiFilters, sortKey, sortDirection, visibleColumns, allViewConditions, anyViewConditions], 
-    queryFn: () => fetchUsers({ page, pageSize, filters, sortKey, sortDirection, maps, visibleColumns, allViewConditions, anyViewConditions }),
-    placeholderData: (previousData) => previousData, 
-    enabled: !!optionsData,
+  const selectedTeamIds = useMemo(
+    () => filters.selectedTeams.map((name) => teamIdsByName.get(name)).filter((id): id is number => typeof id === "number"),
+    [filters.selectedTeams, teamIdsByName],
+  );
+  const selectedRoleIds = useMemo(
+    () => filters.selectedRoles.map((name) => roleIdsByName.get(name)).filter((id): id is number => typeof id === "number"),
+    [filters.selectedRoles, roleIdsByName],
+  );
+  const userListFilters = useMemo<SavedViewFilters>(() => ({
+    search: filters.search,
+    team_ids: selectedTeamIds,
+    role_ids: selectedRoleIds,
+    statuses: filters.selectedStatuses,
+    all_conditions: allViewConditions,
+    any_conditions: anyViewConditions,
+    sort_by: sortKey,
+    sort_order: sortDirection,
+  }), [
+    allViewConditions,
+    anyViewConditions,
+    filters.search,
+    filters.selectedStatuses,
+    selectedRoleIds,
+    selectedTeamIds,
+    sortDirection,
+    sortKey,
+  ]);
+
+  const pagedUsers = usePagedList<User, UsersResponse>({
+    queryKey: ["users-paged"],
+    fetcher: (currentPage, currentPageSize, currentFilters, columns) => fetchUsers({
+      page: currentPage,
+      pageSize: currentPageSize,
+      filters: currentFilters,
+      visibleColumns: columns,
+    }),
+    visibleColumns,
+    filters: userListFilters,
+    initialPage: 1,
+    initialPageSize: 10,
     refetchOnWindowFocus: false,
-    refetchOnMount: true,
   });
 
-  const users = data?.results ?? emptyUsers;
-  const totalCount = data?.total_count || 0;
-  const totalPages = data?.total_pages || 1;
+  const users = pagedUsers.items;
+  const totalCount = pagedUsers.totalCount;
+  const totalPages = pagedUsers.totalPages;
+  const page = pagedUsers.page;
+  const pageSize = pagedUsers.pageSize;
+  const isLoading = pagedUsers.isLoading;
+  const isFetching = pagedUsers.isFetching;
+  const goToUserPage = pagedUsers.goToPage;
+  const onUserPageSizeChange = pagedUsers.onPageSizeChange;
 
   const groupedByTeam = useMemo(() => {
     if (!users.length) return [];
@@ -433,7 +427,7 @@ export function UserManagementTable({
 
   const handleFilterChange = (newFilters: UserFiltersValue) => {
     setFilters(newFilters);
-    setPage(1);
+    goToUserPage(1);
   };
 
   const clearAllFilters = () => {
@@ -453,6 +447,7 @@ export function UserManagementTable({
       setSortKey(key);
       setSortDirection("asc");
     }
+    goToUserPage(1);
   };
 
   useEffect(() => {
@@ -467,8 +462,8 @@ export function UserManagementTable({
     setFilters((current) => (filtersEqual(current, nextFilters) ? current : nextFilters));
     setSortKey((current) => (current === initialSortKey ? current : initialSortKey));
     setSortDirection((current) => (current === initialSortDirection ? current : initialSortDirection));
-    setPage(1);
-  }, [stateKey, initialFilters, initialSortDirection, initialSortKey]);
+    goToUserPage(1);
+  }, [stateKey, initialFilters, initialSortDirection, initialSortKey, goToUserPage]);
 
   useEffect(() => {
     if (!isMountedRef.current) {
@@ -551,13 +546,10 @@ export function UserManagementTable({
             totalPages={totalPages}
             totalCount={totalCount}
             pageSize={pageSize} 
-            rangeStart={(page - 1) * pageSize + 1} 
-            rangeEnd={Math.min(page * pageSize, totalCount)} 
-            onPageChange={setPage}
-            onPageSizeChange={(newSize) => { 
-              setPageSize(newSize);
-              setPage(1); 
-            }}
+            rangeStart={pagedUsers.rangeStart}
+            rangeEnd={pagedUsers.rangeEnd}
+            onPageChange={goToUserPage}
+            onPageSizeChange={onUserPageSizeChange}
           />
         </Card>
       </div>

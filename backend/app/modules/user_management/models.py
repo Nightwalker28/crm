@@ -180,6 +180,8 @@ class Team(Base):
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (
+        Index("ix_users_tenant_status", "tenant_id", "is_active"),
+        Index("ix_users_tenant_team", "tenant_id", "team_id"),
         UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
     )
 
@@ -191,6 +193,7 @@ class User(Base):
         index=True,
     )
     team_id = Column(BigInteger, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
+    department_id = Column(BigInteger, ForeignKey("departments.id", ondelete="SET NULL"), nullable=True, index=True)
     role_id = Column(BigInteger, ForeignKey("roles.id", ondelete="RESTRICT"), nullable=True)
 
     first_name = Column(String(100), nullable=True)
@@ -216,6 +219,7 @@ class User(Base):
     )
 
     team = relationship("Team", back_populates="users")
+    department = relationship("Department")
     role = relationship("Role", back_populates="users")
     tenant = relationship("Tenant", back_populates="users")
     setup_tokens = relationship(
@@ -223,14 +227,6 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
-
-    @property
-    def team_name(self) -> str:
-        return self.team.name if self.team else "Unassigned"
-
-    @property
-    def role_name(self) -> str:
-        return self.role.name if self.role else "Unassigned"
 
 
 class Module(Base):

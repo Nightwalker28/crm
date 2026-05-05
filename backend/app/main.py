@@ -13,6 +13,11 @@ from app.core.uploads import UPLOADS_DIR
 app = FastAPI(title="Lynk")
 
 
+@app.get("/health")
+def health_check():
+    return {"status": "ok"}
+
+
 @app.on_event("startup")
 def validate_runtime_configuration():
     validate_startup_settings()
@@ -33,6 +38,12 @@ app.add_middleware(
 
 @app.middleware("http")
 async def attach_tenant_context(request: Request, call_next):
+    path = request.url.path
+    if path == "/health" or path == "/media" or path.startswith("/media/"):
+        request.state.cloud_mode = is_cloud_mode_enabled()
+        request.state.tenant = None
+        return await call_next(request)
+
     db = SessionLocal()
     try:
         request.state.cloud_mode = is_cloud_mode_enabled()
@@ -64,6 +75,17 @@ async def attach_access_token_cookie(request: Request, call_next):
             samesite=settings.COOKIE_SAMESITE,
             path=settings.COOKIE_PATH,
             max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        )
+    new_refresh_token = getattr(request.state, "_new_refresh_token", None)
+    if new_refresh_token:
+        response.set_cookie(
+            key=settings.REFRESH_TOKEN_COOKIE_NAME,
+            value=new_refresh_token,
+            httponly=settings.COOKIE_HTTPONLY,
+            secure=settings.COOKIE_SECURE,
+            samesite=settings.COOKIE_SAMESITE,
+            path=settings.COOKIE_PATH,
+            max_age=settings.REFRESH_TOKEN_EXPIRE_HOURS * 60 * 60,
         )
 
     return response

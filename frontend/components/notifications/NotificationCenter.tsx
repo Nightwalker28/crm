@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { Bell, CheckCheck, Loader2 } from "lucide-react";
+import { Bell, BellRing, CheckCheck, Loader2 } from "lucide-react";
 
 import { useNotifications } from "@/hooks/useNotifications";
 import { Button } from "@/components/ui/button";
@@ -11,6 +12,12 @@ import { formatDateTime } from "@/lib/datetime";
 export default function NotificationCenter() {
   const { notifications, unreadCount, isLoading, isFetching, markRead, markAllRead } =
     useNotifications();
+  const [browserPermission, setBrowserPermission] = useState<NotificationPermission | "unsupported">(() => {
+    if (typeof window === "undefined" || !("Notification" in window)) {
+      return "unsupported";
+    }
+    return Notification.permission;
+  });
 
   async function handleNotificationClick(notificationId: number) {
     try {
@@ -18,6 +25,12 @@ export default function NotificationCenter() {
     } catch {
       // keep navigation usable even if the read mutation fails
     }
+  }
+
+  async function handleEnableBrowserNotifications() {
+    if (typeof window === "undefined" || !("Notification" in window)) return;
+    const permission = await Notification.requestPermission();
+    setBrowserPermission(permission);
   }
 
   return (
@@ -61,6 +74,18 @@ export default function NotificationCenter() {
             <CheckCheck className="h-3.5 w-3.5" />
             Mark all
           </Button>
+          {browserPermission === "default" ? (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 px-2 text-xs text-neutral-300 hover:bg-white/8 hover:text-white"
+              onClick={() => void handleEnableBrowserNotifications()}
+            >
+              <BellRing className="h-3.5 w-3.5" />
+              Enable alerts
+            </Button>
+          ) : null}
         </div>
 
         <div className="max-h-[420px] overflow-y-auto custom-scrollbar">

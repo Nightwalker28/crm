@@ -32,6 +32,11 @@ class Settings:
     DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "10"))
     DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "20"))
     DB_POOL_RECYCLE_SECONDS: int = int(os.getenv("DB_POOL_RECYCLE_SECONDS", "1800"))
+    DB_POOL_PRE_PING: bool = _env_bool("DB_POOL_PRE_PING")
+    DB_STATEMENT_TIMEOUT_MS: int = int(os.getenv("DB_STATEMENT_TIMEOUT_MS", "30000"))
+    DB_IDLE_IN_TRANSACTION_TIMEOUT_MS: int = int(
+        os.getenv("DB_IDLE_IN_TRANSACTION_TIMEOUT_MS", "60000")
+    )
 
     # -------------------------
     # Google OAuth
@@ -65,6 +70,15 @@ class Settings:
     )
     REFRESH_TOKEN_REISSUE_MIN_SECONDS: int = int(
         os.getenv("REFRESH_TOKEN_REISSUE_MIN_SECONDS", "30")
+    )
+    REFRESH_TOKEN_CLEANUP_INTERVAL_SECONDS: int = int(
+        os.getenv("REFRESH_TOKEN_CLEANUP_INTERVAL_SECONDS", str(60 * 60))
+    )
+    REFRESH_TOKEN_FAILED_ATTEMPT_LIMIT: int = int(
+        os.getenv("REFRESH_TOKEN_FAILED_ATTEMPT_LIMIT", "5")
+    )
+    REFRESH_TOKEN_FAILED_ATTEMPT_WINDOW_SECONDS: int = int(
+        os.getenv("REFRESH_TOKEN_FAILED_ATTEMPT_WINDOW_SECONDS", "60")
     )
     USER_SETUP_TOKEN_EXPIRE_HOURS: int = int(
         os.getenv("USER_SETUP_TOKEN_EXPIRE_HOURS", "72")
@@ -101,6 +115,7 @@ class Settings:
     DEPLOYMENT_LICENSE: str | None = os.getenv("DEPLOYMENT_LICENSE")
     DEPLOYMENT_LICENSE_PUBLIC_KEY: str | None = os.getenv("DEPLOYMENT_LICENSE_PUBLIC_KEY")
     DEPLOYMENT_LICENSE_ALGORITHM: str = os.getenv("DEPLOYMENT_LICENSE_ALGORITHM", "RS256")
+    DEPLOYMENT_LICENSE_CACHE_TTL_SECONDS: int = int(os.getenv("DEPLOYMENT_LICENSE_CACHE_TTL_SECONDS", str(24 * 60 * 60)))
     SINGLE_TENANT_SLUG: str = os.getenv("SINGLE_TENANT_SLUG", "default")
     SINGLE_TENANT_NAME: str = os.getenv("SINGLE_TENANT_NAME", "Default Tenant")
     GOOGLE_OAUTH_STATE_EXPIRE_MINUTES: int = int(
@@ -112,6 +127,8 @@ class Settings:
     # -------------------------
     FRONTEND_ORIGIN: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
     REDIS_URL: str | None = os.getenv("REDIS_URL")
+    REDIS_CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = int(os.getenv("REDIS_CIRCUIT_BREAKER_FAILURE_THRESHOLD", "3"))
+    REDIS_CIRCUIT_BREAKER_COOLDOWN_SECONDS: int = int(os.getenv("REDIS_CIRCUIT_BREAKER_COOLDOWN_SECONDS", "60"))
     CELERY_BROKER_URL: str | None = os.getenv("CELERY_BROKER_URL") or os.getenv("REDIS_URL")
     DATA_TRANSFER_BACKGROUND_ROW_THRESHOLD: int = int(
         os.getenv("DATA_TRANSFER_BACKGROUND_ROW_THRESHOLD", "10000")
@@ -143,7 +160,7 @@ class Settings:
     )
     PAGINATION_MAX_PUBLIC_PAGE_SIZE: int = int(os.getenv("PAGINATION_MAX_PUBLIC_PAGE_SIZE", "100"))
     POSTGRES_TRIGRAM_SIMILARITY_THRESHOLD: float = float(
-        os.getenv("POSTGRES_TRIGRAM_SIMILARITY_THRESHOLD", "0.3")
+        os.getenv("POSTGRES_TRIGRAM_SIMILARITY_THRESHOLD", "0.4")
     )
     POSTGRES_TRIGRAM_MIN_SEARCH_LENGTH: int = int(
         os.getenv("POSTGRES_TRIGRAM_MIN_SEARCH_LENGTH", "3")
@@ -166,6 +183,7 @@ class Settings:
     INITIAL_ADMIN_FIRST_NAME: str = os.getenv("INITIAL_ADMIN_FIRST_NAME", "System")
     INITIAL_ADMIN_LAST_NAME: str = os.getenv("INITIAL_ADMIN_LAST_NAME", "Admin")
     PASSWORD_MIN_LENGTH: int = int(os.getenv("PASSWORD_MIN_LENGTH", "12"))
+    PASSWORD_COMMON_BLOCKLIST_PATH: str | None = os.getenv("PASSWORD_COMMON_BLOCKLIST_PATH")
     PBKDF2_ITERATIONS: int = int(os.getenv("PBKDF2_ITERATIONS", "310000"))
     DOCUMENT_MAX_UPLOAD_BYTES: int = int(os.getenv("DOCUMENT_MAX_UPLOAD_BYTES", str(10 * 1024 * 1024)))
     DOCUMENT_TENANT_STORAGE_LIMIT_BYTES: int = int(
@@ -177,5 +195,7 @@ settings = Settings()
 
 
 def validate_startup_settings() -> None:
-    if not settings.DEBUG and not settings.JWT_SECRET:
-        raise RuntimeError("JWT_SECRET must be set when DEBUG is false")
+    if not settings.DATABASE_URL:
+        raise RuntimeError("DATABASE_URL must be set")
+    if (not settings.DEBUG or settings.ALLOWED_DOMAINS) and not settings.JWT_SECRET:
+        raise RuntimeError("JWT_SECRET must be set outside purely local debug mode")

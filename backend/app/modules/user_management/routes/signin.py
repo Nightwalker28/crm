@@ -8,6 +8,11 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.passwords import get_password_policy
+from app.core.security import (
+    check_refresh_token_rate_limit,
+    clear_failed_refresh_attempts,
+    record_failed_refresh_attempt,
+)
 from app.core.tenancy import get_frontend_origin_for_request, is_cloud_mode_enabled
 from app.modules.user_management.models import RefreshToken, User, UserStatus
 from app.modules.mail.services.mail_services import (
@@ -28,6 +33,7 @@ from app.modules.user_management.services.auth import (
     decode_token,
     get_google_auth_url,
     handle_google_callback,
+    rotate_refresh_token,
     set_initial_password,
 )
 
@@ -335,48 +341,58 @@ def refresh_access_token(
     request: Request,
     db: Session = Depends(get_db),
 ):
+    user_id = None
+    check_refresh_token_rate_limit(request)
     refresh_token = request.cookies.get(settings.REFRESH_TOKEN_COOKIE_NAME)
-    if not refresh_token:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
+    try:
+        if not refresh_token:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
 
-    payload = decode_token(refresh_token, expected_type="refresh")
-    _validate_request_tenant(request, payload)
-    user_id = payload.get("sub")
-    jti = payload.get("jti")
+        payload = decode_token(refresh_token, expected_type="refresh")
+        _validate_request_tenant(request, payload)
+        user_id = payload.get("sub")
+        jti = payload.get("jti")
+        check_refresh_token_rate_limit(request, user_id)
 
-    if not user_id or not jti:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
+        if not user_id or not jti:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid refresh token")
 
-    db_row = db.query(RefreshToken).filter(
-        RefreshToken.user_id == int(user_id),
-        RefreshToken.token_jti == jti,
-    ).first()
+        db_row = db.query(RefreshToken).filter(
+            RefreshToken.user_id == int(user_id),
+            RefreshToken.token_jti == jti,
+        ).first()
 
-    if not db_row:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
+        if not db_row:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
 
-    now = datetime.now(timezone.utc)
-    expires_at = db_row.expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    else:
-        expires_at = expires_at.astimezone(timezone.utc)
+        now = datetime.now(timezone.utc)
+        expires_at = db_row.expires_at
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        else:
+            expires_at = expires_at.astimezone(timezone.utc)
 
-    if expires_at <= now:
-        db.query(RefreshToken).filter(RefreshToken.id == db_row.id).delete()
-        db.commit()
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired")
+        if expires_at <= now:
+            db.query(RefreshToken).filter(RefreshToken.id == db_row.id).delete()
+            db.commit()
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh token expired")
 
-    user = db.query(User).filter(User.id == int(user_id)).first()
-    if not user or user.is_active != UserStatus.active:
-        db.query(RefreshToken).filter(RefreshToken.id == db_row.id).delete()
-        db.commit()
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Inactive account" if user else "User not found",
-        )
+        user = db.query(User).filter(User.id == int(user_id)).first()
+        if not user or user.is_active != UserStatus.active:
+            db.query(RefreshToken).filter(RefreshToken.id == db_row.id).delete()
+            db.commit()
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Inactive account" if user else "User not found",
+            )
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_401_UNAUTHORIZED:
+            record_failed_refresh_attempt(request, user_id)
+        raise
 
     access_token = create_access_token(user)
+    new_refresh_token = rotate_refresh_token(user, db, old_refresh_token_id=db_row.id)
+    clear_failed_refresh_attempts(request, user_id)
     response = JSONResponse(
         {
             "status": "ok",
@@ -391,5 +407,14 @@ def refresh_access_token(
         samesite=settings.COOKIE_SAMESITE,
         path=settings.COOKIE_PATH,
         max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+    )
+    response.set_cookie(
+        key=settings.REFRESH_TOKEN_COOKIE_NAME,
+        value=new_refresh_token,
+        httponly=settings.COOKIE_HTTPONLY,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        path=settings.COOKIE_PATH,
+        max_age=settings.REFRESH_TOKEN_EXPIRE_HOURS * 60 * 60,
     )
     return response

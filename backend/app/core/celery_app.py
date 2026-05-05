@@ -7,6 +7,7 @@ celery_app = Celery(
     "lynk",
     broker=settings.CELERY_BROKER_URL,
     include=[
+        "app.tasks.auth_tasks",
         "app.tasks.data_transfer_tasks",
         "app.tasks.task_reminder_tasks",
     ],
@@ -24,6 +25,10 @@ celery_app.conf.update(
         "cleanup-expired-data-transfer-results": {
             "task": "app.tasks.data_transfer.cleanup_expired_results",
             "schedule": settings.DATA_TRANSFER_RESULT_CLEANUP_INTERVAL_SECONDS,
+        },
+        "cleanup-expired-refresh-tokens": {
+            "task": "app.tasks.cleanup_expired_refresh_tokens",
+            "schedule": settings.REFRESH_TOKEN_CLEANUP_INTERVAL_SECONDS,
         },
         "scan-due-task-alerts": {
             "task": "app.tasks.task_reminders.scan_due_task_alerts",

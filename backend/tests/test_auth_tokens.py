@@ -16,6 +16,12 @@ class AccessTokenClaimTests(unittest.TestCase):
         self.assertEqual(payload["tenant_id"], 1)
         self.assertEqual(payload["role_level"], 100)
 
+    def test_access_token_requires_role_level_claim(self):
+        user = User(id=7, tenant_id=1, email="admin@example.com", role_id=5)
+
+        with self.assertRaisesRegex(ValueError, "role_level"):
+            create_access_token(user)
+
 
 if __name__ == "__main__":
     unittest.main()

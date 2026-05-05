@@ -50,7 +50,6 @@ export default function CalendarSyncBridge() {
       activeConnection.account_email || "current-user",
       activeConnection.provider_calendar_id || "missing-calendar",
       activeConnection.last_synced_at || "never-synced",
-      activeConnection.last_error || "no-error",
     ].join(":");
 
     if (attemptedKeysRef.current.has(key)) return;

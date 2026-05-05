@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 
 import { useNotifications } from "@/hooks/useNotifications";
 
-const REQUESTED_KEY = "lynk:browser-notifications-requested";
 const SEEN_KEY = "lynk:browser-notification-seen";
 
 function readSeenIds() {
@@ -32,16 +31,6 @@ export default function BrowserNotificationsBridge() {
 
   useEffect(() => {
     seenIdsRef.current = readSeenIds();
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined" || !("Notification" in window)) return;
-    if (window.localStorage.getItem(REQUESTED_KEY)) return;
-
-    window.localStorage.setItem(REQUESTED_KEY, "true");
-    if (Notification.permission === "default") {
-      void Notification.requestPermission();
-    }
   }, []);
 
   useEffect(() => {

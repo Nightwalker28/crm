@@ -1,6 +1,7 @@
 import io
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 from unittest.mock import patch
 
@@ -9,6 +10,7 @@ from sqlalchemy import Column, Numeric, String
 from starlette.datastructures import Headers
 
 from app.core import cache, module_csv, module_export, module_filters, module_search, pagination, postgres_search, uploads
+from app.core.duplicates import detect_duplicates
 from app.core.passwords import (
     PBKDF2_ALGORITHM,
     PBKDF2_ITERATIONS,
@@ -30,6 +32,9 @@ class FakeQuery:
 class CacheTests(unittest.TestCase):
     def tearDown(self):
         cache._local_cache.clear()
+        cache._redis_client = None
+        cache._redis_consecutive_failures = 0
+        cache._redis_circuit_open_until = 0.0
 
     def test_local_cache_evicts_oldest_when_max_size_is_exceeded(self):
         with patch.object(cache, "_get_redis_client", return_value=None), \
@@ -49,6 +54,22 @@ class CacheTests(unittest.TestCase):
             cache.cache_set_json("redis-key", {"value": 1})
 
         self.assertNotIn("redis-key", cache._local_cache)
+
+    def test_redis_connection_failures_open_circuit_temporarily(self):
+        class FailingRedisModule:
+            class Redis:
+                @classmethod
+                def from_url(cls, *_args, **_kwargs):
+                    raise TimeoutError("redis timeout")
+
+        with patch.object(cache.settings, "REDIS_URL", "redis://redis:6379/0"), \
+             patch.object(cache.settings, "REDIS_CIRCUIT_BREAKER_FAILURE_THRESHOLD", 2), \
+             patch.object(cache.settings, "REDIS_CIRCUIT_BREAKER_COOLDOWN_SECONDS", 60), \
+             patch.object(cache, "redis", FailingRedisModule):
+            self.assertIsNone(cache._get_redis_client())
+            self.assertIsNone(cache._get_redis_client())
+
+        self.assertGreater(cache._redis_circuit_open_until, 0)
 
 
 class ModuleCsvTests(unittest.IsolatedAsyncioTestCase):
@@ -89,10 +110,42 @@ class ModuleCsvTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("'+10", content)
         self.assertIn("Safe,5", content)
 
+    async def test_batched_csv_zip_file_writes_temp_file(self):
+        path, meta = module_export.batched_csv_zip_file(
+            rows=[{"name": "A"}, {"name": "B"}],
+            batch_size=1,
+            file_prefix="records",
+            serialize_row=lambda rows: module_export.dict_rows_to_csv_bytes(
+                headers=["name"],
+                rows=rows,
+            ).decode("utf-8"),
+        )
+
+        try:
+            self.assertTrue(path.exists())
+            self.assertEqual(meta, {"batches": 2, "rows": 2})
+            with zipfile.ZipFile(path) as zipf:
+                self.assertEqual(
+                    sorted(zipf.namelist()),
+                    ["records_batch_1.csv", "records_batch_2.csv"],
+                )
+        finally:
+            path.unlink(missing_ok=True)
+
     async def test_count_csv_rows_bytes_streams_non_blank_rows(self):
         content = b"name\nAcme\n\nBeta\n"
 
         self.assertEqual(module_csv.count_csv_rows_bytes(content), 2)
+
+    async def test_rows_from_csv_text_rejects_too_many_rows(self):
+        content = "name\nA\nB\n"
+
+        with patch.object(module_csv, "MAX_CSV_ROWS", 1):
+            with self.assertRaises(HTTPException) as exc:
+                module_csv.rows_from_csv_text(content)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "CSV exceeds maximum row limit.")
 
 
 class ModuleFilterTests(unittest.TestCase):
@@ -109,17 +162,14 @@ class ModuleFilterTests(unittest.TestCase):
     def test_numeric_filter_rejects_text_column(self):
         definition = {"expression": Column("amount_text", String()), "type": "number"}
 
-        with self.assertRaises(HTTPException) as exc:
+        with self.assertRaisesRegex(
+            ValueError,
+            "Numeric filters are only supported for numeric fields",
+        ):
             module_filters._build_condition_expression(
                 definition,
                 {"operator": "gt", "value": "10", "values": None},
             )
-
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(
-            exc.exception.detail,
-            "Numeric filters are only supported for numeric fields",
-        )
 
     def test_numeric_filter_allows_numeric_column(self):
         definition = {"expression": Column("amount", Numeric()), "type": "number"}
@@ -130,6 +180,17 @@ class ModuleFilterTests(unittest.TestCase):
         )
 
         self.assertIsNotNone(expression)
+
+
+class DuplicateDetectionTests(unittest.TestCase):
+    def test_detect_duplicates_keeps_request_and_existing_sets_separate(self):
+        detection = detect_duplicates(["A", "A", "B"], existing_values={"C"})
+
+        self.assertEqual(detection.duplicates_in_request, {"A"})
+        self.assertEqual(detection.existing_duplicates, {"C"})
+        self.assertEqual(detection.request_duplicate_values, ["A"])
+        self.assertEqual(detection.existing_duplicate_values, ["C"])
+        self.assertEqual(detection.duplicate_values, ["A", "C"])
 
 
 class PaginationTests(unittest.TestCase):
@@ -248,6 +309,12 @@ class UploadCleanupTests(unittest.TestCase):
                 uploads.delete_local_media_file("https://example.com/photo.jpg")
 
             self.assertTrue(target.exists())
+
+    def test_delete_local_media_file_warns_for_unexpected_local_path(self):
+        with self.assertLogs("app.core.uploads", level="WARNING") as logs:
+            uploads.delete_local_media_file("profile-assets/user-1/photo.jpg")
+
+        self.assertTrue(any("outside media root" in message for message in logs.output))
 
 
 class ImageUploadTests(unittest.IsolatedAsyncioTestCase):

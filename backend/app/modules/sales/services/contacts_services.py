@@ -12,7 +12,6 @@ from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, 
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination
-from app.core.postgres_search import searchable_text
 from app.modules.platform.services.custom_fields import (
     build_custom_field_filter_map,
     hydrate_custom_field_record,
@@ -54,20 +53,10 @@ def _normalize_name(first_name: str | None, last_name: str | None) -> str:
 
 
 def _apply_search_filter(query, search: str | None):
-    document = searchable_text(
-        SalesContact.first_name,
-        SalesContact.last_name,
-        SalesContact.contact_telephone,
-        SalesContact.primary_email,
-        SalesContact.current_title,
-        SalesContact.region,
-        SalesContact.country,
-        SalesContact.linkedin_url,
-    )
     return apply_ranked_search(
         query,
         search=search,
-        document=document,
+        document=SalesContact.search_doc,
         default_order_column=SalesContact.created_time,
     )
 

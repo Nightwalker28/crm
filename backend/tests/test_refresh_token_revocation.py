@@ -19,6 +19,9 @@ class FakeQuery:
     def filter(self, *conditions):
         return self
 
+    def options(self, *options):
+        return self
+
     def first(self):
         if self.entity is RefreshToken:
             return self.db.refresh_token
@@ -113,6 +116,36 @@ class RefreshTokenRevocationTests(unittest.TestCase):
         self.assertEqual(exc.exception.detail, "Inactive account")
         self.assertTrue(db.revoked_refresh_token)
         self.assertTrue(db.committed)
+
+    def test_refresh_endpoint_rotates_refresh_token_on_success(self):
+        db = FakeDB(
+            user=SimpleNamespace(id=7, tenant_id=1, is_active=UserStatus.active),
+            refresh_token=SimpleNamespace(
+                id=99,
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=1),
+            ),
+        )
+
+        with patch(
+            "app.modules.user_management.routes.signin.decode_token",
+            return_value={"sub": "7", "jti": "token-jti"},
+        ), patch(
+            "app.modules.user_management.routes.signin.create_access_token",
+            return_value="new-access-token",
+        ), patch(
+            "app.modules.user_management.routes.signin.rotate_refresh_token",
+            return_value="new-refresh-token",
+        ) as rotate_mock:
+            response = refresh_access_token(_request_with_refresh_cookie(), db)
+
+        rotate_mock.assert_called_once()
+        set_cookie = "\n".join(
+            value.decode("latin-1")
+            for key, value in response.raw_headers
+            if key == b"set-cookie"
+        )
+        self.assertIn("lynk_access_token=new-access-token", set_cookie)
+        self.assertIn("lynk_refresh_token=new-refresh-token", set_cookie)
 
 
 if __name__ == "__main__":

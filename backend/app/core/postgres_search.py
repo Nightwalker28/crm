@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import func, literal, or_
+from sqlalchemy import func, literal
 
 from app.core.config import settings
 
@@ -27,14 +27,9 @@ def apply_trigram_search(query, *, search: str | None, document):
         return query, None
 
     rank = func.similarity(document, normalized)
-    pattern = f"%{normalized}%"
     if len(normalized) < TRIGRAM_MIN_SEARCH_LENGTH:
+        pattern = f"%{normalized}%"
         return query.filter(document.ilike(pattern)), None
 
-    filtered_query = query.filter(
-        or_(
-            document.ilike(pattern),
-            rank >= TRIGRAM_SIMILARITY_THRESHOLD,
-        )
-    )
+    filtered_query = query.filter(rank >= TRIGRAM_SIMILARITY_THRESHOLD)
     return filtered_query, rank

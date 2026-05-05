@@ -1,4 +1,4 @@
-from sqlalchemy import Column, BigInteger, Text, Date, TIMESTAMP, func, ForeignKey, Index, Numeric, text
+from sqlalchemy import CheckConstraint, Column, BigInteger, Text, Date, TIMESTAMP, func, ForeignKey, Index, Numeric, text
 from sqlalchemy.orm import relationship
 from app.core.database import Base
 
@@ -6,6 +6,10 @@ from app.core.database import Base
 class FinanceIO(Base):
     __tablename__ = "finance_io"
     __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'issued', 'active', 'completed', 'cancelled', 'imported')",
+            name="ck_finance_io_status",
+        ),
         Index("ix_finance_io_tenant_status_active", "tenant_id", "status", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_finance_io_tenant_contact", "tenant_id", "customer_contact_id"),
         Index("ix_finance_io_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),

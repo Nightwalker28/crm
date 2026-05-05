@@ -1,17 +1,30 @@
 from __future__ import annotations
 
 from collections import Counter
+from dataclasses import dataclass
 from enum import Enum
-from typing import Hashable, Iterable, NamedTuple, TypeVar
+from typing import Generic, Hashable, Iterable, TypeVar
 
 T = TypeVar("T", bound=Hashable)
 V = TypeVar("V")
 
 
-class DuplicateDetectionResult(NamedTuple):
+@dataclass(frozen=True)
+class DuplicateDetectionResult(Generic[T]):
     duplicates_in_request: set[T]
     existing_duplicates: set[T]
-    duplicate_values: list[T]
+
+    @property
+    def request_duplicate_values(self) -> list[T]:
+        return sorted(self.duplicates_in_request)
+
+    @property
+    def existing_duplicate_values(self) -> list[T]:
+        return sorted(self.existing_duplicates)
+
+    @property
+    def duplicate_values(self) -> list[T]:
+        return sorted(self.duplicates_in_request | self.existing_duplicates)
 
 
 class DuplicateMode(str, Enum):
@@ -28,11 +41,9 @@ def detect_duplicates(
     counts = Counter(values_list)
     duplicates_in_request = {value for value, count in counts.items() if count > 1}
     existing_set = set(existing_values or [])
-    duplicate_values = sorted(duplicates_in_request | existing_set)
     return DuplicateDetectionResult(
         duplicates_in_request=duplicates_in_request,
         existing_duplicates=existing_set,
-        duplicate_values=duplicate_values,
     )
 
 

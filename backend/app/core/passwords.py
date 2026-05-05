@@ -4,6 +4,8 @@ import base64
 import hashlib
 import hmac
 import secrets
+from functools import lru_cache
+from pathlib import Path
 
 from app.core.config import settings
 
@@ -17,22 +19,22 @@ PASSWORD_REQUIREMENTS = (
     "Use at least one uppercase letter, one lowercase letter, and one number.",
     "Avoid common or repeated-character passwords.",
 )
-COMMON_PASSWORDS = {
-    "password",
-    "password1",
-    "password12",
-    "password123",
-    "password1234",
-    "qwerty",
-    "qwerty123",
-    "adminadmin",
-    "admin123",
-    "welcome123",
-    "letmein123",
-    "changeme",
-    "change123",
-    "company123",
-}
+DEFAULT_COMMON_PASSWORDS_PATH = Path(__file__).with_name("common_passwords.txt")
+
+
+@lru_cache(maxsize=1)
+def get_common_passwords() -> frozenset[str]:
+    configured_path = getattr(settings, "PASSWORD_COMMON_BLOCKLIST_PATH", None)
+    path = Path(configured_path) if configured_path else DEFAULT_COMMON_PASSWORDS_PATH
+    try:
+        content = path.read_text(encoding="utf-8")
+    except OSError:
+        content = DEFAULT_COMMON_PASSWORDS_PATH.read_text(encoding="utf-8")
+    return frozenset(
+        line.strip().lower()
+        for line in content.splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    )
 
 
 def get_password_policy() -> dict:
@@ -49,7 +51,7 @@ def validate_password_strength(password: str) -> None:
     if len(password) < MIN_PASSWORD_LENGTH:
         raise ValueError(f"Password must be at least {MIN_PASSWORD_LENGTH} characters long")
     normalized = password.strip().lower()
-    if normalized in COMMON_PASSWORDS:
+    if normalized in get_common_passwords():
         raise ValueError("Password is too common")
     if len(set(password)) == 1:
         raise ValueError("Password cannot use the same character repeatedly")

@@ -6,7 +6,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Iterable
 
 from fastapi import HTTPException, status
-from sqlalchemy import Date, Numeric, Text, cast, select
+from sqlalchemy import Date, cast, select
 from sqlalchemy.orm import Session
 
 from app.core.cache import cache_delete, cache_delete_prefix, cache_get_json, cache_set_json
@@ -367,7 +367,7 @@ def build_custom_field_filter_map(
             value_column = CustomFieldValue.value_text
             value_type = "text"
         elif definition.field_type == "number":
-            value_column = cast(cast(CustomFieldValue.value_number, Text), Numeric)
+            value_column = CustomFieldValue.value_number.as_numeric(18, 6)
             value_type = "number"
         elif definition.field_type == "date":
             value_column = cast(CustomFieldValue.value_date, Date)

@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func, text
+from sqlalchemy import BigInteger, CheckConstraint, Column, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -7,6 +7,14 @@ from app.core.database import Base
 class Task(Base):
     __tablename__ = "tasks"
     __table_args__ = (
+        CheckConstraint(
+            "status IN ('todo', 'in_progress', 'blocked', 'completed')",
+            name="ck_tasks_status",
+        ),
+        CheckConstraint(
+            "priority IN ('high', 'medium', 'low')",
+            name="ck_tasks_priority",
+        ),
         Index("ix_tasks_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
     )
 

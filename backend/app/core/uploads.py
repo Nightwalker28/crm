@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from fastapi import HTTPException, UploadFile, status
 
+logger = logging.getLogger(__name__)
 
 BACKEND_DIR = Path(__file__).resolve().parents[2]
 UPLOADS_DIR = BACKEND_DIR / "uploads"
@@ -61,10 +64,18 @@ def delete_local_media_file(relative_media_path: str | None) -> None:
         return
     normalized_path = relative_media_path.lstrip("/")
     if not normalized_path.startswith("media/"):
+        parsed = urlparse(relative_media_path)
+        if parsed.scheme in {"http", "https"}:
+            return
+        logger.warning(
+            "Ignoring unexpected local media cleanup path outside media root: %s",
+            relative_media_path,
+        )
         return
     path = (MEDIA_ROOT_DIR / normalized_path.removeprefix("media/")).resolve()
     media_root = MEDIA_ROOT_DIR.resolve()
     if media_root not in path.parents:
+        logger.warning("Ignoring local media cleanup path that resolves outside media root: %s", relative_media_path)
         return
     if path.exists():
         path.unlink()

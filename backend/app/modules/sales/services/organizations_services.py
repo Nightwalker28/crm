@@ -1,13 +1,15 @@
 from datetime import datetime
+from pathlib import Path
+
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
 from app.core.module_filters import apply_filter_conditions
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
-from app.core.module_export import batched_csv_zip_bytes, dict_rows_to_csv_bytes
+
+from app.core.module_export import batched_csv_zip_file, dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
-from app.core.postgres_search import searchable_text
 from app.modules.platform.services.custom_fields import (
     build_custom_field_filter_map,
     hydrate_custom_field_record,
@@ -170,14 +172,6 @@ def _build_organization_query(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ):
-    document = searchable_text(
-        SalesOrganization.org_name,
-        SalesOrganization.website,
-        SalesOrganization.primary_email,
-        SalesOrganization.industry,
-        SalesOrganization.billing_city,
-        SalesOrganization.billing_country,
-    )
     base_query = db.query(SalesOrganization).filter(
         SalesOrganization.tenant_id == tenant_id,
         SalesOrganization.deleted_at.is_(None),
@@ -185,7 +179,7 @@ def _build_organization_query(
     base_query = apply_ranked_search(
         base_query,
         search=search,
-        document=document,
+        document=SalesOrganization.search_doc,
         default_order_column=SalesOrganization.created_time,
     )
 
@@ -612,7 +606,7 @@ def _serialize_orgs_to_csv(rows: list[SalesOrganization]) -> bytes:
     )
 
 
-def export_organizations(db: Session, *, tenant_id: int, org_ids: list[int] | None = None) -> tuple[bytes, dict]:
+def export_organizations(db: Session, *, tenant_id: int, org_ids: list[int] | None = None) -> tuple[Path, dict]:
     """Export organizations to a ZIP of CSV batches (1k rows per batch)."""
     query = (
         db.query(SalesOrganization)
@@ -625,7 +619,7 @@ def export_organizations(db: Session, *, tenant_id: int, org_ids: list[int] | No
     if org_ids:
         query = query.filter(SalesOrganization.org_id.in_(org_ids))
 
-    return batched_csv_zip_bytes(
+    return batched_csv_zip_file(
         rows=query.yield_per(500),
         batch_size=EXPORT_BATCH_SIZE,
         file_prefix="organizations",
@@ -640,7 +634,7 @@ def export_organizations_for_view(
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
-) -> tuple[bytes, dict]:
+) -> tuple[Path, dict]:
     query = (
         _build_organization_query(
             db,
@@ -651,7 +645,7 @@ def export_organizations_for_view(
         )
         .order_by(SalesOrganization.org_id.asc())
     )
-    return batched_csv_zip_bytes(
+    return batched_csv_zip_file(
         rows=query.yield_per(500),
         batch_size=EXPORT_BATCH_SIZE,
         file_prefix="organizations",

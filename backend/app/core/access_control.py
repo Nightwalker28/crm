@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 from sqlalchemy import or_
@@ -15,6 +16,8 @@ from app.modules.user_management.models import (
     User,
 )
 from app.modules.user_management.services.admin_modules import is_module_enabled_for_tenant
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -32,6 +35,11 @@ ADMIN_MIN_ROLE_LEVEL = 100
 def get_user_department_id(db: Session, user: User | None) -> int | None:
     if not user:
         return None
+    department_id = getattr(user, "department_id", None)
+    if department_id is not None:
+        user._department_id_loaded = True
+        user._department_id = department_id
+        return department_id
     if getattr(user, "_department_id_loaded", False):
         return getattr(user, "_department_id", None)
     if not getattr(user, "team_id", None):
@@ -216,6 +224,10 @@ def get_user_role_level(db: Session, user: User | None) -> int | None:
     if token_role_level is not None:
         return int(token_role_level)
 
+    logger.warning(
+        "Access token for user %s is missing role_level; falling back to a role lookup during JWT claim transition",
+        getattr(user, "id", None),
+    )
     return (
         db.query(Role.level)
         .filter(Role.id == role_id, Role.tenant_id == user.tenant_id)
