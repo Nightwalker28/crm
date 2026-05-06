@@ -2,7 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { Copy, ExternalLink, Link2, Plus, Send } from "lucide-react";
+import { Copy, ExternalLink, Link2, Plus, Search, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { useClientPortalActions, useClientPortalAccounts, useClientPortalPages, type PricingItemPayload } from "@/hooks/useClientPortal";
+import { useClientPortalActions, useClientPortalAccounts, useClientPortalPages, useCustomerOptions, type PricingItemPayload } from "@/hooks/useClientPortal";
 
 type LinkedType = "contact" | "organization";
 
@@ -26,6 +26,12 @@ type PageForm = {
   itemCurrency: string;
   itemPrice: string;
   documentIds: string;
+  brandCompanyName: string;
+  brandLogoUrl: string;
+  brandAccentColor: string;
+  proposalOverview: string;
+  proposalScope: string;
+  proposalTerms: string;
 };
 
 type AccountForm = {
@@ -45,6 +51,12 @@ const emptyPageForm: PageForm = {
   itemCurrency: "USD",
   itemPrice: "",
   documentIds: "",
+  brandCompanyName: "",
+  brandLogoUrl: "",
+  brandAccentColor: "#14b8a6",
+  proposalOverview: "",
+  proposalScope: "",
+  proposalTerms: "",
 };
 
 const emptyAccountForm: AccountForm = {
@@ -68,6 +80,93 @@ function parseDocumentIds(value: string) {
     .split(",")
     .map((item) => Number(item.trim()))
     .filter((item) => Number.isInteger(item) && item > 0);
+}
+
+function customerLabel(item: { contact_id?: number | null; organization_id?: number | null; contact_name?: string | null; organization_name?: string | null }) {
+  if (item.contact_id) return item.contact_name || `Contact #${item.contact_id}`;
+  return item.organization_name || `Organization #${item.organization_id}`;
+}
+
+function proposalSectionsFromForm(form: PageForm) {
+  return [
+    { title: "Overview", body: form.proposalOverview.trim(), sort_order: 0 },
+    { title: "Scope", body: form.proposalScope.trim(), sort_order: 1 },
+    { title: "Terms", body: form.proposalTerms.trim(), sort_order: 2 },
+  ].filter((section) => section.body);
+}
+
+function actionLabel(action: string) {
+  return action === "request_changes" ? "Requested changes" : action === "accept" ? "Accepted" : action;
+}
+
+function CustomerSelector({
+  linkedType,
+  linkedId,
+  onTypeChange,
+  onIdChange,
+}: {
+  linkedType: LinkedType;
+  linkedId: string;
+  onTypeChange: (value: LinkedType) => void;
+  onIdChange: (value: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const optionsQuery = useCustomerOptions(linkedType, search);
+  const options = optionsQuery.data ?? [];
+  const selected = options.find((option) => String(option.id) === linkedId);
+
+  return (
+    <div className="grid gap-2">
+      <div className="grid grid-cols-[150px_1fr] gap-2">
+        <select
+          value={linkedType}
+          onChange={(event) => {
+            onTypeChange(event.target.value as LinkedType);
+            onIdChange("");
+            setSearch("");
+          }}
+          className="rounded-md border border-neutral-700 bg-neutral-950 px-3 text-sm text-neutral-100"
+        >
+          <option value="contact">Contact</option>
+          <option value="organization">Organization</option>
+        </select>
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder={linkedType === "contact" ? "Search contacts" : "Search organizations"}
+            className="pl-9"
+          />
+        </div>
+      </div>
+      <div className="max-h-44 overflow-y-auto rounded-md border border-neutral-800 bg-neutral-950/70 p-1">
+        {optionsQuery.isLoading ? (
+          <div className="px-3 py-3 text-sm text-neutral-500">Loading customers...</div>
+        ) : options.length ? (
+          options.map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => onIdChange(String(option.id))}
+              className={
+                "block w-full rounded px-3 py-2 text-left text-sm transition-colors " +
+                (String(option.id) === linkedId ? "bg-white/10 text-neutral-100" : "text-neutral-300 hover:bg-white/5")
+              }
+            >
+              <span className="block font-medium">{option.label}</span>
+              {option.detail ? <span className="mt-0.5 block text-xs text-neutral-500">{option.detail}</span> : null}
+            </button>
+          ))
+        ) : (
+          <div className="px-3 py-3 text-sm text-neutral-500">No matching customers.</div>
+        )}
+      </div>
+      <div className="text-xs text-neutral-500">
+        {selected ? `Selected: ${selected.label}` : "Select a customer before submitting."}
+      </div>
+    </div>
+  );
 }
 
 export default function ClientPortalDashboardPage() {
@@ -112,6 +211,12 @@ export default function ClientPortalDashboardPage() {
         organization_id: pageForm.linkedType === "organization" ? linkedId : null,
         pricing_items: [item],
         document_ids: parseDocumentIds(pageForm.documentIds),
+        proposal_sections: proposalSectionsFromForm(pageForm),
+        brand_settings: {
+          company_name: pageForm.brandCompanyName.trim() || null,
+          logo_url: pageForm.brandLogoUrl.trim() || null,
+          accent_color: pageForm.brandAccentColor.trim() || null,
+        },
       });
       setPageForm(emptyPageForm);
       toast.success("Client page created.");
@@ -177,17 +282,12 @@ export default function ClientPortalDashboardPage() {
           <form className="grid gap-3" onSubmit={handleCreatePage}>
             <div className="grid gap-3 md:grid-cols-2">
               <Input value={pageForm.title} onChange={(event) => setPageForm((current) => ({ ...current, title: event.target.value }))} placeholder="Page title" required />
-              <div className="grid grid-cols-[150px_1fr] gap-2">
-                <select
-                  value={pageForm.linkedType}
-                  onChange={(event) => setPageForm((current) => ({ ...current, linkedType: event.target.value as LinkedType }))}
-                  className="rounded-md border border-neutral-700 bg-neutral-950 px-3 text-sm text-neutral-100"
-                >
-                  <option value="contact">Contact</option>
-                  <option value="organization">Organization</option>
-                </select>
-                <Input value={pageForm.linkedId} onChange={(event) => setPageForm((current) => ({ ...current, linkedId: event.target.value }))} placeholder="Customer ID" required />
-              </div>
+              <CustomerSelector
+                linkedType={pageForm.linkedType}
+                linkedId={pageForm.linkedId}
+                onTypeChange={(linkedType) => setPageForm((current) => ({ ...current, linkedType }))}
+                onIdChange={(linkedId) => setPageForm((current) => ({ ...current, linkedId }))}
+              />
             </div>
             <Textarea value={pageForm.summary} onChange={(event) => setPageForm((current) => ({ ...current, summary: event.target.value }))} placeholder="Short proposal or pricing summary" />
             <div className="grid gap-3 md:grid-cols-[1fr_120px_120px_160px]">
@@ -199,6 +299,16 @@ export default function ClientPortalDashboardPage() {
             <div className="grid gap-3 md:grid-cols-2">
               <Input value={pageForm.itemDescription} onChange={(event) => setPageForm((current) => ({ ...current, itemDescription: event.target.value }))} placeholder="Item description" />
               <Input value={pageForm.documentIds} onChange={(event) => setPageForm((current) => ({ ...current, documentIds: event.target.value }))} placeholder="Document IDs, comma separated" />
+            </div>
+            <div className="grid gap-3 md:grid-cols-[1fr_1fr_140px]">
+              <Input value={pageForm.brandCompanyName} onChange={(event) => setPageForm((current) => ({ ...current, brandCompanyName: event.target.value }))} placeholder="Client page company name" />
+              <Input value={pageForm.brandLogoUrl} onChange={(event) => setPageForm((current) => ({ ...current, brandLogoUrl: event.target.value }))} placeholder="Logo URL" />
+              <Input value={pageForm.brandAccentColor} onChange={(event) => setPageForm((current) => ({ ...current, brandAccentColor: event.target.value }))} placeholder="#14b8a6" />
+            </div>
+            <div className="grid gap-3 md:grid-cols-3">
+              <Textarea value={pageForm.proposalOverview} onChange={(event) => setPageForm((current) => ({ ...current, proposalOverview: event.target.value }))} placeholder="Proposal overview" />
+              <Textarea value={pageForm.proposalScope} onChange={(event) => setPageForm((current) => ({ ...current, proposalScope: event.target.value }))} placeholder="Scope and deliverables" />
+              <Textarea value={pageForm.proposalTerms} onChange={(event) => setPageForm((current) => ({ ...current, proposalTerms: event.target.value }))} placeholder="Terms or next steps" />
             </div>
             <div className="flex justify-end">
               <Button type="submit" disabled={isCreatingPage}>
@@ -216,17 +326,12 @@ export default function ClientPortalDashboardPage() {
           </div>
           <form className="grid gap-3" onSubmit={handleCreateAccount}>
             <Input type="email" value={accountForm.email} onChange={(event) => setAccountForm((current) => ({ ...current, email: event.target.value }))} placeholder="client@example.com" required />
-            <div className="grid grid-cols-[150px_1fr] gap-2">
-              <select
-                value={accountForm.linkedType}
-                onChange={(event) => setAccountForm((current) => ({ ...current, linkedType: event.target.value as LinkedType }))}
-                className="rounded-md border border-neutral-700 bg-neutral-950 px-3 text-sm text-neutral-100"
-              >
-                <option value="contact">Contact</option>
-                <option value="organization">Organization</option>
-              </select>
-              <Input value={accountForm.linkedId} onChange={(event) => setAccountForm((current) => ({ ...current, linkedId: event.target.value }))} placeholder="Customer ID" required />
-            </div>
+            <CustomerSelector
+              linkedType={accountForm.linkedType}
+              linkedId={accountForm.linkedId}
+              onTypeChange={(linkedType) => setAccountForm((current) => ({ ...current, linkedType }))}
+              onIdChange={(linkedId) => setAccountForm((current) => ({ ...current, linkedId }))}
+            />
             <Button type="submit" disabled={isCreatingAccount}>
               <Send className="h-4 w-4" />
               {isCreatingAccount ? "Creating..." : "Create Setup Link"}
@@ -260,12 +365,13 @@ export default function ClientPortalDashboardPage() {
           <div className="rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-8 text-center text-sm text-neutral-500">No client pages yet.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[860px] text-left text-sm">
+            <table className="w-full min-w-[980px] text-left text-sm">
               <thead className="border-b border-neutral-800 text-xs uppercase text-neutral-500">
                 <tr>
                   <th className="py-3 pr-4 font-medium">Page</th>
                   <th className="py-3 pr-4 font-medium">Customer</th>
                   <th className="py-3 pr-4 font-medium">Pricing</th>
+                  <th className="py-3 pr-4 font-medium">Activity</th>
                   <th className="py-3 pr-4 font-medium">Status</th>
                   <th className="py-3 pr-4 text-right font-medium">Actions</th>
                 </tr>
@@ -278,10 +384,20 @@ export default function ClientPortalDashboardPage() {
                       <div className="text-xs text-neutral-500">{page.summary || "No summary"}</div>
                     </td>
                     <td className="py-3 pr-4 text-neutral-300">
-                      {page.contact_id ? `Contact #${page.contact_id}` : `Organization #${page.organization_id}`}
+                      {customerLabel(page)}
                     </td>
                     <td className="py-3 pr-4 text-neutral-300">
                       {page.pricing_items[0] ? formatMoney(page.pricing_items[0].public_unit_price, page.pricing_items[0].currency) : "No items"}
+                    </td>
+                    <td className="py-3 pr-4 text-neutral-300">
+                      {page.latest_action ? (
+                        <div>
+                          <div className="text-neutral-200">{actionLabel(page.latest_action.action)}</div>
+                          <div className="text-xs text-neutral-500">{page.latest_action.actor_email || page.latest_action.actor_name || "Client response"} · {page.action_count} total</div>
+                        </div>
+                      ) : (
+                        <span className="text-neutral-500">No responses</span>
+                      )}
                     </td>
                     <td className="py-3 pr-4 capitalize text-neutral-300">{page.status}</td>
                     <td className="py-3 pr-0">
@@ -323,7 +439,7 @@ export default function ClientPortalDashboardPage() {
             {accounts.map((account) => (
               <div key={account.id} className="rounded-md border border-neutral-800 bg-neutral-950/50 p-3">
                 <div className="font-medium text-neutral-100">{account.email}</div>
-                <div className="mt-1 text-xs capitalize text-neutral-500">{account.status} · {account.contact_id ? `Contact #${account.contact_id}` : `Organization #${account.organization_id}`}</div>
+                <div className="mt-1 text-xs capitalize text-neutral-500">{account.status} · {customerLabel(account)}</div>
               </div>
             ))}
             {!accounts.length ? <div className="text-sm text-neutral-500">No client accounts yet.</div> : null}

@@ -38,9 +38,10 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
   const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState(initialPageSize);
   const deferredFilters = useDeferredValue(filters);
+  const visibleColumnsKey = visibleColumns.join(",");
 
   const query = useQuery<Response>({
-    queryKey: [...queryKey, page, pageSize, deferredFilters, visibleColumns],
+    queryKey: [...queryKey, page, pageSize, deferredFilters, visibleColumnsKey],
     queryFn: () => fetcher(page, pageSize, deferredFilters, visibleColumns),
     placeholderData: keepPreviousData,
     refetchOnWindowFocus,

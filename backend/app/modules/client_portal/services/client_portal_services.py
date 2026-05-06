@@ -1,17 +1,19 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.core.passwords import hash_password, password_hash_needs_upgrade, verify_password
 from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPageAction, CustomerGroup
+from app.modules.documents.models import Document
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.models import SalesContact, SalesOrganization
 
@@ -26,6 +28,7 @@ DEFAULT_CUSTOMER_GROUPS = [
     {"group_key": "vip", "name": "VIP", "discount_type": "percent", "discount_value": Decimal("0"), "is_default": 0},
     {"group_key": "friends_family", "name": "Friends & Family", "discount_type": "percent", "discount_value": Decimal("0"), "is_default": 0},
 ]
+HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 
 
 def _utcnow() -> datetime:
@@ -99,6 +102,8 @@ def _client_page_state(page: ClientPage) -> dict:
         "organization_id": page.organization_id,
         "source_module_key": page.source_module_key,
         "source_entity_id": page.source_entity_id,
+        "proposal_sections": page.proposal_sections or [],
+        "brand_settings": page.brand_settings or None,
         "public_token_expires_at": page.public_token_expires_at,
         "published_at": page.published_at,
     }
@@ -142,6 +147,49 @@ def _normalize_document_ids(document_ids: list[int] | None) -> list[int]:
     return sorted(set(values))
 
 
+def _normalize_proposal_sections(sections: list[dict] | None) -> list[dict]:
+    normalized: list[dict] = []
+    for index, section in enumerate(sections or []):
+        title = str(section.get("title") or "").strip()
+        body = str(section.get("body") or "").strip()
+        if not title and not body:
+            continue
+        if not title or not body:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Proposal sections require title and body")
+        normalized.append(
+            {
+                "title": title,
+                "body": body,
+                "sort_order": int(section.get("sort_order") if section.get("sort_order") is not None else index),
+            }
+        )
+    return sorted(normalized, key=lambda item: (item["sort_order"], item["title"].lower()))
+
+
+def _normalize_brand_settings(settings_payload: dict | None) -> dict | None:
+    if not settings_payload:
+        return None
+    company_name = str(settings_payload.get("company_name") or "").strip() or None
+    logo_url = str(settings_payload.get("logo_url") or "").strip() or None
+    accent_color = str(settings_payload.get("accent_color") or "").strip() or None
+    if accent_color and not HEX_COLOR_RE.match(accent_color):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Brand accent color must be a 6-digit hex color")
+    normalized = {
+        "company_name": company_name,
+        "logo_url": logo_url,
+        "accent_color": accent_color,
+    }
+    return normalized if any(normalized.values()) else None
+
+
+def _serialize_proposal_sections(sections: list[dict] | None) -> list[dict]:
+    return _normalize_proposal_sections(sections or [])
+
+
+def _serialize_brand_settings(settings_payload: dict | None) -> dict | None:
+    return _normalize_brand_settings(settings_payload)
+
+
 def _resolved_unit_price(public_unit_price: Decimal, group: CustomerGroup | None) -> tuple[Decimal, str, Decimal | None]:
     if not group or group.discount_type == "none":
         return _money(public_unit_price), "none", None
@@ -179,6 +227,62 @@ def _serialize_pricing_items(items: list[dict], group: CustomerGroup | None = No
             }
         )
     return serialized
+
+
+def _list_client_page_documents(db: Session | None, page: ClientPage) -> list[dict]:
+    document_ids = [int(document_id) for document_id in page.document_ids or [] if int(document_id) > 0]
+    if not db or not document_ids:
+        return []
+    documents = (
+        db.query(Document)
+        .filter(
+            Document.tenant_id == page.tenant_id,
+            Document.id.in_(document_ids),
+            Document.deleted_at.is_(None),
+        )
+        .order_by(Document.created_at.desc(), Document.id.desc())
+        .all()
+    )
+    document_map = {document.id: document for document in documents}
+    ordered = [document_map[document_id] for document_id in document_ids if document_id in document_map]
+    return [
+        {
+            "id": document.id,
+            "title": document.title,
+            "original_filename": document.original_filename,
+            "content_type": document.content_type,
+            "extension": document.extension,
+            "file_size_bytes": document.file_size_bytes,
+        }
+        for document in ordered
+    ]
+
+
+def _serialize_client_page_action(action: ClientPageAction) -> dict:
+    return {
+        "id": action.id,
+        "action": action.action,
+        "message": action.message,
+        "actor_name": action.actor_name,
+        "actor_email": action.actor_email,
+        "client_account_id": action.client_account_id,
+        "created_at": action.created_at,
+    }
+
+
+def _client_page_action_summary(db: Session | None, page: ClientPage) -> dict:
+    if not db:
+        return {"action_count": 0, "latest_action": None, "recent_actions": []}
+    query = db.query(ClientPageAction).filter(
+        ClientPageAction.tenant_id == page.tenant_id,
+        ClientPageAction.client_page_id == page.id,
+    )
+    recent = query.order_by(ClientPageAction.created_at.desc(), ClientPageAction.id.desc()).limit(3).all()
+    return {
+        "action_count": query.count(),
+        "latest_action": _serialize_client_page_action(recent[0]) if recent else None,
+        "recent_actions": [_serialize_client_page_action(action) for action in recent],
+    }
 
 
 def ensure_default_customer_groups(db: Session, *, tenant_id: int) -> None:
@@ -448,6 +552,17 @@ def _validate_client_account_matches_page(account: ClientAccount | None, page: C
     return account.organization_id == page.organization_id
 
 
+def _contact_display_name(contact: SalesContact | None) -> str | None:
+    if not contact:
+        return None
+    full_name = " ".join(part for part in [contact.first_name, contact.last_name] if part).strip()
+    return full_name or contact.primary_email or None
+
+
+def _organization_display_name(organization: SalesOrganization | None) -> str | None:
+    return organization.org_name if organization else None
+
+
 def serialize_client_account(account: ClientAccount, *, setup_token: str | None = None) -> dict:
     return {
         "id": account.id,
@@ -455,6 +570,8 @@ def serialize_client_account(account: ClientAccount, *, setup_token: str | None 
         "status": account.status,
         "contact_id": account.contact_id,
         "organization_id": account.organization_id,
+        "contact_name": _contact_display_name(account.contact),
+        "organization_name": _organization_display_name(account.organization),
         "has_password": bool(account.password_hash),
         "setup_link": _setup_link(setup_token) if setup_token else None,
         "setup_token_expires_at": account.setup_token_expires_at,
@@ -464,8 +581,9 @@ def serialize_client_account(account: ClientAccount, *, setup_token: str | None 
     }
 
 
-def serialize_client_page(page: ClientPage, *, group: CustomerGroup | None = None, public_token: str | None = None) -> dict:
+def serialize_client_page(page: ClientPage, *, group: CustomerGroup | None = None, public_token: str | None = None, db: Session | None = None) -> dict:
     personalized = group is not None
+    action_summary = _client_page_action_summary(db, page)
     return {
         "id": page.id,
         "title": page.title,
@@ -473,12 +591,20 @@ def serialize_client_page(page: ClientPage, *, group: CustomerGroup | None = Non
         "status": page.status,
         "contact_id": page.contact_id,
         "organization_id": page.organization_id,
+        "contact_name": _contact_display_name(page.contact),
+        "organization_name": _organization_display_name(page.organization),
         "source_module_key": page.source_module_key,
         "source_entity_id": page.source_entity_id,
         "document_ids": page.document_ids or [],
+        "documents": _list_client_page_documents(db, page),
+        "proposal_sections": _serialize_proposal_sections(page.proposal_sections),
+        "brand_settings": _serialize_brand_settings(page.brand_settings),
         "pricing_items": _serialize_pricing_items(page.pricing_items or [], group),
         "customer_group": serialize_customer_group(group),
         "pricing_mode": "personalized" if personalized else "public",
+        "action_count": action_summary["action_count"],
+        "latest_action": action_summary["latest_action"],
+        "recent_actions": action_summary["recent_actions"],
         "public_link": _client_page_link(public_token) if public_token else None,
         "public_token_expires_at": page.public_token_expires_at,
         "published_at": page.published_at,
@@ -528,6 +654,7 @@ def create_client_account(db: Session, *, tenant_id: int, actor_user_id: int | N
 def list_client_accounts(db: Session, *, tenant_id: int) -> list[ClientAccount]:
     return (
         db.query(ClientAccount)
+        .options(joinedload(ClientAccount.contact), joinedload(ClientAccount.organization))
         .filter(ClientAccount.tenant_id == tenant_id)
         .order_by(ClientAccount.created_at.desc(), ClientAccount.id.desc())
         .all()
@@ -535,7 +662,12 @@ def list_client_accounts(db: Session, *, tenant_id: int) -> list[ClientAccount]:
 
 
 def get_client_account_or_404(db: Session, *, tenant_id: int, account_id: int) -> ClientAccount:
-    account = db.query(ClientAccount).filter(ClientAccount.tenant_id == tenant_id, ClientAccount.id == account_id).first()
+    account = (
+        db.query(ClientAccount)
+        .options(joinedload(ClientAccount.contact), joinedload(ClientAccount.organization))
+        .filter(ClientAccount.tenant_id == tenant_id, ClientAccount.id == account_id)
+        .first()
+    )
     if not account:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client account not found")
     return account
@@ -594,6 +726,7 @@ def update_client_account_status(db: Session, *, account: ClientAccount, status_
 def list_client_pages(db: Session, *, tenant_id: int) -> list[ClientPage]:
     return (
         db.query(ClientPage)
+        .options(joinedload(ClientPage.contact), joinedload(ClientPage.organization))
         .filter(ClientPage.tenant_id == tenant_id)
         .order_by(ClientPage.created_at.desc(), ClientPage.id.desc())
         .all()
@@ -601,7 +734,12 @@ def list_client_pages(db: Session, *, tenant_id: int) -> list[ClientPage]:
 
 
 def get_client_page_or_404(db: Session, *, tenant_id: int, page_id: int) -> ClientPage:
-    page = db.query(ClientPage).filter(ClientPage.tenant_id == tenant_id, ClientPage.id == page_id).first()
+    page = (
+        db.query(ClientPage)
+        .options(joinedload(ClientPage.contact), joinedload(ClientPage.organization))
+        .filter(ClientPage.tenant_id == tenant_id, ClientPage.id == page_id)
+        .first()
+    )
     if not page:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client page not found")
     return page
@@ -623,6 +761,8 @@ def create_client_page(db: Session, *, tenant_id: int, actor_user_id: int | None
         status=status_value,
         pricing_items=_normalize_pricing_items(payload.get("pricing_items")),
         document_ids=_normalize_document_ids(payload.get("document_ids")),
+        proposal_sections=_normalize_proposal_sections(payload.get("proposal_sections")),
+        brand_settings=_normalize_brand_settings(payload.get("brand_settings")),
         source_module_key=(payload.get("source_module_key") or "").strip() or None,
         source_entity_id=(payload.get("source_entity_id") or "").strip() or None,
         created_by_user_id=actor_user_id,
@@ -657,6 +797,10 @@ def update_client_page(db: Session, *, page: ClientPage, actor_user_id: int | No
         page.pricing_items = _normalize_pricing_items(payload.get("pricing_items"))
     if "document_ids" in payload and payload["document_ids"] is not None:
         page.document_ids = _normalize_document_ids(payload.get("document_ids"))
+    if "proposal_sections" in payload and payload["proposal_sections"] is not None:
+        page.proposal_sections = _normalize_proposal_sections(payload.get("proposal_sections"))
+    if "brand_settings" in payload:
+        page.brand_settings = _normalize_brand_settings(payload.get("brand_settings"))
     if "source_module_key" in payload:
         page.source_module_key = (payload.get("source_module_key") or "").strip() or None
     if "source_entity_id" in payload:
@@ -732,7 +876,7 @@ def get_public_client_page(db: Session, *, token: str) -> ClientPage:
     return page
 
 
-def serialize_public_client_page(page: ClientPage, *, account: ClientAccount | None = None) -> dict:
+def serialize_public_client_page(page: ClientPage, *, account: ClientAccount | None = None, db: Session | None = None) -> dict:
     group = resolve_client_customer_group(db=None, account=account) if _validate_client_account_matches_page(account, page) else None
     return {
         "title": page.title,
@@ -741,7 +885,28 @@ def serialize_public_client_page(page: ClientPage, *, account: ClientAccount | N
         "customer_group": serialize_customer_group(group),
         "pricing_mode": "personalized" if group else "public",
         "document_ids": page.document_ids or [],
+        "documents": _list_client_page_documents(db, page),
+        "proposal_sections": _serialize_proposal_sections(page.proposal_sections),
+        "brand_settings": _serialize_brand_settings(page.brand_settings),
     }
+
+
+def get_client_page_document_or_404(db: Session, *, page: ClientPage, document_id: int) -> Document:
+    allowed_ids = {int(item) for item in page.document_ids or []}
+    if document_id not in allowed_ids:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    document = (
+        db.query(Document)
+        .filter(
+            Document.tenant_id == page.tenant_id,
+            Document.id == document_id,
+            Document.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not document:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    return document
 
 
 def record_client_page_action(

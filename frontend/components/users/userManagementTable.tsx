@@ -39,6 +39,7 @@ export type User = {
   role_id: number;
   team_name: string;
   role_name: string;
+  role_level?: number | null;
   photo_url?: string;
   auth_mode?: "manual_only" | "manual_or_google";
   is_active: UserStatus;
@@ -78,34 +79,40 @@ type Props = {
 };
 
 function filtersEqual(a: UserFiltersValue, b: UserFiltersValue) {
+  const sameSet = (left: string[], right: string[]) => {
+    if (left.length !== right.length) return false;
+    const sortedLeft = [...left].sort();
+    const sortedRight = [...right].sort();
+    return sortedLeft.every((value, index) => value === sortedRight[index]);
+  };
+
   return (
     a.search === b.search &&
     a.filtersOpen === b.filtersOpen &&
-    a.selectedTeams.join("|") === b.selectedTeams.join("|") &&
-    a.selectedRoles.join("|") === b.selectedRoles.join("|") &&
-    a.selectedStatuses.join("|") === b.selectedStatuses.join("|")
+    sameSet(a.selectedTeams, b.selectedTeams) &&
+    sameSet(a.selectedRoles, b.selectedRoles) &&
+    sameSet(a.selectedStatuses, b.selectedStatuses)
   );
 }
 
 // --- Color Configurations ---
-// We map role names to Tailwind class strings here
-const ROLE_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  admin: { 
+const ROLE_LEVEL_STYLES = {
+  admin: {
     bg: "bg-red-900/30", 
     text: "text-red-300", 
     border: "border-red-700/50" 
   },
-  "super user": { 
+  elevated: {
     bg: "bg-orange-900/30", 
     text: "text-orange-300", 
     border: "border-orange-700/50" 
   },
-  user: { 
+  standard: {
     bg: "bg-sky-900/40", 
     text: "text-sky-200", 
     border: "border-sky-700/50" 
   },
-  viewer: { 
+  basic: {
     bg: "bg-violet-900/40", 
     text: "text-violet-300", 
     border: "border-violet-700/50" 
@@ -123,9 +130,13 @@ const DEFAULT_ROLE_STYLE = {
   border: "border-neutral-600" 
 };
 
-function getRolePillProps(roleName: string) {
-  const key = (roleName || "").toLowerCase();
-  return ROLE_STYLES[key] || DEFAULT_ROLE_STYLE;
+function getRolePillProps(roleName: string, roleLevel?: number | null) {
+  if (!roleName || roleName === "Unassigned") return ROLE_LEVEL_STYLES.unassigned;
+  if (typeof roleLevel !== "number") return DEFAULT_ROLE_STYLE;
+  if (roleLevel >= 100) return ROLE_LEVEL_STYLES.admin;
+  if (roleLevel >= 90) return ROLE_LEVEL_STYLES.elevated;
+  if (roleLevel >= 10) return ROLE_LEVEL_STYLES.standard;
+  return ROLE_LEVEL_STYLES.basic;
 }
 
 // --- Fetcher Functions ---
@@ -179,18 +190,20 @@ export function UserManagementTable({
   anyViewConditions = [],
   onStateChange,
 }: Props) {
-  const [sortKey, setSortKey] = useState<SortKey>(initialSortKey);
-  const [sortDirection, setSortDirection] = useState<SortDirection>(initialSortDirection);
+  const [sortKey, setSortKey] = useState<SortKey>(() => initialSortKey);
+  const [sortDirection, setSortDirection] = useState<SortDirection>(() => initialSortDirection);
   const onStateChangeRef = useRef(onStateChange);
   const isMountedRef = useRef(false);
+  const lastStateKeyRef = useRef(stateKey);
+  const suppressNextStateChangeRef = useRef(false);
 
-  const [filters, setFilters] = useState<UserFiltersValue>({
+  const [filters, setFilters] = useState<UserFiltersValue>(() => ({
     search: initialFilters?.search ?? "",
     filtersOpen: initialFilters?.filtersOpen ?? false,
     selectedTeams: initialFilters?.selectedTeams ?? [],
     selectedRoles: initialFilters?.selectedRoles ?? [],
     selectedStatuses: initialFilters?.selectedStatuses ?? [],
-  });
+  }));
 
   useEffect(() => {
     onStateChangeRef.current = onStateChange;
@@ -342,7 +355,7 @@ export function UserManagementTable({
 
   const renderUserCell = (u: User, column: string) => {
     const isSelf = typeof currentUserId === "number" && u.id === currentUserId;
-    const roleProps = getRolePillProps(u.role_name);
+    const roleProps = getRolePillProps(u.role_name, u.role_level);
 
     switch (column) {
       case "name":
@@ -426,6 +439,7 @@ export function UserManagementTable({
   };
 
   const handleFilterChange = (newFilters: UserFiltersValue) => {
+    suppressNextStateChangeRef.current = false;
     setFilters(newFilters);
     goToUserPage(1);
   };
@@ -441,6 +455,7 @@ export function UserManagementTable({
   };
 
   const handleHeaderClick = (key: SortKey) => {
+    suppressNextStateChangeRef.current = false;
     if (sortKey === key) {
       setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
     } else {
@@ -451,6 +466,9 @@ export function UserManagementTable({
   };
 
   useEffect(() => {
+    if (lastStateKeyRef.current === stateKey) return;
+    lastStateKeyRef.current = stateKey;
+
     const nextFilters = {
       search: initialFilters?.search ?? "",
       filtersOpen: initialFilters?.filtersOpen ?? false,
@@ -458,16 +476,25 @@ export function UserManagementTable({
       selectedRoles: initialFilters?.selectedRoles ?? [],
       selectedStatuses: initialFilters?.selectedStatuses ?? [],
     };
+    suppressNextStateChangeRef.current = (
+      !filtersEqual(filters, nextFilters) ||
+      sortKey !== initialSortKey ||
+      sortDirection !== initialSortDirection
+    );
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFilters((current) => (filtersEqual(current, nextFilters) ? current : nextFilters));
     setSortKey((current) => (current === initialSortKey ? current : initialSortKey));
     setSortDirection((current) => (current === initialSortDirection ? current : initialSortDirection));
     goToUserPage(1);
-  }, [stateKey, initialFilters, initialSortDirection, initialSortKey, goToUserPage]);
+  }, [stateKey, filters, initialFilters, initialSortDirection, initialSortKey, sortDirection, sortKey, goToUserPage]);
 
   useEffect(() => {
     if (!isMountedRef.current) {
       isMountedRef.current = true;
+      return;
+    }
+    if (suppressNextStateChangeRef.current) {
+      suppressNextStateChangeRef.current = false;
       return;
     }
     onStateChangeRef.current?.({ filters, sortKey, sortDirection });

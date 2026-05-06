@@ -88,13 +88,14 @@ Recently landed in the client page UI slice:
 4. add a public signed client page screen with login-aware personalized pricing
 5. keep payments out of the client page UI
 
-Client page polish queued for later:
+Active client page polish pass:
 
-1. replace raw customer IDs with customer lookup selectors
-2. improve document display/download handling inside client pages
-3. add tenant branding controls for client-facing pages
-4. add richer proposal sections beyond the first pricing snapshot
-5. expose tighter client-page activity visibility for CRM users
+1. [done] replace raw customer IDs with customer lookup selectors
+2. [done] expose customer-group assignment on contact and organization detail pages for CRM users
+3. [done] improve document display/download handling inside client pages
+4. [done] add tenant branding controls for client-facing pages
+5. [done] add richer proposal sections beyond the first pricing snapshot
+6. [done] expose tighter client-page activity visibility for CRM users
 
 Production-readiness issue queue:
 

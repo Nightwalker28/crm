@@ -60,6 +60,8 @@ CONTACT_LIST_FIELDS = {
     "organization_id",
     "organization_name",
     "assigned_to",
+    "customer_group_id",
+    "customer_group",
     "created_time",
 }
 

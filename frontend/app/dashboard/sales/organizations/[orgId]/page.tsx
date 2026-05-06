@@ -16,7 +16,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { useClientPortalActions, useCustomerGroups, type CustomerGroup } from "@/hooks/useClientPortal";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 
 type RelatedContact = {
@@ -61,6 +63,8 @@ type OrganizationSummary = {
     billing_state?: string | null;
     billing_postal_code?: string | null;
     billing_country?: string | null;
+    customer_group_id?: number | null;
+    customer_group?: CustomerGroup | null;
     custom_fields?: Record<string, unknown> | null;
   };
   related_contacts: RelatedContact[];
@@ -123,6 +127,8 @@ export default function OrganizationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const customFieldsQuery = useModuleCustomFields("sales_organizations", true);
+  const customerGroupsQuery = useCustomerGroups();
+  const { assignOrganizationGroup, isAssigningCustomerGroup } = useClientPortalActions();
 
   async function loadSummary(signal?: { cancelled: boolean }) {
     try {
@@ -196,6 +202,21 @@ export default function OrganizationDetailPage() {
       setError(saveError instanceof Error ? saveError.message : "Failed to save organization");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleAssignCustomerGroup(value: string) {
+    if (!summary) return;
+    try {
+      const parsedGroupId = value === "none" ? null : Number(value);
+      await assignOrganizationGroup({
+        organizationId: summary.organization.org_id,
+        customerGroupId: Number.isInteger(parsedGroupId) ? parsedGroupId : null,
+      });
+      await loadSummary();
+      toast.success("Customer group updated.");
+    } catch (assignError) {
+      toast.error(assignError instanceof Error ? assignError.message : "Failed to update customer group.");
     }
   }
 
@@ -319,6 +340,33 @@ export default function OrganizationDetailPage() {
                         {item}
                       </span>
                     )) : <span className="text-sm text-neutral-500">No service history yet</span>}
+                  </div>
+                </div>
+                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Customer Group</div>
+                  <div className="mt-2">
+                    <Select
+                      value={summary.organization.customer_group_id ? String(summary.organization.customer_group_id) : "none"}
+                      onValueChange={(value) => void handleAssignCustomerGroup(value)}
+                      disabled={customerGroupsQuery.isLoading || isAssigningCustomerGroup}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select customer group" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No group</SelectItem>
+                        {(customerGroupsQuery.data ?? []).map((group) => (
+                          <SelectItem key={group.id} value={String(group.id)} disabled={!group.is_active}>
+                            {group.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="mt-2 text-xs text-neutral-500">
+                    {summary.organization.customer_group
+                      ? `${summary.organization.customer_group.name} pricing applies when this organization signs in.`
+                      : "Public/default pricing applies until a group is assigned."}
                   </div>
                 </div>
               </div>

@@ -50,6 +50,8 @@ ORGANIZATION_LIST_FIELDS = {
     "annual_revenue",
     "primary_phone",
     "billing_country",
+    "customer_group_id",
+    "customer_group",
 }
 
 ORGANIZATION_IMPORT_TARGET_FIELDS = [

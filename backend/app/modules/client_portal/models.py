@@ -102,6 +102,8 @@ class ClientPage(Base):
     status = Column(String(20), nullable=False, server_default="draft", index=True)
     pricing_items = Column(JSON, nullable=False)
     document_ids = Column(JSON, nullable=True)
+    proposal_sections = Column(JSON, nullable=True)
+    brand_settings = Column(JSON, nullable=True)
     source_module_key = Column(String(100), nullable=True, index=True)
     source_entity_id = Column(String(100), nullable=True, index=True)
     public_token_hash = Column(String(64), nullable=True, unique=True, index=True)

@@ -153,6 +153,7 @@ Completed items:
 - Expanded CSV import/export coverage so opportunities now have backend import/export routes, insertion orders now have CSV export, and the current business-module headers use shared authenticated import/export controls for contacts, organizations, opportunities, and finance export.
 - Added the backend client-page foundation with tenant-scoped signed pages, page-level pricing snapshots, public/default pricing reads, authenticated customer-group discount resolution, and persisted accept/request-changes actions without payment links.
 - Added the first client-page UI foundation: CRM users can create pricing snapshots, publish/copy signed links, and create client setup links; clients can set passwords, sign in separately from the CRM dashboard, view signed pages, see login-aware personalized pricing, and accept or request changes.
+- Finished the client-page polish pass with CRM customer lookup selectors, customer-group assignment on contact and organization detail pages, public document downloads, page-level branding snapshots, richer proposal sections, and visible client response activity in the CRM page list.
 
 In progress:
 - Move external document-storage provider connection flows into the active Documents slice, starting with per-user Google Drive OAuth/consent and Drive-backed uploads/downloads through the existing storage backend contract.
@@ -211,7 +212,7 @@ In progress:
 - Finish the first tenant-aware backend pass beyond auth by scoping company profile, module configuration, and other cross-tenant admin data that still assumes a single shared row set.
 
 Next up:
-- Polish shareable client pages with richer document/proposal presentation, customer lookup instead of raw IDs, branding controls, and tighter client-page activity visibility.
+- Shareable client-page polish now has customer lookup selectors, CRM-facing contact/organization customer-group assignment controls, and signed client-page document metadata/download handling; remaining polish is tenant branding controls, richer proposal sections, and tighter client-page activity visibility.
 - Expand activity timelines later so messages, invoices, and other source-linked work consistently log to the relevant CRM record timeline once those modules expose stable source links.
 - Add the remaining external document-storage providers later: S3/R2-style object stores through access-key configuration and Microsoft OneDrive through explicit OAuth/consent.
 - Build differentiators after the CRM operating loop is stable: shareable client pages for proposals/pricing/docs, a website/WordPress integration API for approved catalog/service/pricing/media pulls, accept/request-changes actions, custom client domains via CNAME, and client-facing branding.

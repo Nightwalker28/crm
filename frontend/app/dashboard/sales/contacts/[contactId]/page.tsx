@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { useClientPortalActions, useCustomerGroups, type CustomerGroup } from "@/hooks/useClientPortal";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDateTime } from "@/lib/datetime";
@@ -64,6 +65,8 @@ type ContactSummary = {
     last_contacted_at?: string | null;
     last_contacted_channel?: string | null;
     whatsapp_last_contacted_at?: string | null;
+    customer_group_id?: number | null;
+    customer_group?: CustomerGroup | null;
     custom_fields?: Record<string, unknown> | null;
   };
   organization?: OrganizationCompact | null;
@@ -127,6 +130,8 @@ export default function ContactDetailPage() {
   const [createWhatsAppReminder, setCreateWhatsAppReminder] = useState(true);
   const [whatsAppReminderDueAt, setWhatsAppReminderDueAt] = useState("");
   const customFieldsQuery = useModuleCustomFields("sales_contacts", true);
+  const customerGroupsQuery = useCustomerGroups();
+  const { assignContactGroup, isAssigningCustomerGroup } = useClientPortalActions();
 
   async function loadSummary(signal?: { cancelled: boolean }) {
     try {
@@ -252,6 +257,21 @@ export default function ContactDetailPage() {
     }
   }
 
+  async function handleAssignCustomerGroup(value: string) {
+    if (!summary) return;
+    try {
+      const parsedGroupId = value === "none" ? null : Number(value);
+      await assignContactGroup({
+        contactId: summary.contact.contact_id,
+        customerGroupId: Number.isInteger(parsedGroupId) ? parsedGroupId : null,
+      });
+      await loadSummary();
+      toast.success("Customer group updated.");
+    } catch (assignError) {
+      toast.error(assignError instanceof Error ? assignError.message : "Failed to update customer group.");
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <RecordPageHeader
@@ -360,6 +380,33 @@ export default function ContactDetailPage() {
                         {item}
                       </span>
                     )) : <span className="text-sm text-neutral-500">No service history yet</span>}
+                  </div>
+                </div>
+                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Customer Group</div>
+                  <div className="mt-2">
+                    <Select
+                      value={summary.contact.customer_group_id ? String(summary.contact.customer_group_id) : "none"}
+                      onValueChange={(value) => void handleAssignCustomerGroup(value)}
+                      disabled={customerGroupsQuery.isLoading || isAssigningCustomerGroup}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select customer group" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No group</SelectItem>
+                        {(customerGroupsQuery.data ?? []).map((group) => (
+                          <SelectItem key={group.id} value={String(group.id)} disabled={!group.is_active}>
+                            {group.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="mt-2 text-xs text-neutral-500">
+                    {summary.contact.customer_group
+                      ? `${summary.contact.customer_group.name} pricing applies when this contact signs in.`
+                      : "Public/default pricing applies until a group is assigned."}
                   </div>
                 </div>
                 <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">

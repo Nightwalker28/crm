@@ -5,6 +5,18 @@ from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 
+class CustomerGroupSummary(BaseModel):
+    id: int
+    group_key: str
+    name: str
+    discount_type: str
+    discount_value: float | None = None
+    is_default: bool
+    is_active: bool
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 # organization schemas
 class SalesOrganizationBase(BaseModel):
     org_name: str
@@ -49,6 +61,8 @@ class SalesOrganizationUpdate(BaseModel):
 class SalesOrganizationResponse(SalesOrganizationBase):
     org_id: int
     assigned_to: int | None = None
+    customer_group_id: int | None = None
+    customer_group: CustomerGroupSummary | None = None
     created_time: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -63,6 +77,8 @@ class SalesOrganizationListItem(BaseModel):
     industry: str | None = None
     annual_revenue: str | None = None
     billing_country: str | None = None
+    customer_group_id: int | None = None
+    customer_group: CustomerGroupSummary | None = None
     custom_fields: dict[str, Any] | None = None
 
 
@@ -113,6 +129,8 @@ class SalesContactResponse(SalesContactBase):
     contact_id: int
     primary_email: EmailStr
     assigned_to: int
+    customer_group_id: int | None = None
+    customer_group: CustomerGroupSummary | None = None
     created_time: datetime
     last_contacted_at: datetime | None = None
     last_contacted_channel: str | None = None
@@ -136,6 +154,8 @@ class SalesContactListItem(BaseModel):
     organization_id: Optional[int] = None
     organization_name: Optional[str] = None
     assigned_to: Optional[int] = None
+    customer_group_id: Optional[int] = None
+    customer_group: CustomerGroupSummary | None = None
     created_time: datetime | None = None
     last_contacted_at: datetime | None = None
     last_contacted_channel: str | None = None

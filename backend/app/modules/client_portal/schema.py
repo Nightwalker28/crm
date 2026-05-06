@@ -65,6 +65,8 @@ class ClientAccountResponse(BaseModel):
     status: str
     contact_id: int | None = None
     organization_id: int | None = None
+    contact_name: str | None = None
+    organization_name: str | None = None
     has_password: bool
     setup_link: str | None = None
     setup_token_expires_at: datetime | None = None
@@ -107,6 +109,18 @@ class ClientPagePricingItemRequest(BaseModel):
     public_unit_price: Decimal = Field(ge=0)
 
 
+class ClientPageProposalSectionRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=180)
+    body: str = Field(min_length=1, max_length=4000)
+    sort_order: int = Field(default=0, ge=0, le=1000)
+
+
+class ClientPageBrandSettingsRequest(BaseModel):
+    company_name: str | None = Field(default=None, max_length=150)
+    logo_url: str | None = Field(default=None, max_length=500)
+    accent_color: str | None = Field(default=None, max_length=20)
+
+
 class ClientPageCreateRequest(BaseModel):
     title: str = Field(min_length=1, max_length=180)
     summary: str | None = None
@@ -114,6 +128,8 @@ class ClientPageCreateRequest(BaseModel):
     organization_id: int | None = None
     pricing_items: list[ClientPagePricingItemRequest] = Field(default_factory=list)
     document_ids: list[int] = Field(default_factory=list)
+    proposal_sections: list[ClientPageProposalSectionRequest] = Field(default_factory=list)
+    brand_settings: ClientPageBrandSettingsRequest | None = None
     source_module_key: str | None = Field(default=None, max_length=100)
     source_entity_id: str | None = Field(default=None, max_length=100)
     status: str = Field(default="draft", max_length=20)
@@ -130,6 +146,8 @@ class ClientPageUpdateRequest(BaseModel):
     summary: str | None = None
     pricing_items: list[ClientPagePricingItemRequest] | None = None
     document_ids: list[int] | None = None
+    proposal_sections: list[ClientPageProposalSectionRequest] | None = None
+    brand_settings: ClientPageBrandSettingsRequest | None = None
     source_module_key: str | None = Field(default=None, max_length=100)
     source_entity_id: str | None = Field(default=None, max_length=100)
     status: str | None = Field(default=None, max_length=20)
@@ -159,6 +177,37 @@ class ClientPagePricingItemResponse(BaseModel):
     discount_value: Decimal | None = None
 
 
+class ClientPageProposalSectionResponse(BaseModel):
+    title: str
+    body: str
+    sort_order: int = 0
+
+
+class ClientPageBrandSettingsResponse(BaseModel):
+    company_name: str | None = None
+    logo_url: str | None = None
+    accent_color: str | None = None
+
+
+class ClientPageDocumentResponse(BaseModel):
+    id: int
+    title: str
+    original_filename: str
+    content_type: str
+    extension: str
+    file_size_bytes: int
+
+
+class ClientPageActionSummaryResponse(BaseModel):
+    id: int
+    action: str
+    message: str | None = None
+    actor_name: str | None = None
+    actor_email: str | None = None
+    client_account_id: int | None = None
+    created_at: datetime
+
+
 class ClientPageResponse(BaseModel):
     id: int
     title: str
@@ -166,12 +215,20 @@ class ClientPageResponse(BaseModel):
     status: str
     contact_id: int | None = None
     organization_id: int | None = None
+    contact_name: str | None = None
+    organization_name: str | None = None
     source_module_key: str | None = None
     source_entity_id: str | None = None
     document_ids: list[int] = Field(default_factory=list)
+    documents: list[ClientPageDocumentResponse] = Field(default_factory=list)
+    proposal_sections: list[ClientPageProposalSectionResponse] = Field(default_factory=list)
+    brand_settings: ClientPageBrandSettingsResponse | None = None
     pricing_items: list[ClientPagePricingItemResponse] = Field(default_factory=list)
     customer_group: CustomerGroupResponse | None = None
     pricing_mode: str
+    action_count: int = 0
+    latest_action: ClientPageActionSummaryResponse | None = None
+    recent_actions: list[ClientPageActionSummaryResponse] = Field(default_factory=list)
     public_link: str | None = None
     public_token_expires_at: datetime | None = None
     published_at: datetime | None = None
@@ -186,6 +243,9 @@ class ClientPagePublicResponse(BaseModel):
     customer_group: CustomerGroupResponse | None = None
     pricing_mode: str
     document_ids: list[int] = Field(default_factory=list)
+    documents: list[ClientPageDocumentResponse] = Field(default_factory=list)
+    proposal_sections: list[ClientPageProposalSectionResponse] = Field(default_factory=list)
+    brand_settings: ClientPageBrandSettingsResponse | None = None
 
 
 class ClientPageActionResponse(BaseModel):

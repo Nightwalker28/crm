@@ -26,6 +26,8 @@ export type ClientAccount = {
   status: string;
   contact_id?: number | null;
   organization_id?: number | null;
+  contact_name?: string | null;
+  organization_name?: string | null;
   has_password: boolean;
   setup_link?: string | null;
   setup_token_expires_at?: string | null;
@@ -51,6 +53,37 @@ export type PricingItem = PricingItemPayload & {
   discount_value?: string | number | null;
 };
 
+export type ClientPageDocument = {
+  id: number;
+  title: string;
+  original_filename: string;
+  content_type: string;
+  extension: string;
+  file_size_bytes: number;
+};
+
+export type ClientPageProposalSection = {
+  title: string;
+  body: string;
+  sort_order: number;
+};
+
+export type ClientPageBrandSettings = {
+  company_name?: string | null;
+  logo_url?: string | null;
+  accent_color?: string | null;
+};
+
+export type ClientPageActionSummary = {
+  id: number;
+  action: string;
+  message?: string | null;
+  actor_name?: string | null;
+  actor_email?: string | null;
+  client_account_id?: number | null;
+  created_at: string;
+};
+
 export type ClientPage = {
   id: number;
   title: string;
@@ -58,12 +91,20 @@ export type ClientPage = {
   status: string;
   contact_id?: number | null;
   organization_id?: number | null;
+  contact_name?: string | null;
+  organization_name?: string | null;
   source_module_key?: string | null;
   source_entity_id?: string | null;
   document_ids: number[];
+  documents: ClientPageDocument[];
+  proposal_sections: ClientPageProposalSection[];
+  brand_settings?: ClientPageBrandSettings | null;
   pricing_items: PricingItem[];
   customer_group?: CustomerGroup | null;
   pricing_mode: string;
+  action_count: number;
+  latest_action?: ClientPageActionSummary | null;
+  recent_actions: ClientPageActionSummary[];
   public_link?: string | null;
   public_token_expires_at?: string | null;
   published_at?: string | null;
@@ -78,6 +119,9 @@ export type PublicClientPage = {
   customer_group?: CustomerGroup | null;
   pricing_mode: string;
   document_ids: number[];
+  documents: ClientPageDocument[];
+  proposal_sections: ClientPageProposalSection[];
+  brand_settings?: ClientPageBrandSettings | null;
 };
 
 export type ClientPagePayload = {
@@ -87,9 +131,17 @@ export type ClientPagePayload = {
   organization_id?: number | null;
   pricing_items: PricingItemPayload[];
   document_ids?: number[];
+  proposal_sections?: ClientPageProposalSection[];
+  brand_settings?: ClientPageBrandSettings | null;
   source_module_key?: string | null;
   source_entity_id?: string | null;
   status?: string;
+};
+
+export type CustomerOption = {
+  id: number;
+  label: string;
+  detail?: string | null;
 };
 
 async function readJsonSafely(res: Response) {
@@ -156,6 +208,56 @@ export function useClientPortalAccounts() {
   });
 }
 
+export function useCustomerGroups() {
+  return useQuery({
+    queryKey: ["client-portal", "customer-groups"],
+    queryFn: () => crmJson<CustomerGroup[]>("/client-portal/customer-groups", {}, "Failed to load customer groups."),
+    staleTime: 5 * 60_000,
+  });
+}
+
+export function useCustomerOptions(type: "contact" | "organization", search: string) {
+  return useQuery({
+    queryKey: ["client-portal", "customer-options", type, search],
+    queryFn: async () => {
+      const value = search.trim();
+      if (type === "contact") {
+        const params = new URLSearchParams({ page: "1", page_size: "8" });
+        const path = value ? `/sales/contacts/search?query=${encodeURIComponent(value)}&${params.toString()}` : `/sales/contacts?${params.toString()}`;
+        const body = await crmJson<{ results: Array<{ contact_id: number; first_name?: string | null; last_name?: string | null; primary_email?: string | null; organization_name?: string | null }> }>(
+          path,
+          {},
+          "Failed to load contacts.",
+        );
+        return body.results.map((contact) => {
+          const fullName = [contact.first_name, contact.last_name].filter(Boolean).join(" ").trim();
+          return {
+            id: contact.contact_id,
+            label: fullName || contact.primary_email || `Contact #${contact.contact_id}`,
+            detail: [contact.primary_email, contact.organization_name].filter(Boolean).join(" · ") || null,
+          };
+        });
+      }
+
+      const params = new URLSearchParams({ page: "1", page_size: "8" });
+      if (value) params.set("search", value);
+      const body = await crmJson<{ results: Array<{ org_id?: number; org_name?: string | null; primary_email?: string | null; website?: string | null }> }>(
+        `/sales/organizations?${params.toString()}`,
+        {},
+        "Failed to load organizations.",
+      );
+      return body.results
+        .filter((organization) => organization.org_id)
+        .map((organization) => ({
+          id: organization.org_id as number,
+          label: organization.org_name || `Organization #${organization.org_id}`,
+          detail: [organization.primary_email, organization.website].filter(Boolean).join(" · ") || null,
+        }));
+    },
+    staleTime: 30_000,
+  });
+}
+
 export function useClientPortalActions() {
   const queryClient = useQueryClient();
   const invalidate = async () => {
@@ -178,14 +280,35 @@ export function useClientPortalActions() {
       crmJson<ClientAccount>("/client-portal/accounts", { method: "POST", body: JSON.stringify(payload) }, "Failed to create client account."),
     onSuccess: invalidate,
   });
+  const assignContactGroup = useMutation({
+    mutationFn: ({ contactId, customerGroupId }: { contactId: number; customerGroupId: number | null }) =>
+      crmJson<{ contact_id: number; customer_group_id: number | null }>(
+        `/client-portal/contacts/${contactId}/customer-group`,
+        { method: "PUT", body: JSON.stringify({ customer_group_id: customerGroupId }) },
+        "Failed to assign customer group.",
+      ),
+    onSuccess: invalidate,
+  });
+  const assignOrganizationGroup = useMutation({
+    mutationFn: ({ organizationId, customerGroupId }: { organizationId: number; customerGroupId: number | null }) =>
+      crmJson<{ organization_id: number; customer_group_id: number | null }>(
+        `/client-portal/organizations/${organizationId}/customer-group`,
+        { method: "PUT", body: JSON.stringify({ customer_group_id: customerGroupId }) },
+        "Failed to assign customer group.",
+      ),
+    onSuccess: invalidate,
+  });
 
   return {
     createPage: createPage.mutateAsync,
     publishPage: publishPage.mutateAsync,
     createAccount: createAccount.mutateAsync,
+    assignContactGroup: assignContactGroup.mutateAsync,
+    assignOrganizationGroup: assignOrganizationGroup.mutateAsync,
     isCreatingPage: createPage.isPending,
     isPublishingPage: publishPage.isPending,
     isCreatingAccount: createAccount.isPending,
+    isAssigningCustomerGroup: assignContactGroup.isPending || assignOrganizationGroup.isPending,
   };
 }
 
@@ -217,4 +340,8 @@ export async function recordClientPageAction(token: string, action: "accept" | "
     method: "POST",
     body: JSON.stringify(payload),
   }, "Failed to record response.");
+}
+
+export function publicClientPageDocumentUrl(token: string, documentId: number) {
+  return `${API_BASE}/client-pages/${token}/documents/${documentId}/download`;
 }

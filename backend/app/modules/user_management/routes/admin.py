@@ -43,6 +43,7 @@ USER_LIST_FIELDS = {
     "role_id",
     "team_name",
     "role_name",
+    "role_level",
     "photo_url",
     "auth_mode",
     "is_active",
@@ -59,7 +60,7 @@ def _parse_list_fields(raw_fields: str | None) -> set[str]:
 
 def _serialize_user_list_item(user, fields: set[str]) -> UserListItem:
     safe_fields = set(fields)
-    safe_fields.update({"team_name", "first_name", "last_name", "email", "team_id", "role_id", "role_name", "auth_mode", "is_active", "photo_url"})
+    safe_fields.update({"team_name", "first_name", "last_name", "email", "team_id", "role_id", "role_name", "role_level", "auth_mode", "is_active", "photo_url"})
     payload = {"id": user.id}
     for field in safe_fields:
         payload[field] = getattr(user, field, None)

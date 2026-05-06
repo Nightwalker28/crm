@@ -357,6 +357,42 @@ class ClientPortalServiceTests(unittest.TestCase):
         actions = {row.action for row in self.db.query(ActivityLog).all()}
         self.assertIn("client_page.request_changes", actions)
 
+    def test_client_page_brand_proposal_and_actions_are_serialized(self):
+        page = client_portal_services.create_client_page(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "title": "Proposal A",
+                "contact_id": 7,
+                "pricing_items": [{"name": "Implementation", "quantity": 1, "currency": "USD", "public_unit_price": 100}],
+                "proposal_sections": [
+                    {"title": "Scope", "body": "Build and launch.", "sort_order": 2},
+                    {"title": "Overview", "body": "A focused project.", "sort_order": 1},
+                ],
+                "brand_settings": {
+                    "company_name": "Buyer Portal",
+                    "logo_url": "https://example.com/logo.png",
+                    "accent_color": "#14b8a6",
+                },
+            },
+        )
+        client_portal_services.record_client_page_action(
+            self.db,
+            page=page,
+            action="accept",
+            payload={"actor_name": "Buyer Contact", "actor_email": "buyer@example.com"},
+        )
+
+        crm_payload = client_portal_services.serialize_client_page(page, db=self.db)
+        public_payload = client_portal_services.serialize_public_client_page(page, db=self.db)
+
+        self.assertEqual(crm_payload["brand_settings"]["company_name"], "Buyer Portal")
+        self.assertEqual(public_payload["brand_settings"]["accent_color"], "#14b8a6")
+        self.assertEqual([section["title"] for section in public_payload["proposal_sections"]], ["Overview", "Scope"])
+        self.assertEqual(crm_payload["action_count"], 1)
+        self.assertEqual(crm_payload["latest_action"]["action"], "accept")
+
     def test_resolve_client_customer_group_from_linked_contact(self):
         group = client_portal_services.create_customer_group(
             self.db,

@@ -1,4 +1,7 @@
+from types import SimpleNamespace
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi.responses import FileResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -35,6 +38,7 @@ from app.modules.client_portal.services.client_portal_services import (
     create_client_page,
     create_customer_group,
     get_client_account_or_404,
+    get_client_page_document_or_404,
     get_client_page_or_404,
     get_customer_group_or_404,
     get_public_client_page,
@@ -54,6 +58,7 @@ from app.modules.client_portal.services.client_portal_services import (
     update_client_account_status,
     update_customer_group,
 )
+from app.modules.documents.services.document_services import resolve_document_download
 
 
 router = APIRouter(prefix="/client-portal", tags=["Client Portal"])
@@ -261,7 +266,7 @@ def get_client_pages(
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
     pages = list_client_pages(db, tenant_id=current_user.tenant_id)
-    return [ClientPageResponse.model_validate(serialize_client_page(page)) for page in pages]
+    return [ClientPageResponse.model_validate(serialize_client_page(page, db=db)) for page in pages]
 
 
 @router.post("/pages", response_model=ClientPageResponse, status_code=status.HTTP_201_CREATED)
@@ -283,7 +288,7 @@ def create_client_page_route(
         actor_user_id=current_user.id,
         payload=payload.model_dump(),
     )
-    return ClientPageResponse.model_validate(serialize_client_page(page))
+    return ClientPageResponse.model_validate(serialize_client_page(page, db=db))
 
 
 @router.put("/pages/{page_id}", response_model=ClientPageResponse)
@@ -307,7 +312,7 @@ def update_client_page_route(
         actor_user_id=current_user.id,
         payload=payload.model_dump(exclude_unset=True),
     )
-    return ClientPageResponse.model_validate(serialize_client_page(page))
+    return ClientPageResponse.model_validate(serialize_client_page(page, db=db))
 
 
 @router.post("/pages/{page_id}/publish-link", response_model=ClientPageResponse)
@@ -331,7 +336,7 @@ def publish_client_page_link_route(
         actor_user_id=current_user.id,
         expires_in_days=payload.expires_in_days,
     )
-    return ClientPageResponse.model_validate(serialize_client_page(page, public_token=public_token))
+    return ClientPageResponse.model_validate(serialize_client_page(page, public_token=public_token, db=db))
 
 
 @client_auth_router.post("/setup", response_model=ClientAccountResponse)
@@ -397,7 +402,31 @@ def get_public_client_page_route(
 ):
     page = get_public_client_page(db, token=token)
     account = _optional_client_account(db, credentials)
-    return ClientPagePublicResponse.model_validate(serialize_public_client_page(page, account=account))
+    return ClientPagePublicResponse.model_validate(serialize_public_client_page(page, account=account, db=db))
+
+
+@public_client_pages_router.get("/{token}/documents/{document_id}/download")
+def download_public_client_page_document(
+    token: str,
+    document_id: int,
+    db: Session = Depends(get_db),
+):
+    page = get_public_client_page(db, token=token)
+    document = get_client_page_document_or_404(db, page=page, document_id=document_id)
+    current_user = SimpleNamespace(id=page.created_by_user_id)
+    download = resolve_document_download(db, document=document, current_user=current_user)
+    if download["kind"] == "bytes":
+        return Response(
+            content=download["content"],
+            media_type=document.content_type,
+            headers={"Content-Disposition": f'inline; filename="{document.original_filename}"'},
+        )
+    return FileResponse(
+        download["path"],
+        media_type=document.content_type,
+        filename=document.original_filename,
+        content_disposition_type="inline",
+    )
 
 
 @public_client_pages_router.post("/{token}/accept", response_model=ClientPageActionResponse, status_code=status.HTTP_201_CREATED)

@@ -45,6 +45,7 @@ class UserListItem(BaseModel):
     role_id: Optional[int] = None
     team_name: Optional[str] = None
     role_name: Optional[str] = None
+    role_level: Optional[int] = None
     photo_url: Optional[str] = None
     auth_mode: Optional[UserAuthMode] = None
     is_active: Optional[UserStatus] = None
