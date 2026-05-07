@@ -39,7 +39,7 @@ app.add_middleware(
 @app.middleware("http")
 async def attach_tenant_context(request: Request, call_next):
     path = request.url.path
-    if path == "/health" or path == "/media" or path.startswith("/media/"):
+    if path == "/health" or path == "/media" or path.startswith("/media/") or path.startswith("/api/v1/integrations/public"):
         request.state.cloud_mode = is_cloud_mode_enabled()
         request.state.tenant = None
         return await call_next(request)

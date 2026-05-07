@@ -26,6 +26,7 @@ DEFAULT_ROLES = [
 ]
 
 DEFAULT_MODULES = [
+    {"name": "website_integrations", "base_route": None, "description": "Public website and WordPress catalog integration APIs"},
     {"name": "documents", "base_route": "/dashboard/documents", "description": "Controlled document uploads and record-linked files"},
     {"name": "mail", "base_route": "/dashboard/mail", "description": "Mailbox integration and CRM communication history"},
     {"name": "calendar", "base_route": "/dashboard/calendar", "description": "Shared user calendar and scheduling"},

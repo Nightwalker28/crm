@@ -28,6 +28,10 @@ from app.modules.sales.routes.organizations_routes import router as sales_organi
 from app.modules.sales.routes.opportunities_routes import router as sales_opportunities_router
 from app.modules.tasks.routes.tasks_routes import router as tasks_router
 from app.modules.whatsapp.routes.whatsapp_routes import router as whatsapp_router
+from app.modules.website_integrations.routes.website_integration_routes import (
+    public_router as website_integration_public_router,
+    router as website_integration_router,
+)
 
 
 router = APIRouter(prefix="/api/v1")
@@ -59,3 +63,5 @@ router.include_router(sales_organization_router, prefix="/sales")
 router.include_router(sales_opportunities_router, prefix="/sales")
 router.include_router(tasks_router)
 router.include_router(whatsapp_router)
+router.include_router(website_integration_router)
+router.include_router(website_integration_public_router)

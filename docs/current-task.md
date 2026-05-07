@@ -14,7 +14,14 @@ Before making substantial code changes:
 
 ## Current Focus
 
-Build shareable client pages for proposals, pricing, and documents without payment links yet.
+Start the website and WordPress integration slice now that shareable client pages for proposals, pricing, and documents are landed without payment links.
+
+Active website integration sequence:
+
+1. [active] add backend-only tenant-scoped integration API keys
+2. [active] add public catalog item APIs for products/services, public prices, stock status, stock quantity, and media URLs
+3. keep CRM frontend management deferred for now because external websites/WordPress/custom sites will render the data
+4. keep booking confirmation writebacks, automatic stock decrement, invoices, and payment links as later integration slices
 
 Recently landed in the Documents slice:
 
@@ -112,14 +119,16 @@ Production-readiness issue queue:
 11. [done] import/export controls split import, export, and shared job polling responsibilities
 12. [done] pagination config is cached once per session instead of fetched on every mount
 
-After shareable client pages are complete, resume CRM growth in this order:
+After shareable client pages, resume CRM growth in this order:
 
-1. website and WordPress integration: let customer websites pull approved catalog/service/pricing/media data from Lynk through a public integration API and later a WordPress plugin
+1. [active] website and WordPress integration: let customer websites pull approved catalog/service/pricing/media data from Lynk through a public integration API and later a WordPress plugin
 2. custom client domains: `clients.company.com` CNAME support plus client-facing branding
 3. money features: invoice generator, then Stripe and PayPal payment links
 
 ## Immediate Notes
 
+- The shareable client page slice is complete enough to leave the active path: CRM users can create linked pricing/proposal/document pages, publish signed links, apply client-facing branding, see client responses, and clients can use separate login for personalized pricing.
+- Website integrations should start backend-first: external sites can pull approved catalog/service/pricing/stock/media data by API key, while writebacks such as booking confirmations and invoice/payment flows wait for a safer stock and finance slice.
 - WhatsApp is deliberately paused as sufficient for now; keep it to manual click-to-chat and do not add reply handling or provider webhooks in this phase.
 - The Slack/Teams webhook foundation is landed enough to stop being the active slice: CRM events, notification channels, test sends, best-effort delivery, and admin delivery history now exist.
 - Keep richer scheduled `task.due_today` scanning as follow-up instead of blocking the mail provider slice.

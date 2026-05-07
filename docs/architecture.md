@@ -83,6 +83,14 @@ This file captures the current intended technical patterns and constraints so ne
 - Personalized pricing rules should be evaluated from stored group/rule configuration and linked customer context, never from client-supplied group or discount fields.
 - Client-page accept/request-changes actions should persist auditable records with tenant, client account when present, public token/page ID, action, timestamp, and request metadata.
 
+### Website Integrations
+
+- Website and WordPress integrations use their own tenant-scoped module and API-key model rather than CRM dashboard sessions or client portal accounts.
+- Public integration keys authenticate external reads by key hash and resolve tenant ownership from the key, so a custom site can call the API without a CRM user cookie.
+- Public catalog endpoints should return only active, public catalog rows and public/default pricing. Private terms, personalized pricing, private documents, invoices, and payment actions stay behind signed or authenticated flows.
+- Catalog items are modeled as tenant-owned integration records with item type, slug/SKU, public unit price, stock status/quantity, media URL, and metadata so existing sites can render products/services while the deeper inventory module is still future work.
+- Future booking/order-confirmation writebacks should be separate idempotent APIs with external reference keys, audit/activity logging, and transactional stock adjustment before they can reduce inventory or generate invoices.
+
 ### Notifications
 
 - User-facing operational notifications should use one shared persisted notification model and API instead of each background workflow inventing its own UI state.
