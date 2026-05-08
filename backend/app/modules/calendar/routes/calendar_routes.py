@@ -243,10 +243,10 @@ def delete_calendar_event_from_task_route(
             actor_user_id=current_user.id,
             module_key="calendar",
             entity_type="calendar_event",
-            entity_id=str(deleted.id),
+            entity_id=str(deleted["id"]),
             action="delete_from_task",
-            description=f"Removed calendar event {deleted.title} linked to task {task_id}",
-            after_state=serialize_calendar_event(deleted, current_user=current_user),
+            description=f"Removed calendar event {deleted['title']} linked to task {task_id}",
+            after_state=deleted,
         )
     return CalendarTaskEventResponse(event=None, task_id=task_id)
 

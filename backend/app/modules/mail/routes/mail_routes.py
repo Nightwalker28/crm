@@ -49,6 +49,7 @@ def get_mail_messages(
     folder: str | None = Query(default=None, max_length=80),
     search: str | None = Query(default=None, max_length=100),
     limit: int = Query(default=50, ge=1, le=100),
+    before_id: int | None = Query(default=None, ge=1),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("mail")),
@@ -61,6 +62,7 @@ def get_mail_messages(
         folder=folder,
         search=search,
         limit=limit,
+        before_id=before_id,
     )
     return {"results": [MailMessageResponse.model_validate(serialize_mail_message(message)) for message in messages]}
 

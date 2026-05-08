@@ -189,6 +189,12 @@ class Settings:
     DOCUMENT_TENANT_STORAGE_LIMIT_BYTES: int = int(
         os.getenv("DOCUMENT_TENANT_STORAGE_LIMIT_BYTES", str(250 * 1024 * 1024))
     )
+    WEBSITE_INTEGRATION_RATE_LIMIT_COUNT: int = int(
+        os.getenv("WEBSITE_INTEGRATION_RATE_LIMIT_COUNT", "120")
+    )
+    WEBSITE_INTEGRATION_RATE_LIMIT_WINDOW_SECONDS: int = int(
+        os.getenv("WEBSITE_INTEGRATION_RATE_LIMIT_WINDOW_SECONDS", "60")
+    )
 
 
 settings = Settings()

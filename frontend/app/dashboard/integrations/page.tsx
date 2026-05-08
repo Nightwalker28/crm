@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { PlugZap, RefreshCw, Send, Trash2 } from "lucide-react";
+import { Copy, KeyRound, Package, PlugZap, RefreshCw, Save, Send, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -60,10 +61,110 @@ type EventFilters = {
   delivery_status: string;
 };
 
+type IntegrationApiKey = {
+  id: number;
+  name: string;
+  key_prefix: string;
+  scopes: string[];
+  allowed_origins: string[];
+  status: string;
+  last_used_at: string | null;
+  created_at: string;
+  api_key?: string | null;
+};
+
+type CatalogItem = {
+  id: number;
+  item_type: "product" | "service" | "bundle";
+  slug: string;
+  sku: string | null;
+  name: string;
+  description: string | null;
+  currency: string;
+  public_unit_price: string | number;
+  stock_status: "untracked" | "in_stock" | "out_of_stock" | "preorder";
+  stock_quantity: string | number | null;
+  media_url: string | null;
+  metadata: Record<string, unknown> | null;
+  is_public: boolean;
+  is_active: boolean;
+  updated_at: string;
+};
+
+type WebsiteOrderLine = {
+  id: number;
+  catalog_item_id: number | null;
+  name: string;
+  quantity: string | number;
+  currency: string;
+  line_total: string | number;
+  stock_quantity_before: string | number | null;
+  stock_quantity_after: string | number | null;
+};
+
+type WebsiteOrder = {
+  id: number;
+  external_reference: string;
+  source_platform: string | null;
+  status: string;
+  customer_name: string | null;
+  customer_email: string | null;
+  currency: string;
+  subtotal_amount: string | number;
+  created_at: string;
+  line_items: WebsiteOrderLine[];
+};
+
+type ApiKeyDraft = {
+  name: string;
+  allowCatalogRead: boolean;
+  allowOrdersWrite: boolean;
+  allowedOrigins: string;
+};
+
+type CatalogDraft = {
+  id: number | null;
+  item_type: "product" | "service" | "bundle";
+  slug: string;
+  sku: string;
+  name: string;
+  description: string;
+  currency: string;
+  public_unit_price: string;
+  stock_status: "untracked" | "in_stock" | "out_of_stock" | "preorder";
+  stock_quantity: string;
+  media_url: string;
+  is_public: boolean;
+  is_active: boolean;
+};
+
 const emptyDraft: ChannelDraft = {
   provider: "slack",
   channel_name: "",
   webhook_url: "",
+  is_active: true,
+};
+
+const emptyApiKeyDraft: ApiKeyDraft = {
+  name: "",
+  allowCatalogRead: true,
+  allowOrdersWrite: false,
+  allowedOrigins: "",
+};
+
+const emptyCatalogDraft: CatalogDraft = {
+  id: null,
+  item_type: "product",
+  slug: "",
+  sku: "",
+  name: "",
+  description: "",
+  currency: "USD",
+  public_unit_price: "",
+  stock_status: "untracked",
+  stock_quantity: "",
+  media_url: "",
+  is_public: false,
   is_active: true,
 };
 
@@ -114,14 +215,64 @@ function deliveryStatusPill(status: string) {
   return { bg: "bg-amber-950/60", text: "text-amber-200", border: "border-amber-800/70" };
 }
 
+function money(value: string | number | null | undefined, currency: string) {
+  const amount = Number(value);
+  return `${currency} ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
+}
+
+function parseCsv(value: string) {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+async function readJson(res: Response) {
+  return res.json().catch(() => null);
+}
+
+function responseError(body: unknown, fallback: string) {
+  if (body && typeof body === "object" && "detail" in body && typeof (body as { detail?: unknown }).detail === "string") {
+    return (body as { detail: string }).detail;
+  }
+  return fallback;
+}
+
 export default function IntegrationsPage() {
+  const [apiKeys, setApiKeys] = useState<IntegrationApiKey[]>([]);
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [websiteOrders, setWebsiteOrders] = useState<WebsiteOrder[]>([]);
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   const [events, setEvents] = useState<CrmEvent[]>([]);
+  const [apiKeyDraft, setApiKeyDraft] = useState<ApiKeyDraft>(emptyApiKeyDraft);
+  const [catalogDraft, setCatalogDraft] = useState<CatalogDraft>(emptyCatalogDraft);
+  const [latestApiKey, setLatestApiKey] = useState<string | null>(null);
   const [draft, setDraft] = useState<ChannelDraft>(emptyDraft);
   const [eventFilters, setEventFilters] = useState<EventFilters>({ event_type: "all", delivery_status: "all" });
+  const [websiteLoading, setWebsiteLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [eventsLoading, setEventsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [websiteSaving, setWebsiteSaving] = useState(false);
+
+  const loadWebsiteIntegrations = useCallback(async () => {
+    try {
+      setWebsiteLoading(true);
+      const [keysRes, catalogRes, ordersRes] = await Promise.all([
+        apiFetch("/integrations/api-keys"),
+        apiFetch("/integrations/catalog-items"),
+        apiFetch("/integrations/orders?limit=10&offset=0"),
+      ]);
+      const [keysBody, catalogBody, ordersBody] = await Promise.all([readJson(keysRes), readJson(catalogRes), readJson(ordersRes)]);
+      if (!keysRes.ok) throw new Error(responseError(keysBody, `Failed with ${keysRes.status}`));
+      if (!catalogRes.ok) throw new Error(responseError(catalogBody, `Failed with ${catalogRes.status}`));
+      if (!ordersRes.ok) throw new Error(responseError(ordersBody, `Failed with ${ordersRes.status}`));
+      setApiKeys(Array.isArray(keysBody) ? keysBody : []);
+      setCatalogItems(Array.isArray(catalogBody) ? catalogBody : []);
+      setWebsiteOrders(Array.isArray(ordersBody) ? ordersBody : []);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to load website integration data.");
+    } finally {
+      setWebsiteLoading(false);
+    }
+  }, []);
 
   async function loadChannels() {
     try {
@@ -155,8 +306,9 @@ export default function IntegrationsPage() {
   }, []);
 
   useEffect(() => {
+    void loadWebsiteIntegrations();
     void loadChannels();
-  }, []);
+  }, [loadWebsiteIntegrations]);
 
   useEffect(() => {
     void loadEvents(eventFilters);
@@ -184,6 +336,121 @@ export default function IntegrationsPage() {
       toast.error(error instanceof Error ? error.message : "Failed to add channel.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function copyText(value: string | null | undefined, label: string) {
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      toast.success(`${label} copied.`);
+    } catch {
+      toast.error(`Failed to copy ${label.toLowerCase()}.`);
+    }
+  }
+
+  async function createApiKey() {
+    const scopes = [
+      apiKeyDraft.allowCatalogRead ? "catalog:read" : null,
+      apiKeyDraft.allowOrdersWrite ? "orders:write" : null,
+    ].filter(Boolean);
+    if (!apiKeyDraft.name.trim() || scopes.length === 0) {
+      toast.error("Name the API key and select at least one scope.");
+      return;
+    }
+    try {
+      setWebsiteSaving(true);
+      const res = await apiFetch("/integrations/api-keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: apiKeyDraft.name.trim(),
+          scopes,
+          allowed_origins: parseCsv(apiKeyDraft.allowedOrigins),
+        }),
+      });
+      const body = await readJson(res);
+      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+      setLatestApiKey(typeof body?.api_key === "string" ? body.api_key : null);
+      setApiKeyDraft(emptyApiKeyDraft);
+      await loadWebsiteIntegrations();
+      toast.success("Website API key created.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create API key.");
+    } finally {
+      setWebsiteSaving(false);
+    }
+  }
+
+  async function revokeApiKey(key: IntegrationApiKey) {
+    try {
+      setWebsiteSaving(true);
+      const res = await apiFetch(`/integrations/api-keys/${key.id}`, { method: "DELETE" });
+      const body = await readJson(res);
+      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+      await loadWebsiteIntegrations();
+      toast.success("Website API key revoked.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to revoke API key.");
+    } finally {
+      setWebsiteSaving(false);
+    }
+  }
+
+  function editCatalogItem(item: CatalogItem) {
+    setCatalogDraft({
+      id: item.id,
+      item_type: item.item_type,
+      slug: item.slug,
+      sku: item.sku ?? "",
+      name: item.name,
+      description: item.description ?? "",
+      currency: item.currency,
+      public_unit_price: String(item.public_unit_price ?? ""),
+      stock_status: item.stock_status,
+      stock_quantity: item.stock_quantity == null ? "" : String(item.stock_quantity),
+      media_url: item.media_url ?? "",
+      is_public: item.is_public,
+      is_active: item.is_active,
+    });
+  }
+
+  async function saveCatalogItem() {
+    if (!catalogDraft.slug.trim() || !catalogDraft.name.trim() || !catalogDraft.public_unit_price.trim()) {
+      toast.error("Catalog item needs a slug, name, and public price.");
+      return;
+    }
+    const payload = {
+      item_type: catalogDraft.item_type,
+      slug: catalogDraft.slug.trim(),
+      sku: catalogDraft.sku.trim() || null,
+      name: catalogDraft.name.trim(),
+      description: catalogDraft.description.trim() || null,
+      currency: catalogDraft.currency.trim().toUpperCase() || "USD",
+      public_unit_price: catalogDraft.public_unit_price,
+      stock_status: catalogDraft.stock_status,
+      stock_quantity: catalogDraft.stock_quantity.trim() ? catalogDraft.stock_quantity : null,
+      media_url: catalogDraft.media_url.trim() || null,
+      metadata: null,
+      is_public: catalogDraft.is_public,
+      is_active: catalogDraft.is_active,
+    };
+    try {
+      setWebsiteSaving(true);
+      const res = await apiFetch(catalogDraft.id ? `/integrations/catalog-items/${catalogDraft.id}` : "/integrations/catalog-items", {
+        method: catalogDraft.id ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await readJson(res);
+      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+      setCatalogDraft(emptyCatalogDraft);
+      await loadWebsiteIntegrations();
+      toast.success(catalogDraft.id ? "Catalog item updated." : "Catalog item created.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save catalog item.");
+    } finally {
+      setWebsiteSaving(false);
     }
   }
 
@@ -241,8 +508,346 @@ export default function IntegrationsPage() {
     <div className="flex flex-col gap-5 text-neutral-200">
       <PageHeader
         title="Integrations"
-        description="Configure simple external alert webhooks for CRM events. Slack is active first; Teams uses the same channel foundation later."
+        description="Manage website API keys, public catalog data, website order writebacks, and external alert webhooks."
       />
+
+      <section className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-semibold text-neutral-100">Website APIs</h2>
+            <p className="text-sm text-neutral-500">Manage API keys, public catalog items, and incoming website orders for WordPress or custom sites.</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" disabled={websiteLoading} onClick={() => loadWebsiteIntegrations()}>
+            <RefreshCw size={14} />
+            Refresh
+          </Button>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+          <Card className="px-5 py-5">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-950">
+                <KeyRound size={17} className="text-neutral-300" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-neutral-100">New API Key</h3>
+                <p className="mt-1 text-sm text-neutral-500">Keys are shown once. Store them in the website or plugin settings.</p>
+              </div>
+            </div>
+            <FieldGroup className="grid gap-4">
+              <Field>
+                <FieldLabel>Key Name *</FieldLabel>
+                <Input value={apiKeyDraft.name} onChange={(event) => setApiKeyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="WordPress production" />
+              </Field>
+              <div className="grid gap-2">
+                <label className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-300">
+                  Catalog read
+                  <input
+                    type="checkbox"
+                    checked={apiKeyDraft.allowCatalogRead}
+                    onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowCatalogRead: event.target.checked }))}
+                    className="h-4 w-4 accent-neutral-100"
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-300">
+                  Order writeback
+                  <input
+                    type="checkbox"
+                    checked={apiKeyDraft.allowOrdersWrite}
+                    onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowOrdersWrite: event.target.checked }))}
+                    className="h-4 w-4 accent-neutral-100"
+                  />
+                </label>
+              </div>
+              <Field>
+                <FieldLabel>Allowed Origins</FieldLabel>
+                <Textarea
+                  value={apiKeyDraft.allowedOrigins}
+                  onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowedOrigins: event.target.value }))}
+                  placeholder="https://example.com, https://www.example.com"
+                  className="min-h-20"
+                />
+              </Field>
+              <Button type="button" disabled={websiteSaving} onClick={createApiKey}>
+                <KeyRound size={14} />
+                Create API Key
+              </Button>
+            </FieldGroup>
+
+            {latestApiKey ? (
+              <div className="mt-4 rounded-md border border-neutral-800 bg-neutral-950 p-3">
+                <div className="mb-2 text-xs uppercase text-neutral-500">New key</div>
+                <div className="break-all font-mono text-xs text-neutral-200">{latestApiKey}</div>
+                <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void copyText(latestApiKey, "API key")}>
+                  <Copy size={14} />
+                  Copy
+                </Button>
+              </div>
+            ) : null}
+          </Card>
+
+          <ModuleTableShell>
+            <Table className="min-w-[940px]">
+              <TableHeader>
+                <TableHeaderRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Prefix</TableHead>
+                  <TableHead>Scopes</TableHead>
+                  <TableHead>Origins</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Last Used</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableHeaderRow>
+              </TableHeader>
+              <TableBody>
+                {websiteLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-10 text-center text-neutral-500">Loading website API keys...</TableCell>
+                  </TableRow>
+                ) : apiKeys.length ? (
+                  apiKeys.map((key) => (
+                    <TableRow key={key.id}>
+                      <TableCell className="font-medium text-neutral-100">{key.name}</TableCell>
+                      <TableCell className="font-mono text-xs text-neutral-500">{key.key_prefix}...</TableCell>
+                      <TableCell className="text-neutral-300">{key.scopes.join(", ")}</TableCell>
+                      <TableCell className="max-w-[220px] truncate text-neutral-400">{key.allowed_origins.length ? key.allowed_origins.join(", ") : "Any origin"}</TableCell>
+                      <TableCell>
+                        <Pill
+                          bg={key.status === "active" ? "bg-emerald-950/60" : "bg-red-950/60"}
+                          text={key.status === "active" ? "text-emerald-200" : "text-red-200"}
+                          border={key.status === "active" ? "border-emerald-800/70" : "border-red-800/70"}
+                        >
+                          {key.status}
+                        </Pill>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-neutral-400">{key.last_used_at ? formatDateTime(key.last_used_at) : "-"}</TableCell>
+                      <TableCell>
+                        <div className="flex justify-end">
+                          <Button type="button" variant="outline" size="sm" disabled={websiteSaving || key.status !== "active"} onClick={() => revokeApiKey(key)}>
+                            <Trash2 size={14} />
+                            Revoke
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={7} className="py-10 text-center text-neutral-500">No website API keys yet.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </ModuleTableShell>
+        </div>
+
+        <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+          <Card className="px-5 py-5">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-950">
+                <Package size={17} className="text-neutral-300" />
+              </div>
+              <div>
+                <h3 className="text-base font-semibold text-neutral-100">{catalogDraft.id ? "Edit Catalog Item" : "New Catalog Item"}</h3>
+                <p className="mt-1 text-sm text-neutral-500">Only active public items appear in external website feeds.</p>
+              </div>
+            </div>
+            <FieldGroup className="grid gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel>Type</FieldLabel>
+                  <Select value={catalogDraft.item_type} onValueChange={(value) => setCatalogDraft((current) => ({ ...current, item_type: value as CatalogDraft["item_type"] }))}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="product">Product</SelectItem>
+                      <SelectItem value="service">Service</SelectItem>
+                      <SelectItem value="bundle">Bundle</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel>Currency</FieldLabel>
+                  <Input value={catalogDraft.currency} onChange={(event) => setCatalogDraft((current) => ({ ...current, currency: event.target.value }))} maxLength={3} />
+                </Field>
+              </div>
+              <Field>
+                <FieldLabel>Name *</FieldLabel>
+                <Input value={catalogDraft.name} onChange={(event) => setCatalogDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Starter Package" />
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel>Slug *</FieldLabel>
+                  <Input value={catalogDraft.slug} onChange={(event) => setCatalogDraft((current) => ({ ...current, slug: event.target.value }))} placeholder="starter-package" />
+                </Field>
+                <Field>
+                  <FieldLabel>SKU</FieldLabel>
+                  <Input value={catalogDraft.sku} onChange={(event) => setCatalogDraft((current) => ({ ...current, sku: event.target.value }))} placeholder="STARTER" />
+                </Field>
+              </div>
+              <Field>
+                <FieldLabel>Description</FieldLabel>
+                <Textarea value={catalogDraft.description} onChange={(event) => setCatalogDraft((current) => ({ ...current, description: event.target.value }))} className="min-h-20" />
+              </Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel>Public Price *</FieldLabel>
+                  <Input value={catalogDraft.public_unit_price} onChange={(event) => setCatalogDraft((current) => ({ ...current, public_unit_price: event.target.value }))} inputMode="decimal" />
+                </Field>
+                <Field>
+                  <FieldLabel>Stock Qty</FieldLabel>
+                  <Input value={catalogDraft.stock_quantity} onChange={(event) => setCatalogDraft((current) => ({ ...current, stock_quantity: event.target.value }))} inputMode="decimal" placeholder="Blank for untracked" />
+                </Field>
+              </div>
+              <Field>
+                <FieldLabel>Stock Status</FieldLabel>
+                <Select value={catalogDraft.stock_status} onValueChange={(value) => setCatalogDraft((current) => ({ ...current, stock_status: value as CatalogDraft["stock_status"] }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="untracked">Untracked</SelectItem>
+                    <SelectItem value="in_stock">In Stock</SelectItem>
+                    <SelectItem value="out_of_stock">Out of Stock</SelectItem>
+                    <SelectItem value="preorder">Preorder</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel>Media URL</FieldLabel>
+                <Input value={catalogDraft.media_url} onChange={(event) => setCatalogDraft((current) => ({ ...current, media_url: event.target.value }))} placeholder="/media/products/starter.png" />
+              </Field>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <label className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-300">
+                  Public
+                  <input type="checkbox" checked={catalogDraft.is_public} onChange={(event) => setCatalogDraft((current) => ({ ...current, is_public: event.target.checked }))} className="h-4 w-4 accent-neutral-100" />
+                </label>
+                <label className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-300">
+                  Active
+                  <input type="checkbox" checked={catalogDraft.is_active} onChange={(event) => setCatalogDraft((current) => ({ ...current, is_active: event.target.checked }))} className="h-4 w-4 accent-neutral-100" />
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <Button type="button" disabled={websiteSaving} onClick={saveCatalogItem}>
+                  <Save size={14} />
+                  {catalogDraft.id ? "Save Item" : "Create Item"}
+                </Button>
+                {catalogDraft.id ? (
+                  <Button type="button" variant="outline" disabled={websiteSaving} onClick={() => setCatalogDraft(emptyCatalogDraft)}>
+                    Cancel
+                  </Button>
+                ) : null}
+              </div>
+            </FieldGroup>
+          </Card>
+
+          <ModuleTableShell>
+            <Table className="min-w-[980px]">
+              <TableHeader>
+                <TableHeaderRow>
+                  <TableHead>Item</TableHead>
+                  <TableHead>Price</TableHead>
+                  <TableHead>Stock</TableHead>
+                  <TableHead>Visibility</TableHead>
+                  <TableHead>Updated</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableHeaderRow>
+              </TableHeader>
+              <TableBody>
+                {websiteLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-10 text-center text-neutral-500">Loading catalog items...</TableCell>
+                  </TableRow>
+                ) : catalogItems.length ? (
+                  catalogItems.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell>
+                        <div className="font-medium text-neutral-100">{item.name}</div>
+                        <div className="mt-1 text-xs text-neutral-500">{item.item_type} · {item.slug}{item.sku ? ` · ${item.sku}` : ""}</div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-neutral-300">{money(item.public_unit_price, item.currency)}</TableCell>
+                      <TableCell>
+                        <div className="text-neutral-300">{item.stock_status.replace(/_/g, " ")}</div>
+                        <div className="text-xs text-neutral-500">{item.stock_quantity == null ? "Untracked" : `${item.stock_quantity} left`}</div>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <Pill bg={item.is_public ? "bg-emerald-950/60" : "bg-neutral-900"} text={item.is_public ? "text-emerald-200" : "text-neutral-400"} border={item.is_public ? "border-emerald-800/70" : "border-neutral-700"}>
+                            {item.is_public ? "Public" : "Private"}
+                          </Pill>
+                          <Pill bg={item.is_active ? "bg-emerald-950/60" : "bg-red-950/60"} text={item.is_active ? "text-emerald-200" : "text-red-200"} border={item.is_active ? "border-emerald-800/70" : "border-red-800/70"}>
+                            {item.is_active ? "Active" : "Inactive"}
+                          </Pill>
+                        </div>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap text-neutral-400">{formatDateTime(item.updated_at)}</TableCell>
+                      <TableCell>
+                        <div className="flex justify-end">
+                          <Button type="button" variant="outline" size="sm" onClick={() => editCatalogItem(item)}>
+                            Edit
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-10 text-center text-neutral-500">No catalog items yet.</TableCell>
+                  </TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </ModuleTableShell>
+        </div>
+
+        <ModuleTableShell>
+          <Table className="min-w-[980px]">
+            <TableHeader>
+              <TableHeaderRow>
+                <TableHead>Order</TableHead>
+                <TableHead>Customer</TableHead>
+                <TableHead>Items</TableHead>
+                <TableHead>Total</TableHead>
+                <TableHead>Created</TableHead>
+              </TableHeaderRow>
+            </TableHeader>
+            <TableBody>
+              {websiteLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-10 text-center text-neutral-500">Loading website orders...</TableCell>
+                </TableRow>
+              ) : websiteOrders.length ? (
+                websiteOrders.map((order) => (
+                  <TableRow key={order.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-2 font-medium text-neutral-100">
+                        <ShoppingCart size={14} className="text-neutral-500" />
+                        {order.external_reference}
+                      </div>
+                      <div className="mt-1 text-xs text-neutral-500">{order.source_platform || "external site"} · {order.status}</div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="text-neutral-300">{order.customer_name || "-"}</div>
+                      <div className="text-xs text-neutral-500">{order.customer_email || "-"}</div>
+                    </TableCell>
+                    <TableCell>
+                      <div className="max-w-[320px] truncate text-neutral-300">
+                        {order.line_items.map((line) => `${line.name} x ${line.quantity}`).join(", ")}
+                      </div>
+                      <div className="text-xs text-neutral-500">
+                        {order.line_items.length} line{order.line_items.length === 1 ? "" : "s"}
+                      </div>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-neutral-300">{money(order.subtotal_amount, order.currency)}</TableCell>
+                    <TableCell className="whitespace-nowrap text-neutral-400">{formatDateTime(order.created_at)}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-10 text-center text-neutral-500">No website orders captured yet.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </ModuleTableShell>
+      </section>
 
       <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
         <Card className="px-5 py-5">

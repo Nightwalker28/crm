@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -10,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.modules.calendar.models import CalendarEvent, CalendarEventParticipant, UserCalendarConnection
 from app.modules.calendar.schema import CalendarProvider
-from app.modules.platform.services.notifications import create_notification
+from app.modules.platform.models import UserNotification
 from app.modules.tasks.services.tasks_services import get_task_or_404
 from app.modules.user_management.models import Team, User
 from app.core.config import settings
@@ -23,6 +24,7 @@ GOOGLE_CALENDAR_API_BASE = "https://www.googleapis.com/calendar/v3"
 GOOGLE_CALENDAR_EVENTS_URL = f"{GOOGLE_CALENDAR_API_BASE}/calendars/primary/events"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_APP_CALENDAR_NAME = "CRM"
+GOOGLE_CALENDAR_ID_PATTERN = re.compile(r"^[A-Za-z0-9._%+-]+(?:@[A-Za-z0-9.-]+)?$")
 
 
 def _utcnow() -> datetime:
@@ -38,6 +40,16 @@ def _display_user_name(user: User | None) -> str | None:
 
 def _participant_key(participant_type: str, target_id: int) -> str:
     return f"{participant_type}:{target_id}"
+
+
+def _coerce_participant_id(value, detail: str) -> int:
+    try:
+        coerced = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
+    if coerced <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+    return coerced
 
 
 def _normalize_participants(
@@ -58,6 +70,21 @@ def _normalize_participants(
         }
     ]
     seen_keys = {normalized[0]["participant_key"]}
+    user_ids: set[int] = set()
+    team_ids: set[int] = set()
+    for item in participants_payload or []:
+        if item.get("participant_type") == "user" and item.get("user_id"):
+            user_ids.add(_coerce_participant_id(item.get("user_id"), "User participant requires user_id"))
+        if item.get("participant_type") == "team" and item.get("team_id"):
+            team_ids.add(_coerce_participant_id(item.get("team_id"), "Team participant requires team_id"))
+    existing_user_ids = {
+        user_id
+        for (user_id,) in db.query(User.id).filter(User.tenant_id == tenant_id, User.id.in_(user_ids)).all()
+    } if user_ids else set()
+    existing_team_ids = {
+        team_id
+        for (team_id,) in db.query(Team.id).filter(Team.tenant_id == tenant_id, Team.id.in_(team_ids)).all()
+    } if team_ids else set()
 
     for item in participants_payload or []:
         participant_type = item.get("participant_type")
@@ -65,8 +92,8 @@ def _normalize_participants(
             user_id = item.get("user_id")
             if not user_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User participant requires user_id")
-            user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
-            if not user:
+            user_id = _coerce_participant_id(user_id, "User participant requires user_id")
+            if user_id not in existing_user_ids:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Participant user not found")
             key = _participant_key("user", user_id)
             if key in seen_keys:
@@ -88,8 +115,8 @@ def _normalize_participants(
             team_id = item.get("team_id")
             if not team_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Team participant requires team_id")
-            team = db.query(Team).filter(Team.id == team_id, Team.tenant_id == tenant_id).first()
-            if not team:
+            team_id = _coerce_participant_id(team_id, "Team participant requires team_id")
+            if team_id not in existing_team_ids:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Participant team not found")
             key = _participant_key("team", team_id)
             if key in seen_keys:
@@ -248,27 +275,25 @@ def list_calendar_events(
         )
     )
 
+    query = query.outerjoin(CalendarEventParticipant, CalendarEventParticipant.event_id == CalendarEvent.id)
     visibility_filters = [
         CalendarEvent.owner_user_id == current_user.id,
-        CalendarEvent.participants.any(
-            and_(
-                CalendarEventParticipant.user_id == current_user.id,
-                CalendarEventParticipant.response_status != "declined",
-            )
+        and_(
+            CalendarEventParticipant.user_id == current_user.id,
+            CalendarEventParticipant.response_status != "declined",
         ),
     ]
     if getattr(current_user, "team_id", None):
         visibility_filters.append(
-            CalendarEvent.participants.any(
-                and_(
-                    CalendarEventParticipant.team_id == current_user.team_id,
-                    CalendarEventParticipant.response_status == "shared",
-                )
+            and_(
+                CalendarEventParticipant.team_id == current_user.team_id,
+                CalendarEventParticipant.response_status == "shared",
             )
         )
 
     return (
         query.filter(or_(*visibility_filters))
+        .distinct()
         .order_by(CalendarEvent.start_at.asc(), CalendarEvent.id.asc())
         .all()
     )
@@ -494,7 +519,15 @@ def _ensure_google_app_calendar(db: Session, connection: UserCalendarConnection)
         db.commit()
         return None
 
-    connection.provider_calendar_id = body.get("id")
+    provider_calendar_id = str(body.get("id") or "").strip()
+    if not GOOGLE_CALENDAR_ID_PATTERN.fullmatch(provider_calendar_id):
+        connection.status = "error"
+        connection.last_error = "Google returned an invalid calendar identifier."
+        db.add(connection)
+        db.commit()
+        return None
+
+    connection.provider_calendar_id = provider_calendar_id
     connection.provider_calendar_name = body.get("summary") or GOOGLE_APP_CALENDAR_NAME
     connection.status = "connected"
     connection.last_error = None
@@ -611,6 +644,31 @@ def _sync_external_events_for_event(db: Session, event: CalendarEvent) -> None:
         _sync_google_participant_event(db, event=event, participant=participant)
 
 
+def sync_external_events_for_event_id(db: Session, *, event_id: int) -> int:
+    event = (
+        db.query(CalendarEvent)
+        .options(
+            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.user),
+            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.team),
+        )
+        .filter(CalendarEvent.id == event_id, CalendarEvent.deleted_at.is_(None))
+        .first()
+    )
+    if not event:
+        return 0
+    _sync_external_events_for_event(db, event)
+    return len([participant for participant in event.participants if participant.participant_type == "user" and participant.response_status == "accepted"])
+
+
+def _enqueue_external_events_for_event(db: Session, event: CalendarEvent) -> None:
+    try:
+        from app.tasks.calendar_tasks import sync_calendar_event_to_external_providers_task
+
+        sync_calendar_event_to_external_providers_task.delay(event.id)
+    except Exception:
+        _sync_external_events_for_event(db, event)
+
+
 def _notify_new_participants(db: Session, *, event: CalendarEvent, actor_name: str | None, participants: list[CalendarEventParticipant]) -> None:
     if not participants:
         return
@@ -626,22 +684,28 @@ def _notify_new_participants(db: Session, *, event: CalendarEvent, actor_name: s
         invitee_user_ids.update(user_id for (user_id,) in members)
 
     start_label = event.start_at.strftime("%b %d, %Y %H:%M")
+    notifications = []
     for user_id in sorted(user_id for user_id in invitee_user_ids if user_id):
-        create_notification(
-            db,
-            tenant_id=event.tenant_id,
-            user_id=user_id,
-            category="calendar_invite",
-            title=f"Calendar event: {event.title}",
-            message=f"{actor_name or 'A teammate'} added you or your team to an event starting {start_label}.",
-            link_url=f"/dashboard/calendar?eventId={event.id}",
-            metadata={
-                "calendar_event_id": event.id,
-                "start_at": event.start_at.isoformat(),
-                "source_module_key": event.source_module_key,
-                "source_entity_id": event.source_entity_id,
-            },
+        notifications.append(
+            UserNotification(
+                tenant_id=event.tenant_id,
+                user_id=user_id,
+                category="calendar_invite",
+                title=f"Calendar event: {event.title}",
+                message=f"{actor_name or 'A teammate'} added you or your team to an event starting {start_label}.",
+                link_url=f"/dashboard/calendar?eventId={event.id}",
+                payload={
+                    "calendar_event_id": event.id,
+                    "start_at": event.start_at.isoformat(),
+                    "source_module_key": event.source_module_key,
+                    "source_entity_id": event.source_entity_id,
+                },
+                status="unread",
+            )
         )
+    if notifications:
+        db.add_all(notifications)
+        db.commit()
 
 
 def create_calendar_event(db: Session, *, payload: dict, current_user) -> tuple[CalendarEvent, list[CalendarEventParticipant]]:
@@ -673,7 +737,7 @@ def create_calendar_event(db: Session, *, payload: dict, current_user) -> tuple[
     db.commit()
     db.refresh(event)
     _notify_new_participants(db, event=event, actor_name=_display_user_name(current_user), participants=added)
-    _sync_external_events_for_event(db, event)
+    _enqueue_external_events_for_event(db, event)
     return get_calendar_event_or_404(db, event.id, tenant_id=current_user.tenant_id, current_user=current_user), added
 
 
@@ -710,7 +774,7 @@ def update_calendar_event(db: Session, *, event: CalendarEvent, payload: dict, c
     for participant in removed:
         _delete_google_participant_event(db, participant)
     _notify_new_participants(db, event=event, actor_name=_display_user_name(current_user), participants=added)
-    _sync_external_events_for_event(db, event)
+    _enqueue_external_events_for_event(db, event)
     return get_calendar_event_or_404(db, event.id, tenant_id=current_user.tenant_id, current_user=current_user), added
 
 
@@ -721,7 +785,18 @@ def respond_to_calendar_invite(
     current_user,
     response_status: str,
 ) -> CalendarEvent:
-    participant = next((item for item in event.participants if item.user_id == current_user.id and not item.is_owner), None)
+    owner_participant = next((item for item in event.participants if item.user_id == current_user.id and item.is_owner), None)
+    if event.owner_user_id == current_user.id or owner_participant:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Event owners do not need to respond to their own invite.")
+
+    participant = next(
+        (
+            item
+            for item in event.participants
+            if item.participant_type == "user" and item.user_id == current_user.id and not item.is_owner
+        ),
+        None,
+    )
     if not participant:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invite response is not available for this event.")
 
@@ -836,6 +911,22 @@ def get_calendar_event_from_task(
     current_user,
     include_deleted: bool = False,
 ) -> CalendarEvent | None:
+    linked_events = _list_duplicate_task_events(
+        db,
+        task_id=task_id,
+        current_user=current_user,
+        include_deleted=include_deleted,
+    )
+    return linked_events[0] if linked_events else None
+
+
+def _list_duplicate_task_events(
+    db: Session,
+    *,
+    task_id: int,
+    current_user,
+    include_deleted: bool = False,
+) -> list[CalendarEvent]:
     query = (
         db.query(CalendarEvent)
         .options(
@@ -853,36 +944,17 @@ def get_calendar_event_from_task(
         query = query.filter(CalendarEvent.deleted_at.is_not(None))
     else:
         query = query.filter(CalendarEvent.deleted_at.is_(None))
-    return query.order_by(CalendarEvent.id.asc()).first()
+    return query.order_by(CalendarEvent.id.asc()).all()
 
 
-def _list_duplicate_task_events(db: Session, *, task_id: int, current_user) -> list[CalendarEvent]:
-    return (
-        db.query(CalendarEvent)
-        .options(
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.user),
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.team),
-        )
-        .filter(
-            CalendarEvent.tenant_id == current_user.tenant_id,
-            CalendarEvent.owner_user_id == current_user.id,
-            CalendarEvent.source_module_key == "tasks",
-            CalendarEvent.source_entity_id == str(task_id),
-            CalendarEvent.deleted_at.is_(None),
-        )
-        .order_by(CalendarEvent.id.asc())
-        .all()
-    )
-
-
-def delete_calendar_event_from_task(db: Session, *, task_id: int, current_user) -> CalendarEvent | None:
+def delete_calendar_event_from_task(db: Session, *, task_id: int, current_user) -> dict | None:
     linked_events = _list_duplicate_task_events(db, task_id=task_id, current_user=current_user)
     if not linked_events:
         return None
-    deleted_event = linked_events[0]
+    deleted_snapshot = serialize_calendar_event(linked_events[0], current_user=current_user)
     for event in linked_events:
         delete_calendar_event(db, event=event)
-    return deleted_event
+    return deleted_snapshot
 
 
 def sync_current_user_calendar(db: Session, *, current_user) -> dict:

@@ -19,6 +19,8 @@ Current phase:
 
 Completed items:
 - Added the first backend-only website/WordPress integration foundation with tenant-scoped integration API keys, CRM-managed public catalog items, and read-only public catalog endpoints for approved products/services, public prices, stock state, and media URLs.
+- Added external website order writebacks with a separate `orders:write` integration-key scope, idempotent external references, captured order/line records, price snapshots, and one-time stock decrement for confirmed website orders.
+- Hardened public website integration endpoints with per-key fixed-window rate limiting through the shared cache layer.
 - Added the first tenant-aware Documents module with authenticated document storage, PDF/DOC/DOCX/TXT/RTF/ODT upload validation, file and tenant storage limits, a standalone `/dashboard/documents` surface, and record-linked document panels for contacts, organizations, and opportunities.
 - Hardened the Documents module with linked-record authorization, audit logging, recycle-bin restore, tenant quota visibility, stronger PDF/Office/OpenDocument validation, and a local storage-provider seam for future tenant-owned storage backends.
 - Cleared the current frontend lint blockers and expanded tenant module administration: Modules now exposes tenant-specific enablement, module defaults, and department/team module availability, while role/module permissions remain the source of truth for action levels inside modules and disabled/unassigned modules are blocked at both navigation and API gates.
@@ -166,7 +168,7 @@ In progress:
 - Tasks should support professional CRM-style priority and urgency states, assignment to self, users, teams, and later richer collaboration targets, with assignment events feeding both the existing in-app notification center and browser notification hooks.
 - The first calendar foundation is now landed with internal user calendars, invite/share behavior, task-to-calendar handoff, soft-delete support, and provider-aware Google sync groundwork; mailbox integration is parked until Google mailbox scope verification/compliance is intentionally planned.
 - Move the mailbox integration forward through per-user IMAP/SMTP connections while keeping restricted Gmail inbox scopes parked unless verification is intentionally planned.
-- Production-grade calendar and mailbox provider sync should move into the shared background-job architecture: immediate sync on write where possible, queued provider sync jobs, and periodic reconciliation rather than request-only sync.
+- Production-grade calendar and mailbox provider sync should continue moving into the shared background-job architecture: calendar write-triggered provider sync now queues through Celery where possible, while mailbox reconciliation and periodic provider sync remain later work.
 - Start WhatsApp as the next collaboration integration, but keep Phase 1 manual-send/click-to-chat only: register it as a tenant-aware module, expose contact-profile click-to-chat, log activity, update last WhatsApp contact, and create optional follow-up tasks.
 - Add a global tenant-scoped message-template platform so WhatsApp templates are reusable across future mail, finance, sales, tasks, and reminder workflows instead of becoming a channel-specific one-off.
 - Treat WhatsApp as paused after the manual click-to-chat flow; do not add reply logging or provider webhook handling until a dedicated provider-integration phase is intentionally opened.
@@ -195,7 +197,7 @@ In progress:
   - skeleton loading states and pagination/refetch polish
   - dialog-width standardization and remaining visual consistency cleanup
 - Treat audit-driven CRM features as shared platform patterns across applicable modules and complete each slice to production-grade before moving on to the next one.
-- Current active implementation slice: start the website and WordPress integration track on top of the now-landed shareable client-page foundation, beginning with a tenant-scoped public integration API for approved catalog/service/pricing/media data while keeping customer-specific pricing behind signed/authenticated access.
+- Website and WordPress integration management is now landed on top of the public integration API, covering CRM-facing API keys, public catalog management, and recent website order visibility while keeping customer-specific pricing behind signed/authenticated access.
 - Finish the current export rebuild so contacts, organizations, opportunities, and insertion orders can export all rows, selected rows across pages, and the current visible page through the background-job flow.
 - Restore the branded splash/loading treatment in a controlled way for initial load and route-level loading states.
 - Rebuild imports into a proper staged workflow with preview/header mapping first, then duplicate-policy control, then richer result summaries.
@@ -213,7 +215,7 @@ In progress:
 - Finish the first tenant-aware backend pass beyond auth by scoping company profile, module configuration, and other cross-tenant admin data that still assumes a single shared row set.
 
 Next up:
-- Extend the website integration track with idempotent booking/order confirmation writebacks, transactional stock adjustments, and later invoice/payment handoff once the inventory and finance contracts are ready.
+- Extend the website integration track later with invoice/payment handoff once the inventory and finance contracts are ready.
 - Expand activity timelines later so messages, invoices, and other source-linked work consistently log to the relevant CRM record timeline once those modules expose stable source links.
 - Add the remaining external document-storage providers later: S3/R2-style object stores through access-key configuration and Microsoft OneDrive through explicit OAuth/consent.
 - Build differentiators after the CRM operating loop is stable: shareable client pages for proposals/pricing/docs, a website/WordPress integration API for approved catalog/service/pricing/media pulls, accept/request-changes actions, custom client domains via CNAME, and client-facing branding.

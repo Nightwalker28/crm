@@ -53,6 +53,11 @@ function sameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
 }
 
+function dayKey(value: Date | string) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
 function getEventTone(event: CalendarEvent) {
   if (event.current_user_response === "pending") return "border-amber-800/70 bg-amber-950/30 text-amber-100";
   if (event.current_user_response === "shared") return "border-sky-800/70 bg-sky-950/30 text-sky-100";
@@ -110,13 +115,23 @@ export default function CalendarPage() {
   }, [month]);
 
   const events = useMemo(() => eventsQuery.data?.results ?? [], [eventsQuery.data?.results]);
+  const eventsByDay = useMemo(() => {
+    const grouped = new Map<string, CalendarEvent[]>();
+    for (const event of events) {
+      const key = dayKey(event.start_at);
+      const existing = grouped.get(key) ?? [];
+      existing.push(event);
+      grouped.set(key, existing);
+    }
+    return grouped;
+  }, [events]);
   const pendingInvites = useMemo(() => events.filter((event) => event.current_user_response === "pending"), [events]);
   const hasActiveSyncConnection = Boolean(
     contextQuery.data?.connections.some((connection) => connection.sync_enabled_for_current_session),
   );
   const selectedDayEvents = useMemo(
-    () => events.filter((event) => sameDay(new Date(event.start_at), selectedDay)),
-    [events, selectedDay],
+    () => (eventsByDay.get(dayKey(selectedDay)) ?? []).filter((event) => event.current_user_response !== "pending"),
+    [eventsByDay, selectedDay],
   );
 
   function openCreateDialog(day: Date) {
@@ -235,7 +250,7 @@ export default function CalendarPage() {
           ) : (
             <div className="grid grid-cols-7">
               {calendarDays.map((day) => {
-                const dayEvents = events.filter((event) => sameDay(new Date(event.start_at), day));
+                const dayEvents = eventsByDay.get(dayKey(day)) ?? [];
                 const isCurrentMonth = day.getMonth() === month.getMonth();
                 const isSelected = sameDay(day, selectedDay);
                 return (
@@ -253,9 +268,18 @@ export default function CalendarPage() {
                         {day.getDate()}
                       </span>
                       <span
+                        role="button"
+                        tabIndex={0}
                         onClick={(clickEvent) => {
                           clickEvent.stopPropagation();
                           openCreateDialog(day);
+                        }}
+                        onKeyDown={(keyEvent) => {
+                          if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+                            keyEvent.preventDefault();
+                            keyEvent.stopPropagation();
+                            openCreateDialog(day);
+                          }
                         }}
                         className="rounded-full p-1 text-neutral-600 transition-colors hover:bg-white/8 hover:text-neutral-200"
                       >

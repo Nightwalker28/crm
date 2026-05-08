@@ -68,8 +68,11 @@ This file captures stable business and UX rules for the platform. These should b
 - External websites, WordPress plugins, and custom storefronts should consume approved CRM/ERP data through tenant-scoped integration APIs instead of direct database access.
 - Public integration APIs may expose only records explicitly marked active and public, starting with catalog/service items, public prices, stock status, stock quantity where appropriate, and approved media URLs.
 - Integration API keys are tenant-owned, revocable, scoped, and separate from CRM user sessions and client portal accounts.
+- Public integration API keys must be rate-limited per key so external site/plugin failures cannot overwhelm tenant APIs.
 - Customer-specific prices, negotiated discounts, private documents, invoices, and payment actions must require authenticated/signed access and must not be exposed through broad public catalog feeds.
-- Website-originated booking/order confirmations may later write back into CRM inventory, invoices, and tasks, but those write APIs must be idempotent, auditable, tenant-scoped, and stock-safe before they can reduce inventory.
+- Website-originated booking/order confirmations may write back through scoped integration keys only when they are idempotent, auditable, tenant-scoped, and stock-safe.
+- Confirmed website orders may decrement public catalog stock once per external reference; repeated identical confirmations must replay the existing order instead of decrementing stock again.
+- Website order writebacks should not generate invoices, payment links, or finance records until the finance/payment slice is intentionally opened.
 
 ## Communication Rules
 

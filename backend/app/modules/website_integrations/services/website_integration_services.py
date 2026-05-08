@@ -3,19 +3,29 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from decimal import Decimal
 import hashlib
+import json
 import secrets
 
+from fastapi.encoders import jsonable_encoder
 from fastapi import HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
+from app.core.cache import cache_get_json, cache_set_json
+from app.core.config import settings
 from app.modules.platform.services.activity_logs import log_activity
-from app.modules.website_integrations.models import WebsiteCatalogItem, WebsiteIntegrationApiKey
+from app.modules.website_integrations.models import (
+    WebsiteCatalogItem,
+    WebsiteIntegrationApiKey,
+    WebsiteIntegrationOrder,
+    WebsiteIntegrationOrderLine,
+)
 
 
 INTEGRATION_KEY_PREFIX = "lynk_live_"
 DEFAULT_CATALOG_READ_SCOPE = "catalog:read"
+ORDER_WRITE_SCOPE = "orders:write"
 
 
 def _utcnow() -> datetime:
@@ -24,6 +34,11 @@ def _utcnow() -> datetime:
 
 def _hash_api_key(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _hash_payload(value: dict) -> str:
+    encoded = jsonable_encoder(value)
+    return hashlib.sha256(json.dumps(encoded, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
 def _new_api_key() -> str:
@@ -60,6 +75,19 @@ def _item_state(item: WebsiteCatalogItem) -> dict:
         "stock_quantity": item.stock_quantity,
         "is_public": bool(item.is_public),
         "is_active": bool(item.is_active),
+    }
+
+
+def _order_state(order: WebsiteIntegrationOrder) -> dict:
+    return {
+        "id": order.id,
+        "external_reference": order.external_reference,
+        "source_platform": order.source_platform,
+        "status": order.status,
+        "customer_email": order.customer_email,
+        "currency": order.currency,
+        "subtotal_amount": order.subtotal_amount,
+        "line_count": len(getattr(order, "line_items", []) or []),
     }
 
 
@@ -103,6 +131,39 @@ def serialize_catalog_item(item: WebsiteCatalogItem, *, public: bool = False) ->
             }
         )
     return payload
+
+
+def serialize_order(order: WebsiteIntegrationOrder, *, idempotent_replayed: bool = False) -> dict:
+    return {
+        "id": order.id,
+        "external_reference": order.external_reference,
+        "source_platform": order.source_platform,
+        "status": order.status,
+        "customer_name": order.customer_name,
+        "customer_email": order.customer_email,
+        "customer_phone": order.customer_phone,
+        "currency": order.currency,
+        "subtotal_amount": order.subtotal_amount,
+        "metadata": order.metadata_json,
+        "created_at": order.created_at,
+        "idempotent_replayed": idempotent_replayed,
+        "line_items": [
+            {
+                "id": line.id,
+                "catalog_item_id": line.catalog_item_id,
+                "slug": line.slug,
+                "sku": line.sku,
+                "name": line.name,
+                "quantity": line.quantity,
+                "currency": line.currency,
+                "unit_price_snapshot": line.unit_price_snapshot,
+                "line_total": line.line_total,
+                "stock_quantity_before": line.stock_quantity_before,
+                "stock_quantity_after": line.stock_quantity_after,
+            }
+            for line in getattr(order, "line_items", []) or []
+        ],
+    }
 
 
 def create_api_key(db: Session, *, tenant_id: int, actor_user_id: int | None, payload: dict) -> tuple[WebsiteIntegrationApiKey, str]:
@@ -196,6 +257,20 @@ def resolve_public_api_key(db: Session, *, api_key: str | None, required_scope: 
     return record
 
 
+def check_integration_rate_limit(key: WebsiteIntegrationApiKey, *, operation: str) -> None:
+    limit = max(int(settings.WEBSITE_INTEGRATION_RATE_LIMIT_COUNT), 1)
+    window_seconds = max(int(settings.WEBSITE_INTEGRATION_RATE_LIMIT_WINDOW_SECONDS), 1)
+    cache_key = f"website_integrations:rate:{key.id}:{operation}"
+    payload = cache_get_json(cache_key) or {"count": 0}
+    count = int(payload.get("count") or 0)
+    if count >= limit:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Integration API rate limit exceeded",
+        )
+    cache_set_json(cache_key, {"count": count + 1}, ttl_seconds=window_seconds)
+
+
 def list_catalog_items(
     db: Session,
     *,
@@ -227,6 +302,165 @@ def list_catalog_items(
     if limit is not None:
         query = query.limit(limit)
     return query.all(), total
+
+
+def list_orders(db: Session, *, tenant_id: int, limit: int | None = None, offset: int = 0) -> tuple[list[WebsiteIntegrationOrder], int]:
+    query = (
+        db.query(WebsiteIntegrationOrder)
+        .options(selectinload(WebsiteIntegrationOrder.line_items))
+        .filter(WebsiteIntegrationOrder.tenant_id == tenant_id)
+    )
+    total = query.count()
+    query = query.order_by(WebsiteIntegrationOrder.created_at.desc(), WebsiteIntegrationOrder.id.desc())
+    if offset:
+        query = query.offset(offset)
+    if limit is not None:
+        query = query.limit(limit)
+    return query.all(), total
+
+
+def _existing_order_by_reference(db: Session, *, tenant_id: int, external_reference: str) -> WebsiteIntegrationOrder | None:
+    return (
+        db.query(WebsiteIntegrationOrder)
+        .options(selectinload(WebsiteIntegrationOrder.line_items))
+        .filter(
+            WebsiteIntegrationOrder.tenant_id == tenant_id,
+            WebsiteIntegrationOrder.external_reference == external_reference,
+        )
+        .first()
+    )
+
+
+def _resolve_public_catalog_item_for_order(db: Session, *, tenant_id: int, line: dict) -> WebsiteCatalogItem:
+    query = db.query(WebsiteCatalogItem).filter(
+        WebsiteCatalogItem.tenant_id == tenant_id,
+        WebsiteCatalogItem.is_public == 1,
+        WebsiteCatalogItem.is_active == 1,
+    )
+    if line.get("catalog_item_id"):
+        query = query.filter(WebsiteCatalogItem.id == line["catalog_item_id"])
+    elif line.get("slug"):
+        query = query.filter(WebsiteCatalogItem.slug == str(line["slug"]).strip().lower())
+    elif line.get("sku"):
+        query = query.filter(WebsiteCatalogItem.sku == str(line["sku"]).strip())
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order line requires catalog_item_id, slug, or sku")
+    item = query.with_for_update().first()
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog item not found for order line")
+    if item.stock_status == "out_of_stock":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"{item.name} is out of stock")
+    return item
+
+
+def _apply_stock_decrement(item: WebsiteCatalogItem, quantity: Decimal) -> tuple[Decimal | None, Decimal | None]:
+    before = Decimal(str(item.stock_quantity)) if item.stock_quantity is not None else None
+    if before is None:
+        return None, None
+    if before < quantity:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.name}")
+    after = before - quantity
+    item.stock_quantity = after
+    if after <= 0:
+        item.stock_status = "out_of_stock"
+    elif item.stock_status == "out_of_stock":
+        item.stock_status = "in_stock"
+    return before, after
+
+
+def create_public_order(
+    db: Session,
+    *,
+    tenant_id: int,
+    api_key_id: int | None,
+    payload: dict,
+) -> tuple[WebsiteIntegrationOrder, bool]:
+    external_reference = str(payload["external_reference"]).strip()
+    request_hash = _hash_payload(payload)
+    existing = _existing_order_by_reference(db, tenant_id=tenant_id, external_reference=external_reference)
+    if existing:
+        if existing.request_hash != request_hash:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Order external_reference already exists with different payload",
+            )
+        return existing, True
+
+    subtotal = Decimal("0")
+    currency = (payload.get("currency") or "").strip().upper() if payload.get("currency") else None
+    order = WebsiteIntegrationOrder(
+        tenant_id=tenant_id,
+        api_key_id=api_key_id,
+        external_reference=external_reference,
+        source_platform=(payload.get("source_platform") or "").strip() or None,
+        status="confirmed",
+        request_hash=request_hash,
+        customer_name=(payload.get("customer_name") or "").strip() or None,
+        customer_email=(payload.get("customer_email") or "").strip().lower() or None,
+        customer_phone=(payload.get("customer_phone") or "").strip() or None,
+        currency=currency or "USD",
+        subtotal_amount=Decimal("0"),
+        metadata_json=payload.get("metadata"),
+        raw_payload=jsonable_encoder(payload),
+    )
+    db.add(order)
+    db.flush()
+
+    for raw_line in payload.get("line_items") or []:
+        quantity = Decimal(str(raw_line["quantity"]))
+        item = _resolve_public_catalog_item_for_order(db, tenant_id=tenant_id, line=raw_line)
+        line_currency = item.currency
+        if currency is None:
+            currency = line_currency
+            order.currency = line_currency
+        if line_currency != order.currency:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order lines must use one currency")
+        before, after = _apply_stock_decrement(item, quantity)
+        unit_price = Decimal(str(item.public_unit_price))
+        line_total = unit_price * quantity
+        subtotal += line_total
+        db.add(item)
+        db.add(
+            WebsiteIntegrationOrderLine(
+                tenant_id=tenant_id,
+                order_id=order.id,
+                catalog_item_id=item.id,
+                slug=item.slug,
+                sku=item.sku,
+                name=item.name,
+                quantity=quantity,
+                currency=line_currency,
+                unit_price_snapshot=unit_price,
+                line_total=line_total,
+                stock_quantity_before=before,
+                stock_quantity_after=after,
+            )
+        )
+
+    order.subtotal_amount = subtotal
+    db.add(order)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        existing = _existing_order_by_reference(db, tenant_id=tenant_id, external_reference=external_reference)
+        if existing and existing.request_hash == request_hash:
+            return existing, True
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order external_reference already exists") from exc
+    db.refresh(order)
+    order = _existing_order_by_reference(db, tenant_id=tenant_id, external_reference=external_reference) or order
+    log_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=None,
+        module_key="website_integrations",
+        entity_type="website_order",
+        entity_id=order.id,
+        action="website_order.confirmed",
+        description=f"Website order confirmed from {order.source_platform or 'external site'}",
+        after_state=_order_state(order),
+    )
+    return order, False
 
 
 def get_catalog_item_or_404(db: Session, *, tenant_id: int, item_id: int) -> WebsiteCatalogItem:

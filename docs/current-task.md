@@ -14,14 +14,26 @@ Before making substantial code changes:
 
 ## Current Focus
 
-Start the website and WordPress integration slice now that shareable client pages for proposals, pricing, and documents are landed without payment links.
+Production-readiness bugfix pass for mail and calendar integration correctness before moving to the next website/finance slice.
+
+Active production-readiness sequence:
+
+1. [done] fix IMAP/SMTP inbox cursor handling, sent-message append visibility, and disconnect behavior
+2. [done] fix task-linked calendar event dedupe/delete semantics and invite-response participant checks
+3. [done] fix calendar bootstrap sync retry key and mail provider typing clarity
+4. [done] tighten mail/calendar OAuth identity checks, source-record error masking, credential handling, and lightweight pagination/perf issues
+5. [done] clean up mail/calendar duplicated logic, query hot spots, and small UX edge cases
+
+Recently landed in the website integration slice:
 
 Active website integration sequence:
 
-1. [active] add backend-only tenant-scoped integration API keys
-2. [active] add public catalog item APIs for products/services, public prices, stock status, stock quantity, and media URLs
-3. keep CRM frontend management deferred for now because external websites/WordPress/custom sites will render the data
-4. keep booking confirmation writebacks, automatic stock decrement, invoices, and payment links as later integration slices
+1. [done] add backend-only tenant-scoped integration API keys
+2. [done] add public catalog item APIs for products/services, public prices, stock status, stock quantity, and media URLs
+3. [done] add a simple CRM frontend for API-key, catalog, and website-order management
+4. [done] add external booking/order confirmation writebacks with idempotency and stock-safe decrement
+5. [done] rate-limit public integration endpoints per API key
+6. keep invoices and payment links as later integration slices
 
 Recently landed in the Documents slice:
 
@@ -128,7 +140,7 @@ After shareable client pages, resume CRM growth in this order:
 ## Immediate Notes
 
 - The shareable client page slice is complete enough to leave the active path: CRM users can create linked pricing/proposal/document pages, publish signed links, apply client-facing branding, see client responses, and clients can use separate login for personalized pricing.
-- Website integrations should start backend-first: external sites can pull approved catalog/service/pricing/stock/media data by API key, while writebacks such as booking confirmations and invoice/payment flows wait for a safer stock and finance slice.
+- Website integrations are now usable from the CRM side: external sites can pull approved catalog/service/pricing/stock/media data by API key, confirmed website orders can write back with idempotent stock decrement, and admins can manage keys/catalog/order visibility from the Integrations page. Invoice/payment flows wait for a later finance slice.
 - WhatsApp is deliberately paused as sufficient for now; keep it to manual click-to-chat and do not add reply handling or provider webhooks in this phase.
 - The Slack/Teams webhook foundation is landed enough to stop being the active slice: CRM events, notification channels, test sends, best-effort delivery, and admin delivery history now exist.
 - Keep richer scheduled `task.due_today` scanning as follow-up instead of blocking the mail provider slice.

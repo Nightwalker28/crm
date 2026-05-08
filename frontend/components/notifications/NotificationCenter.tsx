@@ -166,6 +166,11 @@ export default function NotificationCenter() {
             Refreshing…
           </div>
         ) : null}
+        <div className="border-t border-white/10 px-4 py-3">
+          <Link href="/dashboard/activity-log" className="text-xs font-medium text-neutral-300 hover:text-white">
+            View all activity
+          </Link>
+        </div>
       </PopoverContent>
     </Popover>
   );

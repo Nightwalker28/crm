@@ -82,6 +82,7 @@ export type MailSendPayload = {
 };
 
 export type MailProvider = "google" | "microsoft" | "imap_smtp";
+export type OAuthMailProvider = Exclude<MailProvider, "imap_smtp">;
 
 export type ImapSmtpConnectPayload = {
   account_email: string;
@@ -104,7 +105,7 @@ async function readJsonSafely(res: Response) {
   }
 }
 
-export async function fetchMailContext(): Promise<MailContext> {
+async function fetchMailContext(): Promise<MailContext> {
   const res = await apiFetch("/mail/context");
   const body = await readJsonSafely(res);
   if (!res.ok) {
@@ -113,18 +114,21 @@ export async function fetchMailContext(): Promise<MailContext> {
   return body as MailContext;
 }
 
-export async function fetchMailMessages({
+async function fetchMailMessages({
   folder,
   search,
   limit = 50,
+  beforeId,
 }: {
   folder?: string;
   search?: string;
   limit?: number;
+  beforeId?: number;
 }): Promise<MailMessageList> {
   const params = new URLSearchParams();
   if (folder) params.set("folder", folder);
   if (search?.trim()) params.set("search", search.trim());
+  if (beforeId) params.set("before_id", String(beforeId));
   params.set("limit", String(limit));
   const res = await apiFetch(`/mail/messages?${params.toString()}`);
   const body = await readJsonSafely(res);
@@ -134,7 +138,7 @@ export async function fetchMailMessages({
   return body as MailMessageList;
 }
 
-export async function connectMailProvider(provider: "google" | "microsoft"): Promise<MailProviderConnectResponse> {
+async function connectMailProvider(provider: OAuthMailProvider): Promise<MailProviderConnectResponse> {
   const res = await apiFetch(`/mail/connect/${provider}`, { method: "POST" });
   const body = await readJsonSafely(res);
   if (!res.ok) {
@@ -143,7 +147,7 @@ export async function connectMailProvider(provider: "google" | "microsoft"): Pro
   return body as MailProviderConnectResponse;
 }
 
-export async function connectImapSmtpProvider(payload: ImapSmtpConnectPayload): Promise<MailContext> {
+async function connectImapSmtpProvider(payload: ImapSmtpConnectPayload): Promise<MailContext> {
   const res = await apiFetch("/mail/connect/imap-smtp", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -156,7 +160,7 @@ export async function connectImapSmtpProvider(payload: ImapSmtpConnectPayload): 
   return body as MailContext;
 }
 
-export async function syncMailProvider(provider: MailProvider): Promise<MailSyncResponse> {
+async function syncMailProvider(provider: MailProvider): Promise<MailSyncResponse> {
   const res = await apiFetch(`/mail/sync/${provider}`, { method: "POST" });
   const body = await readJsonSafely(res);
   if (!res.ok) {
@@ -165,7 +169,7 @@ export async function syncMailProvider(provider: MailProvider): Promise<MailSync
   return body as MailSyncResponse;
 }
 
-export async function disconnectMailProvider(provider: MailProvider): Promise<MailDisconnectResponse> {
+async function disconnectMailProvider(provider: MailProvider): Promise<MailDisconnectResponse> {
   const res = await apiFetch(`/mail/connect/${provider}`, { method: "DELETE" });
   const body = await readJsonSafely(res);
   if (!res.ok) {
@@ -174,7 +178,7 @@ export async function disconnectMailProvider(provider: MailProvider): Promise<Ma
   return body as MailDisconnectResponse;
 }
 
-export async function sendMailMessage(payload: MailSendPayload): Promise<MailMessage> {
+async function sendMailMessage(payload: MailSendPayload): Promise<MailMessage> {
   const res = await apiFetch("/mail/send", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -195,10 +199,10 @@ export function useMailContext() {
   });
 }
 
-export function useMailMessages(folder?: string, search?: string) {
+export function useMailMessages(folder?: string, search?: string, beforeId?: number) {
   return useQuery({
-    queryKey: ["mail-messages", folder ?? "all", search ?? ""],
-    queryFn: () => fetchMailMessages({ folder, search }),
+    queryKey: ["mail-messages", folder ?? "all", search ?? "", beforeId ?? "latest"],
+    queryFn: () => fetchMailMessages({ folder, search, beforeId }),
     staleTime: 30_000,
   });
 }

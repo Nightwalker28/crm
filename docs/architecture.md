@@ -89,7 +89,10 @@ This file captures the current intended technical patterns and constraints so ne
 - Public integration keys authenticate external reads by key hash and resolve tenant ownership from the key, so a custom site can call the API without a CRM user cookie.
 - Public catalog endpoints should return only active, public catalog rows and public/default pricing. Private terms, personalized pricing, private documents, invoices, and payment actions stay behind signed or authenticated flows.
 - Catalog items are modeled as tenant-owned integration records with item type, slug/SKU, public unit price, stock status/quantity, media URL, and metadata so existing sites can render products/services while the deeper inventory module is still future work.
-- Future booking/order-confirmation writebacks should be separate idempotent APIs with external reference keys, audit/activity logging, and transactional stock adjustment before they can reduce inventory or generate invoices.
+- Booking/order-confirmation writebacks use a separate `orders:write` integration key scope, persist external references for idempotency, and store line-level price/stock snapshots.
+- Stock adjustments happen transactionally when a confirmed website order is first accepted. Replayed confirmations with the same payload return the original order without decrementing stock again; duplicate external references with different payloads are rejected.
+- Public integration endpoints enforce a per-key fixed-window rate limit backed by the shared cache layer, with Redis preferred in production and local cache only for single-process development.
+- Website order writebacks intentionally stop before invoices and payments. Finance handoff should be a later explicit workflow built from captured website orders.
 
 ### Notifications
 
@@ -183,8 +186,9 @@ This file captures the current intended technical patterns and constraints so ne
 - Mailbox provider access should use an explicit mail-connect workflow rather than being bundled into basic sign-in, so Gmail/Outlook scopes are only requested from users who opt into mailbox sync.
 - Google Calendar sync should prefer `calendar.app.created` so the app manages only its own CRM calendar instead of asking for broad access to all user calendars.
 - Gmail inbox read/sync requires restricted Google scopes and must remain behind an explicit environment flag plus verification plan; default Gmail mail integration should use send-only scope where possible.
-- IMAP/SMTP mailbox connections are per-user mail connections, not tenant-wide provider credentials. Saved IMAP/SMTP passwords must be encrypted with `MAIL_CREDENTIAL_SECRET` when configured, falling back to `JWT_SECRET` only for local/dev compatibility.
+- IMAP/SMTP mailbox connections are per-user mail connections, not tenant-wide provider credentials. Saved IMAP/SMTP passwords must be encrypted with `MAIL_CREDENTIAL_SECRET` when configured, falling back to `JWT_SECRET` only for local/dev compatibility; credentials decrypted with the fallback key should be re-encrypted with the current mail credential key on successful use.
 - IMAP sync should use provider UIDs and store a cursor after the first sync so repeated manual syncs do not refetch the whole mailbox. SMTP send should persist the local sent message and best-effort append to the provider sent folder without failing the send if folder append is unavailable.
+- Calendar writes should enqueue external provider sync through Celery where possible, with inline fallback only when the queue cannot accept the job.
 - If broader Google workflows are removed from the product, their scope requests, token persistence, and dependent service code should be removed rather than left partially dormant.
 - Manual-capable users created by admins should have a reliable password-setup flow:
   - admin user creation should generate a setup link

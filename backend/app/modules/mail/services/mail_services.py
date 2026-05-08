@@ -23,7 +23,7 @@ from app.core.config import settings
 from app.core.access_control import require_role_module_action_access
 from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
-from app.core.secrets import decrypt_secret, encrypt_secret
+from app.core.secrets import decrypt_secret_with_rotation, encrypt_secret
 from app.core.tenancy import (
     get_frontend_origin_for_request,
     get_google_redirect_uri_for_request,
@@ -98,18 +98,24 @@ def build_mail_context(db: Session, *, tenant_id: int, current_user) -> dict:
         .order_by(UserMailConnection.provider.asc(), UserMailConnection.id.asc())
         .all()
     )
-    connected = any(connection.status == "connected" for connection in connections)
-    can_sync = any(_serialize_connection(connection)["can_sync"] for connection in connections)
+    serialized_connections = [_serialize_connection(connection) for connection in connections]
+    connected = any(connection["status"] == "connected" for connection in serialized_connections)
+    can_sync = any(connection["can_sync"] for connection in serialized_connections)
+    sync_provider_labels = [
+        {"google": "Gmail", "microsoft": "Microsoft", "imap_smtp": "IMAP/SMTP"}.get(connection["provider"], connection["provider"])
+        for connection in serialized_connections
+        if connection["can_sync"]
+    ]
     return {
-        "connections": [_serialize_connection(connection) for connection in connections],
+        "connections": serialized_connections,
         "sync_available": can_sync,
         "sync_note": (
-            "Mailbox sync is available for this account."
+            f"Mailbox sync is available through {', '.join(sync_provider_labels)}."
             if can_sync
             else (
                 "Mailbox sending is connected, but inbox sync is not available for this provider/scope."
                 if connected
-                else "Mailbox sync is not connected yet. Google and Microsoft mail should use an explicit connect flow before requesting mailbox scopes."
+                else "Mailbox sync is not connected yet. Connect Gmail, Microsoft, or IMAP/SMTP from this page before syncing mail."
             )
         ),
     }
@@ -149,6 +155,7 @@ def list_mail_messages(
     folder: str | None = None,
     search: str | None = None,
     limit: int = 50,
+    before_id: int | None = None,
 ) -> list[MailMessage]:
     query = db.query(MailMessage).filter(
         MailMessage.tenant_id == tenant_id,
@@ -157,6 +164,8 @@ def list_mail_messages(
     )
     if folder:
         query = query.filter(MailMessage.folder == folder)
+    if before_id:
+        query = query.filter(MailMessage.id < before_id)
     if search and search.strip():
         query = apply_ranked_search(
             query,
@@ -306,6 +315,14 @@ def upsert_google_mail_connection(
         )
         .first()
     )
+    normalized_account_email = account_email.strip().lower()
+    if not normalized_account_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google account email is missing.")
+    if connection and connection.account_email and connection.account_email.lower() != normalized_account_email:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Google returned a different mailbox account. Disconnect Gmail before connecting another account.",
+        )
     if not connection:
         connection = UserMailConnection(
             tenant_id=tenant_id,
@@ -313,13 +330,13 @@ def upsert_google_mail_connection(
             provider=MailProvider.google.value,
         )
     connection.status = "connected"
-    connection.account_email = account_email
+    connection.account_email = normalized_account_email
     connection.scopes = token_json.get("scope", "").split()
     connection.access_token = token_json.get("access_token")
     if token_json.get("refresh_token"):
         connection.refresh_token = token_json["refresh_token"]
     connection.token_expires_at = _token_expiry(token_json)
-    connection.provider_mailbox_id = account_email
+    connection.provider_mailbox_id = normalized_account_email
     connection.provider_mailbox_name = "Gmail Inbox"
     connection.last_error = None
     db.add(connection)
@@ -516,11 +533,7 @@ def disconnect_mail_connection(
         .first()
     )
     if not connection:
-        connection = UserMailConnection(
-            tenant_id=tenant_id,
-            user_id=user_id,
-            provider=provider.value,
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mail connection not found.")
     connection.status = "disconnected"
     connection.scopes = None
     connection.access_token = None
@@ -655,8 +668,25 @@ def _mail_connection_for_user(
     return connection
 
 
+def _decrypt_connection_password(db: Session, connection: UserMailConnection) -> str | None:
+    password, needs_reencrypt = decrypt_secret_with_rotation(connection.encrypted_password)
+    if password and needs_reencrypt:
+        connection.encrypted_password = encrypt_secret(password)
+        db.add(connection)
+        db.flush()
+    return password
+
+
 def _recipient_dicts(emails: list[str]) -> list[dict] | None:
     return [{"email": value, "name": None} for value in emails] or None
+
+
+def _mail_header_recipients(emails: list[str]) -> str:
+    return ", ".join(emails)
+
+
+def _microsoft_recipients(emails: list[str]) -> list[dict]:
+    return [{"emailAddress": {"address": value}} for value in emails]
 
 
 def _normalize_source_value(value) -> str | None:
@@ -683,12 +713,14 @@ def _resolve_mail_source_context(db: Session, *, current_user: User, payload: di
             module_key=module_key,
             entity_id=entity_id,
         )
-    except HTTPException:
+    except HTTPException as exc:
+        if exc.status_code == status.HTTP_404_NOT_FOUND or exc.detail == "Invalid record identifier.":
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mail source record not found.") from exc
         raise
     except PermissionError as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mail source record not found.") from exc
 
     return {
         "module_key": module_key,
@@ -732,11 +764,11 @@ def _send_gmail_message(
     token = _refresh_google_mail_token(db, connection)
     message = EmailMessage()
     message["From"] = sender_email
-    message["To"] = ", ".join(payload["to"])
+    message["To"] = _mail_header_recipients(payload["to"])
     if payload.get("cc"):
-        message["Cc"] = ", ".join(payload["cc"])
+        message["Cc"] = _mail_header_recipients(payload["cc"])
     if payload.get("bcc"):
-        message["Bcc"] = ", ".join(payload["bcc"])
+        message["Bcc"] = _mail_header_recipients(payload["bcc"])
     message["Subject"] = payload.get("subject") or ""
     message.set_content(payload.get("body_text") or "")
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
@@ -754,10 +786,6 @@ def _send_gmail_message(
 
 def _send_microsoft_message(db: Session, *, connection: UserMailConnection, payload: dict) -> None:
     token = _refresh_microsoft_mail_token(db, connection)
-
-    def recipients(values: list[str]) -> list[dict]:
-        return [{"emailAddress": {"address": value}} for value in values]
-
     res = requests.post(
         f"{MICROSOFT_GRAPH_BASE}/me/sendMail",
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
@@ -765,9 +793,9 @@ def _send_microsoft_message(db: Session, *, connection: UserMailConnection, payl
             "message": {
                 "subject": payload.get("subject") or "",
                 "body": {"contentType": "Text", "content": payload.get("body_text") or ""},
-                "toRecipients": recipients(payload["to"]),
-                "ccRecipients": recipients(payload.get("cc") or []),
-                "bccRecipients": recipients(payload.get("bcc") or []),
+                "toRecipients": _microsoft_recipients(payload["to"]),
+                "ccRecipients": _microsoft_recipients(payload.get("cc") or []),
+                "bccRecipients": _microsoft_recipients(payload.get("bcc") or []),
             },
             "saveToSentItems": True,
         },
@@ -782,6 +810,7 @@ def _append_sent_imap_message(*, connection: UserMailConnection, password: str, 
     if not connection.imap_host or not connection.imap_port or not connection.imap_username:
         return
     client = None
+    append_errors: list[str] = []
     try:
         client = _connect_imap(connection.imap_host, int(connection.imap_port), connection.imap_security or "ssl")
         client.login(connection.imap_username, password)
@@ -789,10 +818,13 @@ def _append_sent_imap_message(*, connection: UserMailConnection, password: str, 
         for folder in SMTP_SENT_FOLDER_CANDIDATES:
             try:
                 status_text, _ = client.append(folder, None, None, raw_message)
-            except Exception:
+            except Exception as exc:
+                append_errors.append(f"{folder}: {_mail_provider_error(exc, protocol='IMAP')}")
                 continue
             if status_text == "OK":
                 return
+            append_errors.append(f"{folder}: append returned {status_text}")
+        raise RuntimeError("; ".join(append_errors) or "No sent folder accepted the message.")
     finally:
         if client is not None:
             try:
@@ -801,8 +833,8 @@ def _append_sent_imap_message(*, connection: UserMailConnection, password: str, 
                 pass
 
 
-def _send_imap_smtp_message(*, connection: UserMailConnection, payload: dict, sender_email: str) -> str | None:
-    password = decrypt_secret(connection.encrypted_password)
+def _send_imap_smtp_message(*, db: Session, connection: UserMailConnection, payload: dict, sender_email: str) -> str | None:
+    password = _decrypt_connection_password(db, connection)
     if not password:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reconnect IMAP/SMTP mail to save mailbox credentials.")
     if not connection.smtp_host or not connection.smtp_port or not connection.smtp_username:
@@ -811,11 +843,11 @@ def _send_imap_smtp_message(*, connection: UserMailConnection, payload: dict, se
     message = EmailMessage()
     message_id = make_msgid()
     message["From"] = sender_email
-    message["To"] = ", ".join(payload["to"])
+    message["To"] = _mail_header_recipients(payload["to"])
     if payload.get("cc"):
-        message["Cc"] = ", ".join(payload["cc"])
+        message["Cc"] = _mail_header_recipients(payload["cc"])
     if payload.get("bcc"):
-        message["Bcc"] = ", ".join(payload["bcc"])
+        message["Bcc"] = _mail_header_recipients(payload["bcc"])
     message["Subject"] = payload.get("subject") or ""
     message["Message-ID"] = message_id
     message.set_content(payload.get("body_text") or "")
@@ -835,8 +867,9 @@ def _send_imap_smtp_message(*, connection: UserMailConnection, payload: dict, se
 
     try:
         _append_sent_imap_message(connection=connection, password=password, message=message)
-    except Exception:
-        pass
+        connection.last_error = None
+    except Exception as exc:
+        connection.last_error = f"SMTP sent, but IMAP sent-folder append failed: {_mail_provider_error(exc, protocol='IMAP')}"
     return message_id
 
 
@@ -861,6 +894,7 @@ def send_mail_message(db: Session, *, current_user: User, payload: dict) -> Mail
         _send_microsoft_message(db, connection=connection, payload=payload)
     else:
         provider_message_id = _send_imap_smtp_message(
+            db=db,
             connection=connection,
             payload=payload,
             sender_email=connection.account_email or current_user.email,
@@ -1173,7 +1207,7 @@ def sync_imap_smtp_inbox(db: Session, *, current_user: User, max_results: int = 
     )
     if not connection or connection.status != "connected":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect IMAP/SMTP mail before syncing the inbox.")
-    password = decrypt_secret(connection.encrypted_password)
+    password = _decrypt_connection_password(db, connection)
     if not password:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reconnect IMAP/SMTP mail to save mailbox credentials.")
     if not connection.imap_host or not connection.imap_port or not connection.imap_username:
@@ -1194,15 +1228,20 @@ def sync_imap_smtp_inbox(db: Session, *, current_user: User, max_results: int = 
         status_text, data = client.uid("search", None, search_criteria)
         if status_text != "OK":
             raise RuntimeError("Failed to list IMAP messages.")
-        uids = (data[0] or b"").split()
-        selected_uids = uids[-max_results:] if not last_seen_uid else uids[:max_results]
+        uid_numbers = sorted(
+            {
+                int(uid_bytes.decode("ascii", errors="ignore"))
+                for uid_bytes in (data[0] or b"").split()
+                if uid_bytes.decode("ascii", errors="ignore").isdigit()
+            }
+        )
+        if last_seen_uid:
+            uid_numbers = [uid for uid in uid_numbers if uid > last_seen_uid]
+        selected_uids = uid_numbers[-max_results:] if not last_seen_uid else uid_numbers[:max_results]
         max_seen_uid = last_seen_uid or 0
-        for uid_bytes in selected_uids:
-            uid = uid_bytes.decode("ascii", errors="ignore")
-            if not uid:
-                continue
-            if uid.isdigit():
-                max_seen_uid = max(max_seen_uid, int(uid))
+        for uid_number in selected_uids:
+            uid = str(uid_number)
+            max_seen_uid = max(max_seen_uid, uid_number)
             status_text, fetch_data = client.uid("fetch", uid, "(RFC822)")
             if status_text != "OK":
                 continue

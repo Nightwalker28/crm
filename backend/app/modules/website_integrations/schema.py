@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class WebsiteCatalogItemType(str, Enum):
@@ -199,3 +199,95 @@ class PublicWebsiteCatalogListResponse(BaseModel):
     total_count: int
     limit: int
     offset: int
+
+
+class PublicWebsiteOrderLineRequest(BaseModel):
+    catalog_item_id: int | None = None
+    slug: str | None = Field(default=None, max_length=160)
+    sku: str | None = Field(default=None, max_length=100)
+    quantity: Decimal = Field(gt=0)
+
+    @field_validator("slug", "sku", mode="after")
+    @classmethod
+    def normalize_lookup(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @model_validator(mode="after")
+    def validate_lookup(self):
+        if not self.catalog_item_id and not self.slug and not self.sku:
+            raise ValueError("order line requires catalog_item_id, slug, or sku")
+        return self
+
+
+class PublicWebsiteOrderCreateRequest(BaseModel):
+    external_reference: str = Field(min_length=1, max_length=180)
+    source_platform: str | None = Field(default=None, max_length=80)
+    customer_name: str | None = Field(default=None, max_length=180)
+    customer_email: str | None = Field(default=None, max_length=180)
+    customer_phone: str | None = Field(default=None, max_length=80)
+    currency: str | None = Field(default=None, min_length=3, max_length=3)
+    line_items: list[PublicWebsiteOrderLineRequest] = Field(min_length=1)
+    metadata: dict[str, Any] | None = None
+
+    @field_validator("external_reference", mode="after")
+    @classmethod
+    def strip_external_reference(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("external_reference is required")
+        return normalized
+
+    @field_validator("source_platform", "customer_name", "customer_email", "customer_phone", mode="after")
+    @classmethod
+    def strip_optional_strings(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+    @field_validator("currency", mode="after")
+    @classmethod
+    def normalize_currency(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().upper()
+        if len(normalized) != 3:
+            raise ValueError("currency must be a 3-letter code")
+        return normalized
+
+
+class WebsiteOrderLineResponse(BaseModel):
+    id: int
+    catalog_item_id: int | None = None
+    slug: str | None = None
+    sku: str | None = None
+    name: str
+    quantity: Decimal
+    currency: str
+    unit_price_snapshot: Decimal
+    line_total: Decimal
+    stock_quantity_before: Decimal | None = None
+    stock_quantity_after: Decimal | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class WebsiteOrderResponse(BaseModel):
+    id: int
+    external_reference: str
+    source_platform: str | None = None
+    status: str
+    customer_name: str | None = None
+    customer_email: str | None = None
+    customer_phone: str | None = None
+    currency: str
+    subtotal_amount: Decimal
+    metadata: dict[str, Any] | None = None
+    created_at: datetime
+    line_items: list[WebsiteOrderLineResponse]
+    idempotent_replayed: bool = False
+
+    model_config = ConfigDict(from_attributes=True)

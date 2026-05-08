@@ -91,3 +91,60 @@ class WebsiteCatalogItem(Base):
     tenant = relationship("Tenant")
     creator = relationship("User", foreign_keys=[created_by_user_id])
     updated_by = relationship("User", foreign_keys=[updated_by_user_id])
+
+
+class WebsiteIntegrationOrder(Base):
+    __tablename__ = "website_integration_orders"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "external_reference", name="uq_website_orders_tenant_external_ref"),
+        CheckConstraint("status IN ('confirmed', 'rejected')", name="ck_website_orders_status"),
+        Index("ix_website_orders_tenant_status", "tenant_id", "status"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    api_key_id = Column(BigInteger, ForeignKey("website_integration_api_keys.id", ondelete="SET NULL"), nullable=True, index=True)
+    external_reference = Column(String(180), nullable=False, index=True)
+    source_platform = Column(String(80), nullable=True, index=True)
+    status = Column(String(20), nullable=False, server_default="confirmed", index=True)
+    request_hash = Column(String(64), nullable=False)
+    customer_name = Column(String(180), nullable=True)
+    customer_email = Column(String(180), nullable=True, index=True)
+    customer_phone = Column(String(80), nullable=True)
+    currency = Column(String(3), nullable=False, server_default="USD")
+    subtotal_amount = Column(Numeric(12, 4), nullable=False, server_default="0")
+    metadata_json = Column(JSON, nullable=True)
+    raw_payload = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    tenant = relationship("Tenant")
+    api_key = relationship("WebsiteIntegrationApiKey")
+    line_items = relationship(
+        "WebsiteIntegrationOrderLine",
+        back_populates="order",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+
+class WebsiteIntegrationOrderLine(Base):
+    __tablename__ = "website_integration_order_lines"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    order_id = Column(BigInteger, ForeignKey("website_integration_orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    catalog_item_id = Column(BigInteger, ForeignKey("website_catalog_items.id", ondelete="SET NULL"), nullable=True, index=True)
+    slug = Column(String(160), nullable=True)
+    sku = Column(String(100), nullable=True)
+    name = Column(String(180), nullable=False)
+    quantity = Column(Numeric(12, 4), nullable=False)
+    currency = Column(String(3), nullable=False, server_default="USD")
+    unit_price_snapshot = Column(Numeric(12, 4), nullable=False)
+    line_total = Column(Numeric(12, 4), nullable=False)
+    stock_quantity_before = Column(Numeric(12, 4), nullable=True)
+    stock_quantity_after = Column(Numeric(12, 4), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    tenant = relationship("Tenant")
+    order = relationship("WebsiteIntegrationOrder", back_populates="line_items")
+    catalog_item = relationship("WebsiteCatalogItem")

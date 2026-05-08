@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
-from app.core.secrets import encrypt_secret
+from app.core.secrets import decrypt_secret, encrypt_secret
 from app.modules.mail.models import MailMessage, UserMailConnection
 from app.modules.mail.schema import MailProvider
 from app.modules.mail.services import mail_services
@@ -17,6 +17,7 @@ from app.modules.mail.services.mail_services import (
     _send_imap_smtp_message,
     disconnect_mail_connection,
     sync_imap_smtp_inbox,
+    upsert_google_mail_connection,
     upsert_imap_smtp_mail_connection,
 )
 from app.modules.sales.models import SalesContact
@@ -25,8 +26,11 @@ from app.modules.user_management.models import Module, Role, Tenant, User, UserS
 
 
 class FakeImapClient:
-    def __init__(self, raw_message: bytes | None = None):
+    def __init__(self, raw_message: bytes | None = None, search_uids: bytes = b"42", append_status: str = "OK"):
         self.raw_message = raw_message
+        self.search_uids = search_uids
+        self.append_status = append_status
+        self.fetched_uids: list[str] = []
         self.logged_in = False
 
     def login(self, username, password):
@@ -41,15 +45,16 @@ class FakeImapClient:
 
     def uid(self, command, *args):
         if command == "search":
-            return "OK", [b"42"]
+            return "OK", [self.search_uids]
         if command == "fetch":
-            return "OK", [(b"42 (RFC822 {1}", self.raw_message or b"")]
+            self.fetched_uids.append(str(args[0]))
+            return "OK", [(f"{args[0]} (RFC822 {{1}}".encode(), self.raw_message or b"")]
         return "NO", []
 
     def append(self, folder, flags, date_time, raw_message):
         self.appended_folder = folder
         self.appended_message = raw_message
-        return "OK", [b"APPEND completed"]
+        return self.append_status, [b"APPEND completed"]
 
     def logout(self):
         return "OK", [b"Logged out"]
@@ -155,6 +160,31 @@ class MailImapSmtpTests(unittest.TestCase):
         imap_mock.assert_called_once()
         smtp_mock.assert_called_once()
 
+    def test_upsert_google_mail_connection_rejects_account_swap(self):
+        self.db.add(
+            UserMailConnection(
+                id=1,
+                tenant_id=10,
+                user_id=1,
+                provider=MailProvider.google.value,
+                status="connected",
+                account_email="ava@example.com",
+            )
+        )
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as exc:
+            upsert_google_mail_connection(
+                self.db,
+                tenant_id=10,
+                user=self.user,
+                token_json={"access_token": "token", "scope": "https://www.googleapis.com/auth/gmail.send"},
+                account_email="attacker@example.com",
+            )
+
+        self.assertEqual(exc.exception.status_code, 409)
+        self.assertEqual(self.db.query(UserMailConnection).first().account_email, "ava@example.com")
+
     @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
     def test_sync_imap_smtp_inbox_stores_user_scoped_message(self):
         raw_message = (
@@ -216,6 +246,39 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(self.db.query(UserMailConnection).first().sync_cursor, "42")
 
     @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
+    def test_sync_imap_smtp_inbox_filters_boundary_uid_and_keeps_cursor_order(self):
+        connection = UserMailConnection(
+            id=1,
+            tenant_id=10,
+            user_id=1,
+            provider=MailProvider.imap_smtp.value,
+            status="connected",
+            account_email="ava@example.com",
+            imap_host="imap.example.com",
+            imap_port=993,
+            imap_security="ssl",
+            imap_username="ava@example.com",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            smtp_security="starttls",
+            smtp_username="ava@example.com",
+            encrypted_password=encrypt_secret("app-password"),
+            sync_cursor="42",
+        )
+        self.db.add(connection)
+        self.db.commit()
+        fake_imap = FakeImapClient(raw_message=b"Subject: New\r\n\r\nBody", search_uids=b"42 45 43")
+
+        with patch.object(mail_services, "_connect_imap", return_value=fake_imap), \
+             patch.object(mail_services, "_sync_imap_message", return_value=True) as sync_mock:
+            result = sync_imap_smtp_inbox(self.db, current_user=SimpleNamespace(id=1, tenant_id=10))
+
+        self.assertEqual(fake_imap.fetched_uids, ["43", "45"])
+        self.assertEqual([call.kwargs["uid"] for call in sync_mock.call_args_list], ["43", "45"])
+        self.assertEqual(result["synced_message_count"], 2)
+        self.assertEqual(self.db.query(UserMailConnection).first().sync_cursor, "45")
+
+    @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
     def test_send_imap_smtp_message_uses_smtp_and_appends_to_sent_folder(self):
         connection = UserMailConnection(
             id=1,
@@ -242,6 +305,7 @@ class MailImapSmtpTests(unittest.TestCase):
         with patch.object(mail_services, "_connect_smtp", return_value=fake_smtp), \
              patch.object(mail_services, "_connect_imap", return_value=fake_imap):
             provider_message_id = _send_imap_smtp_message(
+                db=self.db,
                 connection=connection,
                 sender_email="ava@example.com",
                 payload={
@@ -257,6 +321,48 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(fake_smtp.username, "ava@example.com")
         self.assertEqual(fake_smtp.sent_message["Subject"], "Quote")
         self.assertEqual(fake_imap.appended_folder, "Sent")
+
+    @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
+    def test_send_imap_smtp_message_records_sent_append_failure(self):
+        connection = UserMailConnection(
+            id=1,
+            tenant_id=10,
+            user_id=1,
+            provider=MailProvider.imap_smtp.value,
+            status="connected",
+            account_email="ava@example.com",
+            imap_host="imap.example.com",
+            imap_port=993,
+            imap_security="ssl",
+            imap_username="ava@example.com",
+            smtp_host="smtp.example.com",
+            smtp_port=587,
+            smtp_security="starttls",
+            smtp_username="ava@example.com",
+            encrypted_password=encrypt_secret("app-password"),
+        )
+        self.db.add(connection)
+        self.db.commit()
+        fake_imap = FakeImapClient(append_status="NO")
+        fake_smtp = FakeSmtpClient()
+
+        with patch.object(mail_services, "_connect_smtp", return_value=fake_smtp), \
+             patch.object(mail_services, "_connect_imap", return_value=fake_imap):
+            provider_message_id = _send_imap_smtp_message(
+                db=self.db,
+                connection=connection,
+                sender_email="ava@example.com",
+                payload={
+                    "to": ["buyer@example.com"],
+                    "cc": [],
+                    "bcc": [],
+                    "subject": "Quote",
+                    "body_text": "Quote body",
+                },
+            )
+
+        self.assertTrue(provider_message_id)
+        self.assertIn("IMAP sent-folder append failed", connection.last_error)
 
     def test_mail_source_context_resolves_existing_tenant_record(self):
         context = mail_services._resolve_mail_source_context(
@@ -290,6 +396,17 @@ class MailImapSmtpTests(unittest.TestCase):
             )
 
         self.assertEqual(exc.exception.status_code, 404)
+
+    def test_mail_source_context_masks_invalid_record_identifier(self):
+        with self.assertRaises(HTTPException) as exc:
+            mail_services._resolve_mail_source_context(
+                self.db,
+                current_user=self.user,
+                payload={"source_module_key": "sales_contacts", "source_entity_id": "not-a-number"},
+            )
+
+        self.assertEqual(exc.exception.status_code, 404)
+        self.assertEqual(exc.exception.detail, "Mail source record not found.")
 
     def test_mail_source_activity_logs_to_record_timeline(self):
         message = MailMessage(
@@ -362,6 +479,69 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertIsNone(connection.sync_cursor)
         self.assertFalse(_serialize_connection(connection)["can_send"])
         self.assertFalse(_serialize_connection(connection)["can_sync"])
+
+    def test_disconnect_mail_connection_rejects_missing_connection(self):
+        with self.assertRaises(HTTPException) as exc:
+            disconnect_mail_connection(
+                self.db,
+                tenant_id=10,
+                user_id=1,
+                provider=MailProvider.imap_smtp,
+            )
+
+        self.assertEqual(exc.exception.status_code, 404)
+        self.assertEqual(self.db.query(UserMailConnection).count(), 0)
+
+    @patch.object(mail_services.settings, "JWT_SECRET", "old-mail-secret")
+    @patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", None)
+    def test_imap_password_reencrypts_after_secret_rotation(self):
+        legacy_encrypted_password = encrypt_secret("app-password")
+        self.db.add(
+            UserMailConnection(
+                id=1,
+                tenant_id=10,
+                user_id=1,
+                provider=MailProvider.imap_smtp.value,
+                status="connected",
+                account_email="ava@example.com",
+                imap_host="imap.example.com",
+                imap_port=993,
+                imap_security="ssl",
+                imap_username="ava@example.com",
+                smtp_host="smtp.example.com",
+                smtp_port=587,
+                smtp_security="starttls",
+                smtp_username="ava@example.com",
+                encrypted_password=legacy_encrypted_password,
+            )
+        )
+        self.db.commit()
+
+        fake_imap = FakeImapClient()
+        fake_smtp = FakeSmtpClient()
+
+        with patch.object(mail_services.settings, "JWT_SECRET", "old-mail-secret"), \
+             patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", "new-mail-secret"), \
+             patch.object(mail_services, "_connect_smtp", return_value=fake_smtp), \
+             patch.object(mail_services, "_connect_imap", return_value=fake_imap):
+            _send_imap_smtp_message(
+                db=self.db,
+                connection=self.db.query(UserMailConnection).first(),
+                sender_email="ava@example.com",
+                payload={
+                    "to": ["buyer@example.com"],
+                    "cc": [],
+                    "bcc": [],
+                    "subject": "Quote",
+                    "body_text": "Quote body",
+                },
+            )
+
+        connection = self.db.query(UserMailConnection).first()
+        self.assertNotEqual(connection.encrypted_password, legacy_encrypted_password)
+        with patch.object(mail_services.settings, "JWT_SECRET", "old-mail-secret"), \
+             patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", "new-mail-secret"):
+            self.assertEqual(decrypt_secret(connection.encrypted_password), "app-password")
 
 
 if __name__ == "__main__":

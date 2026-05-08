@@ -1,9 +1,11 @@
 import unittest
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.core import cache
 from app.modules.platform import models as platform_models  # noqa: F401
 from app.modules.user_management.models import Tenant
 from app.modules.website_integrations import models as website_models  # noqa: F401
@@ -25,6 +27,7 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
         self.db.commit()
 
     def tearDown(self):
+        cache._local_cache.clear()
         self.db.close()
 
     def test_api_key_resolves_tenant_and_only_returns_public_active_catalog(self):
@@ -103,6 +106,114 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
 
         with self.assertRaises(Exception):
             services.resolve_public_api_key(self.db, api_key=raw_key)
+
+    def test_public_order_is_idempotent_and_decrements_stock_once(self):
+        key, _raw_key = services.create_api_key(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Bookings", "scopes": ["catalog:read", "orders:write"], "allowed_origins": []},
+        )
+        item = services.create_catalog_item(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={
+                "item_type": "product",
+                "slug": "room-a",
+                "sku": "ROOM-A",
+                "name": "Room A",
+                "currency": "USD",
+                "public_unit_price": "50.00",
+                "stock_status": "in_stock",
+                "stock_quantity": "4",
+                "is_public": True,
+                "is_active": True,
+            },
+        )
+        payload = {
+            "external_reference": "wp-order-100",
+            "source_platform": "wordpress",
+            "customer_name": "Buyer",
+            "customer_email": "buyer@example.com",
+            "line_items": [{"slug": "room-a", "quantity": "2"}],
+            "metadata": {"checkout_url": "https://example.com/order/100"},
+        }
+
+        order, replayed = services.create_public_order(
+            self.db,
+            tenant_id=10,
+            api_key_id=key.id,
+            payload=payload,
+        )
+        second_order, second_replayed = services.create_public_order(
+            self.db,
+            tenant_id=10,
+            api_key_id=key.id,
+            payload=payload,
+        )
+        self.db.refresh(item)
+
+        self.assertFalse(replayed)
+        self.assertTrue(second_replayed)
+        self.assertEqual(order.id, second_order.id)
+        self.assertEqual(str(item.stock_quantity), "2.0000")
+        self.assertEqual(str(order.subtotal_amount), "100.0000")
+
+    def test_public_order_rejects_duplicate_reference_with_different_payload(self):
+        key, _raw_key = services.create_api_key(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Bookings", "scopes": ["orders:write"], "allowed_origins": []},
+        )
+        services.create_catalog_item(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={
+                "item_type": "product",
+                "slug": "starter-package",
+                "name": "Starter Package",
+                "currency": "USD",
+                "public_unit_price": "99.00",
+                "stock_status": "in_stock",
+                "stock_quantity": "5",
+                "is_public": True,
+                "is_active": True,
+            },
+        )
+        payload = {
+            "external_reference": "wp-order-101",
+            "line_items": [{"slug": "starter-package", "quantity": "1"}],
+        }
+        services.create_public_order(self.db, tenant_id=10, api_key_id=key.id, payload=payload)
+
+        with self.assertRaises(Exception):
+            services.create_public_order(
+                self.db,
+                tenant_id=10,
+                api_key_id=key.id,
+                payload={**payload, "line_items": [{"slug": "starter-package", "quantity": "2"}]},
+            )
+
+    def test_integration_rate_limit_rejects_after_configured_limit(self):
+        key, _raw_key = services.create_api_key(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Limited", "scopes": ["catalog:read"], "allowed_origins": []},
+        )
+
+        with patch.object(services.settings, "WEBSITE_INTEGRATION_RATE_LIMIT_COUNT", 2), \
+             patch.object(services.settings, "WEBSITE_INTEGRATION_RATE_LIMIT_WINDOW_SECONDS", 60), \
+             patch.object(cache.settings, "REDIS_URL", None):
+            services.check_integration_rate_limit(key, operation="catalog_read")
+            services.check_integration_rate_limit(key, operation="catalog_read")
+            with self.assertRaises(Exception) as exc:
+                services.check_integration_rate_limit(key, operation="catalog_read")
+
+        self.assertEqual(exc.exception.status_code, 429)
 
 
 if __name__ == "__main__":

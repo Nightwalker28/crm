@@ -263,23 +263,25 @@ export function useCalendarEvents(startAt?: string, endAt?: string) {
 export function useCalendarActions() {
   const queryClient = useQueryClient();
 
-  const invalidateCalendar = async () => {
+  const invalidateCalendar = async ({ includeRecycleBin = false }: { includeRecycleBin?: boolean } = {}) => {
     await queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
     await queryClient.invalidateQueries({ queryKey: ["calendar-event"] });
     await queryClient.invalidateQueries({ queryKey: ["calendar-context"] });
     await queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
-    await queryClient.invalidateQueries({ queryKey: ["recycle-bin"] });
+    if (includeRecycleBin) {
+      await queryClient.invalidateQueries({ queryKey: ["recycle-bin"] });
+    }
   };
 
   const createMutation = useMutation({
     mutationFn: createCalendarEvent,
-    onSuccess: invalidateCalendar,
+    onSuccess: () => invalidateCalendar(),
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ eventId, payload }: { eventId: number; payload: CalendarEventPayload }) =>
       updateCalendarEvent(eventId, payload),
-    onSuccess: invalidateCalendar,
+    onSuccess: () => invalidateCalendar(),
   });
 
   const respondMutation = useMutation({
@@ -293,7 +295,7 @@ export function useCalendarActions() {
 
   const deleteMutation = useMutation({
     mutationFn: deleteCalendarEvent,
-    onSuccess: invalidateCalendar,
+    onSuccess: () => invalidateCalendar({ includeRecycleBin: true }),
   });
 
   const createFromTaskMutation = useMutation({
@@ -308,13 +310,14 @@ export function useCalendarActions() {
     mutationFn: deleteTaskCalendarEvent,
     onSuccess: async (_, taskId) => {
       await invalidateCalendar();
+      await queryClient.invalidateQueries({ queryKey: ["recycle-bin"] });
       await queryClient.invalidateQueries({ queryKey: ["task-calendar-event", taskId] });
     },
   });
 
   const syncMutation = useMutation({
     mutationFn: syncCalendar,
-    onSuccess: invalidateCalendar,
+    onSuccess: () => invalidateCalendar(),
   });
 
   return {

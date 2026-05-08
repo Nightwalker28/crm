@@ -26,6 +26,32 @@ const VARIABLE_TOKENS = [
   "{{opportunity.name}}",
 ];
 
+type ImapForm = {
+  accountEmail: string;
+  imapHost: string;
+  imapPort: string;
+  imapSecurity: "ssl" | "starttls" | "none";
+  imapUsername: string;
+  smtpHost: string;
+  smtpPort: string;
+  smtpSecurity: "ssl" | "starttls" | "none";
+  smtpUsername: string;
+  password: string;
+};
+
+const emptyImapForm: ImapForm = {
+  accountEmail: "",
+  imapHost: "",
+  imapPort: "993",
+  imapSecurity: "ssl",
+  imapUsername: "",
+  smtpHost: "",
+  smtpPort: "587",
+  smtpSecurity: "starttls",
+  smtpUsername: "",
+  password: "",
+};
+
 function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
@@ -41,16 +67,7 @@ export default function MailPage() {
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [imapFormOpen, setImapFormOpen] = useState(false);
-  const [imapAccountEmail, setImapAccountEmail] = useState("");
-  const [imapHost, setImapHost] = useState("");
-  const [imapPort, setImapPort] = useState("993");
-  const [imapSecurity, setImapSecurity] = useState<"ssl" | "starttls" | "none">("ssl");
-  const [imapUsername, setImapUsername] = useState("");
-  const [smtpHost, setSmtpHost] = useState("");
-  const [smtpPort, setSmtpPort] = useState("587");
-  const [smtpSecurity, setSmtpSecurity] = useState<"ssl" | "starttls" | "none">("starttls");
-  const [smtpUsername, setSmtpUsername] = useState("");
-  const [mailPassword, setMailPassword] = useState("");
+  const [imapForm, setImapForm] = useState<ImapForm>(emptyImapForm);
   const deferredSearch = useDeferredValue(search);
 
   const contextQuery = useMailContext();
@@ -120,34 +137,35 @@ export default function MailPage() {
   }
 
   async function handleConnectImapSmtp() {
-    if (!imapAccountEmail.trim() || !imapHost.trim() || !imapUsername.trim() || !smtpHost.trim() || !mailPassword) {
+    if (!imapForm.accountEmail.trim() || !imapForm.imapHost.trim() || !imapForm.imapUsername.trim() || !imapForm.smtpHost.trim() || !imapForm.password) {
       toast.error("Fill in the IMAP/SMTP account, server, username, and password fields.");
       return;
     }
-    const parsedImapPort = Number(imapPort);
-    const parsedSmtpPort = Number(smtpPort);
+    const parsedImapPort = Number(imapForm.imapPort);
+    const parsedSmtpPort = Number(imapForm.smtpPort);
     if (!Number.isInteger(parsedImapPort) || parsedImapPort < 1 || parsedImapPort > 65535 || !Number.isInteger(parsedSmtpPort) || parsedSmtpPort < 1 || parsedSmtpPort > 65535) {
       toast.error("Use valid IMAP and SMTP ports.");
       return;
     }
     try {
       await connectImapSmtp({
-        account_email: imapAccountEmail.trim(),
-        imap_host: imapHost.trim(),
+        account_email: imapForm.accountEmail.trim(),
+        imap_host: imapForm.imapHost.trim(),
         imap_port: parsedImapPort,
-        imap_security: imapSecurity,
-        imap_username: imapUsername.trim(),
-        smtp_host: smtpHost.trim(),
+        imap_security: imapForm.imapSecurity,
+        imap_username: imapForm.imapUsername.trim(),
+        smtp_host: imapForm.smtpHost.trim(),
         smtp_port: parsedSmtpPort,
-        smtp_security: smtpSecurity,
-        smtp_username: smtpUsername.trim() || null,
-        password: mailPassword,
+        smtp_security: imapForm.smtpSecurity,
+        smtp_username: imapForm.smtpUsername.trim() || null,
+        password: imapForm.password,
       });
       toast.success("IMAP/SMTP mailbox connected.");
-      setMailPassword("");
       setImapFormOpen(false);
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to connect IMAP/SMTP mailbox."));
+    } finally {
+      setImapForm((current) => ({ ...current, password: "" }));
     }
   }
 
@@ -157,7 +175,7 @@ export default function MailPage() {
       toast.success("Mailbox disconnected.");
       if (provider === "imap_smtp") {
         setImapFormOpen(false);
-        setMailPassword("");
+        setImapForm(emptyImapForm);
       }
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to disconnect mailbox."));
@@ -165,18 +183,17 @@ export default function MailPage() {
   }
 
   function useGmailImapPreset() {
-    setImapHost("imap.gmail.com");
-    setImapPort("993");
-    setImapSecurity("ssl");
-    setSmtpHost("smtp.gmail.com");
-    setSmtpPort("587");
-    setSmtpSecurity("starttls");
-    if (imapAccountEmail.trim() && !imapUsername.trim()) {
-      setImapUsername(imapAccountEmail.trim());
-    }
-    if (imapAccountEmail.trim() && !smtpUsername.trim()) {
-      setSmtpUsername(imapAccountEmail.trim());
-    }
+    setImapForm((current) => ({
+      ...current,
+      imapHost: "imap.gmail.com",
+      imapPort: "993",
+      imapSecurity: "ssl",
+      imapUsername: current.imapUsername || current.accountEmail.trim(),
+      smtpHost: "smtp.gmail.com",
+      smtpPort: "587",
+      smtpSecurity: "starttls",
+      smtpUsername: current.smtpUsername || current.accountEmail.trim(),
+    }));
   }
 
   async function handleSendMail() {
@@ -232,12 +249,14 @@ export default function MailPage() {
                 <RefreshCw className={"h-4 w-4 " + (isSyncingMail ? "animate-spin" : "")} />
                 Sync Gmail
               </Button>
-            ) : googleConnection?.status === "connected" && !googleConnection.can_send ? (
+            ) : googleConnection?.status === "connected" ? (
               <Button type="button" variant="outline" onClick={() => void handleConnectGoogle()} disabled={isConnectingMail}>
-                Reconnect Gmail for Send
+                <RefreshCw className={"h-4 w-4 " + (isConnectingMail ? "animate-spin" : "")} />
+                {isConnectingMail ? "Connecting..." : "Reconnect Gmail"}
               </Button>
             ) : (
               <Button type="button" variant="outline" onClick={() => void handleConnectGoogle()} disabled={isConnectingMail}>
+                <RefreshCw className={"h-4 w-4 " + (isConnectingMail ? "animate-spin" : "")} />
                 {isConnectingMail ? "Connecting..." : "Connect Gmail"}
               </Button>
             )}
@@ -246,13 +265,15 @@ export default function MailPage() {
                 <RefreshCw className={"h-4 w-4 " + (isSyncingMail ? "animate-spin" : "")} />
                 Sync Microsoft
               </Button>
-            ) : microsoftConnection?.status === "connected" && !microsoftConnection.can_send ? (
+            ) : microsoftConnection?.status === "connected" ? (
               <Button type="button" variant="outline" onClick={() => void handleConnectMicrosoft()} disabled={isConnectingMail}>
-                Reconnect Microsoft
+                <RefreshCw className={"h-4 w-4 " + (isConnectingMail ? "animate-spin" : "")} />
+                {isConnectingMail ? "Connecting..." : "Reconnect Microsoft"}
               </Button>
             ) : (
               <Button type="button" variant="outline" onClick={() => void handleConnectMicrosoft()} disabled={isConnectingMail}>
-                Connect Microsoft
+                <RefreshCw className={"h-4 w-4 " + (isConnectingMail ? "animate-spin" : "")} />
+                {isConnectingMail ? "Connecting..." : "Connect Microsoft"}
               </Button>
             )}
             {imapSmtpConnection?.can_sync ? (
@@ -357,28 +378,28 @@ export default function MailPage() {
               ) : null}
             </div>
             <div className="grid gap-3 md:grid-cols-2">
-              <input value={imapAccountEmail} onChange={(event) => setImapAccountEmail(event.target.value)} placeholder="Mailbox email" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
-              <input value={imapUsername} onChange={(event) => setImapUsername(event.target.value)} placeholder="IMAP username" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
-              <input value={imapHost} onChange={(event) => setImapHost(event.target.value)} placeholder="IMAP host" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+              <input value={imapForm.accountEmail} onChange={(event) => setImapForm((current) => ({ ...current, accountEmail: event.target.value }))} placeholder="Mailbox email" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+              <input value={imapForm.imapUsername} onChange={(event) => setImapForm((current) => ({ ...current, imapUsername: event.target.value }))} placeholder="IMAP username" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+              <input value={imapForm.imapHost} onChange={(event) => setImapForm((current) => ({ ...current, imapHost: event.target.value }))} placeholder="IMAP host" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
               <div className="grid grid-cols-[1fr_140px] gap-2">
-                <input value={imapPort} onChange={(event) => setImapPort(event.target.value)} placeholder="IMAP port" inputMode="numeric" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
-                <select value={imapSecurity} onChange={(event) => setImapSecurity(event.target.value as "ssl" | "starttls" | "none")} className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none">
+                <input value={imapForm.imapPort} onChange={(event) => setImapForm((current) => ({ ...current, imapPort: event.target.value }))} placeholder="IMAP port" inputMode="numeric" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+                <select value={imapForm.imapSecurity} onChange={(event) => setImapForm((current) => ({ ...current, imapSecurity: event.target.value as ImapForm["imapSecurity"] }))} className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none">
                   <option value="ssl">SSL</option>
                   <option value="starttls">STARTTLS</option>
                   <option value="none">None</option>
                 </select>
               </div>
-              <input value={smtpHost} onChange={(event) => setSmtpHost(event.target.value)} placeholder="SMTP host" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+              <input value={imapForm.smtpHost} onChange={(event) => setImapForm((current) => ({ ...current, smtpHost: event.target.value }))} placeholder="SMTP host" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
               <div className="grid grid-cols-[1fr_140px] gap-2">
-                <input value={smtpPort} onChange={(event) => setSmtpPort(event.target.value)} placeholder="SMTP port" inputMode="numeric" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
-                <select value={smtpSecurity} onChange={(event) => setSmtpSecurity(event.target.value as "ssl" | "starttls" | "none")} className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none">
+                <input value={imapForm.smtpPort} onChange={(event) => setImapForm((current) => ({ ...current, smtpPort: event.target.value }))} placeholder="SMTP port" inputMode="numeric" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+                <select value={imapForm.smtpSecurity} onChange={(event) => setImapForm((current) => ({ ...current, smtpSecurity: event.target.value as ImapForm["smtpSecurity"] }))} className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none">
                   <option value="ssl">SSL</option>
                   <option value="starttls">STARTTLS</option>
                   <option value="none">None</option>
                 </select>
               </div>
-              <input value={smtpUsername} onChange={(event) => setSmtpUsername(event.target.value)} placeholder="SMTP username, defaults to IMAP username" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
-              <input value={mailPassword} onChange={(event) => setMailPassword(event.target.value)} placeholder="Mailbox password or app password" type="password" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+              <input value={imapForm.smtpUsername} onChange={(event) => setImapForm((current) => ({ ...current, smtpUsername: event.target.value }))} placeholder="SMTP username, defaults to IMAP username" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
+              <input value={imapForm.password} onChange={(event) => setImapForm((current) => ({ ...current, password: event.target.value }))} placeholder="Mailbox password or app password" type="password" className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600" />
             </div>
             <div className="flex justify-end gap-2">
               <Button type="button" variant="outline" onClick={() => setImapFormOpen(false)}>Cancel</Button>
