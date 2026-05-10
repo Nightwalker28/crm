@@ -41,16 +41,16 @@ Before calling work complete:
 
 - Default full close-out check from repo root: `./scripts/codex-check.sh`
 
-From `backend/`:
-- Targeted tests: `python -m unittest tests.<relevant_test_module>`
-- Syntax check: `python -m compileall app tests`
-- Migrations: `alembic upgrade head`
-- Migration state: `alembic current`
+Use Docker Compose for app checks; application dependencies are expected inside containers, not on the host.
 
-From `frontend/`:
-- Lint: `npm run lint`
-- Build verification: `npm run build`
-- Browser tests when relevant: `npm run test:e2e`
+From repo root:
+- Targeted backend tests: `docker compose exec -T backend python -m unittest tests.<relevant_test_module>`
+- Backend syntax check: `docker compose exec -T backend python -m compileall app tests`
+- Migrations: `docker compose exec -T backend alembic upgrade head`
+- Migration state: `docker compose exec -T backend alembic current`
+- Frontend lint: `docker compose exec -T frontend npm run lint`
+- Frontend build verification: `docker compose exec -T frontend npm run build`
+- Browser tests when relevant: `docker compose run --rm frontend-e2e npm run test:e2e`
 
 ## Where to look next
 

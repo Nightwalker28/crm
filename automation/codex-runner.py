@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import fnmatch
 import json
 import os
 import re
@@ -19,7 +20,8 @@ ROOT = Path(__file__).resolve().parents[1]
 AUTOMATION_DIR = ROOT / "automation"
 LOG_DIR = AUTOMATION_DIR / "logs"
 ENV_FILE = AUTOMATION_DIR / ".env"
-PROMPT_TEMPLATE = AUTOMATION_DIR / "prompt-template.md"
+POLICY_FILE = AUTOMATION_DIR / "workflow-policy.json"
+PROMPT_DIR = AUTOMATION_DIR / "prompts"
 
 
 @dataclass(frozen=True)
@@ -30,7 +32,6 @@ class Config:
     discord_webhook_url: str
     codex_model: str | None
     codex_timeout_seconds: int
-    run_full_checks: bool
     create_draft_pr: bool
 
 
@@ -41,6 +42,16 @@ class Issue:
     body: str
     url: str
     labels: set[str]
+
+
+@dataclass(frozen=True)
+class Workflow:
+    profile: str
+    routes: set[str]
+    skills: list[str]
+    checks: list[str]
+    reviewers: list[str]
+    requires_human_review: bool
 
 
 class RunnerError(RuntimeError):
@@ -56,9 +67,7 @@ def load_dotenv(path: Path) -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip().strip('"').strip("'")
-        os.environ.setdefault(key, value)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 
 def env_bool(name: str, default: bool) -> bool:
@@ -76,7 +85,11 @@ def load_config() -> Config:
     repo_dir = Path(os.environ.get("REPO_DIR", str(ROOT))).expanduser().resolve()
     discord_webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
     codex_model = os.environ.get("CODEX_MODEL", "").strip() or None
-    timeout_raw = os.environ.get("CODEX_TIMEOUT_SECONDS", "7200").strip()
+
+    try:
+        timeout = int(os.environ.get("CODEX_TIMEOUT_SECONDS", "7200").strip())
+    except ValueError as exc:
+        raise RunnerError("CODEX_TIMEOUT_SECONDS must be an integer") from exc
 
     if not github_repo:
         raise RunnerError("GITHUB_REPO is required in automation/.env")
@@ -85,11 +98,6 @@ def load_config() -> Config:
     if not repo_dir.exists():
         raise RunnerError(f"REPO_DIR does not exist: {repo_dir}")
 
-    try:
-        timeout = int(timeout_raw)
-    except ValueError as exc:
-        raise RunnerError("CODEX_TIMEOUT_SECONDS must be an integer") from exc
-
     return Config(
         github_repo=github_repo,
         base_branch=base_branch,
@@ -97,9 +105,12 @@ def load_config() -> Config:
         discord_webhook_url=discord_webhook_url,
         codex_model=codex_model,
         codex_timeout_seconds=timeout,
-        run_full_checks=env_bool("RUN_FULL_CHECKS", True),
         create_draft_pr=env_bool("CREATE_DRAFT_PR", True),
     )
+
+
+def load_policy() -> dict[str, Any]:
+    return json.loads(POLICY_FILE.read_text())
 
 
 def run(
@@ -118,9 +129,8 @@ def run(
         timeout=timeout,
     )
     if check and result.returncode != 0:
-        command = shlex.join(args)
         raise RunnerError(
-            f"Command failed ({result.returncode}): {command}\n"
+            f"Command failed ({result.returncode}): {shlex.join(args)}\n"
             f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
         )
     return result
@@ -174,13 +184,12 @@ def fetch_next_issue(config: Config) -> Issue | None:
         return None
 
     item = payload[0]
-    labels = {label["name"] for label in item.get("labels", [])}
     return Issue(
         number=int(item["number"]),
         title=item["title"],
         body=item.get("body") or "",
         url=item["url"],
-        labels=labels,
+        labels={label["name"] for label in item.get("labels", [])},
     )
 
 
@@ -207,8 +216,7 @@ def comment_issue(config: Config, issue_number: int, body: str) -> None:
 
 
 def slugify(value: str, max_length: int = 48) -> str:
-    value = value.lower()
-    value = re.sub(r"[^a-z0-9]+", "-", value).strip("-")
+    value = re.sub(r"[^a-z0-9]+", "-", value.lower()).strip("-")
     value = re.sub(r"-+", "-", value)
     return value[:max_length].strip("-") or "task"
 
@@ -224,16 +232,85 @@ def prepare_branch(config: Config, branch_name: str) -> None:
     run(["git", "checkout", "-B", branch_name], cwd=config.repo_dir)
 
 
-def render_prompt(issue: Issue) -> str:
-    template = PROMPT_TEMPLATE.read_text()
+def issue_scope(issue: Issue) -> str:
+    body = issue.body.lower()
+    match = re.search(r"## scope\s*(.*?)(?:\n## |\Z)", body, flags=re.S)
+    if not match:
+        return "standard"
+    section = match.group(1)
+    if "docs" in section:
+        return "docs"
+    return "standard"
+
+
+def ordered_unique(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        if value not in seen:
+            seen.add(value)
+            result.append(value)
+    return result
+
+
+def match_pattern(path: str, pattern: str) -> bool:
+    if pattern.endswith("/**"):
+        prefix = pattern[:-3]
+        return path == prefix.rstrip("/") or path.startswith(prefix)
+    return fnmatch.fnmatch(path, pattern)
+
+
+def classify_paths(paths: list[str], profile: str, policy: dict[str, Any]) -> Workflow:
+    routes: set[str] = set()
+    skills: list[str] = list(policy["profiles"][profile]["skills"])
+    checks: list[str] = list(policy["profiles"][profile]["checks"])
+    reviewers: list[str] = list(policy["profiles"][profile]["reviewers"])
+    requires_human_review = False
+
+    for route_name, route in policy["routes"].items():
+        patterns = route.get("patterns", [])
+        if any(match_pattern(path, pattern) for path in paths for pattern in patterns):
+            routes.add(route_name)
+            skills.extend(route.get("skills", []))
+            checks.extend(route.get("checks", []))
+            reviewers.extend(route.get("reviewers", []))
+            requires_human_review = requires_human_review or route.get("requires_human_review", False)
+
+    return Workflow(
+        profile=profile,
+        routes=routes,
+        skills=ordered_unique(skills),
+        checks=ordered_unique(checks),
+        reviewers=ordered_unique(reviewers),
+        requires_human_review=requires_human_review,
+    )
+
+
+def initial_workflow(issue: Issue, policy: dict[str, Any]) -> Workflow:
+    profile = issue_scope(issue)
+    profile_policy = policy["profiles"][profile]
+    return Workflow(
+        profile=profile,
+        routes=set(),
+        skills=list(profile_policy["skills"]),
+        checks=list(profile_policy["checks"]),
+        reviewers=list(profile_policy["reviewers"]),
+        requires_human_review=False,
+    )
+
+
+def render_prompt(issue: Issue, workflow: Workflow) -> str:
+    template = (PROMPT_DIR / f"{workflow.profile}.md").read_text()
+    suggested_skills = "\n".join(f"- {skill}" for skill in workflow.skills) or "- none"
     return template.format(
         issue_number=issue.number,
         issue_title=issue.title,
         issue_body=issue.body.strip() or "(No issue body provided.)",
+        suggested_skills=suggested_skills,
     )
 
 
-def run_codex(config: Config, issue: Issue, prompt: str, log_file: Path) -> subprocess.CompletedProcess[str]:
+def run_codex(config: Config, prompt: str, log_file: Path) -> subprocess.CompletedProcess[str]:
     args = [
         "codex",
         "exec",
@@ -261,33 +338,53 @@ def run_codex(config: Config, issue: Issue, prompt: str, log_file: Path) -> subp
     return result
 
 
+def changed_files(config: Config) -> list[str]:
+    output = run(["git", "diff", "--name-only"], cwd=config.repo_dir).stdout
+    return [line.strip() for line in output.splitlines() if line.strip()]
+
+
 def git_diff_exists(config: Config) -> bool:
     return bool(run(["git", "status", "--porcelain"], cwd=config.repo_dir).stdout.strip())
 
 
 def codex_reported_blocked(result: subprocess.CompletedProcess[str]) -> bool:
-    # Only inspect Codex's final stdout response. stderr includes the echoed prompt,
-    # which itself mentions the word `blocked` in the requested output format.
     output = result.stdout.lower()
     status_section = re.search(r"## status\s*\n\s*-?\s*`?(completed|blocked)`?", output)
     return bool(status_section and status_section.group(1) == "blocked")
 
 
-def full_checks(config: Config, log_file: Path) -> subprocess.CompletedProcess[str]:
-    result = run(
-        ["./scripts/codex-check.sh"],
-        cwd=config.repo_dir,
-        capture=True,
-        check=False,
-    )
+def append_log(log_file: Path, heading: str, result: subprocess.CompletedProcess[str]) -> None:
     with log_file.open("a") as handle:
         handle.write(
-            f"\n\n=== FULL CHECKS ===\n"
+            f"\n\n=== {heading} ===\n"
             f"exit={result.returncode}\n"
             f"STDOUT:\n{result.stdout}\n\n"
             f"STDERR:\n{result.stderr}\n"
         )
+
+
+def run_check(config: Config, check_name: str, log_file: Path) -> subprocess.CompletedProcess[str]:
+    commands = {
+        "docs_diff": ["git", "diff", "--check"],
+        "backend_compile": ["docker", "compose", "exec", "-T", "backend", "python", "-m", "compileall", "app", "tests"],
+        "backend_tests": ["docker", "compose", "exec", "-T", "backend", "python", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"],
+        "frontend_lint": ["docker", "compose", "exec", "-T", "frontend", "npm", "run", "lint"],
+        "frontend_build": ["docker", "compose", "exec", "-T", "frontend", "npm", "run", "build"],
+        "migration_upgrade": ["docker", "compose", "exec", "-T", "backend", "alembic", "upgrade", "head"],
+        "migration_current": ["docker", "compose", "exec", "-T", "backend", "alembic", "current"],
+    }
+    if check_name not in commands:
+        raise RunnerError(f"Unknown check: {check_name}")
+    result = run(commands[check_name], cwd=config.repo_dir, capture=True, check=False)
+    append_log(log_file, f"CHECK {check_name}", result)
     return result
+
+
+def run_workflow_checks(config: Config, workflow: Workflow, log_file: Path) -> None:
+    for check_name in workflow.checks:
+        result = run_check(config, check_name, log_file)
+        if result.returncode != 0:
+            raise RunnerError(f"Check failed: {check_name}. See {log_file}")
 
 
 def commit_changes(config: Config, issue: Issue) -> None:
@@ -299,7 +396,10 @@ def push_branch(config: Config, branch_name: str) -> None:
     run(["git", "push", "-u", "origin", branch_name, "--force-with-lease"], cwd=config.repo_dir)
 
 
-def create_pr(config: Config, issue: Issue, branch_name: str, checks_passed: bool) -> dict[str, Any]:
+def create_pr(config: Config, issue: Issue, branch_name: str, workflow: Workflow) -> dict[str, Any]:
+    routes = ", ".join(sorted(workflow.routes)) or workflow.profile
+    checks = ", ".join(workflow.checks) or "none"
+    reviewers = ", ".join(workflow.reviewers) or "none"
     body = textwrap.dedent(
         f"""\
         ## Summary
@@ -307,8 +407,11 @@ def create_pr(config: Config, issue: Issue, branch_name: str, checks_passed: boo
 
         Closes #{issue.number}
 
-        ## Verification
-        - Full runner checks: {'passed' if checks_passed else 'failed'}
+        ## Workflow
+        - Profile: `{workflow.profile}`
+        - Matched routes: `{routes}`
+        - Checks run: `{checks}`
+        - Suggested reviewers: `{reviewers}`
 
         ## Review notes
         - This PR was created automatically as a draft.
@@ -343,7 +446,7 @@ def notify_discord(config: Config, message: str) -> None:
         data=payload,
         headers={
             "Content-Type": "application/json",
-            "User-Agent": "Lynk-Codex-Runner/1.0",
+            "User-Agent": "Lynk-Codex-Runner/2.0",
         },
         method="POST",
     )
@@ -369,6 +472,7 @@ def now_slug() -> str:
 
 def main() -> int:
     config = load_config()
+    policy = load_policy()
     LOG_DIR.mkdir(parents=True, exist_ok=True)
     ensure_clean_worktree(config)
 
@@ -379,42 +483,46 @@ def main() -> int:
 
     branch_name = branch_name_for(issue)
     log_file = LOG_DIR / f"issue-{issue.number}-{now_slug()}.log"
+    initial = initial_workflow(issue, policy)
 
     try:
         add_label(config, issue.number, "codex-in-progress")
         comment_issue(
             config,
             issue.number,
-            f"🤖 Codex runner claimed this issue and is starting work on `{branch_name}`.",
+            f"🤖 Codex runner claimed this issue and is starting work on `{branch_name}` with `{initial.profile}` profile.",
         )
         notify_discord_best_effort(
             config,
-            f"🤖 Lynk Codex runner started issue #{issue.number}: {issue.title}\n{issue.url}",
+            f"🤖 Lynk Codex runner started issue #{issue.number}: {issue.title}\n"
+            f"Profile: {initial.profile}\n{issue.url}",
         )
 
         prepare_branch(config, branch_name)
-        prompt = render_prompt(issue)
-        codex_result = run_codex(config, issue, prompt, log_file)
+        prompt = render_prompt(issue, initial)
+        codex_result = run_codex(config, prompt, log_file)
 
         if codex_result.returncode != 0:
             raise RunnerError(f"Codex exited with status {codex_result.returncode}. See {log_file}")
-
         if codex_reported_blocked(codex_result):
             raise RunnerError("Codex reported the task as blocked for autonomous implementation.")
-
         if not git_diff_exists(config):
             raise RunnerError("Codex finished without producing any repository changes.")
 
-        checks_passed = True
-        if config.run_full_checks:
-            checks_result = full_checks(config, log_file)
-            checks_passed = checks_result.returncode == 0
-            if not checks_passed:
-                raise RunnerError(f"Full checks failed. See {log_file}")
+        files = changed_files(config)
+        final = classify_paths(files, initial.profile, policy)
+
+        if final.requires_human_review:
+            raise RunnerError(
+                "Diff touched automation or agent-control files that require human review: "
+                + ", ".join(files)
+            )
+
+        run_workflow_checks(config, final, log_file)
 
         commit_changes(config, issue)
         push_branch(config, branch_name)
-        pr = create_pr(config, issue, branch_name, checks_passed)
+        pr = create_pr(config, issue, branch_name, final)
 
         remove_label(config, issue.number, "codex-ready")
         remove_label(config, issue.number, "codex-in-progress")
@@ -427,6 +535,8 @@ def main() -> int:
         notify_discord_best_effort(
             config,
             f"✅ Lynk Codex runner completed issue #{issue.number}: {issue.title}\n"
+            f"Profile: {final.profile}\n"
+            f"Routes: {', '.join(sorted(final.routes)) or 'none'}\n"
             f"Draft PR #{pr['number']}: {pr['url']}",
         )
         print(f"Created draft PR #{pr['number']}: {pr['url']}")
@@ -440,15 +550,12 @@ def main() -> int:
             issue.number,
             f"🤖 Codex runner failed: `{exc}`\n\nCheck local runner logs for details.",
         )
-        try:
-            notify_discord_best_effort(
-                config,
-                f"❌ Lynk Codex runner failed issue #{issue.number}: {issue.title}\n"
-                f"{issue.url}\n"
-                f"Reason: {exc}",
-            )
-        except Exception:
-            pass
+        notify_discord_best_effort(
+            config,
+            f"❌ Lynk Codex runner failed issue #{issue.number}: {issue.title}\n"
+            f"{issue.url}\n"
+            f"Reason: {exc}",
+        )
         print(f"ERROR: {exc}", file=sys.stderr)
         return 1
 

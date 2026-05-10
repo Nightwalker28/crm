@@ -23,9 +23,9 @@ The frontend is Next.js + React + TypeScript and should stay aligned with the sh
 ## Verification expectations
 
 For frontend changes, consider:
-- `npm run lint`
-- `npm run build`
+- `docker compose exec -T frontend npm run lint`
+- `docker compose exec -T frontend npm run build`
 - affected page/dialog/table/detail-page smoke checks
 - console/runtime warnings
 - required-field and validation behavior
-- browser tests when the changed flow is already covered or high-risk
+- browser tests through the Compose E2E service when the changed flow is already covered or high-risk

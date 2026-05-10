@@ -6,6 +6,9 @@ Read and follow:
 - the task-relevant skills under .codex/skills/
 - the task-relevant reviewer guidance under .codex/agents/ when useful
 
+Suggested relevant skills for this task:
+{suggested_skills}
+
 This task came from GitHub issue #{issue_number}.
 
 # Issue title

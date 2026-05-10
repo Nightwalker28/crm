@@ -36,8 +36,8 @@ For each migration, ask:
 ## Verification
 
 For schema work:
-- run `alembic upgrade head`
-- run `alembic current`
+- run `docker compose exec -T backend alembic upgrade head`
+- run `docker compose exec -T backend alembic current`
 - run Alembic chain/model checks where available
 - test the affected route/service behavior after migration
 - verify new defaults, backfills, uniqueness, and cleanup behavior

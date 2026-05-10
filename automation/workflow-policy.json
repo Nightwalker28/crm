@@ -1,0 +1,81 @@
+{
+  "profiles": {
+    "docs": {
+      "skills": ["docs-change"],
+      "checks": ["docs_diff"],
+      "reviewers": []
+    },
+    "standard": {
+      "skills": [],
+      "checks": [],
+      "reviewers": []
+    }
+  },
+  "routes": {
+    "docs": {
+      "patterns": [
+        "README.md",
+        "*.md",
+        "docs/**",
+        ".github/ISSUE_TEMPLATE/**"
+      ],
+      "skills": ["docs-change"],
+      "checks": ["docs_diff"],
+      "reviewers": []
+    },
+    "backend": {
+      "patterns": [
+        "backend/**"
+      ],
+      "skills": ["backend-change"],
+      "checks": ["backend_compile", "backend_tests"],
+      "reviewers": ["backend_reviewer", "qa_reviewer"]
+    },
+    "frontend": {
+      "patterns": [
+        "frontend/**"
+      ],
+      "skills": ["frontend-change"],
+      "checks": ["frontend_lint", "frontend_build"],
+      "reviewers": ["frontend_reviewer", "qa_reviewer"]
+    },
+    "migration": {
+      "patterns": [
+        "backend/alembic/**"
+      ],
+      "skills": ["migration-change"],
+      "checks": ["migration_upgrade", "migration_current"],
+      "reviewers": ["backend_reviewer", "qa_reviewer"]
+    },
+    "security_sensitive": {
+      "patterns": [
+        "backend/app/core/security.py",
+        "backend/app/core/tenancy.py",
+        "backend/app/core/permissions.py",
+        "backend/app/core/access_control.py",
+        "backend/app/modules/client_portal/**",
+        "backend/app/modules/website_integrations/**",
+        "backend/app/modules/documents/**",
+        "backend/app/modules/user_management/services/auth.py",
+        "backend/app/modules/user_management/routes/signin.py"
+      ],
+      "skills": ["security-review"],
+      "checks": [],
+      "reviewers": ["security_reviewer"]
+    },
+    "automation": {
+      "patterns": [
+        "AGENTS.md",
+        "backend/AGENTS.md",
+        "frontend/AGENTS.md",
+        ".codex/**",
+        "automation/**",
+        "scripts/**"
+      ],
+      "skills": [],
+      "checks": [],
+      "reviewers": [],
+      "requires_human_review": true
+    }
+  }
+}

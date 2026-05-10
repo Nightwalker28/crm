@@ -42,7 +42,7 @@ The backend is FastAPI + SQLAlchemy + Alembic on PostgreSQL, with Redis and Cele
 ## Verification expectations
 
 For backend changes, consider:
-- targeted unit/route tests
-- `python -m compileall app tests`
-- migration upgrade/current checks when schema changes exist
+- targeted unit/route tests through the backend container
+- `docker compose exec -T backend python -m compileall app tests`
+- migration upgrade/current checks through the backend container when schema changes exist
 - tenant-scope, permission, linked-record, soft-delete, activity-log, and failure-path checks

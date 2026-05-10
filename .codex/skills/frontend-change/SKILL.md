@@ -36,8 +36,8 @@ Before editing, inspect:
 Use `release-verification` before finishing.
 
 Typical frontend checks:
-- `npm run lint`
-- `npm run build` for meaningful UI changes
+- `docker compose exec -T frontend npm run lint`
+- `docker compose exec -T frontend npm run build` for meaningful UI changes
 - smoke-check affected pages, dialogs, tables, and detail pages
 - inspect browser console/runtime warnings
 - run browser tests when the changed flow is covered or high-risk

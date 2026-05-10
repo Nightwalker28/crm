@@ -10,21 +10,21 @@ Use this before marking meaningful work complete.
 ## Backend
 
 When backend code changed:
-- run targeted tests for the touched area
-- run `python -m compileall app tests`
+- run targeted tests for the touched area through the backend container
+- run `docker compose exec -T backend python -m compileall app tests`
 - smoke-check the changed route/service path where practical
 
 When schema changed:
-- run `alembic upgrade head`
-- confirm `alembic current`
+- run `docker compose exec -T backend alembic upgrade head`
+- confirm `docker compose exec -T backend alembic current`
 - verify defaults/backfills for existing rows
 - confirm cleanup paths are deterministic and avoid silent data loss
 
 ## Frontend
 
 When frontend code changed:
-- run `npm run lint`
-- run `npm run build` for meaningful UI changes
+- run `docker compose exec -T frontend npm run lint`
+- run `docker compose exec -T frontend npm run build` for meaningful UI changes
 - smoke-check affected pages, dialogs, tables, and detail pages
 - check for console/runtime warnings
 - confirm required markers and validation still match backend rules

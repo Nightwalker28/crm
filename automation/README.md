@@ -15,13 +15,15 @@ and not labelled:
 
 It then:
 
-1. creates a branch
-2. runs Codex non-interactively
-3. runs repository checks
-4. commits and pushes the result
-5. opens a draft PR
-6. comments on the issue
-7. sends a Discord notification
+1. chooses an initial workflow profile from the issue
+2. creates a branch
+3. runs Codex non-interactively
+4. classifies the actual changed files
+5. runs the checks required by policy
+6. commits and pushes the result
+7. opens a draft PR
+8. comments on the issue
+9. sends a Discord notification
 
 ## Safety
 
@@ -30,6 +32,25 @@ It then:
 - No auto-merge
 - Refuses to start with a dirty worktree
 - Low-risk issues only
+- Blocks if a low-risk task touches agent-control or automation files
+- Uses Docker Compose services for app checks
+
+## Workflow policy
+
+`automation/workflow-policy.json` maps changed files to:
+
+- skills
+- checks
+- suggested reviewers
+- human-review requirements
+
+Examples:
+
+- docs-only diff → lightweight docs verification only
+- frontend diff → frontend lint/build through the frontend container
+- backend diff → backend compile/tests through the backend container
+- migration diff → migration checks through the backend container
+- security-sensitive diff → security reviewer suggestion
 
 ## Setup
 
@@ -61,3 +82,4 @@ For plan only:
 Never auto-implement:
 
 - `human-review-required`
+

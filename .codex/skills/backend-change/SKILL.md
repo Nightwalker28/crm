@@ -50,7 +50,7 @@ For external systems:
 Use `release-verification` before finishing.
 
 Typical backend checks:
-- targeted `python -m unittest ...`
-- `python -m compileall app tests`
+- targeted backend tests through the backend container
+- `docker compose exec -T backend python -m compileall app tests`
 - migration checks when schema changes exist
 - tenant, permission, linked-record, failure-path, and idempotency review
