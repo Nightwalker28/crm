@@ -376,7 +376,7 @@ def main() -> int:
             issue.number,
             f"🤖 Codex runner claimed this issue and is starting work on `{branch_name}`.",
         )
-        notify_discord(
+        notify_discord_best_effort(
             config,
             f"🤖 Lynk Codex runner started issue #{issue.number}: {issue.title}\n{issue.url}",
         )
@@ -413,7 +413,7 @@ def main() -> int:
             issue.number,
             f"🤖 Codex runner created draft PR #{pr['number']}: {pr['url']}",
         )
-        notify_discord(
+        notify_discord_best_effort(
             config,
             f"✅ Lynk Codex runner completed issue #{issue.number}: {issue.title}\n"
             f"Draft PR #{pr['number']}: {pr['url']}",
@@ -430,7 +430,7 @@ def main() -> int:
             f"🤖 Codex runner failed: `{exc}`\n\nCheck local runner logs for details.",
         )
         try:
-            notify_discord(
+            notify_discord_best_effort(
                 config,
                 f"❌ Lynk Codex runner failed issue #{issue.number}: {issue.title}\n"
                 f"{issue.url}\n"
