@@ -3,7 +3,7 @@
 ## Backend (FastAPI) with Docker
 
 1. Copy `.env.sample` to `.env` (or create a `.env`) and supply the Google OAuth/JWT secrets.
-2. Run `docker compose up --build` from the repository root to start Postgres and the FastAPI backend.
+2. Run `docker compose up --build` from the repository root to start the full local stack: Postgres, Redis, the FastAPI backend, the frontend, the Celery worker, and Celery beat.
 3. The API becomes available at `http://localhost:8000/api/v1`.
 
 The backend container waits for the Postgres healthcheck before starting and mounts `backend/uploads` to persist uploaded files between restarts.
