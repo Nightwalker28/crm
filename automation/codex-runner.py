@@ -310,6 +310,29 @@ def render_prompt(issue: Issue, workflow: Workflow) -> str:
     )
 
 
+def render_review_prompt(issue: Issue, workflow: Workflow, files: list[str]) -> str:
+    template = (PROMPT_DIR / "review.md").read_text()
+    return template.format(
+        issue_number=issue.number,
+        issue_title=issue.title,
+        issue_body=issue.body.strip() or "(No issue body provided.)",
+        changed_files="\n".join(f"- {path}" for path in files),
+        reviewers="\n".join(f"- {reviewer}" for reviewer in workflow.reviewers),
+        routes="\n".join(f"- {route}" for route in sorted(workflow.routes)) or "- none",
+    )
+
+
+def workflow_summary(workflow: Workflow) -> str:
+    return (
+        f"profile={workflow.profile}; "
+        f"routes={','.join(sorted(workflow.routes)) or 'none'}; "
+        f"skills={','.join(workflow.skills) or 'none'}; "
+        f"checks={','.join(workflow.checks) or 'none'}; "
+        f"reviewers={','.join(workflow.reviewers) or 'none'}; "
+        f"human_review={workflow.requires_human_review}"
+    )
+
+
 def run_codex(config: Config, prompt: str, log_file: Path) -> subprocess.CompletedProcess[str]:
     args = [
         "codex",
@@ -351,6 +374,36 @@ def codex_reported_blocked(result: subprocess.CompletedProcess[str]) -> bool:
     output = result.stdout.lower()
     status_section = re.search(r"## status\s*\n\s*-?\s*`?(completed|blocked)`?", output)
     return bool(status_section and status_section.group(1) == "blocked")
+
+
+def review_reported_block(result: subprocess.CompletedProcess[str]) -> bool:
+    output = result.stdout.lower()
+    verdict_section = re.search(r"## verdict\s*\n\s*-?\s*`?(pass|block)`?", output)
+    return bool(verdict_section and verdict_section.group(1) == "block")
+
+
+def run_review(config: Config, prompt: str, log_file: Path) -> subprocess.CompletedProcess[str]:
+    args = [
+        "codex",
+        "exec",
+        "--sandbox",
+        "read-only",
+        "--cd",
+        str(config.repo_dir),
+        prompt,
+    ]
+    if config.codex_model:
+        args[2:2] = ["--model", config.codex_model]
+
+    result = run(
+        args,
+        cwd=config.repo_dir,
+        capture=True,
+        check=False,
+        timeout=config.codex_timeout_seconds,
+    )
+    append_log(log_file, "REVIEW", result)
+    return result
 
 
 def append_log(log_file: Path, heading: str, result: subprocess.CompletedProcess[str]) -> None:
@@ -484,6 +537,7 @@ def main() -> int:
     branch_name = branch_name_for(issue)
     log_file = LOG_DIR / f"issue-{issue.number}-{now_slug()}.log"
     initial = initial_workflow(issue, policy)
+    print(f"Initial workflow: {workflow_summary(initial)}")
 
     try:
         add_label(config, issue.number, "codex-in-progress")
@@ -511,6 +565,8 @@ def main() -> int:
 
         files = changed_files(config)
         final = classify_paths(files, initial.profile, policy)
+        print(f"Changed files: {', '.join(files)}")
+        print(f"Final workflow: {workflow_summary(final)}")
 
         if final.requires_human_review:
             raise RunnerError(
@@ -519,6 +575,14 @@ def main() -> int:
             )
 
         run_workflow_checks(config, final, log_file)
+
+        if final.reviewers:
+            review_prompt = render_review_prompt(issue, final, files)
+            review_result = run_review(config, review_prompt, log_file)
+            if review_result.returncode != 0:
+                raise RunnerError(f"Review pass exited with status {review_result.returncode}. See {log_file}")
+            if review_reported_block(review_result):
+                raise RunnerError("Reviewer agents blocked autonomous completion. See runner log for findings.")
 
         commit_changes(config, issue)
         push_branch(config, branch_name)
