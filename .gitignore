@@ -84,3 +84,7 @@ public/static/
 Thumbs.db
 .DS_Store
 
+
+# Local Codex runner
+automation/.env
+automation/logs/
