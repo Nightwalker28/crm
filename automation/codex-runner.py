@@ -237,8 +237,6 @@ def run_codex(config: Config, issue: Issue, prompt: str, log_file: Path) -> subp
     args = [
         "codex",
         "exec",
-        "--ask-for-approval",
-        "never",
         "--sandbox",
         "workspace-write",
         "--cd",
