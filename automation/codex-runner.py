@@ -173,16 +173,16 @@ def fetch_next_issue(config: Config) -> Issue | None:
             "--search",
             query,
             "--limit",
-            "1",
+            "100",
             "--json",
-            "number,title,body,url,labels",
+            "number,title,body,url,labels,createdAt",
         ],
         cwd=config.repo_dir,
     )
     if not payload:
         return None
 
-    item = payload[0]
+    item = min(payload, key=lambda issue: issue["createdAt"])
     return Issue(
         number=int(item["number"]),
         title=item["title"],
