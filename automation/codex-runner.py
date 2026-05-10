@@ -340,11 +340,21 @@ def notify_discord(config: Config, message: str) -> None:
     request = urllib.request.Request(
         config.discord_webhook_url,
         data=payload,
-        headers={"Content-Type": "application/json"},
+        headers={
+            "Content-Type": "application/json",
+            "User-Agent": "Lynk-Codex-Runner/1.0",
+        },
         method="POST",
     )
     with urllib.request.urlopen(request, timeout=15):
         pass
+
+
+def notify_discord_best_effort(config: Config, message: str) -> None:
+    try:
+        notify_discord(config, message)
+    except Exception as exc:
+        print(f"WARNING: Discord notification failed: {exc}", file=sys.stderr)
 
 
 def reset_to_base(config: Config) -> None:
