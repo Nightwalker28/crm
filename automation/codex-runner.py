@@ -484,16 +484,38 @@ def create_pr(config: Config, issue: Issue, branch_name: str, workflow: Workflow
         f"[Codex] {issue.title}",
         "--body",
         body,
-        "--json",
-        "number,url,title",
     ]
     if config.create_draft_pr:
         args.append("--draft")
-    return gh_json(args, cwd=config.repo_dir)
+
+    # gh pr create prints the PR URL in this GitHub CLI version; it does not support --json.
+    run(["gh", *args], cwd=config.repo_dir)
+
+    # Query the newly created PR separately so the rest of the runner gets structured data.
+    return gh_json(
+        [
+            "pr",
+            "view",
+            branch_name,
+            "--repo",
+            config.github_repo,
+            "--json",
+            "number,url,title",
+        ],
+        cwd=config.repo_dir,
+    )
+
+
+def discord_safe_message(message: str, limit: int = 1900) -> str:
+    # Discord allows 2000 characters. Leave headroom so notifications never fail
+    # just because an exception contains a long command output.
+    if len(message) <= limit:
+        return message
+    return message[: limit - 15].rstrip() + "\n...truncated"
 
 
 def notify_discord(config: Config, message: str) -> None:
-    payload = json.dumps({"content": message}).encode()
+    payload = json.dumps({"content": discord_safe_message(message)}).encode()
     request = urllib.request.Request(
         config.discord_webhook_url,
         data=payload,
