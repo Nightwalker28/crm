@@ -1,14 +1,44 @@
 {
   "profiles": {
     "docs": {
+      "implementation_model": "gpt-5.4-mini",
+      "review_model": "gpt-5.4-mini",
       "skills": ["docs-change"],
       "checks": ["docs_diff"],
       "reviewers": []
     },
     "standard": {
+      "implementation_model": "gpt-5.5",
+      "review_model": "gpt-5.5",
       "skills": [],
       "checks": [],
       "reviewers": []
+    }
+  },
+  "issue_scope_hints": {
+    "docs": {
+      "profile": "docs",
+      "skills": ["docs-change"]
+    },
+    "frontend": {
+      "profile": "standard",
+      "skills": ["frontend-change"]
+    },
+    "backend": {
+      "profile": "standard",
+      "skills": ["backend-change"]
+    },
+    "full-stack": {
+      "profile": "standard",
+      "skills": ["backend-change", "frontend-change"]
+    },
+    "migration": {
+      "profile": "standard",
+      "skills": ["backend-change", "migration-change"]
+    },
+    "security": {
+      "profile": "standard",
+      "skills": ["backend-change", "security-review"]
     }
   },
   "routes": {
@@ -29,7 +59,9 @@
       ],
       "skills": ["backend-change"],
       "checks": ["backend_compile", "backend_tests"],
-      "reviewers": ["backend_reviewer", "qa_reviewer"]
+      "reviewers": ["backend_reviewer", "qa_reviewer"],
+      "implementation_model": "gpt-5.5",
+      "review_model": "gpt-5.5"
     },
     "frontend": {
       "patterns": [
@@ -37,15 +69,33 @@
       ],
       "skills": ["frontend-change"],
       "checks": ["frontend_lint", "frontend_build"],
-      "reviewers": ["frontend_reviewer", "qa_reviewer"]
+      "reviewers": ["frontend_reviewer", "qa_reviewer"],
+      "implementation_model": "gpt-5.5",
+      "review_model": "gpt-5.5"
     },
     "migration": {
       "patterns": [
-        "backend/alembic/**"
+        "backend/alembic/**",
+        "backend/alembic.ini",
+        "backend/alembic.ini.root",
+        "backend/alembic_root/**"
       ],
       "skills": ["migration-change"],
       "checks": ["migration_upgrade", "migration_current"],
-      "reviewers": ["backend_reviewer", "qa_reviewer"]
+      "reviewers": ["backend_reviewer", "qa_reviewer"],
+      "implementation_model": "gpt-5.5",
+      "review_model": "gpt-5.5"
+    },
+    "platform_primitive": {
+      "patterns": [
+        "backend/app/core/**",
+        "backend/app/modules/platform/**"
+      ],
+      "skills": ["platform-primitive"],
+      "checks": [],
+      "reviewers": ["architect"],
+      "implementation_model": "gpt-5.5",
+      "review_model": "gpt-5.5"
     },
     "security_sensitive": {
       "patterns": [
@@ -61,7 +111,23 @@
       ],
       "skills": ["security-review"],
       "checks": [],
-      "reviewers": ["security_reviewer"]
+      "reviewers": ["security_reviewer"],
+      "implementation_model": "gpt-5.5",
+      "review_model": "gpt-5.5"
+    },
+    "product_sensitive": {
+      "patterns": [
+        "backend/app/modules/client_portal/**",
+        "backend/app/modules/website_integrations/**",
+        "backend/app/modules/finance/**",
+        "frontend/**/client*",
+        "frontend/**/pricing*"
+      ],
+      "skills": [],
+      "checks": [],
+      "reviewers": ["product_guardian"],
+      "implementation_model": "gpt-5.5",
+      "review_model": "gpt-5.5"
     },
     "automation": {
       "patterns": [

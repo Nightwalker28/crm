@@ -15,15 +15,18 @@ and not labelled:
 
 It then:
 
-1. chooses an initial workflow profile from the issue
-2. creates a branch
-3. runs Codex non-interactively
-4. classifies the actual changed files
-5. runs the checks required by policy
-6. commits and pushes the result
-7. opens a draft PR
-8. comments on the issue
-9. sends a Discord notification
+1. chooses an initial workflow from the issue scope
+2. chooses the implementation model from policy
+3. creates a branch
+4. runs Codex non-interactively
+5. classifies the actual changed files
+6. selects the final skills, checks, reviewers, and review model from policy
+7. runs the required checks
+8. runs a reviewer pass when policy requires one
+9. commits and pushes the result
+10. opens a draft PR
+11. comments on the issue
+12. sends a Discord notification
 
 ## Safety
 
@@ -34,23 +37,32 @@ It then:
 - Low-risk issues only
 - Blocks if a low-risk task touches agent-control or automation files
 - Uses Docker Compose services for app checks
+- Uses the strongest configured model for real code changes
+- Uses a lighter model only for docs-only work
 
 ## Workflow policy
 
-`automation/workflow-policy.json` maps changed files to:
+`automation/workflow-policy.json` maps issue scope and changed files to:
 
+- prompt profile
+- implementation model
 - skills
 - checks
-- suggested reviewers
+- reviewers
+- review model
 - human-review requirements
 
 Examples:
 
-- docs-only diff → lightweight docs verification only
-- frontend diff → frontend lint/build through the frontend container
-- backend diff → backend compile/tests through the backend container
+- docs-only diff → `gpt-5.4-mini`, lightweight docs verification only
+- backend diff → `gpt-5.5`, backend checks through the backend container
+- frontend diff → `gpt-5.5`, frontend checks through the frontend container
 - migration diff → migration checks through the backend container
-- security-sensitive diff → security reviewer suggestion
+- security-sensitive diff → security review required
+- platform/core diff → architecture review required
+- product-sensitive diff → product review required
+
+Rules provide the minimum required workflow. Codex may still use additional judgment inside those boundaries.
 
 ## Setup
 
@@ -60,6 +72,14 @@ nano automation/.env
 ```
 
 Fill in `DISCORD_WEBHOOK_URL`.
+
+## Dry run
+
+Show the next eligible issue and the initial workflow without changing anything or spending Codex tokens:
+
+```bash
+python automation/codex-runner.py --dry-run
+```
 
 ## Manual run
 
@@ -82,4 +102,3 @@ For plan only:
 Never auto-implement:
 
 - `human-review-required`
-

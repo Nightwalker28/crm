@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from __future__ import annotations
 
+import argparse
 import fnmatch
 import json
 import os
@@ -30,7 +31,6 @@ class Config:
     base_branch: str
     repo_dir: Path
     discord_webhook_url: str
-    codex_model: str | None
     codex_timeout_seconds: int
     create_draft_pr: bool
 
@@ -51,6 +51,8 @@ class Workflow:
     skills: list[str]
     checks: list[str]
     reviewers: list[str]
+    implementation_model: str | None
+    review_model: str | None
     requires_human_review: bool
 
 
@@ -84,8 +86,6 @@ def load_config() -> Config:
     base_branch = os.environ.get("BASE_BRANCH", "main").strip()
     repo_dir = Path(os.environ.get("REPO_DIR", str(ROOT))).expanduser().resolve()
     discord_webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
-    codex_model = os.environ.get("CODEX_MODEL", "").strip() or None
-
     try:
         timeout = int(os.environ.get("CODEX_TIMEOUT_SECONDS", "7200").strip())
     except ValueError as exc:
@@ -103,7 +103,6 @@ def load_config() -> Config:
         base_branch=base_branch,
         repo_dir=repo_dir,
         discord_webhook_url=discord_webhook_url,
-        codex_model=codex_model,
         codex_timeout_seconds=timeout,
         create_draft_pr=env_bool("CREATE_DRAFT_PR", True),
     )
@@ -237,9 +236,11 @@ def issue_scope(issue: Issue) -> str:
     match = re.search(r"## scope\s*(.*?)(?:\n## |\Z)", body, flags=re.S)
     if not match:
         return "standard"
+
     section = match.group(1)
-    if "docs" in section:
-        return "docs"
+    for candidate in ("docs", "frontend", "backend", "full-stack", "migration", "security"):
+        if candidate in section:
+            return candidate
     return "standard"
 
 
@@ -260,11 +261,20 @@ def match_pattern(path: str, pattern: str) -> bool:
     return fnmatch.fnmatch(path, pattern)
 
 
+def choose_model(current: str | None, candidate: str | None) -> str | None:
+    # The policy intentionally uses the strongest matching route model.
+    # For now that means any real code route can escalate docs/default work to gpt-5.5.
+    return candidate or current
+
+
 def classify_paths(paths: list[str], profile: str, policy: dict[str, Any]) -> Workflow:
+    profile_policy = policy["profiles"][profile]
     routes: set[str] = set()
-    skills: list[str] = list(policy["profiles"][profile]["skills"])
-    checks: list[str] = list(policy["profiles"][profile]["checks"])
-    reviewers: list[str] = list(policy["profiles"][profile]["reviewers"])
+    skills: list[str] = list(profile_policy["skills"])
+    checks: list[str] = list(profile_policy["checks"])
+    reviewers: list[str] = list(profile_policy["reviewers"])
+    implementation_model = profile_policy.get("implementation_model")
+    review_model = profile_policy.get("review_model")
     requires_human_review = False
 
     for route_name, route in policy["routes"].items():
@@ -274,6 +284,8 @@ def classify_paths(paths: list[str], profile: str, policy: dict[str, Any]) -> Wo
             skills.extend(route.get("skills", []))
             checks.extend(route.get("checks", []))
             reviewers.extend(route.get("reviewers", []))
+            implementation_model = choose_model(implementation_model, route.get("implementation_model"))
+            review_model = choose_model(review_model, route.get("review_model"))
             requires_human_review = requires_human_review or route.get("requires_human_review", False)
 
     return Workflow(
@@ -282,19 +294,30 @@ def classify_paths(paths: list[str], profile: str, policy: dict[str, Any]) -> Wo
         skills=ordered_unique(skills),
         checks=ordered_unique(checks),
         reviewers=ordered_unique(reviewers),
+        implementation_model=implementation_model,
+        review_model=review_model,
         requires_human_review=requires_human_review,
     )
 
 
 def initial_workflow(issue: Issue, policy: dict[str, Any]) -> Workflow:
-    profile = issue_scope(issue)
+    scope = issue_scope(issue)
+    hint = policy.get("issue_scope_hints", {}).get(scope)
+    profile = hint["profile"] if hint else ("docs" if scope == "docs" else "standard")
     profile_policy = policy["profiles"][profile]
+
+    skills = list(profile_policy["skills"])
+    if hint:
+        skills.extend(hint.get("skills", []))
+
     return Workflow(
         profile=profile,
         routes=set(),
-        skills=list(profile_policy["skills"]),
+        skills=ordered_unique(skills),
         checks=list(profile_policy["checks"]),
         reviewers=list(profile_policy["reviewers"]),
+        implementation_model=profile_policy.get("implementation_model"),
+        review_model=profile_policy.get("review_model"),
         requires_human_review=False,
     )
 
@@ -329,11 +352,18 @@ def workflow_summary(workflow: Workflow) -> str:
         f"skills={','.join(workflow.skills) or 'none'}; "
         f"checks={','.join(workflow.checks) or 'none'}; "
         f"reviewers={','.join(workflow.reviewers) or 'none'}; "
+        f"impl_model={workflow.implementation_model or 'default'}; "
+        f"review_model={workflow.review_model or 'default'}; "
         f"human_review={workflow.requires_human_review}"
     )
 
 
-def run_codex(config: Config, prompt: str, log_file: Path) -> subprocess.CompletedProcess[str]:
+def run_codex(
+    config: Config,
+    prompt: str,
+    log_file: Path,
+    model: str | None,
+) -> subprocess.CompletedProcess[str]:
     args = [
         "codex",
         "exec",
@@ -342,8 +372,8 @@ def run_codex(config: Config, prompt: str, log_file: Path) -> subprocess.Complet
         "--cd",
         str(config.repo_dir),
     ]
-    if config.codex_model:
-        args.extend(["--model", config.codex_model])
+    if model:
+        args.extend(["--model", model])
     args.append(prompt)
 
     result = run(
@@ -382,7 +412,12 @@ def review_reported_block(result: subprocess.CompletedProcess[str]) -> bool:
     return bool(verdict_section and verdict_section.group(1) == "block")
 
 
-def run_review(config: Config, prompt: str, log_file: Path) -> subprocess.CompletedProcess[str]:
+def run_review(
+    config: Config,
+    prompt: str,
+    log_file: Path,
+    model: str | None,
+) -> subprocess.CompletedProcess[str]:
     args = [
         "codex",
         "exec",
@@ -390,10 +425,10 @@ def run_review(config: Config, prompt: str, log_file: Path) -> subprocess.Comple
         "read-only",
         "--cd",
         str(config.repo_dir),
-        prompt,
     ]
-    if config.codex_model:
-        args[2:2] = ["--model", config.codex_model]
+    if model:
+        args.extend(["--model", model])
+    args.append(prompt)
 
     result = run(
         args,
@@ -465,6 +500,8 @@ def create_pr(config: Config, issue: Issue, branch_name: str, workflow: Workflow
         - Matched routes: `{routes}`
         - Checks run: `{checks}`
         - Suggested reviewers: `{reviewers}`
+        - Implementation model: `{workflow.implementation_model or 'default'}`
+        - Review model: `{workflow.review_model or 'default'}`
 
         ## Review notes
         - This PR was created automatically as a draft.
@@ -545,7 +582,18 @@ def now_slug() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Run one autonomous Lynk Codex issue.")
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Show the next eligible issue and initial workflow without changing anything or spending Codex tokens.",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
+    args = parse_args()
     config = load_config()
     policy = load_policy()
     LOG_DIR.mkdir(parents=True, exist_ok=True)
@@ -559,7 +607,13 @@ def main() -> int:
     branch_name = branch_name_for(issue)
     log_file = LOG_DIR / f"issue-{issue.number}-{now_slug()}.log"
     initial = initial_workflow(issue, policy)
+
+    print(f"Issue: #{issue.number} {issue.title}")
     print(f"Initial workflow: {workflow_summary(initial)}")
+
+    if args.dry_run:
+        print("Dry run only. No labels changed, no branch created, no Codex tokens spent.")
+        return 0
 
     try:
         add_label(config, issue.number, "codex-in-progress")
@@ -576,7 +630,7 @@ def main() -> int:
 
         prepare_branch(config, branch_name)
         prompt = render_prompt(issue, initial)
-        codex_result = run_codex(config, prompt, log_file)
+        codex_result = run_codex(config, prompt, log_file, initial.implementation_model)
 
         if codex_result.returncode != 0:
             raise RunnerError(f"Codex exited with status {codex_result.returncode}. See {log_file}")
@@ -600,7 +654,7 @@ def main() -> int:
 
         if final.reviewers:
             review_prompt = render_review_prompt(issue, final, files)
-            review_result = run_review(config, review_prompt, log_file)
+            review_result = run_review(config, review_prompt, log_file, final.review_model)
             if review_result.returncode != 0:
                 raise RunnerError(f"Review pass exited with status {review_result.returncode}. See {log_file}")
             if review_reported_block(review_result):
