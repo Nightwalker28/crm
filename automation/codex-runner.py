@@ -266,8 +266,11 @@ def git_diff_exists(config: Config) -> bool:
 
 
 def codex_reported_blocked(result: subprocess.CompletedProcess[str]) -> bool:
-    output = f"{result.stdout}\n{result.stderr}".lower()
-    return "## status" in output and "`blocked`" in output
+    # Only inspect Codex's final stdout response. stderr includes the echoed prompt,
+    # which itself mentions the word `blocked` in the requested output format.
+    output = result.stdout.lower()
+    status_section = re.search(r"## status\s*\n\s*-?\s*`?(completed|blocked)`?", output)
+    return bool(status_section and status_section.group(1) == "blocked")
 
 
 def full_checks(config: Config, log_file: Path) -> subprocess.CompletedProcess[str]:
