@@ -453,12 +453,28 @@ def run_codex(
 
 
 def changed_files(config: Config) -> list[str]:
-    output = run(["git", "diff", "--name-only"], cwd=config.repo_dir).stdout
-    return [line.strip() for line in output.splitlines() if line.strip()]
+    # Include both tracked modifications and new untracked files.
+    # `git diff --name-only` misses new files until they are staged, which is
+    # unsafe for migrations, new modules, tests, and any other newly-created path.
+    output = run(["git", "status", "--porcelain"], cwd=config.repo_dir).stdout
+
+    files: list[str] = []
+    for line in output.splitlines():
+        if not line.strip():
+            continue
+
+        # Porcelain v1 format is XY<space>PATH. Renames may show OLD -> NEW;
+        # classify/review the destination path.
+        path = line[3:].strip()
+        if " -> " in path:
+            path = path.split(" -> ", 1)[1].strip()
+        files.append(path)
+
+    return files
 
 
 def git_diff_exists(config: Config) -> bool:
-    return bool(run(["git", "status", "--porcelain"], cwd=config.repo_dir).stdout.strip())
+    return bool(changed_files(config))
 
 
 def codex_reported_blocked(result: subprocess.CompletedProcess[str]) -> bool:
