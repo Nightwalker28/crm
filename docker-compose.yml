@@ -14,7 +14,6 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - database
       - redis
 
   celery-worker:
@@ -31,7 +30,6 @@ services:
       - ./backend:/app
       - ./backend/${IO_SEARCH_UPLOAD_DIR:-uploads/io-search}:/app/${IO_SEARCH_UPLOAD_DIR:-uploads/io-search}
     depends_on:
-      - database
       - redis
 
   celery-beat:
@@ -48,7 +46,6 @@ services:
       - ./backend:/app
       - ./backend/${IO_SEARCH_UPLOAD_DIR:-uploads/io-search}:/app/${IO_SEARCH_UPLOAD_DIR:-uploads/io-search}
     depends_on:
-      - database
       - redis
 
   frontend:
@@ -79,20 +76,6 @@ services:
     depends_on:
       - frontend
 
-  database:
-    image: postgres:17
-    env_file:
-      - .env
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    restart: unless-stopped
-
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-
-volumes:
-  postgres_data:
-  backend_uploads:

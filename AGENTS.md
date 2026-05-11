@@ -35,7 +35,8 @@ Before calling work complete:
 
 - `backend/`: FastAPI, SQLAlchemy, Alembic, PostgreSQL, Redis, Celery.
 - `frontend/`: Next.js, React, TypeScript, shared dashboard primitives.
-- `docker-compose.yml`: local stack with backend, frontend, PostgreSQL, Redis, Celery worker, and Celery beat.
+- `docker-compose.yml`: default app stack with backend, frontend, Redis, Celery worker, and Celery beat; PostgreSQL comes from `DATABASE_URL`.
+- `docker-compose.local-db.yml`: optional override for a fully local PostgreSQL container when an isolated DB is needed.
 
 ## Default commands
 
