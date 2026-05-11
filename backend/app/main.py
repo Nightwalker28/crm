@@ -59,7 +59,7 @@ async def attach_tenant_context(request: Request, call_next):
 
 # -------------------------
 # Auth middleware
-# Attaches refreshed access token cookie if needed
+# Sets rotated auth cookies when token refresh occurs
 # -------------------------
 @app.middleware("http")
 async def attach_access_token_cookie(request: Request, call_next):
