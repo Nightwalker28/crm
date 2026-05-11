@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import time
 import os
 import re
 import shlex
@@ -112,6 +113,28 @@ def load_policy() -> dict[str, Any]:
     return json.loads(POLICY_FILE.read_text())
 
 
+def command_failed_message(args: list[str], result: subprocess.CompletedProcess[str]) -> str:
+    return (
+        f"Command failed ({result.returncode}): {shlex.join(args)}\n"
+        f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    )
+
+
+def is_transient_github_failure(result: subprocess.CompletedProcess[str]) -> bool:
+    output = f"{result.stdout}\n{result.stderr}".lower()
+    transient_markers = (
+        "http 502",
+        "http 503",
+        "http 504",
+        "bad gateway",
+        "service unavailable",
+        "gateway timeout",
+        "temporary failure",
+        "timed out",
+    )
+    return any(marker in output for marker in transient_markers)
+
+
 def run(
     args: list[str],
     *,
@@ -119,24 +142,53 @@ def run(
     capture: bool = True,
     check: bool = True,
     timeout: int | None = None,
+    retries: int = 0,
+    retry_delay_seconds: float = 2.0,
+    retry_transient_github_only: bool = False,
 ) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
-        args,
-        cwd=cwd,
-        text=True,
-        capture_output=capture,
-        timeout=timeout,
-    )
-    if check and result.returncode != 0:
-        raise RunnerError(
-            f"Command failed ({result.returncode}): {shlex.join(args)}\n"
-            f"STDOUT:\n{result.stdout}\nSTDERR:\n{result.stderr}"
+    attempts = retries + 1
+    last_result: subprocess.CompletedProcess[str] | None = None
+
+    for attempt in range(1, attempts + 1):
+        result = subprocess.run(
+            args,
+            cwd=cwd,
+            text=True,
+            capture_output=capture,
+            timeout=timeout,
         )
-    return result
+        last_result = result
+
+        if result.returncode == 0:
+            return result
+
+        should_retry = (
+            attempt < attempts
+            and (
+                not retry_transient_github_only
+                or is_transient_github_failure(result)
+            )
+        )
+        if should_retry:
+            time.sleep(retry_delay_seconds * attempt)
+            continue
+
+        if check:
+            raise RunnerError(command_failed_message(args, result))
+        return result
+
+    assert last_result is not None
+    return last_result
 
 
 def gh_json(args: list[str], *, cwd: Path) -> Any:
-    result = run(["gh", *args], cwd=cwd)
+    result = run(
+        ["gh", *args],
+        cwd=cwd,
+        retries=3,
+        retry_delay_seconds=2.0,
+        retry_transient_github_only=True,
+    )
     try:
         return json.loads(result.stdout)
     except json.JSONDecodeError as exc:
@@ -451,6 +503,35 @@ def append_log(log_file: Path, heading: str, result: subprocess.CompletedProcess
         )
 
 
+def services_for_checks(checks: list[str]) -> list[str]:
+    needed: set[str] = set()
+
+    for check in checks:
+        if check.startswith("backend_") or check.startswith("migration_"):
+            needed.add("backend")
+        if check.startswith("frontend_"):
+            needed.add("frontend")
+
+    # Compose brings transitive dependencies up through depends_on.
+    return sorted(needed)
+
+
+def ensure_services_for_checks(config: Config, workflow: Workflow, log_file: Path) -> None:
+    services = services_for_checks(workflow.checks)
+    if not services:
+        return
+
+    result = run(
+        ["docker", "compose", "up", "-d", *services],
+        cwd=config.repo_dir,
+        capture=True,
+        check=False,
+    )
+    append_log(log_file, "ENSURE SERVICES", result)
+    if result.returncode != 0:
+        raise RunnerError(f"Could not start required services: {', '.join(services)}. See {log_file}")
+
+
 def run_check(config: Config, check_name: str, log_file: Path) -> subprocess.CompletedProcess[str]:
     commands = {
         "docs_diff": ["git", "diff", "--check"],
@@ -469,6 +550,8 @@ def run_check(config: Config, check_name: str, log_file: Path) -> subprocess.Com
 
 
 def run_workflow_checks(config: Config, workflow: Workflow, log_file: Path) -> None:
+    ensure_services_for_checks(config, workflow, log_file)
+
     for check_name in workflow.checks:
         result = run_check(config, check_name, log_file)
         if result.returncode != 0:
@@ -482,6 +565,33 @@ def commit_changes(config: Config, issue: Issue) -> None:
 
 def push_branch(config: Config, branch_name: str) -> None:
     run(["git", "push", "-u", "origin", branch_name, "--force-with-lease"], cwd=config.repo_dir)
+
+
+def find_pr_by_branch(config: Config, branch_name: str) -> dict[str, Any] | None:
+    result = run(
+        [
+            "gh",
+            "pr",
+            "view",
+            branch_name,
+            "--repo",
+            config.github_repo,
+            "--json",
+            "number,url,title",
+        ],
+        cwd=config.repo_dir,
+        check=False,
+        retries=3,
+        retry_delay_seconds=2.0,
+        retry_transient_github_only=True,
+    )
+    if result.returncode != 0:
+        return None
+
+    try:
+        return json.loads(result.stdout)
+    except json.JSONDecodeError:
+        return None
 
 
 def create_pr(config: Config, issue: Issue, branch_name: str, workflow: Workflow) -> dict[str, Any]:
@@ -508,6 +618,11 @@ def create_pr(config: Config, issue: Issue, branch_name: str, workflow: Workflow
         - Please review before merge.
         """
     )
+
+    existing = find_pr_by_branch(config, branch_name)
+    if existing:
+        return existing
+
     args = [
         "pr",
         "create",
@@ -525,22 +640,26 @@ def create_pr(config: Config, issue: Issue, branch_name: str, workflow: Workflow
     if config.create_draft_pr:
         args.append("--draft")
 
-    # gh pr create prints the PR URL in this GitHub CLI version; it does not support --json.
-    run(["gh", *args], cwd=config.repo_dir)
-
-    # Query the newly created PR separately so the rest of the runner gets structured data.
-    return gh_json(
-        [
-            "pr",
-            "view",
-            branch_name,
-            "--repo",
-            config.github_repo,
-            "--json",
-            "number,url,title",
-        ],
+    create_result = run(
+        ["gh", *args],
         cwd=config.repo_dir,
+        check=False,
+        retries=3,
+        retry_delay_seconds=2.0,
+        retry_transient_github_only=True,
     )
+
+    if create_result.returncode != 0:
+        recovered = find_pr_by_branch(config, branch_name)
+        if recovered:
+            return recovered
+        raise RunnerError(command_failed_message(["gh", *args], create_result))
+
+    recovered = find_pr_by_branch(config, branch_name)
+    if recovered:
+        return recovered
+
+    raise RunnerError("PR creation appeared to succeed, but PR metadata could not be recovered by branch.")
 
 
 def discord_safe_message(message: str, limit: int = 1900) -> str:
@@ -583,26 +702,32 @@ def now_slug() -> str:
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run one autonomous Lynk Codex issue.")
+    parser = argparse.ArgumentParser(description="Run autonomous Lynk Codex issues.")
     parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show the next eligible issue and initial workflow without changing anything or spending Codex tokens.",
     )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Keep processing eligible issues until the queue is empty or one issue fails.",
+    )
+    parser.add_argument(
+        "--continue-on-failure",
+        action="store_true",
+        help="With --all, continue to later issues even if one issue fails.",
+    )
     return parser.parse_args()
 
 
-def main() -> int:
-    args = parse_args()
-    config = load_config()
-    policy = load_policy()
-    LOG_DIR.mkdir(parents=True, exist_ok=True)
+def process_one_issue(config: Config, policy: dict[str, Any], *, dry_run: bool = False) -> int | None:
     ensure_clean_worktree(config)
 
     issue = fetch_next_issue(config)
     if issue is None:
         print("No eligible Codex issues found.")
-        return 0
+        return None
 
     branch_name = branch_name_for(issue)
     log_file = LOG_DIR / f"issue-{issue.number}-{now_slug()}.log"
@@ -611,7 +736,7 @@ def main() -> int:
     print(f"Issue: #{issue.number} {issue.title}")
     print(f"Initial workflow: {workflow_summary(initial)}")
 
-    if args.dry_run:
+    if dry_run:
         print("Dry run only. No labels changed, no branch created, no Codex tokens spent.")
         return 0
 
@@ -666,6 +791,7 @@ def main() -> int:
 
         remove_label(config, issue.number, "codex-ready")
         remove_label(config, issue.number, "codex-in-progress")
+        remove_label(config, issue.number, "codex-failed")
         add_label(config, issue.number, "codex-done")
         comment_issue(
             config,
@@ -701,6 +827,39 @@ def main() -> int:
 
     finally:
         reset_to_base(config)
+
+
+def main() -> int:
+    args = parse_args()
+    config = load_config()
+    policy = load_policy()
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+
+    if args.dry_run:
+        result = process_one_issue(config, policy, dry_run=True)
+        return 0 if result is None else result
+
+    if not args.all:
+        result = process_one_issue(config, policy)
+        return 0 if result is None else result
+
+    completed = 0
+    failed = 0
+
+    while True:
+        result = process_one_issue(config, policy)
+        if result is None:
+            print(f"Queue finished. completed={completed}; failed={failed}")
+            return 0 if failed == 0 else 1
+
+        if result == 0:
+            completed += 1
+            continue
+
+        failed += 1
+        if not args.continue_on_failure:
+            print(f"Queue stopped after failure. completed={completed}; failed={failed}")
+            return 1
 
 
 if __name__ == "__main__":
