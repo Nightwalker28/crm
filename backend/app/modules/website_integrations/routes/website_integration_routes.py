@@ -8,9 +8,6 @@ from app.modules.website_integrations.schema import (
     PublicWebsiteCatalogItemResponse,
     PublicWebsiteCatalogListResponse,
     PublicWebsiteOrderCreateRequest,
-    WebsiteCatalogItemCreateRequest,
-    WebsiteCatalogItemResponse,
-    WebsiteCatalogItemUpdateRequest,
     WebsiteIntegrationApiKeyCreateRequest,
     WebsiteIntegrationApiKeyResponse,
     WebsiteOrderResponse,
@@ -19,10 +16,8 @@ from app.modules.website_integrations.services.website_integration_services impo
     ORDER_WRITE_SCOPE,
     check_integration_rate_limit,
     create_api_key,
-    create_catalog_item,
     create_public_order,
     get_api_key_or_404,
-    get_catalog_item_or_404,
     get_public_catalog_item_by_slug_or_404,
     list_api_keys,
     list_catalog_items,
@@ -32,7 +27,6 @@ from app.modules.website_integrations.services.website_integration_services impo
     serialize_api_key,
     serialize_catalog_item,
     serialize_order,
-    update_catalog_item,
 )
 
 
@@ -124,61 +118,6 @@ def revoke_integration_api_key_route(
     key = get_api_key_or_404(db, tenant_id=current_user.tenant_id, key_id=key_id)
     key = revoke_api_key(db, key=key, actor_user_id=current_user.id)
     return WebsiteIntegrationApiKeyResponse.model_validate(serialize_api_key(key))
-
-
-@router.get("/catalog-items", response_model=list[WebsiteCatalogItemResponse])
-def get_catalog_items(
-    search: str | None = Query(default=None),
-    item_type: str | None = Query(default=None),
-    db: Session = Depends(get_db),
-    current_user=Depends(require_user),
-    require_module=Depends(require_module_access("website_integrations")),
-    require_permission=Depends(require_action_access("website_integrations", "view")),
-):
-    items, _total = list_catalog_items(
-        db,
-        tenant_id=current_user.tenant_id,
-        include_private=True,
-        search=search,
-        item_type=item_type,
-    )
-    return [WebsiteCatalogItemResponse.model_validate(serialize_catalog_item(item)) for item in items]
-
-
-@router.post("/catalog-items", response_model=WebsiteCatalogItemResponse, status_code=status.HTTP_201_CREATED)
-def create_catalog_item_route(
-    payload: WebsiteCatalogItemCreateRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(require_user),
-    require_module=Depends(require_module_access("website_integrations")),
-    require_permission=Depends(require_action_access("website_integrations", "create")),
-):
-    item = create_catalog_item(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id,
-        payload=payload.model_dump(),
-    )
-    return WebsiteCatalogItemResponse.model_validate(serialize_catalog_item(item))
-
-
-@router.put("/catalog-items/{item_id}", response_model=WebsiteCatalogItemResponse)
-def update_catalog_item_route(
-    item_id: int,
-    payload: WebsiteCatalogItemUpdateRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(require_user),
-    require_module=Depends(require_module_access("website_integrations")),
-    require_permission=Depends(require_action_access("website_integrations", "edit")),
-):
-    item = get_catalog_item_or_404(db, tenant_id=current_user.tenant_id, item_id=item_id)
-    item = update_catalog_item(
-        db,
-        item=item,
-        actor_user_id=current_user.id,
-        payload=payload.model_dump(exclude_unset=True),
-    )
-    return WebsiteCatalogItemResponse.model_validate(serialize_catalog_item(item))
 
 
 @router.get("/orders", response_model=list[WebsiteOrderResponse])

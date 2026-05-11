@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Copy, KeyRound, Package, PlugZap, RefreshCw, Save, Send, ShoppingCart, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Copy, KeyRound, Package, PlugZap, RefreshCw, Send, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -73,27 +74,12 @@ type IntegrationApiKey = {
   api_key?: string | null;
 };
 
-type CatalogItem = {
-  id: number;
-  item_type: "product" | "service" | "bundle";
-  slug: string;
-  sku: string | null;
-  name: string;
-  description: string | null;
-  currency: string;
-  public_unit_price: string | number;
-  stock_status: "untracked" | "in_stock" | "out_of_stock" | "preorder";
-  stock_quantity: string | number | null;
-  media_url: string | null;
-  metadata: Record<string, unknown> | null;
-  is_public: boolean;
-  is_active: boolean;
-  updated_at: string;
-};
-
 type WebsiteOrderLine = {
   id: number;
   catalog_item_id: number | null;
+  catalog_product_id: number | null;
+  catalog_service_id: number | null;
+  item_type: "product" | "service";
   name: string;
   quantity: string | number;
   currency: string;
@@ -122,22 +108,6 @@ type ApiKeyDraft = {
   allowedOrigins: string;
 };
 
-type CatalogDraft = {
-  id: number | null;
-  item_type: "product" | "service" | "bundle";
-  slug: string;
-  sku: string;
-  name: string;
-  description: string;
-  currency: string;
-  public_unit_price: string;
-  stock_status: "untracked" | "in_stock" | "out_of_stock" | "preorder";
-  stock_quantity: string;
-  media_url: string;
-  is_public: boolean;
-  is_active: boolean;
-};
-
 const emptyDraft: ChannelDraft = {
   provider: "slack",
   channel_name: "",
@@ -150,22 +120,6 @@ const emptyApiKeyDraft: ApiKeyDraft = {
   allowCatalogRead: true,
   allowOrdersWrite: false,
   allowedOrigins: "",
-};
-
-const emptyCatalogDraft: CatalogDraft = {
-  id: null,
-  item_type: "product",
-  slug: "",
-  sku: "",
-  name: "",
-  description: "",
-  currency: "USD",
-  public_unit_price: "",
-  stock_status: "untracked",
-  stock_quantity: "",
-  media_url: "",
-  is_public: false,
-  is_active: true,
 };
 
 const eventTypeOptions = [
@@ -237,12 +191,10 @@ function responseError(body: unknown, fallback: string) {
 
 export default function IntegrationsPage() {
   const [apiKeys, setApiKeys] = useState<IntegrationApiKey[]>([]);
-  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [websiteOrders, setWebsiteOrders] = useState<WebsiteOrder[]>([]);
   const [channels, setChannels] = useState<NotificationChannel[]>([]);
   const [events, setEvents] = useState<CrmEvent[]>([]);
   const [apiKeyDraft, setApiKeyDraft] = useState<ApiKeyDraft>(emptyApiKeyDraft);
-  const [catalogDraft, setCatalogDraft] = useState<CatalogDraft>(emptyCatalogDraft);
   const [latestApiKey, setLatestApiKey] = useState<string | null>(null);
   const [draft, setDraft] = useState<ChannelDraft>(emptyDraft);
   const [eventFilters, setEventFilters] = useState<EventFilters>({ event_type: "all", delivery_status: "all" });
@@ -255,17 +207,14 @@ export default function IntegrationsPage() {
   const loadWebsiteIntegrations = useCallback(async () => {
     try {
       setWebsiteLoading(true);
-      const [keysRes, catalogRes, ordersRes] = await Promise.all([
+      const [keysRes, ordersRes] = await Promise.all([
         apiFetch("/integrations/api-keys"),
-        apiFetch("/integrations/catalog-items"),
         apiFetch("/integrations/orders?limit=10&offset=0"),
       ]);
-      const [keysBody, catalogBody, ordersBody] = await Promise.all([readJson(keysRes), readJson(catalogRes), readJson(ordersRes)]);
+      const [keysBody, ordersBody] = await Promise.all([readJson(keysRes), readJson(ordersRes)]);
       if (!keysRes.ok) throw new Error(responseError(keysBody, `Failed with ${keysRes.status}`));
-      if (!catalogRes.ok) throw new Error(responseError(catalogBody, `Failed with ${catalogRes.status}`));
       if (!ordersRes.ok) throw new Error(responseError(ordersBody, `Failed with ${ordersRes.status}`));
       setApiKeys(Array.isArray(keysBody) ? keysBody : []);
-      setCatalogItems(Array.isArray(catalogBody) ? catalogBody : []);
       setWebsiteOrders(Array.isArray(ordersBody) ? ordersBody : []);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to load website integration data.");
@@ -392,63 +341,6 @@ export default function IntegrationsPage() {
       toast.success("Website API key revoked.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to revoke API key.");
-    } finally {
-      setWebsiteSaving(false);
-    }
-  }
-
-  function editCatalogItem(item: CatalogItem) {
-    setCatalogDraft({
-      id: item.id,
-      item_type: item.item_type,
-      slug: item.slug,
-      sku: item.sku ?? "",
-      name: item.name,
-      description: item.description ?? "",
-      currency: item.currency,
-      public_unit_price: String(item.public_unit_price ?? ""),
-      stock_status: item.stock_status,
-      stock_quantity: item.stock_quantity == null ? "" : String(item.stock_quantity),
-      media_url: item.media_url ?? "",
-      is_public: item.is_public,
-      is_active: item.is_active,
-    });
-  }
-
-  async function saveCatalogItem() {
-    if (!catalogDraft.slug.trim() || !catalogDraft.name.trim() || !catalogDraft.public_unit_price.trim()) {
-      toast.error("Catalog item needs a slug, name, and public price.");
-      return;
-    }
-    const payload = {
-      item_type: catalogDraft.item_type,
-      slug: catalogDraft.slug.trim(),
-      sku: catalogDraft.sku.trim() || null,
-      name: catalogDraft.name.trim(),
-      description: catalogDraft.description.trim() || null,
-      currency: catalogDraft.currency.trim().toUpperCase() || "USD",
-      public_unit_price: catalogDraft.public_unit_price,
-      stock_status: catalogDraft.stock_status,
-      stock_quantity: catalogDraft.stock_quantity.trim() ? catalogDraft.stock_quantity : null,
-      media_url: catalogDraft.media_url.trim() || null,
-      metadata: null,
-      is_public: catalogDraft.is_public,
-      is_active: catalogDraft.is_active,
-    };
-    try {
-      setWebsiteSaving(true);
-      const res = await apiFetch(catalogDraft.id ? `/integrations/catalog-items/${catalogDraft.id}` : "/integrations/catalog-items", {
-        method: catalogDraft.id ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const body = await readJson(res);
-      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
-      setCatalogDraft(emptyCatalogDraft);
-      await loadWebsiteIntegrations();
-      toast.success(catalogDraft.id ? "Catalog item updated." : "Catalog item created.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to save catalog item.");
     } finally {
       setWebsiteSaving(false);
     }
@@ -641,160 +533,35 @@ export default function IntegrationsPage() {
           </ModuleTableShell>
         </div>
 
-        <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
+        <div className="grid gap-5 md:grid-cols-2">
           <Card className="px-5 py-5">
-            <div className="mb-4 flex items-start gap-3">
+            <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-950">
                 <Package size={17} className="text-neutral-300" />
               </div>
-              <div>
-                <h3 className="text-base font-semibold text-neutral-100">{catalogDraft.id ? "Edit Catalog Item" : "New Catalog Item"}</h3>
-                <p className="mt-1 text-sm text-neutral-500">Only active public items appear in external website feeds.</p>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-neutral-100">Products</h3>
+                <p className="mt-1 text-sm text-neutral-500">Manage product records, public slugs, stock, pricing, and media in the Products module.</p>
+                <Button type="button" variant="outline" size="sm" className="mt-4" asChild>
+                  <Link href="/dashboard/catalog/products">Open Products</Link>
+                </Button>
               </div>
             </div>
-            <FieldGroup className="grid gap-3">
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field>
-                  <FieldLabel>Type</FieldLabel>
-                  <Select value={catalogDraft.item_type} onValueChange={(value) => setCatalogDraft((current) => ({ ...current, item_type: value as CatalogDraft["item_type"] }))}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="product">Product</SelectItem>
-                      <SelectItem value="service">Service</SelectItem>
-                      <SelectItem value="bundle">Bundle</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </Field>
-                <Field>
-                  <FieldLabel>Currency</FieldLabel>
-                  <Input value={catalogDraft.currency} onChange={(event) => setCatalogDraft((current) => ({ ...current, currency: event.target.value }))} maxLength={3} />
-                </Field>
-              </div>
-              <Field>
-                <FieldLabel>Name *</FieldLabel>
-                <Input value={catalogDraft.name} onChange={(event) => setCatalogDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Starter Package" />
-              </Field>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field>
-                  <FieldLabel>Slug *</FieldLabel>
-                  <Input value={catalogDraft.slug} onChange={(event) => setCatalogDraft((current) => ({ ...current, slug: event.target.value }))} placeholder="starter-package" />
-                </Field>
-                <Field>
-                  <FieldLabel>SKU</FieldLabel>
-                  <Input value={catalogDraft.sku} onChange={(event) => setCatalogDraft((current) => ({ ...current, sku: event.target.value }))} placeholder="STARTER" />
-                </Field>
-              </div>
-              <Field>
-                <FieldLabel>Description</FieldLabel>
-                <Textarea value={catalogDraft.description} onChange={(event) => setCatalogDraft((current) => ({ ...current, description: event.target.value }))} className="min-h-20" />
-              </Field>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field>
-                  <FieldLabel>Public Price *</FieldLabel>
-                  <Input value={catalogDraft.public_unit_price} onChange={(event) => setCatalogDraft((current) => ({ ...current, public_unit_price: event.target.value }))} inputMode="decimal" />
-                </Field>
-                <Field>
-                  <FieldLabel>Stock Qty</FieldLabel>
-                  <Input value={catalogDraft.stock_quantity} onChange={(event) => setCatalogDraft((current) => ({ ...current, stock_quantity: event.target.value }))} inputMode="decimal" placeholder="Blank for untracked" />
-                </Field>
-              </div>
-              <Field>
-                <FieldLabel>Stock Status</FieldLabel>
-                <Select value={catalogDraft.stock_status} onValueChange={(value) => setCatalogDraft((current) => ({ ...current, stock_status: value as CatalogDraft["stock_status"] }))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="untracked">Untracked</SelectItem>
-                    <SelectItem value="in_stock">In Stock</SelectItem>
-                    <SelectItem value="out_of_stock">Out of Stock</SelectItem>
-                    <SelectItem value="preorder">Preorder</SelectItem>
-                  </SelectContent>
-                </Select>
-              </Field>
-              <Field>
-                <FieldLabel>Media URL</FieldLabel>
-                <Input value={catalogDraft.media_url} onChange={(event) => setCatalogDraft((current) => ({ ...current, media_url: event.target.value }))} placeholder="/media/products/starter.png" />
-              </Field>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <label className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-300">
-                  Public
-                  <input type="checkbox" checked={catalogDraft.is_public} onChange={(event) => setCatalogDraft((current) => ({ ...current, is_public: event.target.checked }))} className="h-4 w-4 accent-neutral-100" />
-                </label>
-                <label className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-300">
-                  Active
-                  <input type="checkbox" checked={catalogDraft.is_active} onChange={(event) => setCatalogDraft((current) => ({ ...current, is_active: event.target.checked }))} className="h-4 w-4 accent-neutral-100" />
-                </label>
-              </div>
-              <div className="flex gap-2">
-                <Button type="button" disabled={websiteSaving} onClick={saveCatalogItem}>
-                  <Save size={14} />
-                  {catalogDraft.id ? "Save Item" : "Create Item"}
-                </Button>
-                {catalogDraft.id ? (
-                  <Button type="button" variant="outline" disabled={websiteSaving} onClick={() => setCatalogDraft(emptyCatalogDraft)}>
-                    Cancel
-                  </Button>
-                ) : null}
-              </div>
-            </FieldGroup>
           </Card>
-
-          <ModuleTableShell>
-            <Table className="min-w-[980px]">
-              <TableHeader>
-                <TableHeaderRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead>Price</TableHead>
-                  <TableHead>Stock</TableHead>
-                  <TableHead>Visibility</TableHead>
-                  <TableHead>Updated</TableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableHeaderRow>
-              </TableHeader>
-              <TableBody>
-                {websiteLoading ? (
-                  <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-neutral-500">Loading catalog items...</TableCell>
-                  </TableRow>
-                ) : catalogItems.length ? (
-                  catalogItems.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell>
-                        <div className="font-medium text-neutral-100">{item.name}</div>
-                        <div className="mt-1 text-xs text-neutral-500">{item.item_type} · {item.slug}{item.sku ? ` · ${item.sku}` : ""}</div>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-neutral-300">{money(item.public_unit_price, item.currency)}</TableCell>
-                      <TableCell>
-                        <div className="text-neutral-300">{item.stock_status.replace(/_/g, " ")}</div>
-                        <div className="text-xs text-neutral-500">{item.stock_quantity == null ? "Untracked" : `${item.stock_quantity} left`}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex flex-wrap gap-2">
-                          <Pill bg={item.is_public ? "bg-emerald-950/60" : "bg-neutral-900"} text={item.is_public ? "text-emerald-200" : "text-neutral-400"} border={item.is_public ? "border-emerald-800/70" : "border-neutral-700"}>
-                            {item.is_public ? "Public" : "Private"}
-                          </Pill>
-                          <Pill bg={item.is_active ? "bg-emerald-950/60" : "bg-red-950/60"} text={item.is_active ? "text-emerald-200" : "text-red-200"} border={item.is_active ? "border-emerald-800/70" : "border-red-800/70"}>
-                            {item.is_active ? "Active" : "Inactive"}
-                          </Pill>
-                        </div>
-                      </TableCell>
-                      <TableCell className="whitespace-nowrap text-neutral-400">{formatDateTime(item.updated_at)}</TableCell>
-                      <TableCell>
-                        <div className="flex justify-end">
-                          <Button type="button" variant="outline" size="sm" onClick={() => editCatalogItem(item)}>
-                            Edit
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={6} className="py-10 text-center text-neutral-500">No catalog items yet.</TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </ModuleTableShell>
+          <Card className="px-5 py-5">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-950">
+                <Package size={17} className="text-neutral-300" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-semibold text-neutral-100">Services</h3>
+                <p className="mt-1 text-sm text-neutral-500">Manage service records, public slugs, pricing, availability, and media in the Services module.</p>
+                <Button type="button" variant="outline" size="sm" className="mt-4" asChild>
+                  <Link href="/dashboard/catalog/services">Open Services</Link>
+                </Button>
+              </div>
+            </div>
+          </Card>
         </div>
 
         <ModuleTableShell>

@@ -6,6 +6,8 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.core import cache
+from app.modules.catalog import models as catalog_models  # noqa: F401
+from app.modules.catalog.services import product_services, service_services
 from app.modules.platform import models as platform_models  # noqa: F401
 from app.modules.user_management.models import Tenant
 from app.modules.website_integrations import models as website_models  # noqa: F401
@@ -37,12 +39,11 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
             actor_user_id=None,
             payload={"name": "WordPress", "scopes": ["catalog:read"], "allowed_origins": []},
         )
-        services.create_catalog_item(
+        product_services.create_product(
             self.db,
             tenant_id=10,
             actor_user_id=None,
             payload={
-                "item_type": "product",
                 "slug": "starter-package",
                 "sku": "STARTER",
                 "name": "Starter Package",
@@ -54,12 +55,11 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
                 "is_active": True,
             },
         )
-        services.create_catalog_item(
+        service_services.create_service(
             self.db,
             tenant_id=10,
             actor_user_id=None,
             payload={
-                "item_type": "service",
                 "slug": "private-consulting",
                 "name": "Private Consulting",
                 "currency": "USD",
@@ -68,12 +68,11 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
                 "is_active": True,
             },
         )
-        services.create_catalog_item(
+        product_services.create_product(
             self.db,
             tenant_id=99,
             actor_user_id=None,
             payload={
-                "item_type": "product",
                 "slug": "other-tenant-item",
                 "name": "Other Tenant Item",
                 "currency": "USD",
@@ -114,12 +113,11 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
             actor_user_id=None,
             payload={"name": "Bookings", "scopes": ["catalog:read", "orders:write"], "allowed_origins": []},
         )
-        item = services.create_catalog_item(
+        item = product_services.create_product(
             self.db,
             tenant_id=10,
             actor_user_id=None,
             payload={
-                "item_type": "product",
                 "slug": "room-a",
                 "sku": "ROOM-A",
                 "name": "Room A",
@@ -167,12 +165,11 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
             actor_user_id=None,
             payload={"name": "Bookings", "scopes": ["orders:write"], "allowed_origins": []},
         )
-        services.create_catalog_item(
+        product_services.create_product(
             self.db,
             tenant_id=10,
             actor_user_id=None,
             payload={
-                "item_type": "product",
                 "slug": "starter-package",
                 "name": "Starter Package",
                 "currency": "USD",

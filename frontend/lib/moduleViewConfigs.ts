@@ -89,9 +89,11 @@ export const INSERTION_ORDER_COLUMNS: TableColumnOption[] = [
 
 export const CATALOG_PRODUCT_COLUMNS: TableColumnOption[] = [
   { key: "name", label: "Name" },
+  { key: "slug", label: "Slug" },
   { key: "sku", label: "SKU" },
   { key: "public_unit_price", label: "Price" },
   { key: "stock_status", label: "Stock" },
+  { key: "is_public", label: "Feed" },
   { key: "is_active", label: "Status" },
   { key: "media_url", label: "Media" },
   { key: "updated_at", label: "Updated" },
@@ -99,7 +101,9 @@ export const CATALOG_PRODUCT_COLUMNS: TableColumnOption[] = [
 
 export const CATALOG_SERVICE_COLUMNS: TableColumnOption[] = [
   { key: "name", label: "Name" },
+  { key: "slug", label: "Slug" },
   { key: "public_unit_price", label: "Price" },
+  { key: "is_public", label: "Feed" },
   { key: "is_active", label: "Status" },
   { key: "media_url", label: "Media" },
   { key: "updated_at", label: "Updated" },
@@ -147,12 +151,12 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
     sort: null,
   },
   catalog_products: {
-    visible_columns: ["name", "sku", "public_unit_price", "stock_status", "is_active", "media_url", "updated_at"],
+    visible_columns: ["name", "slug", "sku", "public_unit_price", "stock_status", "is_public", "is_active", "media_url", "updated_at"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },
   catalog_services: {
-    visible_columns: ["name", "public_unit_price", "is_active", "media_url", "updated_at"],
+    visible_columns: ["name", "slug", "public_unit_price", "is_public", "is_active", "media_url", "updated_at"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },

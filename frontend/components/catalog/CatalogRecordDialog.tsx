@@ -32,23 +32,27 @@ type Props = {
 
 type FormState = {
   name: string;
+  slug: string;
   description: string;
   sku: string;
   currency: string;
   public_unit_price: string;
   stock_status: string;
   stock_quantity: string;
+  is_public: boolean;
   is_active: boolean;
 };
 
 const emptyForm: FormState = {
   name: "",
+  slug: "",
   description: "",
   sku: "",
   currency: "USD",
   public_unit_price: "0",
   stock_status: "untracked",
   stock_quantity: "",
+  is_public: false,
   is_active: true,
 };
 
@@ -60,12 +64,14 @@ function toFormState(record: CatalogRecord | null): FormState {
   if (!record) return emptyForm;
   return {
     name: record.name ?? "",
+    slug: record.slug ?? "",
     description: record.description ?? "",
     sku: record.sku ?? "",
     currency: record.currency ?? "USD",
     public_unit_price: String(record.public_unit_price ?? "0"),
     stock_status: record.stock_status ?? "untracked",
     stock_quantity: record.stock_quantity == null ? "" : String(record.stock_quantity),
+    is_public: record.is_public,
     is_active: record.is_active,
   };
 }
@@ -129,12 +135,14 @@ export default function CatalogRecordDialog({
       await onSubmit(
         {
           name: form.name.trim(),
+          slug: form.slug.trim() || null,
           description: form.description.trim() || null,
           sku: isProduct ? form.sku.trim() || null : undefined,
           currency: form.currency.trim().toUpperCase() || "USD",
           public_unit_price: price,
           stock_status: isProduct ? form.stock_status : undefined,
           stock_quantity: isProduct ? stockQuantity ?? null : undefined,
+          is_public: form.is_public,
           is_active: form.is_active,
         },
         mediaFile,
@@ -186,6 +194,16 @@ export default function CatalogRecordDialog({
                   />
                 </Field>
               ) : null}
+
+              <Field>
+                <FieldLabel>Public Slug</FieldLabel>
+                <Input
+                  value={form.slug}
+                  maxLength={160}
+                  onChange={(event) => setForm((current) => ({ ...current, slug: event.target.value }))}
+                  placeholder={isProduct ? "camera-kit" : "installation-service"}
+                />
+              </Field>
 
               <Field>
                 <FieldLabel>
@@ -281,16 +299,28 @@ export default function CatalogRecordDialog({
                 </div>
               </Field>
 
-              <label className="sm:col-span-2 flex items-center gap-3 rounded-md border border-neutral-800 bg-neutral-950/60 px-3 py-3 text-sm text-neutral-300">
-                <Checkbox
-                  checked={form.is_active}
-                  onCheckedChange={(checked) => setForm((current) => ({ ...current, is_active: checked === true }))}
-                  className="flex h-4 w-4 items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-white"
-                >
-                  <CheckboxIndicator className="h-3 w-3" />
-                </Checkbox>
-                <span>Active</span>
-              </label>
+              <div className="grid gap-3 sm:col-span-2 sm:grid-cols-2">
+                <label className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950/60 px-3 py-3 text-sm text-neutral-300">
+                  <span>Public website feed</span>
+                  <Checkbox
+                    checked={form.is_public}
+                    onCheckedChange={(checked) => setForm((current) => ({ ...current, is_public: checked === true }))}
+                    className="flex h-4 w-4 items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-white"
+                  >
+                    <CheckboxIndicator className="h-3 w-3" />
+                  </Checkbox>
+                </label>
+                <label className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950/60 px-3 py-3 text-sm text-neutral-300">
+                  <span>Active</span>
+                  <Checkbox
+                    checked={form.is_active}
+                    onCheckedChange={(checked) => setForm((current) => ({ ...current, is_active: checked === true }))}
+                    className="flex h-4 w-4 items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-white"
+                  >
+                    <CheckboxIndicator className="h-3 w-3" />
+                  </Checkbox>
+                </label>
+              </div>
             </FieldGroup>
           </div>
 

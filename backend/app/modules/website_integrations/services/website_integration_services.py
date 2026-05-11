@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from decimal import Decimal
 import hashlib
@@ -14,6 +15,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.cache import cache_get_json, cache_set_json
 from app.core.config import settings
+from app.core.uploads import build_media_url
+from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.website_integrations.models import (
     WebsiteCatalogItem,
@@ -26,6 +29,28 @@ from app.modules.website_integrations.models import (
 INTEGRATION_KEY_PREFIX = "lynk_live_"
 DEFAULT_CATALOG_READ_SCOPE = "catalog:read"
 ORDER_WRITE_SCOPE = "orders:write"
+
+
+@dataclass(frozen=True)
+class PublicCatalogItem:
+    id: int
+    item_type: str
+    slug: str | None
+    sku: str | None
+    name: str
+    description: str | None
+    currency: str
+    public_unit_price: Decimal
+    stock_status: str
+    stock_quantity: Decimal | None
+    media_url: str | None
+    metadata_json: dict | None
+    is_public: bool
+    is_active: bool
+    created_at: datetime
+    updated_at: datetime
+    product: CatalogProduct | None = None
+    service: CatalogService | None = None
 
 
 def _utcnow() -> datetime:
@@ -106,7 +131,7 @@ def serialize_api_key(key: WebsiteIntegrationApiKey, *, api_key: str | None = No
     }
 
 
-def serialize_catalog_item(item: WebsiteCatalogItem, *, public: bool = False) -> dict:
+def serialize_catalog_item(item: PublicCatalogItem | WebsiteCatalogItem, *, public: bool = False) -> dict:
     payload = {
         "id": item.id,
         "item_type": item.item_type,
@@ -151,6 +176,9 @@ def serialize_order(order: WebsiteIntegrationOrder, *, idempotent_replayed: bool
             {
                 "id": line.id,
                 "catalog_item_id": line.catalog_item_id,
+                "catalog_product_id": line.catalog_product_id,
+                "catalog_service_id": line.catalog_service_id,
+                "item_type": line.item_type,
                 "slug": line.slug,
                 "sku": line.sku,
                 "name": line.name,
@@ -271,6 +299,50 @@ def check_integration_rate_limit(key: WebsiteIntegrationApiKey, *, operation: st
     cache_set_json(cache_key, {"count": count + 1}, ttl_seconds=window_seconds)
 
 
+def _public_item_from_product(product: CatalogProduct) -> PublicCatalogItem:
+    return PublicCatalogItem(
+        id=product.id,
+        item_type="product",
+        slug=product.slug,
+        sku=product.sku,
+        name=product.name,
+        description=product.description,
+        currency=product.currency,
+        public_unit_price=product.public_unit_price,
+        stock_status=product.stock_status,
+        stock_quantity=product.stock_quantity,
+        media_url=build_media_url(product.media_path) if product.media_path else None,
+        metadata_json=None,
+        is_public=bool(product.is_public),
+        is_active=bool(product.is_active),
+        created_at=product.created_at,
+        updated_at=product.updated_at,
+        product=product,
+    )
+
+
+def _public_item_from_service(service: CatalogService) -> PublicCatalogItem:
+    return PublicCatalogItem(
+        id=service.id,
+        item_type="service",
+        slug=service.slug,
+        sku=None,
+        name=service.name,
+        description=service.description,
+        currency=service.currency,
+        public_unit_price=service.public_unit_price,
+        stock_status="untracked",
+        stock_quantity=None,
+        media_url=build_media_url(service.media_path) if service.media_path else None,
+        metadata_json=None,
+        is_public=bool(service.is_public),
+        is_active=bool(service.is_active),
+        created_at=service.created_at,
+        updated_at=service.updated_at,
+        service=service,
+    )
+
+
 def list_catalog_items(
     db: Session,
     *,
@@ -280,28 +352,61 @@ def list_catalog_items(
     item_type: str | None = None,
     limit: int | None = None,
     offset: int = 0,
-) -> tuple[list[WebsiteCatalogItem], int]:
-    query = db.query(WebsiteCatalogItem).filter(WebsiteCatalogItem.tenant_id == tenant_id)
+) -> tuple[list[PublicCatalogItem], int]:
+    product_query = db.query(CatalogProduct).filter(
+        CatalogProduct.tenant_id == tenant_id,
+        CatalogProduct.deleted_at.is_(None),
+        CatalogProduct.slug.is_not(None),
+    )
+    service_query = db.query(CatalogService).filter(
+        CatalogService.tenant_id == tenant_id,
+        CatalogService.deleted_at.is_(None),
+        CatalogService.slug.is_not(None),
+    )
     if not include_private:
-        query = query.filter(WebsiteCatalogItem.is_public == 1, WebsiteCatalogItem.is_active == 1)
+        product_query = product_query.filter(CatalogProduct.is_public == 1, CatalogProduct.is_active == 1)
+        service_query = service_query.filter(CatalogService.is_public == 1, CatalogService.is_active == 1)
     if item_type:
-        query = query.filter(WebsiteCatalogItem.item_type == item_type)
+        item_type = item_type.strip().lower()
+        if item_type == "product":
+            service_query = service_query.filter(False)
+        elif item_type == "service":
+            product_query = product_query.filter(False)
+        else:
+            product_query = product_query.filter(False)
+            service_query = service_query.filter(False)
     if search:
         value = f"%{search.strip()}%"
-        query = query.filter(
+        product_query = product_query.filter(
             or_(
-                WebsiteCatalogItem.name.ilike(value),
-                WebsiteCatalogItem.slug.ilike(value),
-                WebsiteCatalogItem.sku.ilike(value),
+                CatalogProduct.name.ilike(value),
+                CatalogProduct.slug.ilike(value),
+                CatalogProduct.sku.ilike(value),
             )
         )
-    total = query.count()
-    query = query.order_by(WebsiteCatalogItem.updated_at.desc(), WebsiteCatalogItem.id.desc())
+        service_query = service_query.filter(
+            or_(
+                CatalogService.name.ilike(value),
+                CatalogService.slug.ilike(value),
+            )
+        )
+    product_total = product_query.count()
+    service_total = service_query.count()
+    page_limit = (offset + limit) if limit is not None else None
+    product_query = product_query.order_by(CatalogProduct.updated_at.desc(), CatalogProduct.id.desc())
+    service_query = service_query.order_by(CatalogService.updated_at.desc(), CatalogService.id.desc())
+    if page_limit is not None:
+        product_query = product_query.limit(page_limit)
+        service_query = service_query.limit(page_limit)
+    products = [_public_item_from_product(product) for product in product_query.all()]
+    services = [_public_item_from_service(service) for service in service_query.all()]
+    items = sorted([*products, *services], key=lambda item: (item.updated_at, item.id), reverse=True)
+    total = product_total + service_total
     if offset:
-        query = query.offset(offset)
+        items = items[offset:]
     if limit is not None:
-        query = query.limit(limit)
-    return query.all(), total
+        items = items[:limit]
+    return items, total
 
 
 def list_orders(db: Session, *, tenant_id: int, limit: int | None = None, offset: int = 0) -> tuple[list[WebsiteIntegrationOrder], int]:
@@ -331,40 +436,83 @@ def _existing_order_by_reference(db: Session, *, tenant_id: int, external_refere
     )
 
 
-def _resolve_public_catalog_item_for_order(db: Session, *, tenant_id: int, line: dict) -> WebsiteCatalogItem:
-    query = db.query(WebsiteCatalogItem).filter(
-        WebsiteCatalogItem.tenant_id == tenant_id,
-        WebsiteCatalogItem.is_public == 1,
-        WebsiteCatalogItem.is_active == 1,
+def _resolve_public_catalog_item_for_order(db: Session, *, tenant_id: int, line: dict) -> PublicCatalogItem:
+    item_type = (line.get("item_type") or "").strip().lower() or None
+    product_query = db.query(CatalogProduct).filter(
+        CatalogProduct.tenant_id == tenant_id,
+        CatalogProduct.is_public == 1,
+        CatalogProduct.is_active == 1,
+        CatalogProduct.deleted_at.is_(None),
     )
-    if line.get("catalog_item_id"):
-        query = query.filter(WebsiteCatalogItem.id == line["catalog_item_id"])
+    service_query = db.query(CatalogService).filter(
+        CatalogService.tenant_id == tenant_id,
+        CatalogService.is_public == 1,
+        CatalogService.is_active == 1,
+        CatalogService.deleted_at.is_(None),
+    )
+    if line.get("catalog_product_id"):
+        product = product_query.filter(CatalogProduct.id == line["catalog_product_id"]).with_for_update().first()
+        if not product:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog product not found for order line")
+        item = _public_item_from_product(product)
+    elif line.get("catalog_service_id"):
+        service = service_query.filter(CatalogService.id == line["catalog_service_id"]).first()
+        if not service:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog service not found for order line")
+        item = _public_item_from_service(service)
+    elif line.get("catalog_item_id") and item_type in {"product", "service"}:
+        if item_type == "product":
+            product = product_query.filter(CatalogProduct.id == line["catalog_item_id"]).with_for_update().first()
+            if not product:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog product not found for order line")
+            item = _public_item_from_product(product)
+        else:
+            service = service_query.filter(CatalogService.id == line["catalog_item_id"]).first()
+            if not service:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog service not found for order line")
+            item = _public_item_from_service(service)
     elif line.get("slug"):
-        query = query.filter(WebsiteCatalogItem.slug == str(line["slug"]).strip().lower())
+        slug = str(line["slug"]).strip().lower()
+        product = None
+        service = None
+        if item_type in {None, "product"}:
+            product = product_query.filter(CatalogProduct.slug == slug).with_for_update().first()
+        if item_type in {None, "service"}:
+            service = service_query.filter(CatalogService.slug == slug).first()
+        if product and service:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order line slug matches multiple catalog item types")
+        if product:
+            item = _public_item_from_product(product)
+        elif service:
+            item = _public_item_from_service(service)
+        else:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog item not found for order line")
     elif line.get("sku"):
-        query = query.filter(WebsiteCatalogItem.sku == str(line["sku"]).strip())
+        product = product_query.filter(CatalogProduct.sku == str(line["sku"]).strip()).with_for_update().first()
+        if not product:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog product not found for order line")
+        item = _public_item_from_product(product)
     else:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order line requires catalog_item_id, slug, or sku")
-    item = query.with_for_update().first()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog item not found for order line")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order line requires product, service, slug, or sku lookup")
     if item.stock_status == "out_of_stock":
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"{item.name} is out of stock")
     return item
 
 
-def _apply_stock_decrement(item: WebsiteCatalogItem, quantity: Decimal) -> tuple[Decimal | None, Decimal | None]:
+def _apply_stock_decrement(item: PublicCatalogItem, quantity: Decimal) -> tuple[Decimal | None, Decimal | None]:
+    if item.product is None:
+        return None, None
     before = Decimal(str(item.stock_quantity)) if item.stock_quantity is not None else None
     if before is None:
         return None, None
     if before < quantity:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.name}")
     after = before - quantity
-    item.stock_quantity = after
+    item.product.stock_quantity = after
     if after <= 0:
-        item.stock_status = "out_of_stock"
-    elif item.stock_status == "out_of_stock":
-        item.stock_status = "in_stock"
+        item.product.stock_status = "out_of_stock"
+    elif item.product.stock_status == "out_of_stock":
+        item.product.stock_status = "in_stock"
     return before, after
 
 
@@ -419,12 +567,15 @@ def create_public_order(
         unit_price = Decimal(str(item.public_unit_price))
         line_total = unit_price * quantity
         subtotal += line_total
-        db.add(item)
+        if item.product is not None:
+            db.add(item.product)
         db.add(
             WebsiteIntegrationOrderLine(
                 tenant_id=tenant_id,
                 order_id=order.id,
-                catalog_item_id=item.id,
+                catalog_product_id=item.product.id if item.product else None,
+                catalog_service_id=item.service.id if item.service else None,
+                item_type=item.item_type,
                 slug=item.slug,
                 sku=item.sku,
                 name=item.name,
@@ -462,131 +613,34 @@ def create_public_order(
     )
     return order, False
 
-
-def get_catalog_item_or_404(db: Session, *, tenant_id: int, item_id: int) -> WebsiteCatalogItem:
-    item = (
-        db.query(WebsiteCatalogItem)
-        .filter(WebsiteCatalogItem.tenant_id == tenant_id, WebsiteCatalogItem.id == item_id)
-        .first()
-    )
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog item not found")
-    return item
-
-
-def get_public_catalog_item_by_slug_or_404(db: Session, *, tenant_id: int, slug: str) -> WebsiteCatalogItem:
-    item = (
-        db.query(WebsiteCatalogItem)
+def get_public_catalog_item_by_slug_or_404(db: Session, *, tenant_id: int, slug: str) -> PublicCatalogItem:
+    normalized = slug.strip().lower()
+    product = (
+        db.query(CatalogProduct)
         .filter(
-            WebsiteCatalogItem.tenant_id == tenant_id,
-            WebsiteCatalogItem.slug == slug.strip().lower(),
-            WebsiteCatalogItem.is_public == 1,
-            WebsiteCatalogItem.is_active == 1,
+            CatalogProduct.tenant_id == tenant_id,
+            CatalogProduct.slug == normalized,
+            CatalogProduct.is_public == 1,
+            CatalogProduct.is_active == 1,
+            CatalogProduct.deleted_at.is_(None),
         )
         .first()
     )
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog item not found")
-    return item
-
-
-def create_catalog_item(db: Session, *, tenant_id: int, actor_user_id: int | None, payload: dict) -> WebsiteCatalogItem:
-    item = WebsiteCatalogItem(
-        tenant_id=tenant_id,
-        item_type=payload.get("item_type") or "product",
-        slug=str(payload["slug"]).strip().lower(),
-        sku=(payload.get("sku") or "").strip() or None,
-        name=str(payload["name"]).strip(),
-        description=(payload.get("description") or "").strip() or None,
-        currency=str(payload.get("currency") or "USD").strip().upper(),
-        public_unit_price=Decimal(str(payload["public_unit_price"])),
-        stock_status=payload.get("stock_status") or "untracked",
-        stock_quantity=Decimal(str(payload["stock_quantity"])) if payload.get("stock_quantity") is not None else None,
-        media_url=(payload.get("media_url") or "").strip() or None,
-        metadata_json=payload.get("metadata"),
-        is_public=1 if _bool(payload.get("is_public")) else 0,
-        is_active=1 if payload.get("is_active", True) else 0,
-        created_by_user_id=actor_user_id,
-        updated_by_user_id=actor_user_id,
+    service = (
+        db.query(CatalogService)
+        .filter(
+            CatalogService.tenant_id == tenant_id,
+            CatalogService.slug == normalized,
+            CatalogService.is_public == 1,
+            CatalogService.is_active == 1,
+            CatalogService.deleted_at.is_(None),
+        )
+        .first()
     )
-    db.add(item)
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Catalog item slug or SKU already exists") from exc
-    db.refresh(item)
-    log_activity(
-        db,
-        tenant_id=tenant_id,
-        actor_user_id=actor_user_id,
-        module_key="website_integrations",
-        entity_type="website_catalog_item",
-        entity_id=item.id,
-        action="website_catalog_item.create",
-        description=f"Created website catalog item {item.name}",
-        after_state=_item_state(item),
-    )
-    return item
-
-
-def update_catalog_item(db: Session, *, item: WebsiteCatalogItem, actor_user_id: int | None, payload: dict) -> WebsiteCatalogItem:
-    before_state = _item_state(item)
-    required_fields = {"item_type", "slug", "name", "currency", "public_unit_price", "stock_status"}
-    for field in [
-        "item_type",
-        "slug",
-        "sku",
-        "name",
-        "description",
-        "currency",
-        "public_unit_price",
-        "stock_status",
-        "stock_quantity",
-        "media_url",
-        "is_public",
-        "is_active",
-    ]:
-        if field not in payload:
-            continue
-        value = payload[field]
-        if value is None and field in required_fields:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field} cannot be null")
-        if field == "slug" and value is not None:
-            value = str(value).strip().lower()
-        elif field in {"sku", "description", "media_url"}:
-            value = (value or "").strip() or None
-        elif field == "name" and value is not None:
-            value = str(value).strip()
-        elif field == "currency" and value is not None:
-            value = str(value).strip().upper()
-        elif field == "public_unit_price" and value is not None:
-            value = Decimal(str(value))
-        elif field == "stock_quantity" and value is not None:
-            value = Decimal(str(value))
-        elif field in {"is_public", "is_active"} and value is not None:
-            value = 1 if value else 0
-        setattr(item, field, value)
-    if "metadata" in payload:
-        item.metadata_json = payload.get("metadata")
-    item.updated_by_user_id = actor_user_id
-    db.add(item)
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Catalog item slug or SKU already exists") from exc
-    db.refresh(item)
-    log_activity(
-        db,
-        tenant_id=item.tenant_id,
-        actor_user_id=actor_user_id,
-        module_key="website_integrations",
-        entity_type="website_catalog_item",
-        entity_id=item.id,
-        action="website_catalog_item.update",
-        description=f"Updated website catalog item {item.name}",
-        before_state=before_state,
-        after_state=_item_state(item),
-    )
-    return item
+    if product and service:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Catalog slug matches multiple item types")
+    if product:
+        return _public_item_from_product(product)
+    if service:
+        return _public_item_from_service(service)
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog item not found")

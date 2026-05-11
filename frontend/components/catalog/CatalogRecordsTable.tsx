@@ -83,6 +83,12 @@ export default function CatalogRecordsTable({
             </span>
           </TableCell>
         ) : null;
+      case "slug":
+        return (
+          <TableCell>
+            <span className="font-mono text-xs text-neutral-400">{record.slug || "-"}</span>
+          </TableCell>
+        );
       case "public_unit_price":
         return (
           <TableCell>
@@ -112,6 +118,20 @@ export default function CatalogRecordsTable({
             ) : (
               <Pill bg="bg-neutral-800/60" text="text-neutral-400" border="border-neutral-700/50" className="w-20">
                 Inactive
+              </Pill>
+            )}
+          </TableCell>
+        );
+      case "is_public":
+        return (
+          <TableCell>
+            {record.is_public ? (
+              <Pill bg="bg-emerald-900/30" text="text-emerald-300" border="border-emerald-700/40" className="w-20">
+                Public
+              </Pill>
+            ) : (
+              <Pill bg="bg-neutral-800/60" text="text-neutral-400" border="border-neutral-700/50" className="w-20">
+                Private
               </Pill>
             )}
           </TableCell>

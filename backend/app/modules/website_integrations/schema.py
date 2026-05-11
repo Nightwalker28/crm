@@ -203,6 +203,9 @@ class PublicWebsiteCatalogListResponse(BaseModel):
 
 class PublicWebsiteOrderLineRequest(BaseModel):
     catalog_item_id: int | None = None
+    catalog_product_id: int | None = None
+    catalog_service_id: int | None = None
+    item_type: WebsiteCatalogItemType | None = None
     slug: str | None = Field(default=None, max_length=160)
     sku: str | None = Field(default=None, max_length=100)
     quantity: Decimal = Field(gt=0)
@@ -217,8 +220,8 @@ class PublicWebsiteOrderLineRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_lookup(self):
-        if not self.catalog_item_id and not self.slug and not self.sku:
-            raise ValueError("order line requires catalog_item_id, slug, or sku")
+        if not self.catalog_item_id and not self.catalog_product_id and not self.catalog_service_id and not self.slug and not self.sku:
+            raise ValueError("order line requires catalog_product_id, catalog_service_id, catalog_item_id, slug, or sku")
         return self
 
 
@@ -262,6 +265,9 @@ class PublicWebsiteOrderCreateRequest(BaseModel):
 class WebsiteOrderLineResponse(BaseModel):
     id: int
     catalog_item_id: int | None = None
+    catalog_product_id: int | None = None
+    catalog_service_id: int | None = None
+    item_type: WebsiteCatalogItemType
     slug: str | None = None
     sku: str | None = None
     name: str

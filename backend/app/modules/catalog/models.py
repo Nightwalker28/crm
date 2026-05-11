@@ -22,6 +22,7 @@ from app.core.database import Base
 class CatalogProduct(Base):
     __tablename__ = "catalog_products"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "slug", name="uq_catalog_products_tenant_slug"),
         UniqueConstraint("tenant_id", "sku", name="uq_catalog_products_tenant_sku"),
         CheckConstraint(
             "stock_status IN ('untracked', 'in_stock', 'out_of_stock', 'preorder')",
@@ -36,12 +37,14 @@ class CatalogProduct(Base):
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(180), nullable=False, index=True)
+    slug = Column(String(160), nullable=True, index=True)
     description = Column(Text, nullable=True)
     sku = Column(String(100), nullable=True, index=True)
     currency = Column(String(3), nullable=False, server_default="USD")
     public_unit_price = Column(Numeric(12, 4), nullable=False, server_default="0")
     stock_status = Column(String(20), nullable=False, server_default="untracked", index=True)
     stock_quantity = Column(Numeric(12, 4), nullable=True)
+    is_public = Column(SmallInteger, nullable=False, server_default="0", index=True)
     is_active = Column(SmallInteger, nullable=False, server_default="1", index=True)
     media_path = Column(String(500), nullable=True)
     media_content_type = Column(String(120), nullable=True)
@@ -60,6 +63,7 @@ class CatalogProduct(Base):
 class CatalogService(Base):
     __tablename__ = "catalog_services"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "slug", name="uq_catalog_services_tenant_slug"),
         CheckConstraint("public_unit_price >= 0", name="ck_catalog_services_public_price_nonnegative"),
         Index("ix_catalog_services_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_catalog_services_tenant_active", "tenant_id", "is_active", postgresql_where=text("deleted_at IS NULL")),
@@ -68,9 +72,11 @@ class CatalogService(Base):
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(180), nullable=False, index=True)
+    slug = Column(String(160), nullable=True, index=True)
     description = Column(Text, nullable=True)
     currency = Column(String(3), nullable=False, server_default="USD")
     public_unit_price = Column(Numeric(12, 4), nullable=False, server_default="0")
+    is_public = Column(SmallInteger, nullable=False, server_default="0", index=True)
     is_active = Column(SmallInteger, nullable=False, server_default="1", index=True)
     media_path = Column(String(500), nullable=True)
     media_content_type = Column(String(120), nullable=True)

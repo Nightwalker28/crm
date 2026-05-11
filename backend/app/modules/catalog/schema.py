@@ -14,12 +14,14 @@ class CatalogProductStockStatus(str, Enum):
 
 class CatalogProductBase(BaseModel):
     name: str = Field(min_length=1, max_length=180)
+    slug: str | None = Field(default=None, max_length=160)
     description: str | None = None
     sku: str | None = Field(default=None, max_length=100)
     currency: str = Field(default="USD", min_length=3, max_length=3)
     public_unit_price: Decimal = Field(default=Decimal("0"), ge=0)
     stock_status: CatalogProductStockStatus = CatalogProductStockStatus.untracked
     stock_quantity: Decimal | None = Field(default=None, ge=0)
+    is_public: bool = False
     is_active: bool = True
 
     @field_validator("name", mode="after")
@@ -38,6 +40,14 @@ class CatalogProductBase(BaseModel):
         normalized = value.strip()
         return normalized or None
 
+    @field_validator("slug", mode="after")
+    @classmethod
+    def normalize_slug(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
+
     @field_validator("currency", mode="after")
     @classmethod
     def normalize_currency(cls, value: str | None) -> str:
@@ -53,12 +63,14 @@ class CatalogProductCreateRequest(CatalogProductBase):
 
 class CatalogProductUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=180)
+    slug: str | None = Field(default=None, max_length=160)
     description: str | None = None
     sku: str | None = Field(default=None, max_length=100)
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     public_unit_price: Decimal | None = Field(default=None, ge=0)
     stock_status: CatalogProductStockStatus | None = None
     stock_quantity: Decimal | None = Field(default=None, ge=0)
+    is_public: bool | None = None
     is_active: bool | None = None
 
     @field_validator("name", mode="after")
@@ -79,6 +91,14 @@ class CatalogProductUpdateRequest(BaseModel):
         normalized = value.strip()
         return normalized or None
 
+    @field_validator("slug", mode="after")
+    @classmethod
+    def normalize_slug(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
+
     @field_validator("currency", mode="after")
     @classmethod
     def normalize_currency(cls, value: str | None) -> str | None:
@@ -93,12 +113,14 @@ class CatalogProductUpdateRequest(BaseModel):
 class CatalogProductResponse(BaseModel):
     id: int
     name: str
+    slug: str | None = None
     description: str | None = None
     sku: str | None = None
     currency: str
     public_unit_price: Decimal
     stock_status: CatalogProductStockStatus
     stock_quantity: Decimal | None = None
+    is_public: bool
     is_active: bool
     media_url: str | None = None
     media_content_type: str | None = None
@@ -121,9 +143,11 @@ class CatalogProductListResponse(BaseModel):
 
 class CatalogServiceBase(BaseModel):
     name: str = Field(min_length=1, max_length=180)
+    slug: str | None = Field(default=None, max_length=160)
     description: str | None = None
     currency: str = Field(default="USD", min_length=3, max_length=3)
     public_unit_price: Decimal = Field(default=Decimal("0"), ge=0)
+    is_public: bool = False
     is_active: bool = True
 
     @field_validator("name", mode="after")
@@ -142,6 +166,14 @@ class CatalogServiceBase(BaseModel):
             raise ValueError("currency must be a 3-letter code")
         return normalized
 
+    @field_validator("slug", mode="after")
+    @classmethod
+    def normalize_slug(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
+
 
 class CatalogServiceCreateRequest(CatalogServiceBase):
     pass
@@ -149,9 +181,11 @@ class CatalogServiceCreateRequest(CatalogServiceBase):
 
 class CatalogServiceUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=180)
+    slug: str | None = Field(default=None, max_length=160)
     description: str | None = None
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     public_unit_price: Decimal | None = Field(default=None, ge=0)
+    is_public: bool | None = None
     is_active: bool | None = None
 
     @field_validator("name", mode="after")
@@ -174,13 +208,23 @@ class CatalogServiceUpdateRequest(BaseModel):
             raise ValueError("currency must be a 3-letter code")
         return normalized
 
+    @field_validator("slug", mode="after")
+    @classmethod
+    def normalize_slug(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        normalized = value.strip().lower()
+        return normalized or None
+
 
 class CatalogServiceResponse(BaseModel):
     id: int
     name: str
+    slug: str | None = None
     description: str | None = None
     currency: str
     public_unit_price: Decimal
+    is_public: bool
     is_active: bool
     media_url: str | None = None
     media_content_type: str | None = None

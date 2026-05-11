@@ -18,6 +18,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.modules.catalog import models as catalog_models  # noqa: F401
 
 
 class WebsiteIntegrationApiKey(Base):
@@ -134,6 +135,9 @@ class WebsiteIntegrationOrderLine(Base):
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     order_id = Column(BigInteger, ForeignKey("website_integration_orders.id", ondelete="CASCADE"), nullable=False, index=True)
     catalog_item_id = Column(BigInteger, ForeignKey("website_catalog_items.id", ondelete="SET NULL"), nullable=True, index=True)
+    catalog_product_id = Column(BigInteger, ForeignKey("catalog_products.id", ondelete="SET NULL"), nullable=True, index=True)
+    catalog_service_id = Column(BigInteger, ForeignKey("catalog_services.id", ondelete="SET NULL"), nullable=True, index=True)
+    item_type = Column(String(20), nullable=False, server_default="product")
     slug = Column(String(160), nullable=True)
     sku = Column(String(100), nullable=True)
     name = Column(String(180), nullable=False)
@@ -148,3 +152,5 @@ class WebsiteIntegrationOrderLine(Base):
     tenant = relationship("Tenant")
     order = relationship("WebsiteIntegrationOrder", back_populates="line_items")
     catalog_item = relationship("WebsiteCatalogItem")
+    catalog_product = relationship("CatalogProduct")
+    catalog_service = relationship("CatalogService")

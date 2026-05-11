@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from decimal import Decimal
+import re
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import or_
@@ -9,11 +10,38 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.uploads import build_media_url, delete_local_media_file, persist_media_file, read_image_upload
-from app.modules.catalog.models import CatalogProduct
+from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.catalog.schema import CatalogProductResponse
 from app.modules.platform.services.activity_logs import log_activity
 
 CATALOG_PRODUCTS_MODULE = "catalog_products"
+
+
+def _normalize_slug(value: str | None, *, fallback: str) -> str | None:
+    source = (value or fallback or "").strip().lower()
+    normalized = re.sub(r"[^a-z0-9]+", "-", source).strip("-")
+    return normalized[:160] or None
+
+
+def _ensure_slug_available(
+    db: Session,
+    *,
+    tenant_id: int,
+    slug: str | None,
+    product_id: int | None = None,
+) -> None:
+    if not slug:
+        return
+    product_query = db.query(CatalogProduct).filter(
+        CatalogProduct.tenant_id == tenant_id,
+        CatalogProduct.slug == slug,
+    )
+    if product_id is not None:
+        product_query = product_query.filter(CatalogProduct.id != product_id)
+    if product_query.first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product slug already exists.")
+    if db.query(CatalogService).filter(CatalogService.tenant_id == tenant_id, CatalogService.slug == slug).first():
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Catalog slug already exists on a service.")
 
 
 def _product_state(product: CatalogProduct) -> dict:
@@ -24,12 +52,14 @@ def serialize_product(product: CatalogProduct) -> dict:
     return {
         "id": product.id,
         "name": product.name,
+        "slug": product.slug,
         "description": product.description,
         "sku": product.sku,
         "currency": product.currency,
         "public_unit_price": product.public_unit_price,
         "stock_status": product.stock_status,
         "stock_quantity": product.stock_quantity,
+        "is_public": bool(product.is_public),
         "is_active": bool(product.is_active),
         "media_url": build_media_url(product.media_path) if product.media_path else None,
         "media_content_type": product.media_content_type,
@@ -114,15 +144,19 @@ def get_product_or_404(
 
 
 def create_product(db: Session, *, tenant_id: int, actor_user_id: int | None, payload: dict) -> CatalogProduct:
+    slug = _normalize_slug(payload.get("slug"), fallback=payload["name"])
+    _ensure_slug_available(db, tenant_id=tenant_id, slug=slug)
     product = CatalogProduct(
         tenant_id=tenant_id,
         name=str(payload["name"]).strip(),
+        slug=slug,
         description=(payload.get("description") or "").strip() or None,
         sku=(payload.get("sku") or "").strip() or None,
         currency=str(payload.get("currency") or "USD").strip().upper(),
         public_unit_price=Decimal(str(payload.get("public_unit_price", 0))),
         stock_status=payload.get("stock_status") or "untracked",
         stock_quantity=Decimal(str(payload["stock_quantity"])) if payload.get("stock_quantity") is not None else None,
+        is_public=1 if payload.get("is_public", False) else 0,
         is_active=1 if payload.get("is_active", True) else 0,
         created_by_user_id=actor_user_id,
         updated_by_user_id=actor_user_id,
@@ -132,7 +166,7 @@ def create_product(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product SKU already exists.") from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product slug or SKU already exists.") from exc
     db.refresh(product)
     log_activity(
         db,
@@ -159,12 +193,14 @@ def update_product(
     required_fields = {"name", "currency", "public_unit_price", "stock_status"}
     for field in [
         "name",
+        "slug",
         "description",
         "sku",
         "currency",
         "public_unit_price",
         "stock_status",
         "stock_quantity",
+        "is_public",
         "is_active",
     ]:
         if field not in payload:
@@ -172,7 +208,10 @@ def update_product(
         value = payload[field]
         if value is None and field in required_fields:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field} cannot be null")
-        if field in {"description", "sku"}:
+        if field == "slug":
+            value = _normalize_slug(value, fallback=product.name)
+            _ensure_slug_available(db, tenant_id=product.tenant_id, slug=value, product_id=product.id)
+        elif field in {"description", "sku"}:
             value = (value or "").strip() or None
         elif field == "name" and value is not None:
             value = str(value).strip()
@@ -180,7 +219,7 @@ def update_product(
             value = str(value).strip().upper()
         elif field in {"public_unit_price", "stock_quantity"} and value is not None:
             value = Decimal(str(value))
-        elif field == "is_active" and value is not None:
+        elif field in {"is_public", "is_active"} and value is not None:
             value = 1 if value else 0
         setattr(product, field, value)
     product.updated_by_user_id = actor_user_id
@@ -189,7 +228,7 @@ def update_product(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product SKU already exists.") from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product slug or SKU already exists.") from exc
     db.refresh(product)
     log_activity(
         db,

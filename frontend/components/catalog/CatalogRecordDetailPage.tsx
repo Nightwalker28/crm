@@ -138,6 +138,14 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
             </div>
 
             <dl className="mt-6 grid gap-4 sm:grid-cols-2">
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-neutral-500">Public Slug</dt>
+                <dd className="mt-1 font-mono text-sm text-neutral-200">{record.slug || "-"}</dd>
+              </div>
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-neutral-500">Website Feed</dt>
+                <dd className="mt-1 text-sm text-neutral-200">{record.is_public ? "Public" : "Private"}</dd>
+              </div>
               {isProduct ? (
                 <div>
                   <dt className="text-xs uppercase tracking-wide text-neutral-500">SKU</dt>

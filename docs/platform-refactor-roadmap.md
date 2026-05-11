@@ -18,7 +18,7 @@ Current phase:
 - Phase 9 in progress: collaboration and integrations foundation with tasks, calendar/mail foundations, WhatsApp click-to-chat, external alerts, and external document storage starting with Google Drive
 
 Completed items:
-- Added the first backend-only website/WordPress integration foundation with tenant-scoped integration API keys, CRM-managed public catalog items, and read-only public catalog endpoints for approved products/services, public prices, stock state, and media URLs.
+- Added the first website/WordPress integration foundation with tenant-scoped integration API keys and public catalog endpoints backed by first-class Product and Service modules for approved public prices, stock state, and media URLs.
 - Added external website order writebacks with a separate `orders:write` integration-key scope, idempotent external references, captured order/line records, price snapshots, and one-time stock decrement for confirmed website orders.
 - Hardened public website integration endpoints with per-key fixed-window rate limiting through the shared cache layer.
 - Added the first tenant-aware Documents module with authenticated document storage, PDF/DOC/DOCX/TXT/RTF/ODT upload validation, file and tenant storage limits, a standalone `/dashboard/documents` surface, and record-linked document panels for contacts, organizations, and opportunities.
@@ -197,7 +197,7 @@ In progress:
   - skeleton loading states and pagination/refetch polish
   - dialog-width standardization and remaining visual consistency cleanup
 - Treat audit-driven CRM features as shared platform patterns across applicable modules and complete each slice to production-grade before moving on to the next one.
-- Website and WordPress integration management is now landed on top of the public integration API, covering CRM-facing API keys, public catalog management, and recent website order visibility while keeping customer-specific pricing behind signed/authenticated access.
+- Website and WordPress integration management is now landed on top of the public integration API, covering CRM-facing API keys and recent website order visibility while Product and Service modules own public catalog management. Customer-specific pricing stays behind signed/authenticated access.
 - Finish the current export rebuild so contacts, organizations, opportunities, and insertion orders can export all rows, selected rows across pages, and the current visible page through the background-job flow.
 - Restore the branded splash/loading treatment in a controlled way for initial load and route-level loading states.
 - Rebuild imports into a proper staged workflow with preview/header mapping first, then duplicate-policy control, then richer result summaries.

@@ -14,7 +14,7 @@ Before making substantial code changes:
 
 ## Current Focus
 
-Production-readiness bugfix pass for mail and calendar integration correctness before moving to the next website/finance slice.
+Production-readiness refactor for the website/WordPress integration slice: product and service catalog data must live in first-class Product/Service modules, while integrations only handle API keys, public API/webhook boundaries, and website order writebacks.
 
 Active production-readiness sequence:
 
@@ -33,7 +33,8 @@ Active website integration sequence:
 3. [done] add a simple CRM frontend for API-key, catalog, and website-order management
 4. [done] add external booking/order confirmation writebacks with idempotency and stock-safe decrement
 5. [done] rate-limit public integration endpoints per API key
-6. keep invoices and payment links as later integration slices
+6. [active] refactor public catalog reads and order writebacks onto the first-class Product and Service modules instead of integration-owned catalog records
+7. keep invoices and payment links as later integration slices
 
 Recently landed in the Documents slice:
 

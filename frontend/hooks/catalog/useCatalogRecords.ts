@@ -11,12 +11,14 @@ export type CatalogKind = "products" | "services";
 export type CatalogRecord = {
   id: number;
   name: string;
+  slug?: string | null;
   description?: string | null;
   sku?: string | null;
   currency: string;
   public_unit_price: number | string;
   stock_status?: "untracked" | "in_stock" | "out_of_stock" | "preorder";
   stock_quantity?: number | string | null;
+  is_public: boolean;
   is_active: boolean;
   media_url?: string | null;
   media_content_type?: string | null;
@@ -27,12 +29,14 @@ export type CatalogRecord = {
 
 export type CatalogRecordPayload = {
   name: string;
+  slug?: string | null;
   description?: string | null;
   sku?: string | null;
   currency: string;
   public_unit_price: number;
   stock_status?: string;
   stock_quantity?: number | null;
+  is_public: boolean;
   is_active: boolean;
 };
 
