@@ -30,6 +30,13 @@ class CatalogModuleFoundationTests(unittest.TestCase):
         self.assertIn("product", modules_by_name["catalog_products"]["description"].lower())
         self.assertIn("service", modules_by_name["catalog_services"]["description"].lower())
 
+    def test_finance_pos_module_is_seeded_for_pos_mode(self):
+        default_modules = _load_default_modules()
+        modules_by_name = {module["name"]: module for module in default_modules}
+
+        self.assertEqual(modules_by_name["finance_pos"]["base_route"], "/dashboard/finance/pos")
+        self.assertIn("pos", modules_by_name["finance_pos"]["description"].lower())
+
 
 if __name__ == "__main__":
     unittest.main()

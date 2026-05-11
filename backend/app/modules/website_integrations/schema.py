@@ -283,6 +283,7 @@ class WebsiteOrderLineResponse(BaseModel):
 
 class WebsiteOrderResponse(BaseModel):
     id: int
+    pos_invoice_id: int | None = None
     external_reference: str
     source_platform: str | None = None
     status: str

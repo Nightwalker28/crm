@@ -8,8 +8,9 @@ from app.core.database import Base
 from app.core import cache
 from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.catalog.services import product_services, service_services
+from app.modules.finance import models as finance_models  # noqa: F401
 from app.modules.platform import models as platform_models  # noqa: F401
-from app.modules.user_management.models import Tenant
+from app.modules.user_management.models import CompanyProfile, Tenant, User
 from app.modules.website_integrations import models as website_models  # noqa: F401
 from app.modules.website_integrations.services import website_integration_services as services
 
@@ -24,6 +25,8 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
             [
                 Tenant(id=10, slug="default", name="Default"),
                 Tenant(id=99, slug="other", name="Other"),
+                User(id=7, tenant_id=10, email="admin@example.com"),
+                CompanyProfile(id=1, tenant_id=10, name="Default Co", operating_currencies=["USD"]),
             ]
         )
         self.db.commit()
@@ -157,6 +160,51 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
         self.assertEqual(order.id, second_order.id)
         self.assertEqual(str(item.stock_quantity), "2.0000")
         self.assertEqual(str(order.subtotal_amount), "100.0000")
+
+    def test_website_order_can_be_converted_to_pos_invoice_once(self):
+        key, _raw_key = services.create_api_key(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Bookings", "scopes": ["catalog:read", "orders:write"], "allowed_origins": []},
+        )
+        product_services.create_product(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={
+                "slug": "starter",
+                "name": "Starter",
+                "currency": "USD",
+                "public_unit_price": "25.00",
+                "stock_status": "in_stock",
+                "stock_quantity": "5",
+                "is_public": True,
+                "is_active": True,
+            },
+        )
+        order, _replayed = services.create_public_order(
+            self.db,
+            tenant_id=10,
+            api_key_id=key.id,
+            payload={
+                "external_reference": "wp-order-200",
+                "source_platform": "wordpress",
+                "customer_name": "Buyer",
+                "customer_email": "buyer@example.com",
+                "line_items": [{"slug": "starter", "quantity": "2"}],
+            },
+        )
+        current_user = type("UserCtx", (), {"id": 7, "tenant_id": 10, "role_id": None, "team_id": None})()
+
+        invoice, already_existing = services.create_pos_invoice_for_order(self.db, current_user=current_user, order_id=order.id)
+        second_invoice, second_existing = services.create_pos_invoice_for_order(self.db, current_user=current_user, order_id=order.id)
+
+        self.assertFalse(already_existing)
+        self.assertTrue(second_existing)
+        self.assertEqual(invoice.id, second_invoice.id)
+        self.assertEqual(str(invoice.total_amount), "50.00")
+        self.assertEqual(invoice.customer_email, "buyer@example.com")
 
     def test_public_order_rejects_duplicate_reference_with_different_payload(self):
         key, _raw_key = services.create_api_key(

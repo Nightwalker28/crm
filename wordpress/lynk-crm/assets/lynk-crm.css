@@ -1,0 +1,48 @@
+.lynk-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+}
+
+.lynk-catalog__item,
+.lynk-order-form {
+  border: 1px solid #d4d4d4;
+  border-radius: 6px;
+  padding: 16px;
+}
+
+.lynk-catalog__image {
+  display: block;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 4px;
+  margin-bottom: 12px;
+}
+
+.lynk-catalog__price {
+  font-weight: 700;
+  margin-top: 8px;
+}
+
+.lynk-order-form {
+  display: grid;
+  gap: 12px;
+  max-width: 420px;
+}
+
+.lynk-order-form label {
+  display: grid;
+  gap: 4px;
+}
+
+.lynk-order-form input {
+  width: 100%;
+}
+
+.lynk-crm-error {
+  border: 1px solid #b91c1c;
+  border-radius: 6px;
+  color: #991b1b;
+  padding: 12px;
+}

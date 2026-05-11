@@ -17,6 +17,7 @@ from app.core.cache import cache_get_json, cache_set_json
 from app.core.config import settings
 from app.core.uploads import build_media_url
 from app.modules.catalog.models import CatalogProduct, CatalogService
+from app.modules.finance.services import pos_invoice_services
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.website_integrations.models import (
     WebsiteCatalogItem,
@@ -161,6 +162,7 @@ def serialize_catalog_item(item: PublicCatalogItem | WebsiteCatalogItem, *, publ
 def serialize_order(order: WebsiteIntegrationOrder, *, idempotent_replayed: bool = False) -> dict:
     return {
         "id": order.id,
+        "pos_invoice_id": order.pos_invoice_id,
         "external_reference": order.external_reference,
         "source_platform": order.source_platform,
         "status": order.status,
@@ -422,6 +424,68 @@ def list_orders(db: Session, *, tenant_id: int, limit: int | None = None, offset
     if limit is not None:
         query = query.limit(limit)
     return query.all(), total
+
+
+def get_order_or_404(db: Session, *, tenant_id: int, order_id: int) -> WebsiteIntegrationOrder:
+    order = (
+        db.query(WebsiteIntegrationOrder)
+        .options(selectinload(WebsiteIntegrationOrder.line_items))
+        .filter(WebsiteIntegrationOrder.tenant_id == tenant_id, WebsiteIntegrationOrder.id == order_id)
+        .first()
+    )
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Website order not found")
+    return order
+
+
+def create_pos_invoice_for_order(db: Session, *, current_user, order_id: int):
+    order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
+    if order.pos_invoice_id:
+        invoice = pos_invoice_services.get_invoice_or_404(db, current_user, order.pos_invoice_id)
+        return invoice, True
+    payload = {
+        "customer_name": order.customer_name or order.customer_email or f"Website order {order.external_reference}",
+        "customer_email": order.customer_email,
+        "customer_address": None,
+        "status": "issued",
+        "payment_status": "unpaid",
+        "payment_method": order.source_platform,
+        "template_id": "modern",
+        "accent_color": "#14b8a6",
+        "currency": order.currency,
+        "discount_amount": 0,
+        "tax_rate": 0,
+        "amount_paid": 0,
+        "payment_terms": "Generated from website order.",
+        "notes": f"Source order: {order.external_reference}",
+        "lines": [
+            {
+                "catalog_product_id": line.catalog_product_id,
+                "catalog_service_id": line.catalog_service_id,
+                "description": line.name,
+                "quantity": line.quantity,
+                "unit_price": line.unit_price_snapshot,
+            }
+            for line in order.line_items
+        ],
+    }
+    invoice = pos_invoice_services.create_invoice(db, current_user, payload)
+    order.pos_invoice_id = invoice.id
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    log_activity(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="website_integrations",
+        entity_type="website_order",
+        entity_id=order.id,
+        action="website_order.convert_to_pos_invoice",
+        description=f"Created POS invoice {invoice.invoice_number} from website order {order.external_reference}",
+        after_state={"order_id": order.id, "pos_invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
+    )
+    return invoice, False
 
 
 def _existing_order_by_reference(db: Session, *, tenant_id: int, external_reference: str) -> WebsiteIntegrationOrder | None:

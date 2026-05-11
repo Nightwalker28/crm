@@ -22,6 +22,7 @@ from app.modules.website_integrations.services.website_integration_services impo
     list_api_keys,
     list_catalog_items,
     list_orders,
+    create_pos_invoice_for_order,
     resolve_public_api_key,
     revoke_api_key,
     serialize_api_key,
@@ -131,6 +132,27 @@ def get_website_orders(
 ):
     orders, _total = list_orders(db, tenant_id=current_user.tenant_id, limit=limit, offset=offset)
     return [WebsiteOrderResponse.model_validate(serialize_order(order)) for order in orders]
+
+
+@router.post("/orders/{order_id}/create-pos-invoice")
+def create_website_order_pos_invoice(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("website_integrations")),
+    require_permission=Depends(require_action_access("website_integrations", "edit")),
+    require_finance_permission=Depends(require_action_access("finance_pos", "create")),
+):
+    invoice, already_existing = create_pos_invoice_for_order(
+        db,
+        current_user=current_user,
+        order_id=order_id,
+    )
+    return {
+        "pos_invoice_id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "already_existing": already_existing,
+    }
 
 
 @public_router.get("/catalog", response_model=PublicWebsiteCatalogListResponse)

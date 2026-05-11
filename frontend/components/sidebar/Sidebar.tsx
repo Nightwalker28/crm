@@ -86,6 +86,7 @@ export default function Sidebar() {
   const moduleMap = new Map(modules.map((module) => [module.name, module]));
   const documentsModule = moduleMap.get("documents");
   const financeIoModule = moduleMap.get("finance_io");
+  const financePosModule = moduleMap.get("finance_pos");
   const tasksModule = moduleMap.get("tasks");
   const calendarModule = moduleMap.get("calendar");
   const mailModule = moduleMap.get("mail");
@@ -232,14 +233,21 @@ export default function Sidebar() {
                 </SidebarMenuItemCollapsible>
               ) : null}
 
-              {financeIoModule?.base_route ? (
+              {(financeIoModule?.base_route || financePosModule?.base_route) ? (
                 <SidebarMenuItemCollapsible icon={HandCoins} label="Finance" collapsed={collapsed}>
                   <SidebarMenuItemChild href="/dashboard/finance" collapsed={collapsed}>
                     Overview
                   </SidebarMenuItemChild>
+                  {financePosModule?.base_route ? (
+                    <SidebarMenuItemChild href={financePosModule.base_route} collapsed={collapsed}>
+                      POS Mode
+                    </SidebarMenuItemChild>
+                  ) : null}
+                  {financeIoModule?.base_route ? (
                   <SidebarMenuItemChild href={financeIoModule.base_route} collapsed={collapsed}>
                     Insertion Orders
                   </SidebarMenuItemChild>
+                  ) : null}
                 </SidebarMenuItemCollapsible>
               ) : null}
 

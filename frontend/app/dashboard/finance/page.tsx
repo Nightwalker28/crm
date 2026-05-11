@@ -89,6 +89,9 @@ export default function FinancePage() {
             <Button asChild>
               <Link href="/dashboard/finance/insertion-orders">Open Insertion Orders</Link>
             </Button>
+            <Button asChild>
+              <Link href="/dashboard/finance/pos">Open POS Mode</Link>
+            </Button>
           </>
         }
       />

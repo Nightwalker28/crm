@@ -34,6 +34,7 @@ DEFAULT_MODULES = [
     {"name": "calendar", "base_route": "/dashboard/calendar", "description": "Shared user calendar and scheduling"},
     {"name": "tasks", "base_route": "/dashboard/tasks", "description": "Collaborative task management and assignment"},
     {"name": "finance_io", "base_route": "/dashboard/finance/insertion-orders", "description": "Finance insertion orders"},
+    {"name": "finance_pos", "base_route": "/dashboard/finance/pos", "description": "POS mode invoices and walk-in sales"},
     {"name": "sales_contacts", "base_route": "/dashboard/sales/contacts", "description": "Sales contacts"},
     {"name": "sales_organizations", "base_route": "/dashboard/sales/organizations", "description": "Sales organizations"},
     {"name": "sales_opportunities", "base_route": "/dashboard/sales/opportunities", "description": "Sales opportunities"},

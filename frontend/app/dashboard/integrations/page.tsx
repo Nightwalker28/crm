@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { Copy, KeyRound, Package, PlugZap, RefreshCw, Send, ShoppingCart, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, KeyRound, Package, PlugZap, RefreshCw, Send, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -90,6 +90,7 @@ type WebsiteOrderLine = {
 
 type WebsiteOrder = {
   id: number;
+  pos_invoice_id: number | null;
   external_reference: string;
   source_platform: string | null;
   status: string;
@@ -346,6 +347,21 @@ export default function IntegrationsPage() {
     }
   }
 
+  async function createPosInvoice(order: WebsiteOrder) {
+    try {
+      setWebsiteSaving(true);
+      const res = await apiFetch(`/integrations/orders/${order.id}/create-pos-invoice`, { method: "POST" });
+      const body = await readJson(res);
+      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+      await loadWebsiteIntegrations();
+      toast.success(body?.already_existing ? "POS invoice already exists." : "POS invoice created from website order.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to create POS invoice.");
+    } finally {
+      setWebsiteSaving(false);
+    }
+  }
+
   async function updateChannel(channel: NotificationChannel, payload: Partial<NotificationChannel>) {
     try {
       setSaving(true);
@@ -572,13 +588,15 @@ export default function IntegrationsPage() {
                 <TableHead>Customer</TableHead>
                 <TableHead>Items</TableHead>
                 <TableHead>Total</TableHead>
+                <TableHead>Invoice</TableHead>
                 <TableHead>Created</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
               </TableHeaderRow>
             </TableHeader>
             <TableBody>
               {websiteLoading ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center text-neutral-500">Loading website orders...</TableCell>
+                  <TableCell colSpan={7} className="py-10 text-center text-neutral-500">Loading website orders...</TableCell>
                 </TableRow>
               ) : websiteOrders.length ? (
                 websiteOrders.map((order) => (
@@ -603,12 +621,37 @@ export default function IntegrationsPage() {
                       </div>
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-neutral-300">{money(order.subtotal_amount, order.currency)}</TableCell>
+                    <TableCell>
+                      {order.pos_invoice_id ? (
+                        <Button asChild variant="outline" size="sm">
+                          <Link href={`/dashboard/finance/pos/${order.pos_invoice_id}/print`}>
+                            <ExternalLink size={14} />
+                            POS #{order.pos_invoice_id}
+                          </Link>
+                        </Button>
+                      ) : (
+                        <span className="text-sm text-neutral-500">Not created</span>
+                      )}
+                    </TableCell>
                     <TableCell className="whitespace-nowrap text-neutral-400">{formatDateTime(order.created_at)}</TableCell>
+                    <TableCell>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={websiteSaving || Boolean(order.pos_invoice_id)}
+                          onClick={() => createPosInvoice(order)}
+                        >
+                          Create POS Invoice
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))
               ) : (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-10 text-center text-neutral-500">No website orders captured yet.</TableCell>
+                  <TableCell colSpan={7} className="py-10 text-center text-neutral-500">No website orders captured yet.</TableCell>
                 </TableRow>
               )}
             </TableBody>
