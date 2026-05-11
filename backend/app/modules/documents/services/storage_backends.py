@@ -34,6 +34,7 @@ class LocalDocumentStorage:
     def resolve_path(self, storage_path: str) -> Path:
         path = (UPLOADS_DIR / storage_path).resolve()
         root = DOCUMENT_STORAGE_DIR.resolve()
+        # Keep local document downloads inside the configured document storage root.
         if root != path and root not in path.parents:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document file not found.")
         if not path.exists() or not path.is_file():
