@@ -89,3 +89,4 @@ Thumbs.db
 automation/.env
 automation/logs/
 .directory
+backend/celerybeat-schedule
