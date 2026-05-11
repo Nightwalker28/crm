@@ -17,15 +17,7 @@ branch_labels: Union[str, tuple[str, ...], None] = None
 depends_on: Union[str, tuple[str, ...], None] = None
 
 
-def _table_exists(bind, table_name: str) -> bool:
-    return table_name in sa.inspect(bind).get_table_names()
-
-
 def upgrade() -> None:
-    bind = op.get_bind()
-    if _table_exists(bind, "catalog_products"):
-        return
-
     op.create_table(
         "catalog_products",
         sa.Column("id", sa.BigInteger(), autoincrement=True, nullable=False),
@@ -84,7 +76,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    bind = op.get_bind()
-    if not _table_exists(bind, "catalog_products"):
-        return
     op.drop_table("catalog_products")
