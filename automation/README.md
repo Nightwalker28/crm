@@ -23,10 +23,11 @@ It then:
 6. selects the final skills, checks, reviewers, and review model from policy
 7. runs the required checks
 8. runs a reviewer pass when policy requires one
-9. commits and pushes the result
-10. opens a draft PR
-11. comments on the issue
-12. sends a Discord notification
+9. if Codex, checks, or review fail, feeds the failure output back into Codex for bounded repair attempts
+10. commits and pushes the result
+11. opens a draft PR
+12. comments on the issue
+13. sends a Discord notification
 
 ## Safety
 
@@ -39,6 +40,7 @@ It then:
 - Uses Docker Compose services for app checks
 - Uses the strongest configured model for real code changes
 - Uses a lighter model only for docs-only work
+- Uses bounded self-repair attempts; it does not silently bypass host permissions or approval prompts
 
 ## Workflow policy
 
@@ -72,6 +74,21 @@ nano automation/.env
 ```
 
 Fill in `DISCORD_WEBHOOK_URL`.
+
+Optional runner behavior:
+
+```bash
+CODEX_MAX_REPAIR_ATTEMPTS=2
+CODEX_SANDBOX=workspace-write
+CODEX_EXTRA_ARGS=
+CODEX_BYPASS_APPROVALS_AND_SANDBOX=false
+```
+
+`CODEX_MAX_REPAIR_ATTEMPTS` controls how many times the runner will pass a failed Codex/check/review result back into Codex and rerun verification.
+
+`CODEX_EXTRA_ARGS` can pass explicit Codex CLI options such as a profile configured in `~/.codex/config.toml`.
+
+`CODEX_BYPASS_APPROVALS_AND_SANDBOX=true` adds Codex's dangerous bypass flag. Use it only inside a separately sandboxed environment. The runner intentionally does not auto-grant itself host permissions.
 
 ## Dry run
 

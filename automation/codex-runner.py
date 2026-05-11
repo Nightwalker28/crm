@@ -24,6 +24,15 @@ LOG_DIR = AUTOMATION_DIR / "logs"
 ENV_FILE = AUTOMATION_DIR / ".env"
 POLICY_FILE = AUTOMATION_DIR / "workflow-policy.json"
 PROMPT_DIR = AUTOMATION_DIR / "prompts"
+CHECK_COMMANDS = {
+    "docs_diff": ["git", "diff", "--check"],
+    "backend_compile": ["docker", "compose", "exec", "-T", "backend", "python", "-m", "compileall", "app", "tests"],
+    "backend_tests": ["docker", "compose", "exec", "-T", "backend", "python", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"],
+    "frontend_lint": ["docker", "compose", "exec", "-T", "frontend", "npm", "run", "lint"],
+    "frontend_build": ["docker", "compose", "exec", "-T", "frontend", "npm", "run", "build"],
+    "migration_upgrade": ["docker", "compose", "exec", "-T", "backend", "alembic", "upgrade", "head"],
+    "migration_current": ["docker", "compose", "exec", "-T", "backend", "alembic", "current"],
+}
 
 
 @dataclass(frozen=True)
@@ -34,6 +43,10 @@ class Config:
     discord_webhook_url: str
     codex_timeout_seconds: int
     create_draft_pr: bool
+    max_repair_attempts: int
+    codex_sandbox: str
+    codex_bypass_approvals_and_sandbox: bool
+    codex_extra_args: list[str]
 
 
 @dataclass(frozen=True)
@@ -61,6 +74,21 @@ class RunnerError(RuntimeError):
     pass
 
 
+@dataclass(frozen=True)
+class FailureContext:
+    stage: str
+    summary: str
+    command: list[str] | None = None
+    stdout: str = ""
+    stderr: str = ""
+
+
+class RepairableRunnerError(RunnerError):
+    def __init__(self, failure: FailureContext):
+        super().__init__(failure.summary)
+        self.failure = failure
+
+
 def load_dotenv(path: Path) -> None:
     if not path.exists():
         raise RunnerError(f"Missing {path}. Copy automation/.env.example to automation/.env first.")
@@ -80,6 +108,16 @@ def env_bool(name: str, default: bool) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def env_int(name: str, default: int, *, minimum: int = 0) -> int:
+    try:
+        value = int(os.environ.get(name, str(default)).strip())
+    except ValueError as exc:
+        raise RunnerError(f"{name} must be an integer") from exc
+    if value < minimum:
+        raise RunnerError(f"{name} must be >= {minimum}")
+    return value
+
+
 def load_config() -> Config:
     load_dotenv(ENV_FILE)
 
@@ -87,10 +125,14 @@ def load_config() -> Config:
     base_branch = os.environ.get("BASE_BRANCH", "main").strip()
     repo_dir = Path(os.environ.get("REPO_DIR", str(ROOT))).expanduser().resolve()
     discord_webhook_url = os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
-    try:
-        timeout = int(os.environ.get("CODEX_TIMEOUT_SECONDS", "7200").strip())
-    except ValueError as exc:
-        raise RunnerError("CODEX_TIMEOUT_SECONDS must be an integer") from exc
+    timeout = env_int("CODEX_TIMEOUT_SECONDS", 7200, minimum=60)
+    max_repair_attempts = env_int("CODEX_MAX_REPAIR_ATTEMPTS", 2, minimum=0)
+    codex_sandbox = os.environ.get("CODEX_SANDBOX", "workspace-write").strip()
+    codex_bypass = env_bool("CODEX_BYPASS_APPROVALS_AND_SANDBOX", False)
+    codex_extra_args = shlex.split(os.environ.get("CODEX_EXTRA_ARGS", ""))
+    allowed_sandboxes = {"read-only", "workspace-write", "danger-full-access"}
+    if codex_sandbox not in allowed_sandboxes:
+        raise RunnerError(f"CODEX_SANDBOX must be one of: {', '.join(sorted(allowed_sandboxes))}")
 
     if not github_repo:
         raise RunnerError("GITHUB_REPO is required in automation/.env")
@@ -106,6 +148,10 @@ def load_config() -> Config:
         discord_webhook_url=discord_webhook_url,
         codex_timeout_seconds=timeout,
         create_draft_pr=env_bool("CREATE_DRAFT_PR", True),
+        max_repair_attempts=max_repair_attempts,
+        codex_sandbox=codex_sandbox,
+        codex_bypass_approvals_and_sandbox=codex_bypass,
+        codex_extra_args=codex_extra_args,
     )
 
 
@@ -412,6 +458,89 @@ def render_review_prompt(issue: Issue, workflow: Workflow, files: list[str]) -> 
     )
 
 
+def clipped(value: str, limit: int = 12000) -> str:
+    if len(value) <= limit:
+        return value
+    return value[-limit:].lstrip() + "\n... output clipped to most recent content ..."
+
+
+def render_repair_prompt(
+    issue: Issue,
+    workflow: Workflow,
+    files: list[str],
+    failure: FailureContext,
+    attempt: int,
+    max_attempts: int,
+) -> str:
+    changed = "\n".join(f"- {path}" for path in files) or "- none detected"
+    command = shlex.join(failure.command) if failure.command else "(not command-specific)"
+    suggested_skills = "\n".join(f"- {skill}" for skill in workflow.skills) or "- none"
+
+    return textwrap.dedent(
+        f"""\
+        You are continuing an autonomous Codex runner task in the Lynk repository.
+
+        This is repair attempt {attempt} of {max_attempts}. The previous attempt failed.
+        Inspect the current worktree, diagnose the failure below, implement the smallest safe fix,
+        and rerun the relevant check if possible.
+
+        Read and follow:
+        - AGENTS.md
+        - backend/AGENTS.md or frontend/AGENTS.md when relevant
+        - the task-relevant skills under .codex/skills/
+
+        Suggested relevant skills for this repair:
+        {suggested_skills}
+
+        Original issue #{issue.number}: {issue.title}
+
+        {issue.body.strip() or "(No issue body provided.)"}
+
+        Current changed files:
+        {changed}
+
+        Failure stage:
+        {failure.stage}
+
+        Failure summary:
+        {failure.summary}
+
+        Failed command:
+        {command}
+
+        STDOUT:
+        {clipped(failure.stdout)}
+
+        STDERR:
+        {clipped(failure.stderr)}
+
+        Repair rules:
+        - Keep the existing task scope. Do not broaden into nearby roadmap work.
+        - Preserve any correct work already in the worktree.
+        - Do not commit, push, open PRs, or change GitHub issue labels.
+        - You may rerun only relevant checks while iterating.
+        - If a command needs host permissions you cannot obtain, do not try to bypass approval.
+          State the exact command/permission needed and mark the task blocked.
+        - If the failure is environmental and not fixable in the repo, leave code unchanged where possible and mark blocked.
+
+        Final response format:
+
+        ## Summary
+        - What changed
+
+        ## Verification
+        - Commands run and their result
+
+        ## Risk
+        - Remaining risk, or "none identified"
+
+        ## Status
+        - `completed` if the repair was safely implemented
+        - `blocked` if it should not continue automatically
+        """
+    )
+
+
 def workflow_summary(workflow: Workflow) -> str:
     return (
         f"profile={workflow.profile}; "
@@ -430,15 +559,20 @@ def run_codex(
     prompt: str,
     log_file: Path,
     model: str | None,
+    *,
+    heading: str = "CODEX",
 ) -> subprocess.CompletedProcess[str]:
     args = [
         "codex",
         "exec",
-        "--sandbox",
-        "workspace-write",
         "--cd",
         str(config.repo_dir),
     ]
+    if config.codex_bypass_approvals_and_sandbox:
+        args.append("--dangerously-bypass-approvals-and-sandbox")
+    else:
+        args.extend(["--sandbox", config.codex_sandbox])
+    args.extend(config.codex_extra_args)
     if model:
         args.extend(["--model", model])
     args.append(prompt)
@@ -450,11 +584,16 @@ def run_codex(
         check=False,
         timeout=config.codex_timeout_seconds,
     )
-    log_file.write_text(
-        f"$ {shlex.join(args[:-1])} <PROMPT>\n\n"
-        f"=== STDOUT ===\n{result.stdout}\n\n"
-        f"=== STDERR ===\n{result.stderr}\n"
-    )
+    if log_file.exists():
+        append_log(log_file, heading, result)
+    else:
+        log_file.write_text(
+            f"$ {shlex.join(args[:-1])} <PROMPT>\n\n"
+            f"=== {heading} ===\n"
+            f"exit={result.returncode}\n"
+            f"STDOUT:\n{result.stdout}\n\n"
+            f"STDERR:\n{result.stderr}\n"
+        )
     return result
 
 
@@ -524,6 +663,16 @@ def run_review(
     return result
 
 
+def codex_failure_context(result: subprocess.CompletedProcess[str], log_file: Path, heading: str) -> FailureContext:
+    return FailureContext(
+        stage=heading,
+        summary=f"Codex exited with status {result.returncode}. See {log_file}",
+        command=["codex", "exec"],
+        stdout=result.stdout,
+        stderr=result.stderr,
+    )
+
+
 def append_log(log_file: Path, heading: str, result: subprocess.CompletedProcess[str]) -> None:
     with log_file.open("a") as handle:
         handle.write(
@@ -564,18 +713,9 @@ def ensure_services_for_checks(config: Config, workflow: Workflow, log_file: Pat
 
 
 def run_check(config: Config, check_name: str, log_file: Path) -> subprocess.CompletedProcess[str]:
-    commands = {
-        "docs_diff": ["git", "diff", "--check"],
-        "backend_compile": ["docker", "compose", "exec", "-T", "backend", "python", "-m", "compileall", "app", "tests"],
-        "backend_tests": ["docker", "compose", "exec", "-T", "backend", "python", "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"],
-        "frontend_lint": ["docker", "compose", "exec", "-T", "frontend", "npm", "run", "lint"],
-        "frontend_build": ["docker", "compose", "exec", "-T", "frontend", "npm", "run", "build"],
-        "migration_upgrade": ["docker", "compose", "exec", "-T", "backend", "alembic", "upgrade", "head"],
-        "migration_current": ["docker", "compose", "exec", "-T", "backend", "alembic", "current"],
-    }
-    if check_name not in commands:
+    if check_name not in CHECK_COMMANDS:
         raise RunnerError(f"Unknown check: {check_name}")
-    result = run(commands[check_name], cwd=config.repo_dir, capture=True, check=False)
+    result = run(CHECK_COMMANDS[check_name], cwd=config.repo_dir, capture=True, check=False)
     append_log(log_file, f"CHECK {check_name}", result)
     return result
 
@@ -586,7 +726,15 @@ def run_workflow_checks(config: Config, workflow: Workflow, log_file: Path) -> N
     for check_name in workflow.checks:
         result = run_check(config, check_name, log_file)
         if result.returncode != 0:
-            raise RunnerError(f"Check failed: {check_name}. See {log_file}")
+            raise RepairableRunnerError(
+                FailureContext(
+                    stage=f"check:{check_name}",
+                    summary=f"Check failed: {check_name}. See {log_file}",
+                    command=CHECK_COMMANDS.get(check_name),
+                    stdout=result.stdout,
+                    stderr=result.stderr,
+                )
+            )
 
 
 def commit_changes(config: Config, issue: Issue) -> None:
@@ -787,35 +935,106 @@ def process_one_issue(config: Config, policy: dict[str, Any], *, dry_run: bool =
 
         prepare_branch(config, branch_name)
         prompt = render_prompt(issue, initial)
-        codex_result = run_codex(config, prompt, log_file, initial.implementation_model)
+        codex_result = run_codex(config, prompt, log_file, initial.implementation_model, heading="CODEX INITIAL")
 
-        if codex_result.returncode != 0:
-            raise RunnerError(f"Codex exited with status {codex_result.returncode}. See {log_file}")
-        if codex_reported_blocked(codex_result):
-            raise RunnerError("Codex reported the task as blocked for autonomous implementation.")
-        if not git_diff_exists(config):
-            raise RunnerError("Codex finished without producing any repository changes.")
+        final: Workflow | None = None
+        files: list[str] = []
+        repairs_used = 0
 
-        files = changed_files(config)
-        final = classify_paths(files, initial.profile, policy)
-        print(f"Changed files: {', '.join(files)}")
-        print(f"Final workflow: {workflow_summary(final)}")
+        for repair_attempt in range(0, config.max_repair_attempts + 1):
+            try:
+                if codex_result.returncode != 0:
+                    raise RepairableRunnerError(
+                        codex_failure_context(codex_result, log_file, f"codex attempt {repair_attempt}")
+                    )
+                if codex_reported_blocked(codex_result):
+                    raise RunnerError("Codex reported the task as blocked for autonomous implementation.")
+                if not git_diff_exists(config):
+                    raise RepairableRunnerError(
+                        FailureContext(
+                            stage="codex:no-diff",
+                            summary="Codex finished without producing any repository changes.",
+                            stdout=codex_result.stdout,
+                            stderr=codex_result.stderr,
+                        )
+                    )
 
-        if final.requires_human_review:
-            raise RunnerError(
-                "Diff touched automation or agent-control files that require human review: "
-                + ", ".join(files)
-            )
+                files = changed_files(config)
+                final = classify_paths(files, initial.profile, policy)
+                print(f"Changed files: {', '.join(files)}")
+                print(f"Final workflow: {workflow_summary(final)}")
 
-        run_workflow_checks(config, final, log_file)
+                if final.requires_human_review:
+                    raise RunnerError(
+                        "Diff touched automation or agent-control files that require human review: "
+                        + ", ".join(files)
+                    )
 
-        if final.reviewers:
-            review_prompt = render_review_prompt(issue, final, files)
-            review_result = run_review(config, review_prompt, log_file, final.review_model)
-            if review_result.returncode != 0:
-                raise RunnerError(f"Review pass exited with status {review_result.returncode}. See {log_file}")
-            if review_reported_block(review_result):
-                raise RunnerError("Reviewer agents blocked autonomous completion. See runner log for findings.")
+                run_workflow_checks(config, final, log_file)
+
+                if final.reviewers:
+                    review_prompt = render_review_prompt(issue, final, files)
+                    review_result = run_review(config, review_prompt, log_file, final.review_model)
+                    if review_result.returncode != 0:
+                        raise RepairableRunnerError(
+                            FailureContext(
+                                stage="review:execution",
+                                summary=f"Review pass exited with status {review_result.returncode}. See {log_file}",
+                                command=["codex", "exec", "--sandbox", "read-only"],
+                                stdout=review_result.stdout,
+                                stderr=review_result.stderr,
+                            )
+                        )
+                    if review_reported_block(review_result):
+                        raise RepairableRunnerError(
+                            FailureContext(
+                                stage="review:blocking-findings",
+                                summary="Reviewer agents blocked autonomous completion. See runner log for findings.",
+                                command=["codex", "exec", "--sandbox", "read-only"],
+                                stdout=review_result.stdout,
+                                stderr=review_result.stderr,
+                            )
+                        )
+
+                break
+
+            except RepairableRunnerError as exc:
+                if repair_attempt >= config.max_repair_attempts:
+                    raise RunnerError(
+                        f"{exc.failure.summary} Repair attempts exhausted "
+                        f"({config.max_repair_attempts}). See {log_file}"
+                    ) from exc
+
+                repairs_used += 1
+                active_workflow = final or initial
+                repair_prompt = render_repair_prompt(
+                    issue,
+                    active_workflow,
+                    files,
+                    exc.failure,
+                    repairs_used,
+                    config.max_repair_attempts,
+                )
+                append_log(
+                    log_file,
+                    f"REPAIR REQUEST {repairs_used}",
+                    subprocess.CompletedProcess(
+                        args=["codex", "repair-prompt"],
+                        returncode=0,
+                        stdout=repair_prompt,
+                        stderr="",
+                    ),
+                )
+                codex_result = run_codex(
+                    config,
+                    repair_prompt,
+                    log_file,
+                    active_workflow.implementation_model,
+                    heading=f"CODEX REPAIR {repairs_used}",
+                )
+
+        if final is None:
+            raise RunnerError("Runner reached an invalid state: final workflow was not selected.")
 
         commit_changes(config, issue)
         push_branch(config, branch_name)
