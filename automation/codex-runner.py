@@ -248,6 +248,9 @@ def add_label(config: Config, issue_number: int, label: str) -> None:
     run(
         ["gh", "issue", "edit", str(issue_number), "--repo", config.github_repo, "--add-label", label],
         cwd=config.repo_dir,
+        retries=3,
+        retry_delay_seconds=2.0,
+        retry_transient_github_only=True,
     )
 
 
@@ -256,6 +259,9 @@ def remove_label(config: Config, issue_number: int, label: str) -> None:
         ["gh", "issue", "edit", str(issue_number), "--repo", config.github_repo, "--remove-label", label],
         cwd=config.repo_dir,
         check=False,
+        retries=3,
+        retry_delay_seconds=2.0,
+        retry_transient_github_only=True,
     )
 
 
@@ -263,6 +269,9 @@ def comment_issue(config: Config, issue_number: int, body: str) -> None:
     run(
         ["gh", "issue", "comment", str(issue_number), "--repo", config.github_repo, "--body", body],
         cwd=config.repo_dir,
+        retries=3,
+        retry_delay_seconds=2.0,
+        retry_transient_github_only=True,
     )
 
 
