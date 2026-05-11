@@ -83,8 +83,18 @@ python automation/codex-runner.py --dry-run
 
 ## Manual run
 
+## Queue run
+
+Process every eligible issue in order until the queue is empty or one issue fails:
+
 ```bash
-python automation/codex-runner.py
+python automation/codex-runner.py --all
+```
+
+Continue to later issues even if one issue fails:
+
+```bash
+python automation/codex-runner.py --all --continue-on-failure
 ```
 
 ## Good issue labels
