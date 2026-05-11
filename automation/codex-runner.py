@@ -205,25 +205,14 @@ def ensure_clean_worktree(config: Config) -> None:
 
 
 def fetch_next_issue(config: Config) -> Issue | None:
-    query = (
-        f'repo:{config.github_repo} '
-        'is:issue is:open '
-        'label:"codex-ready" '
-        'label:"codex-low-risk" '
-        '-label:"codex-in-progress" '
-        '-label:"codex-done" '
-        '-label:"codex-failed" '
-        '-label:"human-review-required" '
-        '-label:"codex-plan-only"'
-    )
     payload = gh_json(
         [
             "issue",
             "list",
             "--repo",
             config.github_repo,
-            "--search",
-            query,
+            "--state",
+            "open",
             "--limit",
             "100",
             "--json",
@@ -234,7 +223,24 @@ def fetch_next_issue(config: Config) -> Issue | None:
     if not payload:
         return None
 
-    item = min(payload, key=lambda issue: issue["createdAt"])
+    required_labels = {"codex-ready", "codex-low-risk"}
+    excluded_labels = {
+        "codex-in-progress",
+        "codex-done",
+        "codex-failed",
+        "human-review-required",
+        "codex-plan-only",
+    }
+    eligible = [
+        item
+        for item in payload
+        if required_labels.issubset({label["name"] for label in item.get("labels", [])})
+        and excluded_labels.isdisjoint({label["name"] for label in item.get("labels", [])})
+    ]
+    if not eligible:
+        return None
+
+    item = min(eligible, key=lambda issue: issue["createdAt"])
     return Issue(
         number=int(item["number"]),
         title=item["title"],
@@ -720,6 +726,7 @@ def notify_discord_best_effort(config: Config, message: str) -> None:
 def reset_to_base(config: Config) -> None:
     run(["git", "checkout", config.base_branch], cwd=config.repo_dir, check=False)
     run(["git", "reset", "--hard", f"origin/{config.base_branch}"], cwd=config.repo_dir, check=False)
+    run(["git", "clean", "-fd"], cwd=config.repo_dir, check=False)
 
 
 def now_slug() -> str:

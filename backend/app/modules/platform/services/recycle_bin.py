@@ -1,12 +1,18 @@
 from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination, build_paged_response
-from app.modules.catalog.schema import CatalogProductResponse
+from app.modules.catalog.schema import CatalogProductResponse, CatalogServiceResponse
 from app.modules.catalog.services.product_services import (
     get_product_or_404,
     list_deleted_products,
     restore_product,
     serialize_product,
+)
+from app.modules.catalog.services.service_services import (
+    get_service_or_404,
+    list_deleted_services,
+    restore_service,
+    serialize_service,
 )
 from app.modules.finance.services.io_search_services import (
     _finance_record_customer_name,
@@ -59,6 +65,7 @@ SUPPORTED_RECYCLE_MODULES = {
     "tasks",
     "documents",
     "catalog_products",
+    "catalog_services",
 }
 
 
@@ -212,6 +219,26 @@ def list_recycle_items(
                 "subtitle": item.sku or item.stock_status,
                 "deleted_at": item.deleted_at,
                 "details": CatalogProductResponse.model_validate(serialize_product(item)).model_dump(mode="json"),
+            }
+            for item in items
+        ]
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key == "catalog_services":
+        items, total = list_deleted_services(
+            db,
+            tenant_id=tenant_id,
+            offset=pagination.offset,
+            limit=pagination.limit,
+        )
+        serialized = [
+            {
+                "module_key": module_key,
+                "record_id": item.id,
+                "title": item.name,
+                "subtitle": item.description or "Service",
+                "deleted_at": item.deleted_at,
+                "details": CatalogServiceResponse.model_validate(serialize_service(item)).model_dump(mode="json"),
             }
             for item in items
         ]
@@ -371,5 +398,19 @@ def restore_recycle_item(
             actor_user_id=current_user.id if current_user else None,
         )
         return CatalogProductResponse.model_validate(serialize_product(restored)).model_dump(mode="json")
+
+    if module_key == "catalog_services":
+        service = get_service_or_404(
+            db,
+            tenant_id=current_user.tenant_id,
+            service_id=record_id,
+            include_deleted=True,
+        )
+        restored = restore_service(
+            db,
+            service=service,
+            actor_user_id=current_user.id if current_user else None,
+        )
+        return CatalogServiceResponse.model_validate(serialize_service(restored)).model_dump(mode="json")
 
     raise ValueError("Unsupported recycle module")

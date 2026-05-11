@@ -27,6 +27,7 @@ The backend is FastAPI + SQLAlchemy + Alembic on PostgreSQL, with Redis and Cele
 ## Data and migration rules
 
 - Use Alembic for schema changes.
+- Keep Alembic revision IDs at 32 characters or fewer; the existing `alembic_version.version_num` column is `VARCHAR(32)`.
 - Make defaults/backfills deterministic for existing rows.
 - Avoid silent data loss during cleanup migrations.
 - Validate migration chain and model drift when schema work is touched.
