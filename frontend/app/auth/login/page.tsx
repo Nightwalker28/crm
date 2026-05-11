@@ -94,7 +94,7 @@ export default function LoginPage() {
         Lynk
       </h1>
 
-      <p className="mb-6 text-sm text-slate-200/80">Sign in with your provisioned account.</p>
+      <p className="mb-6 text-sm text-slate-200/80">Sign in using your provisioned account.</p>
 
       <form className="space-y-4 text-left" onSubmit={handleManualSignIn}>
         <div className="space-y-2">
