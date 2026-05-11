@@ -14,6 +14,7 @@ import {
   ClipboardList,
   LogOut,
   BriefcaseBusiness,
+  Package,
   PanelLeftClose,
   PanelLeftOpen,
 } from "lucide-react";
@@ -93,6 +94,8 @@ export default function Sidebar() {
   const contactsModule = moduleMap.get("sales_contacts");
   const organizationsModule = moduleMap.get("sales_organizations");
   const opportunitiesModule = moduleMap.get("sales_opportunities");
+  const catalogProductsModule = moduleMap.get("catalog_products");
+  const catalogServicesModule = moduleMap.get("catalog_services");
 
   return (
     <aside
@@ -180,6 +183,21 @@ export default function Sidebar() {
                 <SidebarMenuItem href={messageTemplatesModule.base_route} icon={FileText} collapsed={collapsed}>
                   Templates
                 </SidebarMenuItem>
+              ) : null}
+
+              {(catalogProductsModule?.base_route || catalogServicesModule?.base_route) ? (
+                <SidebarMenuItemCollapsible icon={Package} label="Catalog" collapsed={collapsed}>
+                  {catalogProductsModule?.base_route ? (
+                    <SidebarMenuItemChild href={catalogProductsModule.base_route} collapsed={collapsed}>
+                      Products
+                    </SidebarMenuItemChild>
+                  ) : null}
+                  {catalogServicesModule?.base_route ? (
+                    <SidebarMenuItemChild href={catalogServicesModule.base_route} collapsed={collapsed}>
+                      Services
+                    </SidebarMenuItemChild>
+                  ) : null}
+                </SidebarMenuItemCollapsible>
               ) : null}
 
               {isAdmin ? (

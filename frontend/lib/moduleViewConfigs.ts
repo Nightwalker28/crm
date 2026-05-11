@@ -87,6 +87,24 @@ export const INSERTION_ORDER_COLUMNS: TableColumnOption[] = [
   { key: "updated_at", label: "Updated" },
 ];
 
+export const CATALOG_PRODUCT_COLUMNS: TableColumnOption[] = [
+  { key: "name", label: "Name" },
+  { key: "sku", label: "SKU" },
+  { key: "public_unit_price", label: "Price" },
+  { key: "stock_status", label: "Stock" },
+  { key: "is_active", label: "Status" },
+  { key: "media_url", label: "Media" },
+  { key: "updated_at", label: "Updated" },
+];
+
+export const CATALOG_SERVICE_COLUMNS: TableColumnOption[] = [
+  { key: "name", label: "Name" },
+  { key: "public_unit_price", label: "Price" },
+  { key: "is_active", label: "Status" },
+  { key: "media_url", label: "Media" },
+  { key: "updated_at", label: "Updated" },
+];
+
 export const USER_COLUMNS: TableColumnOption[] = [
   { key: "name", label: "Name" },
   { key: "team_name", label: "Team" },
@@ -126,6 +144,16 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
   finance_io: {
     visible_columns: ["io_number", "customer_name", "status", "total_amount", "due_date"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [], status: "all" },
+    sort: null,
+  },
+  catalog_products: {
+    visible_columns: ["name", "sku", "public_unit_price", "stock_status", "is_active", "media_url", "updated_at"],
+    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
+    sort: null,
+  },
+  catalog_services: {
+    visible_columns: ["name", "public_unit_price", "is_active", "media_url", "updated_at"],
+    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },
   admin_users: {
@@ -289,6 +317,22 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.finance_io,
+  },
+  catalog_products: {
+    key: "catalog_products",
+    label: "Products",
+    route: "/dashboard/catalog/products",
+    columns: CATALOG_PRODUCT_COLUMNS,
+    filterFields: [],
+    defaultConfig: MODULE_VIEW_DEFAULTS.catalog_products,
+  },
+  catalog_services: {
+    key: "catalog_services",
+    label: "Services",
+    route: "/dashboard/catalog/services",
+    columns: CATALOG_SERVICE_COLUMNS,
+    filterFields: [],
+    defaultConfig: MODULE_VIEW_DEFAULTS.catalog_services,
   },
   admin_users: {
     key: "admin_users",

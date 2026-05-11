@@ -29,6 +29,8 @@ const MODULE_ROUTE_PREFIXES = [
   "/dashboard/tasks",
   "/dashboard/settings/message-templates",
   "/dashboard/finance/insertion-orders",
+  "/dashboard/catalog/products",
+  "/dashboard/catalog/services",
   "/dashboard/sales/contacts",
   "/dashboard/sales/organizations",
   "/dashboard/sales/opportunities",
