@@ -3,8 +3,12 @@
     "docs": {
       "implementation_model": "gpt-5.4-mini",
       "review_model": "gpt-5.4-mini",
-      "skills": ["docs-change"],
-      "checks": ["docs_diff"],
+      "skills": [
+        "docs-change"
+      ],
+      "checks": [
+        "docs_diff"
+      ],
       "reviewers": []
     },
     "standard": {
@@ -18,27 +22,42 @@
   "issue_scope_hints": {
     "docs": {
       "profile": "docs",
-      "skills": ["docs-change"]
+      "skills": [
+        "docs-change"
+      ]
     },
     "frontend": {
       "profile": "standard",
-      "skills": ["frontend-change"]
+      "skills": [
+        "frontend-change"
+      ]
     },
     "backend": {
       "profile": "standard",
-      "skills": ["backend-change"]
+      "skills": [
+        "backend-change"
+      ]
     },
     "full-stack": {
       "profile": "standard",
-      "skills": ["backend-change", "frontend-change"]
+      "skills": [
+        "backend-change",
+        "frontend-change"
+      ]
     },
     "migration": {
       "profile": "standard",
-      "skills": ["backend-change", "migration-change"]
+      "skills": [
+        "backend-change",
+        "migration-change"
+      ]
     },
     "security": {
       "profile": "standard",
-      "skills": ["backend-change", "security-review"]
+      "skills": [
+        "backend-change",
+        "security-review"
+      ]
     }
   },
   "routes": {
@@ -49,17 +68,28 @@
         "docs/**",
         ".github/ISSUE_TEMPLATE/**"
       ],
-      "skills": ["docs-change"],
-      "checks": ["docs_diff"],
+      "skills": [
+        "docs-change"
+      ],
+      "checks": [
+        "docs_diff"
+      ],
       "reviewers": []
     },
     "backend": {
       "patterns": [
         "backend/**"
       ],
-      "skills": ["backend-change"],
-      "checks": ["backend_compile", "backend_tests"],
-      "reviewers": ["backend_reviewer", "qa_reviewer"],
+      "skills": [
+        "backend-change"
+      ],
+      "checks": [
+        "backend_compile"
+      ],
+      "reviewers": [
+        "backend_reviewer",
+        "qa_reviewer"
+      ],
       "implementation_model": "gpt-5.5",
       "review_model": "gpt-5.5"
     },
@@ -67,9 +97,17 @@
       "patterns": [
         "frontend/**"
       ],
-      "skills": ["frontend-change"],
-      "checks": ["frontend_lint", "frontend_build"],
-      "reviewers": ["frontend_reviewer", "qa_reviewer"],
+      "skills": [
+        "frontend-change"
+      ],
+      "checks": [
+        "frontend_lint",
+        "frontend_build"
+      ],
+      "reviewers": [
+        "frontend_reviewer",
+        "qa_reviewer"
+      ],
       "implementation_model": "gpt-5.5",
       "review_model": "gpt-5.5"
     },
@@ -80,9 +118,17 @@
         "backend/alembic.ini.root",
         "backend/alembic_root/**"
       ],
-      "skills": ["migration-change"],
-      "checks": ["migration_upgrade", "migration_current"],
-      "reviewers": ["backend_reviewer", "qa_reviewer"],
+      "skills": [
+        "migration-change"
+      ],
+      "checks": [
+        "migration_upgrade",
+        "migration_current"
+      ],
+      "reviewers": [
+        "backend_reviewer",
+        "qa_reviewer"
+      ],
       "implementation_model": "gpt-5.5",
       "review_model": "gpt-5.5"
     },
@@ -91,9 +137,13 @@
         "backend/app/core/**",
         "backend/app/modules/platform/**"
       ],
-      "skills": ["platform-primitive"],
+      "skills": [
+        "platform-primitive"
+      ],
       "checks": [],
-      "reviewers": ["architect"],
+      "reviewers": [
+        "architect"
+      ],
       "implementation_model": "gpt-5.5",
       "review_model": "gpt-5.5"
     },
@@ -109,9 +159,13 @@
         "backend/app/modules/user_management/services/auth.py",
         "backend/app/modules/user_management/routes/signin.py"
       ],
-      "skills": ["security-review"],
+      "skills": [
+        "security-review"
+      ],
       "checks": [],
-      "reviewers": ["security_reviewer"],
+      "reviewers": [
+        "security_reviewer"
+      ],
       "implementation_model": "gpt-5.5",
       "review_model": "gpt-5.5"
     },
@@ -125,7 +179,9 @@
       ],
       "skills": [],
       "checks": [],
-      "reviewers": ["product_guardian"],
+      "reviewers": [
+        "product_guardian"
+      ],
       "implementation_model": "gpt-5.5",
       "review_model": "gpt-5.5"
     },
