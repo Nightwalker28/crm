@@ -7,6 +7,7 @@ from app.modules.client_portal.routes.client_portal_routes import (
     client_auth_router,
     public_client_pages_router,
 )
+from app.modules.catalog.routes.product_routes import router as catalog_products_router
 from app.modules.documents.routes.document_routes import router as documents_router
 from app.modules.mail.routes.mail_routes import router as mail_router
 from app.modules.platform.routes.activity_logs import router as activity_log_router
@@ -55,6 +56,7 @@ router.include_router(calendar_router)
 router.include_router(client_portal_router)
 router.include_router(client_auth_router)
 router.include_router(public_client_pages_router)
+router.include_router(catalog_products_router)
 router.include_router(documents_router)
 router.include_router(mail_router)
 router.include_router(io_search_router,  prefix="/finance",)

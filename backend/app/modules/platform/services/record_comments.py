@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.access_control import require_role_module_action_access
 from app.core.pagination import Pagination
+from app.modules.catalog.models import CatalogProduct
 from app.modules.platform.models import RecordComment
 from app.modules.platform.services.notifications import create_notification
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization
@@ -31,6 +32,13 @@ RECORD_COMMENT_MODULES = {
         "entity_type": "sales_opportunity",
         "label_field": "opportunity_name",
         "record_path": "/dashboard/sales/opportunities/{entity_id}",
+    },
+    "catalog_products": {
+        "model": CatalogProduct,
+        "id_field": "id",
+        "entity_type": "catalog_product",
+        "label_field": "name",
+        "record_path": "/dashboard/catalog/products/{entity_id}",
     },
 }
 
