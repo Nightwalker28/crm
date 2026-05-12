@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { type FormEvent, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Sparkles } from "lucide-react";
@@ -8,7 +8,7 @@ import { Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -42,6 +42,14 @@ const emptyDraft: DraftField = {
   is_required: false,
 };
 
+function makeFieldKey(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
+
 async function fetchAdminCustomFields(moduleKey: string): Promise<CustomFieldDefinition[]> {
   const res = await apiFetch(`/admin/custom-fields/${moduleKey}`);
   if (!res.ok) {
@@ -55,6 +63,7 @@ export default function CustomFieldsPage() {
   const queryClient = useQueryClient();
   const [moduleKey, setModuleKey] = useState("sales_contacts");
   const [draft, setDraft] = useState<DraftField>(emptyDraft);
+  const [fieldKeyEdited, setFieldKeyEdited] = useState(false);
 
   const query = useQuery({
     queryKey: ["admin-custom-fields", moduleKey],
@@ -74,11 +83,15 @@ export default function CustomFieldsPage() {
     },
     onSuccess: async () => {
       setDraft(emptyDraft);
+      setFieldKeyEdited(false);
       await Promise.all([
         query.refetch(),
         queryClient.invalidateQueries({ queryKey: ["custom-fields", moduleKey] }),
       ]);
       toast.success("Custom field created.");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to create custom field.");
     },
   });
 
@@ -102,6 +115,33 @@ export default function CustomFieldsPage() {
     },
   });
 
+  function handleLabelChange(value: string) {
+    setDraft((current) => ({
+      ...current,
+      label: value,
+      field_key: fieldKeyEdited ? current.field_key : makeFieldKey(value),
+    }));
+  }
+
+  function handleFieldKeyChange(value: string) {
+    setFieldKeyEdited(true);
+    setDraft((current) => ({ ...current, field_key: makeFieldKey(value) }));
+  }
+
+  function handleModuleChange(nextModuleKey: string) {
+    setModuleKey(nextModuleKey);
+    setDraft(emptyDraft);
+    setFieldKeyEdited(false);
+  }
+
+  function handleCreate(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!draft.field_key.trim() || !draft.label.trim() || createMutation.isPending) return;
+    createMutation.mutate();
+  }
+
+  const canCreate = Boolean(draft.field_key.trim() && draft.label.trim()) && !createMutation.isPending;
+
   return (
     <div className="flex flex-col gap-5 text-neutral-200">
       <PageHeader
@@ -110,10 +150,7 @@ export default function CustomFieldsPage() {
         actions={
           <Select
             value={moduleKey}
-            onValueChange={(nextModuleKey) => {
-              setModuleKey(nextModuleKey);
-              setDraft(emptyDraft);
-            }}
+            onValueChange={handleModuleChange}
           >
             <SelectTrigger className="w-72">
               <SelectValue />
@@ -134,14 +171,15 @@ export default function CustomFieldsPage() {
           <h2 className="text-lg font-semibold text-neutral-100">Add Field</h2>
           <p className="mt-1 text-sm text-neutral-500">These fields appear in the active create and edit flows for this module.</p>
 
-          <FieldGroup className="mt-4 grid gap-4">
+          <form className="mt-4 grid gap-4" onSubmit={handleCreate}>
             <Field>
-              <FieldLabel>Field Key</FieldLabel>
-              <Input value={draft.field_key} onChange={(event) => setDraft((current) => ({ ...current, field_key: event.target.value }))} placeholder="contract_term" />
+              <FieldLabel>Label *</FieldLabel>
+              <Input value={draft.label} onChange={(event) => handleLabelChange(event.target.value)} placeholder="Contract Term" />
             </Field>
             <Field>
-              <FieldLabel>Label</FieldLabel>
-              <Input value={draft.label} onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Contract Term" />
+              <FieldLabel>Field Key *</FieldLabel>
+              <Input value={draft.field_key} onChange={(event) => handleFieldKeyChange(event.target.value)} placeholder="contract_term" />
+              <FieldDescription>Auto-generated from the label unless edited.</FieldDescription>
             </Field>
             <Field>
               <FieldLabel>Field Type</FieldLabel>
@@ -183,16 +221,14 @@ export default function CustomFieldsPage() {
               </div>
               <FieldDescription>Core fields still remain protected and cannot be removed here.</FieldDescription>
             </Field>
-          </FieldGroup>
 
-          <div className="mt-5">
             <Button
-              onClick={() => createMutation.mutate()}
-              disabled={!draft.field_key.trim() || !draft.label.trim() || createMutation.isPending}
+              type="submit"
+              disabled={!canCreate}
             >
               {createMutation.isPending ? "Creating..." : "Create Field"}
             </Button>
-          </div>
+          </form>
         </Card>
 
         <Card className="overflow-hidden px-0 py-0">

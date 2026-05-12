@@ -16,7 +16,7 @@ export default function RootRedirectPage() {
       try {
         const res = await apiFetch("/users/me");
         if (res.ok) {
-          if (!cancelled) router.replace("/dashboard/users");
+          if (!cancelled) router.replace("/dashboard");
           return;
         }
         if (!cancelled) router.replace("/auth/login");

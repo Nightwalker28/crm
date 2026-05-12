@@ -110,7 +110,7 @@ export default function Sidebar() {
       }
     >
       {/* Inner padding wrapper */}
-      <div className="flex h-full flex-col px-2 py-3">
+      <div className="flex h-full min-h-0 flex-col px-2 py-3">
 
         {/* Logo + toggle */}
         <div className="mb-4 flex items-center justify-between gap-1 px-1">
@@ -300,7 +300,7 @@ export default function Sidebar() {
         </SidebarNav>
 
         {/* Bottom user card */}
-        <div className="mt-auto pt-4">
+        <div className="shrink-0 pt-4">
           <div className="relative overflow-hidden rounded-lg border border-white/10 bg-white/5">
             {/* Noise texture */}
             <div className="noise-overlay absolute inset-0 pointer-events-none rounded-lg opacity-20" />

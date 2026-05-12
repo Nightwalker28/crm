@@ -12,7 +12,7 @@ export function proxy(request: NextRequest) {
   }
 
   if (pathname.startsWith("/auth") && (hasAccessToken || hasRefreshToken)) {
-    return NextResponse.redirect(new URL("/dashboard/users", request.url));
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   return NextResponse.next();

@@ -1,11 +1,15 @@
 import tempfile
+import urllib.parse
 import unittest
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import requests
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
+from jose import jwt as jose_jwt
 
 from app.core.database import get_db
 from app.core.pagination import Pagination
@@ -19,6 +23,11 @@ from app.modules.sales.schema import (
 )
 from app.modules.user_management.models import Module, TenantModuleConfig
 from app.modules.user_management.schema import UserProfile
+from app.modules.user_management.services.auth import (
+    _profile_from_google_id_token,
+    get_google_auth_url,
+    handle_google_callback,
+)
 
 
 class RouteTestQuery:
@@ -128,6 +137,55 @@ class APIRouteTests(unittest.TestCase):
         set_cookie = response.headers.get("set-cookie", "")
         self.assertIn("lynk_access_token=access-token", set_cookie)
         self.assertIn("lynk_refresh_token=refresh-token", set_cookie)
+
+    def test_google_callback_network_timeout_returns_controlled_auth_error(self):
+        with patch(
+            "app.modules.user_management.services.auth.requests.post",
+            side_effect=requests.Timeout("timed out"),
+        ), patch(
+            "app.modules.user_management.services.auth.get_google_redirect_uri_for_request",
+            return_value="http://localhost:8000/api/v1/auth/google/callback",
+        ):
+            with self.assertRaises(HTTPException) as context:
+                handle_google_callback(
+                    "oauth-code",
+                    RouteTestSession(),
+                    tenant=SimpleNamespace(id=1),
+                    request=SimpleNamespace(headers={}),
+                )
+
+        self.assertEqual(context.exception.status_code, 400)
+        self.assertEqual(context.exception.detail, "Failed to authenticate with Google")
+
+    def test_google_login_url_uses_identity_only_scopes(self):
+        auth_url = get_google_auth_url(
+            request=SimpleNamespace(headers={}),
+            tenant=SimpleNamespace(id=1),
+        )
+        params = urllib.parse.parse_qs(urllib.parse.urlparse(auth_url).query)
+        scopes = set(params["scope"][0].split(" "))
+
+        self.assertTrue({"openid", "email", "profile"}.issubset(scopes))
+        self.assertNotIn("https://www.googleapis.com/auth/calendar.app.created", scopes)
+
+    def test_google_id_token_profile_claims_are_used_for_login_profile(self):
+        id_token = jose_jwt.encode(
+            {
+                "email": "user@example.com",
+                "picture": "https://lh3.googleusercontent.com/photo.png",
+                "given_name": "Test",
+                "family_name": "User",
+            },
+            "test-secret",
+            algorithm="HS256",
+        )
+
+        profile = _profile_from_google_id_token(id_token)
+
+        self.assertEqual(profile["email"], "user@example.com")
+        self.assertEqual(profile["picture"], "https://lh3.googleusercontent.com/photo.png")
+        self.assertEqual(profile["given_name"], "Test")
+        self.assertEqual(profile["family_name"], "User")
 
     def test_refresh_returns_401_without_cookie(self):
         app.dependency_overrides[get_db] = self._override_db

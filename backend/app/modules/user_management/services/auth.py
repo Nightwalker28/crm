@@ -3,6 +3,7 @@ import requests
 import uuid
 import hashlib
 import secrets
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Literal
 
@@ -22,10 +23,6 @@ from app.core.tenancy import (
     get_frontend_origin_for_request,
     get_google_redirect_uri_for_request,
 )
-from app.modules.calendar.services.calendar_services import (
-    GOOGLE_CALENDAR_APP_CREATED_SCOPE,
-    upsert_google_calendar_connection,
-)
 from app.modules.user_management.models import (
     Module,
     RefreshToken,
@@ -43,13 +40,14 @@ from app.modules.user_management.services.admin_modules import build_module_sche
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+GOOGLE_AUTH_REQUEST_TIMEOUT_SECONDS = 20
+logger = logging.getLogger(__name__)
 
 SCOPES = " ".join(
     [
         "openid",
         "email",
         "profile",
-        GOOGLE_CALENDAR_APP_CREATED_SCOPE,
     ]
 )
 
@@ -91,6 +89,21 @@ def decode_oauth_state(state_token: str | None) -> dict | None:
     if payload.get("type") != "google_oauth_state":
         return None
     return payload
+
+
+def _profile_from_google_id_token(id_token: str | None) -> dict | None:
+    if not id_token:
+        return None
+    try:
+        claims = jwt.get_unverified_claims(id_token)
+    except JWTError:
+        return None
+    return {
+        "email": claims.get("email"),
+        "picture": claims.get("picture"),
+        "given_name": claims.get("given_name"),
+        "family_name": claims.get("family_name"),
+    }
 
 
 def get_google_auth_url(*, request: Request, tenant: Tenant) -> str:
@@ -228,31 +241,85 @@ def handle_google_callback(
     request: Request,
 ):
     # 1) Exchange code for Google token
-    token_res = requests.post(
-        GOOGLE_TOKEN_URL,
-        data={
-            "code": code,
-            "client_id": settings.GOOGLE_CLIENT_ID,
-            "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "redirect_uri": get_google_redirect_uri_for_request(request),
-            "grant_type": "authorization_code",
-        },
-    )
+    try:
+        token_res = requests.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "code": code,
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "redirect_uri": get_google_redirect_uri_for_request(request),
+                "grant_type": "authorization_code",
+            },
+            timeout=GOOGLE_AUTH_REQUEST_TIMEOUT_SECONDS,
+        )
+    except requests.RequestException as exc:
+        logger.warning("Google OAuth token exchange request failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to authenticate with Google",
+        ) from exc
 
-    token_json = token_res.json()
-    if "access_token" not in token_json:
+    try:
+        token_json = token_res.json()
+    except ValueError as exc:
+        logger.warning("Google OAuth token exchange returned non-JSON response with status %s", token_res.status_code)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Failed to authenticate with Google",
+        ) from exc
+    if not token_res.ok or "access_token" not in token_json:
+        logger.warning(
+            "Google OAuth token exchange failed with status %s and error %s",
+            token_res.status_code,
+            {
+                "error": token_json.get("error"),
+                "error_description": token_json.get("error_description"),
+            },
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Failed to authenticate with Google",
         )
 
-    # 2) Fetch Google profile
-    profile_res = requests.get(
-        GOOGLE_USERINFO_URL,
-        headers={"Authorization": f"Bearer {token_json['access_token']}"},
-    )
+    # 2) Read Google profile claims from the OIDC id_token returned by the token exchange.
+    # This avoids a second userinfo network hop on the critical login callback path.
+    profile = _profile_from_google_id_token(token_json.get("id_token"))
+    if not profile:
+        try:
+            profile_res = requests.get(
+                GOOGLE_USERINFO_URL,
+                headers={"Authorization": f"Bearer {token_json['access_token']}"},
+                timeout=GOOGLE_AUTH_REQUEST_TIMEOUT_SECONDS,
+            )
+        except requests.RequestException as exc:
+            logger.warning("Google OAuth profile request failed: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to authenticate with Google",
+            ) from exc
 
-    profile = profile_res.json()
+        try:
+            profile = profile_res.json()
+        except ValueError as exc:
+            logger.warning("Google OAuth profile request returned non-JSON response with status %s", profile_res.status_code)
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to authenticate with Google",
+            ) from exc
+        if not profile_res.ok:
+            logger.warning(
+                "Google OAuth profile request failed with status %s and error %s",
+                profile_res.status_code,
+                {
+                    "error": profile.get("error"),
+                    "error_description": profile.get("error_description"),
+                },
+            )
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Failed to authenticate with Google",
+            )
     email = profile.get("email")
     picture = profile.get("picture")
 
@@ -301,13 +368,6 @@ def handle_google_callback(
     user.last_login_provider = "google"
     db.add(user)
     db.commit()
-    upsert_google_calendar_connection(
-        db,
-        tenant_id=tenant.id,
-        user=user,
-        token_json=token_json,
-        account_email=email,
-    )
 
     return {
         "status": "active",

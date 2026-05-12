@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 
 export const SidebarNav = ({ children }: { children: React.ReactNode }) => {
-  return <nav className="flex w-full flex-col gap-1">{children}</nav>;
+  return <nav className="custom-scrollbar flex min-h-0 w-full flex-1 flex-col gap-1 overflow-y-auto pr-1">{children}</nav>;
 };
 
 export const SidebarGroup = ({ children }: { children: React.ReactNode }) => {
@@ -136,6 +136,7 @@ export function SidebarMenuItemCollapsible({
           type="button"
           title={collapsed ? label : undefined}
           onClick={() => setOpen((v) => !v)}
+          aria-expanded={open}
           className={
             "relative z-10 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-left transition-all duration-150 " +
             (activeSelf
@@ -179,9 +180,11 @@ export function SidebarMenuItemCollapsible({
         className={
           "ml-4 flex flex-col gap-0.5 border-l border-neutral-800/70 pl-1.5 overflow-hidden transition-all duration-200 " +
           (collapsed
-            ? "max-h-0 opacity-0 group-hover/sidebar:max-h-64 group-hover/sidebar:opacity-100"
+            ? open
+              ? "max-h-0 opacity-0 group-hover/sidebar:max-h-96 group-hover/sidebar:opacity-100"
+              : "max-h-0 opacity-0"
             : open
-              ? "max-h-64 opacity-100"
+              ? "max-h-96 opacity-100"
               : "max-h-0 opacity-0")
         }
       >
