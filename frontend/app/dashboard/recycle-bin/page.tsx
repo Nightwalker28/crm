@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDateTime } from "@/lib/datetime";
+import { useModuleBuilder } from "@/hooks/useModuleBuilder";
 
 type RecycleItem = {
   module_key: string;
@@ -54,9 +55,19 @@ async function fetchRecycleItems(moduleKey: string, page: number, pageSize: numb
 
 export default function RecycleBinPage() {
   const queryClient = useQueryClient();
+  const { modules: customModules } = useModuleBuilder();
   const [moduleKey, setModuleKey] = useState("finance_insertion_orders");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const moduleOptions = useMemo(
+    () => [
+      ...MODULE_OPTIONS,
+      ...customModules
+        .filter((module) => module.deleted_at == null)
+        .map((module) => ({ value: module.key, label: module.name })),
+    ],
+    [customModules],
+  );
 
   const query = useQuery({
     queryKey: ["recycle-bin", moduleKey, page, pageSize],
@@ -64,8 +75,8 @@ export default function RecycleBinPage() {
   });
 
   const label = useMemo(
-    () => MODULE_OPTIONS.find((option) => option.value === moduleKey)?.label ?? moduleKey,
-    [moduleKey],
+    () => moduleOptions.find((option) => option.value === moduleKey)?.label ?? moduleKey,
+    [moduleKey, moduleOptions],
   );
 
   async function restoreItem(item: RecycleItem) {
@@ -108,7 +119,7 @@ export default function RecycleBinPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {MODULE_OPTIONS.map((option) => (
+              {moduleOptions.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
                   {option.label}
                 </SelectItem>

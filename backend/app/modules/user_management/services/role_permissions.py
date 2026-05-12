@@ -12,7 +12,7 @@ from app.modules.user_management.schema import (
     RoleTemplateSummary,
     RoleUpdateRequest,
 )
-from app.modules.user_management.services.admin_modules import is_module_enabled_for_tenant
+from app.modules.user_management.services.admin_modules import _module_belongs_to_tenant_or_global, is_module_enabled_for_tenant
 
 
 ROLE_TEMPLATES: dict[str, dict] = {
@@ -63,7 +63,11 @@ ROLE_TEMPLATES: dict[str, dict] = {
 
 def list_role_permission_overview(db: Session, *, tenant_id: int) -> RolePermissionOverviewResponse:
     roles = db.query(Role).filter(Role.tenant_id == tenant_id).order_by(Role.level.desc(), Role.name.asc()).all()
-    modules = db.query(Module).order_by(Module.name.asc()).all()
+    modules = [
+        module
+        for module in db.query(Module).order_by(Module.name.asc()).all()
+        if _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id)
+    ]
 
     return RolePermissionOverviewResponse(
         roles=[RoleSchema.model_validate(role) for role in roles],
@@ -89,7 +93,11 @@ def list_role_permission_overview(db: Session, *, tenant_id: int) -> RolePermiss
 
 def get_role_permissions(db: Session, role_id: int, *, tenant_id: int) -> list[ModulePermissionSchema]:
     role = _get_role_or_404(db, role_id, tenant_id=tenant_id)
-    modules = db.query(Module).order_by(Module.name.asc()).all()
+    modules = [
+        module
+        for module in db.query(Module).order_by(Module.name.asc()).all()
+        if _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id)
+    ]
     permissions = {
         permission.module_id: permission
         for permission in db.query(RoleModulePermission)
@@ -138,7 +146,8 @@ def create_role(db: Session, payload: RoleCreateRequest, *, tenant_id: int) -> R
     modules = [
         module
         for module in db.query(Module).all()
-        if is_module_enabled_for_tenant(db, tenant_id=tenant_id, module=module)
+        if _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id)
+        and is_module_enabled_for_tenant(db, tenant_id=tenant_id, module=module)
     ]
     template_actions: RolePermissionActions = template["actions"]
     for module in modules:
@@ -185,7 +194,11 @@ def update_role(db: Session, role_id: int, payload: RoleUpdateRequest, *, tenant
 
 def update_role_permissions(db: Session, role_id: int, payload: RolePermissionUpdateRequest, *, tenant_id: int) -> list[ModulePermissionSchema]:
     role = _get_role_or_404(db, role_id, tenant_id=tenant_id)
-    modules = {module.id: module for module in db.query(Module).all()}
+    modules = {
+        module.id: module
+        for module in db.query(Module).all()
+        if _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id)
+    }
 
     for item in payload.permissions:
         module = modules.get(item.module_id)

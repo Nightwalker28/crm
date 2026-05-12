@@ -9,6 +9,7 @@ from app.modules.platform.services.recycle_bin import (
     list_recycle_items,
     restore_recycle_item,
 )
+from app.modules.platform.services.custom_modules import is_custom_module_key
 
 router = APIRouter(prefix="/recycle", tags=["Recycle Bin"])
 
@@ -20,7 +21,7 @@ def get_recycle_items(
     db: Session = Depends(get_db),
     current_user=Depends(require_admin),
 ):
-    if module_key not in SUPPORTED_RECYCLE_MODULES:
+    if module_key not in SUPPORTED_RECYCLE_MODULES and not is_custom_module_key(db, tenant_id=current_user.tenant_id, module_key=module_key):
         raise HTTPException(status_code=400, detail="Unsupported recycle module")
     return list_recycle_items(
         db,
@@ -37,7 +38,7 @@ def restore_item(
     db: Session = Depends(get_db),
     current_user=Depends(require_admin),
 ):
-    if module_key not in SUPPORTED_RECYCLE_MODULES:
+    if module_key not in SUPPORTED_RECYCLE_MODULES and not is_custom_module_key(db, tenant_id=current_user.tenant_id, module_key=module_key):
         raise HTTPException(status_code=400, detail="Unsupported recycle module")
     try:
         return restore_recycle_item(

@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.uploads import build_media_url, delete_local_media_file, persist_media_file, read_image_upload
+from app.modules.platform.models import CustomModuleDefinition
 from app.modules.user_management.models import CompanyProfile, User, UserSavedView, UserTablePreference
 
 
@@ -159,7 +160,7 @@ def get_user_table_preference(
     user: User,
     module_key: str,
 ) -> UserTablePreference | None:
-    _ensure_supported_table_module(module_key)
+    _ensure_supported_table_module(db, user, module_key)
     return (
         db.query(UserTablePreference)
         .filter(
@@ -176,7 +177,7 @@ def save_user_table_preference(
     module_key: str,
     visible_columns: list[str],
 ) -> UserTablePreference:
-    _ensure_supported_table_module(module_key)
+    _ensure_supported_table_module(db, user, module_key)
     normalized_columns = [column.strip() for column in visible_columns if column and column.strip()]
     preference = get_user_table_preference(db, user, module_key)
     if not preference:
@@ -192,13 +193,26 @@ def save_user_table_preference(
     return preference
 
 
-def _ensure_supported_table_module(module_key: str) -> None:
-    if module_key not in TABLE_PREFERENCE_MODULES:
+def _is_custom_module_for_user(db: Session, user: User, module_key: str) -> bool:
+    return (
+        db.query(CustomModuleDefinition.id)
+        .filter(
+            CustomModuleDefinition.tenant_id == user.tenant_id,
+            CustomModuleDefinition.key == module_key,
+            CustomModuleDefinition.deleted_at.is_(None),
+        )
+        .first()
+        is not None
+    )
+
+
+def _ensure_supported_table_module(db: Session, user: User, module_key: str) -> None:
+    if module_key not in TABLE_PREFERENCE_MODULES and not _is_custom_module_for_user(db, user, module_key):
         raise ValueError("Unsupported table preference module")
 
 
-def _ensure_supported_saved_view_module(module_key: str) -> None:
-    if module_key not in SAVED_VIEW_MODULES:
+def _ensure_supported_saved_view_module(db: Session, user: User, module_key: str) -> None:
+    if module_key not in SAVED_VIEW_MODULES and not _is_custom_module_for_user(db, user, module_key):
         raise ValueError("Unsupported saved-view module")
 
 
@@ -367,7 +381,7 @@ def list_saved_views(
     *,
     default_visible_columns: list[str],
 ) -> list[dict]:
-    _ensure_supported_saved_view_module(module_key)
+    _ensure_supported_saved_view_module(db, user, module_key)
     legacy_preference = get_user_table_preference(db, user, module_key)
     default_columns = (
         legacy_preference.visible_columns
@@ -410,7 +424,7 @@ def create_saved_view(
     config: dict,
     is_default: bool = False,
 ) -> UserSavedView:
-    _ensure_supported_saved_view_module(module_key)
+    _ensure_supported_saved_view_module(db, user, module_key)
     cleaned_name = _clean(name)
     if not cleaned_name:
         raise ValueError("View name is required")
@@ -442,7 +456,7 @@ def get_saved_view_or_404(
     module_key: str,
     view_id: int,
 ) -> UserSavedView:
-    _ensure_supported_saved_view_module(module_key)
+    _ensure_supported_saved_view_module(db, user, module_key)
     view = (
         db.query(UserSavedView)
         .filter(

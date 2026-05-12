@@ -15,9 +15,10 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { useCustomModuleSchema } from "@/hooks/useModuleBuilder";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { SavedViewConditionEditor } from "@/components/ui/SavedViewConditionEditor";
-import { buildModuleViewDefinition, CUSTOM_FIELD_SUPPORTED_MODULES } from "@/lib/moduleViewConfigs";
+import { buildCustomModuleViewDefinition, buildModuleViewDefinition, CUSTOM_FIELD_SUPPORTED_MODULES, getModuleViewDefinition } from "@/lib/moduleViewConfigs";
 
 export default function ManageModuleViewPage() {
   const params = useParams<{ moduleKey: string }>();
@@ -25,13 +26,20 @@ export default function ManageModuleViewPage() {
   const router = useRouter();
   const { confirm } = useConfirm();
   const moduleKey = params.moduleKey;
+  const builtInDefinition = getModuleViewDefinition(moduleKey);
+  const shouldLoadCustomModule = !builtInDefinition;
   const { data: customFields = [] } = useModuleCustomFields(
     moduleKey,
     CUSTOM_FIELD_SUPPORTED_MODULES.has(moduleKey),
   );
+  const customModuleSchema = useCustomModuleSchema(moduleKey, shouldLoadCustomModule);
   const definition = useMemo(
-    () => buildModuleViewDefinition(moduleKey, customFields),
-    [customFields, moduleKey],
+    () => {
+      const moduleDefinition = buildModuleViewDefinition(moduleKey, customFields);
+      if (moduleDefinition) return moduleDefinition;
+      return customModuleSchema.data ? buildCustomModuleViewDefinition(customModuleSchema.data) : null;
+    },
+    [customFields, customModuleSchema.data, moduleKey],
   );
   const safeDefinition = definition ?? {
     key: moduleKey,
@@ -57,7 +65,7 @@ export default function ManageModuleViewPage() {
     setCurrentAsDefault,
     deleteCurrentView,
     isSaving,
-  } = useSavedViews(moduleKey, safeDefinition.defaultConfig);
+  } = useSavedViews(moduleKey, safeDefinition.defaultConfig, Boolean(definition));
 
   useEffect(() => {
     if (requestedViewId === "system-default" && selectedView?.is_system) {
@@ -72,6 +80,10 @@ export default function ManageModuleViewPage() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setViewName(selectedView && !selectedView.is_system ? selectedView.name : "");
   }, [selectedView]);
+
+  if (!definition && customModuleSchema.isLoading) {
+    return <div className="mx-auto max-w-4xl"><Card className="px-6 py-6 text-neutral-400">Loading view settings...</Card></div>;
+  }
 
   if (!definition) {
     return (

@@ -25,6 +25,7 @@ from app.modules.finance.services.io_search_services import (
 from app.modules.documents.schema import DocumentResponse
 from app.modules.documents.services.document_services import list_deleted_documents, restore_document
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services import custom_modules
 from app.modules.sales.services.contacts_services import (
     get_contact_or_404,
     list_deleted_sales_contacts,
@@ -244,6 +245,14 @@ def list_recycle_items(
         ]
         return build_paged_response(serialized, total_count=total, pagination=pagination)
 
+    if custom_modules.is_custom_module_key(db, tenant_id=tenant_id, module_key=module_key):
+        return custom_modules.list_deleted_records_for_recycle(
+            db,
+            tenant_id=tenant_id,
+            module_key=module_key,
+            pagination=pagination,
+        )
+
     raise ValueError("Unsupported recycle module")
 
 
@@ -412,5 +421,13 @@ def restore_recycle_item(
             actor_user_id=current_user.id if current_user else None,
         )
         return CatalogServiceResponse.model_validate(serialize_service(restored)).model_dump(mode="json")
+
+    if custom_modules.is_custom_module_key(db, tenant_id=current_user.tenant_id, module_key=module_key):
+        return custom_modules.restore_record(
+            db,
+            module_key=module_key,
+            record_id=record_id,
+            current_user=current_user,
+        ).model_dump(mode="json")
 
     raise ValueError("Unsupported recycle module")

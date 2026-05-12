@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -229,3 +229,107 @@ class MessageTemplate(Base):
 
     creator = relationship("User", foreign_keys=[created_by_user_id])
     updated_by = relationship("User", foreign_keys=[updated_by_user_id])
+
+
+class CustomModuleDefinition(Base):
+    __tablename__ = "custom_module_definitions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "key", name="uq_custom_module_definitions_tenant_key"),
+        Index("ix_custom_module_definitions_tenant_active", "tenant_id", "is_active", "deleted_at"),
+    )
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    key = Column(String(100), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    icon = Column(String(80), nullable=True)
+    is_active = Column(Boolean, nullable=False, server_default="true", index=True)
+    module_id = Column(BigInteger, ForeignKey("modules.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    module = relationship("Module")
+    fields = relationship("CustomModuleFieldDefinition", back_populates="custom_module", cascade="all, delete-orphan")
+
+
+class CustomModuleFieldDefinition(Base):
+    __tablename__ = "custom_module_field_definitions"
+    __table_args__ = (
+        UniqueConstraint("custom_module_id", "key", name="uq_custom_module_field_definitions_module_key"),
+        Index("ix_custom_module_field_definitions_tenant_module", "tenant_id", "custom_module_id", "is_active", "deleted_at"),
+    )
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    custom_module_id = Column(BigInteger, ForeignKey("custom_module_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
+    key = Column(String(100), nullable=False, index=True)
+    label = Column(String(150), nullable=False)
+    field_type = Column(String(40), nullable=False)
+    help_text = Column(Text, nullable=True)
+    placeholder = Column(String(255), nullable=True)
+    is_required = Column(Boolean, nullable=False, server_default="false")
+    is_unique = Column(Boolean, nullable=False, server_default="false")
+    display_in_list = Column(Boolean, nullable=False, server_default="true")
+    default_value = Column(JSON, nullable=True)
+    validation_json = Column(JSON, nullable=True)
+    sort_order = Column(Integer, nullable=False, server_default="0")
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    custom_module = relationship("CustomModuleDefinition", back_populates="fields")
+    values = relationship("CustomModuleRecordValue", back_populates="field", cascade="all, delete-orphan")
+
+
+class CustomModuleRecord(Base):
+    __tablename__ = "custom_module_records"
+    __table_args__ = (
+        Index("ix_custom_module_records_tenant_module_deleted", "tenant_id", "custom_module_id", "deleted_at"),
+        Index("ix_custom_module_records_tenant_title", "tenant_id", "custom_module_id", "title"),
+    )
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    custom_module_id = Column(BigInteger, ForeignKey("custom_module_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    created_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    custom_module = relationship("CustomModuleDefinition")
+    values = relationship("CustomModuleRecordValue", back_populates="record", cascade="all, delete-orphan")
+
+
+class CustomModuleRecordValue(Base):
+    __tablename__ = "custom_module_record_values"
+    __table_args__ = (
+        UniqueConstraint("record_id", "field_id", name="uq_custom_module_record_values_record_field"),
+        Index("ix_custom_module_record_values_tenant_module", "tenant_id", "custom_module_id"),
+        Index("ix_custom_module_record_values_field_text", "field_id", "text_value"),
+        Index("ix_custom_module_record_values_field_number", "field_id", "number_value"),
+        Index("ix_custom_module_record_values_field_datetime", "field_id", "datetime_value"),
+        Index("ix_custom_module_record_values_field_boolean", "field_id", "boolean_value"),
+    )
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    custom_module_id = Column(BigInteger, ForeignKey("custom_module_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
+    record_id = Column(BigInteger, ForeignKey("custom_module_records.id", ondelete="CASCADE"), nullable=False, index=True)
+    field_id = Column(BigInteger, ForeignKey("custom_module_field_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
+    text_value = Column(Text, nullable=True)
+    number_value = Column(Numeric(18, 4), nullable=True)
+    datetime_value = Column(DateTime(timezone=True), nullable=True)
+    boolean_value = Column(Boolean, nullable=True)
+    json_value = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    record = relationship("CustomModuleRecord", back_populates="values")
+    field = relationship("CustomModuleFieldDefinition", back_populates="values")

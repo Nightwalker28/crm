@@ -132,6 +132,7 @@ async function deleteSavedView(moduleKey: string, viewId: number) {
 export function useSavedViews(
   moduleKey: string,
   defaultConfig: SavedViewConfig,
+  enabled = true,
 ) {
   const queryClient = useQueryClient();
   const [selectedViewId, setSelectedViewId] = useState<string>("");
@@ -142,6 +143,7 @@ export function useSavedViews(
   const query = useQuery({
     queryKey: ["saved-views", moduleKey, defaultConfig.visible_columns],
     queryFn: () => fetchSavedViews(moduleKey, defaultConfig.visible_columns),
+    enabled: Boolean(moduleKey) && enabled,
     staleTime: 5 * 60_000,
   });
 

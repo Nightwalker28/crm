@@ -15,6 +15,7 @@ from app.modules.mail.routes.mail_routes import router as mail_router
 from app.modules.platform.routes.activity_logs import router as activity_log_router
 from app.modules.platform.routes.app_config import router as app_config_router
 from app.modules.platform.routes.custom_fields import router as custom_fields_router, public_router as public_custom_fields_router
+from app.modules.platform.routes.custom_modules import builder_router as custom_module_builder_router, runtime_router as custom_module_runtime_router
 from app.modules.platform.routes.data_transfer_jobs import router as data_transfer_job_router
 from app.modules.platform.routes.crm_events import router as crm_events_router
 from app.modules.platform.routes.global_search import router as global_search_router
@@ -45,6 +46,8 @@ router.include_router(profile_router, prefix="/users")
 router.include_router(admin_user_router)
 router.include_router(activity_log_router)
 router.include_router(custom_fields_router)
+router.include_router(custom_module_builder_router)
+router.include_router(custom_module_runtime_router)
 router.include_router(public_custom_fields_router)
 router.include_router(data_transfer_job_router)
 router.include_router(crm_events_router)

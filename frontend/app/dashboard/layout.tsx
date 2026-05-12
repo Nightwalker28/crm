@@ -16,6 +16,7 @@ const ADMIN_ONLY_PREFIXES = [
   "/dashboard/company",
   "/dashboard/roles-permissions",
   "/dashboard/custom-fields",
+  "/dashboard/module-builder",
   "/dashboard/integrations",
   "/dashboard/modules",
   "/dashboard/recycle-bin",
@@ -52,11 +53,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const requiresAdmin = isAdminOnlyPath(pathname);
   const moduleRoute = matchedModuleRoute(pathname);
   const allowedModuleRoutes = new Set(modules.map((module) => module.base_route).filter(Boolean));
+  const customModuleRoute = modules
+    .map((module) => module.base_route)
+    .filter((route): route is string => Boolean(route?.startsWith("/dashboard/custom/")))
+    .find((route) => pathname === route || pathname.startsWith(route + "/"));
   const isCheckingAdminAccess = requiresAdmin && isLoading;
-  const isCheckingModuleAccess = Boolean(moduleRoute && modulesLoading);
+  const isCustomModulePath = pathname === "/dashboard/custom" || pathname.startsWith("/dashboard/custom/");
+  const isCheckingModuleAccess = Boolean((moduleRoute || isCustomModulePath) && modulesLoading);
   const isCheckingAccess = isCheckingAdminAccess || isCheckingModuleAccess;
   const isBlocked = requiresAdmin && !isLoading && !isAdmin;
-  const isModuleBlocked = Boolean(moduleRoute && !modulesLoading && !allowedModuleRoutes.has(moduleRoute));
+  const isModuleBlocked = Boolean(
+    (moduleRoute && !modulesLoading && !allowedModuleRoutes.has(moduleRoute)) ||
+      (isCustomModulePath && !modulesLoading && !customModuleRoute),
+  );
 
   useEffect(() => {
     if (isBlocked || isModuleBlocked) {

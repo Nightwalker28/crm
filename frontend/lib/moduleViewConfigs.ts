@@ -4,6 +4,7 @@ import type {
 } from "@/hooks/useSavedViews";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
+import type { CustomModuleDefinition, CustomModuleField } from "@/hooks/useModuleBuilder";
 
 export type ModuleFilterFieldType = "text" | "number" | "date" | "select";
 
@@ -462,5 +463,62 @@ export function buildModuleViewDefinition(
     ...baseDefinition,
     columns: [...baseDefinition.columns, ...customColumns],
     filterFields: [...baseDefinition.filterFields, ...customFilterFields],
+  };
+}
+
+function customModuleFieldType(field: CustomModuleField): ModuleFilterFieldType {
+  if (field.field_type === "number" || field.field_type === "currency") return "number";
+  if (field.field_type === "date" || field.field_type === "datetime") return "date";
+  if (field.field_type === "boolean" || field.field_type === "single_select" || field.field_type === "multi_select") return "select";
+  return "text";
+}
+
+function customModuleOperators(field: CustomModuleField): SavedViewFilterOperator[] {
+  const type = customModuleFieldType(field);
+  if (type === "number") return NUMBER_OPERATORS;
+  if (type === "date") return DATE_OPERATORS;
+  if (type === "select") return SELECT_OPERATORS;
+  return TEXT_OPERATORS;
+}
+
+export function buildCustomModuleViewDefinition(module: CustomModuleDefinition): ModuleViewDefinition {
+  const activeFields = module.fields
+    .filter((field) => field.is_active)
+    .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id);
+  const columns: TableColumnOption[] = [
+    { key: "title", label: "Title" },
+    ...activeFields.map((field) => ({ key: field.key, label: field.label })),
+  ];
+  const defaultColumns = [
+    "title",
+    ...activeFields.filter((field) => field.display_in_list).slice(0, 8).map((field) => field.key),
+  ];
+
+  return {
+    key: module.key,
+    label: module.name,
+    route: `/dashboard/custom/${module.key}`,
+    columns,
+    filterFields: [
+      { key: "title", label: "Title", type: "text", operators: TEXT_OPERATORS },
+      ...activeFields.map((field) => ({
+        key: field.key,
+        label: field.label,
+        type: customModuleFieldType(field),
+        operators: customModuleOperators(field),
+        options:
+          field.field_type === "boolean"
+            ? [
+                { value: "true", label: "True" },
+                { value: "false", label: "False" },
+              ]
+            : (field.validation_json?.options ?? []).map((option) => ({ value: option, label: option })),
+      })),
+    ],
+    defaultConfig: {
+      visible_columns: defaultColumns.length ? defaultColumns : ["title"],
+      filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
+      sort: null,
+    },
   };
 }

@@ -62,12 +62,16 @@ def list_modules(db: Session, *, tenant_id: int) -> list[ModuleSchema]:
         .all()
     )
     config_map = {config.module_id: config for config in configs}
-    return [build_module_schema(module, config_map.get(module.id)) for module in modules]
+    return [
+        build_module_schema(module, config_map.get(module.id))
+        for module in modules
+        if _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id)
+    ]
 
 
 def update_module(db: Session, module_id: int, payload: ModuleUpdateRequest, *, tenant_id: int) -> ModuleSchema:
     module = db.query(Module).filter(Module.id == module_id).first()
-    if not module:
+    if not module or not _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
 
     update_data = payload.model_dump(exclude_unset=True)
@@ -117,7 +121,7 @@ def update_module(db: Session, module_id: int, payload: ModuleUpdateRequest, *, 
 
 def get_module_access(db: Session, module_id: int, *, tenant_id: int) -> ModuleAccessSchema:
     module = db.query(Module).filter(Module.id == module_id).first()
-    if not module:
+    if not module or not _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
 
     department_ids = {
@@ -183,7 +187,7 @@ def update_module_access(
     tenant_id: int,
 ) -> ModuleAccessSchema:
     module = db.query(Module).filter(Module.id == module_id).first()
-    if not module:
+    if not module or not _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
 
     requested_department_ids = set(payload.department_ids)
@@ -250,7 +254,22 @@ def get_module_duplicate_mode(db: Session, module_name: str, *, tenant_id: int |
 
 
 def is_module_enabled_for_tenant(db: Session, *, tenant_id: int, module: Module) -> bool:
+    if not _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id):
+        return False
     config = _get_tenant_module_config(db, tenant_id=tenant_id, module_id=module.id)
     if config is not None:
         return bool(config.is_enabled)
     return bool(module.is_enabled)
+
+
+def _module_belongs_to_tenant_or_global(db: Session, *, module: Module, tenant_id: int) -> bool:
+    from app.modules.platform.models import CustomModuleDefinition
+
+    custom_definition = (
+        db.query(CustomModuleDefinition.tenant_id, CustomModuleDefinition.deleted_at)
+        .filter(CustomModuleDefinition.module_id == module.id)
+        .first()
+    )
+    if custom_definition is None:
+        return True
+    return custom_definition.tenant_id == tenant_id and custom_definition.deleted_at is None

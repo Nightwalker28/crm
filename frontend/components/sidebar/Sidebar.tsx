@@ -17,6 +17,7 @@ import {
   Package,
   PanelLeftClose,
   PanelLeftOpen,
+  Wrench,
 } from "lucide-react";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -97,6 +98,9 @@ export default function Sidebar() {
   const opportunitiesModule = moduleMap.get("sales_opportunities");
   const catalogProductsModule = moduleMap.get("catalog_products");
   const catalogServicesModule = moduleMap.get("catalog_services");
+  const customModules = modules
+    .filter((module) => module.base_route?.startsWith("/dashboard/custom/"))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <aside
@@ -224,6 +228,9 @@ export default function Sidebar() {
                   <SidebarMenuItemChild href="/dashboard/modules" collapsed={collapsed}>
                     Modules
                   </SidebarMenuItemChild>
+                  <SidebarMenuItemChild href="/dashboard/module-builder" collapsed={collapsed}>
+                    Module Builder
+                  </SidebarMenuItemChild>
                   <SidebarMenuItemChild href="/dashboard/recycle-bin" collapsed={collapsed}>
                     Recycle Bin
                   </SidebarMenuItemChild>
@@ -276,6 +283,16 @@ export default function Sidebar() {
                       Client Pages
                     </SidebarMenuItemChild>
                   ) : null}
+                </SidebarMenuItemCollapsible>
+              ) : null}
+
+              {customModules.length > 0 ? (
+                <SidebarMenuItemCollapsible icon={Wrench} label="Custom" collapsed={collapsed}>
+                  {customModules.map((module) => (
+                    <SidebarMenuItemChild key={module.id} href={module.base_route as string} collapsed={collapsed}>
+                      {module.description?.replace(/^Custom module:\s*/i, "") || module.name.replace(/^custom_\d+_/, "")}
+                    </SidebarMenuItemChild>
+                  ))}
                 </SidebarMenuItemCollapsible>
               ) : null}
             </SidebarMenu>
