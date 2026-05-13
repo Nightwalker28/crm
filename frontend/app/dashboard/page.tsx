@@ -17,6 +17,8 @@ import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useNotifications } from "@/hooks/useNotifications";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { getModuleDisplayName } from "@/lib/module-display";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/button";
 
@@ -44,12 +46,6 @@ async function fetchDashboardActivity(): Promise<ActivityResponse> {
   return body as ActivityResponse;
 }
 
-function getModuleLabel(moduleKey: string) {
-  return moduleKey
-    .replace(/_/g, " ")
-    .replace(/\b\w/g, (value) => value.toUpperCase());
-}
-
 function getActionLabel(action: string) {
   return action.replace(/_/g, " ");
 }
@@ -72,8 +68,8 @@ export default function DashboardHomePage() {
       { href: "/dashboard/tasks", label: "Tasks", helper: "Open assigned and team work queues" },
       { href: "/dashboard/calendar", label: "Calendar", helper: "Schedule internal events and review invites" },
       { href: "/dashboard/sales/contacts", label: "Contacts", helper: "Open the CRM contact list" },
-      { href: "/dashboard/sales/organizations", label: "Organizations", helper: "Open account records" },
-      { href: "/dashboard/sales/opportunities", label: "Opportunities", helper: "Review and update pipeline" },
+      { href: "/dashboard/sales/organizations", label: "Accounts", helper: "Open account records" },
+      { href: "/dashboard/sales/opportunities", label: "Deals", helper: "Review and update pipeline" },
       { href: "/dashboard/finance/insertion-orders", label: "Insertion Orders", helper: "Manage finance handoff and IOs" },
     ];
     const accessibleRoutes = new Set(modules.map((module) => module.base_route).filter(Boolean));
@@ -122,7 +118,7 @@ export default function DashboardHomePage() {
         actions={
           <>
             <Button asChild variant="outline">
-              <Link href="/dashboard/activity-log">
+              <Link href={SETTINGS_ROUTES.activityLog}>
                 <ClipboardList className="h-4 w-4" />
                 Activity Log
               </Link>
@@ -180,7 +176,9 @@ export default function DashboardHomePage() {
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-neutral-100">{module.name}</div>
+                      <div className="text-sm font-semibold text-neutral-100">
+                        {getModuleDisplayName(module.name, module.description ?? undefined)}
+                      </div>
                       <div className="mt-1 text-sm leading-6 text-neutral-400">
                         {module.description || "Open this module and continue where your role allows."}
                       </div>
@@ -257,7 +255,7 @@ export default function DashboardHomePage() {
                       {getActionLabel(item.action)}
                     </span>
                     <span className="text-sm font-medium text-neutral-100">
-                      {getModuleLabel(item.module_key)}
+                      {getModuleDisplayName(item.module_key)}
                     </span>
                     <span className="text-xs text-neutral-500">
                       {item.entity_type} #{item.entity_id}
@@ -295,7 +293,7 @@ export default function DashboardHomePage() {
               {notifications.slice(0, 6).map((notification) => (
                 <Link
                   key={notification.id}
-                  href={notification.link_url || "/dashboard/activity-log"}
+                  href={notification.link_url || SETTINGS_ROUTES.activityLog}
                   className="block px-5 py-4 transition-colors hover:bg-neutral-900/50"
                 >
                   <div className="flex items-start justify-between gap-3">

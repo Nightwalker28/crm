@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
@@ -444,7 +445,7 @@ export default function IntegrationsPage() {
             </div>
             <FieldGroup className="grid gap-4">
               <Field>
-                <FieldLabel>Key Name *</FieldLabel>
+                <FieldLabel>Key Name <RequiredMark /></FieldLabel>
                 <Input value={apiKeyDraft.name} onChange={(event) => setApiKeyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="WordPress production" />
               </Field>
               <div className="grid gap-2">

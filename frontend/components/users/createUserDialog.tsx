@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -50,10 +51,6 @@ const emptyForm = {
   auth_mode: "manual_only" as AuthMode,
   is_active: "active" as UserStatus,
 };
-
-function RequiredMark() {
-  return <span className="text-red-400">*</span>;
-}
 
 export default function CreateUserDialog({ open, roles, teams, onClose, onCreate }: Props) {
   const [form, setForm] = useState(emptyForm);

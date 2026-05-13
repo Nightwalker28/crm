@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -87,10 +88,6 @@ function getContactDisplay(option: ContactOption): string {
   return `${option.first_name ?? ""} ${option.last_name ?? ""}`.trim() || option.primary_email || "Unnamed contact";
 }
 
-function RequiredAsterisk() {
-  return <span className="text-red-400">*</span>;
-}
-
 export default function OpportunityDialog({ open, opportunity, isSubmitting = false, onClose, onSubmit }: Props) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState<string | null>(null);
@@ -156,7 +153,7 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
         <DialogPanel size="3xl">
           <DialogHeader>
-            <DialogTitle>{opportunity ? "Edit Opportunity" : "Create Opportunity"}</DialogTitle>
+            <DialogTitle>{opportunity ? "Edit Deal" : "Create Deal"}</DialogTitle>
             <DialogIconClose />
           </DialogHeader>
 
@@ -165,11 +162,11 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
 
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
               <Field>
-                <FieldLabel>Opportunity Name <RequiredAsterisk /></FieldLabel>
+                <FieldLabel>Deal Name <RequiredMark /></FieldLabel>
                 <Input value={form.opportunity_name} onChange={(e) => setForm((c) => ({ ...c, opportunity_name: e.target.value }))} />
               </Field>
               <Field>
-                <FieldLabel>Client Contact <RequiredAsterisk /></FieldLabel>
+                <FieldLabel>Client Contact <RequiredMark /></FieldLabel>
                 <div className="relative">
                   <Input
                     value={contactSearch}
@@ -231,7 +228,7 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
                     </div>
                   ) : null}
                 </div>
-                <FieldDescription>Opportunities must be linked to an existing sales contact.</FieldDescription>
+                <FieldDescription>Deals must be linked to an existing sales contact.</FieldDescription>
               </Field>
               <Field>
                 <FieldLabel>Sales Stage</FieldLabel>
@@ -291,7 +288,7 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
           <DialogFooter>
             <Button variant="secondary" onClick={onClose}>Cancel</Button>
             <Button onClick={handleSubmit} disabled={isSubmitting || !form.opportunity_name.trim() || !form.contact_id}>
-              {isSubmitting ? "Saving..." : opportunity ? "Save Opportunity" : "Create Opportunity"}
+              {isSubmitting ? "Saving..." : opportunity ? "Save Deal" : "Create Deal"}
             </Button>
           </DialogFooter>
         </DialogPanel>

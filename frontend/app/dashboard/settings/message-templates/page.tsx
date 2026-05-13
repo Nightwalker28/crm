@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
+import { getModuleDisplayName } from "@/lib/module-display";
 
 type MessageTemplate = {
   id: number;
@@ -47,11 +48,11 @@ const CHANNEL_OPTIONS = [
 ];
 
 const MODULE_OPTIONS = [
-  { value: "sales_contacts", label: "Sales Contacts" },
-  { value: "sales_organizations", label: "Sales Organizations" },
-  { value: "sales_opportunities", label: "Sales Opportunities" },
-  { value: "finance_io", label: "Finance Insertion Orders" },
-  { value: "tasks", label: "Tasks" },
+  "sales_contacts",
+  "sales_organizations",
+  "sales_opportunities",
+  "finance_io",
+  "tasks",
 ];
 
 const emptyDraft: TemplateDraft = {
@@ -213,8 +214,8 @@ export default function MessageTemplatesPage() {
                 <Select value={draft.module_key} onValueChange={(value) => setDraft((current) => ({ ...current, module_key: value }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {MODULE_OPTIONS.map((option) => (
-                      <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                    {MODULE_OPTIONS.map((moduleName) => (
+                      <SelectItem key={moduleName} value={moduleName}>{getModuleDisplayName(moduleName)}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -273,7 +274,9 @@ export default function MessageTemplatesPage() {
                       <div className="mt-1 max-w-md truncate text-xs text-neutral-500">{template.description || template.template_key}</div>
                     </TableCell>
                     <TableCell className="capitalize text-neutral-300">{template.channel}</TableCell>
-                    <TableCell className="text-neutral-400">{template.module_key || "-"}</TableCell>
+                    <TableCell className="text-neutral-400">
+                      {template.module_key ? getModuleDisplayName(template.module_key) : "-"}
+                    </TableCell>
                     <TableCell>
                       <div className="flex flex-wrap gap-2">
                         <Pill bg={template.is_active ? "bg-emerald-950/60" : "bg-red-950/60"} text={template.is_active ? "text-emerald-200" : "text-red-200"} border={template.is_active ? "border-emerald-800/70" : "border-red-800/70"}>

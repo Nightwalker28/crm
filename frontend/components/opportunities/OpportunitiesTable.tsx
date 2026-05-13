@@ -1,11 +1,12 @@
 "use client";
 
 import { Fragment } from "react";
-import { HandCoins } from "lucide-react";
+import { HandCoins, BriefcaseBusiness } from "lucide-react";
 
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import {
   Table,
@@ -20,7 +21,8 @@ import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getOpportunityStageLabel, getOpportunityStageStyle } from "@/components/opportunities/opportunityStages";
+import { getOpportunityStageLabel } from "@/components/opportunities/opportunityStages";
+import { getOpportunityStageStyle } from "@/lib/statusStyles";
 
 type Props = {
   opportunities: Opportunity[];
@@ -60,7 +62,7 @@ export default function OpportunitiesTable({
 }: Props) {
   const columnCount = visibleColumns.length + 1;
   const headers: Record<string, string> = {
-    opportunity_name: "Opportunity",
+    opportunity_name: "Deal",
     client: "Client",
     sales_stage: "Stage",
     expected_close_date: "Expected Close",
@@ -201,12 +203,7 @@ export default function OpportunitiesTable({
           ) : opportunities.length === 0 ? (
             <TableRow>
               <TableCell colSpan={columnCount} className="py-16 text-center">
-                <div className="flex flex-col items-center gap-2 text-neutral-500">
-                  <svg className="w-8 h-8 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                  </svg>
-                  <span className="text-sm">No opportunities found</span>
-                </div>
+                <EmptyState icon={BriefcaseBusiness} title="No deals found" description="Deals matching the current view will appear here." />
               </TableCell>
             </TableRow>
           ) : (

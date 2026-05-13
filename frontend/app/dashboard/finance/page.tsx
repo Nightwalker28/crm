@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { AlertTriangle, ArrowRight, FileSpreadsheet, ReceiptText } from "lucide-react";
+import { ArrowRight, FileSpreadsheet, Plus, ReceiptText } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/button";
+import { DASHBOARD_ROUTES, SETTINGS_ROUTES } from "@/lib/routes";
 
 type FinanceSummaryResponse = {
   total_count: number;
@@ -68,11 +69,18 @@ export default function FinancePage() {
     const overdueCount = orders.filter(isOverdue).length;
     const activeCount = orders.filter((order) => ["issued", "active"].includes(order.status)).length;
     const draftCount = orders.filter((order) => order.status === "draft").length;
+    const now = new Date();
+    const completedThisMonth = orders.filter((order) => {
+      if (order.status !== "completed" || !order.updated_at) return false;
+      const updatedAt = new Date(order.updated_at);
+      return updatedAt.getFullYear() === now.getFullYear() && updatedAt.getMonth() === now.getMonth();
+    }).length;
     return {
       total: summaryQuery.data?.total_count ?? 0,
       overdueCount,
       activeCount,
       draftCount,
+      completedThisMonth,
     };
   }, [summaryQuery.data]);
 
@@ -80,17 +88,17 @@ export default function FinancePage() {
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
         title="Finance"
-        description="Finance entry point with live insertion-order context and direct access into operational workflows."
+        description="Monitor insertion orders, POS invoices, and finance activity."
         actions={
           <>
             <Button asChild variant="outline">
-              <Link href="/dashboard/recycle-bin">Recycle Bin</Link>
+              <Link href={SETTINGS_ROUTES.recycleBin}>Recycle Bin</Link>
             </Button>
             <Button asChild>
-              <Link href="/dashboard/finance/insertion-orders">Open Insertion Orders</Link>
+              <Link href={DASHBOARD_ROUTES.insertionOrders}>Open Insertion Orders</Link>
             </Button>
             <Button asChild>
-              <Link href="/dashboard/finance/pos">Open POS Mode</Link>
+              <Link href={DASHBOARD_ROUTES.financePos}>Open POS Mode</Link>
             </Button>
           </>
         }
@@ -126,12 +134,39 @@ export default function FinancePage() {
 
         <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 px-5 py-5">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Overdue in View</div>
-            <AlertTriangle className="h-4 w-4 text-neutral-500" />
+            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Completed this month</div>
+            <FileSpreadsheet className="h-4 w-4 text-neutral-500" />
           </div>
-          <div className="mt-3 text-3xl font-semibold text-neutral-100">{metrics.overdueCount}</div>
-          <div className="mt-2 text-sm text-neutral-400">Recent loaded orders whose due date has already passed.</div>
+          <div className="mt-3 text-3xl font-semibold text-neutral-100">{metrics.completedThisMonth}</div>
+          <div className="mt-2 text-sm text-neutral-400">Completed orders from the currently loaded finance summary.</div>
         </div>
+      </section>
+
+      <section className="grid gap-3 md:grid-cols-2">
+        <Link
+          href={DASHBOARD_ROUTES.insertionOrders}
+          className="group rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4 transition-colors hover:border-neutral-700 hover:bg-neutral-900/60"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-neutral-100">New Insertion Order</div>
+              <div className="mt-1 text-sm text-neutral-500">Open insertion orders and create a finance record.</div>
+            </div>
+            <Plus className="h-4 w-4 text-neutral-500 group-hover:text-neutral-200" />
+          </div>
+        </Link>
+        <Link
+          href={DASHBOARD_ROUTES.financePos}
+          className="group rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4 transition-colors hover:border-neutral-700 hover:bg-neutral-900/60"
+        >
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-neutral-100">New POS Invoice</div>
+              <div className="mt-1 text-sm text-neutral-500">Open POS mode and create an invoice.</div>
+            </div>
+            <Plus className="h-4 w-4 text-neutral-500 group-hover:text-neutral-200" />
+          </div>
+        </Link>
       </section>
 
       <section className="rounded-xl border border-neutral-800 bg-neutral-950/60">
@@ -141,7 +176,7 @@ export default function FinancePage() {
             <p className="mt-1 text-sm text-neutral-400">Live finance records until deeper charts and trend views are added.</p>
           </div>
           <Button asChild variant="outline" size="sm">
-            <Link href="/dashboard/finance/insertion-orders">
+            <Link href={DASHBOARD_ROUTES.insertionOrders}>
               View All
               <ArrowRight className="h-4 w-4" />
             </Link>
@@ -155,7 +190,7 @@ export default function FinancePage() {
             {summaryQuery.data.results.map((order) => (
               <Link
                 key={order.id}
-                href="/dashboard/finance/insertion-orders"
+                href={DASHBOARD_ROUTES.insertionOrders}
                 className="block px-5 py-4 transition-colors hover:bg-neutral-900/50"
               >
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

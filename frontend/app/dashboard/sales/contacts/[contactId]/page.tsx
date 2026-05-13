@@ -15,6 +15,8 @@ import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel
 import FollowUpPanel from "@/components/recordActivity/FollowUpPanel";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -278,7 +280,7 @@ export default function ContactDetailPage() {
         backHref="/dashboard/sales/contacts"
         backLabel="Back to Contacts"
         title={summary ? `${summary.contact.first_name || ""} ${summary.contact.last_name || ""}`.trim() || summary.contact.primary_email || "Contact" : "Contact"}
-        description="Review the contact record, linked organization, related opportunities, and inferred service history."
+        description="Review the contact record, linked account, related deals, and inferred service history."
         primaryAction={(
           <Button onClick={handleSave} disabled={saving || !form.primary_email.trim()}>
             {saving ? "Saving..." : "Save Contact"}
@@ -351,7 +353,7 @@ export default function ContactDetailPage() {
               </div>
               <div className="grid gap-3">
                 <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                  <div className="text-xs uppercase tracking-wide text-neutral-500">Organization</div>
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Account</div>
                   <div className="mt-2 text-sm text-neutral-100">
                     {summary.organization ? (
                       <Link href={`/dashboard/sales/organizations/${summary.organization.org_id}`} className="hover:text-white">
@@ -466,7 +468,7 @@ export default function ContactDetailPage() {
 
           <div className="grid gap-4 lg:grid-cols-2">
             <Card className="px-5 py-5">
-              <h2 className="text-lg font-semibold text-neutral-100">Related Opportunities</h2>
+              <h2 className="text-lg font-semibold text-neutral-100">Related Deals</h2>
               <div className="mt-4 space-y-3">
                 {summary.related_opportunities.length ? summary.related_opportunities.map((opportunity) => (
                   <div key={opportunity.opportunity_id} className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
@@ -497,33 +499,16 @@ export default function ContactDetailPage() {
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <FollowUpPanel
-              endpoint={`/sales/contacts/${summary.contact.contact_id}/follow-up`}
-              lastContactedAt={summary.contact.last_contacted_at}
-              lastContactedChannel={summary.contact.last_contacted_channel}
-              email={summary.contact.primary_email}
-              phone={summary.contact.contact_telephone}
-              onLogged={() => loadSummary()}
-            />
-            <RecordTasksPanel
-              moduleKey="sales_contacts"
-              entityId={summary.contact.contact_id}
-            />
-            <RecordDocumentsPanel
-              moduleKey="sales_contacts"
-              entityId={summary.contact.contact_id}
-            />
-            <RecordActivityTimeline
-              moduleKey="sales_contacts"
-              entityId={summary.contact.contact_id}
-              description="Contact-level create, update, delete, restore, and note history."
-            />
-            <RecordCommentsPanel
-              moduleKey="sales_contacts"
-              entityId={summary.contact.contact_id}
-            />
-          </div>
+          <RecordTabs
+            tabs={[
+              { id: "overview", label: "Overview", content: <EmptyState title="Overview shown above" description="Contact details, summary, related deals, and insertion orders remain visible above these record tools." /> },
+              { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_contacts" entityId={summary.contact.contact_id} description="Contact-level create, update, delete, restore, and note history." /> },
+              { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
+              { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
+              { id: "tasks", label: "Tasks", content: <RecordTasksPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
+              { id: "follow-up", label: "Follow-up", content: <FollowUpPanel endpoint={`/sales/contacts/${summary.contact.contact_id}/follow-up`} lastContactedAt={summary.contact.last_contacted_at} lastContactedChannel={summary.contact.last_contacted_channel} email={summary.contact.primary_email} phone={summary.contact.contact_telephone} onLogged={() => loadSummary()} /> },
+            ]}
+          />
         </>
       )}
     </div>

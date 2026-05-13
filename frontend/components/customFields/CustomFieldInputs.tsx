@@ -3,6 +3,7 @@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Textarea } from "@/components/ui/textarea";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
 
@@ -11,10 +12,6 @@ type Props = {
   values: Record<string, unknown>;
   onChange: (fieldKey: string, value: unknown) => void;
 };
-
-function RequiredMark() {
-  return <span className="text-red-400">*</span>;
-}
 
 export default function CustomFieldInputs({ definitions, values, onChange }: Props) {
   if (!definitions.length) return null;

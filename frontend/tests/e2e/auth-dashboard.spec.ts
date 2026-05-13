@@ -15,12 +15,12 @@ async function loginAsAdmin(page: Page) {
   await page.getByLabel("Password").fill(adminPassword);
   await page.getByRole("button", { name: "Sign in with email" }).click();
 
-  await page.waitForURL("**/dashboard/users");
-  await expect(page.getByRole("heading", { name: "User Management" })).toBeVisible();
+  await page.waitForURL("**/dashboard");
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 }
 
 test("guest dashboard access redirects to login", async ({ page }) => {
-  await page.goto("/dashboard/users");
+  await page.goto("/dashboard/settings/users");
   await page.waitForURL("**/auth/login");
   await expect(page.getByRole("button", { name: "Sign in with email" })).toBeVisible();
 });
@@ -28,8 +28,9 @@ test("guest dashboard access redirects to login", async ({ page }) => {
 test("admin manual login and dashboard navigation works", async ({ page }) => {
   await loginAsAdmin(page);
 
-  await page.getByRole("link", { name: "Teams & Departments" }).click();
-  await page.waitForURL("**/dashboard/user/teams");
+  await page.getByRole("button", { name: "Settings" }).click();
+  await page.getByRole("link", { name: "Teams" }).click();
+  await page.waitForURL("**/dashboard/settings/teams");
   await expect(page.getByRole("heading", { name: "Teams & Departments" })).toBeVisible();
 
   await page.getByRole("button", { name: "Finance" }).click();
@@ -37,12 +38,12 @@ test("admin manual login and dashboard navigation works", async ({ page }) => {
   await page.waitForURL("**/dashboard/finance/insertion-orders");
   await expect(page.getByRole("heading", { name: "Insertion Orders" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Sales" }).click();
-  await page.getByRole("link", { name: "Organizations" }).click();
+  await page.getByRole("button", { name: "Sales CRM" }).click();
+  await page.getByRole("link", { name: "Accounts" }).click();
   await page.waitForURL("**/dashboard/sales/organizations");
-  await expect(page.getByRole("heading", { name: "Organizations" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Sales" }).click();
+  await page.getByRole("button", { name: "Sales CRM" }).click();
   await page.getByRole("link", { name: "Contacts" }).click();
   await page.waitForURL("**/dashboard/sales/contacts");
   await expect(page.getByRole("heading", { name: "Contacts" })).toBeVisible();
@@ -52,6 +53,6 @@ test("logged in user is redirected away from auth pages", async ({ page }) => {
   await loginAsAdmin(page);
 
   await page.goto("/auth/login");
-  await page.waitForURL("**/dashboard/users");
-  await expect(page.getByRole("heading", { name: "User Management" })).toBeVisible();
+  await page.waitForURL("**/dashboard");
+  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
 });

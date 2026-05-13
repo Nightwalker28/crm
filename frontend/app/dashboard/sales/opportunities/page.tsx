@@ -139,11 +139,11 @@ export default function OpportunitiesPage() {
   async function handleSubmit(payload: OpportunityPayload) {
     if (selectedOpportunity) {
       await updateOpportunity(selectedOpportunity.opportunity_id, payload);
-      toast.success("Opportunity updated.");
+      toast.success("Deal updated.");
       return;
     }
     await createOpportunity(payload);
-    toast.success("Opportunity created.");
+    toast.success("Deal created.");
   }
 
   const stageSummary = pipelineSummaryQuery.data?.stages ?? DEFAULT_STAGE_SUMMARY;
@@ -151,7 +151,7 @@ export default function OpportunitiesPage() {
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
-        title="Opportunities"
+        title="Deals"
         description="Track pipeline, project value, and finance handoff."
         actions={
           <>
@@ -179,7 +179,7 @@ export default function OpportunitiesPage() {
               }}
             >
               <Plus />
-              <span className="hidden sm:inline">Add Opportunity</span>
+              <span className="hidden sm:inline">Add Deal</span>
             </Button>
           </>
         }

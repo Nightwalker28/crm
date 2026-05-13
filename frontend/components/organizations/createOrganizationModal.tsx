@@ -16,6 +16,7 @@ import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { Input } from "@/components/ui/input";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 
 type OrganizationForm = {
   org_name: string;
@@ -36,10 +37,6 @@ const emptyForm: OrganizationForm = {
   industry: "",
   annual_revenue: "",
 };
-
-function RequiredMark() {
-  return <span className="text-red-400">*</span>;
-}
 
 type Props = {
   isOpen: boolean;
@@ -93,13 +90,13 @@ export default function CreateOrganizationModal({
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
         <DialogPanel size="xl">
           <DialogHeader>
-            <DialogTitle>Create Organization</DialogTitle>
+            <DialogTitle>Create Account</DialogTitle>
             <DialogIconClose />
           </DialogHeader>
 
           <FieldGroup className="mt-4 grid gap-4 sm:grid-cols-2">
             <Field className="sm:col-span-2">
-              <FieldLabel>Organization Name <RequiredMark /></FieldLabel>
+              <FieldLabel>Account Name <RequiredMark /></FieldLabel>
               <Input
                 value={form.org_name}
                 onChange={(event) => setForm((current) => ({ ...current, org_name: event.target.value }))}

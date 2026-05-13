@@ -1,7 +1,8 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { Users } from "lucide-react";
 
 import {
   Table,
@@ -11,7 +12,9 @@ import {
   TableHeader,
   TableHeaderRow,
   TableRow,
+  SortableHead,
 } from "@/components/ui/Table";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
@@ -19,6 +22,9 @@ import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { Contact } from "@/hooks/sales/useContacts";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
+
+type SortDirection = "asc" | "desc";
+type SortState = { column: string; direction: SortDirection } | null;
 
 interface ContactListProps {
   contacts: Contact[];
@@ -61,13 +67,14 @@ export default function ContactList({
   onToggleCurrentPage,
 }: ContactListProps) {
   const router = useRouter();
+  const [sort, setSort] = useState<SortState>(null);
   const headers: Record<string, string> = {
     first_name: "First Name",
     last_name: "Last Name",
     primary_email: "Email",
     contact_telephone: "Phone",
     current_title: "Job Title",
-    organization_name: "Organization",
+    organization_name: "Account",
     region: "Region",
     country: "Country",
     linkedin_url: "LinkedIn",
@@ -190,6 +197,23 @@ export default function ContactList({
     }
   };
 
+  const sortedContacts = useMemo(() => {
+    if (!sort) return contacts;
+    return [...contacts].sort((left, right) => {
+      const leftValue = String(left[sort.column as keyof Contact] ?? "").toLowerCase();
+      const rightValue = String(right[sort.column as keyof Contact] ?? "").toLowerCase();
+      const result = leftValue.localeCompare(rightValue, undefined, { numeric: true });
+      return sort.direction === "asc" ? result : -result;
+    });
+  }, [contacts, sort]);
+
+  function toggleSort(column: string) {
+    setSort((current) => {
+      if (current?.column !== column) return { column, direction: "asc" };
+      return { column, direction: current.direction === "asc" ? "desc" : "asc" };
+    });
+  }
+
   return (
     <ModuleTableShell isRefreshing={isRefreshing}>
       <Table className="min-w-[920px]">
@@ -205,11 +229,22 @@ export default function ContactList({
                 <CheckboxIndicator className="h-3 w-3" />
               </Checkbox>
             </TableHead>
-            {visibleColumns.map((column) => (
-              <TableHead key={column}>
-                {headers[column] ?? getReadableColumnLabel(column, columnOptions)}
-              </TableHead>
-            ))}
+            {visibleColumns.map((column) => {
+              const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
+              const sortable = !isCustomFieldColumnKey(column) && ["first_name", "last_name", "primary_email", "organization_name", "region", "country"].includes(column);
+              return sortable ? (
+                <SortableHead
+                  key={column}
+                  sorted={sort?.column === column}
+                  direction={sort?.column === column ? sort.direction : "asc"}
+                  onClick={() => toggleSort(column)}
+                >
+                  {label}
+                </SortableHead>
+              ) : (
+                <TableHead key={column}>{label}</TableHead>
+              );
+            })}
           </TableHeaderRow>
         </TableHeader>
 
@@ -219,16 +254,11 @@ export default function ContactList({
           ) : contacts.length === 0 ? (
             <TableRow>
               <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
-                <div className="flex flex-col items-center gap-2 text-neutral-500">
-                  <svg className="w-8 h-8 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                  </svg>
-                  <span className="text-sm">No contacts found</span>
-                </div>
+                <EmptyState icon={Users} title="No contacts found" description="Contacts matching the current view will appear here." />
               </TableCell>
             </TableRow>
           ) : (
-            contacts.map((contact) => (
+            sortedContacts.map((contact) => (
               <TableRow
                 key={contact.contact_id}
                 className="group cursor-pointer"

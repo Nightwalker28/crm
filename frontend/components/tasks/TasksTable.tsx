@@ -1,7 +1,9 @@
 "use client";
 
 import { Fragment } from "react";
+import { ClipboardList } from "lucide-react";
 
+import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
@@ -16,6 +18,7 @@ import {
 } from "@/components/ui/Table";
 import type { Task } from "@/hooks/useTasks";
 import { formatDateTime } from "@/lib/datetime";
+import { getTaskPriorityStyle, getTaskStatusStyle } from "@/lib/statusStyles";
 
 type Props = {
   tasks: Task[];
@@ -24,30 +27,6 @@ type Props = {
   visibleColumns: string[];
   onEdit: (task: Task) => void;
 };
-
-function getPriorityPill(priority: Task["priority"]) {
-  switch (priority) {
-    case "high":
-      return { bg: "bg-red-950/60", text: "text-red-200", border: "border-red-800/70", label: "High" };
-    case "low":
-      return { bg: "bg-emerald-950/60", text: "text-emerald-200", border: "border-emerald-800/70", label: "Low" };
-    default:
-      return { bg: "bg-amber-950/60", text: "text-amber-200", border: "border-amber-800/70", label: "Medium" };
-  }
-}
-
-function getStatusPill(status: Task["status"]) {
-  switch (status) {
-    case "completed":
-      return { bg: "bg-emerald-950/60", text: "text-emerald-200", border: "border-emerald-800/70", label: "Completed" };
-    case "blocked":
-      return { bg: "bg-red-950/60", text: "text-red-200", border: "border-red-800/70", label: "Blocked" };
-    case "in_progress":
-      return { bg: "bg-sky-950/60", text: "text-sky-200", border: "border-sky-800/70", label: "In Progress" };
-    default:
-      return { bg: "bg-neutral-900", text: "text-neutral-200", border: "border-neutral-700", label: "To Do" };
-  }
-}
 
 export default function TasksTable({
   tasks,
@@ -72,7 +51,7 @@ export default function TasksTable({
           </TableCell>
         );
       case "priority": {
-        const pill = getPriorityPill(task.priority);
+        const pill = getTaskPriorityStyle(task.priority);
         return (
           <TableCell>
             <Pill bg={pill.bg} text={pill.text} border={pill.border} className="w-20">
@@ -82,7 +61,7 @@ export default function TasksTable({
         );
       }
       case "status": {
-        const pill = getStatusPill(task.status);
+        const pill = getTaskStatusStyle(task.status);
         return (
           <TableCell>
             <Pill bg={pill.bg} text={pill.text} border={pill.border} className="w-28">
@@ -190,7 +169,7 @@ export default function TasksTable({
           ) : tasks.length === 0 ? (
             <TableRow>
               <TableCell colSpan={columnCount} className="py-16 text-center text-neutral-500">
-                No tasks found for the current view.
+                <EmptyState icon={ClipboardList} title="No tasks found" description="Tasks matching the current view will appear here." />
               </TableCell>
             </TableRow>
           ) : (

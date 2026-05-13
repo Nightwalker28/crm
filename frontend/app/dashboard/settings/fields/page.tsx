@@ -11,15 +11,17 @@ import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
+import { getModuleDisplayName } from "@/lib/module-display";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
 
 const MODULE_OPTIONS = [
-  { value: "finance_io", label: "Finance Insertion Orders" },
-  { value: "sales_contacts", label: "Sales Contacts" },
-  { value: "sales_organizations", label: "Sales Organizations" },
-  { value: "sales_opportunities", label: "Sales Opportunities" },
+  "finance_io",
+  "sales_contacts",
+  "sales_organizations",
+  "sales_opportunities",
 ];
 
 const FIELD_TYPE_OPTIONS: Array<CustomFieldDefinition["field_type"]> = ["text", "long_text", "number", "date", "boolean"];
@@ -156,9 +158,9 @@ export default function CustomFieldsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {MODULE_OPTIONS.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
+              {MODULE_OPTIONS.map((moduleName) => (
+                <SelectItem key={moduleName} value={moduleName}>
+                  {getModuleDisplayName(moduleName)}
                 </SelectItem>
               ))}
             </SelectContent>
@@ -173,11 +175,11 @@ export default function CustomFieldsPage() {
 
           <form className="mt-4 grid gap-4" onSubmit={handleCreate}>
             <Field>
-              <FieldLabel>Label *</FieldLabel>
+              <FieldLabel>Label <RequiredMark /></FieldLabel>
               <Input value={draft.label} onChange={(event) => handleLabelChange(event.target.value)} placeholder="Contract Term" />
             </Field>
             <Field>
-              <FieldLabel>Field Key *</FieldLabel>
+              <FieldLabel>Field Key <RequiredMark /></FieldLabel>
               <Input value={draft.field_key} onChange={(event) => handleFieldKeyChange(event.target.value)} placeholder="contract_term" />
               <FieldDescription>Auto-generated from the label unless edited.</FieldDescription>
             </Field>

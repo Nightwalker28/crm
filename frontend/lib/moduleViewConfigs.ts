@@ -5,6 +5,8 @@ import type {
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
 import type { CustomModuleDefinition, CustomModuleField } from "@/hooks/useModuleBuilder";
+import { getModuleDisplayName } from "@/lib/module-display";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 
 export type ModuleFilterFieldType = "text" | "number" | "date" | "select";
 
@@ -49,14 +51,14 @@ export const CONTACT_COLUMNS: TableColumnOption[] = [
   { key: "primary_email", label: "Email" },
   { key: "contact_telephone", label: "Phone" },
   { key: "current_title", label: "Job Title" },
-  { key: "organization_name", label: "Organization" },
+  { key: "organization_name", label: "Account" },
   { key: "region", label: "Region" },
   { key: "country", label: "Country" },
   { key: "linkedin_url", label: "LinkedIn" },
 ];
 
 export const ORGANIZATION_COLUMNS: TableColumnOption[] = [
-  { key: "org_name", label: "Organization" },
+  { key: "org_name", label: "Account" },
   { key: "primary_email", label: "Email" },
   { key: "website", label: "Website" },
   { key: "industry", label: "Industry" },
@@ -66,7 +68,7 @@ export const ORGANIZATION_COLUMNS: TableColumnOption[] = [
 ];
 
 export const OPPORTUNITY_COLUMNS: TableColumnOption[] = [
-  { key: "opportunity_name", label: "Opportunity" },
+  { key: "opportunity_name", label: "Deal" },
   { key: "client", label: "Client" },
   { key: "sales_stage", label: "Stage" },
   { key: "expected_close_date", label: "Expected Close" },
@@ -236,7 +238,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "primary_email", label: "Email", type: "text", operators: TEXT_OPERATORS },
       { key: "contact_telephone", label: "Phone", type: "text", operators: TEXT_OPERATORS },
       { key: "current_title", label: "Job Title", type: "text", operators: TEXT_OPERATORS },
-      { key: "organization_name", label: "Organization", type: "text", operators: TEXT_OPERATORS },
+      { key: "organization_name", label: "Account", type: "text", operators: TEXT_OPERATORS },
       { key: "region", label: "Region", type: "text", operators: TEXT_OPERATORS },
       { key: "country", label: "Country", type: "text", operators: TEXT_OPERATORS },
       { key: "linkedin_url", label: "LinkedIn", type: "text", operators: TEXT_OPERATORS },
@@ -246,11 +248,11 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
   },
   sales_organizations: {
     key: "sales_organizations",
-    label: "Organizations",
+    label: "Accounts",
     route: "/dashboard/sales/organizations",
     columns: ORGANIZATION_COLUMNS,
     filterFields: [
-      { key: "org_name", label: "Organization", type: "text", operators: TEXT_OPERATORS },
+      { key: "org_name", label: "Account", type: "text", operators: TEXT_OPERATORS },
       { key: "primary_email", label: "Email", type: "text", operators: TEXT_OPERATORS },
       { key: "website", label: "Website", type: "text", operators: TEXT_OPERATORS },
       { key: "industry", label: "Industry", type: "text", operators: TEXT_OPERATORS },
@@ -263,11 +265,11 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
   },
   sales_opportunities: {
     key: "sales_opportunities",
-    label: "Opportunities",
+    label: "Deals",
     route: "/dashboard/sales/opportunities",
     columns: OPPORTUNITY_COLUMNS,
     filterFields: [
-      { key: "opportunity_name", label: "Opportunity", type: "text", operators: TEXT_OPERATORS },
+      { key: "opportunity_name", label: "Deal", type: "text", operators: TEXT_OPERATORS },
       { key: "client", label: "Client", type: "text", operators: TEXT_OPERATORS },
       {
         key: "sales_stage",
@@ -341,8 +343,8 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
   },
   admin_users: {
     key: "admin_users",
-    label: "Users",
-    route: "/dashboard/users",
+    label: "User Management",
+    route: SETTINGS_ROUTES.users,
     columns: USER_COLUMNS,
     filterFields: [
       { key: "first_name", label: "First Name", type: "text", operators: TEXT_OPERATORS },
@@ -496,7 +498,7 @@ export function buildCustomModuleViewDefinition(module: CustomModuleDefinition):
 
   return {
     key: module.key,
-    label: module.name,
+    label: getModuleDisplayName(module.key, module.description ?? module.name),
     route: `/dashboard/custom/${module.key}`,
     columns,
     filterFields: [

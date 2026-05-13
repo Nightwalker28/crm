@@ -8,6 +8,7 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatDateTime } from "@/lib/datetime";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 
 export default function NotificationCenter() {
   const { notifications, unreadCount, isLoading, isFetching, markRead, markAllRead } =
@@ -52,9 +53,9 @@ export default function NotificationCenter() {
 
       <PopoverContent
         align="end"
-        side="right"
-        sideOffset={12}
-        className="w-[360px] border-white/10 bg-neutral-950 p-0 text-neutral-100"
+        side="bottom"
+        sideOffset={10}
+        className="w-[min(360px,calc(100vw-2rem))] border-white/10 bg-neutral-950 p-0 text-neutral-100"
       >
         <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
           <div>
@@ -167,7 +168,7 @@ export default function NotificationCenter() {
           </div>
         ) : null}
         <div className="border-t border-white/10 px-4 py-3">
-          <Link href="/dashboard/activity-log" className="text-xs font-medium text-neutral-300 hover:text-white">
+          <Link href={SETTINGS_ROUTES.activityLog} className="text-xs font-medium text-neutral-300 hover:text-white">
             View all activity
           </Link>
         </div>

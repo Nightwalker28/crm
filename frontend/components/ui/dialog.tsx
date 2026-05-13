@@ -130,6 +130,7 @@ function DialogPanel<TTag extends React.ElementType = typeof motion.div>(
       className={cn(
         "bg-neutral-900 border border-neutral-800 rounded-md p-4",
         dialogPanelSizeClasses[size],
+        size === "3xl" && "max-h-[80vh] overflow-y-auto",
         className
       )}
       initial={{

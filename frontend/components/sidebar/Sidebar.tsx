@@ -9,7 +9,6 @@ import {
   MessageCircle,
   Mail,
   LayoutGrid,
-  UserRound,
   HandCoins,
   ClipboardList,
   LogOut,
@@ -17,12 +16,15 @@ import {
   Package,
   PanelLeftClose,
   PanelLeftOpen,
+  Settings2,
   Wrench,
 } from "lucide-react";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import NotificationCenter from "@/components/notifications/NotificationCenter";
 import { resolveMediaUrl } from "@/lib/media";
+import { getModuleDisplayName } from "@/lib/module-display";
+import { DASHBOARD_ROUTES, SETTINGS_ROUTES } from "@/lib/routes";
 
 import {
   SidebarNav,
@@ -61,6 +63,19 @@ function getSidebarCollapsedSnapshot() {
   return window.localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "true";
 }
 
+function SidebarSectionLabel({ children, collapsed }: { children: string; collapsed: boolean }) {
+  return (
+    <div
+      className={
+        "mt-3 border-t border-white/6 px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-600 transition-all duration-200 first:mt-0 first:border-t-0 first:pt-0 " +
+        (collapsed ? "opacity-0 group-hover/sidebar:opacity-100" : "opacity-100")
+      }
+    >
+      {children}
+    </div>
+  );
+}
+
 export default function Sidebar() {
   const { user, isAdmin, logout } = useSidebarUser();
   const { modules } = useAccessibleModules();
@@ -92,7 +107,6 @@ export default function Sidebar() {
   const calendarModule = moduleMap.get("calendar");
   const mailModule = moduleMap.get("mail");
   const whatsappModule = moduleMap.get("whatsapp");
-  const messageTemplatesModule = moduleMap.get("message_templates");
   const contactsModule = moduleMap.get("sales_contacts");
   const organizationsModule = moduleMap.get("sales_organizations");
   const opportunitiesModule = moduleMap.get("sales_opportunities");
@@ -154,6 +168,8 @@ export default function Sidebar() {
                 Dashboard
               </SidebarMenuItem>
 
+              <SidebarSectionLabel collapsed={collapsed}>Workspace</SidebarSectionLabel>
+
               {tasksModule?.base_route ? (
                 <SidebarMenuItem href={tasksModule.base_route} icon={ClipboardList} collapsed={collapsed}>
                   Tasks
@@ -184,116 +200,122 @@ export default function Sidebar() {
                 </SidebarMenuItem>
               ) : null}
 
-              {messageTemplatesModule?.base_route ? (
-                <SidebarMenuItem href={messageTemplatesModule.base_route} icon={FileText} collapsed={collapsed}>
-                  Templates
-                </SidebarMenuItem>
+              <SidebarSectionLabel collapsed={collapsed}>Sales CRM</SidebarSectionLabel>
+
+              {(organizationsModule?.base_route || contactsModule?.base_route || opportunitiesModule?.base_route) ? (
+                <SidebarMenuItemCollapsible icon={BriefcaseBusiness} label="Sales CRM" collapsed={collapsed}>
+                  <SidebarMenuItemChild href={DASHBOARD_ROUTES.sales} collapsed={collapsed}>
+                    Overview
+                  </SidebarMenuItemChild>
+                  {organizationsModule?.base_route ? (
+                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.accounts} collapsed={collapsed}>
+                      Accounts
+                    </SidebarMenuItemChild>
+                  ) : null}
+                  {contactsModule?.base_route ? (
+                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.contacts} collapsed={collapsed}>
+                      Contacts
+                    </SidebarMenuItemChild>
+                  ) : null}
+                  {opportunitiesModule?.base_route ? (
+                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.deals} collapsed={collapsed}>
+                      Deals
+                    </SidebarMenuItemChild>
+                  ) : null}
+                  {(contactsModule?.base_route || organizationsModule?.base_route) ? (
+                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.clientPortal} collapsed={collapsed}>
+                      Client Portal
+                    </SidebarMenuItemChild>
+                  ) : null}
+                </SidebarMenuItemCollapsible>
               ) : null}
 
+              <SidebarSectionLabel collapsed={collapsed}>Products & Services</SidebarSectionLabel>
+
               {(catalogProductsModule?.base_route || catalogServicesModule?.base_route) ? (
-                <SidebarMenuItemCollapsible icon={Package} label="Catalog" collapsed={collapsed}>
+                <SidebarMenuItemCollapsible icon={Package} label="Products & Services" collapsed={collapsed}>
                   {catalogProductsModule?.base_route ? (
-                    <SidebarMenuItemChild href={catalogProductsModule.base_route} collapsed={collapsed}>
+                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.products} collapsed={collapsed}>
                       Products
                     </SidebarMenuItemChild>
                   ) : null}
                   {catalogServicesModule?.base_route ? (
-                    <SidebarMenuItemChild href={catalogServicesModule.base_route} collapsed={collapsed}>
+                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.services} collapsed={collapsed}>
                       Services
                     </SidebarMenuItemChild>
                   ) : null}
                 </SidebarMenuItemCollapsible>
               ) : null}
 
-              {isAdmin ? (
-                <SidebarMenuItemCollapsible icon={UserRound} label="Admin" collapsed={collapsed}>
-                  <SidebarMenuItemChild href="/dashboard/users" collapsed={collapsed}>
-                    Users
-                  </SidebarMenuItemChild>
-                  <SidebarMenuItemChild href="/dashboard/user/teams" collapsed={collapsed}>
-                    Teams & Departments
-                  </SidebarMenuItemChild>
-                  <SidebarMenuItemChild href="/dashboard/company" collapsed={collapsed}>
-                    Company
-                  </SidebarMenuItemChild>
-                  <SidebarMenuItemChild href="/dashboard/roles-permissions" collapsed={collapsed}>
-                    Roles & Permissions
-                  </SidebarMenuItemChild>
-                  <SidebarMenuItemChild href="/dashboard/custom-fields" collapsed={collapsed}>
-                    Custom Fields
-                  </SidebarMenuItemChild>
-                  <SidebarMenuItemChild href="/dashboard/integrations" collapsed={collapsed}>
-                    Integrations
-                  </SidebarMenuItemChild>
-                  <SidebarMenuItemChild href="/dashboard/modules" collapsed={collapsed}>
-                    Modules
-                  </SidebarMenuItemChild>
-                  <SidebarMenuItemChild href="/dashboard/module-builder" collapsed={collapsed}>
-                    Module Builder
-                  </SidebarMenuItemChild>
-                  <SidebarMenuItemChild href="/dashboard/recycle-bin" collapsed={collapsed}>
-                    Recycle Bin
-                  </SidebarMenuItemChild>
-                  <SidebarMenuItemChild href="/dashboard/activity-log" collapsed={collapsed}>
-                    Activity Log
-                  </SidebarMenuItemChild>
-                </SidebarMenuItemCollapsible>
-              ) : null}
+              <SidebarSectionLabel collapsed={collapsed}>Finance</SidebarSectionLabel>
 
               {(financeIoModule?.base_route || financePosModule?.base_route) ? (
                 <SidebarMenuItemCollapsible icon={HandCoins} label="Finance" collapsed={collapsed}>
-                  <SidebarMenuItemChild href="/dashboard/finance" collapsed={collapsed}>
+                  <SidebarMenuItemChild href={DASHBOARD_ROUTES.finance} collapsed={collapsed}>
                     Overview
                   </SidebarMenuItemChild>
                   {financePosModule?.base_route ? (
-                    <SidebarMenuItemChild href={financePosModule.base_route} collapsed={collapsed}>
-                      POS Mode
+                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.financePos} collapsed={collapsed}>
+                      POS
                     </SidebarMenuItemChild>
                   ) : null}
                   {financeIoModule?.base_route ? (
-                  <SidebarMenuItemChild href={financeIoModule.base_route} collapsed={collapsed}>
-                    Insertion Orders
-                  </SidebarMenuItemChild>
-                  ) : null}
-                </SidebarMenuItemCollapsible>
-              ) : null}
-
-              {(organizationsModule?.base_route || contactsModule?.base_route || opportunitiesModule?.base_route) ? (
-                <SidebarMenuItemCollapsible icon={BriefcaseBusiness} label="Sales" collapsed={collapsed}>
-                  <SidebarMenuItemChild href="/dashboard/sales" collapsed={collapsed}>
-                    Overview
-                  </SidebarMenuItemChild>
-                  {organizationsModule?.base_route ? (
-                    <SidebarMenuItemChild href={organizationsModule.base_route} collapsed={collapsed}>
-                      Organizations
-                    </SidebarMenuItemChild>
-                  ) : null}
-                  {contactsModule?.base_route ? (
-                    <SidebarMenuItemChild href={contactsModule.base_route} collapsed={collapsed}>
-                      Contacts
-                    </SidebarMenuItemChild>
-                  ) : null}
-                  {opportunitiesModule?.base_route ? (
-                    <SidebarMenuItemChild href={opportunitiesModule.base_route} collapsed={collapsed}>
-                      Opportunities
-                    </SidebarMenuItemChild>
-                  ) : null}
-                  {(contactsModule?.base_route || organizationsModule?.base_route) ? (
-                    <SidebarMenuItemChild href="/dashboard/client-portal" collapsed={collapsed}>
-                      Client Pages
+                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.insertionOrders} collapsed={collapsed}>
+                      Insertion Orders
                     </SidebarMenuItemChild>
                   ) : null}
                 </SidebarMenuItemCollapsible>
               ) : null}
 
               {customModules.length > 0 ? (
-                <SidebarMenuItemCollapsible icon={Wrench} label="Custom" collapsed={collapsed}>
+                <>
+                  <SidebarSectionLabel collapsed={collapsed}>Custom Modules</SidebarSectionLabel>
+                  <SidebarMenuItemCollapsible icon={Wrench} label="Custom Modules" collapsed={collapsed}>
                   {customModules.map((module) => (
                     <SidebarMenuItemChild key={module.id} href={module.base_route as string} collapsed={collapsed}>
-                      {module.description?.replace(/^Custom module:\s*/i, "") || module.name.replace(/^custom_\d+_/, "")}
+                      {getModuleDisplayName(module.name, module.description ?? undefined)}
                     </SidebarMenuItemChild>
                   ))}
-                </SidebarMenuItemCollapsible>
+                  </SidebarMenuItemCollapsible>
+                </>
+              ) : null}
+
+              {isAdmin ? (
+                <>
+                  <SidebarSectionLabel collapsed={collapsed}>Settings</SidebarSectionLabel>
+                  <SidebarMenuItemCollapsible icon={Settings2} label="Settings" collapsed={collapsed}>
+                    <SidebarMenuItemChild href={SETTINGS_ROUTES.root} collapsed={collapsed}>
+                      Settings Overview
+                    </SidebarMenuItemChild>
+                    <SidebarMenuItemChild href={SETTINGS_ROUTES.general} collapsed={collapsed}>
+                      General
+                    </SidebarMenuItemChild>
+                    <SidebarMenuItemChild href={SETTINGS_ROUTES.users} collapsed={collapsed}>
+                      User Management
+                    </SidebarMenuItemChild>
+                    <SidebarMenuItemChild href={SETTINGS_ROUTES.teams} collapsed={collapsed}>
+                      Teams
+                    </SidebarMenuItemChild>
+                    <SidebarMenuItemChild href={SETTINGS_ROUTES.permissions} collapsed={collapsed}>
+                      Permissions
+                    </SidebarMenuItemChild>
+                    <SidebarMenuItemChild href={SETTINGS_ROUTES.modules} collapsed={collapsed}>
+                      Module Settings
+                    </SidebarMenuItemChild>
+                    <SidebarMenuItemChild href={SETTINGS_ROUTES.moduleBuilder} collapsed={collapsed}>
+                      Module Builder
+                    </SidebarMenuItemChild>
+                    <SidebarMenuItemChild href={SETTINGS_ROUTES.fields} collapsed={collapsed}>
+                      Field Config
+                    </SidebarMenuItemChild>
+                    <SidebarMenuItemChild href={SETTINGS_ROUTES.integrations} collapsed={collapsed}>
+                      Integrations
+                    </SidebarMenuItemChild>
+                    <SidebarMenuItemChild href={SETTINGS_ROUTES.templates} collapsed={collapsed}>
+                      Templates
+                    </SidebarMenuItemChild>
+                  </SidebarMenuItemCollapsible>
+                </>
               ) : null}
             </SidebarMenu>
           </SidebarGroup>

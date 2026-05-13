@@ -9,6 +9,8 @@ import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useModulesAdmin } from "@/hooks/admin/useModulesAdmin";
+import { getModuleCategory, getModuleDisplayName } from "@/lib/module-display";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 
 export default function ModulesPage() {
   const { modules, isLoading, updateModule, isSaving } = useModulesAdmin();
@@ -16,8 +18,8 @@ export default function ModulesPage() {
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
-        title="Modules"
-        description="Enable or disable whole modules for this tenant, set module defaults, and choose which departments or teams can open enabled modules."
+        title="Module Settings"
+        description="Enable or disable CRM modules, set module defaults, and control which teams or departments can access each module."
       />
 
       <div className="grid gap-3 lg:grid-cols-2">
@@ -26,11 +28,11 @@ export default function ModulesPage() {
         </div>
         <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-3 text-sm text-neutral-400">
           User membership is managed in{" "}
-          <Link href="/dashboard/user/teams" className="text-neutral-100 underline-offset-4 hover:underline">
+          <Link href={SETTINGS_ROUTES.teams} className="text-neutral-100 underline-offset-4 hover:underline">
             Teams & Departments
           </Link>
           . Department/team module access is configured here, and action access is managed in{" "}
-          <Link href="/dashboard/roles-permissions" className="text-neutral-100 underline-offset-4 hover:underline">
+          <Link href={SETTINGS_ROUTES.permissions} className="text-neutral-100 underline-offset-4 hover:underline">
             Roles & Permissions
           </Link>
           .
@@ -44,7 +46,7 @@ export default function ModulesPage() {
               <TableHead>Module</TableHead>
               <TableHead>Route</TableHead>
               <TableHead>Description</TableHead>
-              <TableHead>Import Duplicate Default</TableHead>
+              <TableHead>Duplicate Handling</TableHead>
               <TableHead>Status</TableHead>
               <TableHead>Access</TableHead>
               <TableHead className="text-right">Enable / Disable</TableHead>
@@ -59,7 +61,10 @@ export default function ModulesPage() {
               modules.map((module) => (
                 <TableRow key={module.id}>
                   <TableCell>
-                    <div className="font-medium text-neutral-100">{module.name}</div>
+                    <div className="font-medium text-neutral-100">
+                      {getModuleDisplayName(module.name, module.description ?? undefined)}
+                    </div>
+                    <div className="mt-1 text-xs text-neutral-500">{getModuleCategory(module.name)}</div>
                   </TableCell>
                   <TableCell className="text-neutral-400">{module.base_route || "-"}</TableCell>
                   <TableCell className="max-w-sm text-neutral-400">{module.description || "-"}</TableCell>
@@ -92,11 +97,11 @@ export default function ModulesPage() {
                   </TableCell>
                   <TableCell>
                     <Link
-                      href={`/dashboard/modules/${module.id}`}
+                      href={SETTINGS_ROUTES.moduleAccess(module.id)}
                       className="inline-flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800"
                     >
                       <SlidersHorizontal size={15} />
-                      Configure
+                      Access Settings
                     </Link>
                   </TableCell>
                   <TableCell className="text-right">
@@ -104,7 +109,7 @@ export default function ModulesPage() {
                       <button
                         type="button"
                         aria-pressed={module.is_enabled}
-                        aria-label={`${module.is_enabled ? "Disable" : "Enable"} ${module.name}`}
+                        aria-label={`${module.is_enabled ? "Disable" : "Enable"} ${getModuleDisplayName(module.name, module.description ?? undefined)}`}
                         disabled={isSaving}
                         onClick={() => updateModule(module.id, { is_enabled: !module.is_enabled })}
                         className={`inline-flex min-w-36 items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${

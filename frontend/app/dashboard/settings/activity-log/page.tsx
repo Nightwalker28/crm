@@ -10,6 +10,7 @@ import Pagination from "@/components/ui/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDateTime } from "@/lib/datetime";
+import { getModuleDisplayName } from "@/lib/module-display";
 
 type ActivityItem = {
   id: number;
@@ -75,6 +76,7 @@ export default function ActivityLogPage() {
               <SelectItem value="update">Update</SelectItem>
               <SelectItem value="soft_delete">Soft delete</SelectItem>
               <SelectItem value="restore">Restore</SelectItem>
+              <SelectItem value="comment_added">Comment added</SelectItem>
             </SelectContent>
           </Select>
         }
@@ -98,7 +100,7 @@ export default function ActivityLogPage() {
                   <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs uppercase tracking-wide text-neutral-300">
                     {item.action}
                   </span>
-                  <span className="text-sm font-medium text-neutral-100">{item.module_key}</span>
+                  <span className="text-sm font-medium text-neutral-100">{getModuleDisplayName(item.module_key)}</span>
                   <span className="text-xs text-neutral-500">#{item.entity_id}</span>
                 </div>
                 <div className="mt-2 text-sm text-neutral-300">{item.description || `${item.entity_type} ${item.entity_id}`}</div>

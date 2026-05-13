@@ -14,6 +14,8 @@ import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel
 import FollowUpPanel from "@/components/recordActivity/FollowUpPanel";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -284,12 +286,12 @@ export default function OpportunityDetailPage() {
     <div className="flex flex-col gap-6 text-neutral-200">
       <RecordPageHeader
         backHref="/dashboard/sales/opportunities"
-        backLabel="Back to Opportunities"
-        title={summary?.opportunity.opportunity_name || "Opportunity"}
+        backLabel="Back to Deals"
+        title={summary?.opportunity.opportunity_name || "Deal"}
         description="Manage the opportunity record, linked customer context, and finance handoff from the record page."
         primaryAction={(
           <Button onClick={handleSave} disabled={saving || !form.opportunity_name.trim() || !form.contact_id}>
-            {saving ? "Saving..." : "Save Opportunity"}
+            {saving ? "Saving..." : "Save Deal"}
           </Button>
         )}
       />
@@ -303,12 +305,12 @@ export default function OpportunityDetailPage() {
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <Card className="px-5 py-5">
               <div className="mb-4">
-                <h2 className="text-lg font-semibold text-neutral-100">Opportunity Details</h2>
+                <h2 className="text-lg font-semibold text-neutral-100">Deal Details</h2>
                 <p className="mt-1 text-sm text-neutral-500">Edit the pipeline record directly on the page.</p>
               </div>
               <FieldGroup className="grid gap-4 md:grid-cols-2">
                 <Field>
-                  <FieldLabel>Opportunity Name</FieldLabel>
+                  <FieldLabel>Deal Name</FieldLabel>
                   <Input value={form.opportunity_name} onChange={(event) => setForm((current) => ({ ...current, opportunity_name: event.target.value }))} />
                 </Field>
                 <Field>
@@ -371,7 +373,7 @@ export default function OpportunityDetailPage() {
                       </div>
                     ) : null}
                   </div>
-                  <FieldDescription>Opportunities must stay linked to an existing sales contact.</FieldDescription>
+                  <FieldDescription>Deals must stay linked to an existing sales contact.</FieldDescription>
                 </Field>
                 <Field>
                   <FieldLabel>Sales Stage</FieldLabel>
@@ -458,7 +460,7 @@ export default function OpportunityDetailPage() {
                 </div>
 
                 <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                  <div className="text-xs uppercase tracking-wide text-neutral-500">Organization</div>
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Account</div>
                   <div className="mt-2 text-sm text-neutral-100">
                     {summary.organization ? (
                       <Link href={`/dashboard/sales/organizations/${summary.organization.org_id}`} className="hover:text-white">
@@ -537,33 +539,16 @@ export default function OpportunityDetailPage() {
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <FollowUpPanel
-              endpoint={`/sales/opportunities/${summary.opportunity.opportunity_id}/follow-up`}
-              lastContactedAt={summary.opportunity.last_contacted_at}
-              lastContactedChannel={summary.opportunity.last_contacted_channel}
-              email={summary.contact?.primary_email}
-              phone={summary.contact?.contact_telephone}
-              onLogged={() => loadSummary()}
-            />
-            <RecordTasksPanel
-              moduleKey="sales_opportunities"
-              entityId={summary.opportunity.opportunity_id}
-            />
-            <RecordDocumentsPanel
-              moduleKey="sales_opportunities"
-              entityId={summary.opportunity.opportunity_id}
-            />
-            <RecordActivityTimeline
-              moduleKey="sales_opportunities"
-              entityId={summary.opportunity.opportunity_id}
-              description="Opportunity-level create, update, delete, restore, and note history."
-            />
-            <RecordCommentsPanel
-              moduleKey="sales_opportunities"
-              entityId={summary.opportunity.opportunity_id}
-            />
-          </div>
+          <RecordTabs
+            tabs={[
+              { id: "overview", label: "Overview", content: <EmptyState title="Overview shown above" description="Deal details, linked contact, account, service details, and insertion orders remain visible above these record tools." /> },
+              { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_opportunities" entityId={summary.opportunity.opportunity_id} description="Deal-level create, update, delete, restore, and note history." /> },
+              { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_opportunities" entityId={summary.opportunity.opportunity_id} /> },
+              { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_opportunities" entityId={summary.opportunity.opportunity_id} /> },
+              { id: "tasks", label: "Tasks", content: <RecordTasksPanel moduleKey="sales_opportunities" entityId={summary.opportunity.opportunity_id} /> },
+              { id: "follow-up", label: "Follow-up", content: <FollowUpPanel endpoint={`/sales/opportunities/${summary.opportunity.opportunity_id}/follow-up`} lastContactedAt={summary.opportunity.last_contacted_at} lastContactedChannel={summary.opportunity.last_contacted_channel} email={summary.contact?.primary_email} phone={summary.contact?.contact_telephone} onLogged={() => loadSummary()} /> },
+            ]}
+          />
         </>
       )}
     </div>

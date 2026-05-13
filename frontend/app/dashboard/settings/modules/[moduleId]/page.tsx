@@ -12,6 +12,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { type ModuleAccess, useModuleAccessAdmin } from "@/hooks/admin/useModulesAdmin";
+import { getModuleDisplayName } from "@/lib/module-display";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 
 function parseModuleId(value: string | string[] | undefined) {
   const rawValue = Array.isArray(value) ? value[0] : value;
@@ -36,6 +38,7 @@ function ModuleAccessEditor({
   isSaving: boolean;
   updateAccess: (payload: { department_ids: number[]; team_ids: number[] }) => Promise<ModuleAccess>;
 }) {
+  const moduleDisplayName = getModuleDisplayName(access.module.name, access.module.description ?? undefined);
   const [departmentIds, setDepartmentIds] = useState<number[]>(
     () => access.departments.filter((department) => department.has_access).map((department) => department.id),
   );
@@ -65,16 +68,16 @@ function ModuleAccessEditor({
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
-        title={`${access.module.name} Access`}
+        title={`${moduleDisplayName} Access Settings`}
         description="Choose which departments and teams can open this enabled module. Roles & Permissions still control actions inside the module."
         actions={
           <>
             <Link
-              href="/dashboard/modules"
+              href={SETTINGS_ROUTES.modules}
               className="inline-flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800"
             >
               <ArrowLeft size={15} />
-              Modules
+              Module Settings
             </Link>
             <Button onClick={handleSave} disabled={!hasChanges || isSaving}>
               <Save />
@@ -235,11 +238,11 @@ export default function ModuleAccessPage() {
         description="Choose which departments and teams can open this enabled module. Roles & Permissions still control actions inside the module."
         actions={
           <Link
-            href="/dashboard/modules"
+            href={SETTINGS_ROUTES.modules}
             className="inline-flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800"
           >
             <ArrowLeft size={15} />
-            Modules
+            Module Settings
           </Link>
         }
       />

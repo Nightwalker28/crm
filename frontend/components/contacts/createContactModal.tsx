@@ -25,6 +25,7 @@ import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useCreateContact } from "@/hooks/sales/useCreateContact";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 
 const REGIONS = ["APAC", "EMEA", "NA", "LATAM"];
 
@@ -218,7 +219,7 @@ export default function CreateContactModal({
                           key="no-orgs"
                           className="px-3 py-2 text-sm text-zinc-400"
                         >
-                          No organizations found
+                          No accounts found
                         </div>
                       ) : (
                         filteredOrgs.map((o) => (
@@ -269,10 +270,6 @@ export default function CreateContactModal({
       </div>
     </Dialog>
   );
-}
-
-function RequiredMark() {
-  return <span className="text-red-400">*</span>;
 }
 
 /* ---------- FIELD ---------- */

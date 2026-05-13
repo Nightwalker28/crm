@@ -13,6 +13,7 @@ import {
   TableHeaderRow,
   TableRow,
 } from "@/components/ui/Table";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
@@ -186,10 +187,7 @@ export default function CatalogRecordsTable({
           ) : records.length === 0 ? (
             <TableRow>
               <TableCell colSpan={columnCount} className="py-16 text-center">
-                <div className="flex flex-col items-center gap-2 text-neutral-500">
-                  <EmptyIcon className="h-8 w-8 text-neutral-700" />
-                  <span className="text-sm">No catalog {kind} found</span>
-                </div>
+                <EmptyState icon={EmptyIcon} title="No records found" description={`No catalog ${kind} match the current view.`} />
               </TableCell>
             </TableRow>
           ) : (

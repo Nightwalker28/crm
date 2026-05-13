@@ -1,5 +1,6 @@
-import { Fragment } from "react";
+import { Fragment, useMemo, useState } from "react";
 import Image from "next/image";
+import { FileSpreadsheet } from "lucide-react";
 import type { InsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import {
   Table,
@@ -9,7 +10,9 @@ import {
   TableHeader,
   TableHeaderRow,
   TableRow,
+  SortableHead,
 } from "@/components/ui/Table";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
@@ -18,6 +21,10 @@ import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { resolveMediaUrl } from "@/lib/media";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { getInsertionOrderStatusStyle } from "@/lib/statusStyles";
+
+type SortDirection = "asc" | "desc";
+type SortState = { column: string; direction: SortDirection } | null;
 
 type InsertionOrdersListProps = {
   orders: InsertionOrder[];
@@ -31,19 +38,6 @@ type InsertionOrdersListProps = {
   onToggleRow?: (orderId: number, checked: boolean) => void;
   onToggleCurrentPage?: (checked: boolean) => void;
 };
-
-const STATUS_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  draft: { bg: "bg-neutral-800/60", text: "text-neutral-400", border: "border-neutral-700/50" },
-  issued: { bg: "bg-sky-900/30", text: "text-sky-300", border: "border-sky-700/40" },
-  active: { bg: "bg-emerald-900/30", text: "text-emerald-300", border: "border-emerald-700/40" },
-  completed: { bg: "bg-teal-900/30", text: "text-teal-300", border: "border-teal-700/40" },
-  cancelled: { bg: "bg-red-900/30", text: "text-red-300", border: "border-red-700/40" },
-  imported: { bg: "bg-violet-900/30", text: "text-violet-300", border: "border-violet-700/40" },
-};
-
-function getStatusStyle(status: string) {
-  return STATUS_STYLES[status.toLowerCase()] ?? { bg: "bg-neutral-800/60", text: "text-neutral-400", border: "border-neutral-700/50" };
-}
 
 function formatAmount(amount?: number | null, currency?: string): string {
   if (amount == null) return "";
@@ -76,6 +70,7 @@ export default function InsertionOrdersList({
   onToggleRow,
   onToggleCurrentPage,
 }: InsertionOrdersListProps) {
+  const [sort, setSort] = useState<SortState>(null);
   const columnCount = visibleColumns.length + 1;
   const headers: Record<string, string> = {
     io_number: "IO Number",
@@ -138,10 +133,10 @@ export default function InsertionOrdersList({
         return (
           <TableCell>
             {order.status ? (() => {
-              const style = getStatusStyle(order.status);
+              const style = getInsertionOrderStatusStyle(order.status);
               return (
                 <Pill bg={style.bg} text={style.text} border={style.border} className="w-24">
-                  {order.status.charAt(0).toUpperCase() + order.status.slice(1)}
+                  {style.label}
                 </Pill>
               );
             })() : <span className="text-neutral-600 text-sm">—</span>}
@@ -220,6 +215,28 @@ export default function InsertionOrdersList({
     }
   };
 
+  const sortedOrders = useMemo(() => {
+    if (!sort) return orders;
+    return [...orders].sort((left, right) => {
+      const leftRaw = left[sort.column as keyof InsertionOrder];
+      const rightRaw = right[sort.column as keyof InsertionOrder];
+      const leftValue = typeof leftRaw === "number" ? leftRaw : String(leftRaw ?? "").toLowerCase();
+      const rightValue = typeof rightRaw === "number" ? rightRaw : String(rightRaw ?? "").toLowerCase();
+      const result =
+        typeof leftValue === "number" && typeof rightValue === "number"
+          ? leftValue - rightValue
+          : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true });
+      return sort.direction === "asc" ? result : -result;
+    });
+  }, [orders, sort]);
+
+  function toggleSort(column: string) {
+    setSort((current) => {
+      if (current?.column !== column) return { column, direction: "asc" };
+      return { column, direction: current.direction === "asc" ? "desc" : "asc" };
+    });
+  }
+
   return (
     <ModuleTableShell isRefreshing={isRefreshing}>
       <Table className="min-w-[1040px]">
@@ -235,11 +252,22 @@ export default function InsertionOrdersList({
                 <CheckboxIndicator className="h-3 w-3" />
               </Checkbox>
             </TableHead>
-            {visibleColumns.map((column) => (
-              <TableHead key={column}>
-                {headers[column] ?? getReadableColumnLabel(column, columnOptions)}
-              </TableHead>
-            ))}
+            {visibleColumns.map((column) => {
+              const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
+              const sortable = !isCustomFieldColumnKey(column) && ["io_number", "customer_name", "status", "total_amount", "issue_date", "due_date", "updated_at"].includes(column);
+              return sortable ? (
+                <SortableHead
+                  key={column}
+                  sorted={sort?.column === column}
+                  direction={sort?.column === column ? sort.direction : "asc"}
+                  onClick={() => toggleSort(column)}
+                >
+                  {label}
+                </SortableHead>
+              ) : (
+                <TableHead key={column}>{label}</TableHead>
+              );
+            })}
           </TableHeaderRow>
         </TableHeader>
 
@@ -249,16 +277,11 @@ export default function InsertionOrdersList({
           ) : orders.length === 0 ? (
             <TableRow>
               <TableCell colSpan={columnCount} className="py-16 text-center">
-                <div className="flex flex-col items-center gap-2 text-neutral-500">
-                  <svg className="w-8 h-8 text-neutral-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  <span className="text-sm">No insertion orders found</span>
-                </div>
+                <EmptyState icon={FileSpreadsheet} title="No insertion orders found" description="Insertion orders matching the current view will appear here." />
               </TableCell>
             </TableRow>
           ) : (
-            orders.map((order) => (
+            sortedOrders.map((order) => (
               <TableRow
                 key={order.id}
                 className="group cursor-pointer"

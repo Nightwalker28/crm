@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
@@ -133,10 +134,6 @@ function toOptionalNumber(value: string): number | null | undefined {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
-function RequiredAsterisk() {
-  return <span className="text-red-400">*</span>;
-}
-
 export default function InsertionOrderDialog({ open, order, isSubmitting = false, onClose, onSubmit }: Props) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
@@ -239,7 +236,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
               <Field>
                 <FieldLabel>
-                  Customer Name <RequiredAsterisk />
+                  Customer Name <RequiredMark />
                 </FieldLabel>
                 <div className="relative">
                   <Input
@@ -347,7 +344,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                 {form.customer_contact_id == null && form.create_customer_if_missing ? (
                   <div className="mt-3">
                     <FieldLabel>
-                      Customer Email <RequiredAsterisk />
+                      Customer Email <RequiredMark />
                     </FieldLabel>
                     <Input
                       type="email"
@@ -387,7 +384,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
 
               <Field>
                 <FieldLabel>
-                  Status <RequiredAsterisk />
+                  Status <RequiredMark />
                 </FieldLabel>
                 <Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value }))}>
                   <SelectTrigger className="w-full">
@@ -405,7 +402,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
 
               <Field>
                 <FieldLabel>
-                  Currency <RequiredAsterisk />
+                  Currency <RequiredMark />
                 </FieldLabel>
                 <Select value={form.currency} onValueChange={(value) => setForm((current) => ({ ...current, currency: value }))}>
                   <SelectTrigger className="w-full">

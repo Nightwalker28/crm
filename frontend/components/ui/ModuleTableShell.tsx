@@ -11,7 +11,7 @@ type Props = {
 export function ModuleTableShell({ children, className = "", isRefreshing = false }: Props) {
   return (
     <div
-      className={`rounded-md border border-neutral-800 overflow-auto relative min-h-[69vh] max-h-[69vh] bg-neutral-950/80 ${className}`.trim()}
+      className={`relative min-h-[69vh] max-h-[69vh] overflow-auto rounded-md border border-neutral-800 bg-neutral-950/80 after:pointer-events-none after:sticky after:right-0 after:top-0 after:block after:h-full after:w-8 after:float-right after:bg-gradient-to-l after:from-neutral-950/90 after:to-transparent md:after:hidden ${className}`.trim()}
       aria-busy={isRefreshing}
     >
       {isRefreshing ? (

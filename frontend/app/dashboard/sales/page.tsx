@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { ArrowRight, Building2, BriefcaseBusiness, Users } from "lucide-react";
+import { ArrowRight, Building2, BriefcaseBusiness, Clock, Users } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -52,28 +52,37 @@ export default function SalesPage() {
   });
 
   const data = summaryQuery.data;
+  const recentTimestamp = [
+    ...(data?.contacts.results.map((contact) => contact.created_time).filter(Boolean) ?? []),
+    ...(data?.opportunities.results.map((deal) => deal.created_time).filter(Boolean) ?? []),
+  ].sort().at(-1);
+  const pipelineSummary = data?.opportunities.results.reduce<Record<string, number>>((acc, deal) => {
+    const key = deal.sales_stage || "Unstaged";
+    acc[key] = (acc[key] ?? 0) + 1;
+    return acc;
+  }, {});
 
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
-        title="Sales"
-        description="Sales entry point with live CRM counts, recent records, and direct access into pipeline work."
+        title="Sales CRM"
+        description="Monitor accounts, contacts, deals, and pipeline movement from one CRM overview."
         actions={
           <>
             <Button asChild variant="outline">
               <Link href="/dashboard/sales/contacts">Contacts</Link>
             </Button>
             <Button asChild>
-              <Link href="/dashboard/sales/opportunities">Open Pipeline</Link>
+              <Link href="/dashboard/sales/opportunities">Open Deals</Link>
             </Button>
           </>
         }
       />
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 px-5 py-5">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Contacts</div>
+            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Total Contacts</div>
             <Users className="h-4 w-4 text-neutral-500" />
           </div>
           <div className="mt-3 text-3xl font-semibold text-neutral-100">{data?.contacts.total_count ?? "—"}</div>
@@ -82,7 +91,7 @@ export default function SalesPage() {
 
         <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 px-5 py-5">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Organizations</div>
+            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Total Accounts</div>
             <Building2 className="h-4 w-4 text-neutral-500" />
           </div>
           <div className="mt-3 text-3xl font-semibold text-neutral-100">{data?.organizations.total_count ?? "—"}</div>
@@ -91,11 +100,24 @@ export default function SalesPage() {
 
         <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 px-5 py-5">
           <div className="flex items-center justify-between gap-3">
-            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Opportunities</div>
+            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Open Deals</div>
             <BriefcaseBusiness className="h-4 w-4 text-neutral-500" />
           </div>
-          <div className="mt-3 text-3xl font-semibold text-neutral-100">{data?.opportunities.total_count ?? "—"}</div>
+          <div className="mt-3 text-3xl font-semibold text-neutral-100">
+            {data?.opportunities.results.filter((deal) => !["closed_won", "closed_lost"].includes(deal.sales_stage ?? "")).length ?? "—"}
+          </div>
           <div className="mt-2 text-sm text-neutral-400">Current pipeline records available for qualification and finance handoff.</div>
+        </div>
+
+        <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 px-5 py-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Recently Updated</div>
+            <Clock className="h-4 w-4 text-neutral-500" />
+          </div>
+          <div className="mt-3 text-lg font-semibold text-neutral-100">
+            {recentTimestamp ? formatDateTime(recentTimestamp) : "—"}
+          </div>
+          <div className="mt-2 text-sm text-neutral-400">Latest timestamp from the loaded CRM summary.</div>
         </div>
       </section>
 
@@ -130,7 +152,7 @@ export default function SalesPage() {
 
         <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 xl:col-span-1">
           <div className="border-b border-neutral-800 px-5 py-4">
-            <h2 className="text-base font-semibold text-neutral-100">Organizations</h2>
+            <h2 className="text-base font-semibold text-neutral-100">Recent Accounts</h2>
             <p className="mt-1 text-sm text-neutral-400">Accounts you can jump into immediately.</p>
           </div>
           {summaryQuery.isLoading ? (
@@ -149,17 +171,17 @@ export default function SalesPage() {
               ))}
             </div>
           ) : (
-            <div className="px-5 py-8 text-sm text-neutral-500">No organizations yet.</div>
+            <div className="px-5 py-8 text-sm text-neutral-500">No accounts yet.</div>
           )}
         </div>
 
         <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 xl:col-span-1">
           <div className="border-b border-neutral-800 px-5 py-4">
-            <h2 className="text-base font-semibold text-neutral-100">Pipeline Snapshot</h2>
-            <p className="mt-1 text-sm text-neutral-400">Latest opportunity records alongside the full pipeline view in the opportunities module.</p>
+            <h2 className="text-base font-semibold text-neutral-100">Recent Deals</h2>
+            <p className="mt-1 text-sm text-neutral-400">Latest deal records alongside the full pipeline view.</p>
           </div>
           {summaryQuery.isLoading ? (
-            <div className="px-5 py-8 text-sm text-neutral-500">Loading opportunities…</div>
+            <div className="px-5 py-8 text-sm text-neutral-500">Loading deals…</div>
           ) : data?.opportunities.results.length ? (
             <div className="divide-y divide-neutral-800">
               {data.opportunities.results.map((opportunity) => (
@@ -184,9 +206,30 @@ export default function SalesPage() {
               ))}
             </div>
           ) : (
-            <div className="px-5 py-8 text-sm text-neutral-500">No opportunities yet.</div>
+            <div className="px-5 py-8 text-sm text-neutral-500">No deals yet.</div>
           )}
         </div>
+      </section>
+
+      <section className="rounded-xl border border-neutral-800 bg-neutral-950/60">
+        <div className="border-b border-neutral-800 px-5 py-4">
+          <h2 className="text-base font-semibold text-neutral-100">Pipeline Summary</h2>
+          <p className="mt-1 text-sm text-neutral-400">Stage counts from the currently loaded deal summary.</p>
+        </div>
+        {summaryQuery.isLoading ? (
+          <div className="px-5 py-8 text-sm text-neutral-500">Loading pipeline summary…</div>
+        ) : pipelineSummary && Object.keys(pipelineSummary).length ? (
+          <div className="grid gap-3 p-4 md:grid-cols-3 xl:grid-cols-6">
+            {Object.entries(pipelineSummary).map(([stage, count]) => (
+              <div key={stage} className="rounded-md border border-neutral-800 bg-black/20 px-4 py-3">
+                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">{stage.replace(/_/g, " ")}</div>
+                <div className="mt-2 text-2xl font-semibold text-neutral-100">{count}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="px-5 py-8 text-sm text-neutral-500">No deals available for a pipeline summary.</div>
+        )}
       </section>
     </div>
   );

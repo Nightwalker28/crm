@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Textarea } from "@/components/ui/textarea";
 import { resolveMediaUrl } from "@/lib/media";
 
@@ -48,10 +49,6 @@ const emptyForm: CompanyForm = {
   billing_address: "",
   logo_url: "",
 };
-
-function RequiredMark() {
-  return <span className="text-red-400">*</span>;
-}
 
 export default function CompanyPage() {
   const [form, setForm] = useState<CompanyForm>(emptyForm);

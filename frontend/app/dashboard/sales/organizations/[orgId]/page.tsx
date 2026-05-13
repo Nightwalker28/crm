@@ -12,6 +12,8 @@ import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
 import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -224,12 +226,12 @@ export default function OrganizationDetailPage() {
     <div className="flex flex-col gap-6 text-neutral-200">
       <RecordPageHeader
         backHref="/dashboard/sales/organizations"
-        backLabel="Back to Organizations"
-        title={summary?.organization.org_name || "Organization"}
+        backLabel="Back to Accounts"
+        title={summary?.organization.org_name || "Account"}
         description="Review linked contacts, deals, insertion orders, and edit the organization record directly on the page."
         primaryAction={(
           <Button onClick={handleSave} disabled={saving || !form.org_name.trim()}>
-            {saving ? "Saving..." : "Save Organization"}
+            {saving ? "Saving..." : "Save Account"}
           </Button>
         )}
       />
@@ -243,7 +245,7 @@ export default function OrganizationDetailPage() {
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <Card className="px-5 py-5">
               <div className="mb-4">
-                <h2 className="text-lg font-semibold text-neutral-100">Organization Details</h2>
+                <h2 className="text-lg font-semibold text-neutral-100">Account Details</h2>
                 <p className="mt-1 text-sm text-neutral-500">Primary commercial and billing information.</p>
               </div>
               <FieldGroup className="grid gap-4 md:grid-cols-2">
@@ -387,7 +389,7 @@ export default function OrganizationDetailPage() {
             </Card>
 
             <Card className="px-5 py-5">
-              <h2 className="text-lg font-semibold text-neutral-100">Opportunities</h2>
+              <h2 className="text-lg font-semibold text-neutral-100">Deals</h2>
               <div className="mt-4 space-y-3">
                 {summary.related_opportunities.length ? summary.related_opportunities.map((opportunity) => (
                   <div key={opportunity.opportunity_id} className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
@@ -395,7 +397,7 @@ export default function OrganizationDetailPage() {
                     <div className="mt-1 text-sm text-neutral-500">{opportunity.sales_stage || "Unstaged"}</div>
                     <div className="mt-2 text-sm text-neutral-300">{opportunity.total_cost_of_project || "No value recorded"}{opportunity.currency_type ? ` ${opportunity.currency_type}` : ""}</div>
                   </div>
-                )) : <div className="text-sm text-neutral-500">No linked opportunities.</div>}
+                )) : <div className="text-sm text-neutral-500">No linked deals.</div>}
               </div>
             </Card>
 
@@ -414,21 +416,15 @@ export default function OrganizationDetailPage() {
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
-            <RecordDocumentsPanel
-              moduleKey="sales_organizations"
-              entityId={summary.organization.org_id}
-            />
-            <RecordActivityTimeline
-              moduleKey="sales_organizations"
-              entityId={summary.organization.org_id}
-              description="Organization-level create, update, delete, restore, and note history."
-            />
-            <RecordCommentsPanel
-              moduleKey="sales_organizations"
-              entityId={summary.organization.org_id}
-            />
-          </div>
+          <RecordTabs
+            tabs={[
+              { id: "overview", label: "Overview", content: <EmptyState title="Overview shown above" description="Account details, contacts, deals, and insertion orders remain visible above these record tools." /> },
+              { id: "contacts", label: "Contacts", content: <EmptyState title="Contacts shown above" description="Linked contacts remain in the overview section above." /> },
+              { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_organizations" entityId={summary.organization.org_id} description="Account-level create, update, delete, restore, and note history." /> },
+              { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_organizations" entityId={summary.organization.org_id} /> },
+              { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_organizations" entityId={summary.organization.org_id} /> },
+            ]}
+          />
         </>
       )}
     </div>

@@ -66,9 +66,9 @@ export default function OpportunitiesPipelineBoard({
 
       {isLoading ? (
         <div className="overflow-x-auto px-4 py-4">
-          <div className="grid min-w-[1180px] grid-cols-7 gap-4">
+          <div className="flex gap-4 overflow-x-auto">
             {Array.from({ length: 7 }).map((_, index) => (
-              <div key={`pipeline-skeleton-${index}`} className="rounded-lg border border-neutral-800 bg-black/20">
+              <div key={`pipeline-skeleton-${index}`} className="min-w-[220px] flex-shrink-0 rounded-lg border border-neutral-800 bg-black/20">
                 <div className="border-b border-neutral-800 px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
                     <Skeleton className="h-6 w-24 bg-neutral-800" />
@@ -97,11 +97,11 @@ export default function OpportunitiesPipelineBoard({
               Refreshing
             </div>
           ) : null}
-          <div className="grid min-w-[1180px] grid-cols-7 gap-4">
+          <div className="flex gap-4 overflow-x-auto">
             {stageEntries.map((entry) => (
               <div
                 key={entry.stage}
-                className="rounded-lg border border-neutral-800 bg-black/20"
+                className="min-w-[220px] flex-shrink-0 rounded-lg border border-neutral-800 bg-black/20"
               >
                 <div className="border-b border-neutral-800 px-4 py-3">
                   <div className="flex items-center justify-between gap-2">

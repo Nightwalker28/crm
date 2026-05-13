@@ -28,7 +28,7 @@ export default function OrganizationsHeader({
 }: OrganizationsHeaderProps) {
   return (
     <PageHeader
-      title="Organizations"
+      title="Accounts"
       description="Manage and review customer and partner companies."
       actions={
         <>
@@ -45,7 +45,7 @@ export default function OrganizationsHeader({
 
           <Button onClick={onCreateClick}>
             <Plus />
-            <span className="hidden sm:inline">Create</span>
+            <span className="hidden sm:inline">Create Account</span>
           </Button>
         </>
       }

@@ -9,6 +9,7 @@ import { CommandIcon, CornerDownLeft, Search } from "lucide-react";
 import { Dialog, DialogBackdrop, DialogPanel } from "@/components/ui/dialog";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { apiFetch } from "@/lib/api";
+import { getModuleDisplayName } from "@/lib/module-display";
 
 type SearchResult = {
   module_key: string;
@@ -22,15 +23,6 @@ type SearchResult = {
 type SearchResponse = {
   query: string;
   results: SearchResult[];
-};
-
-const MODULE_LABELS: Record<string, string> = {
-  tasks: "Tasks",
-  calendar: "Calendar",
-  sales_organizations: "Organizations",
-  sales_contacts: "Contacts",
-  sales_opportunities: "Opportunities",
-  finance_io: "Insertion Orders",
 };
 
 async function fetchGlobalSearch(query: string): Promise<SearchResponse> {
@@ -90,7 +82,7 @@ export default function GlobalCommandPalette() {
       ...modules
         .filter((module) => module.base_route)
         .map((module) => ({
-          label: MODULE_LABELS[module.name] ?? module.description ?? module.name,
+          label: getModuleDisplayName(module.name, module.description ?? undefined),
           subtitle: module.base_route ?? "",
           href: module.base_route as string,
           group: "Modules",
@@ -107,9 +99,10 @@ export default function GlobalCommandPalette() {
   const groupedResults = useMemo(() => {
     const groups = new Map<string, SearchResult[]>();
     for (const item of searchQuery.data?.results ?? []) {
-      const current = groups.get(item.module_label) ?? [];
+      const label = getModuleDisplayName(item.module_key) || item.module_label;
+      const current = groups.get(label) ?? [];
       current.push(item);
-      groups.set(item.module_label, current);
+      groups.set(label, current);
     }
     return Array.from(groups.entries());
   }, [searchQuery.data?.results]);

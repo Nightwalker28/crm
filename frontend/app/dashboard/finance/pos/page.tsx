@@ -58,12 +58,12 @@ export default function PosInvoicesPage() {
   const metrics = useMemo(() => {
     return invoices.reduce(
       (acc, invoice) => {
-        acc.total += invoice.total_amount;
-        acc.balance += invoice.balance_due;
+        acc.total += 1;
         if (invoice.payment_status === "paid") acc.paid += 1;
+        if (invoice.balance_due > 0) acc.outstanding += 1;
         return acc;
       },
-      { total: 0, balance: 0, paid: 0 },
+      { total: 0, paid: 0, outstanding: 0 },
     );
   }, [invoices]);
 
@@ -105,16 +105,16 @@ export default function PosInvoicesPage() {
 
       <section className="grid gap-4 md:grid-cols-3">
         <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-5 py-4">
-          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Loaded Total</div>
-          <div className="mt-2 text-2xl font-semibold text-neutral-100">{money(metrics.total, invoices[0]?.currency || "USD")}</div>
+          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Total Invoices</div>
+          <div className="mt-2 text-2xl font-semibold text-neutral-100">{metrics.total}</div>
         </div>
         <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-5 py-4">
-          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Loaded Balance</div>
-          <div className="mt-2 text-2xl font-semibold text-amber-200">{money(metrics.balance, invoices[0]?.currency || "USD")}</div>
-        </div>
-        <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-5 py-4">
-          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Paid In View</div>
+          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Paid Count</div>
           <div className="mt-2 text-2xl font-semibold text-emerald-300">{metrics.paid}</div>
+        </div>
+        <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-5 py-4">
+          <div className="text-xs uppercase tracking-[0.18em] text-neutral-500">Outstanding Count</div>
+          <div className="mt-2 text-2xl font-semibold text-amber-200">{metrics.outstanding}</div>
         </div>
       </section>
 

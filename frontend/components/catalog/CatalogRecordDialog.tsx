@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -55,10 +56,6 @@ const emptyForm: FormState = {
   is_public: false,
   is_active: true,
 };
-
-function RequiredAsterisk() {
-  return <span className="text-red-400">*</span>;
-}
 
 function toFormState(record: CatalogRecord | null): FormState {
   if (!record) return emptyForm;
@@ -173,7 +170,7 @@ export default function CatalogRecordDialog({
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
               <Field className="sm:col-span-2">
                 <FieldLabel>
-                  Name <RequiredAsterisk />
+                  Name <RequiredMark />
                 </FieldLabel>
                 <Input
                   value={form.name}
@@ -207,7 +204,7 @@ export default function CatalogRecordDialog({
 
               <Field>
                 <FieldLabel>
-                  Currency <RequiredAsterisk />
+                  Currency <RequiredMark />
                 </FieldLabel>
                 <Input
                   value={form.currency}
@@ -219,7 +216,7 @@ export default function CatalogRecordDialog({
 
               <Field>
                 <FieldLabel>
-                  Public Unit Price <RequiredAsterisk />
+                  Public Unit Price <RequiredMark />
                 </FieldLabel>
                 <Input
                   value={form.public_unit_price}

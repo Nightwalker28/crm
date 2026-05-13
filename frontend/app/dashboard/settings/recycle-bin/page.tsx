@@ -12,6 +12,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDateTime } from "@/lib/datetime";
+import { getModuleDisplayName } from "@/lib/module-display";
 import { useModuleBuilder } from "@/hooks/useModuleBuilder";
 
 type RecycleItem = {
@@ -34,12 +35,12 @@ type RecycleResponse = {
 };
 
 const MODULE_OPTIONS = [
-  { value: "finance_insertion_orders", label: "Finance Insertion Orders" },
-  { value: "sales_contacts", label: "Sales Contacts" },
-  { value: "sales_organizations", label: "Sales Organizations" },
-  { value: "sales_opportunities", label: "Sales Opportunities" },
-  { value: "tasks", label: "Tasks" },
-  { value: "documents", label: "Documents" },
+  "finance_insertion_orders",
+  "sales_contacts",
+  "sales_organizations",
+  "sales_opportunities",
+  "tasks",
+  "documents",
 ];
 
 async function fetchRecycleItems(moduleKey: string, page: number, pageSize: number): Promise<RecycleResponse> {
@@ -61,10 +62,10 @@ export default function RecycleBinPage() {
   const [pageSize, setPageSize] = useState(10);
   const moduleOptions = useMemo(
     () => [
-      ...MODULE_OPTIONS,
+      ...MODULE_OPTIONS.map((moduleName) => ({ value: moduleName, label: getModuleDisplayName(moduleName) })),
       ...customModules
         .filter((module) => module.deleted_at == null)
-        .map((module) => ({ value: module.key, label: module.name })),
+        .map((module) => ({ value: module.key, label: getModuleDisplayName(module.key, module.description ?? undefined) })),
     ],
     [customModules],
   );

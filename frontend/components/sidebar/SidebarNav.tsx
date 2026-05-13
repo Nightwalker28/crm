@@ -80,7 +80,7 @@ export function SidebarMenuItem({
         className={
           "relative z-10 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium transition-all duration-150 " +
           (active
-            ? "bg-white/10 text-neutral-100 border border-white/20 backdrop-blur-sm"
+            ? "bg-white/10 text-neutral-100 border border-white/20 backdrop-blur-sm before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-neutral-100/80"
             : "bg-transparent text-neutral-400 border border-transparent hover:bg-white/6 hover:text-neutral-100 hover:border-white/12")
         }
       >
@@ -140,7 +140,7 @@ export function SidebarMenuItemCollapsible({
           className={
             "relative z-10 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-left transition-all duration-150 " +
             (activeSelf
-              ? "bg-white/10 text-neutral-100 border border-white/20 backdrop-blur-sm"
+              ? "bg-white/10 text-neutral-100 border border-white/20 backdrop-blur-sm before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-neutral-100/80"
               : "bg-transparent text-neutral-400 border border-transparent hover:bg-white/6 hover:text-neutral-100 hover:border-white/12")
           }
         >
@@ -213,7 +213,7 @@ export function SidebarMenuItemChild({
         className={
           "relative z-10 w-full flex items-center gap-2 rounded-md px-2 py-1 text-[13px] font-medium transition-all duration-150 " +
           (active
-            ? "bg-white/10 text-neutral-100 border border-white/20 backdrop-blur-sm"
+            ? "bg-white/10 text-neutral-100 border border-white/20 backdrop-blur-sm before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-neutral-100/80"
             : "bg-transparent text-neutral-400 border border-transparent hover:bg-white/6 hover:text-neutral-100 hover:border-white/12")
         }
       >

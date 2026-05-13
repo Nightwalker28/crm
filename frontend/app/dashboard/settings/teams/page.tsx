@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import {
   Field,
   FieldDescription,
@@ -28,10 +29,6 @@ import {
   type TeamForm,
   useTeamsAndDepartments,
 } from "@/hooks/admin/useTeamsAndDepartments";
-
-function RequiredMark() {
-  return <span className="text-red-400">*</span>;
-}
 
 function SectionHeader({
   icon: Icon,
