@@ -2,16 +2,7 @@
 
 ## Context
 
-This repository is a CRM built with:
-
-- FastAPI
-- SQLAlchemy
-- Alembic
-- PostgreSQL
-- Redis
-- Celery
-- Pydantic
-- Next.js frontend
+This repository is a CRM built with FastAPI, SQLAlchemy, Alembic, PostgreSQL, Redis, Celery, Pydantic, and a Next.js frontend.
 
 The backend already has a modular structure under `backend/app/modules/`, with modules such as sales, finance, catalog, calendar, tasks, client portal, platform, user management, documents, mail, website integrations, and WhatsApp.
 
@@ -33,6 +24,7 @@ The goal is to make the backend cleaner, more maintainable, and safer for multi-
 8. Prefer incremental refactoring over big-bang rewrites.
 9. Every migration must be safe for existing data.
 10. Every large table query must remain tenant-scoped.
+11. Do not move deleted rows into separate per-module deleted tables unless a real production bottleneck proves it is needed.
 
 ---
 
@@ -62,65 +54,23 @@ backend/app/modules/<module>/
 
 Only SQLAlchemy table definitions and relationships.
 
-Do not put business logic here except small model-level helper properties when unavoidable.
-
 #### `schema.py`
 
 Only Pydantic request and response schemas.
 
-Keep request validation here where possible.
-
 #### `routes/`
 
-Routes should be thin.
+Routes should be thin. They should handle URL structure, dependencies, permissions, request/response models, and service calls.
 
-Routes are responsible for:
-
-- URL structure
-- FastAPI dependencies
-- permission checks
-- request/response models
-- calling service functions
-- translating unexpected user-facing errors into HTTP responses
-
-Routes should not contain:
-
-- complex DB query logic
-- duplicate detection logic
-- import/export processing
-- heavy business rules
-- search ranking logic
+Routes should not contain complex DB query logic, duplicate detection logic, import/export processing, heavy business rules, or search ranking logic.
 
 #### `services/`
 
-Services are responsible for business rules.
-
-Examples:
-
-- create/update/delete rules
-- duplicate handling decisions
-- permission-aware business behavior
-- custom field validation orchestration
-- activity/event logging orchestration
-- import/export workflow coordination
-- calling repositories
-
-Services should not contain large query-building logic if it can live in repositories.
+Services are responsible for business rules: create/update/delete behavior, duplicate handling, custom field orchestration, activity/event logging orchestration, import/export workflow coordination, and repository calls.
 
 #### `repositories/`
 
-Repositories are responsible for database reads/writes/query composition.
-
-Examples:
-
-- get by id
-- get by id or 404 helper if desired
-- list active records
-- list deleted records
-- find duplicates
-- search within tenant
-- bulk insert
-- aggregate query helpers
+Repositories are responsible for database reads/writes/query composition: get by id, list active records, list deleted records, find duplicates, search within tenant, bulk insert, and aggregate query helpers.
 
 Repositories should not know about FastAPI `Depends` or route dependencies.
 
@@ -202,33 +152,15 @@ def get_contact(
 
 ### Keep in `contacts_service.py`
 
-Keep business rules here:
-
-- create contact
-- update contact
-- soft delete contact
-- restore contact
-- duplicate behavior decision
-- custom field validation orchestration
-- activity/event logging calls
+Keep business rules here: create, update, soft delete, restore, duplicate behavior decisions, custom field orchestration, activity/event logging calls.
 
 ### Move to `contacts_import_service.py`
 
-Move CSV import logic here:
-
-- header validation
-- row normalization
-- duplicate import behavior
-- bulk insert mapping
-- import summary
+Move CSV import logic here: header validation, row normalization, duplicate import behavior, bulk insert mapping, and import summary.
 
 ### Move to `contacts_export_service.py`
 
-Move CSV export logic here:
-
-- export columns
-- row serialization
-- CSV byte generation
+Move CSV export logic here: export columns, row serialization, and CSV byte generation.
 
 ---
 
@@ -279,7 +211,7 @@ Large tables include:
 
 ### Required Query Pattern
 
-Large list queries should generally look like:
+Large active list queries should generally look like:
 
 ```sql
 WHERE tenant_id = :tenant_id
@@ -304,8 +236,6 @@ Never allow unbounded list queries on large tables.
 
 ## Indexing Standards
 
-### Every Large Tenant Table Should Have Indexes For Common Access Patterns
-
 Use composite indexes, not only single-column indexes.
 
 Recommended patterns:
@@ -319,25 +249,29 @@ Recommended patterns:
 (tenant_id, deleted_at)
 ```
 
-For soft-deleted tables, prefer partial indexes where supported:
+For soft-deleted tables, prefer partial indexes where supported.
+
+### Active Row Partial Index Example
 
 ```sql
-WHERE deleted_at IS NULL
-```
-
-Example SQL:
-
-```sql
-CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_sales_contacts_tenant_contact_desc_active
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_sales_contacts_active_tenant_contact_desc
 ON sales_contacts (tenant_id, contact_id DESC)
 WHERE deleted_at IS NULL;
 ```
 
-Example SQLAlchemy/Alembic direction:
+### Deleted Row / Recycle Bin Partial Index Example
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_sales_contacts_deleted_tenant_deleted_desc
+ON sales_contacts (tenant_id, deleted_at DESC, contact_id DESC)
+WHERE deleted_at IS NOT NULL;
+```
+
+### Alembic Direction
 
 ```python
 op.create_index(
-    "ix_sales_contacts_tenant_contact_desc_active",
+    "ix_sales_contacts_active_tenant_contact_desc",
     "sales_contacts",
     ["tenant_id", sa.text("contact_id DESC")],
     postgresql_where=sa.text("deleted_at IS NULL"),
@@ -351,8 +285,6 @@ When using `postgresql_concurrently=True`, ensure the Alembic migration handles 
 
 ## Pagination Standards
 
-### Problem
-
 Offset pagination becomes slow with millions of records:
 
 ```python
@@ -360,8 +292,6 @@ query.offset(pagination.offset).limit(pagination.limit)
 ```
 
 This is acceptable for small tables but risky for large CRM tables.
-
-### Target
 
 Add cursor/keyset pagination for large modules.
 
@@ -381,7 +311,7 @@ Response style:
 }
 ```
 
-### Rules
+Rules:
 
 1. Keep existing offset pagination for now if frontend depends on it.
 2. Add cursor pagination as an additional path or optional mode.
@@ -407,25 +337,6 @@ Better options:
 - cache counts by tenant/module/filter
 - only run exact counts on explicit request
 - use dashboard summary tables
-
-Recommended response for high-volume lists:
-
-```json
-{
-  "items": [],
-  "has_more": true,
-  "next_cursor": "..."
-}
-```
-
-Instead of always:
-
-```json
-{
-  "items": [],
-  "total": 1234567
-}
-```
 
 ---
 
@@ -460,15 +371,7 @@ USING gin (search_doc gin_trgm_ops)
 WHERE deleted_at IS NULL;
 ```
 
-Use this pattern for:
-
-- sales contacts
-- sales organizations
-- sales opportunities
-- invoices
-- documents
-- client pages
-- custom module records
+Use this pattern for sales contacts, sales organizations, sales opportunities, invoices, documents, client pages, and custom module records.
 
 ### Future Search Abstraction
 
@@ -487,24 +390,6 @@ backend/app/modules/platform/search/
 
 Interfaces should allow future OpenSearch/Meilisearch without rewriting every module.
 
-Example future-safe call:
-
-```python
-search_service.index_record(
-    tenant_id=tenant_id,
-    module_key="sales_contacts",
-    record_id=contact.contact_id,
-    title="Dilshan Perera",
-    body="CEO at Ceylon Retail Holdings dilshan@example.com",
-    metadata={
-        "assigned_to": contact.assigned_to,
-        "organization_id": contact.organization_id,
-    },
-)
-```
-
-For now this can write to Postgres or no-op. Later it can sync to OpenSearch/Meilisearch using Celery.
-
 ---
 
 ## Redis/Caching Strategy
@@ -522,9 +407,7 @@ Good Redis use cases:
 - rate limits
 - background job state
 
-Do not use Redis as the primary store for CRM records.
-
-### Suggested cache keys
+Suggested cache keys:
 
 ```text
 tenant:{tenant_id}:dashboard:summary:v1
@@ -551,8 +434,9 @@ Use Celery for anything heavy:
 - dashboard count refresh
 - reminder scans
 - cleanup jobs
+- recycle bin purge jobs
 
-Do not run large imports/exports inside request handlers.
+Do not run large imports/exports or purge jobs inside request handlers.
 
 Existing threshold settings should be respected:
 
@@ -562,8 +446,6 @@ Existing threshold settings should be respected:
 ---
 
 ## Database Connection Pooling
-
-Current SQLAlchemy engine already supports configurable pool settings.
 
 Keep these environment variables and tune them per deployment:
 
@@ -595,7 +477,7 @@ Rules:
 2. Do not hold DB transactions while reading large files.
 3. Do not hold DB transactions while calling external APIs.
 4. For imports, validate/parse outside the transaction where possible, then bulk insert/update in batches.
-5. For large update jobs, process in chunks.
+5. For large update/delete jobs, process in chunks.
 
 ---
 
@@ -631,8 +513,6 @@ SELECT count(*) FROM finance_pos_invoices WHERE tenant_id = ?;
 SELECT sum(total_amount) FROM finance_pos_invoices WHERE tenant_id = ?;
 ```
 
-on every dashboard request.
-
 Better:
 
 - cached dashboard summaries
@@ -656,9 +536,9 @@ tenant_module_metrics
 
 ## Soft Delete / Recycle Bin Standards
 
-Soft delete should consistently use `deleted_at`.
+Soft delete should consistently use `deleted_at` for normal user delete behavior.
 
-Normal list queries:
+Normal user-facing list queries:
 
 ```sql
 deleted_at IS NULL
@@ -670,9 +550,171 @@ Recycle bin queries:
 deleted_at IS NOT NULL
 ```
 
-Indexes should match both access patterns where needed.
-
 Do not expose "move to trash" wording in normal user UI if the product wording is "delete". Admin recycle bin can still exist internally.
+
+### Recommended Approach: 90-Day Two-Stage Delete Lifecycle
+
+Use a **two-stage delete lifecycle**:
+
+```text
+Stage 1: Active table soft delete
+  User clicks Delete
+  Row remains in original table
+  deleted_at is set
+  deleted_by_user_id and delete_reason can be added later if needed
+  Row appears in admin recycle bin
+  Restore is allowed for 90 days
+
+Stage 2: Permanent delete after retention
+  After 90 days, a Celery job permanently deletes old soft-deleted rows
+  Purge runs in small batches
+  Restore is no longer available after purge
+```
+
+Default retention configuration:
+
+```env
+RECYCLE_BIN_RETENTION_DAYS=90
+RECYCLE_BIN_PURGE_BATCH_SIZE=1000
+```
+
+### Do Not Move Deleted Rows Immediately By Default
+
+Avoid immediately moving deleted rows into separate per-module tables such as `sales_contacts_deleted`, `finance_pos_invoices_deleted`, etc.
+
+Reasons:
+
+- restore becomes harder
+- foreign key relationships become complicated
+- audit/history becomes harder
+- every module needs duplicate archive models
+- cross-module references can break
+- queries and migrations become more complex
+
+For example, moving a deleted contact to `sales_contacts_deleted` means related opportunities, invoices, client accounts, tasks, comments, custom fields, and activity logs may still reference the original contact.
+
+### Make Soft Delete Fast With Partial Indexes
+
+For large active-table queries, add partial indexes that only include active rows:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_sales_contacts_active_tenant_contact_desc
+ON sales_contacts (tenant_id, contact_id DESC)
+WHERE deleted_at IS NULL;
+```
+
+For recycle bin queries, add separate deleted-row partial indexes:
+
+```sql
+CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_sales_contacts_deleted_tenant_deleted_desc
+ON sales_contacts (tenant_id, deleted_at DESC, contact_id DESC)
+WHERE deleted_at IS NOT NULL;
+```
+
+This allows normal list screens to ignore deleted rows efficiently while admin recycle bin screens remain fast.
+
+Apply the same active/deleted index pattern to every large soft-deletable table, adjusting the primary key column name:
+
+```text
+sales_contacts: contact_id
+sales_organizations: org_id
+sales_opportunities: opportunity_id
+finance_pos_invoices: id
+finance_io: id
+tasks: id
+calendar_events: id
+documents: id
+custom module records: id
+```
+
+### Recycle Bin Query Pattern
+
+Recycle bin endpoints should be admin-only and use cursor pagination:
+
+```sql
+WHERE tenant_id = :tenant_id
+  AND deleted_at IS NOT NULL
+  AND (
+    deleted_at < :cursor_deleted_at
+    OR (deleted_at = :cursor_deleted_at AND id < :cursor_id)
+  )
+ORDER BY deleted_at DESC, id DESC
+LIMIT :limit
+```
+
+Do not use heavy exact counts for recycle bin by default.
+
+### Restore Rules
+
+Restore should:
+
+1. Confirm the row still exists in the original table.
+2. Confirm it belongs to the current tenant.
+3. Confirm it is still inside the 90-day retention window.
+4. Set `deleted_at = NULL`.
+5. Restore dependent custom fields only if they still exist.
+6. Log the restore activity.
+7. Invalidate relevant dashboard/list caches.
+
+### Permanent Purge Rules
+
+Permanent purge should:
+
+1. Be admin-only or system-job-only.
+2. Run in Celery.
+3. Delete rows older than `RECYCLE_BIN_RETENTION_DAYS`.
+4. Delete in small batches using `RECYCLE_BIN_PURGE_BATCH_SIZE`.
+5. Respect FK/cascade rules.
+6. Log what was purged.
+7. Never run as part of normal request flow for large modules.
+
+Example purge direction:
+
+```sql
+DELETE FROM sales_contacts
+WHERE tenant_id = :tenant_id
+  AND deleted_at < now() - interval '90 days'
+LIMIT 1000;
+```
+
+If PostgreSQL version/query style does not support `DELETE ... LIMIT` directly, use a CTE:
+
+```sql
+WITH rows_to_delete AS (
+  SELECT contact_id
+  FROM sales_contacts
+  WHERE tenant_id = :tenant_id
+    AND deleted_at < now() - interval '90 days'
+  ORDER BY deleted_at ASC, contact_id ASC
+  LIMIT 1000
+)
+DELETE FROM sales_contacts
+USING rows_to_delete
+WHERE sales_contacts.contact_id = rows_to_delete.contact_id;
+```
+
+### Optional Future Archive Snapshot Table
+
+Archive tables can be added later for compliance or long-term audit use, but they should be treated as cold storage, not the default recycle bin.
+
+Possible future pattern:
+
+```text
+deleted_record_archives
+  id
+  tenant_id
+  module_key
+  entity_type
+  entity_id
+  deleted_at
+  deleted_by_user_id
+  archived_at
+  record_snapshot JSONB
+```
+
+This pattern stores a snapshot for audit/history, not a fully active relational copy.
+
+Use this only if the product needs long-term deleted-record history after purge.
 
 ---
 
@@ -728,7 +770,7 @@ Rules:
 
 ## File Naming and Consistency Rules
 
-Standardize naming over time:
+Standardize naming over time.
 
 Prefer singular service file names:
 
@@ -761,7 +803,9 @@ After each refactor PR:
 7. Permissions still work.
 8. Tenant scoping is not broken.
 9. Soft delete and restore still work.
-10. Import/export still works if touched.
+10. Recycle bin still works.
+11. 90-day purge job only deletes records older than retention.
+12. Import/export still works if touched.
 
 ---
 
@@ -795,6 +839,7 @@ Use this to test:
 - dashboard summary
 - import/export job creation
 - recycle bin list
+- 90-day purge job in batches
 
 Performance targets for normal API list screens:
 
@@ -893,6 +938,19 @@ Keep it simple and non-invasive.
 
 Do not integrate external search yet.
 
+### Phase 7: Add 90-Day Recycle Bin Retention Cleanup
+
+Add a safe recycle-bin retention strategy:
+
+- keep normal delete as soft delete using `deleted_at`
+- add active-row partial indexes
+- add deleted-row partial indexes
+- add config values `RECYCLE_BIN_RETENTION_DAYS=90` and `RECYCLE_BIN_PURGE_BATCH_SIZE=1000`
+- add Celery purge job for rows older than 90 days
+- delete in small batches
+- keep restore behavior unchanged for records still inside retention
+- do not move deleted rows into separate relational archive tables yet
+
 ---
 
 ## Done Criteria
@@ -905,7 +963,9 @@ The backend is considered improved when:
 - high-volume modules have cursor pagination option
 - high-volume modules avoid exact count by default where possible
 - large tables have tenant-aware composite indexes
-- soft-delete indexes exist
+- active-row partial indexes exist
+- deleted-row/recycle-bin partial indexes exist
+- 90-day recycle-bin retention cleanup exists
 - search uses Postgres trigram/full-text indexes first
 - heavy work runs in Celery/background jobs
 - seed and load-test scripts exist
@@ -921,4 +981,6 @@ Do not rewrite the backend.
 
 Do not add Elasticsearch/OpenSearch yet.
 
-First make PostgreSQL, SQLAlchemy, Alembic, Redis, and Celery work properly with clean architecture, safe indexes, cursor pagination, background jobs, and cached summaries.
+Do not move deleted rows into separate tables as the first solution.
+
+First make PostgreSQL, SQLAlchemy, Alembic, Redis, and Celery work properly with clean architecture, safe indexes, cursor pagination, background jobs, cached summaries, and 90-day recycle-bin retention cleanup.
