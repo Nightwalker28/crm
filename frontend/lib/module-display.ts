@@ -1,6 +1,6 @@
 export type ModuleCategory =
   | "Workspace"
-  | "Sales CRM"
+  | "Sales"
   | "Products & Services"
   | "Finance"
   | "Platform"
@@ -30,9 +30,9 @@ const MODULE_CATEGORIES: Record<string, ModuleCategory> = {
   mail: "Workspace",
   whatsapp: "Workspace",
   documents: "Workspace",
-  sales_contacts: "Sales CRM",
-  sales_organizations: "Sales CRM",
-  sales_opportunities: "Sales CRM",
+  sales_contacts: "Sales",
+  sales_organizations: "Sales",
+  sales_opportunities: "Sales",
   catalog_products: "Products & Services",
   catalog_services: "Products & Services",
   finance_io: "Finance",

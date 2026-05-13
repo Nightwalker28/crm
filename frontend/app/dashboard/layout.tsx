@@ -138,7 +138,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <GlobalCommandPalette />
             </div>
           </div>
-          <div className="relative z-30 h-full w-full overflow-y-auto px-6 py-5 custom-scrollbar">
+          <div className="scrollbar-hide relative z-30 h-full w-full overflow-y-auto px-6 py-5">
             {isCheckingAccess ? (
               <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-6 text-sm text-neutral-500">
                 Checking access...

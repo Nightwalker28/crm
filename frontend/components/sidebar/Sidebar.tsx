@@ -6,7 +6,6 @@ import Link from "next/link";
 import {
   CalendarDays,
   FileText,
-  MessageCircle,
   Mail,
   LayoutGrid,
   HandCoins,
@@ -106,7 +105,6 @@ export default function Sidebar() {
   const tasksModule = moduleMap.get("tasks");
   const calendarModule = moduleMap.get("calendar");
   const mailModule = moduleMap.get("mail");
-  const whatsappModule = moduleMap.get("whatsapp");
   const contactsModule = moduleMap.get("sales_contacts");
   const organizationsModule = moduleMap.get("sales_organizations");
   const opportunitiesModule = moduleMap.get("sales_opportunities");
@@ -194,19 +192,10 @@ export default function Sidebar() {
                 </SidebarMenuItem>
               ) : null}
 
-              {whatsappModule?.base_route ? (
-                <SidebarMenuItem href={whatsappModule.base_route} icon={MessageCircle} collapsed={collapsed}>
-                  WhatsApp
-                </SidebarMenuItem>
-              ) : null}
-
-              <SidebarSectionLabel collapsed={collapsed}>Sales CRM</SidebarSectionLabel>
+              <SidebarSectionLabel collapsed={collapsed}>Sales</SidebarSectionLabel>
 
               {(organizationsModule?.base_route || contactsModule?.base_route || opportunitiesModule?.base_route) ? (
-                <SidebarMenuItemCollapsible icon={BriefcaseBusiness} label="Sales CRM" collapsed={collapsed}>
-                  <SidebarMenuItemChild href={DASHBOARD_ROUTES.sales} collapsed={collapsed}>
-                    Overview
-                  </SidebarMenuItemChild>
+                <SidebarMenuItemCollapsible icon={BriefcaseBusiness} label="Sales" collapsed={collapsed}>
                   {organizationsModule?.base_route ? (
                     <SidebarMenuItemChild href={DASHBOARD_ROUTES.accounts} collapsed={collapsed}>
                       Accounts
@@ -251,9 +240,6 @@ export default function Sidebar() {
 
               {(financeIoModule?.base_route || financePosModule?.base_route) ? (
                 <SidebarMenuItemCollapsible icon={HandCoins} label="Finance" collapsed={collapsed}>
-                  <SidebarMenuItemChild href={DASHBOARD_ROUTES.finance} collapsed={collapsed}>
-                    Overview
-                  </SidebarMenuItemChild>
                   {financePosModule?.base_route ? (
                     <SidebarMenuItemChild href={DASHBOARD_ROUTES.financePos} collapsed={collapsed}>
                       POS
@@ -284,9 +270,6 @@ export default function Sidebar() {
                 <>
                   <SidebarSectionLabel collapsed={collapsed}>Settings</SidebarSectionLabel>
                   <SidebarMenuItemCollapsible icon={Settings2} label="Settings" collapsed={collapsed}>
-                    <SidebarMenuItemChild href={SETTINGS_ROUTES.root} collapsed={collapsed}>
-                      Settings Overview
-                    </SidebarMenuItemChild>
                     <SidebarMenuItemChild href={SETTINGS_ROUTES.general} collapsed={collapsed}>
                       General
                     </SidebarMenuItemChild>

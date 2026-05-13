@@ -15,7 +15,6 @@ import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel
 import FollowUpPanel from "@/components/recordActivity/FollowUpPanel";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -501,7 +500,6 @@ export default function ContactDetailPage() {
 
           <RecordTabs
             tabs={[
-              { id: "overview", label: "Overview", content: <EmptyState title="Overview shown above" description="Contact details, summary, related deals, and insertion orders remain visible above these record tools." /> },
               { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_contacts" entityId={summary.contact.contact_id} description="Contact-level create, update, delete, restore, and note history." /> },
               { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
               { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },

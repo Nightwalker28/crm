@@ -12,7 +12,6 @@ import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
 import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -418,8 +417,6 @@ export default function OrganizationDetailPage() {
 
           <RecordTabs
             tabs={[
-              { id: "overview", label: "Overview", content: <EmptyState title="Overview shown above" description="Account details, contacts, deals, and insertion orders remain visible above these record tools." /> },
-              { id: "contacts", label: "Contacts", content: <EmptyState title="Contacts shown above" description="Linked contacts remain in the overview section above." /> },
               { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_organizations" entityId={summary.organization.org_id} description="Account-level create, update, delete, restore, and note history." /> },
               { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_organizations" entityId={summary.organization.org_id} /> },
               { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_organizations" entityId={summary.organization.org_id} /> },

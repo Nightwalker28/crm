@@ -38,12 +38,12 @@ test("admin manual login and dashboard navigation works", async ({ page }) => {
   await page.waitForURL("**/dashboard/finance/insertion-orders");
   await expect(page.getByRole("heading", { name: "Insertion Orders" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Sales CRM" }).click();
+  await page.getByRole("button", { name: "Sales" }).click();
   await page.getByRole("link", { name: "Accounts" }).click();
   await page.waitForURL("**/dashboard/sales/organizations");
   await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Sales CRM" }).click();
+  await page.getByRole("button", { name: "Sales" }).click();
   await page.getByRole("link", { name: "Contacts" }).click();
   await page.waitForURL("**/dashboard/sales/contacts");
   await expect(page.getByRole("heading", { name: "Contacts" })).toBeVisible();

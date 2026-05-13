@@ -31,7 +31,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
     <div className="grid min-h-full gap-5 lg:grid-cols-[220px_minmax(0,1fr)]">
       <aside className="lg:sticky lg:top-0 lg:self-start">
-        <div className="overflow-x-auto border-b border-neutral-800 pb-3 lg:overflow-visible lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4">
+        <div className="scrollbar-hide overflow-x-auto overflow-y-hidden border-b border-neutral-800 pb-3 lg:overflow-visible lg:border-b-0 lg:border-r lg:pb-0 lg:pr-4">
           <nav className="flex min-w-max gap-1 lg:min-w-0 lg:flex-col" aria-label="Settings navigation">
             <Link
               href={SETTINGS_ROUTES.root}

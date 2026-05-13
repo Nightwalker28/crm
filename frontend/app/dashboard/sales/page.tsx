@@ -65,7 +65,7 @@ export default function SalesPage() {
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
-        title="Sales CRM"
+        title="Sales"
         description="Monitor accounts, contacts, deals, and pipeline movement from one CRM overview."
         actions={
           <>

@@ -14,7 +14,6 @@ import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel
 import FollowUpPanel from "@/components/recordActivity/FollowUpPanel";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -541,7 +540,6 @@ export default function OpportunityDetailPage() {
 
           <RecordTabs
             tabs={[
-              { id: "overview", label: "Overview", content: <EmptyState title="Overview shown above" description="Deal details, linked contact, account, service details, and insertion orders remain visible above these record tools." /> },
               { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_opportunities" entityId={summary.opportunity.opportunity_id} description="Deal-level create, update, delete, restore, and note history." /> },
               { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_opportunities" entityId={summary.opportunity.opportunity_id} /> },
               { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_opportunities" entityId={summary.opportunity.opportunity_id} /> },

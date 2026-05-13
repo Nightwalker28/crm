@@ -31,7 +31,7 @@ export const SETTINGS_ROUTES = {
 const FRIENDLY_ROUTE_LABELS: Record<string, string> = {
   organizations: "Accounts",
   opportunities: "Deals",
-  sales: "Sales CRM",
+  sales: "Sales",
   company: "General",
   general: "General",
   users: "User Management",

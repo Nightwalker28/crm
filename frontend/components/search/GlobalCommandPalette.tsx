@@ -10,6 +10,7 @@ import { Dialog, DialogBackdrop, DialogPanel } from "@/components/ui/dialog";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 
 type SearchResult = {
   module_key: string;
@@ -26,8 +27,9 @@ type SearchResponse = {
 };
 
 async function fetchGlobalSearch(query: string): Promise<SearchResponse> {
+  const trimmedQuery = query.trim();
   const params = new URLSearchParams({
-    query,
+    query: trimmedQuery,
     limit_per_module: "5",
   });
   const res = await apiFetch(`/global-search?${params.toString()}`);
@@ -36,6 +38,20 @@ async function fetchGlobalSearch(query: string): Promise<SearchResponse> {
     throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to search records.");
   }
   return body as SearchResponse;
+}
+
+function canonicalizeSearchHref(href: string) {
+  if (href === "/dashboard/admin" || href === "/dashboard/settings/company") return SETTINGS_ROUTES.general;
+  if (href === "/dashboard/admin/users") return SETTINGS_ROUTES.users;
+  if (href === "/dashboard/admin/teams") return SETTINGS_ROUTES.teams;
+  if (href === "/dashboard/admin/roles-permissions" || href === "/dashboard/settings/roles-permissions") return SETTINGS_ROUTES.permissions;
+  if (href === "/dashboard/admin/modules") return SETTINGS_ROUTES.modules;
+  if (href === "/dashboard/admin/custom-fields" || href === "/dashboard/settings/custom-fields") return SETTINGS_ROUTES.fields;
+  if (href === "/dashboard/admin/integrations") return SETTINGS_ROUTES.integrations;
+  if (href === "/dashboard/admin/message-templates") return SETTINGS_ROUTES.templates;
+  if (href === "/dashboard/recycle-bin") return SETTINGS_ROUTES.recycleBin;
+  if (href === "/dashboard/activity-log") return SETTINGS_ROUTES.activityLog;
+  return href;
 }
 
 export default function GlobalCommandPalette() {
@@ -101,7 +117,7 @@ export default function GlobalCommandPalette() {
     for (const item of searchQuery.data?.results ?? []) {
       const label = getModuleDisplayName(item.module_key) || item.module_label;
       const current = groups.get(label) ?? [];
-      current.push(item);
+      current.push({ ...item, href: canonicalizeSearchHref(item.href) });
       groups.set(label, current);
     }
     return Array.from(groups.entries());
@@ -110,8 +126,13 @@ export default function GlobalCommandPalette() {
   function handleNavigate(href: string) {
     setQuery("");
     setOpen(false);
-    router.push(href);
+    router.push(canonicalizeSearchHref(href));
   }
+
+  const canSearch = deferredQuery.length >= 2;
+  const isWaitingForDeferredQuery = query.trim() !== deferredQuery;
+  const isSearchPending = canSearch && (isWaitingForDeferredQuery || searchQuery.isLoading || searchQuery.isFetching);
+  const hasCompletedEmptySearch = canSearch && searchQuery.isFetched && !searchQuery.isFetching && groupedResults.length === 0;
 
   function handleClose() {
     setQuery("");
@@ -158,7 +179,7 @@ export default function GlobalCommandPalette() {
                 </div>
               </div>
 
-              <Command.List className="max-h-[60vh] overflow-y-auto p-3">
+              <Command.List className="scrollbar-hide max-h-[60vh] overflow-y-auto p-3">
                 {!deferredQuery.length ? (
                   <>
                     <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
@@ -181,9 +202,9 @@ export default function GlobalCommandPalette() {
                   </>
                 ) : deferredQuery.length < 2 ? (
                   <div className="px-3 py-8 text-center text-sm text-neutral-500">
-                    Type at least 2 characters to search tasks, calendar events, contacts, organizations, opportunities, and other workspace records.
+                    Type at least 2 characters to search tasks, calendar events, contacts, accounts, deals, and other workspace records.
                   </div>
-                ) : searchQuery.isLoading ? (
+                ) : isSearchPending ? (
                   <div className="px-3 py-8 text-center text-sm text-neutral-500">Searching…</div>
                 ) : searchQuery.error ? (
                   <div className="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
@@ -212,10 +233,12 @@ export default function GlobalCommandPalette() {
                       ))}
                     </Command.Group>
                   ))
-                ) : (
+                ) : hasCompletedEmptySearch ? (
                   <Command.Empty className="px-3 py-8 text-center text-sm text-neutral-500">
                     No matching records found.
                   </Command.Empty>
+                ) : (
+                  <div className="px-3 py-8 text-center text-sm text-neutral-500">Searching…</div>
                 )}
               </Command.List>
             </Command>
