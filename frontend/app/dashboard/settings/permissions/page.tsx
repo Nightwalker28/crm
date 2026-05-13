@@ -20,15 +20,22 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useRolePermissions, type ModulePermission } from "@/hooks/admin/useRolePermissions";
 
-const ACTION_COLUMNS: Array<{ key: keyof ModulePermission["actions"]; label: string }> = [
-  { key: "can_view", label: "View" },
-  { key: "can_create", label: "Create" },
-  { key: "can_edit", label: "Edit" },
-  { key: "can_delete", label: "Delete" },
-  { key: "can_restore", label: "Restore" },
-  { key: "can_export", label: "Export" },
-  { key: "can_configure", label: "Configure" },
+const ACTION_COLUMNS: Array<{ key: keyof ModulePermission["actions"]; label: string; title: string }> = [
+  { key: "can_view", label: "View", title: "Can view and list records" },
+  { key: "can_create", label: "Create", title: "Can create new records" },
+  { key: "can_edit", label: "Edit", title: "Can update existing records" },
+  { key: "can_delete", label: "Delete", title: "Can move records to recycle bin or delete where allowed" },
+  { key: "can_restore", label: "Restore", title: "Can restore records from recycle bin" },
+  { key: "can_export", label: "Export", title: "Can export records" },
+  { key: "can_configure", label: "Configure", title: "Can configure module settings" },
 ];
+
+function roleAccent(level: number) {
+  if (level >= 100) return "border-l-red-500";
+  if (level >= 90) return "border-l-orange-400";
+  if (level >= 10) return "border-l-sky-400";
+  return "border-l-violet-400";
+}
 
 export default function RolesPermissionsPage() {
   const {
@@ -81,7 +88,7 @@ export default function RolesPermissionsPage() {
             {roles.map((role) => (
               <button
                 key={role.id}
-                className={`w-full rounded-md border px-3 py-3 text-left ${
+                className={`w-full rounded-md border border-l-4 px-3 py-3 text-left ${roleAccent(role.level)} ${
                   selectedRoleId === role.id
                     ? "border-white/30 bg-white/10"
                     : "border-neutral-800 bg-neutral-950/70 hover:border-neutral-700"
@@ -118,7 +125,7 @@ export default function RolesPermissionsPage() {
                     <tr className="border-b border-neutral-800">
                       <th className="px-5 py-3 text-left font-medium">Module</th>
                       {ACTION_COLUMNS.map((column) => (
-                        <th key={column.key} className="px-4 py-3 text-center font-medium">
+                        <th key={column.key} title={column.title} className="px-4 py-3 text-center font-medium">
                           {column.label}
                         </th>
                       ))}

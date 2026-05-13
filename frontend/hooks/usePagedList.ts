@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useDeferredValue, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
@@ -38,7 +38,12 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
   const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState(initialPageSize);
   const deferredFilters = useDeferredValue(filters);
+  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
   const visibleColumnsKey = visibleColumns.join(",");
+
+  useEffect(() => {
+    setPage(1);
+  }, [filtersKey]);
 
   const query = useQuery<Response>({
     queryKey: [...queryKey, page, pageSize, deferredFilters, visibleColumnsKey],

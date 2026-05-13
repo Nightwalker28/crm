@@ -4,6 +4,7 @@ from sqlalchemy import (
     BigInteger,
     String,
     ForeignKey,
+    Integer,
     SmallInteger,
     Text,
     DateTime,
@@ -283,6 +284,8 @@ class TenantModuleConfig(Base):
     )
     is_enabled = Column(SmallInteger, nullable=False, default=1)
     import_duplicate_mode = Column(String(20), nullable=False, server_default="skip")
+    sidebar_tab_key = Column(String(100), nullable=True)
+    display_name = Column(String(150), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True),
@@ -292,6 +295,30 @@ class TenantModuleConfig(Base):
 
     tenant = relationship("Tenant", back_populates="module_configs")
     module = relationship("Module", back_populates="tenant_configs")
+
+
+class TenantSidebarTab(Base):
+    __tablename__ = "tenant_sidebar_tabs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "key", name="uq_tenant_sidebar_tabs_tenant_key"),
+    )
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(
+        BigInteger,
+        ForeignKey("tenants.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    key = Column(String(100), nullable=False, index=True)
+    label = Column(String(120), nullable=False)
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
 
 class DepartmentModulePermission(Base):

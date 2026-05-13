@@ -31,5 +31,6 @@ def apply_trigram_search(query, *, search: str | None, document):
         pattern = f"%{normalized}%"
         return query.filter(document.ilike(pattern)), None
 
-    filtered_query = query.filter(rank >= TRIGRAM_SIMILARITY_THRESHOLD)
+    pattern = f"%{normalized}%"
+    filtered_query = query.filter((rank >= TRIGRAM_SIMILARITY_THRESHOLD) | document.ilike(pattern))
     return filtered_query, rank

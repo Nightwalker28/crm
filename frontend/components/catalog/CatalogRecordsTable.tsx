@@ -2,7 +2,7 @@
 
 import { Fragment } from "react";
 import Image from "next/image";
-import { Package, Wrench } from "lucide-react";
+import { ImageIcon, Package, Wrench } from "lucide-react";
 
 import {
   Table,
@@ -31,6 +31,7 @@ type Props = {
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
   onRowClick: (record: CatalogRecord) => void;
+  onToggleActive?: (record: CatalogRecord, active: boolean) => void;
 };
 
 function formatAmount(value: number | string | null | undefined, currency: string): string {
@@ -50,6 +51,19 @@ function stockLabel(value?: string | null) {
   return value.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
 
+function stockStyle(value?: string | null) {
+  switch (value) {
+    case "in_stock":
+      return "bg-emerald-400";
+    case "preorder":
+      return "bg-amber-400";
+    case "out_of_stock":
+      return "bg-red-400";
+    default:
+      return "bg-neutral-500";
+  }
+}
+
 export default function CatalogRecordsTable({
   kind,
   records,
@@ -58,6 +72,7 @@ export default function CatalogRecordsTable({
   visibleColumns,
   columnOptions = [],
   onRowClick,
+  onToggleActive,
 }: Props) {
   const isProduct = kind === "products";
   const effectiveVisibleColumns = visibleColumns.length ? visibleColumns : ["name"];
@@ -101,8 +116,11 @@ export default function CatalogRecordsTable({
       case "stock_status":
         return isProduct ? (
           <TableCell>
-            <div className="flex flex-col">
-              <span className="text-sm text-neutral-300">{stockLabel(record.stock_status)}</span>
+            <div className="flex flex-col gap-1">
+              <span className="inline-flex items-center gap-2 text-sm text-neutral-300">
+                <span className={`h-2 w-2 rounded-full ${stockStyle(record.stock_status)}`} />
+                {stockLabel(record.stock_status)}
+              </span>
               <span className="text-xs text-neutral-500">
                 {record.stock_quantity == null ? "Quantity untracked" : `${record.stock_quantity} units`}
               </span>
@@ -111,16 +129,16 @@ export default function CatalogRecordsTable({
         ) : null;
       case "is_active":
         return (
-          <TableCell>
-            {record.is_active ? (
-              <Pill bg="bg-emerald-900/30" text="text-emerald-300" border="border-emerald-700/40" className="w-20">
-                Active
-              </Pill>
-            ) : (
-              <Pill bg="bg-neutral-800/60" text="text-neutral-400" border="border-neutral-700/50" className="w-20">
-                Inactive
-              </Pill>
-            )}
+          <TableCell onClick={(event) => event.stopPropagation()}>
+            <label className="inline-flex items-center gap-2 text-sm text-neutral-300">
+              <input
+                type="checkbox"
+                checked={record.is_active}
+                onChange={(event) => onToggleActive?.(record, event.target.checked)}
+                className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+              />
+              {record.is_active ? "Active" : "Inactive"}
+            </label>
           </TableCell>
         );
       case "is_public":
@@ -144,13 +162,15 @@ export default function CatalogRecordsTable({
               <Image
                 src={resolveMediaUrl(record.media_url)}
                 alt=""
-                width={36}
-                height={36}
+                width={32}
+                height={32}
                 unoptimized
-                className="h-9 w-9 rounded-md object-cover"
+                className="h-8 w-8 rounded-md border border-neutral-800 object-cover"
               />
             ) : (
-              <span className="text-sm text-neutral-600">-</span>
+              <span className="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-600">
+                <ImageIcon className="h-4 w-4" />
+              </span>
             )}
           </TableCell>
         );

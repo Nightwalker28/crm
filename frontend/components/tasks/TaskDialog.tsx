@@ -136,9 +136,9 @@ export default function TaskDialog({
   async function handleDelete() {
     if (!task || !onDelete) return;
     const confirmed = await confirm({
-      title: "Move task to recycle bin?",
-      description: `Move "${task.title}" to the recycle bin?`,
-      confirmLabel: "Move to Recycle Bin",
+      title: "Delete task?",
+      description: `Delete "${task.title}"?`,
+      confirmLabel: "Delete",
       variant: "destructive",
     });
     if (!confirmed) return;

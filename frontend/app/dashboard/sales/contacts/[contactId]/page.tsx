@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { MessageCircle } from "lucide-react";
+import { CheckSquare, Mail, MessageCircle, Phone, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
@@ -293,6 +293,52 @@ export default function ContactDetailPage() {
         <Card className="px-5 py-5 text-sm text-neutral-500">Loading contact…</Card>
       ) : (
         <>
+          <Card className="px-4 py-3">
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" size="sm" onClick={handleWhatsAppClick} disabled={whatsAppSending || !summary.contact.contact_telephone || !whatsAppTemplates.length}>
+                <MessageCircle />
+                WhatsApp
+              </Button>
+              {summary.contact.primary_email ? (
+                <Button asChild size="sm" variant="outline">
+                  <a href={`mailto:${summary.contact.primary_email}`}>
+                    <Mail />
+                    Email
+                  </a>
+                </Button>
+              ) : (
+                <Button type="button" size="sm" variant="outline" disabled>
+                  <Mail />
+                  Email
+                </Button>
+              )}
+              {summary.contact.contact_telephone ? (
+                <Button asChild size="sm" variant="outline">
+                  <a href={`tel:${summary.contact.contact_telephone}`}>
+                    <Phone />
+                    Call
+                  </a>
+                </Button>
+              ) : (
+                <Button type="button" size="sm" variant="outline" disabled>
+                  <Phone />
+                  Call
+                </Button>
+              )}
+              <Button type="button" size="sm" variant="ghost" onClick={() => document.getElementById("contact-record-tools")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                <StickyNote />
+                Note
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={() => document.getElementById("contact-record-tools")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
+                <CheckSquare />
+                Task
+              </Button>
+              <div className="ml-auto text-xs text-neutral-500">
+                Last contacted: {summary.contact.last_contacted_at ? formatDateTime(summary.contact.last_contacted_at) : "Not logged"}
+              </div>
+            </div>
+          </Card>
+
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <Card className="px-5 py-5">
               <div className="mb-4">
@@ -406,8 +452,8 @@ export default function ContactDetailPage() {
                   </div>
                   <div className="mt-2 text-xs text-neutral-500">
                     {summary.contact.customer_group
-                      ? `${summary.contact.customer_group.name} pricing applies when this contact signs in.`
-                      : "Public/default pricing applies until a group is assigned."}
+                      ? `${summary.contact.customer_group.name} segmentation is assigned. Client portal pricing uses this group where pricing rules are configured.`
+                      : "No group assigned. Public/default pricing remains the fallback."}
                   </div>
                 </div>
                 <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
@@ -498,15 +544,17 @@ export default function ContactDetailPage() {
             </Card>
           </div>
 
-          <RecordTabs
-            tabs={[
-              { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_contacts" entityId={summary.contact.contact_id} description="Contact-level create, update, delete, restore, and note history." /> },
-              { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
-              { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
-              { id: "tasks", label: "Tasks", content: <RecordTasksPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
-              { id: "follow-up", label: "Follow-up", content: <FollowUpPanel endpoint={`/sales/contacts/${summary.contact.contact_id}/follow-up`} lastContactedAt={summary.contact.last_contacted_at} lastContactedChannel={summary.contact.last_contacted_channel} email={summary.contact.primary_email} phone={summary.contact.contact_telephone} onLogged={() => loadSummary()} /> },
-            ]}
-          />
+          <div id="contact-record-tools" className="scroll-mt-6">
+            <RecordTabs
+              tabs={[
+                { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_contacts" entityId={summary.contact.contact_id} description="Contact-level create, update, delete, restore, and note history." /> },
+                { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
+                { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
+                { id: "tasks", label: "Tasks", content: <RecordTasksPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
+                { id: "follow-up", label: "Follow-up", content: <FollowUpPanel endpoint={`/sales/contacts/${summary.contact.contact_id}/follow-up`} lastContactedAt={summary.contact.last_contacted_at} lastContactedChannel={summary.contact.last_contacted_channel} email={summary.contact.primary_email} phone={summary.contact.contact_telephone} onLogged={() => loadSummary()} /> },
+              ]}
+            />
+          </div>
         </>
       )}
     </div>

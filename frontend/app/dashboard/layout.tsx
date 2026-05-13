@@ -18,6 +18,7 @@ const ADMIN_ONLY_PREFIXES = [
   SETTINGS_ROUTES.general,
   SETTINGS_ROUTES.users,
   SETTINGS_ROUTES.teams,
+  SETTINGS_ROUTES.customerGroups,
   SETTINGS_ROUTES.permissions,
   SETTINGS_ROUTES.modules,
   SETTINGS_ROUTES.moduleBuilder,
@@ -33,6 +34,8 @@ const MODULE_ROUTE_PREFIXES = [
   "/dashboard/mail",
   "/dashboard/calendar",
   "/dashboard/tasks",
+  DASHBOARD_ROUTES.clientPortal,
+  DASHBOARD_ROUTES.financePos,
   DASHBOARD_ROUTES.insertionOrders,
   DASHBOARD_ROUTES.products,
   DASHBOARD_ROUTES.services,
@@ -53,7 +56,15 @@ function getBreadcrumbItems(pathname: string) {
   const segments = pathname.split("?")[0]?.split("/").filter(Boolean) ?? [];
 
   return segments.map((segment, index) => {
-    const href = `/${segments.slice(0, index + 1).join("/")}`;
+    const rawHref = `/${segments.slice(0, index + 1).join("/")}`;
+    const href =
+      rawHref === DASHBOARD_ROUTES.sales
+        ? DASHBOARD_ROUTES.accounts
+        : rawHref === DASHBOARD_ROUTES.finance
+          ? DASHBOARD_ROUTES.financePos
+          : rawHref === "/dashboard/catalog"
+            ? DASHBOARD_ROUTES.products
+            : rawHref;
     const previousSegment = segments[index - 1];
     const label =
       segment === "dashboard"

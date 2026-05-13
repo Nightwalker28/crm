@@ -7,6 +7,7 @@ type PageHeaderProps = {
   description?: string;
   actions?: React.ReactNode;
   className?: string;
+  sticky?: boolean;
 };
 
 export function PageHeader({
@@ -14,11 +15,13 @@ export function PageHeader({
   description,
   actions,
   className,
+  sticky = false,
 }: PageHeaderProps) {
   return (
     <div
       className={cn(
-        "sticky top-0 z-20 -mx-6 border-b border-neutral-800/80 bg-[#0a0a0a]/90 px-6 py-4 backdrop-blur-sm",
+        "-mx-6 border-b border-neutral-800/80 bg-[#0a0a0a]/90 px-6 py-4",
+        sticky && "sticky top-0 z-20 backdrop-blur-sm",
         className,
       )}
     >

@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useParams } from "next/navigation";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { Plus, Trash2 } from "lucide-react";
 
 import { CustomModuleRecordDialog } from "@/components/customModules/CustomModuleRecordDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -14,7 +15,7 @@ import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
-import { useCustomModuleRecords, useCustomModuleSchema, type CustomModuleRecord } from "@/hooks/useModuleBuilder";
+import { useCustomModuleRecords, useCustomModuleSchema } from "@/hooks/useModuleBuilder";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { buildCustomModuleViewDefinition } from "@/lib/moduleViewConfigs";
 
@@ -26,9 +27,9 @@ function renderValue(value: unknown) {
 
 export default function CustomModulePage() {
   const params = useParams<{ moduleKey: string }>();
+  const router = useRouter();
   const moduleKey = params.moduleKey;
   const [page, setPage] = useState(1);
-  const [editingRecord, setEditingRecord] = useState<CustomModuleRecord | null>(null);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const schema = useCustomModuleSchema(moduleKey);
@@ -58,25 +59,6 @@ export default function CustomModulePage() {
     }
   }
 
-  function beginEdit(record: CustomModuleRecord) {
-    setEditingRecord(record);
-    setError(null);
-  }
-
-  async function updateRecord(payload: { title?: string; values: Record<string, unknown> }) {
-    if (!editingRecord) return;
-    setError(null);
-    try {
-      await records.updateRecord({
-        recordId: editingRecord.id,
-        payload: { title: payload.title || editingRecord.title, values: payload.values },
-      });
-      setEditingRecord(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to update record");
-    }
-  }
-
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
@@ -103,7 +85,7 @@ export default function CustomModulePage() {
         }
       />
 
-      {error && !isCreateOpen && !editingRecord ? <div className="rounded-md border border-red-900/70 bg-red-950/30 px-4 py-3 text-sm text-red-100">{error}</div> : null}
+      {error && !isCreateOpen ? <div className="rounded-md border border-red-900/70 bg-red-950/30 px-4 py-3 text-sm text-red-100">{error}</div> : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Input
@@ -169,18 +151,35 @@ export default function CustomModulePage() {
               </TableRow>
             ) : (
               records.records.map((record) => (
-                <TableRow key={record.id}>
+                <TableRow key={record.id} className="cursor-pointer" onClick={() => router.push(`/dashboard/custom/${moduleKey}/${record.id}`)}>
                   {tableColumns.map((column) => (
                     <TableCell key={column.key} className={column.key === "title" ? "font-medium text-neutral-100" : "text-neutral-400"}>
-                      {column.key === "title" ? record.title : renderValue(record.values[column.key])}
+                      {column.key === "title" ? (
+                        <Link href={`/dashboard/custom/${moduleKey}/${record.id}`} className="text-neutral-100 hover:underline">
+                          {record.title}
+                        </Link>
+                      ) : (
+                        <Link href={`/dashboard/custom/${moduleKey}/${record.id}`} className="block text-neutral-400">
+                          {renderValue(record.values[column.key])}
+                        </Link>
+                      )}
                     </TableCell>
                   ))}
-                  <TableCell className="text-right">
+                  <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
                     <div className="flex justify-end gap-1">
-                      <Button type="button" variant="ghost" size="icon-sm" onClick={() => beginEdit(record)} className="text-neutral-500 hover:bg-neutral-900 hover:text-neutral-100" aria-label="Edit record">
-                        <Pencil size={15} />
-                      </Button>
-                      <Button type="button" variant="ghost" size="icon-sm" onClick={() => records.deleteRecord(record.id)} className="text-neutral-500 hover:bg-red-950/30 hover:text-red-200" aria-label="Delete record">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => {
+                          if (window.confirm("Delete this custom module record?")) {
+                            void records.deleteRecord(record.id);
+                          }
+                        }}
+                        className="text-neutral-500 hover:bg-red-950/30 hover:text-red-200"
+                        aria-label="Delete record"
+                        title="Delete"
+                      >
                         <Trash2 size={15} />
                       </Button>
                     </div>
@@ -212,22 +211,6 @@ export default function CustomModulePage() {
             setError(null);
           }}
           onSubmit={createRecord}
-        />
-      ) : null}
-      {editingRecord ? (
-        <CustomModuleRecordDialog
-          key={editingRecord.id}
-          open={Boolean(editingRecord)}
-          mode="edit"
-          fields={fields}
-          record={editingRecord}
-          isSaving={records.isSaving}
-          error={error}
-          onClose={() => {
-            setEditingRecord(null);
-            setError(null);
-          }}
-          onSubmit={updateRecord}
         />
       ) : null}
     </div>

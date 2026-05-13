@@ -37,6 +37,14 @@ This file captures stable business and UX rules for the platform. These should b
 - Required fields in create/edit forms should be visually marked with `*`.
 - Quick creation can use dialogs where appropriate.
 - Once records exist, the preferred interaction is a record page with summary/history/editing rather than modal-only editing.
+- Module list pages should not use full sticky page/module headers when those headers cover table rows or record details while scrolling; headers should scroll normally unless a compact sticky toolbar is intentionally designed.
+- Operational records should open through row click/detail-page navigation where a detail route exists. Action columns are secondary quick actions such as delete, print, or status changes, not the primary way to open records.
+- Custom modules must behave like first-class operational modules, not builder/admin forms. Quick create can use a dialog, but existing custom module records should move toward list -> detail -> edit workflows where existing APIs allow it.
+- Module overview pages should not be created or linked unless the owner explicitly asks for them.
+- Standalone WhatsApp page/navigation is not wanted; WhatsApp stays as a contextual contact/detail workflow until an explicit product change says otherwise.
+- The sidebar should feel like one unified navigation surface with subtle micro-labels, not separate bordered sections for every module group.
+- Settings forms should track dirty state and show unsaved-change feedback where practical.
+- Destructive actions should be confirmed and should use recycle/soft-delete wording where the backend supports recoverability.
 - Shared record-page collaboration features such as activity timelines and notes/comments should land across the current CRM detail-page set together, not one module at a time.
 - Profile access should come from the sidebar identity block at the bottom.
 - Main module pages should support inline multi-condition filtering in addition to saved-view management.
@@ -58,6 +66,7 @@ This file captures stable business and UX rules for the platform. These should b
 - Client accounts are tenant-owned and must be manually linked by CRM users to one sales contact or one sales organization.
 - A client account must never grant access to the CRM dashboard or internal APIs.
 - Contacts and organizations can belong to a customer group such as default, wholesale, retailer, VIP, friends/family, or tenant-defined groups later.
+- Customer groups need a clear admin/settings management surface before group assignment is emphasized heavily across contact/account workflows.
 - Pricing and discount rules should resolve from the authenticated client identity and linked contact/organization group, not from user-supplied request fields.
 - Public/default pricing remains the fallback when no client is authenticated.
 - Proposal/client-page pricing should be snapshot-friendly so a previously shared offer does not silently change unless the CRM user intentionally republishes it.

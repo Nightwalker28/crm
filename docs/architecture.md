@@ -247,6 +247,10 @@ This file captures the current intended technical patterns and constraints so ne
 ### Lists / Tables
 
 - Prefer the shared table shell and a consistent list-page structure.
+- Page/module headers are non-sticky by default. Use sticky UI only for intentionally compact toolbars, not full headers that cover records while scrolling.
+- Where a record detail route exists, table rows and primary name/identifier cells should navigate to that record. Action columns should stay secondary and should not be the main open/edit path.
+- Module overview routes should not be added as default navigation targets; operational navigation should point to actual list/detail workflows.
+- Sidebar navigation should remain one unified scrollable flow with hidden visual scrollbars, horizontal overflow suppressed, and subtle micro-labels instead of bordered module sections.
 - Persist view configuration per user where supported.
 - Move from single table-preference records toward saved module views that can hold:
   - visible columns
@@ -277,6 +281,8 @@ This file captures the current intended technical patterns and constraints so ne
 ### Detail Pages
 
 - For existing records, prefer detail pages with summary/history/editing over modal-only editing.
+- Overview tabs must contain real overview/edit content if present. Do not use fake placeholders such as content being shown above the tabs.
+- Custom module records should follow the same list -> detail -> edit direction as core CRM records when the existing API shape supports it.
 - Shared record-page capabilities such as summary cards, relationship panels, activity timelines, and notes should be implemented across all applicable detail-page modules in the same slice instead of landing in one module first and the rest later.
 - The current baseline set for shared CRM detail-page capabilities is contacts, organizations, and opportunities.
 

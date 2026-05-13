@@ -12,6 +12,9 @@ Use the repository guidance and relevant skills, especially:
 Check for:
 - violation of Lynk's modular product model
 - accidental reopening of intentionally deferred work
+- reintroduced owner-rejected UX patterns: module overview pages, standalone WhatsApp nav, sticky full page headers, or action-column-first record opening
+- custom modules behaving like admin/builder forms instead of operational CRM modules
+- customer group assignment being emphasized without an honest management surface or without clarifying pricing/discount gaps
 - destructive behavior where recovery is expected
 - public surfaces exposing private or personalized data
 - client portal, CRM dashboard, and public integration flows being mixed together

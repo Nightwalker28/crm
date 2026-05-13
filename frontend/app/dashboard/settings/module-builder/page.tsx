@@ -17,6 +17,7 @@ import {
   type CustomModuleField,
   type CustomModuleFieldPayload,
 } from "@/hooks/useModuleBuilder";
+import { useSidebarTabsAdmin, type SidebarTab } from "@/hooks/admin/useModulesAdmin";
 
 const FIELD_TYPES: CustomFieldType[] = [
   "text",
@@ -32,6 +33,21 @@ const FIELD_TYPES: CustomFieldType[] = [
   "single_select",
   "multi_select",
 ];
+
+const FIELD_TYPE_BADGES: Record<CustomFieldType, string> = {
+  text: "T",
+  textarea: "¶",
+  number: "#",
+  currency: "$",
+  date: "D",
+  datetime: "DT",
+  boolean: "⊙",
+  email: "@",
+  phone: "☎",
+  url: "↗",
+  single_select: "▼",
+  multi_select: "☰",
+};
 
 type FieldDraft = CustomModuleFieldPayload & {
   options_text: string;
@@ -130,7 +146,10 @@ function FieldEditor({
     <div className="rounded-md border border-neutral-800 bg-neutral-950/80 p-3">
       <div className="grid gap-2 xl:grid-cols-[1fr_150px_120px]">
         <Input value={label} onChange={(event) => setLabel(event.target.value)} className="bg-neutral-950" />
-        <div className="rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-300">
+        <div className="flex items-center gap-2 rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-sm text-neutral-300">
+          <span className="inline-flex h-5 min-w-5 items-center justify-center rounded border border-neutral-700 bg-neutral-950 px-1 font-mono text-[11px] text-neutral-200">
+            {FIELD_TYPE_BADGES[field.field_type]}
+          </span>
           {fieldTypeLabel(field.field_type)}
         </div>
         <div className="flex gap-1">
@@ -184,6 +203,7 @@ function FieldEditor({
 
 function ModuleEditor({
   module,
+  sidebarTabs,
   disabled,
   onUpdateModule,
   onDeleteModule,
@@ -193,8 +213,9 @@ function ModuleEditor({
   onDeleteField,
 }: {
   module: CustomModuleDefinition;
+  sidebarTabs: SidebarTab[];
   disabled: boolean;
-  onUpdateModule: (moduleId: number, payload: Partial<Pick<CustomModuleDefinition, "name" | "description" | "is_active">>) => Promise<unknown>;
+  onUpdateModule: (moduleId: number, payload: Partial<Pick<CustomModuleDefinition, "name" | "description" | "is_active" | "sidebar_tab_key" | "display_name">>) => Promise<unknown>;
   onDeleteModule: (moduleId: number) => Promise<unknown>;
   onRestoreModule: (moduleId: number) => Promise<unknown>;
   onAddField: (moduleId: number, payload: CustomModuleFieldPayload) => Promise<unknown>;
@@ -202,7 +223,9 @@ function ModuleEditor({
   onDeleteField: (moduleId: number, fieldId: number) => Promise<unknown>;
 }) {
   const [name, setName] = useState(module.name);
+  const [displayName, setDisplayName] = useState(module.display_name ?? "");
   const [description, setDescription] = useState(module.description ?? "");
+  const [sidebarTabKey, setSidebarTabKey] = useState(module.sidebar_tab_key ?? "other");
   const [draft, setDraft] = useState<FieldDraft>(emptyFieldDraft);
   const orderedFields = useMemo(
     () => [...module.fields].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id),
@@ -213,7 +236,9 @@ function ModuleEditor({
   async function saveMetadata() {
     await onUpdateModule(module.id, {
       name: name.trim(),
+      display_name: displayName.trim() || null,
       description: description.trim() || null,
+      sidebar_tab_key: sidebarTabKey,
       is_active: module.is_active,
     });
   }
@@ -230,8 +255,21 @@ function ModuleEditor({
 
   return (
     <div className={`rounded-md border p-4 ${deleted ? "border-red-900/70 bg-red-950/10" : "border-neutral-800 bg-neutral-950/70"}`}>
-      <div className="grid gap-3 lg:grid-cols-[1fr_1.5fr_auto]">
+      <div className="grid gap-3 xl:grid-cols-[1fr_1fr_180px_auto]">
         <Input value={name} onChange={(event) => setName(event.target.value)} className="bg-neutral-950" disabled={deleted} />
+        <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Sidebar display name" className="bg-neutral-950" disabled={deleted} />
+        <Select value={sidebarTabKey} onValueChange={setSidebarTabKey} disabled={deleted}>
+          <SelectTrigger className="bg-neutral-950">
+            <SelectValue placeholder="Module group" />
+          </SelectTrigger>
+          <SelectContent>
+            {sidebarTabs.map((tab) => (
+              <SelectItem key={tab.key} value={tab.key}>
+                {tab.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Textarea value={description} onChange={(event) => setDescription(event.target.value)} className="min-h-10 bg-neutral-950" disabled={deleted} />
         <div className="flex flex-wrap gap-2">
           <Button type="button" disabled={disabled || deleted || !name.trim()} onClick={saveMetadata} className="border border-neutral-700 bg-neutral-900 text-neutral-100 hover:bg-neutral-800">
@@ -266,44 +304,6 @@ function ModuleEditor({
 
       {!deleted ? (
         <>
-          <form onSubmit={addField} className="mt-4 grid gap-2 rounded-md border border-neutral-800 bg-neutral-950/60 p-3 lg:grid-cols-[1fr_170px_1fr_auto]">
-            <Input value={draft.label} onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Field label" className="bg-neutral-950" />
-            <Select value={draft.field_type} onValueChange={(value) => setDraft((current) => ({ ...current, field_type: value as CustomFieldType, is_unique: value === "multi_select" ? false : current.is_unique }))}>
-              <SelectTrigger className="bg-neutral-950">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {FIELD_TYPES.map((type) => (
-                  <SelectItem key={type} value={type}>
-                    {fieldTypeLabel(type)}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Input value={draft.placeholder ?? ""} onChange={(event) => setDraft((current) => ({ ...current, placeholder: event.target.value }))} placeholder="Placeholder" className="bg-neutral-950" />
-            <Button type="submit" disabled={disabled || !draft.label.trim()} className="border border-neutral-700 bg-neutral-900 text-neutral-100 hover:bg-neutral-800">
-              <Plus size={15} />
-              Field
-            </Button>
-            <Input value={draft.help_text ?? ""} onChange={(event) => setDraft((current) => ({ ...current, help_text: event.target.value }))} placeholder="Help text" className="bg-neutral-950" />
-            <Input value={String(draft.default_value ?? "")} onChange={(event) => setDraft((current) => ({ ...current, default_value: event.target.value }))} placeholder="Default value" className="bg-neutral-950" />
-            <Textarea value={draft.options_text} onChange={(event) => setDraft((current) => ({ ...current, options_text: event.target.value }))} placeholder="Select options, one per line" className="min-h-10 bg-neutral-950 lg:col-span-2" disabled={draft.field_type !== "single_select" && draft.field_type !== "multi_select"} />
-            <div className="flex flex-wrap gap-3 text-sm text-neutral-300 lg:col-span-4">
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={draft.is_required} onChange={(event) => setDraft((current) => ({ ...current, is_required: event.target.checked }))} />
-                Required
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={draft.is_unique} disabled={draft.field_type === "multi_select"} onChange={(event) => setDraft((current) => ({ ...current, is_unique: event.target.checked }))} />
-                Unique
-              </label>
-              <label className="flex items-center gap-2">
-                <input type="checkbox" checked={draft.display_in_list} onChange={(event) => setDraft((current) => ({ ...current, display_in_list: event.target.checked }))} />
-                Show in list
-              </label>
-            </div>
-          </form>
-
           <div className="mt-4 flex flex-col gap-3">
             {orderedFields.length ? (
               orderedFields.map((field, index) => (
@@ -324,9 +324,110 @@ function ModuleEditor({
               </div>
             )}
           </div>
+
+          <form onSubmit={addField} className="mt-4 grid gap-2 rounded-md border border-neutral-800 bg-neutral-950/60 p-3 lg:grid-cols-[1fr_170px_1fr_auto]">
+            <Input value={draft.label} onChange={(event) => setDraft((current) => ({ ...current, label: event.target.value }))} placeholder="Field label" className="bg-neutral-950" />
+            <Select value={draft.field_type} onValueChange={(value) => setDraft((current) => ({ ...current, field_type: value as CustomFieldType, is_unique: value === "multi_select" ? false : current.is_unique }))}>
+              <SelectTrigger className="bg-neutral-950">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {FIELD_TYPES.map((type) => (
+                  <SelectItem key={type} value={type}>
+                    {FIELD_TYPE_BADGES[type]} {fieldTypeLabel(type)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Input value={draft.placeholder ?? ""} onChange={(event) => setDraft((current) => ({ ...current, placeholder: event.target.value }))} placeholder="Placeholder" className="bg-neutral-950" />
+            <Button type="submit" disabled={disabled || !draft.label.trim()} className="border border-neutral-700 bg-neutral-900 text-neutral-100 hover:bg-neutral-800">
+              <Plus size={15} />
+              Add Field
+            </Button>
+            <Input value={draft.help_text ?? ""} onChange={(event) => setDraft((current) => ({ ...current, help_text: event.target.value }))} placeholder="Help text" className="bg-neutral-950" />
+            <Input value={String(draft.default_value ?? "")} onChange={(event) => setDraft((current) => ({ ...current, default_value: event.target.value }))} placeholder="Default value" className="bg-neutral-950" />
+            <Textarea value={draft.options_text} onChange={(event) => setDraft((current) => ({ ...current, options_text: event.target.value }))} placeholder="Select options, one per line" className="min-h-10 bg-neutral-950 lg:col-span-2" disabled={draft.field_type !== "single_select" && draft.field_type !== "multi_select"} />
+            <div className="flex flex-wrap gap-3 text-sm text-neutral-300 lg:col-span-4">
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={draft.is_required} onChange={(event) => setDraft((current) => ({ ...current, is_required: event.target.checked }))} />
+                Required
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={draft.is_unique} disabled={draft.field_type === "multi_select"} onChange={(event) => setDraft((current) => ({ ...current, is_unique: event.target.checked }))} />
+                Unique
+              </label>
+              <label className="flex items-center gap-2">
+                <input type="checkbox" checked={draft.display_in_list} onChange={(event) => setDraft((current) => ({ ...current, display_in_list: event.target.checked }))} />
+                Show in list
+              </label>
+            </div>
+          </form>
         </>
       ) : null}
     </div>
+  );
+}
+
+function SidebarTabManager({
+  tabs,
+  disabled,
+  onCreate,
+  onRename,
+}: {
+  tabs: SidebarTab[];
+  disabled: boolean;
+  onCreate: (payload: { label: string }) => Promise<unknown>;
+  onRename: (tabKey: string, payload: { label: string }) => Promise<unknown>;
+}) {
+  const [newLabel, setNewLabel] = useState("");
+  const customTabs = tabs.filter((tab) => !tab.is_system);
+
+  async function create(event: FormEvent) {
+    event.preventDefault();
+    if (!newLabel.trim()) return;
+    await onCreate({ label: newLabel.trim() });
+    setNewLabel("");
+  }
+
+  return (
+    <section className="rounded-md border border-neutral-800 bg-neutral-950/70 p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-neutral-100">Sidebar Groups</h2>
+          <p className="mt-1 text-sm text-neutral-500">Create custom groups, then assign modules to them without changing internal module routes.</p>
+        </div>
+      </div>
+      <form onSubmit={create} className="flex flex-col gap-2 sm:flex-row">
+        <Input value={newLabel} onChange={(event) => setNewLabel(event.target.value)} placeholder="New group name" className="bg-neutral-950" />
+        <Button type="submit" disabled={disabled || !newLabel.trim()} className="border border-neutral-700 bg-neutral-900 text-neutral-100 hover:bg-neutral-800">
+          <Plus size={15} />
+          Add Group
+        </Button>
+      </form>
+      <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {customTabs.length ? (
+          customTabs.map((tab) => (
+            <div key={tab.key} className="flex items-center gap-2 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2">
+              <Input
+                defaultValue={tab.label}
+                className="h-8 bg-neutral-950"
+                onBlur={(event) => {
+                  const label = event.target.value.trim();
+                  if (label && label !== tab.label) {
+                    void onRename(tab.key, { label });
+                  }
+                }}
+              />
+              <span className="shrink-0 text-xs text-neutral-600">{tab.key}</span>
+            </div>
+          ))
+        ) : (
+          <div className="rounded-md border border-dashed border-neutral-800 bg-neutral-950/50 px-4 py-5 text-sm text-neutral-500">
+            No custom groups yet.
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -343,8 +444,16 @@ export default function ModuleBuilderPage() {
     deleteField,
     isSaving,
   } = useModuleBuilder();
+  const {
+    tabs: sidebarTabs,
+    createTab,
+    updateTab,
+    isSaving: isSavingTabs,
+  } = useSidebarTabsAdmin();
   const [name, setName] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [description, setDescription] = useState("");
+  const [sidebarTabKey, setSidebarTabKey] = useState("other");
   const [error, setError] = useState<string | null>(null);
 
   async function run(action: () => Promise<unknown>) {
@@ -361,11 +470,15 @@ export default function ModuleBuilderPage() {
     await run(async () => {
       await createModule({
         name: name.trim(),
+        display_name: displayName.trim() || undefined,
         description: description.trim() || undefined,
+        sidebar_tab_key: sidebarTabKey,
         fields: [{ label: "Name", field_type: "text", is_required: true, display_in_list: true }],
       });
       setName("");
+      setDisplayName("");
       setDescription("");
+      setSidebarTabKey("other");
     });
   }
 
@@ -376,13 +489,33 @@ export default function ModuleBuilderPage() {
         description="Create tenant-specific modules, configure fields, and manage runtime availability through Lynk module controls."
       />
 
-      <form onSubmit={create} className="grid gap-3 rounded-md border border-neutral-800 bg-neutral-950/70 p-4 lg:grid-cols-[1fr_1.5fr_auto]">
+      <SidebarTabManager
+        tabs={sidebarTabs}
+        disabled={isSavingTabs}
+        onCreate={(payload) => run(() => createTab(payload))}
+        onRename={(tabKey, payload) => run(() => updateTab(tabKey, payload))}
+      />
+
+      <form onSubmit={create} className="grid gap-3 rounded-md border border-neutral-800 bg-neutral-950/70 p-4 xl:grid-cols-[1fr_1fr_180px_auto]">
         <Input value={name} onChange={(event) => setName(event.target.value)} placeholder="Module name" className="bg-neutral-950" required />
-        <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Description" className="min-h-10 bg-neutral-950" />
+        <Input value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="Sidebar display name" className="bg-neutral-950" />
+        <Select value={sidebarTabKey} onValueChange={setSidebarTabKey}>
+          <SelectTrigger className="bg-neutral-950">
+            <SelectValue placeholder="Module group" />
+          </SelectTrigger>
+          <SelectContent>
+            {sidebarTabs.map((tab) => (
+              <SelectItem key={tab.key} value={tab.key}>
+                {tab.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Button type="submit" disabled={isSaving || !name.trim()} className="border border-neutral-700 bg-neutral-900 text-neutral-100 hover:bg-neutral-800">
           <Boxes size={15} />
           Create
         </Button>
+        <Textarea value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Description" className="min-h-10 bg-neutral-950 xl:col-span-4" />
       </form>
 
       {error ? <div className="rounded-md border border-red-900/70 bg-red-950/30 px-4 py-3 text-sm text-red-100">{error}</div> : null}
@@ -409,6 +542,7 @@ export default function ModuleBuilderPage() {
                   <TableCell>
                     <ModuleEditor
                       module={module}
+                      sidebarTabs={sidebarTabs}
                       disabled={isSaving}
                       onUpdateModule={(moduleId, payload) => run(() => updateModule({ moduleId, payload }))}
                       onDeleteModule={(moduleId) => run(() => deleteModule(moduleId))}

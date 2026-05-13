@@ -260,6 +260,21 @@ class PostgresSearchTests(unittest.TestCase):
         self.assertIsNotNone(rank)
         self.assertEqual(len(query.filters), 1)
 
+    def test_long_search_term_keeps_substring_fallback(self):
+        query = FakeQuery()
+        document = Column("document", String())
+
+        filtered_query, rank = postgres_search.apply_trigram_search(
+            query,
+            search="Acme Widgets",
+            document=document,
+        )
+
+        self.assertIs(filtered_query, query)
+        self.assertIsNotNone(rank)
+        self.assertEqual(len(query.filters), 1)
+        self.assertIn("LIKE", str(query.filters[0]).upper())
+
 
 class ModuleSearchTests(unittest.TestCase):
     def test_default_order_by_uses_explicit_none_check(self):

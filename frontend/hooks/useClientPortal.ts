@@ -216,6 +216,40 @@ export function useCustomerGroups() {
   });
 }
 
+export type CustomerGroupPayload = {
+  group_key?: string;
+  name: string;
+  description?: string | null;
+  discount_type: string;
+  discount_value?: number | string | null;
+  is_default: boolean;
+  is_active: boolean;
+};
+
+export function useCustomerGroupActions() {
+  const queryClient = useQueryClient();
+  const invalidate = async () => {
+    await queryClient.invalidateQueries({ queryKey: ["client-portal", "customer-groups"] });
+    await queryClient.invalidateQueries({ queryKey: ["client-portal"] });
+  };
+  const createGroup = useMutation({
+    mutationFn: (payload: CustomerGroupPayload) =>
+      crmJson<CustomerGroup>("/client-portal/customer-groups", { method: "POST", body: JSON.stringify(payload) }, "Failed to create customer group."),
+    onSuccess: invalidate,
+  });
+  const updateGroup = useMutation({
+    mutationFn: ({ groupId, payload }: { groupId: number; payload: Partial<CustomerGroupPayload> }) =>
+      crmJson<CustomerGroup>(`/client-portal/customer-groups/${groupId}`, { method: "PUT", body: JSON.stringify(payload) }, "Failed to update customer group."),
+    onSuccess: invalidate,
+  });
+
+  return {
+    createGroup: createGroup.mutateAsync,
+    updateGroup: updateGroup.mutateAsync,
+    isSaving: createGroup.isPending || updateGroup.isPending,
+  };
+}
+
 export function useCustomerOptions(type: "contact" | "organization", search: string) {
   return useQuery({
     queryKey: ["client-portal", "customer-options", type, search],

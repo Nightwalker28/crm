@@ -53,6 +53,7 @@ export default function CatalogRecordsPage({ kind }: Props) {
     onPageSizeChange,
     refresh,
     createRecord,
+    updateRecord,
     uploadMedia,
     isSaving,
   } = useCatalogRecords(kind, visibleColumns, draftConfig.filters);
@@ -69,6 +70,22 @@ export default function CatalogRecordsPage({ kind }: Props) {
 
   function handleRowClick(record: CatalogRecord) {
     router.push(`/dashboard/catalog/${kind}/${record.id}`);
+  }
+
+  async function handleToggleActive(record: CatalogRecord, active: boolean) {
+    await updateRecord(record.id, {
+      name: record.name,
+      slug: record.slug ?? null,
+      description: record.description ?? null,
+      sku: record.sku ?? null,
+      currency: record.currency,
+      public_unit_price: Number(record.public_unit_price) || 0,
+      stock_status: record.stock_status,
+      stock_quantity: record.stock_quantity == null ? null : Number(record.stock_quantity),
+      is_public: record.is_public,
+      is_active: active,
+    });
+    toast.success(`${isProduct ? "Product" : "Service"} ${active ? "activated" : "deactivated"}.`);
   }
 
   return (
@@ -126,6 +143,7 @@ export default function CatalogRecordsPage({ kind }: Props) {
         visibleColumns={visibleColumns}
         columnOptions={definition?.columns ?? []}
         onRowClick={handleRowClick}
+        onToggleActive={handleToggleActive}
       />
 
       <Pagination

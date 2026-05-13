@@ -12,6 +12,9 @@ from app.modules.user_management.schema import (
     ModuleAccessUpdateRequest,
     ModuleSchema,
     ModuleUpdateRequest,
+    SidebarTabCreateRequest,
+    SidebarTabSchema,
+    SidebarTabUpdateRequest,
     DepartmentCreateRequest,
     DepartmentSchema,
     DepartmentUpdateRequest,
@@ -139,6 +142,33 @@ def update_module(
     admin = Depends(require_admin),
 ):
     return admin_modules.update_module(db, module_id, payload, tenant_id=admin.tenant_id)
+
+
+@router.get("/sidebar-tabs", response_model=list[SidebarTabSchema])
+def list_sidebar_tabs(
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    return admin_modules.list_sidebar_tabs(db, tenant_id=admin.tenant_id)
+
+
+@router.post("/sidebar-tabs", response_model=SidebarTabSchema, status_code=201)
+def create_sidebar_tab(
+    payload: SidebarTabCreateRequest,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    return admin_modules.create_sidebar_tab(db, tenant_id=admin.tenant_id, payload=payload)
+
+
+@router.put("/sidebar-tabs/{tab_key}", response_model=SidebarTabSchema)
+def update_sidebar_tab(
+    tab_key: str,
+    payload: SidebarTabUpdateRequest,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    return admin_modules.update_sidebar_tab(db, tenant_id=admin.tenant_id, tab_key=tab_key, payload=payload)
 
 
 @router.get("/modules/{module_id}/access", response_model=ModuleAccessSchema)

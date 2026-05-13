@@ -13,6 +13,11 @@ Use:
 Review for:
 - reuse of shared primitives and hooks instead of page-local copies
 - consistency with shared list/table, saved-view, filter, search, and detail-page patterns
+- full sticky page/module headers on operational pages, which should be avoided unless intentionally compact
+- record tables relying on action columns instead of row/name-cell navigation where detail pages exist
+- custom modules regressing into builder/admin form UX rather than first-class operational record flows
+- reintroduced module overview pages or standalone WhatsApp navigation
+- sidebar groups becoming separate bordered sections instead of one unified nav with subtle micro-labels
 - shared record-page capabilities being applied across the current applicable module set when required
 - linked selectors being used instead of free text for canonical relationships
 - timezone-aware rendering for user-facing timestamps

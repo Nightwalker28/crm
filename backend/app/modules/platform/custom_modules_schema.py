@@ -79,6 +79,8 @@ class CustomModuleCreate(BaseModel):
     key: str | None = Field(default=None, max_length=100)
     description: str | None = None
     icon: str | None = Field(default=None, max_length=80)
+    sidebar_tab_key: str | None = Field(default=None, max_length=100)
+    display_name: str | None = Field(default=None, max_length=150)
     fields: list[CustomModuleFieldCreate] = Field(default_factory=list)
 
 
@@ -87,6 +89,8 @@ class CustomModuleUpdate(BaseModel):
     description: str | None = None
     icon: str | None = Field(default=None, max_length=80)
     is_active: bool | None = None
+    sidebar_tab_key: str | None = Field(default=None, max_length=100)
+    display_name: str | None = Field(default=None, max_length=150)
 
 
 class CustomModuleResponse(BaseModel):
@@ -98,6 +102,9 @@ class CustomModuleResponse(BaseModel):
     is_active: bool = True
     module_id: int | None = None
     base_route: str | None = None
+    sidebar_tab_key: str | None = None
+    sidebar_tab_label: str | None = None
+    display_name: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
     deleted_at: datetime | None = None

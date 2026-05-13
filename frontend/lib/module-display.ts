@@ -4,7 +4,6 @@ export type ModuleCategory =
   | "Products & Services"
   | "Finance"
   | "Platform"
-  | "Custom Modules"
   | "Other";
 
 const MODULE_DISPLAY_NAMES: Record<string, string> = {
@@ -66,7 +65,7 @@ export function getModuleDisplayName(moduleName: string, fallbackDescription?: s
 
 export function getModuleCategory(moduleName: string): ModuleCategory {
   if (moduleName.startsWith("custom_")) {
-    return "Custom Modules";
+    return "Other";
   }
 
   return MODULE_CATEGORIES[moduleName] ?? "Other";

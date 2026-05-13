@@ -4,6 +4,7 @@ import {
   ArrowRight,
   Blocks,
   Building2,
+  BadgePercent,
   FileText,
   KeyRound,
   Plug,
@@ -38,6 +39,12 @@ const SETTINGS_SECTIONS = [
         description: "Organize departments and team membership.",
         href: SETTINGS_ROUTES.teams,
         icon: Blocks,
+      },
+      {
+        title: "Customer Groups",
+        description: "Review customer segmentation used by contacts, accounts, and client portal context.",
+        href: SETTINGS_ROUTES.customerGroups,
+        icon: BadgePercent,
       },
     ],
   },
@@ -91,16 +98,21 @@ const SETTINGS_SECTIONS = [
         icon: Plug,
       },
       {
-        title: "Recycle Bin",
-        description: "Restore recoverable records from one place.",
-        href: SETTINGS_ROUTES.recycleBin,
-        icon: Recycle,
-      },
-      {
         title: "Activity Log",
         description: "Review audited writes, restores, and configuration events.",
         href: SETTINGS_ROUTES.activityLog,
         icon: Activity,
+      },
+    ],
+  },
+  {
+    title: "Danger Zone",
+    items: [
+      {
+        title: "Recycle Bin",
+        description: "Restore recoverable records from one place.",
+        href: SETTINGS_ROUTES.recycleBin,
+        icon: Recycle,
       },
     ],
   },
@@ -117,7 +129,7 @@ export default function SettingsPage() {
       <div className="grid gap-6">
         {SETTINGS_SECTIONS.map((section) => (
           <section key={section.title} className="grid gap-3">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-neutral-500">{section.title}</h2>
+            <h2 className={section.title === "Danger Zone" ? "text-sm font-semibold uppercase tracking-[0.16em] text-red-500/80" : "text-sm font-semibold uppercase tracking-[0.16em] text-neutral-500"}>{section.title}</h2>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {section.items.map((item) => {
                 const Icon = item.icon;

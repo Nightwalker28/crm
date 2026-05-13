@@ -318,10 +318,11 @@ export function PosInvoiceDialog({ open, invoice, isSubmitting = false, onClose,
             </FieldGroup>
           </div>
 
-          <DialogFooter className="mt-5">
+          <DialogFooter className="sticky bottom-0 mt-5 border-t border-neutral-800 bg-neutral-900/95 px-0 py-4 backdrop-blur">
             <div className="mr-auto grid grid-cols-2 gap-x-5 gap-y-1 text-sm text-neutral-400">
               <span>Subtotal</span><span className="text-right text-neutral-200">{toMoney(totals.subtotal, form.currency)}</span>
               <span>Tax</span><span className="text-right text-neutral-200">{toMoney(totals.tax, form.currency)}</span>
+              <span>Total</span><span className="text-right text-neutral-200">{toMoney(totals.total, form.currency)}</span>
               <span className="font-semibold text-neutral-200">Balance</span><span className="text-right font-semibold text-neutral-100">{toMoney(totals.balance, form.currency)}</span>
             </div>
             <Button variant="outline" onClick={onClose}>Cancel</Button>

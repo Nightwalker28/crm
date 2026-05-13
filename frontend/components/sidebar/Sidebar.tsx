@@ -1,41 +1,53 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore, type ComponentType } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
-  CalendarDays,
-  FileText,
-  Mail,
-  LayoutGrid,
-  HandCoins,
-  ClipboardList,
-  LogOut,
   BriefcaseBusiness,
+  HandCoins,
+  LogOut,
   Package,
   PanelLeftClose,
   PanelLeftOpen,
   Settings2,
   Wrench,
 } from "lucide-react";
-import { useSidebarUser } from "@/hooks/useSidebarUser";
-import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { usePathname } from "next/navigation";
+
 import NotificationCenter from "@/components/notifications/NotificationCenter";
-import { resolveMediaUrl } from "@/lib/media";
+import { useAccessibleModules, type AccessibleModule } from "@/hooks/useAccessibleModules";
+import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { DASHBOARD_ROUTES, SETTINGS_ROUTES } from "@/lib/routes";
+import { resolveMediaUrl } from "@/lib/media";
 
 import {
-  SidebarNav,
   SidebarGroup,
   SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuItemCollapsible,
   SidebarMenuItemChild,
+  SidebarMenuItemCollapsible,
+  SidebarNav,
 } from "./SidebarNav";
 
 const SIDEBAR_COLLAPSE_KEY = "lynk:sidebar-collapsed";
 const SIDEBAR_COLLAPSE_EVENT = "lynk:sidebar-collapsed-change";
+
+type SidebarGroupConfig = {
+  key: string;
+  label: string;
+  icon: ComponentType<{ className?: string }>;
+  sortOrder: number;
+  items: Array<{ href: string; label: string }>;
+};
+
+const SYSTEM_GROUPS: Record<string, Omit<SidebarGroupConfig, "items">> = {
+  sales: { key: "sales", label: "Sales", icon: BriefcaseBusiness, sortOrder: 10 },
+  finance: { key: "finance", label: "Finance", icon: HandCoins, sortOrder: 20 },
+  catalog: { key: "catalog", label: "Products & Services", icon: Package, sortOrder: 30 },
+  other: { key: "other", label: "Other", icon: Wrench, sortOrder: 80 },
+  settings: { key: "settings", label: "Settings", icon: Settings2, sortOrder: 90 },
+};
 
 function subscribeToSidebarCollapse(onStoreChange: () => void) {
   if (typeof window === "undefined") {
@@ -62,20 +74,88 @@ function getSidebarCollapsedSnapshot() {
   return window.localStorage.getItem(SIDEBAR_COLLAPSE_KEY) === "true";
 }
 
-function SidebarSectionLabel({ children, collapsed }: { children: string; collapsed: boolean }) {
-  return (
-    <div
-      className={
-        "mt-3 border-t border-white/6 px-2 pb-1 pt-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-600 transition-all duration-200 first:mt-0 first:border-t-0 first:pt-0 " +
-        (collapsed ? "opacity-0 group-hover/sidebar:opacity-100" : "opacity-100")
-      }
-    >
-      {children}
-    </div>
+function moduleLabel(module: AccessibleModule) {
+  return module.display_name?.trim() || getModuleDisplayName(module.name, module.description ?? undefined);
+}
+
+function getCanonicalHref(module: AccessibleModule) {
+  if (module.name === "sales_organizations") return DASHBOARD_ROUTES.accounts;
+  if (module.name === "sales_contacts") return DASHBOARD_ROUTES.contacts;
+  if (module.name === "sales_opportunities") return DASHBOARD_ROUTES.deals;
+  if (module.name === "finance_pos") return DASHBOARD_ROUTES.financePos;
+  if (module.name === "finance_io") return DASHBOARD_ROUTES.insertionOrders;
+  if (module.name === "catalog_products") return DASHBOARD_ROUTES.products;
+  if (module.name === "catalog_services") return DASHBOARD_ROUTES.services;
+  return module.base_route || "";
+}
+
+function buildOperationalGroups(modules: AccessibleModule[]) {
+  const groupMap = new Map<string, SidebarGroupConfig>();
+
+  function ensureGroup(module: AccessibleModule) {
+    const key = module.sidebar_tab_key || "other";
+    const system = SYSTEM_GROUPS[key];
+    const current = groupMap.get(key);
+    if (current) return current;
+    const group: SidebarGroupConfig = {
+      key,
+      label: module.sidebar_tab_label || system?.label || key.replaceAll("_", " "),
+      icon: system?.icon || Wrench,
+      sortOrder: system?.sortOrder ?? 75,
+      items: [],
+    };
+    groupMap.set(key, group);
+    return group;
+  }
+
+  for (const module of modules) {
+    if (!module.base_route) continue;
+    if (["tasks", "calendar", "mail", "documents"].includes(module.name)) continue;
+
+    const href = getCanonicalHref(module);
+    if (!href) continue;
+    const group = ensureGroup(module);
+    group.items.push({ href, label: moduleLabel(module) });
+  }
+
+  return Array.from(groupMap.values())
+    .map((group) => ({
+      ...group,
+      items: group.items
+        .filter((item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index)
+        .sort((a, b) => a.label.localeCompare(b.label)),
+    }))
+    .filter((group) => group.items.length > 0)
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
+}
+
+function settingsGroup(): SidebarGroupConfig {
+  return {
+    ...SYSTEM_GROUPS.settings,
+    items: [
+      { href: SETTINGS_ROUTES.general, label: "General" },
+      { href: SETTINGS_ROUTES.users, label: "User Management" },
+      { href: SETTINGS_ROUTES.teams, label: "Teams" },
+      { href: SETTINGS_ROUTES.customerGroups, label: "Customer Groups" },
+      { href: SETTINGS_ROUTES.permissions, label: "Permissions" },
+      { href: SETTINGS_ROUTES.modules, label: "Module Settings" },
+      { href: SETTINGS_ROUTES.moduleBuilder, label: "Module Builder" },
+      { href: SETTINGS_ROUTES.fields, label: "Field Config" },
+      { href: SETTINGS_ROUTES.integrations, label: "Integrations" },
+      { href: SETTINGS_ROUTES.templates, label: "Templates" },
+    ],
+  };
+}
+
+function activeGroupKey(pathname: string, groups: SidebarGroupConfig[]) {
+  const active = groups.find((group) =>
+    group.items.some((item) => pathname === item.href || pathname.startsWith(item.href + "/")),
   );
+  return active?.key ?? groups[0]?.key ?? "";
 }
 
 export default function Sidebar() {
+  const pathname = usePathname();
   const { user, isAdmin, logout } = useSidebarUser();
   const { modules } = useAccessibleModules();
   const collapsed = useSyncExternalStore(
@@ -83,6 +163,18 @@ export default function Sidebar() {
     getSidebarCollapsedSnapshot,
     () => false,
   );
+
+  const groups = useMemo(() => {
+    const next = buildOperationalGroups(modules);
+    if (isAdmin) next.push(settingsGroup());
+    return next;
+  }, [isAdmin, modules]);
+  const [openGroup, setOpenGroup] = useState("");
+
+  useEffect(() => {
+    const active = activeGroupKey(pathname, groups);
+    if (active) setOpenGroup(active);
+  }, [groups, pathname]);
 
   function toggleCollapsed() {
     const next = !collapsed;
@@ -98,288 +190,108 @@ export default function Sidebar() {
   const initials =
     ((user?.first_name?.[0] ?? "") + (user?.last_name?.[0] ?? "")) || "US";
 
-  const moduleMap = new Map(modules.map((module) => [module.name, module]));
-  const documentsModule = moduleMap.get("documents");
-  const financeIoModule = moduleMap.get("finance_io");
-  const financePosModule = moduleMap.get("finance_pos");
-  const tasksModule = moduleMap.get("tasks");
-  const calendarModule = moduleMap.get("calendar");
-  const mailModule = moduleMap.get("mail");
-  const contactsModule = moduleMap.get("sales_contacts");
-  const organizationsModule = moduleMap.get("sales_organizations");
-  const opportunitiesModule = moduleMap.get("sales_opportunities");
-  const catalogProductsModule = moduleMap.get("catalog_products");
-  const catalogServicesModule = moduleMap.get("catalog_services");
-  const customModules = modules
-    .filter((module) => module.base_route?.startsWith("/dashboard/custom/"))
-    .sort((a, b) => a.name.localeCompare(b.name));
-
   return (
     <aside
       className={
-        "group/sidebar relative z-10 flex h-screen flex-col transition-[width] duration-200 " +
-        (collapsed ? "w-14 hover:w-52" : "w-52")
+        "relative z-10 flex h-screen flex-col transition-[width] duration-200 " +
+        (collapsed ? "w-[4.5rem]" : "w-56")
       }
     >
-      {/* Inner padding wrapper */}
-      <div className="flex h-full min-h-0 flex-col px-2 py-3">
-
-        {/* Logo + toggle */}
-        <div className="mb-4 flex items-center justify-between gap-1 px-1">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5">
+      <div className="flex h-full min-h-0 flex-col overflow-hidden px-2 py-3">
+        <div className="mb-4 flex items-center justify-between gap-2 px-1">
+          <Link href={DASHBOARD_ROUTES.home} className="flex min-w-0 items-center gap-2 rounded-md focus:outline-none focus:ring-2 focus:ring-white/20">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5">
               <span className="font-lynk text-xl leading-none text-white">L</span>
             </div>
-            <h1
-              className={
-                "font-lynk text-2xl tracking-tight text-white transition-all duration-200 " +
-                (collapsed
-                  ? "w-0 overflow-hidden opacity-0 group-hover/sidebar:w-auto group-hover/sidebar:opacity-100"
-                  : "opacity-100")
-              }
-            >
-              Lynk
-            </h1>
-          </div>
+            {!collapsed ? <h1 className="font-lynk text-2xl tracking-tight text-white">Lynk</h1> : null}
+          </Link>
           <button
             type="button"
             onClick={toggleCollapsed}
-            className={
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/6 hover:text-neutral-100 " +
-              (collapsed ? "opacity-0 group-hover/sidebar:opacity-100" : "opacity-100")
-            }
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/6 hover:text-neutral-100"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
-            {collapsed ? (
-              <PanelLeftOpen className="h-3.5 w-3.5" />
-            ) : (
-              <PanelLeftClose className="h-3.5 w-3.5" />
-            )}
+            {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
           </button>
         </div>
 
-        {/* Nav */}
         <SidebarNav>
           <SidebarGroup>
             <SidebarMenu>
-              <SidebarMenuItem href="/dashboard" icon={LayoutGrid} collapsed={collapsed}>
-                Dashboard
-              </SidebarMenuItem>
-
-              <SidebarSectionLabel collapsed={collapsed}>Workspace</SidebarSectionLabel>
-
-              {tasksModule?.base_route ? (
-                <SidebarMenuItem href={tasksModule.base_route} icon={ClipboardList} collapsed={collapsed}>
-                  Tasks
-                </SidebarMenuItem>
-              ) : null}
-
-              {calendarModule?.base_route ? (
-                <SidebarMenuItem href={calendarModule.base_route} icon={CalendarDays} collapsed={collapsed}>
-                  Calendar
-                </SidebarMenuItem>
-              ) : null}
-
-              {mailModule?.base_route ? (
-                <SidebarMenuItem href={mailModule.base_route} icon={Mail} collapsed={collapsed}>
-                  Mail
-                </SidebarMenuItem>
-              ) : null}
-
-              {documentsModule?.base_route ? (
-                <SidebarMenuItem href={documentsModule.base_route} icon={FileText} collapsed={collapsed}>
-                  Documents
-                </SidebarMenuItem>
-              ) : null}
-
-              <SidebarSectionLabel collapsed={collapsed}>Sales</SidebarSectionLabel>
-
-              {(organizationsModule?.base_route || contactsModule?.base_route || opportunitiesModule?.base_route) ? (
-                <SidebarMenuItemCollapsible icon={BriefcaseBusiness} label="Sales" collapsed={collapsed}>
-                  {organizationsModule?.base_route ? (
-                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.accounts} collapsed={collapsed}>
-                      Accounts
-                    </SidebarMenuItemChild>
-                  ) : null}
-                  {contactsModule?.base_route ? (
-                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.contacts} collapsed={collapsed}>
-                      Contacts
-                    </SidebarMenuItemChild>
-                  ) : null}
-                  {opportunitiesModule?.base_route ? (
-                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.deals} collapsed={collapsed}>
-                      Deals
-                    </SidebarMenuItemChild>
-                  ) : null}
-                  {(contactsModule?.base_route || organizationsModule?.base_route) ? (
-                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.clientPortal} collapsed={collapsed}>
-                      Client Portal
-                    </SidebarMenuItemChild>
-                  ) : null}
-                </SidebarMenuItemCollapsible>
-              ) : null}
-
-              <SidebarSectionLabel collapsed={collapsed}>Products & Services</SidebarSectionLabel>
-
-              {(catalogProductsModule?.base_route || catalogServicesModule?.base_route) ? (
-                <SidebarMenuItemCollapsible icon={Package} label="Products & Services" collapsed={collapsed}>
-                  {catalogProductsModule?.base_route ? (
-                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.products} collapsed={collapsed}>
-                      Products
-                    </SidebarMenuItemChild>
-                  ) : null}
-                  {catalogServicesModule?.base_route ? (
-                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.services} collapsed={collapsed}>
-                      Services
-                    </SidebarMenuItemChild>
-                  ) : null}
-                </SidebarMenuItemCollapsible>
-              ) : null}
-
-              <SidebarSectionLabel collapsed={collapsed}>Finance</SidebarSectionLabel>
-
-              {(financeIoModule?.base_route || financePosModule?.base_route) ? (
-                <SidebarMenuItemCollapsible icon={HandCoins} label="Finance" collapsed={collapsed}>
-                  {financePosModule?.base_route ? (
-                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.financePos} collapsed={collapsed}>
-                      POS
-                    </SidebarMenuItemChild>
-                  ) : null}
-                  {financeIoModule?.base_route ? (
-                    <SidebarMenuItemChild href={DASHBOARD_ROUTES.insertionOrders} collapsed={collapsed}>
-                      Insertion Orders
-                    </SidebarMenuItemChild>
-                  ) : null}
-                </SidebarMenuItemCollapsible>
-              ) : null}
-
-              {customModules.length > 0 ? (
-                <>
-                  <SidebarSectionLabel collapsed={collapsed}>Custom Modules</SidebarSectionLabel>
-                  <SidebarMenuItemCollapsible icon={Wrench} label="Custom Modules" collapsed={collapsed}>
-                  {customModules.map((module) => (
-                    <SidebarMenuItemChild key={module.id} href={module.base_route as string} collapsed={collapsed}>
-                      {getModuleDisplayName(module.name, module.description ?? undefined)}
+              {groups.map((group) => (
+                <SidebarMenuItemCollapsible
+                  key={group.key}
+                  label={group.label}
+                  icon={group.icon}
+                  collapsed={collapsed}
+                  open={!collapsed && openGroup === group.key}
+                  onOpenChange={(nextOpen) => setOpenGroup(nextOpen ? group.key : "")}
+                >
+                  {group.items.map((item) => (
+                    <SidebarMenuItemChild key={item.href} href={item.href} collapsed={collapsed}>
+                      {item.label}
                     </SidebarMenuItemChild>
                   ))}
-                  </SidebarMenuItemCollapsible>
-                </>
-              ) : null}
-
-              {isAdmin ? (
-                <>
-                  <SidebarSectionLabel collapsed={collapsed}>Settings</SidebarSectionLabel>
-                  <SidebarMenuItemCollapsible icon={Settings2} label="Settings" collapsed={collapsed}>
-                    <SidebarMenuItemChild href={SETTINGS_ROUTES.general} collapsed={collapsed}>
-                      General
-                    </SidebarMenuItemChild>
-                    <SidebarMenuItemChild href={SETTINGS_ROUTES.users} collapsed={collapsed}>
-                      User Management
-                    </SidebarMenuItemChild>
-                    <SidebarMenuItemChild href={SETTINGS_ROUTES.teams} collapsed={collapsed}>
-                      Teams
-                    </SidebarMenuItemChild>
-                    <SidebarMenuItemChild href={SETTINGS_ROUTES.permissions} collapsed={collapsed}>
-                      Permissions
-                    </SidebarMenuItemChild>
-                    <SidebarMenuItemChild href={SETTINGS_ROUTES.modules} collapsed={collapsed}>
-                      Module Settings
-                    </SidebarMenuItemChild>
-                    <SidebarMenuItemChild href={SETTINGS_ROUTES.moduleBuilder} collapsed={collapsed}>
-                      Module Builder
-                    </SidebarMenuItemChild>
-                    <SidebarMenuItemChild href={SETTINGS_ROUTES.fields} collapsed={collapsed}>
-                      Field Config
-                    </SidebarMenuItemChild>
-                    <SidebarMenuItemChild href={SETTINGS_ROUTES.integrations} collapsed={collapsed}>
-                      Integrations
-                    </SidebarMenuItemChild>
-                    <SidebarMenuItemChild href={SETTINGS_ROUTES.templates} collapsed={collapsed}>
-                      Templates
-                    </SidebarMenuItemChild>
-                  </SidebarMenuItemCollapsible>
-                </>
-              ) : null}
+                </SidebarMenuItemCollapsible>
+              ))}
             </SidebarMenu>
           </SidebarGroup>
         </SidebarNav>
 
-        {/* Bottom user card */}
         <div className="shrink-0 pt-4">
           <div className="relative overflow-hidden rounded-lg border border-white/10 bg-white/5">
-            {/* Noise texture */}
-            <div className="noise-overlay absolute inset-0 pointer-events-none rounded-lg opacity-20" />
+            <div className="noise-overlay pointer-events-none absolute inset-0 rounded-lg opacity-20" />
 
             <div className="relative z-10 flex flex-col">
-              {/* Notification row — always icon-only in collapsed, full in expanded */}
-              <div
-                className={
-                  "flex items-center border-b border-white/8 px-2 py-1.5 " +
-                  (collapsed
-                    ? "justify-center group-hover/sidebar:justify-between"
-                    : "justify-between")
-                }
-              >
-                {/* Label — hidden when collapsed */}
-                <span
-                  className={
-                    "text-[10px] font-semibold uppercase tracking-wider text-neutral-500 transition-all duration-200 " +
-                    (collapsed
-                      ? "w-0 overflow-hidden opacity-0 group-hover/sidebar:w-auto group-hover/sidebar:opacity-100"
-                      : "opacity-100")
-                  }
-                >
-                  Notifications
-                </span>
+              <div className={`flex items-center border-b border-white/8 px-2 py-1.5 ${collapsed ? "justify-center" : "justify-between"}`}>
+                {!collapsed ? (
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                    Notifications
+                  </span>
+                ) : null}
                 <NotificationCenter />
               </div>
 
-              {/* User identity row */}
-              <div className="flex items-center gap-0 p-1.5">
+              <div className={`flex items-center p-1.5 ${collapsed ? "justify-center" : "gap-1"}`}>
                 <Link
                   href="/dashboard/profile"
-                  className="flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-white/6"
+                  className={`flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-white/6 ${
+                    collapsed ? "justify-center" : "flex-1"
+                  }`}
+                  title={collapsed ? displayName : undefined}
                 >
-                {user?.photo_url ? (
-                  <Image
-                    src={resolveMediaUrl(user.photo_url)}
-                    alt="profile"
-                    width={28}
-                    height={28}
-                    unoptimized
-                    className="h-7 w-7 shrink-0 rounded-md object-cover shadow-sm"
-                  />
+                  {user?.photo_url ? (
+                    <Image
+                      src={resolveMediaUrl(user.photo_url)}
+                      alt="profile"
+                      width={30}
+                      height={30}
+                      unoptimized
+                      className="h-8 w-8 shrink-0 rounded-md object-cover shadow-sm"
+                    />
                   ) : (
-                    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-neutral-100 text-[9px] font-bold text-black shadow-sm">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-neutral-100 text-[10px] font-bold text-black shadow-sm">
                       {initials}
                     </div>
                   )}
 
-                  <span
-                    className={
-                      "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-semibold text-neutral-100 transition-all duration-200 " +
-                      (collapsed
-                        ? "w-0 opacity-0 group-hover/sidebar:w-auto group-hover/sidebar:opacity-100"
-                        : "opacity-100")
-                    }
-                  >
-                    {displayName}
-                  </span>
+                  {!collapsed ? (
+                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-semibold text-neutral-100">
+                      {displayName}
+                    </span>
+                  ) : null}
                 </Link>
 
-                <button
-                  onClick={logout}
-                  type="button"
-                  className={
-                    "flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/6 hover:text-red-300 " +
-                    (collapsed
-                      ? "opacity-0 group-hover/sidebar:opacity-100"
-                      : "opacity-100")
-                  }
-                  title="Logout"
-                >
-                  <LogOut size={13} />
-                </button>
+                {!collapsed ? (
+                  <button
+                    onClick={logout}
+                    type="button"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/6 hover:text-red-300"
+                    title="Logout"
+                  >
+                    <LogOut size={14} />
+                  </button>
+                ) : null}
               </div>
             </div>
           </div>

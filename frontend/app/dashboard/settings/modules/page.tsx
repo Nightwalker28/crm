@@ -6,14 +6,16 @@ import { Power, SlidersHorizontal } from "lucide-react";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
-import { useModulesAdmin } from "@/hooks/admin/useModulesAdmin";
+import { useModulesAdmin, useSidebarTabsAdmin } from "@/hooks/admin/useModulesAdmin";
 import { getModuleCategory, getModuleDisplayName } from "@/lib/module-display";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
 export default function ModulesPage() {
   const { modules, isLoading, updateModule, isSaving } = useModulesAdmin();
+  const { tabs } = useSidebarTabsAdmin();
 
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
@@ -44,6 +46,8 @@ export default function ModulesPage() {
           <TableHeader>
             <TableHeaderRow>
               <TableHead>Module</TableHead>
+              <TableHead>Sidebar Label</TableHead>
+              <TableHead>Sidebar Group</TableHead>
               <TableHead>Route</TableHead>
               <TableHead>Description</TableHead>
               <TableHead>Duplicate Handling</TableHead>
@@ -55,7 +59,7 @@ export default function ModulesPage() {
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center text-neutral-500">Loading modules...</TableCell>
+                <TableCell colSpan={9} className="py-10 text-center text-neutral-500">Loading modules...</TableCell>
               </TableRow>
             ) : (
               modules.map((module) => (
@@ -65,6 +69,39 @@ export default function ModulesPage() {
                       {getModuleDisplayName(module.name, module.description ?? undefined)}
                     </div>
                     <div className="mt-1 text-xs text-neutral-500">{getModuleCategory(module.name)}</div>
+                  </TableCell>
+                  <TableCell>
+                    <Input
+                      defaultValue={module.display_name ?? ""}
+                      placeholder={getModuleDisplayName(module.name, module.description ?? undefined)}
+                      className="w-44 bg-neutral-950"
+                      disabled={isSaving}
+                      onBlur={(event) => {
+                        const value = event.target.value.trim();
+                        const current = module.display_name ?? "";
+                        if (value !== current) {
+                          void updateModule(module.id, { display_name: value || null });
+                        }
+                      }}
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <Select
+                      value={module.sidebar_tab_key ?? "other"}
+                      onValueChange={(value) => updateModule(module.id, { sidebar_tab_key: value })}
+                      disabled={isSaving}
+                    >
+                      <SelectTrigger className="w-44">
+                        <SelectValue placeholder="Select group" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {tabs.map((tab) => (
+                          <SelectItem key={tab.key} value={tab.key}>
+                            {tab.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </TableCell>
                   <TableCell className="text-neutral-400">{module.base_route || "-"}</TableCell>
                   <TableCell className="max-w-sm text-neutral-400">{module.description || "-"}</TableCell>

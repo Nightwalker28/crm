@@ -6,7 +6,14 @@ import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 
 export const SidebarNav = ({ children }: { children: React.ReactNode }) => {
-  return <nav className="scrollbar-hide flex min-h-0 w-full flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden pr-1">{children}</nav>;
+  return (
+    <nav
+      className="flex min-h-0 w-full flex-1 flex-col gap-1 overflow-y-scroll overflow-x-hidden pr-1 [&::-webkit-scrollbar]:hidden"
+      style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
+    >
+      {children}
+    </nav>
+  );
 };
 
 export const SidebarGroup = ({ children }: { children: React.ReactNode }) => {
@@ -95,9 +102,7 @@ export function SidebarMenuItem({
         <span
           className={
             "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm transition-all duration-200 " +
-            (collapsed
-              ? "w-0 opacity-0 group-hover/sidebar:w-auto group-hover/sidebar:opacity-100"
-              : "opacity-100")
+            (collapsed ? "sr-only" : "opacity-100")
           }
         >
           {children}
@@ -112,22 +117,31 @@ export function SidebarMenuItemCollapsible({
   label,
   children,
   collapsed = false,
+  open,
+  onOpenChange,
 }: {
   icon?: React.ComponentType<{ className?: string }>;
   label: string;
   children: React.ReactNode;
   collapsed?: boolean;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const isActiveFn = useIsActive();
   const childItems = React.Children.toArray(children);
   const hasActiveChild = childItems.some((child) => isActiveFn(getChildHref(child)));
-  const [open, setOpen] = React.useState(hasActiveChild);
+  const [internalOpen, setInternalOpen] = React.useState(hasActiveChild);
+  const isOpen = open ?? internalOpen;
 
   React.useEffect(() => {
-    if (hasActiveChild) setOpen(true);
-  }, [hasActiveChild]);
+    if (hasActiveChild) {
+      setInternalOpen(true);
+      onOpenChange?.(true);
+    }
+  }, [hasActiveChild, onOpenChange]);
 
   const activeSelf = hasActiveChild;
+  const setOpen = onOpenChange ?? setInternalOpen;
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-hidden">
@@ -135,8 +149,8 @@ export function SidebarMenuItemCollapsible({
         <button
           type="button"
           title={collapsed ? label : undefined}
-          onClick={() => setOpen((v) => !v)}
-          aria-expanded={open}
+          onClick={() => setOpen(!isOpen)}
+          aria-expanded={isOpen}
           className={
             "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left text-sm font-medium transition-all duration-150 " +
             (activeSelf
@@ -155,9 +169,7 @@ export function SidebarMenuItemCollapsible({
           <span
             className={
               "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm transition-all duration-200 " +
-              (collapsed
-                ? "w-0 opacity-0 group-hover/sidebar:w-auto group-hover/sidebar:opacity-100"
-                : "opacity-100")
+              (collapsed ? "sr-only" : "opacity-100")
             }
           >
             {label}
@@ -165,9 +177,9 @@ export function SidebarMenuItemCollapsible({
           <ChevronRight
             className={
               "h-3.5 w-3.5 shrink-0 transition-transform duration-200 " +
-              (collapsed ? "opacity-0 group-hover/sidebar:opacity-100" : "") +
+              (collapsed ? "hidden" : "") +
               " " +
-              (open ? "rotate-90" : "") +
+              (isOpen ? "rotate-90" : "") +
               " " +
               (activeSelf ? "text-neutral-300" : "text-neutral-500")
             }
@@ -175,17 +187,10 @@ export function SidebarMenuItemCollapsible({
         </button>
       </GlassItemWrapper>
 
-      {/* Child items — hidden in icon-only collapsed state, shown on hover */}
       <div
         className={
           "ml-4 flex min-w-0 max-w-[calc(100%-1rem)] flex-col gap-0.5 overflow-hidden border-l border-neutral-800/70 pl-1.5 transition-all duration-200 " +
-          (collapsed
-            ? open
-              ? "max-h-0 opacity-0 group-hover/sidebar:max-h-96 group-hover/sidebar:opacity-100"
-              : "max-h-0 opacity-0"
-            : open
-              ? "max-h-96 opacity-100"
-              : "max-h-0 opacity-0")
+          (collapsed ? "max-h-0 opacity-0" : isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0")
         }
       >
         {childItems}
@@ -220,9 +225,7 @@ export function SidebarMenuItemChild({
         <span
           className={
             "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap transition-all duration-200 " +
-            (collapsed
-              ? "w-0 opacity-0 group-hover/sidebar:w-auto group-hover/sidebar:opacity-100"
-              : "opacity-100")
+            (collapsed ? "sr-only" : "opacity-100")
           }
         >
           {children}

@@ -57,7 +57,7 @@ function getInputType(field: CustomModuleField) {
   return "text";
 }
 
-function CustomFieldInput({
+export function CustomModuleFieldInput({
   field,
   value,
   onChange,
@@ -212,7 +212,7 @@ export function CustomModuleRecordDialog({
                         {field.is_required ? <RequiredMark /> : null}
                       </FieldLabel>
                     ) : null}
-                    <CustomFieldInput
+                    <CustomModuleFieldInput
                       field={field}
                       value={values[field.key]}
                       onChange={(next) => setValues((current) => ({ ...current, [field.key]: next }))}

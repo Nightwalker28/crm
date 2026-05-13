@@ -8,7 +8,9 @@ import {
   Bell,
   CalendarDays,
   ClipboardList,
+  FileText,
   LayoutGrid,
+  Mail,
   Plus,
   Settings2,
 } from "lucide-react";
@@ -62,19 +64,24 @@ export default function DashboardHomePage() {
     queryFn: fetchDashboardActivity,
     staleTime: 30000,
   });
+  const accessibleRoutes = useMemo(
+    () => new Set(modules.map((module) => module.base_route).filter(Boolean)),
+    [modules],
+  );
 
   const quickActions = useMemo(() => {
     const actions = [
       { href: "/dashboard/tasks", label: "Tasks", helper: "Open assigned and team work queues" },
       { href: "/dashboard/calendar", label: "Calendar", helper: "Schedule internal events and review invites" },
+      { href: "/dashboard/mail", label: "Mail", helper: "Open connected mailbox and CRM communication history" },
+      { href: "/dashboard/documents", label: "Documents", helper: "Review uploaded and record-linked documents" },
       { href: "/dashboard/sales/contacts", label: "Contacts", helper: "Open the CRM contact list" },
       { href: "/dashboard/sales/organizations", label: "Accounts", helper: "Open account records" },
       { href: "/dashboard/sales/opportunities", label: "Deals", helper: "Review and update pipeline" },
       { href: "/dashboard/finance/insertion-orders", label: "Insertion Orders", helper: "Manage finance handoff and IOs" },
     ];
-    const accessibleRoutes = new Set(modules.map((module) => module.base_route).filter(Boolean));
     return actions.filter((action) => accessibleRoutes.has(action.href));
-  }, [modules]);
+  }, [accessibleRoutes]);
 
   const stats = useMemo(
     () => [
@@ -123,18 +130,38 @@ export default function DashboardHomePage() {
                 Activity Log
               </Link>
             </Button>
-            <Button asChild>
-              <Link href="/dashboard/tasks">
-                <Plus className="h-4 w-4" />
-                New Work
-              </Link>
-            </Button>
-            <Button asChild variant="outline">
-              <Link href="/dashboard/calendar">
-                <CalendarDays className="h-4 w-4" />
-                Calendar
-              </Link>
-            </Button>
+            {accessibleRoutes.has("/dashboard/tasks") ? (
+              <Button asChild>
+                <Link href="/dashboard/tasks">
+                  <Plus className="h-4 w-4" />
+                  New Work
+                </Link>
+              </Button>
+            ) : null}
+            {accessibleRoutes.has("/dashboard/calendar") ? (
+              <Button asChild variant="outline">
+                <Link href="/dashboard/calendar">
+                  <CalendarDays className="h-4 w-4" />
+                  Calendar
+                </Link>
+              </Button>
+            ) : null}
+            {accessibleRoutes.has("/dashboard/mail") ? (
+              <Button asChild variant="outline">
+                <Link href="/dashboard/mail">
+                  <Mail className="h-4 w-4" />
+                  Mail
+                </Link>
+              </Button>
+            ) : null}
+            {accessibleRoutes.has("/dashboard/documents") ? (
+              <Button asChild variant="outline">
+                <Link href="/dashboard/documents">
+                  <FileText className="h-4 w-4" />
+                  Documents
+                </Link>
+              </Button>
+            ) : null}
           </>
         }
       />

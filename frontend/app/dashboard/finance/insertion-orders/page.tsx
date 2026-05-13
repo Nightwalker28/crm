@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import InsertionOrdersList from "@/components/finance/insertionOrderList";
@@ -10,8 +11,8 @@ import InsertionOrdersHeader from "../../../../components/finance/InsertionOrder
 import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { InsertionOrder, InsertionOrderPayload } from "@/hooks/finance/useInsertionOrders";
+import { Button } from "@/components/ui/button";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
@@ -19,6 +20,7 @@ import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleVie
 import { useMemo } from "react";
 
 export default function InsertionOrdersPage() {
+  const router = useRouter();
   const { data: customFields = [] } = useModuleCustomFields("finance_io");
   const definition = useMemo(
     () => buildModuleViewDefinition("finance_io", customFields),
@@ -87,11 +89,6 @@ export default function InsertionOrdersPage() {
     setDialogOpen(true);
   };
 
-  const handleEdit = (order: InsertionOrder) => {
-    setSelectedOrder(order);
-    setDialogOpen(true);
-  };
-
   const handleSubmit = async (payload: InsertionOrderPayload) => {
     if (selectedOrder) {
       await updateOrder(selectedOrder.id, payload);
@@ -136,31 +133,27 @@ export default function InsertionOrdersPage() {
               }
               placeholder="Search by customer, IO number, reference, or notes"
             />
-            <Select
-              value={statusFilter}
-              onValueChange={(value) =>
-                setDraftConfig((current) => ({
-                  ...current,
-                  filters: {
-                    ...current.filters,
-                    status: value,
-                  },
-                }))
-              }
-            >
-              <SelectTrigger className="w-full md:w-52">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="draft">Draft</SelectItem>
-                <SelectItem value="issued">Issued</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="cancelled">Cancelled</SelectItem>
-                <SelectItem value="imported">Imported</SelectItem>
-              </SelectContent>
-            </Select>
+            <div className="flex flex-wrap gap-2">
+              {["all", "draft", "issued", "active", "completed", "cancelled"].map((status) => (
+                <Button
+                  key={status}
+                  type="button"
+                  size="sm"
+                  variant={statusFilter === status ? "default" : "outline"}
+                  onClick={() =>
+                    setDraftConfig((current) => ({
+                      ...current,
+                      filters: {
+                        ...current.filters,
+                        status,
+                      },
+                    }))
+                  }
+                >
+                  {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)}
+                </Button>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -191,7 +184,7 @@ export default function InsertionOrdersPage() {
           orders={orders}
           isLoading={isLoading}
           isRefreshing={isFetching && !isLoading}
-          onRowClick={handleEdit}
+          onRowClick={(order) => router.push(`/dashboard/finance/insertion-orders/${order.id}`)}
           visibleColumns={visibleColumns}
           columnOptions={definition?.columns ?? []}
           selectedIds={selectedIds}

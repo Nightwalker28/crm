@@ -27,6 +27,7 @@ from app.modules.user_management.models import (
     Module,
     RefreshToken,
     Tenant,
+    TenantModuleConfig,
     RoleModulePermission,
     User,
     UserAuthMode,
@@ -34,8 +35,7 @@ from app.modules.user_management.models import (
     UserStatus,
 )
 from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, get_user_role_level, user_has_module_assignment
-from app.modules.user_management.services.admin_modules import is_module_enabled_for_tenant
-from app.modules.user_management.services.admin_modules import build_module_schema
+from app.modules.user_management.services.admin_modules import build_module_schema, is_module_enabled_for_tenant, _custom_tab_labels
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -560,6 +560,13 @@ def get_role_visible_modules(role_id: int | None, *, db: Session) -> list[Module
 
 
 def get_user_accessible_modules(user: User, db: Session):
+    configs = (
+        db.query(TenantModuleConfig)
+        .filter(TenantModuleConfig.tenant_id == user.tenant_id)
+        .all()
+    )
+    config_map = {config.module_id: config for config in configs}
+    custom_tab_labels = _custom_tab_labels(db, tenant_id=user.tenant_id)
     role_level = get_user_role_level(db, user)
     if role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL:
         modules = (
@@ -568,14 +575,14 @@ def get_user_accessible_modules(user: User, db: Session):
             .all()
         )
         return [
-            build_module_schema(module, None).model_copy(update={"is_enabled": True})
+            build_module_schema(module, config_map.get(module.id), custom_tab_labels=custom_tab_labels).model_copy(update={"is_enabled": True})
             for module in modules
             if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
         ]
 
     visible_modules = get_role_visible_modules(user.role_id, db=db)
     return [
-        build_module_schema(module, None).model_copy(update={"is_enabled": True})
+        build_module_schema(module, config_map.get(module.id), custom_tab_labels=custom_tab_labels).model_copy(update={"is_enabled": True})
         for module in visible_modules
         if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
         and user_has_module_assignment(db, user=user, module=module)

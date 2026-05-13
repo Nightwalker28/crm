@@ -134,9 +134,9 @@ export default function CalendarEventDialog({
   async function handleDelete() {
     if (!event || !onDelete) return;
     const confirmed = await confirm({
-      title: "Move event to recycle bin?",
-      description: `Move "${event.title}" to the recycle bin?`,
-      confirmLabel: "Move to Recycle Bin",
+      title: "Delete event?",
+      description: `Delete "${event.title}"?`,
+      confirmLabel: "Delete",
       variant: "destructive",
     });
     if (!confirmed) return;

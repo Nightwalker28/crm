@@ -43,6 +43,9 @@ export type CustomModuleDefinition = {
   is_active: boolean;
   module_id?: number | null;
   base_route?: string | null;
+  sidebar_tab_key?: string | null;
+  sidebar_tab_label?: string | null;
+  display_name?: string | null;
   deleted_at?: string | null;
   fields: CustomModuleField[];
 };
@@ -96,7 +99,7 @@ export function useModuleBuilder() {
   });
 
   const createModule = useMutation({
-    mutationFn: async (payload: { name: string; key?: string; description?: string; fields?: unknown[] }) =>
+    mutationFn: async (payload: { name: string; key?: string; description?: string; sidebar_tab_key?: string; display_name?: string; fields?: unknown[] }) =>
       parseJson<CustomModuleDefinition>(
         await apiFetch("/module-builder", {
           method: "POST",
@@ -111,7 +114,7 @@ export function useModuleBuilder() {
   });
 
   const updateModule = useMutation({
-    mutationFn: async ({ moduleId, payload }: { moduleId: number; payload: Partial<Pick<CustomModuleDefinition, "name" | "description" | "icon" | "is_active">> }) =>
+    mutationFn: async ({ moduleId, payload }: { moduleId: number; payload: Partial<Pick<CustomModuleDefinition, "name" | "description" | "icon" | "is_active" | "sidebar_tab_key" | "display_name">> }) =>
       parseJson<CustomModuleDefinition>(
         await apiFetch(`/module-builder/${moduleId}`, {
           method: "PUT",
@@ -213,6 +216,41 @@ export function useCustomModuleSchema(moduleKey: string, enabled = true) {
     enabled: Boolean(moduleKey) && enabled,
     refetchOnWindowFocus: false,
   });
+}
+
+export function useCustomModuleRecord(moduleKey: string, recordId: string | number, enabled = true) {
+  const queryClient = useQueryClient();
+  const query = useQuery({
+    queryKey: ["custom-module-record", moduleKey, String(recordId)],
+    queryFn: async () =>
+      parseJson<CustomModuleRecord>(await apiFetch(`/custom-modules/${moduleKey}/records/${recordId}`)),
+    enabled: Boolean(moduleKey && recordId) && enabled,
+    refetchOnWindowFocus: false,
+  });
+
+  const updateRecord = useMutation({
+    mutationFn: async (payload: { title?: string; values: Record<string, unknown> }) =>
+      parseJson<CustomModuleRecord>(
+        await apiFetch(`/custom-modules/${moduleKey}/records/${recordId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["custom-module-record", moduleKey, String(recordId)] });
+      await queryClient.invalidateQueries({ queryKey: ["custom-module-records", moduleKey] });
+    },
+  });
+
+  return {
+    record: query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error,
+    updateRecord: updateRecord.mutateAsync,
+    isSaving: updateRecord.isPending,
+    refresh: query.refetch,
+  };
 }
 
 export function useCustomModuleRecords(moduleKey: string, page: number, search: string) {

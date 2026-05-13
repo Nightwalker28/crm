@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 from fastapi import HTTPException, status
 from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, object_session, selectinload
 
 from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, get_user_role_level, user_has_module_assignment
 from app.core.module_csv import build_import_summary, rows_from_csv_bytes
@@ -43,6 +43,13 @@ from app.modules.user_management.models import (
     User,
 )
 from app.modules.user_management.services.admin_modules import is_module_enabled_for_tenant
+from app.modules.user_management.services.admin_modules import (
+    _custom_tab_labels,
+    _ensure_sidebar_tab_exists,
+    _sidebar_tab_label,
+    default_sidebar_tab_key,
+    normalize_sidebar_tab_key,
+)
 from app.modules.user_management.services.role_permissions import ROLE_TEMPLATES
 
 
@@ -66,6 +73,19 @@ def _serialize_module(module: CustomModuleDefinition) -> CustomModuleResponse:
         [field for field in module.fields if field.deleted_at is None],
         key=lambda field: (field.sort_order, field.id),
     )
+    tenant_config = None
+    if module.module:
+        tenant_config = next(
+            (config for config in module.module.tenant_configs if config.tenant_id == module.tenant_id),
+            None,
+        )
+    sidebar_tab_key = (
+        normalize_sidebar_tab_key(tenant_config.sidebar_tab_key)
+        if tenant_config and tenant_config.sidebar_tab_key
+        else default_sidebar_tab_key(module.module.name if module.module else module.key)
+    )
+    session = object_session(module)
+    custom_tab_labels = _custom_tab_labels(session, tenant_id=module.tenant_id) if session else {}
     return CustomModuleResponse.model_validate(
         {
             "id": module.id,
@@ -76,6 +96,9 @@ def _serialize_module(module: CustomModuleDefinition) -> CustomModuleResponse:
             "is_active": bool(module.is_active),
             "module_id": module.module_id,
             "base_route": module.module.base_route if module.module else None,
+            "sidebar_tab_key": sidebar_tab_key,
+            "sidebar_tab_label": _sidebar_tab_label(sidebar_tab_key, custom_tab_labels),
+            "display_name": tenant_config.display_name if tenant_config and tenant_config.display_name else None,
             "created_at": module.created_at,
             "updated_at": module.updated_at,
             "deleted_at": module.deleted_at,
@@ -314,6 +337,8 @@ def create_module(db: Session, *, tenant_id: int, actor_user_id: int, payload: C
     )
     db.add(platform_module)
     db.flush()
+    sidebar_tab_key = normalize_sidebar_tab_key(payload.sidebar_tab_key) if payload.sidebar_tab_key else default_sidebar_tab_key(platform_module.name)
+    _ensure_sidebar_tab_exists(db, tenant_id=tenant_id, tab_key=sidebar_tab_key)
 
     definition = CustomModuleDefinition(
         tenant_id=tenant_id,
@@ -329,6 +354,15 @@ def create_module(db: Session, *, tenant_id: int, actor_user_id: int, payload: C
     db.add(definition)
     db.flush()
     _seed_access(db, tenant_id=tenant_id, module=platform_module)
+    config = (
+        db.query(TenantModuleConfig)
+        .filter(TenantModuleConfig.tenant_id == tenant_id, TenantModuleConfig.module_id == platform_module.id)
+        .first()
+    )
+    if config:
+        config.sidebar_tab_key = sidebar_tab_key
+        config.display_name = payload.display_name.strip() if payload.display_name and payload.display_name.strip() else payload.name.strip()
+        db.add(config)
     for index, field_payload in enumerate(payload.fields):
         _add_field(db, definition=definition, payload=field_payload, sort_order=index)
     try:
@@ -355,6 +389,11 @@ def update_module(db: Session, *, tenant_id: int, module_id: int, actor_user_id:
     definition = _get_module_definition(db, tenant_id=tenant_id, module_id=module_id)
     before = _serialize_module(definition).model_dump(mode="json")
     update_data = payload.model_dump(exclude_unset=True)
+    config_data = {
+        key: update_data.pop(key)
+        for key in ["sidebar_tab_key", "display_name"]
+        if key in update_data
+    }
     for field, value in update_data.items():
         setattr(definition, field, value.strip() if isinstance(value, str) else value)
     definition.updated_by_user_id = actor_user_id
@@ -367,6 +406,29 @@ def update_module(db: Session, *, tenant_id: int, module_id: int, actor_user_id:
                 module=definition.module,
                 enabled=bool(update_data["is_active"]),
             )
+        if config_data:
+            config = (
+                db.query(TenantModuleConfig)
+                .filter(TenantModuleConfig.tenant_id == tenant_id, TenantModuleConfig.module_id == definition.module.id)
+                .first()
+            )
+            if config is None:
+                config = TenantModuleConfig(
+                    tenant_id=tenant_id,
+                    module_id=definition.module.id,
+                    is_enabled=definition.module.is_enabled,
+                    import_duplicate_mode=definition.module.import_duplicate_mode or "skip",
+                )
+            if "sidebar_tab_key" in config_data:
+                value = config_data["sidebar_tab_key"]
+                if value:
+                    value = normalize_sidebar_tab_key(value)
+                    _ensure_sidebar_tab_exists(db, tenant_id=tenant_id, tab_key=value)
+                config.sidebar_tab_key = value
+            if "display_name" in config_data:
+                value = config_data["display_name"]
+                config.display_name = value.strip() if isinstance(value, str) and value.strip() else None
+            db.add(config)
     db.add(definition)
     db.commit()
     db.refresh(definition)

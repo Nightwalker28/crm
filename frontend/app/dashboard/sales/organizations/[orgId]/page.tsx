@@ -366,8 +366,8 @@ export default function OrganizationDetailPage() {
                   </div>
                   <div className="mt-2 text-xs text-neutral-500">
                     {summary.organization.customer_group
-                      ? `${summary.organization.customer_group.name} pricing applies when this organization signs in.`
-                      : "Public/default pricing applies until a group is assigned."}
+                      ? `${summary.organization.customer_group.name} segmentation is assigned. Client portal pricing uses this group where pricing rules are configured.`
+                      : "No group assigned. Public/default pricing remains the fallback."}
                   </div>
                 </div>
               </div>

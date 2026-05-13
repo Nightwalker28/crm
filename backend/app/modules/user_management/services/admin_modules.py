@@ -1,4 +1,7 @@
+import re
+
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import DuplicateMode
@@ -9,6 +12,7 @@ from app.modules.user_management.models import (
     Team,
     TeamModulePermission,
     TenantModuleConfig,
+    TenantSidebarTab,
 )
 from app.modules.user_management.schema import (
     ModuleAccessDepartmentOption,
@@ -17,7 +21,39 @@ from app.modules.user_management.schema import (
     ModuleAccessUpdateRequest,
     ModuleSchema,
     ModuleUpdateRequest,
+    SidebarTabCreateRequest,
+    SidebarTabSchema,
+    SidebarTabUpdateRequest,
 )
+
+TAB_KEY_RE = re.compile(r"[^a-z0-9_]+")
+
+SYSTEM_SIDEBAR_TABS: tuple[dict[str, object], ...] = (
+    {"key": "sales", "label": "Sales", "sort_order": 10},
+    {"key": "finance", "label": "Finance", "sort_order": 20},
+    {"key": "catalog", "label": "Products & Services", "sort_order": 30},
+    {"key": "settings", "label": "Settings", "sort_order": 90},
+    {"key": "other", "label": "Other", "sort_order": 100},
+)
+SYSTEM_TAB_LABELS = {str(tab["key"]): str(tab["label"]) for tab in SYSTEM_SIDEBAR_TABS}
+
+
+def normalize_sidebar_tab_key(value: str | None, *, fallback: str = "other") -> str:
+    raw = (value or fallback).strip().lower().replace("-", "_")
+    key = TAB_KEY_RE.sub("_", raw).strip("_")
+    return (key or fallback)[:100]
+
+
+def default_sidebar_tab_key(module_name: str) -> str:
+    if module_name.startswith("sales_"):
+        return "sales"
+    if module_name.startswith("finance_"):
+        return "finance"
+    if module_name.startswith("catalog_"):
+        return "catalog"
+    if module_name.startswith("custom_"):
+        return "other"
+    return "other"
 
 
 def _get_tenant_module_config(
@@ -36,7 +72,31 @@ def _get_tenant_module_config(
     )
 
 
-def build_module_schema(module: Module, config: TenantModuleConfig | None) -> ModuleSchema:
+def _custom_tab_labels(db: Session, *, tenant_id: int) -> dict[str, str]:
+    return {
+        tab.key: tab.label
+        for tab in db.query(TenantSidebarTab).filter(TenantSidebarTab.tenant_id == tenant_id).all()
+    }
+
+
+def _sidebar_tab_label(tab_key: str | None, custom_tab_labels: dict[str, str] | None = None) -> str | None:
+    if not tab_key:
+        return None
+    custom_tab_labels = custom_tab_labels or {}
+    return custom_tab_labels.get(tab_key) or SYSTEM_TAB_LABELS.get(tab_key) or tab_key.replace("_", " ").title()
+
+
+def build_module_schema(
+    module: Module,
+    config: TenantModuleConfig | None,
+    *,
+    custom_tab_labels: dict[str, str] | None = None,
+) -> ModuleSchema:
+    sidebar_tab_key = (
+        normalize_sidebar_tab_key(config.sidebar_tab_key)
+        if config and config.sidebar_tab_key
+        else default_sidebar_tab_key(module.name)
+    )
     return ModuleSchema.model_validate(
         {
             "id": module.id,
@@ -49,6 +109,9 @@ def build_module_schema(module: Module, config: TenantModuleConfig | None) -> Mo
                 if config
                 else (module.import_duplicate_mode or DuplicateMode.skip.value)
             ),
+            "sidebar_tab_key": sidebar_tab_key,
+            "sidebar_tab_label": _sidebar_tab_label(sidebar_tab_key, custom_tab_labels),
+            "display_name": config.display_name if config and config.display_name else None,
             "created_at": module.created_at,
         }
     )
@@ -62,8 +125,9 @@ def list_modules(db: Session, *, tenant_id: int) -> list[ModuleSchema]:
         .all()
     )
     config_map = {config.module_id: config for config in configs}
+    custom_tab_labels = _custom_tab_labels(db, tenant_id=tenant_id)
     return [
-        build_module_schema(module, config_map.get(module.id))
+        build_module_schema(module, config_map.get(module.id), custom_tab_labels=custom_tab_labels)
         for module in modules
         if _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id)
     ]
@@ -94,7 +158,7 @@ def update_module(db: Session, module_id: int, payload: ModuleUpdateRequest, *, 
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid duplicate mode") from exc
         if isinstance(value, str):
             value = value.strip() or None
-        if field in {"is_enabled", "import_duplicate_mode"}:
+        if field in {"is_enabled", "import_duplicate_mode", "sidebar_tab_key", "display_name"}:
             if config is None:
                 config = TenantModuleConfig(
                     tenant_id=tenant_id,
@@ -104,6 +168,9 @@ def update_module(db: Session, module_id: int, payload: ModuleUpdateRequest, *, 
                 )
             if field == "is_enabled" and value is not None:
                 value = 1 if value else 0
+            if field == "sidebar_tab_key" and value is not None:
+                value = normalize_sidebar_tab_key(value)
+                _ensure_sidebar_tab_exists(db, tenant_id=tenant_id, tab_key=value)
             setattr(config, field, value)
             config_touched = True
         else:
@@ -116,7 +183,82 @@ def update_module(db: Session, module_id: int, payload: ModuleUpdateRequest, *, 
     db.refresh(module)
     if config_touched and config is not None:
         db.refresh(config)
-    return build_module_schema(module, config)
+    return build_module_schema(module, config, custom_tab_labels=_custom_tab_labels(db, tenant_id=tenant_id))
+
+
+def list_sidebar_tabs(db: Session, *, tenant_id: int) -> list[SidebarTabSchema]:
+    custom_tabs = (
+        db.query(TenantSidebarTab)
+        .filter(TenantSidebarTab.tenant_id == tenant_id)
+        .order_by(TenantSidebarTab.sort_order.asc(), TenantSidebarTab.label.asc())
+        .all()
+    )
+    system = [
+        SidebarTabSchema(id=None, key=str(tab["key"]), label=str(tab["label"]), sort_order=int(tab["sort_order"]), is_system=True)
+        for tab in SYSTEM_SIDEBAR_TABS
+    ]
+    custom = [SidebarTabSchema.model_validate({**tab.__dict__, "is_system": False}) for tab in custom_tabs]
+    return sorted(system + custom, key=lambda tab: (tab.sort_order, tab.label.lower()))
+
+
+def _ensure_sidebar_tab_exists(db: Session, *, tenant_id: int, tab_key: str) -> None:
+    if tab_key in SYSTEM_TAB_LABELS:
+        return
+    exists = (
+        db.query(TenantSidebarTab.id)
+        .filter(TenantSidebarTab.tenant_id == tenant_id, TenantSidebarTab.key == tab_key)
+        .first()
+    )
+    if not exists:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sidebar tab does not exist")
+
+
+def create_sidebar_tab(db: Session, *, tenant_id: int, payload: SidebarTabCreateRequest) -> SidebarTabSchema:
+    label = payload.label.strip()
+    if not label:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tab label is required")
+    key = normalize_sidebar_tab_key(payload.key or label)
+    if key in SYSTEM_TAB_LABELS:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Sidebar tab key is reserved")
+    tab = TenantSidebarTab(
+        tenant_id=tenant_id,
+        key=key,
+        label=label,
+        sort_order=payload.sort_order if payload.sort_order is not None else 80,
+    )
+    db.add(tab)
+    try:
+        db.commit()
+        db.refresh(tab)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Sidebar tab already exists") from exc
+    return SidebarTabSchema.model_validate({**tab.__dict__, "is_system": False})
+
+
+def update_sidebar_tab(db: Session, *, tenant_id: int, tab_key: str, payload: SidebarTabUpdateRequest) -> SidebarTabSchema:
+    key = normalize_sidebar_tab_key(tab_key)
+    if key in SYSTEM_TAB_LABELS:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="System sidebar tabs cannot be renamed")
+    tab = (
+        db.query(TenantSidebarTab)
+        .filter(TenantSidebarTab.tenant_id == tenant_id, TenantSidebarTab.key == key)
+        .first()
+    )
+    if not tab:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Sidebar tab not found")
+    data = payload.model_dump(exclude_unset=True)
+    if "label" in data and data["label"] is not None:
+        label = data["label"].strip()
+        if not label:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tab label is required")
+        tab.label = label
+    if "sort_order" in data and data["sort_order"] is not None:
+        tab.sort_order = data["sort_order"]
+    db.add(tab)
+    db.commit()
+    db.refresh(tab)
+    return SidebarTabSchema.model_validate({**tab.__dict__, "is_system": False})
 
 
 def get_module_access(db: Session, module_id: int, *, tenant_id: int) -> ModuleAccessSchema:

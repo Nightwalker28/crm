@@ -52,6 +52,7 @@ const emptyForm: CompanyForm = {
 
 export default function CompanyPage() {
   const [form, setForm] = useState<CompanyForm>(emptyForm);
+  const [initialForm, setInitialForm] = useState<CompanyForm>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
@@ -72,7 +73,7 @@ export default function CompanyPage() {
         if (cancelled) return;
 
         const data = body as CompanyResponse;
-        setForm({
+        const nextForm = {
           name: data.name ?? "",
           primary_email: data.primary_email ?? "",
           website: data.website ?? "",
@@ -84,7 +85,9 @@ export default function CompanyPage() {
             : "USD",
           billing_address: data.billing_address ?? "",
           logo_url: data.logo_url ?? "",
-        });
+        };
+        setForm(nextForm);
+        setInitialForm(nextForm);
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError instanceof Error ? loadError.message : "Failed to load company profile");
@@ -133,6 +136,7 @@ export default function CompanyPage() {
         throw new Error(body?.detail ?? `Failed with ${res.status}`);
       }
 
+      setInitialForm(form);
       toast.success("Company profile updated.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save company profile");
@@ -140,6 +144,8 @@ export default function CompanyPage() {
       setSaving(false);
     }
   }
+
+  const isDirty = JSON.stringify(form) !== JSON.stringify(initialForm);
 
   async function handleLogoUpload(file: File) {
     try {
@@ -177,6 +183,12 @@ export default function CompanyPage() {
       {error ? (
         <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
           {error}
+        </div>
+      ) : null}
+
+      {isDirty && !saving ? (
+        <div className="rounded-md border border-amber-500/20 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
+          You have unsaved changes.
         </div>
       ) : null}
 
@@ -254,7 +266,7 @@ export default function CompanyPage() {
             </FieldGroup>
 
             <div className="flex justify-end">
-              <Button onClick={handleSave} disabled={saving || !form.name.trim()}>
+              <Button onClick={handleSave} disabled={saving || !form.name.trim() || !isDirty}>
                 {saving ? "Saving..." : "Save Company"}
               </Button>
             </div>

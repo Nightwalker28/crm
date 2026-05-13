@@ -58,6 +58,21 @@ function isDuePast(dateStr?: string | null): boolean {
   }
 }
 
+function statusBorderClass(status?: string | null) {
+  switch (status) {
+    case "issued":
+      return "border-l-2 border-l-sky-400";
+    case "active":
+      return "border-l-2 border-l-emerald-400";
+    case "completed":
+      return "border-l-2 border-l-teal-600";
+    case "cancelled":
+      return "border-l-2 border-l-red-500";
+    default:
+      return "border-l-2 border-l-neutral-700";
+  }
+}
+
 export default function InsertionOrdersList({
   orders,
   isLoading,
@@ -284,7 +299,7 @@ export default function InsertionOrdersList({
             sortedOrders.map((order) => (
               <TableRow
                 key={order.id}
-                className="group cursor-pointer"
+                className={`group cursor-pointer ${statusBorderClass(order.status)}`}
                 onClick={() => onRowClick(order)}
               >
                 <TableCell

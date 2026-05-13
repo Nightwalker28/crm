@@ -195,6 +195,9 @@ class ModuleSchema(BaseModel):
     description: Optional[str] = None
     is_enabled: bool = True
     import_duplicate_mode: str = "skip"
+    sidebar_tab_key: str | None = None
+    sidebar_tab_label: str | None = None
+    display_name: str | None = None
     created_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
@@ -206,6 +209,29 @@ class ModuleUpdateRequest(BaseModel):
     description: str | None = None
     is_enabled: bool | None = None
     import_duplicate_mode: str | None = None
+    sidebar_tab_key: str | None = None
+    display_name: str | None = None
+
+
+class SidebarTabSchema(BaseModel):
+    id: int | None = None
+    key: str
+    label: str
+    sort_order: int = 0
+    is_system: bool = False
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SidebarTabCreateRequest(BaseModel):
+    label: str
+    key: str | None = None
+    sort_order: int | None = None
+
+
+class SidebarTabUpdateRequest(BaseModel):
+    label: str | None = None
+    sort_order: int | None = None
 
 
 class ModuleAccessDepartmentOption(BaseModel):

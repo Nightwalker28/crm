@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { ExternalLink, Plus } from "lucide-react";
+import { CheckCircle2, ExternalLink, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { PosInvoiceDialog } from "@/components/finance/pos/PosInvoiceDialog";
@@ -84,6 +84,35 @@ export default function PosInvoicesPage() {
       setDialogOpen(true);
     } catch (loadError) {
       toast.error(loadError instanceof Error ? loadError.message : "Failed to load POS invoice.");
+    }
+  }
+
+  async function markPaid(invoiceId: number) {
+    try {
+      const detail = await fetchPosInvoice(invoiceId);
+      await updateInvoice(detail.id, {
+        customer_name: detail.customer_name,
+        customer_email: detail.customer_email ?? undefined,
+        customer_address: detail.customer_address ?? undefined,
+        invoice_number: detail.invoice_number,
+        issue_date: detail.issue_date ?? undefined,
+        due_date: detail.due_date ?? undefined,
+        status: detail.status === "void" ? "void" : "paid",
+        payment_status: "paid",
+        payment_method: detail.payment_method ?? undefined,
+        template_id: detail.template_id,
+        accent_color: detail.accent_color,
+        currency: detail.currency,
+        discount_amount: detail.discount_amount,
+        tax_rate: detail.tax_rate,
+        amount_paid: detail.total_amount,
+        payment_terms: detail.payment_terms ?? undefined,
+        notes: detail.notes ?? undefined,
+        lines: detail.lines ?? [],
+      });
+      toast.success("POS invoice marked as paid.");
+    } catch (markError) {
+      toast.error(markError instanceof Error ? markError.message : "Failed to mark invoice as paid.");
     }
   }
 
@@ -184,11 +213,18 @@ export default function PosInvoicesPage() {
                   <TableCell><span className="text-sm capitalize text-neutral-400">{invoice.template_id}</span></TableCell>
                   <TableCell><span className="text-sm text-neutral-500">{invoice.updated_at ? formatDateTime(invoice.updated_at, { hour: "numeric", minute: "2-digit" }) : "—"}</span></TableCell>
                   <TableCell className="text-right">
-                    <Button asChild variant="ghost" size="icon-sm" onClick={(event) => event.stopPropagation()}>
-                      <Link href={`/dashboard/finance/pos/${invoice.id}/print`} title="Print invoice">
-                        <ExternalLink />
-                      </Link>
-                    </Button>
+                    <div className="flex justify-end gap-1" onClick={(event) => event.stopPropagation()}>
+                      {invoice.payment_status !== "paid" ? (
+                        <Button type="button" variant="ghost" size="icon-sm" onClick={() => void markPaid(invoice.id)} title="Mark as paid">
+                          <CheckCircle2 />
+                        </Button>
+                      ) : null}
+                      <Button asChild variant="ghost" size="icon-sm">
+                        <Link href={`/dashboard/finance/pos/${invoice.id}/print`} title="Print invoice">
+                          <ExternalLink />
+                        </Link>
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               );

@@ -12,6 +12,9 @@ export type AccessibleModule = {
   base_route?: string | null;
   description?: string | null;
   is_enabled: boolean;
+  sidebar_tab_key?: string | null;
+  sidebar_tab_label?: string | null;
+  display_name?: string | null;
 };
 
 function readCachedModules(): AccessibleModule[] | null {

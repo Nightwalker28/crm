@@ -1,6 +1,6 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
@@ -124,7 +124,7 @@ async function createInsertionOrder(payload: InsertionOrderPayload): Promise<Ins
   return res.json();
 }
 
-async function updateInsertionOrder(id: number, payload: InsertionOrderPayload): Promise<InsertionOrder> {
+export async function updateInsertionOrder(id: number, payload: InsertionOrderPayload): Promise<InsertionOrder> {
   const res = await apiFetch(`/finance/insertion-orders/${id}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -136,6 +136,15 @@ async function updateInsertionOrder(id: number, payload: InsertionOrderPayload):
     throw new Error(toApiErrorMessage(body, `Failed with ${res.status}`));
   }
 
+  return res.json();
+}
+
+async function fetchInsertionOrder(id: number | string): Promise<InsertionOrder> {
+  const res = await apiFetch(`/finance/insertion-orders/${id}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(toApiErrorMessage(body, `Failed with ${res.status}`));
+  }
   return res.json();
 }
 
@@ -227,4 +236,13 @@ export function useInsertionOrders(
     isSaving: createMutation.isPending || updateMutation.isPending,
     isDeleting: deleteMutation.isPending,
   };
+}
+
+export function useInsertionOrder(id: number | string) {
+  return useQuery({
+    queryKey: ["insertion-order", String(id)],
+    queryFn: () => fetchInsertionOrder(id),
+    enabled: Boolean(id),
+    refetchOnWindowFocus: false,
+  });
 }

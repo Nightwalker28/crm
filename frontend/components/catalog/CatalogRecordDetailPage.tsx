@@ -64,13 +64,13 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
   }
 
   async function handleDelete() {
-    if (!window.confirm(`Move this ${noun.toLowerCase()} to the recycle bin?`)) {
+    if (!window.confirm(`Delete this ${noun.toLowerCase()}?`)) {
       return;
     }
 
     try {
       await deleteRecord(recordId);
-      toast.success(`${noun} moved to recycle bin.`);
+      toast.success(`${noun} deleted.`);
       router.push(listHref);
     } catch (deleteError) {
       toast.error(deleteError instanceof Error ? deleteError.message : `Failed to delete ${noun.toLowerCase()}.`);
