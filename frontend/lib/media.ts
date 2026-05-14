@@ -1,12 +1,4 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-const API_ORIGIN = (() => {
-  if (!API_BASE) return "";
-  try {
-    return new URL(API_BASE).origin;
-  } catch {
-    return "";
-  }
-})();
+import { apiOrigin } from "./runtime-config";
 
 export function resolveMediaUrl(value?: string | null) {
   if (!value) return "";
@@ -21,6 +13,7 @@ export function resolveMediaUrl(value?: string | null) {
     // Relative media paths are allowed and resolved against the API origin when configured.
   }
 
-  if (!API_ORIGIN) return cleaned;
-  return `${API_ORIGIN}${cleaned.startsWith("/") ? cleaned : `/${cleaned}`}`;
+  const origin = apiOrigin();
+  if (!origin) return cleaned;
+  return `${origin}${cleaned.startsWith("/") ? cleaned : `/${cleaned}`}`;
 }

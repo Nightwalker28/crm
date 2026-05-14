@@ -1,4 +1,5 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+import { apiUrl } from "./runtime-config";
+
 const REFRESH_PATH = "/auth/refresh";
 const MAX_TRANSIENT_RETRIES = 2;
 const RETRY_BACKOFF_MS = 300;
@@ -51,7 +52,7 @@ function fetchWithGetDeduplication(input: string, init: RequestInit) {
 // This function attempts to refresh the session. On success, it dispatches
 // a global event that a session provider can listen for to reset its timers.
 async function refreshOnce(): Promise<boolean> {
-  const res = await fetchWithTransientRetry(`${API_BASE}${REFRESH_PATH}`, {
+  const res = await fetchWithTransientRetry(apiUrl(REFRESH_PATH), {
     method: "POST",
     credentials: "include",
   });
@@ -69,7 +70,7 @@ async function refreshOnce(): Promise<boolean> {
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
   const doRequest = () =>
-    fetchWithGetDeduplication(`${API_BASE}${path}`, {
+    fetchWithGetDeduplication(apiUrl(path), {
       ...init,
       credentials: "include",
       headers: {

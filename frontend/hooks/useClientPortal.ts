@@ -3,8 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
+import { apiUrl } from "@/lib/runtime-config";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
 export const CLIENT_TOKEN_STORAGE_KEY = "lynk:client-access-token";
 
 export type CustomerGroup = {
@@ -182,7 +182,7 @@ async function publicJson<T>(path: string, init: RequestInit = {}, fallback = "R
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
   const token = typeof window !== "undefined" ? window.localStorage.getItem(CLIENT_TOKEN_STORAGE_KEY) : null;
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(apiUrl(path), {
     ...init,
     credentials: "include",
     headers,
@@ -377,5 +377,5 @@ export async function recordClientPageAction(token: string, action: "accept" | "
 }
 
 export function publicClientPageDocumentUrl(token: string, documentId: number) {
-  return `${API_BASE}/client-pages/${token}/documents/${documentId}/download`;
+  return apiUrl(`/client-pages/${token}/documents/${documentId}/download`);
 }

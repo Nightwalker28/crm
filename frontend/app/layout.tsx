@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import "./globals.css";
 import ClientLayout from "./ClientLayout";
 import { Toaster } from "@/components/ui/sonner";
@@ -17,6 +18,7 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark" suppressHydrationWarning={true}>
       <head>
+        <Script src="/runtime-config.js" strategy="beforeInteractive" />
         <link
           href="https://api.fontshare.com/v2/css?f[]=satoshi@1,2&display=swap"
           rel="stylesheet"

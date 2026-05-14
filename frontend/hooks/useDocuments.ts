@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
+import { apiUrl } from "@/lib/runtime-config";
 
 export type DocumentLink = {
   id: number;
@@ -57,8 +58,6 @@ export type DocumentUploadPayload = {
   storage_provider?: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
-
 async function readJsonSafely(res: Response) {
   try {
     return await res.json();
@@ -68,7 +67,7 @@ async function readJsonSafely(res: Response) {
 }
 
 export function documentDownloadUrl(documentId: number) {
-  return `${API_BASE}/documents/${documentId}/download`;
+  return apiUrl(`/documents/${documentId}/download`);
 }
 
 export async function fetchDocuments(params: {

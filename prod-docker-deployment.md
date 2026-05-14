@@ -72,7 +72,7 @@ Do not use `down -v` unless you intentionally want to delete the Docker upload v
 Public URL settings:
 
 - `FRONTEND_ORIGIN`: public frontend origin used by backend-generated links and CORS, for example `https://crm.example.com`.
-- `NEXT_PUBLIC_API_BASE_URL`: public API origin used by browser-side frontend requests, for example `https://api.crm.example.com`.
+- `NEXT_PUBLIC_API_BASE_URL`: public API base used by browser-side frontend requests, for example `https://api.crm.example.com/api/v1`. The frontend serves this through runtime config, so changing it requires a frontend container restart but not an image rebuild.
 
 Postgres:
 
@@ -204,13 +204,13 @@ Put Nginx, Caddy, or another reverse proxy in front of them for TLS.
 Typical routing:
 
 - `https://crm.example.com` -> `127.0.0.1:3000`
-- `https://api.crm.example.com` -> `127.0.0.1:8000`
+- `https://api.crm.example.com/api/v1` -> `127.0.0.1:8000/api/v1`
 
 With this split, set:
 
 ```env
 FRONTEND_ORIGIN=https://crm.example.com
-NEXT_PUBLIC_API_BASE_URL=https://api.crm.example.com
+NEXT_PUBLIC_API_BASE_URL=https://api.crm.example.com/api/v1
 COOKIE_SECURE=true
 COOKIE_SAMESITE=lax
 ```
