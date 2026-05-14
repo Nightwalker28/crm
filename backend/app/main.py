@@ -47,7 +47,8 @@ async def attach_tenant_context(request: Request, call_next):
     db = SessionLocal()
     try:
         request.state.cloud_mode = is_cloud_mode_enabled()
-        request.state.tenant = to_request_tenant_context(resolve_request_tenant(db, request))
+        tenant = resolve_request_tenant(db, request)
+        request.state.tenant = to_request_tenant_context(tenant) if tenant else None
     except Exception as exc:
         status_code = getattr(exc, "status_code", 500)
         detail = getattr(exc, "detail", "Failed to resolve tenant")

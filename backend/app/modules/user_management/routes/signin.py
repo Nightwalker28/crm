@@ -3,6 +3,7 @@ import urllib.parse
 from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -13,8 +14,8 @@ from app.core.security import (
     clear_failed_refresh_attempts,
     record_failed_refresh_attempt,
 )
-from app.core.tenancy import get_frontend_origin_for_request, is_cloud_mode_enabled
-from app.modules.user_management.models import RefreshToken, User, UserStatus
+from app.core.tenancy import get_frontend_origin_for_request, is_auth_tenant_resolution_enabled, is_cloud_mode_enabled
+from app.modules.user_management.models import RefreshToken, Tenant, User, UserStatus
 from app.modules.mail.services.mail_services import (
     decode_mail_oauth_state,
     handle_google_mail_callback,
@@ -49,12 +50,40 @@ def _validate_request_tenant(request: Request, payload: dict) -> int | None:
     tenant = getattr(request.state, "tenant", None)
     token_tenant_id = payload.get("tenant_id")
     if is_cloud_mode_enabled():
-        if not tenant or token_tenant_id is None or int(token_tenant_id) != int(tenant.id):
+        if token_tenant_id is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session tenant mismatch",
+            )
+        if tenant and int(token_tenant_id) != int(tenant.id):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Session tenant mismatch",
+            )
+        if not tenant and not is_auth_tenant_resolution_enabled():
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session tenant mismatch",
             )
     return token_tenant_id
+
+
+def _resolve_manual_login_tenant_id(db: Session, *, email: str, request_tenant) -> int | None:
+    if request_tenant:
+        return int(request_tenant.id)
+    if not (is_cloud_mode_enabled() and is_auth_tenant_resolution_enabled()):
+        return None
+
+    user = (
+        db.query(User)
+        .join(Tenant, Tenant.id == User.tenant_id)
+        .filter(
+            func.lower(User.email) == email.strip().lower(),
+            Tenant.is_active == 1,
+        )
+        .first()
+    )
+    return int(user.tenant_id) if user else None
 
 
 def _set_session_cookies(
@@ -93,12 +122,13 @@ def manual_login(
     db: Session = Depends(get_db),
 ):
     tenant = getattr(request.state, "tenant", None)
-    if not tenant:
+    tenant_id = _resolve_manual_login_tenant_id(db, email=payload.email, request_tenant=tenant)
+    if tenant_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
 
     user = authenticate_manual_user(
         db,
-        tenant_id=tenant.id,
+        tenant_id=tenant_id,
         email=payload.email,
         password=payload.password,
         frontend_origin=get_frontend_origin_for_request(request),

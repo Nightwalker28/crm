@@ -1,6 +1,12 @@
 import { apiUrl } from "./runtime-config";
 
 const REFRESH_PATH = "/auth/refresh";
+const AUTH_PUBLIC_PATHS = new Set([
+  "/auth/google",
+  "/auth/login",
+  "/auth/password-policy",
+  "/auth/setup-password",
+]);
 const MAX_TRANSIENT_RETRIES = 2;
 const RETRY_BACKOFF_MS = 300;
 const inFlightGetRequests = new Map<string, Promise<Response>>();
@@ -69,6 +75,7 @@ async function refreshOnce(): Promise<boolean> {
 }
 
 export async function apiFetch(path: string, init: RequestInit = {}) {
+  const managesSession = !AUTH_PUBLIC_PATHS.has(path) && path !== REFRESH_PATH;
   const doRequest = () =>
     fetchWithGetDeduplication(apiUrl(path), {
       ...init,
@@ -81,14 +88,14 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
 
   let res = await doRequest();
 
-  if (res.status === 401 && path !== REFRESH_PATH) {
+  if (res.status === 401 && managesSession) {
     const refreshed = await refreshOnce();
     if (refreshed) {
       res = await doRequest();
     }
   }
 
-  if (res.status === 401 && typeof window !== "undefined") {
+  if (res.status === 401 && managesSession && typeof window !== "undefined") {
     window.location.href = "/auth/login";
     throw new Error("Session expired");
   }

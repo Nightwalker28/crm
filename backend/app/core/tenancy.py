@@ -67,6 +67,10 @@ def is_cloud_mode_enabled() -> bool:
     return get_verified_deployment_license() is not None
 
 
+def is_auth_tenant_resolution_enabled() -> bool:
+    return settings.TENANT_RESOLUTION_MODE == "auth"
+
+
 def normalize_hostname(host: str | None) -> str | None:
     if not host:
         return None
@@ -163,9 +167,11 @@ def to_request_tenant_context(tenant: Tenant) -> RequestTenantContext:
     )
 
 
-def resolve_request_tenant(db: Session, request: Request) -> Tenant:
+def resolve_request_tenant(db: Session, request: Request) -> Tenant | None:
     if not is_cloud_mode_enabled():
         return get_or_create_single_tenant(db)
+    if is_auth_tenant_resolution_enabled():
+        return None
 
     hostname = normalize_hostname(request.headers.get("host"))
     if not hostname:

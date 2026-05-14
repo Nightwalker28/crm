@@ -116,6 +116,7 @@ class Settings:
     DEPLOYMENT_LICENSE_PUBLIC_KEY: str | None = os.getenv("DEPLOYMENT_LICENSE_PUBLIC_KEY")
     DEPLOYMENT_LICENSE_ALGORITHM: str = os.getenv("DEPLOYMENT_LICENSE_ALGORITHM", "RS256")
     DEPLOYMENT_LICENSE_CACHE_TTL_SECONDS: int = int(os.getenv("DEPLOYMENT_LICENSE_CACHE_TTL_SECONDS", str(24 * 60 * 60)))
+    TENANT_RESOLUTION_MODE: str = os.getenv("TENANT_RESOLUTION_MODE", "host").strip().lower()
     SINGLE_TENANT_SLUG: str = os.getenv("SINGLE_TENANT_SLUG", "default")
     SINGLE_TENANT_NAME: str = os.getenv("SINGLE_TENANT_NAME", "Default Tenant")
     GOOGLE_OAUTH_STATE_EXPIRE_MINUTES: int = int(
@@ -205,3 +206,5 @@ def validate_startup_settings() -> None:
         raise RuntimeError("DATABASE_URL must be set")
     if (not settings.DEBUG or settings.ALLOWED_DOMAINS) and not settings.JWT_SECRET:
         raise RuntimeError("JWT_SECRET must be set outside purely local debug mode")
+    if settings.TENANT_RESOLUTION_MODE not in {"host", "auth"}:
+        raise RuntimeError("TENANT_RESOLUTION_MODE must be either 'host' or 'auth'")

@@ -24,6 +24,7 @@ from sqlalchemy import delete
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.passwords import hash_password
 
 # User / platform models
 from app.modules.user_management.models import (
@@ -79,6 +80,9 @@ from app.modules.calendar.models import (
 
 DEMO_TENANT_SLUG = "demo-crm"
 DEMO_DOMAIN = "demo.lynk.local"
+DEMO_EMAIL_DOMAIN = "demo.lynk.dev"
+DEMO_USER_PASSWORD = "Demo@1234567"
+DEMO_CLIENT_PASSWORD = "Client@123456"
 NOW = datetime.now(timezone.utc)
 
 
@@ -175,6 +179,10 @@ def slugify(value: str) -> str:
 
 def demo_hash(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def demo_email(local_part: str) -> str:
+    return f"{local_part}@{DEMO_EMAIL_DOMAIN}"
 
 
 def get_one(db: Session, model, **filters):
@@ -406,14 +414,14 @@ def seed_roles_departments_teams(
 
 def seed_users(db: Session, tenant: Tenant, roles, departments, teams) -> dict[str, User]:
     user_specs = [
-        ("Amaan", "Perera", "amaan.admin@demo.lynk.local", "Super Admin", "Leadership", "Executive Team", "Founder / Admin"),
-        ("Nadine", "Fernando", "nadine.ops@demo.lynk.local", "Admin", "Operations", "Customer Success", "Operations Manager"),
-        ("Ravi", "Silva", "ravi.sales@demo.lynk.local", "Sales Manager", "Sales", "Enterprise Sales", "Head of Sales"),
-        ("Ishara", "Jayawardena", "ishara.rep@demo.lynk.local", "Sales Rep", "Sales", "Inbound Sales", "Sales Executive"),
-        ("Kavindu", "Dias", "kavindu.rep@demo.lynk.local", "Sales Rep", "Sales", "Enterprise Sales", "Account Executive"),
-        ("Maya", "Senanayake", "maya.finance@demo.lynk.local", "Finance", "Finance", "Finance Ops", "Finance Officer"),
-        ("Tharindu", "Mendis", "tharindu.support@demo.lynk.local", "Support", "Operations", "Customer Success", "Support Specialist"),
-        ("Guest", "Viewer", "viewer@demo.lynk.local", "Viewer", "Operations", "Customer Success", "Read Only User"),
+        ("Amaan", "Perera", demo_email("amaan.admin"), "Super Admin", "Leadership", "Executive Team", "Founder / Admin"),
+        ("Nadine", "Fernando", demo_email("nadine.ops"), "Admin", "Operations", "Customer Success", "Operations Manager"),
+        ("Ravi", "Silva", demo_email("ravi.sales"), "Sales Manager", "Sales", "Enterprise Sales", "Head of Sales"),
+        ("Ishara", "Jayawardena", demo_email("ishara.rep"), "Sales Rep", "Sales", "Inbound Sales", "Sales Executive"),
+        ("Kavindu", "Dias", demo_email("kavindu.rep"), "Sales Rep", "Sales", "Enterprise Sales", "Account Executive"),
+        ("Maya", "Senanayake", demo_email("maya.finance"), "Finance", "Finance", "Finance Ops", "Finance Officer"),
+        ("Tharindu", "Mendis", demo_email("tharindu.support"), "Support", "Operations", "Customer Success", "Support Specialist"),
+        ("Guest", "Viewer", demo_email("viewer"), "Viewer", "Operations", "Customer Success", "Read Only User"),
     ]
 
     users: dict[str, User] = {}
@@ -427,7 +435,7 @@ def seed_users(db: Session, tenant: Tenant, roles, departments, teams) -> dict[s
             defaults={
                 "first_name": first,
                 "last_name": last,
-                "password_hash": "pbkdf2_sha256$310000$jxpN6x6JODqO9p/x5+fO2w==$9XTRfiiH59ucRPvvBuiHPd3eruSevFQOufBXWflQzxQ=",
+                "password_hash": hash_password(DEMO_USER_PASSWORD),
                 "phone_number": "+94770000000",
                 "job_title": title,
                 "timezone": "Asia/Colombo",
@@ -453,14 +461,14 @@ def seed_users(db: Session, tenant: Tenant, roles, departments, teams) -> dict[s
     db.commit()
 
     # Company profile after users exist
-    admin = users["amaan.admin@demo.lynk.local"]
+    admin = users[demo_email("amaan.admin")]
     profile = get_or_create(
         db,
         CompanyProfile,
         tenant_id=tenant.id,
         defaults={
             "name": "Lynk Demo Pvt Ltd",
-            "primary_email": "hello@demo.lynk.local",
+            "primary_email": demo_email("hello"),
             "website": "https://demo.lynk.local",
             "primary_phone": "+94112345678",
             "industry": "CRM / B2B Services",
@@ -541,9 +549,9 @@ def seed_customer_groups(db: Session, tenant: Tenant) -> dict[str, CustomerGroup
 
 def seed_sales_data(db: Session, tenant: Tenant, users, groups):
     sales_users = [
-        users["ravi.sales@demo.lynk.local"],
-        users["ishara.rep@demo.lynk.local"],
-        users["kavindu.rep@demo.lynk.local"],
+        users[demo_email("ravi.sales")],
+        users[demo_email("ishara.rep")],
+        users[demo_email("kavindu.rep")],
     ]
 
     org_specs = [
@@ -670,8 +678,8 @@ def seed_sales_data(db: Session, tenant: Tenant, users, groups):
 
 
 def seed_catalog(db: Session, tenant: Tenant, users):
-    admin = users["amaan.admin@demo.lynk.local"]
-    finance = users["maya.finance@demo.lynk.local"]
+    admin = users[demo_email("amaan.admin")]
+    finance = users[demo_email("maya.finance")]
 
     product_specs = [
         ("CRM Starter License", "CRM-ST-001", "Starter CRM user license", "LKR", Decimal("15000"), "in_stock", 120),
@@ -739,8 +747,8 @@ def seed_catalog(db: Session, tenant: Tenant, users):
 
 
 def seed_finance(db: Session, tenant: Tenant, users, contacts, organizations, products, services, modules):
-    finance_user = users["maya.finance@demo.lynk.local"]
-    sales_user = users["ravi.sales@demo.lynk.local"]
+    finance_user = users[demo_email("maya.finance")]
+    sales_user = users[demo_email("ravi.sales")]
 
     invoices = []
 
@@ -859,7 +867,7 @@ def seed_finance(db: Session, tenant: Tenant, users, contacts, organizations, pr
 
 
 def seed_client_portal(db: Session, tenant: Tenant, users, contacts, organizations, products, services):
-    admin = users["amaan.admin@demo.lynk.local"]
+    admin = users[demo_email("amaan.admin")]
 
     accounts = []
     for idx, contact in enumerate(contacts[:5]):
@@ -871,7 +879,7 @@ def seed_client_portal(db: Session, tenant: Tenant, users, contacts, organizatio
             defaults={
                 "organization_id": None,
                 "email": contact.primary_email,
-                "password_hash": demo_hash("Client@123456"),
+                "password_hash": hash_password(DEMO_CLIENT_PASSWORD),
                 "status": "active" if idx % 2 == 0 else "pending",
                 "setup_token_hash": demo_hash(f"setup-{contact.primary_email}"),
                 "setup_token_expires_at": NOW + timedelta(days=7),
@@ -893,7 +901,7 @@ def seed_client_portal(db: Session, tenant: Tenant, users, contacts, organizatio
                 defaults={
                     "contact_id": None,
                     "email": email,
-                    "password_hash": demo_hash("Client@123456"),
+                    "password_hash": hash_password(DEMO_CLIENT_PASSWORD),
                     "status": "active",
                     "setup_token_hash": demo_hash(f"setup-{email}"),
                     "setup_token_expires_at": NOW + timedelta(days=10),
@@ -980,11 +988,11 @@ def seed_client_portal(db: Session, tenant: Tenant, users, contacts, organizatio
 
 
 def seed_tasks_and_calendar(db: Session, tenant: Tenant, users, teams, contacts, opportunities, invoices):
-    admin = users["amaan.admin@demo.lynk.local"]
-    sales_manager = users["ravi.sales@demo.lynk.local"]
-    sales_rep = users["ishara.rep@demo.lynk.local"]
-    finance = users["maya.finance@demo.lynk.local"]
-    support = users["tharindu.support@demo.lynk.local"]
+    admin = users[demo_email("amaan.admin")]
+    sales_manager = users[demo_email("ravi.sales")]
+    sales_rep = users[demo_email("ishara.rep")]
+    finance = users[demo_email("maya.finance")]
+    support = users[demo_email("tharindu.support")]
 
     task_specs = [
         ("Follow up with Ceylon Retail", "Call client and confirm next demo date.", "todo", "high", "sales_opportunities", opportunities[0].opportunity_id, "Ceylon Retail opportunity", sales_manager, sales_rep),
@@ -1154,15 +1162,14 @@ def print_summary(
     print(f"Invoices:      {len(invoices)}")
     print(f"Tasks:         {len(tasks)}")
     print("\nDemo login-style users:")
-    print("  amaan.admin@demo.lynk.local")
-    print("  ravi.sales@demo.lynk.local")
-    print("  maya.finance@demo.lynk.local")
-    print("  viewer@demo.lynk.local")
+    print(f"  {demo_email('amaan.admin')}")
+    print(f"  {demo_email('ravi.sales')}")
+    print(f"  {demo_email('maya.finance')}")
+    print(f"  {demo_email('viewer')}")
     print("\nDemo password hash source value:")
-    print("  Demo@123456")
-    print("\nNote: if your auth expects a specific password hash format, update the")
-    print("password_hash generation to match your auth service before using these")
-    print("accounts for real login testing.")
+    print(f"  {DEMO_USER_PASSWORD}")
+    print("\nClient portal demo password:")
+    print(f"  {DEMO_CLIENT_PASSWORD}")
 
 
 def main():

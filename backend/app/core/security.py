@@ -11,7 +11,7 @@ from app.core.access_control import (
 from app.core.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.tenancy import is_cloud_mode_enabled
+from app.core.tenancy import is_auth_tenant_resolution_enabled, is_cloud_mode_enabled, to_request_tenant_context
 from app.modules.user_management.models import User, UserStatus, RefreshToken
 from app.modules.user_management.services.auth import decode_token, create_access_token, rotate_refresh_token
 
@@ -67,15 +67,20 @@ def _validate_request_tenant(request: Request, payload: dict) -> int:
     token_tenant_id = payload.get("tenant_id")
 
     if is_cloud_mode_enabled():
-        if not request_tenant or token_tenant_id is None:
+        if token_tenant_id is None:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Tenant context missing",
             )
-        if int(token_tenant_id) != int(request_tenant.id):
+        if request_tenant and int(token_tenant_id) != int(request_tenant.id):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session tenant mismatch",
+            )
+        if not request_tenant and not is_auth_tenant_resolution_enabled():
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Tenant context missing",
             )
 
     return user_id
@@ -99,10 +104,18 @@ def _attach_access_token_claims(user: User, payload: dict) -> User:
 def _load_user_with_team(db: Session, user_id: int) -> User | None:
     return (
         db.query(User)
-        .options(joinedload(User.team), joinedload(User.role))
+        .options(joinedload(User.team), joinedload(User.role), joinedload(User.tenant))
         .filter(User.id == user_id)
         .first()
     )
+
+
+def _attach_request_tenant_from_user(request: Request, user: User) -> None:
+    if getattr(request.state, "tenant", None) is not None:
+        return
+    tenant = getattr(user, "tenant", None)
+    if tenant and tenant.is_active:
+        request.state.tenant = to_request_tenant_context(tenant)
 
 
 def _attach_department_context(user: User) -> User:
@@ -155,6 +168,7 @@ def get_current_user(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Session tenant mismatch",
                 )
+            _attach_request_tenant_from_user(request, user)
             request.state._current_user = _attach_department_context(
                 _attach_access_token_claims(user, payload)
             )
@@ -209,6 +223,7 @@ def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Session tenant mismatch",
             )
+        _attach_request_tenant_from_user(request, user)
 
         new_access_token = create_access_token(user)
         decoded_new_access_token = decode_token(new_access_token, expected_type="access")
