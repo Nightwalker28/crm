@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, useSyncExternalStore, type ComponentType } from "react";
+import { useMemo, useState, useSyncExternalStore, type ComponentType } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -32,6 +32,8 @@ import {
 
 const SIDEBAR_COLLAPSE_KEY = "lynk:sidebar-collapsed";
 const SIDEBAR_COLLAPSE_EVENT = "lynk:sidebar-collapsed-change";
+const HIDDEN_SIDEBAR_MODULES = new Set(["dashboard", "sales", "settings", "users", "modules", "whatsapp"]);
+const HIDDEN_SIDEBAR_TAB_KEY = "none";
 
 type SidebarGroupConfig = {
   key: string;
@@ -108,14 +110,17 @@ function buildOperationalGroups(modules: AccessibleModule[]) {
     return group;
   }
 
-  for (const module of modules) {
-    if (!module.base_route) continue;
-    if (["tasks", "calendar", "mail", "documents"].includes(module.name)) continue;
+  for (const crmModule of modules) {
+    if (!crmModule.base_route) continue;
+    if (["tasks", "calendar", "mail", "documents"].includes(crmModule.name)) continue;
+    if (HIDDEN_SIDEBAR_MODULES.has(crmModule.name)) continue;
+    if (crmModule.sidebar_tab_key === HIDDEN_SIDEBAR_TAB_KEY) continue;
+    if (crmModule.base_route === DASHBOARD_ROUTES.home || crmModule.base_route.startsWith(SETTINGS_ROUTES.root)) continue;
 
-    const href = getCanonicalHref(module);
+    const href = getCanonicalHref(crmModule);
     if (!href) continue;
-    const group = ensureGroup(module);
-    group.items.push({ href, label: moduleLabel(module) });
+    const group = ensureGroup(crmModule);
+    group.items.push({ href, label: moduleLabel(crmModule) });
   }
 
   return Array.from(groupMap.values())
@@ -169,12 +174,9 @@ export default function Sidebar() {
     if (isAdmin) next.push(settingsGroup());
     return next;
   }, [isAdmin, modules]);
-  const [openGroup, setOpenGroup] = useState("");
-
-  useEffect(() => {
-    const active = activeGroupKey(pathname, groups);
-    if (active) setOpenGroup(active);
-  }, [groups, pathname]);
+  const activeGroup = useMemo(() => activeGroupKey(pathname, groups), [groups, pathname]);
+  const [manualOpenGroup, setManualOpenGroup] = useState<{ pathname: string; key: string } | null>(null);
+  const openGroup = manualOpenGroup?.pathname === pathname ? manualOpenGroup.key : activeGroup;
 
   function toggleCollapsed() {
     const next = !collapsed;
@@ -198,7 +200,7 @@ export default function Sidebar() {
       }
     >
       <div className="flex h-full min-h-0 flex-col overflow-hidden px-2 py-3">
-        <div className="mb-4 flex items-center justify-between gap-2 px-1">
+        <div className={`mb-4 flex items-center gap-2 px-1 ${collapsed ? "flex-col justify-center" : "justify-between"}`}>
           <Link href={DASHBOARD_ROUTES.home} className="flex min-w-0 items-center gap-2 rounded-md focus:outline-none focus:ring-2 focus:ring-white/20">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5">
               <span className="font-lynk text-xl leading-none text-white">L</span>
@@ -225,7 +227,7 @@ export default function Sidebar() {
                   icon={group.icon}
                   collapsed={collapsed}
                   open={!collapsed && openGroup === group.key}
-                  onOpenChange={(nextOpen) => setOpenGroup(nextOpen ? group.key : "")}
+                  onOpenChange={(nextOpen) => setManualOpenGroup({ pathname, key: nextOpen ? group.key : "" })}
                 >
                   {group.items.map((item) => (
                     <SidebarMenuItemChild key={item.href} href={item.href} collapsed={collapsed}>

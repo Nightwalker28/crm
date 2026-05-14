@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
@@ -35,15 +35,12 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
   refetchOnWindowFocus,
   errorMessage,
 }: UsePagedListOptions<T, Response>) {
-  const [page, setPage] = useState(initialPage);
   const [pageSize, setPageSize] = useState(initialPageSize);
   const deferredFilters = useDeferredValue(filters);
   const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
+  const [pageState, setPageState] = useState({ page: initialPage, filtersKey });
+  const page = pageState.filtersKey === filtersKey ? pageState.page : 1;
   const visibleColumnsKey = visibleColumns.join(",");
-
-  useEffect(() => {
-    setPage(1);
-  }, [filtersKey]);
 
   const query = useQuery<Response>({
     queryKey: [...queryKey, page, pageSize, deferredFilters, visibleColumnsKey],
@@ -54,11 +51,14 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
 
   const data = query.data;
   const { refetch } = query;
-  const goToPage = useCallback((nextPage: number) => setPage(Math.max(1, nextPage)), []);
+  const goToPage = useCallback(
+    (nextPage: number) => setPageState({ page: Math.max(1, nextPage), filtersKey }),
+    [filtersKey],
+  );
   const onPageSizeChange = useCallback((nextPageSize: number) => {
-    setPage(1);
+    setPageState({ page: 1, filtersKey });
     setPageSize(Math.max(1, nextPageSize));
-  }, []);
+  }, [filtersKey]);
   const refresh = useCallback(() => refetch(), [refetch]);
 
   return {

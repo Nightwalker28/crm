@@ -134,11 +134,10 @@ export function SidebarMenuItemCollapsible({
   const isOpen = open ?? internalOpen;
 
   React.useEffect(() => {
-    if (hasActiveChild) {
+    if (hasActiveChild && open === undefined) {
       setInternalOpen(true);
-      onOpenChange?.(true);
     }
-  }, [hasActiveChild, onOpenChange]);
+  }, [hasActiveChild, open]);
 
   const activeSelf = hasActiveChild;
   const setOpen = onOpenChange ?? setInternalOpen;

@@ -33,6 +33,13 @@ const FIELD_TYPES: CustomFieldType[] = [
   "single_select",
   "multi_select",
 ];
+const HIDDEN_SIDEBAR_TAB: SidebarTab = {
+  id: null,
+  key: "none",
+  label: "None",
+  sort_order: -1,
+  is_system: true,
+};
 
 const FIELD_TYPE_BADGES: Record<CustomFieldType, string> = {
   text: "T",
@@ -227,6 +234,7 @@ function ModuleEditor({
   const [description, setDescription] = useState(module.description ?? "");
   const [sidebarTabKey, setSidebarTabKey] = useState(module.sidebar_tab_key ?? "other");
   const [draft, setDraft] = useState<FieldDraft>(emptyFieldDraft);
+  const placementOptions = useMemo(() => [HIDDEN_SIDEBAR_TAB, ...sidebarTabs], [sidebarTabs]);
   const orderedFields = useMemo(
     () => [...module.fields].sort((a, b) => a.sort_order - b.sort_order || a.id - b.id),
     [module.fields],
@@ -263,7 +271,7 @@ function ModuleEditor({
             <SelectValue placeholder="Module group" />
           </SelectTrigger>
           <SelectContent>
-            {sidebarTabs.map((tab) => (
+            {placementOptions.map((tab) => (
               <SelectItem key={tab.key} value={tab.key}>
                 {tab.label}
               </SelectItem>
@@ -455,6 +463,7 @@ export default function ModuleBuilderPage() {
   const [description, setDescription] = useState("");
   const [sidebarTabKey, setSidebarTabKey] = useState("other");
   const [error, setError] = useState<string | null>(null);
+  const placementOptions = useMemo(() => [HIDDEN_SIDEBAR_TAB, ...sidebarTabs], [sidebarTabs]);
 
   async function run(action: () => Promise<unknown>) {
     setError(null);
@@ -504,7 +513,7 @@ export default function ModuleBuilderPage() {
             <SelectValue placeholder="Module group" />
           </SelectTrigger>
           <SelectContent>
-            {sidebarTabs.map((tab) => (
+            {placementOptions.map((tab) => (
               <SelectItem key={tab.key} value={tab.key}>
                 {tab.label}
               </SelectItem>

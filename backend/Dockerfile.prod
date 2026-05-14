@@ -1,0 +1,48 @@
+FROM python:3.11-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH"
+
+WORKDIR /build
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends build-essential gcc \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN python -m venv /opt/venv \
+    && pip install --no-cache-dir -r requirements.txt
+
+
+FROM python:3.11-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
+    VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH" \
+    IO_SEARCH_UPLOAD_DIR=/app/uploads/io-search
+
+WORKDIR /app
+
+RUN addgroup --system app \
+    && adduser --system --ingroup app app
+
+COPY --from=builder /opt/venv /opt/venv
+
+COPY --chown=app:app . .
+RUN mkdir -p \
+      /app/uploads/data-transfer-jobs \
+      /app/uploads/documents \
+      /app/uploads/io-search \
+      /app/uploads/media \
+      /app/uploads/opportunities-attachments \
+    && chown -R app:app /app/uploads
+
+USER app
+
+EXPOSE 8000
+
+CMD ["sh", "/app/start.prod.sh"]

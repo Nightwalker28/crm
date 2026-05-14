@@ -83,21 +83,19 @@ NOW = datetime.now(timezone.utc)
 
 
 MODULES = [
-    ("dashboard", "/dashboard", "Main CRM dashboard"),
-    ("sales", "/dashboard/sales", "Sales organizations, contacts, and opportunities"),
     ("catalog_products", "/dashboard/catalog/products", "Product catalog"),
     ("catalog_services", "/dashboard/catalog/services", "Service catalog"),
-    ("finance_io", "/dashboard/finance/io", "Finance IO records"),
-    ("finance_pos_invoices", "/dashboard/finance/invoices", "POS and customer invoices"),
+    ("finance_io", "/dashboard/finance/insertion-orders", "Finance insertion orders"),
+    ("finance_pos", "/dashboard/finance/pos", "POS mode invoices and walk-in sales"),
+    ("sales_contacts", "/dashboard/sales/contacts", "Sales contacts"),
+    ("sales_organizations", "/dashboard/sales/organizations", "Sales organizations"),
+    ("sales_opportunities", "/dashboard/sales/opportunities", "Sales opportunities"),
     ("tasks", "/dashboard/tasks", "Task management"),
     ("calendar", "/dashboard/calendar", "Calendar and meetings"),
     ("mail", "/dashboard/mail", "Mail module"),
     ("documents", "/dashboard/documents", "Documents module"),
     ("client_portal", "/dashboard/client-portal", "Client portal pages/accounts"),
-    ("website_integrations", "/dashboard/website-integrations", "Website integration leads/orders"),
-    ("settings", "/dashboard/settings", "Settings and configuration"),
-    ("users", "/dashboard/settings/users", "User management"),
-    ("modules", "/dashboard/settings/modules", "Module configuration"),
+    ("website_integrations", None, "Website integration leads/orders"),
 ]
 
 
@@ -341,10 +339,7 @@ def seed_roles_departments_teams(
 
             if role_name == "Support" and module_key in {
                 "finance_io",
-                "finance_pos_invoices",
-                "settings",
-                "users",
-                "modules",
+                "finance_pos",
             }:
                 final_preset.update(
                     can_create=0,
@@ -355,12 +350,13 @@ def seed_roles_departments_teams(
                 )
 
             if role_name == "Finance" and module_key not in {
-                "dashboard",
-                "sales",
+                "sales_contacts",
+                "sales_organizations",
+                "sales_opportunities",
                 "catalog_products",
                 "catalog_services",
                 "finance_io",
-                "finance_pos_invoices",
+                "finance_pos",
                 "tasks",
                 "calendar",
                 "documents",
@@ -479,7 +475,7 @@ def seed_users(db: Session, tenant: Tenant, roles, departments, teams) -> dict[s
 
     # Useful UI preferences/views
     for user in users.values():
-        for module_key in ["sales", "finance_pos_invoices", "tasks"]:
+        for module_key in ["sales_opportunities", "finance_pos", "tasks"]:
             get_or_create(
                 db,
                 UserTablePreference,
@@ -500,7 +496,7 @@ def seed_users(db: Session, tenant: Tenant, roles, departments, teams) -> dict[s
             db,
             UserSavedView,
             user_id=user.id,
-            module_key="sales",
+            module_key="sales_opportunities",
             name="My active pipeline",
             defaults={
                 "config": {
@@ -947,7 +943,7 @@ def seed_client_portal(db: Session, tenant: Tenant, users, contacts, organizatio
                     "accentColor": "#14b8a6",
                     "logoUrl": None,
                 },
-                "source_module_key": "sales",
+                "source_module_key": "sales_contacts",
                 "source_entity_id": str(contact.contact_id),
                 "public_token_hash": demo_hash(f"public-page-{contact.contact_id}"),
                 "public_token_expires_at": NOW + timedelta(days=30),
@@ -991,9 +987,9 @@ def seed_tasks_and_calendar(db: Session, tenant: Tenant, users, teams, contacts,
     support = users["tharindu.support@demo.lynk.local"]
 
     task_specs = [
-        ("Follow up with Ceylon Retail", "Call client and confirm next demo date.", "todo", "high", "sales", opportunities[0].opportunity_id, "Ceylon Retail opportunity", sales_manager, sales_rep),
-        ("Prepare proposal PDF", "Prepare proposal for BlueWave Logistics.", "in_progress", "high", "sales", opportunities[1].opportunity_id, "BlueWave proposal", sales_manager, sales_rep),
-        ("Check overdue invoice", "Review payment status and send reminder.", "blocked", "medium", "finance_pos_invoices", invoices[2].id, invoices[2].invoice_number, finance, finance),
+        ("Follow up with Ceylon Retail", "Call client and confirm next demo date.", "todo", "high", "sales_opportunities", opportunities[0].opportunity_id, "Ceylon Retail opportunity", sales_manager, sales_rep),
+        ("Prepare proposal PDF", "Prepare proposal for BlueWave Logistics.", "in_progress", "high", "sales_opportunities", opportunities[1].opportunity_id, "BlueWave proposal", sales_manager, sales_rep),
+        ("Check overdue invoice", "Review payment status and send reminder.", "blocked", "medium", "finance_pos", invoices[2].id, invoices[2].invoice_number, finance, finance),
         ("Update catalog pricing", "Review public prices before website publish.", "todo", "medium", "catalog_products", None, "Catalog pricing update", admin, finance),
         ("Client portal onboarding", "Help new client activate portal account.", "completed", "low", "client_portal", None, "Portal onboarding", admin, support),
         ("Schedule quarterly review", "Book QBR with enterprise clients.", "todo", "medium", "calendar", None, "Quarterly business review", sales_manager, sales_manager),
@@ -1077,10 +1073,10 @@ def seed_tasks_and_calendar(db: Session, tenant: Tenant, users, teams, contacts,
         )
 
     event_specs = [
-        ("Discovery call - Ceylon Retail", "Initial discovery call.", 1, "sales", opportunities[0].opportunity_id, sales_manager),
-        ("Proposal review - BlueWave", "Walkthrough proposal and pricing.", 3, "sales", opportunities[1].opportunity_id, sales_rep),
-        ("Finance sync", "Review invoices and overdue payments.", 5, "finance_pos_invoices", invoices[2].id, finance),
-        ("Internal pipeline review", "Weekly pipeline health check.", 7, "sales", None, sales_manager),
+        ("Discovery call - Ceylon Retail", "Initial discovery call.", 1, "sales_opportunities", opportunities[0].opportunity_id, sales_manager),
+        ("Proposal review - BlueWave", "Walkthrough proposal and pricing.", 3, "sales_opportunities", opportunities[1].opportunity_id, sales_rep),
+        ("Finance sync", "Review invoices and overdue payments.", 5, "finance_pos", invoices[2].id, finance),
+        ("Internal pipeline review", "Weekly pipeline health check.", 7, "sales_opportunities", None, sales_manager),
     ]
 
     for idx, (title, desc, days_ahead, source_key, source_id, owner) in enumerate(event_specs):

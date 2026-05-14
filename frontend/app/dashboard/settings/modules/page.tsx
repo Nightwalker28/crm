@@ -13,9 +13,12 @@ import { useModulesAdmin, useSidebarTabsAdmin } from "@/hooks/admin/useModulesAd
 import { getModuleCategory, getModuleDisplayName } from "@/lib/module-display";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
+const HIDDEN_SIDEBAR_TAB = { key: "none", label: "None" };
+
 export default function ModulesPage() {
   const { modules, isLoading, updateModule, isSaving } = useModulesAdmin();
   const { tabs } = useSidebarTabsAdmin();
+  const placementOptions = [HIDDEN_SIDEBAR_TAB, ...tabs];
 
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
@@ -95,7 +98,7 @@ export default function ModulesPage() {
                         <SelectValue placeholder="Select group" />
                       </SelectTrigger>
                       <SelectContent>
-                        {tabs.map((tab) => (
+                        {placementOptions.map((tab) => (
                           <SelectItem key={tab.key} value={tab.key}>
                             {tab.label}
                           </SelectItem>

@@ -36,6 +36,7 @@ SYSTEM_SIDEBAR_TABS: tuple[dict[str, object], ...] = (
     {"key": "other", "label": "Other", "sort_order": 100},
 )
 SYSTEM_TAB_LABELS = {str(tab["key"]): str(tab["label"]) for tab in SYSTEM_SIDEBAR_TABS}
+HIDDEN_SIDEBAR_TAB_KEY = "none"
 
 
 def normalize_sidebar_tab_key(value: str | None, *, fallback: str = "other") -> str:
@@ -82,6 +83,8 @@ def _custom_tab_labels(db: Session, *, tenant_id: int) -> dict[str, str]:
 def _sidebar_tab_label(tab_key: str | None, custom_tab_labels: dict[str, str] | None = None) -> str | None:
     if not tab_key:
         return None
+    if tab_key == HIDDEN_SIDEBAR_TAB_KEY:
+        return "None"
     custom_tab_labels = custom_tab_labels or {}
     return custom_tab_labels.get(tab_key) or SYSTEM_TAB_LABELS.get(tab_key) or tab_key.replace("_", " ").title()
 
@@ -202,6 +205,8 @@ def list_sidebar_tabs(db: Session, *, tenant_id: int) -> list[SidebarTabSchema]:
 
 
 def _ensure_sidebar_tab_exists(db: Session, *, tenant_id: int, tab_key: str) -> None:
+    if tab_key == HIDDEN_SIDEBAR_TAB_KEY:
+        return
     if tab_key in SYSTEM_TAB_LABELS:
         return
     exists = (

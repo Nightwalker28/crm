@@ -1,11 +1,9 @@
 export const DASHBOARD_ROUTES = {
   home: "/dashboard",
-  sales: "/dashboard/sales",
   accounts: "/dashboard/sales/organizations",
   contacts: "/dashboard/sales/contacts",
   deals: "/dashboard/sales/opportunities",
   clientPortal: "/dashboard/client-portal",
-  finance: "/dashboard/finance",
   financePos: "/dashboard/finance/pos",
   insertionOrders: "/dashboard/finance/insertion-orders",
   products: "/dashboard/catalog/products",

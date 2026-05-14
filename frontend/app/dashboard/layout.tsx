@@ -58,9 +58,9 @@ function getBreadcrumbItems(pathname: string) {
   return segments.map((segment, index) => {
     const rawHref = `/${segments.slice(0, index + 1).join("/")}`;
     const href =
-      rawHref === DASHBOARD_ROUTES.sales
+      rawHref === "/dashboard/sales"
         ? DASHBOARD_ROUTES.accounts
-        : rawHref === DASHBOARD_ROUTES.finance
+        : rawHref === "/dashboard/finance"
           ? DASHBOARD_ROUTES.financePos
           : rawHref === "/dashboard/catalog"
             ? DASHBOARD_ROUTES.products

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlencode
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
@@ -16,6 +16,7 @@ from app.modules.platform.services.message_templates import (
 )
 from app.modules.sales.models import SalesContact
 from app.modules.tasks.services.tasks_services import create_task, create_task_assignment_notifications, serialize_task
+from app.modules.user_management.models import CompanyProfile
 from app.modules.whatsapp.models import WhatsAppInteraction
 
 
@@ -23,14 +24,45 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _normalize_phone_for_whatsapp(value: str | None) -> str:
+COUNTRY_DIAL_CODES = {
+    "lk": "94",
+    "sri lanka": "94",
+}
+
+
+def _country_dial_code(value: str | None) -> str | None:
+    country = (value or "").strip().lower()
+    if not country:
+        return None
+    if country.startswith("+") and country[1:].isdigit():
+        return country[1:]
+    return COUNTRY_DIAL_CODES.get(country)
+
+
+def _normalize_phone_for_whatsapp(value: str | None, *, country: str | None = None) -> str:
     raw = (value or "").strip()
     if not raw:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact has no phone number")
     digits = "".join(ch for ch in raw if ch.isdigit())
+    if raw.startswith("00"):
+        digits = digits[2:]
+    elif raw.startswith("+"):
+        pass
+    elif digits.startswith("0"):
+        dial_code = _country_dial_code(country)
+        if not dial_code:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Contact phone number needs a country code for WhatsApp",
+            )
+        digits = f"{dial_code}{digits.lstrip('0')}"
     if len(digits) < 7:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact phone number is not valid for WhatsApp")
     return digits
+
+
+def _build_whatsapp_url(*, phone_number: str, message: str) -> str:
+    return f"https://web.whatsapp.com/send?{urlencode({'phone': phone_number, 'text': message}, quote_via=quote)}"
 
 
 def _contact_display_name(contact: SalesContact) -> str:
@@ -87,9 +119,14 @@ def record_contact_whatsapp_click(
     if template.channel != "whatsapp":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Template is not a WhatsApp template")
 
-    phone_number = _normalize_phone_for_whatsapp(contact.contact_telephone)
+    company_country = (
+        db.query(CompanyProfile.country)
+        .filter(CompanyProfile.tenant_id == current_user.tenant_id)
+        .scalar()
+    )
+    phone_number = _normalize_phone_for_whatsapp(contact.contact_telephone, country=contact.country or company_country)
     rendered_message = render_template_body(template, build_contact_template_values(contact, variables))
-    whatsapp_url = f"https://wa.me/{phone_number}?text={quote(rendered_message)}"
+    whatsapp_url = _build_whatsapp_url(phone_number=phone_number, message=rendered_message)
 
     follow_up_task_payload = None
     if create_follow_up_task_flag:
