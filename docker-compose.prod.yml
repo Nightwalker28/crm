@@ -1,4 +1,4 @@
-name: lynk-crm
+name: crm
 
 x-backend-env: &backend-env
   env_file:
@@ -14,12 +14,12 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile.prod
-    image: lynk-crm-backend:prod
+    image: ghcr.io/nightwalker28/crm-backend:prod
     restart: unless-stopped
     ports:
       - "${BACKEND_BIND:-127.0.0.1:8000}:8000"
     volumes:
-      - lynk_uploads:/app/uploads
+      - crm_uploads:/app/uploads
     healthcheck:
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()\""]
       interval: 30s
@@ -29,22 +29,22 @@ services:
 
   celery-worker:
     <<: *backend-env
-    image: lynk-crm-backend:prod
+    image: ghcr.io/nightwalker28/crm-backend:prod
     restart: unless-stopped
     command: celery -A app.core.celery_app.celery_app worker --loglevel=info
     volumes:
-      - lynk_uploads:/app/uploads
+      - crm_uploads:/app/uploads
     depends_on:
       backend:
         condition: service_healthy
 
   celery-beat:
     <<: *backend-env
-    image: lynk-crm-backend:prod
+    image: ghcr.io/nightwalker28/crm-backend:prod
     restart: unless-stopped
     command: celery -A app.core.celery_app.celery_app beat --loglevel=info
     volumes:
-      - lynk_uploads:/app/uploads
+      - crm_uploads:/app/uploads
     depends_on:
       backend:
         condition: service_healthy
@@ -55,7 +55,7 @@ services:
       dockerfile: Dockerfile.prod
       args:
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-}
-    image: lynk-crm-frontend:prod
+    image: ghcr.io/nightwalker28/crm-frontend:prod
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -73,4 +73,4 @@ services:
       start_period: 30s
 
 volumes:
-  lynk_uploads:
+  crm_uploads:

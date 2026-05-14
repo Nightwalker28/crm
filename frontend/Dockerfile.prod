@@ -21,6 +21,10 @@ RUN npm run build
 
 FROM node:20-alpine AS runner
 
+LABEL org.opencontainers.image.source="https://github.com/Nightwalker28/crm" \
+      org.opencontainers.image.title="crm-frontend" \
+      org.opencontainers.image.description="CRM frontend production image"
+
 WORKDIR /app
 
 ENV NODE_ENV=production \

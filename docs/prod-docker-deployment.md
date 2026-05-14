@@ -14,15 +14,15 @@ This deployment runs Lynk CRM with app containers only. Postgres and Redis are e
 
 `backend`
 
-- Builds `lynk-crm-backend:prod`.
+- Builds `ghcr.io/nightwalker28/crm-backend:prod`.
 - Exposes container port `8000`.
 - Defaults to binding on host `127.0.0.1:8000` for use behind a reverse proxy.
-- Mounts the shared `lynk_uploads` volume at `/app/uploads`.
+- Mounts the shared `crm_uploads` volume at `/app/uploads`.
 - Runs migrations and bootstrap on startup.
 
 `frontend`
 
-- Builds `lynk-crm-frontend:prod`.
+- Builds `ghcr.io/nightwalker28/crm-frontend:prod`.
 - Exposes container port `3000`.
 - Defaults to binding on host `127.0.0.1:3000` for use behind a reverse proxy.
 - Uses Next.js standalone runtime output.
@@ -245,3 +245,30 @@ docker compose --env-file .env.production -f docker-compose.prod.yml logs celery
 ```
 
 If the backend fails to start, check DB reachability and migration permissions first. If jobs are not running, check `CELERY_BROKER_URL` and Redis reachability.
+
+## GitHub Container Registry
+
+Production images are tagged for GHCR without the Lynk product name:
+
+```bash
+ghcr.io/nightwalker28/crm-backend:prod
+ghcr.io/nightwalker28/crm-frontend:prod
+```
+
+The Dockerfiles include OCI `org.opencontainers.image.source` labels pointing at `https://github.com/Nightwalker28/crm`, which lets GitHub associate the container packages with the repository.
+
+Login before pushing:
+
+```bash
+docker login ghcr.io -u Nightwalker28
+```
+
+Use a GitHub personal access token with package write permission as the password.
+
+Build and push:
+
+```bash
+docker compose --env-file .env.production -f docker-compose.prod.yml build backend frontend
+docker push ghcr.io/nightwalker28/crm-backend:prod
+docker push ghcr.io/nightwalker28/crm-frontend:prod
+```
