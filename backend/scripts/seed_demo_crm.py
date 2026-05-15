@@ -169,6 +169,16 @@ ROLE_PERMISSION_PRESETS = {
     ),
 }
 
+ROLE_LEVELS = {
+    "Super Admin": 100,
+    "Admin": 100,
+    "Sales Manager": 90,
+    "Sales Rep": 10,
+    "Finance": 10,
+    "Support": 10,
+    "Viewer": 10,
+}
+
 
 def slugify(value: str) -> str:
     cleaned = "".join(ch.lower() if ch.isalnum() else "-" for ch in value)
@@ -264,17 +274,18 @@ def seed_roles_departments_teams(
     modules: dict[str, Module],
 ):
     roles = {}
-    for idx, role_name in enumerate(ROLE_PERMISSION_PRESETS.keys(), start=1):
+    for role_name in ROLE_PERMISSION_PRESETS:
         roles[role_name] = get_or_create(
             db,
             Role,
             tenant_id=tenant.id,
             name=role_name,
             defaults={
-                "level": idx,
+                "level": ROLE_LEVELS[role_name],
                 "description": f"Demo {role_name} role with linked CRM permissions.",
             },
         )
+        roles[role_name].level = ROLE_LEVELS[role_name]
 
     departments = {}
     department_specs = [

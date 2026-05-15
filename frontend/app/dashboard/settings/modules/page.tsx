@@ -49,14 +49,14 @@ export default function ModulesPage() {
           <TableHeader>
             <TableHeaderRow>
               <TableHead>Module</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead>Enable / Disable</TableHead>
+              <TableHead>Access</TableHead>
               <TableHead>Sidebar Label</TableHead>
               <TableHead>Sidebar Group</TableHead>
               <TableHead>Route</TableHead>
               <TableHead>Description</TableHead>
               <TableHead>Duplicate Handling</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Access</TableHead>
-              <TableHead className="text-right">Enable / Disable</TableHead>
             </TableHeaderRow>
           </TableHeader>
           <TableBody>
@@ -72,6 +72,43 @@ export default function ModulesPage() {
                       {getModuleDisplayName(module.name, module.description ?? undefined)}
                     </div>
                     <div className="mt-1 text-xs text-neutral-500">{getModuleCategory(module.name)}</div>
+                  </TableCell>
+                  <TableCell>
+                    {module.is_enabled ? (
+                      <Pill bg="bg-emerald-950/60" text="text-emerald-200" border="border-emerald-800/70" className="w-24">
+                        Enabled
+                      </Pill>
+                    ) : (
+                      <Pill bg="bg-red-950/60" text="text-red-200" border="border-red-800/70" className="w-24">
+                        Disabled
+                      </Pill>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <button
+                      type="button"
+                      aria-pressed={module.is_enabled}
+                      aria-label={`${module.is_enabled ? "Disable" : "Enable"} ${getModuleDisplayName(module.name, module.description ?? undefined)}`}
+                      disabled={isSaving}
+                      onClick={() => updateModule(module.id, { is_enabled: !module.is_enabled })}
+                      className={`inline-flex min-w-32 items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                        module.is_enabled
+                          ? "border-red-800/70 bg-red-950/30 text-red-200 hover:bg-red-950/50"
+                          : "border-emerald-800/70 bg-emerald-950/30 text-emerald-200 hover:bg-emerald-950/50"
+                      }`}
+                    >
+                      <Power size={15} />
+                      {module.is_enabled ? "Disable" : "Enable"}
+                    </button>
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      href={SETTINGS_ROUTES.moduleAccess(module.id)}
+                      className="inline-flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800"
+                    >
+                      <SlidersHorizontal size={15} />
+                      Access Settings
+                    </Link>
                   </TableCell>
                   <TableCell>
                     <Input
@@ -123,45 +160,6 @@ export default function ModulesPage() {
                         <SelectItem value="merge">Merge</SelectItem>
                       </SelectContent>
                     </Select>
-                  </TableCell>
-                  <TableCell>
-                    {module.is_enabled ? (
-                      <Pill bg="bg-emerald-950/60" text="text-emerald-200" border="border-emerald-800/70" className="w-24">
-                        Enabled
-                      </Pill>
-                    ) : (
-                      <Pill bg="bg-red-950/60" text="text-red-200" border="border-red-800/70" className="w-24">
-                        Disabled
-                      </Pill>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    <Link
-                      href={SETTINGS_ROUTES.moduleAccess(module.id)}
-                      className="inline-flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800"
-                    >
-                      <SlidersHorizontal size={15} />
-                      Access Settings
-                    </Link>
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end">
-                      <button
-                        type="button"
-                        aria-pressed={module.is_enabled}
-                        aria-label={`${module.is_enabled ? "Disable" : "Enable"} ${getModuleDisplayName(module.name, module.description ?? undefined)}`}
-                        disabled={isSaving}
-                        onClick={() => updateModule(module.id, { is_enabled: !module.is_enabled })}
-                        className={`inline-flex min-w-36 items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                          module.is_enabled
-                            ? "border-red-800/70 bg-red-950/30 text-red-200 hover:bg-red-950/50"
-                            : "border-emerald-800/70 bg-emerald-950/30 text-emerald-200 hover:bg-emerald-950/50"
-                        }`}
-                      >
-                        <Power size={15} />
-                        {module.is_enabled ? "Disable" : "Enable"}
-                      </button>
-                    </div>
                   </TableCell>
                 </TableRow>
               ))
