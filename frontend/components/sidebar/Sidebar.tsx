@@ -32,7 +32,6 @@ import {
 
 const SIDEBAR_COLLAPSE_KEY = "lynk:sidebar-collapsed";
 const SIDEBAR_COLLAPSE_EVENT = "lynk:sidebar-collapsed-change";
-const HIDDEN_SIDEBAR_MODULES = new Set(["dashboard", "sales", "settings", "users", "modules", "whatsapp"]);
 const HIDDEN_SIDEBAR_TAB_KEY = "none";
 
 type SidebarGroupConfig = {
@@ -112,8 +111,6 @@ function buildOperationalGroups(modules: AccessibleModule[]) {
 
   for (const crmModule of modules) {
     if (!crmModule.base_route) continue;
-    if (["tasks", "calendar", "mail", "documents"].includes(crmModule.name)) continue;
-    if (HIDDEN_SIDEBAR_MODULES.has(crmModule.name)) continue;
     if (crmModule.sidebar_tab_key === HIDDEN_SIDEBAR_TAB_KEY) continue;
     if (crmModule.base_route === DASHBOARD_ROUTES.home || crmModule.base_route.startsWith(SETTINGS_ROUTES.root)) continue;
 
@@ -148,6 +145,8 @@ function settingsGroup(): SidebarGroupConfig {
       { href: SETTINGS_ROUTES.fields, label: "Field Config" },
       { href: SETTINGS_ROUTES.integrations, label: "Integrations" },
       { href: SETTINGS_ROUTES.templates, label: "Templates" },
+      { href: SETTINGS_ROUTES.activityLog, label: "Activity Log" },
+      { href: SETTINGS_ROUTES.recycleBin, label: "Recycle Bin" },
     ],
   };
 }

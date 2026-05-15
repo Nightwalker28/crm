@@ -37,6 +37,7 @@ SYSTEM_SIDEBAR_TABS: tuple[dict[str, object], ...] = (
 )
 SYSTEM_TAB_LABELS = {str(tab["key"]): str(tab["label"]) for tab in SYSTEM_SIDEBAR_TABS}
 HIDDEN_SIDEBAR_TAB_KEY = "none"
+DEFAULT_HIDDEN_SIDEBAR_MODULES = {"mail", "tasks", "documents"}
 
 
 def normalize_sidebar_tab_key(value: str | None, *, fallback: str = "other") -> str:
@@ -46,6 +47,8 @@ def normalize_sidebar_tab_key(value: str | None, *, fallback: str = "other") -> 
 
 
 def default_sidebar_tab_key(module_name: str) -> str:
+    if module_name in DEFAULT_HIDDEN_SIDEBAR_MODULES:
+        return HIDDEN_SIDEBAR_TAB_KEY
     if module_name.startswith("sales_"):
         return "sales"
     if module_name.startswith("finance_"):

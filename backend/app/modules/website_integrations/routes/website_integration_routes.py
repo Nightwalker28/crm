@@ -2,8 +2,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, s
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.core.permissions import require_action_access, require_module_access
-from app.core.security import require_user
+from app.core.permissions import require_action_access
+from app.core.security import require_admin
 from app.modules.website_integrations.schema import (
     PublicWebsiteCatalogItemResponse,
     PublicWebsiteCatalogListResponse,
@@ -83,9 +83,7 @@ def _public_order_key_context(
 @router.get("/api-keys", response_model=list[WebsiteIntegrationApiKeyResponse])
 def get_integration_api_keys(
     db: Session = Depends(get_db),
-    current_user=Depends(require_user),
-    require_module=Depends(require_module_access("website_integrations")),
-    require_permission=Depends(require_action_access("website_integrations", "configure")),
+    current_user=Depends(require_admin),
 ):
     keys = list_api_keys(db, tenant_id=current_user.tenant_id)
     return [WebsiteIntegrationApiKeyResponse.model_validate(serialize_api_key(key)) for key in keys]
@@ -95,9 +93,7 @@ def get_integration_api_keys(
 def create_integration_api_key_route(
     payload: WebsiteIntegrationApiKeyCreateRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_user),
-    require_module=Depends(require_module_access("website_integrations")),
-    require_permission=Depends(require_action_access("website_integrations", "configure")),
+    current_user=Depends(require_admin),
 ):
     key, raw_key = create_api_key(
         db,
@@ -112,9 +108,7 @@ def create_integration_api_key_route(
 def revoke_integration_api_key_route(
     key_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_user),
-    require_module=Depends(require_module_access("website_integrations")),
-    require_permission=Depends(require_action_access("website_integrations", "configure")),
+    current_user=Depends(require_admin),
 ):
     key = get_api_key_or_404(db, tenant_id=current_user.tenant_id, key_id=key_id)
     key = revoke_api_key(db, key=key, actor_user_id=current_user.id)
@@ -126,9 +120,7 @@ def get_website_orders(
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_user),
-    require_module=Depends(require_module_access("website_integrations")),
-    require_permission=Depends(require_action_access("website_integrations", "view")),
+    current_user=Depends(require_admin),
 ):
     orders, _total = list_orders(db, tenant_id=current_user.tenant_id, limit=limit, offset=offset)
     return [WebsiteOrderResponse.model_validate(serialize_order(order)) for order in orders]
@@ -138,9 +130,7 @@ def get_website_orders(
 def create_website_order_pos_invoice(
     order_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_user),
-    require_module=Depends(require_module_access("website_integrations")),
-    require_permission=Depends(require_action_access("website_integrations", "edit")),
+    current_user=Depends(require_admin),
     require_finance_permission=Depends(require_action_access("finance_pos", "create")),
 ):
     invoice, already_existing = create_pos_invoice_for_order(

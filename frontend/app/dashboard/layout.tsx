@@ -55,7 +55,7 @@ function matchedModuleRoute(pathname: string) {
 function getBreadcrumbItems(pathname: string) {
   const segments = pathname.split("?")[0]?.split("/").filter(Boolean) ?? [];
 
-  return segments.map((segment, index) => {
+  const items = segments.map((segment, index) => {
     const rawHref = `/${segments.slice(0, index + 1).join("/")}`;
     const href =
       rawHref === "/dashboard/sales"
@@ -79,6 +79,8 @@ function getBreadcrumbItems(pathname: string) {
       current: index === segments.length - 1,
     };
   });
+
+  return items.filter((item, index) => item.href !== items[index + 1]?.href);
 }
 
 function BreadcrumbBar({ pathname }: { pathname: string }) {

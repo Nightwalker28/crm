@@ -26,7 +26,6 @@ DEFAULT_ROLES = [
 ]
 
 DEFAULT_MODULES = [
-    {"name": "website_integrations", "base_route": None, "description": "Public website and WordPress catalog integration APIs"},
     {"name": "catalog_products", "base_route": "/dashboard/catalog/products", "description": "Catalog products"},
     {"name": "catalog_services", "base_route": "/dashboard/catalog/services", "description": "Catalog services"},
     {"name": "documents", "base_route": "/dashboard/documents", "description": "Controlled document uploads and record-linked files"},

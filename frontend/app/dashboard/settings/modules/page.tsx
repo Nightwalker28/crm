@@ -1,21 +1,27 @@
 "use client";
 
+import type { SyntheticEvent } from "react";
 import Link from "next/link";
-import { Power, SlidersHorizontal } from "lucide-react";
+import { Power } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Pill } from "@/components/ui/Pill";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useModulesAdmin, useSidebarTabsAdmin } from "@/hooks/admin/useModulesAdmin";
-import { getModuleCategory, getModuleDisplayName } from "@/lib/module-display";
+import { getModuleDisplayName } from "@/lib/module-display";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
 const HIDDEN_SIDEBAR_TAB = { key: "none", label: "None" };
 
+function stopRowNavigation(event: SyntheticEvent) {
+  event.stopPropagation();
+}
+
 export default function ModulesPage() {
+  const router = useRouter();
   const { modules, isLoading, updateModule, isSaving } = useModulesAdmin();
   const { tabs } = useSidebarTabsAdmin();
   const placementOptions = [HIDDEN_SIDEBAR_TAB, ...tabs];
@@ -45,44 +51,98 @@ export default function ModulesPage() {
       </div>
 
       <ModuleTableShell>
-        <Table className="min-w-[1100px]">
+        <Table className="min-w-[920px]">
           <TableHeader>
             <TableHeaderRow>
               <TableHead>Module</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Enable / Disable</TableHead>
-              <TableHead>Access</TableHead>
               <TableHead>Sidebar Label</TableHead>
               <TableHead>Sidebar Group</TableHead>
-              <TableHead>Route</TableHead>
-              <TableHead>Description</TableHead>
               <TableHead>Duplicate Handling</TableHead>
+              <TableHead>Enable / Disable</TableHead>
             </TableHeaderRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={9} className="py-10 text-center text-neutral-500">Loading modules...</TableCell>
+                <TableCell colSpan={5} className="py-10 text-center text-neutral-500">Loading modules...</TableCell>
               </TableRow>
             ) : (
               modules.map((module) => (
-                <TableRow key={module.id}>
+                <TableRow
+                  key={module.id}
+                  tabIndex={0}
+                  className="cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white/20"
+                  onClick={() => router.push(SETTINGS_ROUTES.moduleAccess(module.id))}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      router.push(SETTINGS_ROUTES.moduleAccess(module.id));
+                    }
+                  }}
+                >
                   <TableCell>
                     <div className="font-medium text-neutral-100">
                       {getModuleDisplayName(module.name, module.description ?? undefined)}
                     </div>
-                    <div className="mt-1 text-xs text-neutral-500">{getModuleCategory(module.name)}</div>
                   </TableCell>
                   <TableCell>
-                    {module.is_enabled ? (
-                      <Pill bg="bg-emerald-950/60" text="text-emerald-200" border="border-emerald-800/70" className="w-24">
-                        Enabled
-                      </Pill>
-                    ) : (
-                      <Pill bg="bg-red-950/60" text="text-red-200" border="border-red-800/70" className="w-24">
-                        Disabled
-                      </Pill>
-                    )}
+                    <div onClick={stopRowNavigation} onKeyDown={stopRowNavigation}>
+                      <Input
+                        defaultValue={module.display_name ?? ""}
+                        placeholder={getModuleDisplayName(module.name, module.description ?? undefined)}
+                        className="w-44 bg-neutral-950"
+                        disabled={isSaving}
+                        onBlur={(event) => {
+                          const value = event.target.value.trim();
+                          const current = module.display_name ?? "";
+                          if (value !== current) {
+                            void updateModule(module.id, { display_name: value || null });
+                          }
+                        }}
+                      />
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div onClick={stopRowNavigation} onKeyDown={stopRowNavigation}>
+                      <Select
+                        value={module.sidebar_tab_key ?? "none"}
+                        onValueChange={(value) => {
+                          void updateModule(module.id, { sidebar_tab_key: value });
+                        }}
+                        disabled={isSaving}
+                      >
+                        <SelectTrigger className="w-44">
+                          <SelectValue placeholder="Select group" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {placementOptions.map((tab) => (
+                            <SelectItem key={tab.key} value={tab.key}>
+                              {tab.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div onClick={stopRowNavigation} onKeyDown={stopRowNavigation}>
+                      <Select
+                        value={module.import_duplicate_mode}
+                        onValueChange={(value) => {
+                          void updateModule(module.id, { import_duplicate_mode: value as "skip" | "overwrite" | "merge" });
+                        }}
+                        disabled={isSaving}
+                      >
+                        <SelectTrigger className="w-44">
+                          <SelectValue placeholder="Select mode" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="skip">Skip</SelectItem>
+                          <SelectItem value="overwrite">Overwrite</SelectItem>
+                          <SelectItem value="merge">Merge</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </TableCell>
                   <TableCell>
                     <button
@@ -90,7 +150,11 @@ export default function ModulesPage() {
                       aria-pressed={module.is_enabled}
                       aria-label={`${module.is_enabled ? "Disable" : "Enable"} ${getModuleDisplayName(module.name, module.description ?? undefined)}`}
                       disabled={isSaving}
-                      onClick={() => updateModule(module.id, { is_enabled: !module.is_enabled })}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void updateModule(module.id, { is_enabled: !module.is_enabled });
+                      }}
+                      onKeyDown={(event) => event.stopPropagation()}
                       className={`inline-flex min-w-32 items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
                         module.is_enabled
                           ? "border-red-800/70 bg-red-950/30 text-red-200 hover:bg-red-950/50"
@@ -100,66 +164,6 @@ export default function ModulesPage() {
                       <Power size={15} />
                       {module.is_enabled ? "Disable" : "Enable"}
                     </button>
-                  </TableCell>
-                  <TableCell>
-                    <Link
-                      href={SETTINGS_ROUTES.moduleAccess(module.id)}
-                      className="inline-flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800"
-                    >
-                      <SlidersHorizontal size={15} />
-                      Access Settings
-                    </Link>
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      defaultValue={module.display_name ?? ""}
-                      placeholder={getModuleDisplayName(module.name, module.description ?? undefined)}
-                      className="w-44 bg-neutral-950"
-                      disabled={isSaving}
-                      onBlur={(event) => {
-                        const value = event.target.value.trim();
-                        const current = module.display_name ?? "";
-                        if (value !== current) {
-                          void updateModule(module.id, { display_name: value || null });
-                        }
-                      }}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Select
-                      value={module.sidebar_tab_key ?? "other"}
-                      onValueChange={(value) => updateModule(module.id, { sidebar_tab_key: value })}
-                      disabled={isSaving}
-                    >
-                      <SelectTrigger className="w-44">
-                        <SelectValue placeholder="Select group" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {placementOptions.map((tab) => (
-                          <SelectItem key={tab.key} value={tab.key}>
-                            {tab.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell className="text-neutral-400">{module.base_route || "-"}</TableCell>
-                  <TableCell className="max-w-sm text-neutral-400">{module.description || "-"}</TableCell>
-                  <TableCell>
-                    <Select
-                      value={module.import_duplicate_mode}
-                      onValueChange={(value) => updateModule(module.id, { import_duplicate_mode: value as "skip" | "overwrite" | "merge" })}
-                      disabled={isSaving}
-                    >
-                      <SelectTrigger className="w-44">
-                        <SelectValue placeholder="Select mode" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="skip">Skip</SelectItem>
-                        <SelectItem value="overwrite">Overwrite</SelectItem>
-                        <SelectItem value="merge">Merge</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </TableCell>
                 </TableRow>
               ))

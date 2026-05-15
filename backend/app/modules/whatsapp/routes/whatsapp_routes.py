@@ -17,8 +17,6 @@ def click_to_chat_contact(
     payload: WhatsAppContactClickRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
-    require_whatsapp_module=Depends(require_module_access("whatsapp")),
-    require_whatsapp_permission=Depends(require_action_access("whatsapp", "create")),
     require_contacts_module=Depends(require_module_access("sales_contacts")),
     require_contacts_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
