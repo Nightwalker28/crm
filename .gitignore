@@ -91,3 +91,9 @@ automation/logs/
 .directory
 backend/celerybeat-schedule
 .env.production
+
+########################################
+# Liscense keys
+########################################
+
+liscence-keys
