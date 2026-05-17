@@ -13,6 +13,7 @@ class FinanceIO(Base):
         Index("ix_finance_io_tenant_status_active", "tenant_id", "status", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_finance_io_tenant_contact", "tenant_id", "customer_contact_id"),
         Index("ix_finance_io_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+        Index("uq_finance_io_active_number", "tenant_id", "module_id", "io_number", unique=True, postgresql_where=text("deleted_at IS NULL")),
     )
 
     id = Column(BigInteger, primary_key=True, index=True)

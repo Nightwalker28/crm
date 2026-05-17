@@ -11,6 +11,7 @@ from typing import Any, IO
 from docx import Document
 import pdfplumber
 from sqlalchemy import func, or_, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.module_search import apply_ranked_search
@@ -77,35 +78,6 @@ IO_NUMBER_REGEX = re.compile(rf"^{IO_NUMBER_PREFIX}(\d+)$")
 def get_finance_module_id(db: Session) -> int:
     module_id = db.query(Module.id).filter(Module.name == FINANCE_MODULE_KEY).scalar()
     return int(module_id) if module_id is not None else DEFAULT_MODULE_ID
-
-
-def _get_max_io_sequence(
-    db: Session,
-    prefix: str = IO_NUMBER_PREFIX,
-    *,
-    tenant_id: int | None = None,
-) -> int:
-    """Return the highest existing io_number sequence for the prefix."""
-    where_clause = "io_number ~ :pattern"
-    params: dict[str, Any] = {
-        "offset": len(prefix) + 1,
-        "pattern": f"^{re.escape(prefix)}\\d+$",
-    }
-    if tenant_id is not None:
-        where_clause = f"{where_clause} AND tenant_id = :tenant_id"
-        params["tenant_id"] = tenant_id
-
-    result = db.execute(
-        text(
-            f"""
-            SELECT COALESCE(MAX(CAST(SUBSTRING(io_number FROM :offset) AS BIGINT)), 0)
-            FROM finance_io
-            WHERE {where_clause}
-            """
-        ),
-        params,
-    ).scalar()
-    return int(result or 0)
 
 
 def _get_next_io_sequence(db: Session) -> int:
@@ -832,7 +804,11 @@ def create_insertion_order(
         custom_data=custom_data,
     )
     db.add(record)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ValueError("Insertion order number already exists") from exc
     db.refresh(record)
     save_custom_field_values(
         db,

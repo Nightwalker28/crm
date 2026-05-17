@@ -185,6 +185,19 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(exc.exception.status_code, 409)
         self.assertEqual(self.db.query(UserMailConnection).first().account_email, "ava@example.com")
 
+    def test_upsert_google_mail_connection_rejects_first_connect_email_mismatch(self):
+        with self.assertRaises(HTTPException) as exc:
+            upsert_google_mail_connection(
+                self.db,
+                tenant_id=10,
+                user=self.user,
+                token_json={"access_token": "token", "scope": "https://www.googleapis.com/auth/gmail.send"},
+                account_email="attacker@example.com",
+            )
+
+        self.assertEqual(exc.exception.status_code, 409)
+        self.assertEqual(self.db.query(UserMailConnection).count(), 0)
+
     @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
     def test_sync_imap_smtp_inbox_stores_user_scoped_message(self):
         raw_message = (
@@ -395,7 +408,8 @@ class MailImapSmtpTests(unittest.TestCase):
                 payload={"source_module_key": "sales_contacts", "source_entity_id": "8"},
             )
 
-        self.assertEqual(exc.exception.status_code, 404)
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Mail source is not available.")
 
     def test_mail_source_context_masks_invalid_record_identifier(self):
         with self.assertRaises(HTTPException) as exc:
@@ -405,8 +419,8 @@ class MailImapSmtpTests(unittest.TestCase):
                 payload={"source_module_key": "sales_contacts", "source_entity_id": "not-a-number"},
             )
 
-        self.assertEqual(exc.exception.status_code, 404)
-        self.assertEqual(exc.exception.detail, "Mail source record not found.")
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Mail source is not available.")
 
     def test_mail_source_activity_logs_to_record_timeline(self):
         message = MailMessage(

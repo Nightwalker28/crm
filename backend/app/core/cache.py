@@ -88,7 +88,7 @@ def warn_if_local_cache_multi_worker() -> None:
     if worker_count > 1:
         logger.warning(
             "REDIS_URL is not set while %s workers are configured; local in-process cache "
-            "invalidation is per worker and may serve stale cached data.",
+            "invalidation and rate limiting are per worker and may serve stale cached data or bypass limits.",
             worker_count,
         )
 

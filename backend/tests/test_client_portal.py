@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.modules.client_portal.models import ClientAccount, ClientPageAction, CustomerGroup
-from app.modules.client_portal.routes.client_portal_routes import get_client_me
+from app.modules.client_portal.routes.client_portal_routes import _request_metadata, get_client_me
 from app.modules.client_portal.services import client_portal_services
 from app.modules.platform.models import ActivityLog
 from app.modules.sales.models import SalesContact, SalesOrganization
@@ -132,6 +132,121 @@ class ClientPortalServiceTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 401)
 
+    def test_client_password_setup_enforces_main_password_policy(self):
+        _account, setup_token = client_portal_services.create_client_account(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={"email": "buyer@example.com", "contact_id": 7, "status": "pending"},
+        )
+
+        with self.assertRaises(HTTPException) as exc:
+            client_portal_services.setup_client_password(
+                self.db,
+                token=setup_token,
+                password="short",
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertIn("Password must be at least", exc.exception.detail)
+
+    def test_client_login_failed_attempts_are_rate_limited_and_clearable(self):
+        email = "buyer@example.com"
+        client_host = "203.0.113.10"
+        for key in client_portal_services._client_login_attempt_keys(
+            tenant_id=10,
+            email=email,
+            client_host=client_host,
+        ):
+            client_portal_services.cache_delete(key)
+
+        try:
+            for _ in range(5):
+                client_portal_services.record_failed_client_login_attempt(
+                    tenant_id=10,
+                    email=email,
+                    client_host=client_host,
+                )
+
+            with self.assertRaises(HTTPException) as exc:
+                client_portal_services.check_client_login_rate_limit(
+                    tenant_id=10,
+                    email=email,
+                    client_host=client_host,
+                )
+
+            self.assertEqual(exc.exception.status_code, 429)
+
+            client_portal_services.clear_failed_client_login_attempts(
+                tenant_id=10,
+                email=email,
+                client_host=client_host,
+            )
+            client_portal_services.check_client_login_rate_limit(
+                tenant_id=10,
+                email=email,
+                client_host=client_host,
+            )
+        finally:
+            for key in client_portal_services._client_login_attempt_keys(
+                tenant_id=10,
+                email=email,
+                client_host=client_host,
+            ):
+                client_portal_services.cache_delete(key)
+
+    def test_public_client_page_action_attempts_are_rate_limited_by_token_and_ip(self):
+        token = "public-token"
+        client_host = "203.0.113.20"
+        cache_key = client_portal_services._public_client_page_action_rate_limit_key(
+            token=token,
+            client_host=client_host,
+        )
+        client_portal_services.cache_delete(cache_key)
+
+        try:
+            for _ in range(10):
+                client_portal_services.record_public_client_page_action_attempt(
+                    token=token,
+                    client_host=client_host,
+                )
+
+            with self.assertRaises(HTTPException) as exc:
+                client_portal_services.check_public_client_page_action_rate_limit(
+                    token=token,
+                    client_host=client_host,
+                )
+
+            self.assertEqual(exc.exception.status_code, 429)
+        finally:
+            client_portal_services.cache_delete(cache_key)
+
+    def test_client_page_document_access_requires_matching_client_account(self):
+        page = client_portal_services.create_client_page(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "title": "Proposal A",
+                "contact_id": 7,
+                "pricing_items": [{"name": "Implementation", "quantity": 1, "currency": "USD", "public_unit_price": 100}],
+            },
+        )
+        account = ClientAccount(
+            id=20,
+            tenant_id=10,
+            organization_id=3,
+            email="org@example.com",
+            status="active",
+        )
+        self.db.add(account)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as exc:
+            client_portal_services.require_client_account_matches_page(account, page)
+
+        self.assertEqual(exc.exception.status_code, 403)
+
     def test_client_me_rejects_token_from_different_tenant_context(self):
         _account, setup_token = client_portal_services.create_client_account(
             self.db,
@@ -159,6 +274,28 @@ class ClientPortalServiceTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 401)
         self.assertIn("tenant mismatch", exc.exception.detail)
+
+    def test_request_metadata_truncates_user_agent_and_normalizes_ip(self):
+        request = SimpleNamespace(
+            client=SimpleNamespace(host="2001:0db8:0000:0000:0000:ff00:0042:8329"),
+            headers={"user-agent": "A" * 600},
+        )
+
+        metadata = _request_metadata(request)
+
+        self.assertEqual(metadata["client_host"], "2001:db8::ff00:42:8329")
+        self.assertEqual(metadata["user_agent"], "A" * 500)
+
+    def test_request_metadata_ignores_invalid_client_host(self):
+        request = SimpleNamespace(
+            client=SimpleNamespace(host="not an ip address"),
+            headers={},
+        )
+
+        metadata = _request_metadata(request)
+
+        self.assertIsNone(metadata["client_host"])
+        self.assertIsNone(metadata["user_agent"])
 
     def test_create_client_account_rejects_cross_tenant_contact(self):
         with self.assertRaises(HTTPException) as exc:

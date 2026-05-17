@@ -4,6 +4,7 @@ import base64
 import email
 import imaplib
 import email.utils
+import logging
 import smtplib
 import ssl
 from datetime import datetime, timedelta, timezone
@@ -35,6 +36,8 @@ from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.record_comments import get_record_comment_module_config, get_record_reference
 from app.modules.user_management.models import Tenant, User, UserStatus
 
+
+logger = logging.getLogger(__name__)
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
@@ -318,6 +321,12 @@ def upsert_google_mail_connection(
     normalized_account_email = account_email.strip().lower()
     if not normalized_account_email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google account email is missing.")
+    expected_account_email = (user.email or "").strip().lower()
+    if not connection and expected_account_email and normalized_account_email != expected_account_email:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Google account email does not match the signed-in user.",
+        )
     if connection and connection.account_email and connection.account_email.lower() != normalized_account_email:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -674,6 +683,13 @@ def _decrypt_connection_password(db: Session, connection: UserMailConnection) ->
         connection.encrypted_password = encrypt_secret(password)
         db.add(connection)
         db.flush()
+        logger.info(
+            "Re-encrypted rotated mailbox credential for tenant_id=%s user_id=%s provider=%s connection_id=%s",
+            connection.tenant_id,
+            connection.user_id,
+            connection.provider,
+            connection.id,
+        )
     return password
 
 
@@ -714,13 +730,11 @@ def _resolve_mail_source_context(db: Session, *, current_user: User, payload: di
             entity_id=entity_id,
         )
     except HTTPException as exc:
-        if exc.status_code == status.HTTP_404_NOT_FOUND or exc.detail == "Invalid record identifier.":
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mail source record not found.") from exc
-        raise
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mail source is not available.") from exc
     except PermissionError as exc:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mail source is not available.") from exc
     except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mail source record not found.") from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mail source is not available.") from exc
 
     return {
         "module_key": module_key,

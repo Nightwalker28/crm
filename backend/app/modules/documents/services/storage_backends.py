@@ -29,11 +29,14 @@ class LocalDocumentStorage:
         target_dir.mkdir(parents=True, exist_ok=True)
         path = target_dir / f"{uuid4().hex}.{extension}"
         path.write_bytes(content)
-        return StoredDocument(provider=self.provider, storage_path=path.relative_to(UPLOADS_DIR).as_posix())
+        return StoredDocument(provider=self.provider, storage_path=path.relative_to(DOCUMENT_STORAGE_DIR).as_posix())
 
     def resolve_path(self, storage_path: str) -> Path:
-        path = (UPLOADS_DIR / storage_path).resolve()
         root = DOCUMENT_STORAGE_DIR.resolve()
+        normalized_path = (storage_path or "").strip().lstrip("/")
+        if normalized_path.startswith("documents/"):
+            normalized_path = normalized_path.removeprefix("documents/")
+        path = (root / normalized_path).resolve()
         if root != path and root not in path.parents:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document file not found.")
         if not path.exists() or not path.is_file():

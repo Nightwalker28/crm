@@ -53,6 +53,7 @@ class FinanceDownloadTests(unittest.TestCase):
             upload_root.mkdir(parents=True, exist_ok=True)
 
             with patch.object(io_search_api, "IO_SEARCH_UPLOAD_DIR", upload_root), \
+                 patch.object(io_search_api, "get_finance_module_id", return_value=1), \
                  patch.object(
                      io_search_api,
                      "get_finance_user_scope",
@@ -61,8 +62,34 @@ class FinanceDownloadTests(unittest.TestCase):
                 with self.assertRaises(HTTPException) as exc:
                     io_search_api.get_downloadable_insertion_order(db, current_user, "IO-1")
 
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Invalid file location.")
+        self.assertEqual(exc.exception.status_code, 403)
+        self.assertEqual(exc.exception.detail, "Access denied.")
+
+    def test_get_downloadable_insertion_order_sanitizes_fallback_file_name(self):
+        record = SimpleNamespace(
+            file_path=None,
+            file_name="../nested/order.docx",
+        )
+        db = FakeFinanceDB(record)
+        current_user = SimpleNamespace(id=7)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            upload_root = Path(tmpdir) / "uploads" / "io-search"
+            upload_root.mkdir(parents=True, exist_ok=True)
+            target = upload_root / "order.docx"
+            target.write_bytes(b"docx")
+
+            with patch.object(io_search_api, "IO_SEARCH_UPLOAD_DIR", upload_root), \
+                 patch.object(io_search_api, "get_finance_module_id", return_value=1), \
+                 patch.object(
+                     io_search_api,
+                     "get_finance_user_scope",
+                     return_value=SimpleNamespace(user_id_filter=7),
+                 ):
+                file_path, file_name = io_search_api.get_downloadable_insertion_order(db, current_user, "IO-1")
+
+        self.assertEqual(file_path.name, "order.docx")
+        self.assertEqual(file_name, "order.docx")
 
 
 class FinanceUploadNegativeTests(unittest.IsolatedAsyncioTestCase):

@@ -1,3 +1,4 @@
+import ipaddress
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -33,7 +34,10 @@ from app.modules.client_portal.services.client_portal_services import (
     assign_contact_customer_group,
     assign_organization_customer_group,
     authenticate_client_account,
+    check_client_login_rate_limit,
+    check_public_client_page_action_rate_limit,
     client_account_from_token,
+    clear_failed_client_login_attempts,
     create_client_account,
     create_client_page,
     create_customer_group,
@@ -46,8 +50,11 @@ from app.modules.client_portal.services.client_portal_services import (
     list_client_pages,
     list_customer_groups,
     publish_client_page_link,
+    record_failed_client_login_attempt,
+    record_public_client_page_action_attempt,
     record_client_page_action,
     regenerate_client_setup_link,
+    require_client_account_matches_page,
     resolve_client_customer_group,
     serialize_client_account,
     serialize_client_page,
@@ -92,10 +99,30 @@ def _optional_client_account(db: Session, credentials: HTTPAuthorizationCredenti
 
 
 def _request_metadata(request: Request) -> dict:
+    client_host = request.client.host if request.client else None
+    normalized_client_host = None
+    if client_host:
+        try:
+            normalized_client_host = ipaddress.ip_address(client_host.strip()).compressed
+        except ValueError:
+            normalized_client_host = None
     return {
-        "client_host": request.client.host if request.client else None,
-        "user_agent": request.headers.get("user-agent"),
+        "client_host": normalized_client_host,
+        "user_agent": (request.headers.get("user-agent") or "")[:500] or None,
     }
+
+
+def _client_ip_for_rate_limit(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for")
+    raw_host = forwarded_for.split(",", 1)[0].strip() if forwarded_for else None
+    if not raw_host and request.client:
+        raw_host = request.client.host
+    if not raw_host:
+        return None
+    try:
+        return ipaddress.ip_address(raw_host.strip()).compressed
+    except ValueError:
+        return None
 
 
 @router.get("/customer-groups", response_model=list[CustomerGroupResponse])
@@ -358,12 +385,21 @@ def login_client_route(
     db: Session = Depends(get_db),
 ):
     tenant = _tenant_from_request(request)
-    account, token = authenticate_client_account(
-        db,
-        tenant_id=tenant.id,
-        email=str(payload.email),
-        password=payload.password,
-    )
+    email = str(payload.email)
+    client_host = _client_ip_for_rate_limit(request)
+    check_client_login_rate_limit(tenant_id=tenant.id, email=email, client_host=client_host)
+    try:
+        account, token = authenticate_client_account(
+            db,
+            tenant_id=tenant.id,
+            email=email,
+            password=payload.password,
+        )
+    except HTTPException as exc:
+        if exc.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
+            record_failed_client_login_attempt(tenant_id=tenant.id, email=email, client_host=client_host)
+        raise
+    clear_failed_client_login_attempts(tenant_id=tenant.id, email=email, client_host=client_host)
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -409,9 +445,14 @@ def get_public_client_page_route(
 def download_public_client_page_document(
     token: str,
     document_id: int,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
     db: Session = Depends(get_db),
 ):
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing client token")
     page = get_public_client_page(db, token=token)
+    account = client_account_from_token(db, token=credentials.credentials)
+    require_client_account_matches_page(account, page)
     document = get_client_page_document_or_404(db, page=page, document_id=document_id)
     current_user = SimpleNamespace(id=page.created_by_user_id)
     download = resolve_document_download(db, document=document, current_user=current_user)
@@ -437,6 +478,8 @@ def accept_public_client_page_route(
     credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
     db: Session = Depends(get_db),
 ):
+    client_host = _client_ip_for_rate_limit(request)
+    check_public_client_page_action_rate_limit(token=token, client_host=client_host)
     page = get_public_client_page(db, token=token)
     account = _optional_client_account(db, credentials)
     action = record_client_page_action(
@@ -447,6 +490,7 @@ def accept_public_client_page_route(
         payload=payload.model_dump(),
         request_metadata=_request_metadata(request),
     )
+    record_public_client_page_action_attempt(token=token, client_host=client_host)
     return ClientPageActionResponse.model_validate({"id": action.id, "action": action.action, "created_at": action.created_at})
 
 
@@ -458,6 +502,8 @@ def request_changes_public_client_page_route(
     credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
     db: Session = Depends(get_db),
 ):
+    client_host = _client_ip_for_rate_limit(request)
+    check_public_client_page_action_rate_limit(token=token, client_host=client_host)
     page = get_public_client_page(db, token=token)
     account = _optional_client_account(db, credentials)
     action = record_client_page_action(
@@ -468,4 +514,5 @@ def request_changes_public_client_page_route(
         payload=payload.model_dump(),
         request_metadata=_request_metadata(request),
     )
+    record_public_client_page_action_attempt(token=token, client_host=client_host)
     return ClientPageActionResponse.model_validate({"id": action.id, "action": action.action, "created_at": action.created_at})

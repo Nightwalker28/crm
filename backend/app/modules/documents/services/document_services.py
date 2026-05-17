@@ -31,6 +31,20 @@ ALLOWED_DOCUMENT_CONTENT_TYPES = {
     "text/plain",
     "text/rtf",
 }
+DOCUMENT_CONTENT_TYPES_BY_EXTENSION = {
+    "pdf": {"application/pdf"},
+    "doc": {"application/msword"},
+    "docx": {"application/vnd.openxmlformats-officedocument.wordprocessingml.document"},
+    "odt": {"application/vnd.oasis.opendocument.text"},
+    "rtf": {"application/rtf", "text/rtf"},
+    "txt": {"text/plain"},
+}
+DOCUMENT_MAGIC_TYPES = {
+    "pdf": b"%PDF-",
+    "doc": b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",
+    "zip": b"PK\x03\x04",
+    "rtf": b"{\\rtf",
+}
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
@@ -253,22 +267,27 @@ async def read_document_upload(file: UploadFile) -> tuple[bytes, str, str, str]:
             detail=f"Document exceeds the {settings.DOCUMENT_MAX_UPLOAD_BYTES} byte upload limit.",
         )
 
-    content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
-    if content_type and content_type not in ALLOWED_DOCUMENT_CONTENT_TYPES:
+    declared_content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+    if declared_content_type and declared_content_type not in ALLOWED_DOCUMENT_CONTENT_TYPES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported document content type.")
 
-    _validate_document_signature(content, extension)
-    return content, extension, content_type or _default_content_type(extension), filename
+    detected_content_type = _validate_document_signature(content, extension)
+    if declared_content_type and declared_content_type not in DOCUMENT_CONTENT_TYPES_BY_EXTENSION[extension]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document content type does not match file extension.")
+    return content, extension, declared_content_type or detected_content_type, filename
 
 
-def _validate_document_signature(content: bytes, extension: str) -> None:
+def _validate_document_signature(content: bytes, extension: str) -> str:
+    _reject_document_polyglot(content, extension)
     if extension == "pdf":
         if not content.startswith(b"%PDF-") or b"%%EOF" not in content[-2048:]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded PDF content is invalid.")
+        return "application/pdf"
     if extension == "docx":
         names = _zip_member_names(content)
         if "[Content_Types].xml" not in names or not any(name.startswith("word/") for name in names):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded DOCX content is invalid.")
+        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     if extension == "odt":
         names = _zip_member_names(content)
         if "mimetype" not in names:
@@ -280,8 +299,11 @@ def _validate_document_signature(content: bytes, extension: str) -> None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded ODT content is invalid.") from exc
         if mimetype != "application/vnd.oasis.opendocument.text":
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded ODT content is invalid.")
+        return "application/vnd.oasis.opendocument.text"
     if extension == "doc" and not content.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded DOC content is invalid.")
+    if extension == "doc":
+        return "application/msword"
     if extension in {"txt", "rtf"}:
         try:
             content.decode("utf-8")
@@ -292,6 +314,29 @@ def _validate_document_signature(content: bytes, extension: str) -> None:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded text document is invalid.") from exc
     if extension == "rtf" and not content.lstrip().startswith(b"{\\rtf"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded RTF content is invalid.")
+    if extension == "rtf":
+        return "application/rtf"
+    return "text/plain"
+
+
+def _reject_document_polyglot(content: bytes, extension: str) -> None:
+    lstripped = content.lstrip()
+    checks = {
+        "pdf": content.startswith(DOCUMENT_MAGIC_TYPES["pdf"]),
+        "doc": content.startswith(DOCUMENT_MAGIC_TYPES["doc"]),
+        "zip": content.startswith(DOCUMENT_MAGIC_TYPES["zip"]),
+        "rtf": lstripped.startswith(DOCUMENT_MAGIC_TYPES["rtf"]),
+    }
+    expected_magic = {
+        "pdf": {"pdf"},
+        "doc": {"doc"},
+        "docx": {"zip"},
+        "odt": {"zip"},
+        "rtf": {"rtf"},
+        "txt": set(),
+    }[extension]
+    if any(matches and name not in expected_magic for name, matches in checks.items()):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document content does not match file extension.")
 
 
 def _zip_member_names(content: bytes) -> set[str]:
@@ -300,17 +345,6 @@ def _zip_member_names(content: bytes) -> set[str]:
             return set(archive.namelist())
     except zipfile.BadZipFile as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded document archive is invalid.") from exc
-
-
-def _default_content_type(extension: str) -> str:
-    return {
-        "pdf": "application/pdf",
-        "doc": "application/msword",
-        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "odt": "application/vnd.oasis.opendocument.text",
-        "rtf": "application/rtf",
-        "txt": "text/plain",
-    }[extension]
 
 
 def _tenant_storage_used(db: Session, *, tenant_id: int) -> int:

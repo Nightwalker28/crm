@@ -192,6 +192,23 @@ async function publicJson<T>(path: string, init: RequestInit = {}, fallback = "R
   return body as T;
 }
 
+async function publicBlob(path: string, init: RequestInit = {}, fallback = "Request failed."): Promise<Blob> {
+  const headers = new Headers(init.headers);
+  headers.set("Accept", "*/*");
+  const token = typeof window !== "undefined" ? window.localStorage.getItem(CLIENT_TOKEN_STORAGE_KEY) : null;
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(apiUrl(path), {
+    ...init,
+    credentials: "include",
+    headers,
+  });
+  if (!res.ok) {
+    const body = await readJsonSafely(res);
+    throw new Error(detailMessage(body, fallback));
+  }
+  return res.blob();
+}
+
 export function useClientPortalPages() {
   return useQuery({
     queryKey: ["client-portal", "pages"],
@@ -376,6 +393,13 @@ export async function recordClientPageAction(token: string, action: "accept" | "
   }, "Failed to record response.");
 }
 
-export function publicClientPageDocumentUrl(token: string, documentId: number) {
-  return apiUrl(`/client-pages/${token}/documents/${documentId}/download`);
+export async function downloadPublicClientPageDocument(token: string, document: ClientPageDocument) {
+  const blob = await publicBlob(
+    `/client-pages/${token}/documents/${document.id}/download`,
+    {},
+    "Sign in to open this document.",
+  );
+  const url = window.URL.createObjectURL(blob);
+  window.open(url, "_blank", "noopener,noreferrer");
+  window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
 }

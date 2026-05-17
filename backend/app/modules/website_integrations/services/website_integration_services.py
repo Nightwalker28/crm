@@ -62,8 +62,18 @@ def _hash_api_key(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
+def _payload_for_hash(value):
+    if isinstance(value, Decimal):
+        return str(value)
+    if isinstance(value, dict):
+        return {str(key): _payload_for_hash(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_payload_for_hash(item) for item in value]
+    return jsonable_encoder(value)
+
+
 def _hash_payload(value: dict) -> str:
-    encoded = jsonable_encoder(value)
+    encoded = _payload_for_hash(value)
     return hashlib.sha256(json.dumps(encoded, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
@@ -563,20 +573,37 @@ def _resolve_public_catalog_item_for_order(db: Session, *, tenant_id: int, line:
     return item
 
 
-def _apply_stock_decrement(item: PublicCatalogItem, quantity: Decimal) -> tuple[Decimal | None, Decimal | None]:
+def _apply_stock_decrement(db: Session, item: PublicCatalogItem, quantity: Decimal) -> tuple[Decimal | None, Decimal | None]:
     if item.product is None:
         return None, None
-    before = Decimal(str(item.stock_quantity)) if item.stock_quantity is not None else None
+    product = (
+        db.query(CatalogProduct)
+        .filter(
+            CatalogProduct.tenant_id == item.product.tenant_id,
+            CatalogProduct.id == item.product.id,
+            CatalogProduct.is_public == 1,
+            CatalogProduct.is_active == 1,
+            CatalogProduct.deleted_at.is_(None),
+        )
+        .with_for_update()
+        .first()
+    )
+    if not product:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog product not found for order line")
+    if product.stock_status == "out_of_stock":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"{item.name} is out of stock")
+    before = Decimal(str(product.stock_quantity)) if product.stock_quantity is not None else None
     if before is None:
         return None, None
     if before < quantity:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.name}")
     after = before - quantity
-    item.product.stock_quantity = after
+    product.stock_quantity = after
     if after <= 0:
-        item.product.stock_status = "out_of_stock"
-    elif item.product.stock_status == "out_of_stock":
-        item.product.stock_status = "in_stock"
+        product.stock_status = "out_of_stock"
+    elif product.stock_status == "out_of_stock":
+        product.stock_status = "in_stock"
+    db.add(product)
     return before, after
 
 
@@ -627,7 +654,7 @@ def create_public_order(
             order.currency = line_currency
         if line_currency != order.currency:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order lines must use one currency")
-        before, after = _apply_stock_decrement(item, quantity)
+        before, after = _apply_stock_decrement(db, item, quantity)
         unit_price = Decimal(str(item.public_unit_price))
         line_total = unit_price * quantity
         subtotal += line_total

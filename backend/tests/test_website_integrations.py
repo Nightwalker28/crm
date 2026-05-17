@@ -1,4 +1,5 @@
 import unittest
+from decimal import Decimal
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -241,6 +242,12 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
                 api_key_id=key.id,
                 payload={**payload, "line_items": [{"slug": "starter-package", "quantity": "2"}]},
             )
+
+    def test_hash_payload_preserves_decimal_scale(self):
+        self.assertNotEqual(
+            services._hash_payload({"line_items": [{"quantity": Decimal("1.10")}]}),
+            services._hash_payload({"line_items": [{"quantity": Decimal("1.1")}]}),
+        )
 
     def test_integration_rate_limit_rejects_after_configured_limit(self):
         key, _raw_key = services.create_api_key(

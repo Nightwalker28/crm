@@ -154,6 +154,18 @@ class Settings:
     CLIENT_ACCESS_TOKEN_EXPIRE_MINUTES: int = int(
         os.getenv("CLIENT_ACCESS_TOKEN_EXPIRE_MINUTES", "120")
     )
+    CLIENT_LOGIN_FAILED_ATTEMPT_LIMIT: int = int(
+        os.getenv("CLIENT_LOGIN_FAILED_ATTEMPT_LIMIT", "5")
+    )
+    CLIENT_LOGIN_FAILED_ATTEMPT_WINDOW_SECONDS: int = int(
+        os.getenv("CLIENT_LOGIN_FAILED_ATTEMPT_WINDOW_SECONDS", "300")
+    )
+    PUBLIC_CLIENT_PAGE_ACTION_LIMIT: int = int(
+        os.getenv("PUBLIC_CLIENT_PAGE_ACTION_LIMIT", "10")
+    )
+    PUBLIC_CLIENT_PAGE_ACTION_WINDOW_SECONDS: int = int(
+        os.getenv("PUBLIC_CLIENT_PAGE_ACTION_WINDOW_SECONDS", "300")
+    )
     PAGINATION_DEFAULT_PAGE_SIZE: int = int(os.getenv("PAGINATION_DEFAULT_PAGE_SIZE", "10"))
     PAGINATION_PAGE_SIZE_OPTIONS: list[int] = _env_int_list(
         "PAGINATION_PAGE_SIZE_OPTIONS",
@@ -206,5 +218,12 @@ def validate_startup_settings() -> None:
         raise RuntimeError("DATABASE_URL must be set")
     if (not settings.DEBUG or settings.ALLOWED_DOMAINS) and not settings.JWT_SECRET:
         raise RuntimeError("JWT_SECRET must be set outside purely local debug mode")
-    if settings.TENANT_RESOLUTION_MODE not in {"host", "auth"}:
+    if (
+        not settings.DEBUG
+        and int(getattr(settings, "WEBSITE_INTEGRATION_RATE_LIMIT_COUNT", 0) or 0) > 0
+        and not getattr(settings, "REDIS_URL", None)
+    ):
+        raise RuntimeError("REDIS_URL must be set for production website integration rate limiting")
+    tenant_resolution_mode = getattr(settings, "TENANT_RESOLUTION_MODE", "host")
+    if tenant_resolution_mode not in {"host", "auth"}:
         raise RuntimeError("TENANT_RESOLUTION_MODE must be either 'host' or 'auth'")

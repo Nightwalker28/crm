@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
 from app.core.pagination import create_pagination
 from app.modules.platform.models import CrmEvent, CrmEventDelivery, NotificationChannel
-from app.modules.platform.services.crm_events import list_crm_events, serialize_crm_event
+from app.modules.platform.services.crm_events import format_event_message, list_crm_events, serialize_crm_event
 from app.modules.user_management import models as user_management_models  # noqa: F401
 
 
@@ -92,6 +92,27 @@ class CrmEventHistoryTests(unittest.TestCase):
         self.assertEqual(total, 1)
         self.assertEqual(events[0].event_type, "deal.assigned")
         self.assertEqual(deliveries_by_event_id[events[0].id][0].error_message, "bad webhook")
+
+    def test_unknown_event_message_uses_safe_fallback_fields(self):
+        message = format_event_message(
+            "custom.secret_event",
+            {
+                "entity_type": "client_page",
+                "entity_id": "42",
+                "action": "view",
+                "customer_email": "buyer@example.com",
+                "api_key": "secret-token",
+                "webhook_url": "https://hooks.example/private",
+            },
+        )
+
+        self.assertIn("custom.secret_event", message)
+        self.assertIn("Entity Type: client_page", message)
+        self.assertIn("Entity ID: 42", message)
+        self.assertIn("Action: view", message)
+        self.assertNotIn("buyer@example.com", message)
+        self.assertNotIn("secret-token", message)
+        self.assertNotIn("hooks.example", message)
 
 
 if __name__ == "__main__":

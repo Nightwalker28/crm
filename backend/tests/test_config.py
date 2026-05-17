@@ -52,6 +52,23 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "DATABASE_URL must be set"):
                 config.validate_startup_settings()
 
+    def test_startup_validation_requires_redis_for_production_website_rate_limits(self):
+        with patch.object(
+            config,
+            "settings",
+            SimpleNamespace(
+                DEBUG=False,
+                JWT_SECRET="secret",
+                DATABASE_URL="postgresql://db/app",
+                ALLOWED_DOMAINS=[],
+                REDIS_URL=None,
+                WEBSITE_INTEGRATION_RATE_LIMIT_COUNT=120,
+                TENANT_RESOLUTION_MODE="host",
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "REDIS_URL must be set"):
+                config.validate_startup_settings()
+
 
 if __name__ == "__main__":
     unittest.main()

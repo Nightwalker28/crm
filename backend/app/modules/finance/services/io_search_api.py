@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import HTTPException, Request, UploadFile, status
 from sqlalchemy import func, tuple_
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.access_control import get_finance_user_scope
@@ -358,7 +359,11 @@ def _create_imported_insertion_order(
         notes=_normalize_text(payload.get("notes")),
     )
     db.add(record)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise ValueError("Insertion order number already exists") from exc
     db.refresh(record)
     return record
 
@@ -368,7 +373,7 @@ def _resolve_io_download_path(record: FinanceIO) -> Path:
     if record.file_path:
         file_path = Path(record.file_path).resolve()
     else:
-        file_name = (record.file_name or "").strip()
+        file_name = Path((record.file_name or "").strip()).name
         if not file_name:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -380,8 +385,8 @@ def _resolve_io_download_path(record: FinanceIO) -> Path:
         file_path.relative_to(allowed_root)
     except ValueError as exc:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid file location.",
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Access denied.",
         ) from exc
     return file_path
 
@@ -634,7 +639,7 @@ def get_downloadable_insertion_order(db: Session, current_user, io_number: str) 
             detail="File not found.",
         )
 
-    return file_path, record.file_name
+    return file_path, Path(record.file_name or file_path.name).name
 
 
 def list_generic_insertion_orders_page(

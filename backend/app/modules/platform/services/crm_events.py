@@ -127,7 +127,15 @@ def format_event_message(event_type: str, payload: dict[str, Any]) -> str:
             ],
             action=payload.get("action") or "Review task",
         )
-    return _message_lines(event_type, [(key, value) for key, value in payload.items() if key != "webhook_url"])
+    return _message_lines(
+        event_type,
+        [
+            ("Event Type", event_type),
+            ("Entity Type", payload.get("entity_type")),
+            ("Entity ID", payload.get("entity_id")),
+            ("Action", payload.get("action")),
+        ],
+    )
 
 
 def _post_slack_webhook(webhook_url: str, text: str) -> None:

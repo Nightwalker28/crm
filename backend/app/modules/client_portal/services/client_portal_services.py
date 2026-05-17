@@ -10,6 +10,7 @@ from fastapi import HTTPException, status
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.config import settings
 from app.core.passwords import hash_password, password_hash_needs_upgrade, verify_password
 from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPageAction, CustomerGroup
@@ -29,6 +30,8 @@ DEFAULT_CUSTOMER_GROUPS = [
     {"group_key": "friends_family", "name": "Friends & Family", "discount_type": "percent", "discount_value": Decimal("0"), "is_default": 0},
 ]
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
+CLIENT_LOGIN_RATE_LIMIT_PREFIX = "client_auth:login_failed"
+PUBLIC_CLIENT_PAGE_ACTION_RATE_LIMIT_PREFIX = "client_pages:actions"
 
 
 def _utcnow() -> datetime:
@@ -37,6 +40,69 @@ def _utcnow() -> datetime:
 
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _client_login_attempt_keys(*, tenant_id: int, email: str, client_host: str | None) -> list[str]:
+    normalized_email = email.strip().lower()
+    email_hash = hashlib.sha256(normalized_email.encode("utf-8")).hexdigest()
+    keys = [f"{CLIENT_LOGIN_RATE_LIMIT_PREFIX}:tenant:{tenant_id}:email:{email_hash}"]
+    if client_host:
+        host_hash = hashlib.sha256(client_host.strip().lower().encode("utf-8")).hexdigest()
+        keys.append(f"{CLIENT_LOGIN_RATE_LIMIT_PREFIX}:tenant:{tenant_id}:ip:{host_hash}")
+    return keys
+
+
+def check_client_login_rate_limit(*, tenant_id: int, email: str, client_host: str | None = None) -> None:
+    for key in _client_login_attempt_keys(tenant_id=tenant_id, email=email, client_host=client_host):
+        payload = cache_get_json(key) or {}
+        if int(payload.get("count") or 0) >= settings.CLIENT_LOGIN_FAILED_ATTEMPT_LIMIT:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed client login attempts",
+            )
+
+
+def record_failed_client_login_attempt(*, tenant_id: int, email: str, client_host: str | None = None) -> None:
+    for key in _client_login_attempt_keys(tenant_id=tenant_id, email=email, client_host=client_host):
+        payload = cache_get_json(key) or {}
+        count = int(payload.get("count") or 0) + 1
+        cache_set_json(
+            key,
+            {"count": count},
+            ttl_seconds=settings.CLIENT_LOGIN_FAILED_ATTEMPT_WINDOW_SECONDS,
+        )
+
+
+def clear_failed_client_login_attempts(*, tenant_id: int, email: str, client_host: str | None = None) -> None:
+    for key in _client_login_attempt_keys(tenant_id=tenant_id, email=email, client_host=client_host):
+        cache_delete(key)
+
+
+def _public_client_page_action_rate_limit_key(*, token: str, client_host: str | None) -> str:
+    token_hash = hashlib.sha256(token.strip().encode("utf-8")).hexdigest()
+    host_hash = hashlib.sha256((client_host or "unknown").strip().lower().encode("utf-8")).hexdigest()
+    return f"{PUBLIC_CLIENT_PAGE_ACTION_RATE_LIMIT_PREFIX}:token:{token_hash}:ip:{host_hash}"
+
+
+def check_public_client_page_action_rate_limit(*, token: str, client_host: str | None = None) -> None:
+    cache_key = _public_client_page_action_rate_limit_key(token=token, client_host=client_host)
+    payload = cache_get_json(cache_key) or {}
+    if int(payload.get("count") or 0) >= settings.PUBLIC_CLIENT_PAGE_ACTION_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many client page actions",
+        )
+
+
+def record_public_client_page_action_attempt(*, token: str, client_host: str | None = None) -> None:
+    cache_key = _public_client_page_action_rate_limit_key(token=token, client_host=client_host)
+    payload = cache_get_json(cache_key) or {}
+    count = int(payload.get("count") or 0) + 1
+    cache_set_json(
+        cache_key,
+        {"count": count},
+        ttl_seconds=settings.PUBLIC_CLIENT_PAGE_ACTION_WINDOW_SECONDS,
+    )
 
 
 def _normalize_key(value: str) -> str:
@@ -552,6 +618,11 @@ def _validate_client_account_matches_page(account: ClientAccount | None, page: C
     return account.organization_id == page.organization_id
 
 
+def require_client_account_matches_page(account: ClientAccount | None, page: ClientPage) -> None:
+    if not _validate_client_account_matches_page(account, page):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Client account cannot access this page")
+
+
 def _contact_display_name(contact: SalesContact | None) -> str | None:
     if not contact:
         return None
@@ -968,7 +1039,10 @@ def setup_client_password(db: Session, *, token: str, password: str) -> ClientAc
     if account.status == "inactive":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Client account is inactive")
     before_state = _client_account_state(account)
-    account.password_hash = hash_password(password)
+    try:
+        account.password_hash = hash_password(password)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     account.status = "active"
     account.setup_token_hash = None
     account.setup_token_expires_at = None

@@ -10,7 +10,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { CLIENT_TOKEN_STORAGE_KEY, publicClientPageDocumentUrl, recordClientPageAction, usePublicClientPage } from "@/hooks/useClientPortal";
+import { CLIENT_TOKEN_STORAGE_KEY, downloadPublicClientPageDocument, recordClientPageAction, usePublicClientPage } from "@/hooks/useClientPortal";
 import { resolveMediaUrl } from "@/lib/media";
 
 function money(value: string | number, currency: string) {
@@ -39,6 +39,7 @@ export default function PublicClientPage() {
   const pageQuery = usePublicClientPage(token);
   const [message, setMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState<"accept" | "request-changes" | null>(null);
+  const [openingDocumentId, setOpeningDocumentId] = useState<number | null>(null);
   const hasClientToken = useMemo(() => typeof window !== "undefined" && Boolean(window.localStorage.getItem(CLIENT_TOKEN_STORAGE_KEY)), []);
   const page = pageQuery.data;
   const accentColor = brandAccent(page?.brand_settings?.accent_color);
@@ -56,6 +57,17 @@ export default function PublicClientPage() {
       toast.error(getError(error));
     } finally {
       setIsSubmitting(null);
+    }
+  }
+
+  async function openDocument(document: NonNullable<typeof page>["documents"][number]) {
+    setOpeningDocumentId(document.id);
+    try {
+      await downloadPublicClientPageDocument(token, document);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to open document.");
+    } finally {
+      setOpeningDocumentId(null);
     }
   }
 
@@ -152,11 +164,9 @@ export default function PublicClientPage() {
                             {document.original_filename} · {document.extension.toUpperCase()} · {formatBytes(document.file_size_bytes)}
                           </div>
                         </div>
-                        <Button asChild variant="outline" size="sm">
-                          <a href={publicClientPageDocumentUrl(token, document.id)} target="_blank" rel="noreferrer">
-                            <Download className="h-4 w-4" />
-                            Open
-                          </a>
+                        <Button type="button" variant="outline" size="sm" onClick={() => void openDocument(document)} disabled={openingDocumentId === document.id}>
+                          {openingDocumentId === document.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                          {openingDocumentId === document.id ? "Opening..." : "Open"}
                         </Button>
                       </div>
                     ))}
