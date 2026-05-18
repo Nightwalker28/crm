@@ -8,7 +8,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session, joinedload, object_session
 
 from app.core.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.config import settings
@@ -1026,10 +1026,12 @@ def record_client_page_action(
     return record
 
 
-def setup_client_password(db: Session, *, token: str, password: str) -> ClientAccount:
+def setup_client_password(db: Session, *, token: str, password: str, expected_tenant_id: int | None = None) -> ClientAccount:
     token_hash = _hash_token(token)
     account = db.query(ClientAccount).filter(ClientAccount.setup_token_hash == token_hash).first()
     if not account or not account.setup_token_expires_at:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Setup link is invalid")
+    if expected_tenant_id is not None and account.tenant_id != expected_tenant_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Setup link is invalid")
     expires_at = account.setup_token_expires_at
     if expires_at.tzinfo is None:
@@ -1128,6 +1130,8 @@ def resolve_client_customer_group(db: Session | None, *, account: ClientAccount)
     loaded_organization = account.__dict__.get("organization") if account.organization_id else None
     if loaded_organization:
         return loaded_organization.customer_group
+    if db is None:
+        db = object_session(account)
     if db is None:
         return None
     if account.contact_id:

@@ -40,6 +40,35 @@ class FakeFinanceDB:
 
 
 class FinanceDownloadTests(unittest.TestCase):
+    def test_get_generic_insertion_order_scopes_lookup_by_tenant(self):
+        db = FakeFinanceDB()
+        current_user = SimpleNamespace(id=7, tenant_id=42)
+        record = SimpleNamespace(id=9)
+
+        with patch.object(io_search_api, "get_finance_module_id", return_value=3), \
+             patch.object(
+                 io_search_api,
+                 "get_finance_user_scope",
+                 return_value=SimpleNamespace(user_id_filter=7),
+             ), \
+             patch.object(io_search_api, "get_insertion_order_or_404", return_value=record) as lookup_mock, \
+             patch.object(io_search_api, "_serialize_finance_record_response", return_value={"id": 9}):
+            result = io_search_api.get_generic_insertion_order(
+                db,
+                current_user,
+                io_id=9,
+                request=None,
+            )
+
+        self.assertEqual(result, {"id": 9})
+        lookup_mock.assert_called_once_with(
+            db,
+            tenant_id=42,
+            module_id=3,
+            io_id=9,
+            user_id=7,
+        )
+
     def test_get_downloadable_insertion_order_blocks_path_escape(self):
         record = SimpleNamespace(
             file_path="../outside.docx",

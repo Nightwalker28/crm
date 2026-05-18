@@ -12,10 +12,24 @@ function getError(error: unknown) {
   return error instanceof Error ? error.message : "Failed to sign in.";
 }
 
+function safeClientRedirect(value: string | null) {
+  if (!value || !value.startsWith("/client/") || value.startsWith("//")) return "/client/login";
+  return value;
+}
+
+function pageTokenFromRedirect(redirect: string) {
+  const match = redirect.match(/^\/client\/pages\/([^/?#]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 function ClientLoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const redirect = useMemo(() => searchParams.get("redirect") || "/client/login", [searchParams]);
+  const redirect = useMemo(() => safeClientRedirect(searchParams.get("redirect")), [searchParams]);
+  const tenantSlug = useMemo(
+    () => searchParams.get("tenant") || searchParams.get("tenant_slug"),
+    [searchParams],
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,9 +40,14 @@ function ClientLoginContent() {
     setError(null);
     setIsSubmitting(true);
     try {
-      const result = await clientLogin({ email, password });
+      const result = await clientLogin({
+        email,
+        password,
+        page_token: pageTokenFromRedirect(redirect),
+        tenant_slug: tenantSlug,
+      });
       window.localStorage.setItem(CLIENT_TOKEN_STORAGE_KEY, result.access_token);
-      router.replace(redirect.startsWith("/client/") ? redirect : "/client/login");
+      router.replace(redirect);
       router.refresh();
     } catch (submitError) {
       setError(getError(submitError));

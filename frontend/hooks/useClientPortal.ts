@@ -372,14 +372,19 @@ export function usePublicClientPage(token: string) {
   });
 }
 
-export async function clientLogin(payload: { email: string; password: string }) {
+export async function clientLogin(payload: {
+  email: string;
+  password: string;
+  page_token?: string | null;
+  tenant_slug?: string | null;
+}) {
   return publicJson<{ access_token: string; token_type: string; account: ClientAccount }>("/client-auth/login", {
     method: "POST",
     body: JSON.stringify(payload),
   }, "Failed to sign in.");
 }
 
-export async function setupClientPassword(payload: { token: string; password: string }) {
+export async function setupClientPassword(payload: { token: string; password: string; tenant_slug?: string | null }) {
   return publicJson<ClientAccount>("/client-auth/setup", {
     method: "POST",
     body: JSON.stringify(payload),

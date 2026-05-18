@@ -16,6 +16,7 @@ function getError(error: unknown) {
 function ClientSetupContent() {
   const searchParams = useSearchParams();
   const token = useMemo(() => searchParams.get("token") ?? "", [searchParams]);
+  const tenantSlug = useMemo(() => searchParams.get("tenant") || searchParams.get("tenant_slug"), [searchParams]);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [status, setStatus] = useState<"idle" | "saving" | "done">("idle");
@@ -34,7 +35,7 @@ function ClientSetupContent() {
     }
     setStatus("saving");
     try {
-      await setupClientPassword({ token, password });
+      await setupClientPassword({ token, password, tenant_slug: tenantSlug });
       setStatus("done");
     } catch (submitError) {
       setError(getError(submitError));

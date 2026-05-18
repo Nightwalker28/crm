@@ -34,6 +34,17 @@ export default function InsertionOrderDetailPage() {
     return <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-6 text-sm text-neutral-500">Loading insertion order...</div>;
   }
 
+  if (orderQuery.error) {
+    return (
+      <div className="rounded-md border border-red-900/70 bg-red-950/30 px-4 py-6 text-sm text-red-100">
+        <div>{orderQuery.error instanceof Error ? orderQuery.error.message : "Failed to load insertion order."}</div>
+        <Button type="button" variant="secondary" className="mt-4" onClick={() => orderQuery.refetch()}>
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   if (!order) {
     return <EmptyState title="Insertion order not found" description="This insertion order may have been deleted or you may not have access." />;
   }

@@ -1,5 +1,19 @@
 # Client Portal Multi-Tenant Sign-In Fix
 
+## Status
+
+Implemented 2026-05-18:
+
+- `/client-auth/login` can resolve tenant context from request tenant, shared page token, or tenant slug.
+- `/client-auth/me` accepts a valid client token when request tenant context is absent, and still rejects tenant/domain mismatch when request tenant exists.
+- Client setup accepts an optional tenant slug and rejects setup-token tenant mismatch before setting the password.
+- Shared client page sign-in links URL-encode the redirect and login submits the extracted page token.
+- Login redirects remain limited to internal `/client/...` paths.
+
+Still pending:
+
+- Production link generation should prefer tenant domains and fall back to shared-origin links with `?tenant=<tenant_slug>`.
+
 ## Issue
 
 Client portal sign-in from shared pages can fail with:

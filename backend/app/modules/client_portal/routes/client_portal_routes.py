@@ -66,6 +66,7 @@ from app.modules.client_portal.services.client_portal_services import (
     update_customer_group,
 )
 from app.modules.documents.services.document_services import resolve_document_download
+from app.modules.user_management.models import Tenant
 
 
 router = APIRouter(prefix="/client-portal", tags=["Client Portal"])
@@ -79,6 +80,53 @@ def _tenant_from_request(request: Request):
     if not tenant:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
     return tenant
+
+
+def _optional_tenant_from_request(request: Request):
+    return getattr(request.state, "tenant", None)
+
+
+def _tenant_by_id_or_400(db: Session, tenant_id: int):
+    tenant = (
+        db.query(Tenant)
+        .filter(Tenant.id == tenant_id, Tenant.is_active == 1)
+        .first()
+    )
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
+    return tenant
+
+
+def _tenant_by_slug_or_400(db: Session, tenant_slug: str | None):
+    slug = (tenant_slug or "").strip()
+    if not slug:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
+    tenant = (
+        db.query(Tenant)
+        .filter(Tenant.slug == slug, Tenant.is_active == 1)
+        .first()
+    )
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
+    return tenant
+
+
+def _resolve_client_auth_tenant(
+    db: Session,
+    request: Request,
+    *,
+    page_token: str | None = None,
+    tenant_slug: str | None = None,
+):
+    tenant = _optional_tenant_from_request(request)
+    if tenant:
+        return tenant
+    if page_token and page_token.strip():
+        page = get_public_client_page(db, token=page_token.strip())
+        return _tenant_by_id_or_400(db, int(page.tenant_id))
+    if tenant_slug and tenant_slug.strip():
+        return _tenant_by_slug_or_400(db, tenant_slug)
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
 
 
 def _require_linked_customer_access(db: Session, *, current_user, contact_id: int | None, organization_id: int | None, action: str) -> None:
@@ -376,8 +424,16 @@ def setup_client_password_route(
     payload: ClientSetupPasswordRequest,
     db: Session = Depends(get_db),
 ):
+    expected_tenant_id = None
+    if payload.tenant_slug:
+        expected_tenant_id = int(_tenant_by_slug_or_400(db, payload.tenant_slug).id)
     try:
-        account = setup_client_password(db, token=payload.token, password=payload.password)
+        account = setup_client_password(
+            db,
+            token=payload.token,
+            password=payload.password,
+            expected_tenant_id=expected_tenant_id,
+        )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return ClientAccountResponse.model_validate(serialize_client_account(account))
@@ -389,7 +445,12 @@ def login_client_route(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    tenant = _tenant_from_request(request)
+    tenant = _resolve_client_auth_tenant(
+        db,
+        request,
+        page_token=payload.page_token,
+        tenant_slug=payload.tenant_slug,
+    )
     email = str(payload.email)
     client_host = _client_ip_for_rate_limit(request)
     check_client_login_rate_limit(tenant_id=tenant.id, email=email, client_host=client_host)
@@ -421,8 +482,8 @@ def get_client_me(
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing client token")
     account = client_account_from_token(db, token=credentials.credentials)
-    tenant = _tenant_from_request(request)
-    if account.tenant_id != tenant.id:
+    tenant = _optional_tenant_from_request(request)
+    if tenant and account.tenant_id != tenant.id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Client token tenant mismatch")
     group = resolve_client_customer_group(db, account=account)
     return {

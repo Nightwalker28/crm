@@ -9,7 +9,12 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPageAction, CustomerGroup
-from app.modules.client_portal.routes.client_portal_routes import _optional_client_account, _request_metadata, get_client_me
+from app.modules.client_portal.routes.client_portal_routes import (
+    _optional_client_account,
+    _request_metadata,
+    _resolve_client_auth_tenant,
+    get_client_me,
+)
 from app.modules.client_portal.services import client_portal_services
 from app.modules.platform.models import ActivityLog
 from app.modules.sales.models import SalesContact, SalesOrganization
@@ -150,6 +155,25 @@ class ClientPortalServiceTests(unittest.TestCase):
         self.assertEqual(exc.exception.status_code, 400)
         self.assertIn("Password must be at least", exc.exception.detail)
 
+    def test_client_password_setup_rejects_tenant_slug_mismatch(self):
+        _account, setup_token = client_portal_services.create_client_account(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={"email": "buyer@example.com", "contact_id": 7, "status": "pending"},
+        )
+
+        with self.assertRaises(HTTPException) as exc:
+            client_portal_services.setup_client_password(
+                self.db,
+                token=setup_token,
+                password="ClientPass123",
+                expected_tenant_id=99,
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Setup link is invalid")
+
     def test_client_login_failed_attempts_are_rate_limited_and_clearable(self):
         email = "buyer@example.com"
         client_host = "203.0.113.10"
@@ -274,6 +298,89 @@ class ClientPortalServiceTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 401)
         self.assertIn("tenant mismatch", exc.exception.detail)
+
+    def test_client_me_accepts_valid_client_token_without_request_tenant(self):
+        _account, setup_token = client_portal_services.create_client_account(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={"email": "buyer@example.com", "contact_id": 7, "status": "pending"},
+        )
+        client_portal_services.setup_client_password(
+            self.db,
+            token=setup_token,
+            password="ClientPass123",
+        )
+        _account, access_token = client_portal_services.authenticate_client_account(
+            self.db,
+            tenant_id=10,
+            email="buyer@example.com",
+            password="ClientPass123",
+        )
+
+        request = SimpleNamespace(state=SimpleNamespace())
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials=access_token)
+
+        response = get_client_me(request=request, credentials=credentials, db=self.db)
+
+        self.assertEqual(response["tenant_id"], 10)
+        self.assertEqual(response["email"], "buyer@example.com")
+
+    def test_client_auth_tenant_resolves_from_public_page_token(self):
+        page = client_portal_services.create_client_page(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "title": "Proposal A",
+                "contact_id": 7,
+                "pricing_items": [{"name": "Implementation", "quantity": 1, "currency": "USD", "public_unit_price": 100}],
+            },
+        )
+        _page, public_token = client_portal_services.publish_client_page_link(
+            self.db,
+            page=page,
+            actor_user_id=1,
+            expires_in_days=30,
+        )
+        request = SimpleNamespace(state=SimpleNamespace())
+
+        tenant = _resolve_client_auth_tenant(
+            self.db,
+            request,
+            page_token=public_token,
+            tenant_slug=None,
+        )
+
+        self.assertEqual(tenant.id, 10)
+
+    def test_client_auth_tenant_prefers_request_tenant_over_page_token(self):
+        page = client_portal_services.create_client_page(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "title": "Proposal A",
+                "contact_id": 7,
+                "pricing_items": [{"name": "Implementation", "quantity": 1, "currency": "USD", "public_unit_price": 100}],
+            },
+        )
+        _page, public_token = client_portal_services.publish_client_page_link(
+            self.db,
+            page=page,
+            actor_user_id=1,
+            expires_in_days=30,
+        )
+        request = SimpleNamespace(state=SimpleNamespace(tenant=SimpleNamespace(id=99, slug="other")))
+
+        tenant = _resolve_client_auth_tenant(
+            self.db,
+            request,
+            page_token=public_token,
+            tenant_slug=None,
+        )
+
+        self.assertEqual(tenant.id, 99)
 
     def test_request_metadata_truncates_user_agent_and_normalizes_ip(self):
         request = SimpleNamespace(

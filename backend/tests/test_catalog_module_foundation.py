@@ -37,6 +37,17 @@ class CatalogModuleFoundationTests(unittest.TestCase):
         self.assertEqual(modules_by_name["finance_pos"]["base_route"], "/dashboard/finance/pos")
         self.assertIn("pos", modules_by_name["finance_pos"]["description"].lower())
 
+    def test_no_default_module_uses_stale_finance_invoice_route(self):
+        default_modules = _load_default_modules()
+
+        stale_modules = [
+            module["name"]
+            for module in default_modules
+            if module.get("base_route") == "/dashboard/finance/invoices"
+        ]
+
+        self.assertEqual(stale_modules, [])
+
 
 if __name__ == "__main__":
     unittest.main()

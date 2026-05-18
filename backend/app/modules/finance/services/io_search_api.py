@@ -717,6 +717,7 @@ def get_generic_insertion_order(
     try:
         record = get_insertion_order_or_404(
             db,
+            tenant_id=current_user.tenant_id,
             module_id=module_id,
             io_id=io_id,
             user_id=user_scope.user_id_filter,
@@ -754,7 +755,7 @@ def _emit_invoice_overdue_event_if_needed(db: Session, *, current_user, record: 
             "currency": _finance_record_currency(record),
             "due_date": _date_to_iso(record.due_date),
             "status": _finance_record_status(record),
-            "href": f"/dashboard/finance/insertion-orders?ioId={record.id}",
+            "href": f"/dashboard/finance/insertion-orders/{record.id}",
         },
     )
 

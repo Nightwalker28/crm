@@ -78,11 +78,14 @@ class ClientAccountResponse(BaseModel):
 class ClientSetupPasswordRequest(BaseModel):
     token: str = Field(min_length=16)
     password: str = Field(min_length=1)
+    tenant_slug: str | None = Field(default=None, max_length=120)
 
 
 class ClientLoginRequest(BaseModel):
     email: EmailStr
     password: str = Field(min_length=1)
+    page_token: str | None = Field(default=None, min_length=1)
+    tenant_slug: str | None = Field(default=None, max_length=120)
 
 
 class ClientLoginResponse(BaseModel):

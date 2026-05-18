@@ -90,7 +90,7 @@ export default function PublicClientPage() {
               </span>
             ) : null}
             <Button asChild variant="outline" size="sm">
-              <Link href={`/client/login?redirect=/client/pages/${token}`}>
+              <Link href={`/client/login?redirect=${encodeURIComponent(`/client/pages/${token}`)}`}>
                 <LogIn className="h-4 w-4" />
                 {hasClientToken ? "Switch Account" : "Client Sign In"}
               </Link>
