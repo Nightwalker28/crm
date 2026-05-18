@@ -22,6 +22,8 @@ from app.core.passwords import (
 from app.core.tenancy import (
     get_frontend_origin_for_request,
     get_google_redirect_uri_for_request,
+    is_auth_tenant_resolution_enabled,
+    is_cloud_mode_enabled,
 )
 from app.modules.user_management.models import (
     Module,
@@ -62,15 +64,16 @@ def _as_utc(value: datetime) -> datetime:
 # GOOGLE OAUTH
 # -------------------------------------------------------------------
 
-def _create_oauth_state(*, tenant: Tenant, frontend_origin: str) -> str:
+def _create_oauth_state(*, tenant: Tenant | None, frontend_origin: str) -> str:
     now = datetime.now(timezone.utc)
     payload = {
         "type": "google_oauth_state",
-        "tenant_id": tenant.id,
         "frontend_origin": frontend_origin.rstrip("/"),
         "iat": now,
         "exp": now + timedelta(minutes=settings.GOOGLE_OAUTH_STATE_EXPIRE_MINUTES),
     }
+    if tenant:
+        payload["tenant_id"] = tenant.id
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
@@ -106,7 +109,7 @@ def _profile_from_google_id_token(id_token: str | None) -> dict | None:
     }
 
 
-def get_google_auth_url(*, request: Request, tenant: Tenant) -> str:
+def get_google_auth_url(*, request: Request, tenant: Tenant | None) -> str:
     params = {
         "client_id": settings.GOOGLE_CLIENT_ID,
         "redirect_uri": get_google_redirect_uri_for_request(request),
@@ -233,11 +236,35 @@ def decode_token(token: str, expected_type: Literal["access", "refresh"]) -> dic
 # GOOGLE CALLBACK LOGIC (unchanged behavior, cleaner structure)
 # -------------------------------------------------------------------
 
+def _find_google_login_user(db: Session, *, tenant: Tenant | None, email: str) -> User | None:
+    normalized_email = email.strip().lower()
+    query = db.query(User).filter(func.lower(User.email) == normalized_email)
+
+    if tenant:
+        return query.filter(User.tenant_id == tenant.id).first()
+
+    if not (is_cloud_mode_enabled() and is_auth_tenant_resolution_enabled()):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
+
+    users = (
+        query.join(Tenant, Tenant.id == User.tenant_id)
+        .filter(Tenant.is_active == 1)
+        .limit(2)
+        .all()
+    )
+    if len(users) > 1:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This Google account matches multiple tenants",
+        )
+    return users[0] if users else None
+
+
 def handle_google_callback(
     code: str,
     db: Session,
     *,
-    tenant: Tenant,
+    tenant: Tenant | None,
     request: Request,
 ):
     # 1) Exchange code for Google token
@@ -338,14 +365,7 @@ def handle_google_callback(
     last_name = profile.get("family_name")
 
     # 4) Find or create user
-    user = (
-        db.query(User)
-        .filter(
-            User.tenant_id == tenant.id,
-            func.lower(User.email) == email.strip().lower(),
-        )
-        .first()
-    )
+    user = _find_google_login_user(db, tenant=tenant, email=email)
 
     if not user:
         raise HTTPException(

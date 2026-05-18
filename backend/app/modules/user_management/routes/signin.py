@@ -204,7 +204,7 @@ def google_login(
     request: Request,
 ):
     tenant = getattr(request.state, "tenant", None)
-    if not tenant:
+    if not tenant and not (is_cloud_mode_enabled() and is_auth_tenant_resolution_enabled()):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
     return {"auth_url": get_google_auth_url(request=request, tenant=tenant)}
 
@@ -271,6 +271,10 @@ def google_callback(
         or get_frontend_origin_for_request(request)
     )
 
+    if not state_payload:
+        query = urllib.parse.urlencode({"status": "error"})
+        return RedirectResponse(url=f"{frontend_origin}/auth/callback?{query}")
+
     if state_payload and tenant and state_payload.get("tenant_id") != tenant.id:
         query = urllib.parse.urlencode({"status": "error"})
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?{query}")
@@ -280,7 +284,7 @@ def google_callback(
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?{query}")
 
     try:
-        if not tenant:
+        if not tenant and not (is_cloud_mode_enabled() and is_auth_tenant_resolution_enabled()):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
         result = handle_google_callback(code, db, tenant=tenant, request=request)
     except HTTPException as exc:

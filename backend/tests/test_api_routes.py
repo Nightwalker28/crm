@@ -21,11 +21,12 @@ from app.modules.sales.schema import (
     SalesOpportunityResponse,
     SalesOrganizationResponse,
 )
-from app.modules.user_management.models import Module, TenantModuleConfig
+from app.modules.user_management.models import Module, TenantModuleConfig, UserAuthMode, UserStatus
 from app.modules.user_management.routes import admin as admin_routes
 from app.modules.user_management.schema import UserProfile
 from app.modules.user_management.services.auth import (
     _profile_from_google_id_token,
+    decode_oauth_state,
     get_google_auth_url,
     handle_google_callback,
 )
@@ -68,6 +69,40 @@ class RouteTestSession:
         return None
 
     def refresh(self, item):
+        return None
+
+
+class GoogleAuthModeQuery:
+    def __init__(self, users):
+        self.users = users
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def join(self, *args, **kwargs):
+        return self
+
+    def limit(self, *args, **kwargs):
+        return self
+
+    def all(self):
+        return self.users
+
+    def first(self):
+        return self.users[0] if self.users else None
+
+
+class GoogleAuthModeSession:
+    def __init__(self, users):
+        self.users = users
+
+    def query(self, *entities):
+        return GoogleAuthModeQuery(self.users)
+
+    def add(self, item):
+        return None
+
+    def commit(self):
         return None
 
 
@@ -168,6 +203,77 @@ class APIRouteTests(unittest.TestCase):
 
         self.assertTrue({"openid", "email", "profile"}.issubset(scopes))
         self.assertNotIn("https://www.googleapis.com/auth/calendar.app.created", scopes)
+
+    def test_google_login_url_allows_tenantless_auth_mode_state(self):
+        with patch(
+            "app.modules.user_management.services.auth.get_google_redirect_uri_for_request",
+            return_value="https://crm.example.com/api/v1/auth/google/callback",
+        ), patch(
+            "app.modules.user_management.services.auth.get_frontend_origin_for_request",
+            return_value="https://crm.example.com",
+        ), patch(
+            "app.modules.user_management.services.auth.settings.JWT_SECRET",
+            "test-secret",
+        ):
+            auth_url = get_google_auth_url(
+                request=SimpleNamespace(headers={"host": "crm.example.com"}),
+                tenant=None,
+            )
+            params = urllib.parse.parse_qs(urllib.parse.urlparse(auth_url).query)
+            state = decode_oauth_state(params["state"][0])
+
+        self.assertIsNotNone(state)
+        self.assertNotIn("tenant_id", state)
+        self.assertEqual(state["frontend_origin"], "https://crm.example.com")
+
+    def test_google_callback_resolves_user_by_email_in_auth_tenant_mode(self):
+        id_token = jose_jwt.encode(
+            {
+                "email": "user@example.com",
+                "picture": "https://lh3.googleusercontent.com/photo.png",
+            },
+            "test-secret",
+            algorithm="HS256",
+        )
+        user = SimpleNamespace(
+            id=7,
+            tenant_id=9,
+            email="user@example.com",
+            is_active=UserStatus.active,
+            auth_mode=UserAuthMode.manual_or_google,
+            photo_url=None,
+            last_login_provider=None,
+        )
+        token_response = SimpleNamespace(
+            ok=True,
+            status_code=200,
+            json=lambda: {"access_token": "access-token", "id_token": id_token},
+        )
+
+        with patch(
+            "app.modules.user_management.services.auth.requests.post",
+            return_value=token_response,
+        ), patch(
+            "app.modules.user_management.services.auth.get_google_redirect_uri_for_request",
+            return_value="https://crm.example.com/api/v1/auth/google/callback",
+        ), patch(
+            "app.modules.user_management.services.auth.is_cloud_mode_enabled",
+            return_value=True,
+        ), patch(
+            "app.modules.user_management.services.auth.is_auth_tenant_resolution_enabled",
+            return_value=True,
+        ):
+            result = handle_google_callback(
+                "oauth-code",
+                GoogleAuthModeSession([user]),
+                tenant=None,
+                request=SimpleNamespace(headers={"host": "crm.example.com"}),
+            )
+
+        self.assertEqual(result["status"], "active")
+        self.assertIs(result["user"], user)
+        self.assertEqual(user.photo_url, "https://lh3.googleusercontent.com/photo.png")
+        self.assertEqual(user.last_login_provider, "google")
 
     def test_google_id_token_profile_claims_are_used_for_login_profile(self):
         id_token = jose_jwt.encode(
