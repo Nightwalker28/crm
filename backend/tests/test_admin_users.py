@@ -3,8 +3,10 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 from app.modules.user_management.models import Role, Team, User, UserAuthMode, UserStatus
+from app.modules.user_management.schema import UpdateUserRequest
 from app.modules.user_management.services import admin_users
 
 
@@ -53,6 +55,26 @@ class FakeDB:
 
 
 class CreateUserTests(unittest.TestCase):
+    def test_update_user_request_rejects_pending_status_before_service(self):
+        with self.assertRaises(ValidationError) as exc:
+            UpdateUserRequest(is_active=UserStatus.pending)
+
+        self.assertIn("Pending status is no longer supported", str(exc.exception))
+
+    def test_list_user_update_options_uses_cache(self):
+        cached = {
+            "roles": [{"id": 5, "name": "Admin"}],
+            "teams": [{"id": 8, "name": "Revenue"}],
+            "statuses": ["active", "inactive"],
+        }
+        db = SimpleNamespace(query=lambda *_args: self.fail("DB should not be queried on cache hit"))
+
+        with patch.object(admin_users, "cache_get_json", return_value=cached):
+            result = admin_users.list_user_update_options(db, tenant_id=1)
+
+        self.assertEqual(result.roles[0].name, "Admin")
+        self.assertEqual(result.teams[0].name, "Revenue")
+
     def test_create_user_rejects_missing_role(self):
         db = FakeDB(user=None, role=None, team=SimpleNamespace(id=8))
         payload = SimpleNamespace(
@@ -101,6 +123,30 @@ class CreateUserTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "Pending status is no longer supported")
+
+    def test_update_user_uses_loaded_role_and_team_refs(self):
+        user = SimpleNamespace(
+            id=1,
+            role_id=4,
+            team_id=7,
+            department_id=2,
+            is_active=UserStatus.active,
+            auth_mode=UserAuthMode.manual_only,
+        )
+        role = SimpleNamespace(id=5, name="Manager", level=50)
+        team = SimpleNamespace(id=8, name="Revenue", department_id=3)
+        db = FakeDB(user=user, role=role, team=team)
+        payload = SimpleNamespace(model_dump=lambda exclude_unset=True: {"role_id": 5, "team_id": 8})
+
+        updated = admin_users.update_user(db, user_id=1, payload=payload, tenant_id=1)
+
+        self.assertTrue(db.committed)
+        self.assertEqual(updated.role_id, 5)
+        self.assertEqual(updated.team_id, 8)
+        self.assertEqual(updated.department_id, 3)
+        self.assertEqual(updated._serialized_role_name, "Manager")
+        self.assertEqual(updated._serialized_role_level, 50)
+        self.assertEqual(updated._serialized_team_name, "Revenue")
 
     def test_create_user_returns_setup_link_for_manual_users(self):
         db = FakeDB(user=None, role=SimpleNamespace(id=5), team=SimpleNamespace(id=8))

@@ -103,7 +103,9 @@ export default function CalendarPage() {
 
   const activeEvent = eventId ? (eventDetailQuery.data ?? selectedEvent) : selectedEvent;
   const isDialogOpen = eventId ? Boolean(activeEvent) : dialogOpen;
-  const dialogKey = `${isDialogOpen ? "open" : "closed"}-${activeEvent?.id ?? "new"}-${activeEvent?.updated_at ?? `${draftStartAt}-${draftEndAt}`}`;
+  const dialogKey = activeEvent
+    ? `${isDialogOpen ? "open" : "closed"}-event-${activeEvent.id}`
+    : `${isDialogOpen ? "open" : "closed"}-new-${draftStartAt}-${draftEndAt}`;
 
   const calendarDays = useMemo(() => {
     const first = startOfGrid(month);

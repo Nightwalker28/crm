@@ -323,6 +323,9 @@ class TenantSidebarTab(Base):
 
 class DepartmentModulePermission(Base):
     __tablename__ = "department_module_permissions"
+    __table_args__ = (
+        UniqueConstraint("department_id", "module_id", name="uq_department_module_permissions_department_module"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     department_id = Column(
@@ -338,6 +341,9 @@ class DepartmentModulePermission(Base):
 
 class TeamModulePermission(Base):
     __tablename__ = "team_module_permissions"
+    __table_args__ = (
+        UniqueConstraint("team_id", "module_id", name="uq_team_module_permissions_team_module"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     team_id = Column(
@@ -357,6 +363,9 @@ class TeamModulePermission(Base):
 
 class RoleModulePermission(Base):
     __tablename__ = "role_module_permissions"
+    __table_args__ = (
+        UniqueConstraint("role_id", "module_id", name="uq_role_module_permissions_role_module"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     role_id = Column(

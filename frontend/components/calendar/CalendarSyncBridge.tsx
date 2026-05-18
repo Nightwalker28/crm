@@ -54,8 +54,8 @@ export default function CalendarSyncBridge() {
     attemptedKeysRef.current.add(bootstrapSyncKey);
     persistAttemptedKeys(attemptedKeysRef.current);
 
-    void syncCalendar().catch(() => {
-      // The calendar page exposes the detailed state and a manual retry path.
+    void syncCalendar().catch((error) => {
+      console.warn("Calendar bootstrap sync failed; manual retry remains available.", error);
     });
   }, [bootstrapSyncKey, isSyncingCalendar, needsBootstrapSync, syncCalendar]);
 

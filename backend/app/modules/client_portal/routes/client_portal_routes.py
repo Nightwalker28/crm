@@ -95,7 +95,12 @@ def _require_linked_customer_access(db: Session, *, current_user, contact_id: in
 def _optional_client_account(db: Session, credentials: HTTPAuthorizationCredentials | None):
     if not credentials:
         return None
-    return client_account_from_token(db, token=credentials.credentials)
+    try:
+        return client_account_from_token(db, token=credentials.credentials)
+    except HTTPException as exc:
+        if exc.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
+            return None
+        raise
 
 
 def _request_metadata(request: Request) -> dict:

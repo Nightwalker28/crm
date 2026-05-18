@@ -948,7 +948,7 @@ def get_public_client_page(db: Session, *, token: str) -> ClientPage:
 
 
 def serialize_public_client_page(page: ClientPage, *, account: ClientAccount | None = None, db: Session | None = None) -> dict:
-    group = resolve_client_customer_group(db=None, account=account) if _validate_client_account_matches_page(account, page) else None
+    group = resolve_client_customer_group(db=db, account=account) if _validate_client_account_matches_page(account, page) else None
     return {
         "title": page.title,
         "summary": page.summary,
@@ -1121,9 +1121,37 @@ def client_account_from_token(db: Session, *, token: str) -> ClientAccount:
     return account
 
 
-def resolve_client_customer_group(db: Session, *, account: ClientAccount) -> CustomerGroup | None:
-    if account.contact_id and account.contact:
-        return account.contact.customer_group
-    if account.organization_id and account.organization:
-        return account.organization.customer_group
+def resolve_client_customer_group(db: Session | None, *, account: ClientAccount) -> CustomerGroup | None:
+    loaded_contact = account.__dict__.get("contact") if account.contact_id else None
+    if loaded_contact:
+        return loaded_contact.customer_group
+    loaded_organization = account.__dict__.get("organization") if account.organization_id else None
+    if loaded_organization:
+        return loaded_organization.customer_group
+    if db is None:
+        return None
+    if account.contact_id:
+        contact = (
+            db.query(SalesContact)
+            .options(joinedload(SalesContact.customer_group))
+            .filter(
+                SalesContact.tenant_id == account.tenant_id,
+                SalesContact.contact_id == account.contact_id,
+                SalesContact.deleted_at.is_(None),
+            )
+            .first()
+        )
+        return contact.customer_group if contact else None
+    if account.organization_id:
+        organization = (
+            db.query(SalesOrganization)
+            .options(joinedload(SalesOrganization.customer_group))
+            .filter(
+                SalesOrganization.tenant_id == account.tenant_id,
+                SalesOrganization.org_id == account.organization_id,
+                SalesOrganization.deleted_at.is_(None),
+            )
+            .first()
+        )
+        return organization.customer_group if organization else None
     return None

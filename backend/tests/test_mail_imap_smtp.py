@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -360,7 +360,8 @@ class MailImapSmtpTests(unittest.TestCase):
         fake_smtp = FakeSmtpClient()
 
         with patch.object(mail_services, "_connect_smtp", return_value=fake_smtp), \
-             patch.object(mail_services, "_connect_imap", return_value=fake_imap):
+             patch.object(mail_services, "_connect_imap", return_value=fake_imap), \
+             patch.object(mail_services.logger, "warning") as warning_mock:
             provider_message_id = _send_imap_smtp_message(
                 db=self.db,
                 connection=connection,
@@ -376,6 +377,10 @@ class MailImapSmtpTests(unittest.TestCase):
 
         self.assertTrue(provider_message_id)
         self.assertIn("IMAP sent-folder append failed", connection.last_error)
+        warning_mock.assert_called_once()
+        self.assertEqual(warning_mock.call_args.kwargs["extra"]["tenant_id"], 10)
+        self.assertEqual(warning_mock.call_args.kwargs["extra"]["user_id"], 1)
+        self.assertEqual(warning_mock.call_args.kwargs["extra"]["connection_id"], 1)
 
     def test_mail_source_context_resolves_existing_tenant_record(self):
         context = mail_services._resolve_mail_source_context(
@@ -454,6 +459,85 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(call_kwargs["entity_type"], "sales_contact")
         self.assertEqual(call_kwargs["entity_id"], "7")
         self.assertEqual(call_kwargs["action"], "mail.sent")
+
+    def test_send_mail_message_keeps_success_when_activity_logging_fails(self):
+        connection = UserMailConnection(
+            id=1,
+            tenant_id=10,
+            user_id=1,
+            provider=MailProvider.imap_smtp.value,
+            status="connected",
+            account_email="ava@example.com",
+        )
+        self.db.add(connection)
+        self.db.commit()
+        def mail_message_factory(**kwargs):
+            return MailMessage(id=77, **kwargs)
+
+        with patch.object(mail_services, "_resolve_mail_source_context", return_value={"module_key": "sales_contacts", "entity_type": "sales_contact", "entity_id": "7"}), \
+             patch.object(mail_services, "_mail_connection_for_user", return_value=connection), \
+             patch.object(mail_services, "_send_imap_smtp_message", return_value="smtp-id"), \
+             patch.object(mail_services, "MailMessage", side_effect=mail_message_factory), \
+             patch.object(mail_services, "_log_mail_source_activity", side_effect=RuntimeError("timeline failed")), \
+             patch.object(mail_services.logger, "exception") as exception_mock:
+            message = mail_services.send_mail_message(
+                self.db,
+                current_user=self.user,
+                payload={
+                    "provider": MailProvider.imap_smtp.value,
+                    "to": ["buyer@example.com"],
+                    "cc": [],
+                    "bcc": [],
+                    "subject": "Quote",
+                    "body_text": "Quote body",
+                    "source_module_key": "sales_contacts",
+                    "source_entity_id": "7",
+                },
+            )
+
+        self.assertEqual(message.provider_message_id, "smtp-id")
+        self.assertEqual(self.db.query(MailMessage).filter(MailMessage.provider_message_id == "smtp-id").count(), 1)
+        exception_mock.assert_called_once()
+        self.assertEqual(exception_mock.call_args.kwargs["extra"]["tenant_id"], 10)
+        self.assertEqual(exception_mock.call_args.kwargs["extra"]["message_id"], message.id)
+
+    def test_mail_token_refresh_flushes_without_committing(self):
+        db = Mock()
+
+        google_connection = SimpleNamespace(
+            access_token=None,
+            refresh_token="google-refresh",
+            token_expires_at=None,
+            status="connected",
+            last_error=None,
+        )
+        google_response = SimpleNamespace(ok=True, json=lambda: {"access_token": "new-google-token", "expires_in": 3600})
+        with patch.object(mail_services.requests, "post", return_value=google_response):
+            token = mail_services._refresh_google_mail_token(db, google_connection)
+
+        self.assertEqual(token, "new-google-token")
+        self.assertEqual(google_connection.access_token, "new-google-token")
+        self.assertEqual(db.flush.call_count, 1)
+        db.commit.assert_not_called()
+
+        db.reset_mock()
+        microsoft_connection = SimpleNamespace(
+            access_token=None,
+            refresh_token="microsoft-refresh",
+            token_expires_at=None,
+            status="connected",
+            last_error=None,
+        )
+        microsoft_response = SimpleNamespace(ok=True, json=lambda: {"access_token": "new-microsoft-token", "expires_in": 3600})
+        with patch.object(mail_services.settings, "MICROSOFT_CLIENT_ID", "client-id"), \
+             patch.object(mail_services.settings, "MICROSOFT_CLIENT_SECRET", "client-secret"), \
+             patch.object(mail_services.requests, "post", return_value=microsoft_response):
+            token = mail_services._refresh_microsoft_mail_token(db, microsoft_connection)
+
+        self.assertEqual(token, "new-microsoft-token")
+        self.assertEqual(microsoft_connection.access_token, "new-microsoft-token")
+        self.assertEqual(db.flush.call_count, 1)
+        db.commit.assert_not_called()
 
     @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
     def test_disconnect_mail_connection_clears_credentials_and_disables_capabilities(self):

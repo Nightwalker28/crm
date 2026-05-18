@@ -20,6 +20,7 @@ from app.modules.user_management.schema import (
 from app.modules.user_management.services.auth import create_user_setup_link
 
 USER_UPDATE_OPTIONS_CACHE_TTL_SECONDS = 300
+UNSET_ASSIGNMENT = object()
 
 
 USER_FILTER_FIELD_MAP = {
@@ -50,7 +51,7 @@ def list_all_users(db: Session, *, tenant_id: int, pagination: Pagination):
         User.id.asc(),
     )
 
-    total_count = query.count()
+    total_count = _count_user_query(db, query)
     items = query.offset(pagination.offset).limit(pagination.limit).all()
     serialized = _serialize_user_profiles(items)
     return build_paged_response(serialized, total_count, pagination)
@@ -144,7 +145,7 @@ def search_users(
         default_order_by=default_order_by,
     )
 
-    total_count = query.count()
+    total_count = _count_user_query(db, query)
     items = query.offset(pagination.offset).limit(pagination.limit).all()
     serialized = _serialize_user_profiles(items)
     return build_paged_response(serialized, total_count, pagination)
@@ -200,11 +201,11 @@ def create_user(
             detail="An account with this email already exists",
         )
 
-    role, team = _get_role_and_team_or_404(
+    role, team = _load_user_assignment_refs_or_404(
         db,
+        tenant_id=tenant_id,
         role_id=payload.role_id,
         team_id=payload.team_id,
-        tenant_id=tenant_id,
     )
 
     user = User(
@@ -264,15 +265,16 @@ def update_user(db: Session, user_id: int, payload: UpdateUserRequest, *, tenant
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
-    loaded_role = None
-    loaded_team = None
-    if "role_id" in update_data and update_data["role_id"] is not None:
-        loaded_role = _get_role_or_404(db, update_data["role_id"], tenant_id=tenant_id)
+    loaded_role, loaded_team = _load_user_assignment_refs_or_404(
+        db,
+        tenant_id=tenant_id,
+        role_id=update_data["role_id"] if "role_id" in update_data else UNSET_ASSIGNMENT,
+        team_id=update_data["team_id"] if "team_id" in update_data else UNSET_ASSIGNMENT,
+    )
     if "team_id" in update_data:
         if update_data["team_id"] is None:
             update_data["department_id"] = None
         else:
-            loaded_team = _get_team_or_404(db, update_data["team_id"], tenant_id=tenant_id)
             update_data["department_id"] = getattr(loaded_team, "department_id", None)
     for field, value in update_data.items():
         setattr(user, field, value)
@@ -289,6 +291,11 @@ def update_user(db: Session, user_id: int, payload: UpdateUserRequest, *, tenant
 
 def _serialize_user_profiles(users: list[User]):
     return [serialize_user_profile(user) for user in users]
+
+
+def _count_user_query(db: Session, query) -> int:
+    count_source = query.order_by(None).with_entities(User.id).subquery()
+    return int(db.query(func.count()).select_from(count_source).scalar() or 0)
 
 
 def serialize_user_profile(user: User) -> UserProfile:
@@ -352,25 +359,17 @@ def _get_team_or_404(db: Session, team_id: int, *, tenant_id: int) -> Team:
     return team
 
 
-def _get_role_and_team_or_404(
+def _load_user_assignment_refs_or_404(
     db: Session,
     *,
-    role_id: int,
-    team_id: int,
     tenant_id: int,
-) -> tuple[Role, Team]:
-    result = (
-        db.query(Role, Team)
-        .filter(
-            Role.id == role_id,
-            Role.tenant_id == tenant_id,
-            Team.id == team_id,
-            Team.tenant_id == tenant_id,
-        )
-        .first()
-    )
-    if result:
-        return result
-    _get_role_or_404(db, role_id, tenant_id=tenant_id)
-    _get_team_or_404(db, team_id, tenant_id=tenant_id)
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Role or team not found")
+    role_id: int | object = UNSET_ASSIGNMENT,
+    team_id: int | None | object = UNSET_ASSIGNMENT,
+) -> tuple[Role | None, Team | None]:
+    role = None
+    team = None
+    if role_id is not UNSET_ASSIGNMENT and role_id is not None:
+        role = _get_role_or_404(db, role_id, tenant_id=tenant_id)
+    if team_id is not UNSET_ASSIGNMENT and team_id is not None:
+        team = _get_team_or_404(db, team_id, tenant_id=tenant_id)
+    return role, team

@@ -1,5 +1,5 @@
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, validates
 
 from app.core.database import Base
 
@@ -23,6 +23,10 @@ class ActivityLog(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
     actor = relationship("User")
+
+    @validates("entity_id")
+    def _normalize_entity_id(self, _key, value):
+        return str(value)
 
 
 class CustomFieldDefinition(Base):

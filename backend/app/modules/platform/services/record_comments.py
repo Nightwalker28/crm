@@ -41,6 +41,7 @@ RECORD_COMMENT_MODULES = {
         "record_path": "/dashboard/catalog/products/{entity_id}",
     },
 }
+INVALID_MENTION_DETAIL = "One or more mentioned users are invalid."
 
 
 def get_record_comment_module_config(module_key: str) -> dict:
@@ -180,18 +181,14 @@ def validate_record_mentions(
         .all()
     )
     users_by_id = {int(user.id): user for user in users}
-    missing_ids = [user_id for user_id in unique_ids if user_id not in users_by_id]
-    if missing_ids:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="One or more mentioned users are not available.")
+    if len(users_by_id) != len(unique_ids):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_MENTION_DETAIL)
 
     allowed_users: list[User] = []
     for user_id in unique_ids:
         user = users_by_id[user_id]
         if not _user_can_view_record_module(db, user=user, module_key=module_key):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="One or more mentioned users cannot view this record.",
-            )
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=INVALID_MENTION_DETAIL)
         allowed_users.append(user)
     return allowed_users
 

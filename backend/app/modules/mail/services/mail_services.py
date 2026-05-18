@@ -579,7 +579,7 @@ def _refresh_google_mail_token(db: Session, connection: UserMailConnection) -> s
         connection.status = "error"
         connection.last_error = "Reconnect Gmail to refresh mailbox access."
         db.add(connection)
-        db.commit()
+        db.flush()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
 
     res = requests.post(
@@ -597,7 +597,7 @@ def _refresh_google_mail_token(db: Session, connection: UserMailConnection) -> s
         connection.status = "error"
         connection.last_error = "Failed to refresh Gmail access."
         db.add(connection)
-        db.commit()
+        db.flush()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
 
     connection.access_token = body["access_token"]
@@ -605,7 +605,7 @@ def _refresh_google_mail_token(db: Session, connection: UserMailConnection) -> s
     connection.status = "connected"
     connection.last_error = None
     db.add(connection)
-    db.commit()
+    db.flush()
     return connection.access_token
 
 
@@ -621,7 +621,7 @@ def _refresh_microsoft_mail_token(db: Session, connection: UserMailConnection) -
         connection.status = "error"
         connection.last_error = "Reconnect Microsoft to refresh mailbox access."
         db.add(connection)
-        db.commit()
+        db.flush()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
 
     if not settings.MICROSOFT_CLIENT_ID or not settings.MICROSOFT_CLIENT_SECRET:
@@ -643,7 +643,7 @@ def _refresh_microsoft_mail_token(db: Session, connection: UserMailConnection) -
         connection.status = "error"
         connection.last_error = "Failed to refresh Microsoft mailbox access."
         db.add(connection)
-        db.commit()
+        db.flush()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
 
     connection.access_token = body["access_token"]
@@ -651,7 +651,7 @@ def _refresh_microsoft_mail_token(db: Session, connection: UserMailConnection) -
     connection.status = "connected"
     connection.last_error = None
     db.add(connection)
-    db.commit()
+    db.flush()
     return connection.access_token
 
 
@@ -884,6 +884,16 @@ def _send_imap_smtp_message(*, db: Session, connection: UserMailConnection, payl
         connection.last_error = None
     except Exception as exc:
         connection.last_error = f"SMTP sent, but IMAP sent-folder append failed: {_mail_provider_error(exc, protocol='IMAP')}"
+        logger.warning(
+            "IMAP sent-folder append failed after SMTP send",
+            extra={
+                "tenant_id": connection.tenant_id,
+                "user_id": connection.user_id,
+                "connection_id": connection.id,
+                "provider": connection.provider,
+            },
+            exc_info=True,
+        )
     return message_id
 
 
@@ -938,7 +948,22 @@ def send_mail_message(db: Session, *, current_user: User, payload: dict) -> Mail
     db.add(message)
     db.commit()
     db.refresh(message)
-    _log_mail_source_activity(db, current_user=current_user, message=message, source_context=source_context)
+    try:
+        _log_mail_source_activity(db, current_user=current_user, message=message, source_context=source_context)
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Mail source activity logging failed after mail send",
+            extra={
+                "tenant_id": current_user.tenant_id,
+                "user_id": current_user.id,
+                "connection_id": connection.id,
+                "message_id": message.id,
+                "provider": provider.value,
+                "source_module_key": payload.get("source_module_key"),
+                "source_entity_id": payload.get("source_entity_id"),
+            },
+        )
     return message
 
 

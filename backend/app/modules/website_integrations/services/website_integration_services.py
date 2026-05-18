@@ -585,6 +585,7 @@ def _apply_stock_decrement(db: Session, item: PublicCatalogItem, quantity: Decim
             CatalogProduct.is_active == 1,
             CatalogProduct.deleted_at.is_(None),
         )
+        .populate_existing()
         .with_for_update()
         .first()
     )

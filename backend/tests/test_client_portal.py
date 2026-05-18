@@ -8,8 +8,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
-from app.modules.client_portal.models import ClientAccount, ClientPageAction, CustomerGroup
-from app.modules.client_portal.routes.client_portal_routes import _request_metadata, get_client_me
+from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPageAction, CustomerGroup
+from app.modules.client_portal.routes.client_portal_routes import _optional_client_account, _request_metadata, get_client_me
 from app.modules.client_portal.services import client_portal_services
 from app.modules.platform.models import ActivityLog
 from app.modules.sales.models import SalesContact, SalesOrganization
@@ -562,6 +562,50 @@ class ClientPortalServiceTests(unittest.TestCase):
         resolved = client_portal_services.resolve_client_customer_group(self.db, account=account)
 
         self.assertEqual(resolved.group_key, "wholesale_special")
+
+    def test_public_client_page_resolves_customer_group_with_unloaded_account_relationship(self):
+        group = client_portal_services.create_customer_group(
+            self.db,
+            tenant_id=10,
+            payload={
+                "group_key": "vip_special",
+                "name": "VIP Special",
+                "discount_type": "percent",
+                "discount_value": 20,
+                "is_active": True,
+            },
+        )
+        client_portal_services.assign_contact_customer_group(
+            self.db,
+            tenant_id=10,
+            contact_id=7,
+            group_id=group.id,
+        )
+        page = ClientPage(
+            id=30,
+            tenant_id=10,
+            contact_id=7,
+            title="Proposal",
+            status="published",
+            pricing_items=[],
+        )
+        account = ClientAccount(
+            id=21,
+            tenant_id=10,
+            contact_id=7,
+            email="buyer2@example.com",
+            status="active",
+        )
+
+        payload = client_portal_services.serialize_public_client_page(page, account=account, db=self.db)
+
+        self.assertEqual(payload["pricing_mode"], "personalized")
+        self.assertEqual(payload["customer_group"]["group_key"], "vip_special")
+
+    def test_optional_client_account_treats_invalid_token_as_anonymous(self):
+        credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="not-a-valid-token")
+
+        self.assertIsNone(_optional_client_account(self.db, credentials))
 
 
 if __name__ == "__main__":

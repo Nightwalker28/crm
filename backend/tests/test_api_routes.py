@@ -22,6 +22,7 @@ from app.modules.sales.schema import (
     SalesOrganizationResponse,
 )
 from app.modules.user_management.models import Module, TenantModuleConfig
+from app.modules.user_management.routes import admin as admin_routes
 from app.modules.user_management.schema import UserProfile
 from app.modules.user_management.services.auth import (
     _profile_from_google_id_token,
@@ -299,6 +300,54 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["email"], "ada@example.com")
         update_mock.assert_called_once()
+
+    def test_admin_user_search_uses_current_filter_params(self):
+        pagination = Pagination(page=1, page_size=10, offset=0, limit=10)
+        db = object()
+        admin = SimpleNamespace(id=7, tenant_id=42)
+
+        with patch.object(
+            admin_routes.admin_users,
+            "search_users",
+            return_value={
+                "results": [],
+                "range_start": 0,
+                "range_end": 0,
+                "total_count": 0,
+                "total_pages": 0,
+                "page": 1,
+                "page_size": 10,
+            },
+        ) as search_mock:
+            response = admin_routes.search_users(
+                q=None,
+                teams=None,
+                roles=None,
+                status=None,
+                sort_by="name",
+                sort_order="asc",
+                fields=None,
+                filters_all='[{"field":"email","operator":"contains","value":"ada"}]',
+                filters_any='[{"field":"role_name","operator":"is","value":"Admin"}]',
+                pagination=pagination,
+                db=db,
+                admin=admin,
+            )
+
+        self.assertEqual(response["total_count"], 0)
+        search_mock.assert_called_once_with(
+            db,
+            tenant_id=42,
+            pagination=pagination,
+            q=None,
+            teams=None,
+            roles=None,
+            status_filter=None,
+            sort_by="name",
+            sort_order="asc",
+            all_filter_conditions=[{"field": "email", "operator": "contains", "value": "ada", "values": None}],
+            any_filter_conditions=[{"field": "role_name", "operator": "is", "value": "Admin", "values": None}],
+        )
 
     def test_contact_organization_search_passes_tenant_and_name_by_keyword(self):
         pagination = Pagination(page=1, page_size=10, offset=0, limit=10)

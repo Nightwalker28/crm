@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.modules.platform.services.record_comments import (
+    INVALID_MENTION_DETAIL,
     create_record_mention_notifications,
     list_mentionable_record_users,
     validate_record_mentions,
@@ -78,7 +79,7 @@ class RecordCommentMentionTests(unittest.TestCase):
         self.assertEqual(users, [{"id": 1, "label": "Ava Admin", "email": "admin@example.com"}])
 
     def test_validate_record_mentions_rejects_users_without_view_access(self):
-        with self.assertRaisesRegex(Exception, "cannot view this record"):
+        with self.assertRaises(Exception) as context:
             validate_record_mentions(
                 self.db,
                 tenant_id=10,
@@ -86,6 +87,20 @@ class RecordCommentMentionTests(unittest.TestCase):
                 entity_id=7,
                 mentioned_user_ids=[2],
             )
+        self.assertEqual(context.exception.detail, INVALID_MENTION_DETAIL)
+
+    def test_validate_record_mentions_uses_generic_error_for_missing_or_inactive_users(self):
+        for mentioned_user_ids in ([3], [999]):
+            with self.subTest(mentioned_user_ids=mentioned_user_ids):
+                with self.assertRaises(Exception) as context:
+                    validate_record_mentions(
+                        self.db,
+                        tenant_id=10,
+                        module_key="sales_contacts",
+                        entity_id=7,
+                        mentioned_user_ids=mentioned_user_ids,
+                    )
+                self.assertEqual(context.exception.detail, INVALID_MENTION_DETAIL)
 
     def test_create_record_mention_notifications_skips_actor(self):
         mentioned_users = validate_record_mentions(

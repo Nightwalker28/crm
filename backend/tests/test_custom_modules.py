@@ -13,6 +13,16 @@ from app.modules.platform.models import (
     CustomModuleRecordValue,
 )
 from app.modules.platform.services import custom_modules
+from app.modules.user_management.models import (
+    Department,
+    DepartmentModulePermission,
+    Module,
+    Role,
+    RoleModulePermission,
+    Team,
+    TeamModulePermission,
+    TenantModuleConfig,
+)
 
 
 class FakeDB:
@@ -46,6 +56,59 @@ class ReservedModuleDB(FakeDB):
         if model is CustomModuleDefinition:
             return FirstResultQuery(None)
         return FirstResultQuery(SimpleNamespace(id=42, name="tasks"))
+
+
+class SeedAccessQuery:
+    def __init__(self, db, target):
+        self.db = db
+        self.target = target
+
+    def filter(self, *args):
+        return self
+
+    def first(self):
+        if self.target is TenantModuleConfig:
+            return self.db.tenant_config
+        return None
+
+    def all(self):
+        if self.target is DepartmentModulePermission.department_id:
+            return [(permission.department_id,) for permission in self.db.department_permissions]
+        if self.target is TeamModulePermission.team_id:
+            return [(permission.team_id,) for permission in self.db.team_permissions]
+        if self.target is RoleModulePermission.role_id:
+            return [(permission.role_id,) for permission in self.db.role_permissions]
+        if self.target is Department:
+            return self.db.departments
+        if self.target is Team:
+            return self.db.teams
+        if self.target is Role:
+            return self.db.roles
+        return []
+
+
+class SeedAccessDB:
+    def __init__(self):
+        self.tenant_config = None
+        self.department_permissions = []
+        self.team_permissions = []
+        self.role_permissions = []
+        self.departments = [SimpleNamespace(id=3, tenant_id=7)]
+        self.teams = [SimpleNamespace(id=4, tenant_id=7)]
+        self.roles = [SimpleNamespace(id=5, tenant_id=7, level=100)]
+
+    def query(self, target):
+        return SeedAccessQuery(self, target)
+
+    def add(self, value):
+        if isinstance(value, TenantModuleConfig):
+            self.tenant_config = value
+        elif isinstance(value, DepartmentModulePermission):
+            self.department_permissions.append(value)
+        elif isinstance(value, TeamModulePermission):
+            self.team_permissions.append(value)
+        elif isinstance(value, RoleModulePermission):
+            self.role_permissions.append(value)
 
 
 class CustomModuleFieldTests(unittest.TestCase):
@@ -110,6 +173,18 @@ class CustomModuleFieldTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 409)
         self.assertEqual(exc.exception.detail, "Custom module key is reserved")
+
+    def test_seed_access_is_idempotent(self):
+        db = SeedAccessDB()
+        module = Module(id=42, name="custom_assets", base_route="custom/assets", is_enabled=1)
+
+        custom_modules._seed_access(db, tenant_id=7, module=module)
+        custom_modules._seed_access(db, tenant_id=7, module=module)
+
+        self.assertIsNotNone(db.tenant_config)
+        self.assertEqual(len(db.department_permissions), 1)
+        self.assertEqual(len(db.team_permissions), 1)
+        self.assertEqual(len(db.role_permissions), 1)
 
     def test_serialize_record_omits_deleted_and_inactive_fields(self):
         active_field = CustomModuleFieldDefinition(

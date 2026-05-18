@@ -168,14 +168,46 @@ def _require_module_action(db: Session, *, user: User, definition: CustomModuleD
 
 
 def _seed_access(db: Session, *, tenant_id: int, module: Module) -> None:
-    db.add(TenantModuleConfig(tenant_id=tenant_id, module_id=module.id, is_enabled=1, import_duplicate_mode="skip"))
+    tenant_config = (
+        db.query(TenantModuleConfig)
+        .filter(TenantModuleConfig.tenant_id == tenant_id, TenantModuleConfig.module_id == module.id)
+        .first()
+    )
+    if tenant_config is None:
+        db.add(TenantModuleConfig(tenant_id=tenant_id, module_id=module.id, is_enabled=1, import_duplicate_mode="skip"))
+    else:
+        tenant_config.is_enabled = 1
+        db.add(tenant_config)
 
+    existing_department_ids = {
+        department_id
+        for (department_id,) in db.query(DepartmentModulePermission.department_id)
+        .filter(DepartmentModulePermission.module_id == module.id)
+        .all()
+    }
     for department in db.query(Department).filter(Department.tenant_id == tenant_id).all():
-        db.add(DepartmentModulePermission(department_id=department.id, module_id=module.id))
-    for team in db.query(Team).filter(Team.tenant_id == tenant_id).all():
-        db.add(TeamModulePermission(team_id=team.id, module_id=module.id))
+        if department.id not in existing_department_ids:
+            db.add(DepartmentModulePermission(department_id=department.id, module_id=module.id))
 
+    existing_team_ids = {
+        team_id
+        for (team_id,) in db.query(TeamModulePermission.team_id)
+        .filter(TeamModulePermission.module_id == module.id)
+        .all()
+    }
+    for team in db.query(Team).filter(Team.tenant_id == tenant_id).all():
+        if team.id not in existing_team_ids:
+            db.add(TeamModulePermission(team_id=team.id, module_id=module.id))
+
+    existing_role_ids = {
+        role_id
+        for (role_id,) in db.query(RoleModulePermission.role_id)
+        .filter(RoleModulePermission.module_id == module.id)
+        .all()
+    }
     for role in db.query(Role).filter(Role.tenant_id == tenant_id).all():
+        if role.id in existing_role_ids:
+            continue
         template_key = "admin" if role.level >= 100 else "superuser" if role.level >= 90 else "user"
         actions = ROLE_TEMPLATES[template_key]["actions"]
         db.add(

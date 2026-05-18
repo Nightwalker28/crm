@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, ExternalLink, KeyRound, Package, PlugZap, RefreshCw, Send, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -191,79 +192,84 @@ function responseError(body: unknown, fallback: string) {
   return fallback;
 }
 
+async function fetchWebsiteIntegrations() {
+  const [keysRes, ordersRes] = await Promise.all([
+    apiFetch("/integrations/api-keys"),
+    apiFetch("/integrations/orders?limit=10&offset=0"),
+  ]);
+  const [keysBody, ordersBody] = await Promise.all([readJson(keysRes), readJson(ordersRes)]);
+  if (!keysRes.ok) throw new Error(responseError(keysBody, `Failed with ${keysRes.status}`));
+  if (!ordersRes.ok) throw new Error(responseError(ordersBody, `Failed with ${ordersRes.status}`));
+  return {
+    apiKeys: Array.isArray(keysBody) ? keysBody as IntegrationApiKey[] : [],
+    websiteOrders: Array.isArray(ordersBody) ? ordersBody as WebsiteOrder[] : [],
+  };
+}
+
+async function fetchNotificationChannels() {
+  const res = await apiFetch("/admin/notification-channels");
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return Array.isArray(body?.results) ? body.results as NotificationChannel[] : [];
+}
+
+async function fetchCrmEvents(filters: EventFilters) {
+  const params = new URLSearchParams({ page: "1", page_size: "10" });
+  if (filters.event_type !== "all") params.set("event_type", filters.event_type);
+  if (filters.delivery_status !== "all") params.set("delivery_status", filters.delivery_status);
+  const res = await apiFetch(`/admin/crm-events?${params.toString()}`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return Array.isArray(body?.results) ? body.results as CrmEvent[] : [];
+}
+
 export default function IntegrationsPage() {
-  const [apiKeys, setApiKeys] = useState<IntegrationApiKey[]>([]);
-  const [websiteOrders, setWebsiteOrders] = useState<WebsiteOrder[]>([]);
-  const [channels, setChannels] = useState<NotificationChannel[]>([]);
-  const [events, setEvents] = useState<CrmEvent[]>([]);
+  const queryClient = useQueryClient();
   const [apiKeyDraft, setApiKeyDraft] = useState<ApiKeyDraft>(emptyApiKeyDraft);
   const [latestApiKey, setLatestApiKey] = useState<string | null>(null);
   const [draft, setDraft] = useState<ChannelDraft>(emptyDraft);
   const [eventFilters, setEventFilters] = useState<EventFilters>({ event_type: "all", delivery_status: "all" });
-  const [websiteLoading, setWebsiteLoading] = useState(true);
-  const [loading, setLoading] = useState(true);
-  const [eventsLoading, setEventsLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [websiteSaving, setWebsiteSaving] = useState(false);
 
-  const loadWebsiteIntegrations = useCallback(async () => {
-    try {
-      setWebsiteLoading(true);
-      const [keysRes, ordersRes] = await Promise.all([
-        apiFetch("/integrations/api-keys"),
-        apiFetch("/integrations/orders?limit=10&offset=0"),
-      ]);
-      const [keysBody, ordersBody] = await Promise.all([readJson(keysRes), readJson(ordersRes)]);
-      if (!keysRes.ok) throw new Error(responseError(keysBody, `Failed with ${keysRes.status}`));
-      if (!ordersRes.ok) throw new Error(responseError(ordersBody, `Failed with ${ordersRes.status}`));
-      setApiKeys(Array.isArray(keysBody) ? keysBody : []);
-      setWebsiteOrders(Array.isArray(ordersBody) ? ordersBody : []);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load website integration data.");
-    } finally {
-      setWebsiteLoading(false);
-    }
-  }, []);
+  const websiteQuery = useQuery({
+    queryKey: ["integrations", "website"],
+    queryFn: fetchWebsiteIntegrations,
+  });
+  const channelsQuery = useQuery({
+    queryKey: ["integrations", "notification-channels"],
+    queryFn: fetchNotificationChannels,
+  });
+  const eventsQuery = useQuery({
+    queryKey: ["integrations", "crm-events", eventFilters],
+    queryFn: () => fetchCrmEvents(eventFilters),
+  });
 
-  async function loadChannels() {
-    try {
-      setLoading(true);
-      const res = await apiFetch("/admin/notification-channels");
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      setChannels(Array.isArray(body?.results) ? body.results : []);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load integrations.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  const loadEvents = useCallback(async (filters: EventFilters) => {
-    try {
-      setEventsLoading(true);
-      const params = new URLSearchParams({ page: "1", page_size: "10" });
-      if (filters.event_type !== "all") params.set("event_type", filters.event_type);
-      if (filters.delivery_status !== "all") params.set("delivery_status", filters.delivery_status);
-      const res = await apiFetch(`/admin/crm-events?${params.toString()}`);
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      setEvents(Array.isArray(body?.results) ? body.results : []);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to load event history.");
-    } finally {
-      setEventsLoading(false);
-    }
-  }, []);
+  const apiKeys = websiteQuery.data?.apiKeys ?? [];
+  const websiteOrders = websiteQuery.data?.websiteOrders ?? [];
+  const channels = channelsQuery.data ?? [];
+  const events = eventsQuery.data ?? [];
+  const websiteLoading = websiteQuery.isLoading || websiteQuery.isFetching;
+  const loading = channelsQuery.isLoading || channelsQuery.isFetching;
+  const eventsLoading = eventsQuery.isLoading || eventsQuery.isFetching;
 
   useEffect(() => {
-    void loadWebsiteIntegrations();
-    void loadChannels();
-  }, [loadWebsiteIntegrations]);
+    if (websiteQuery.error) {
+      toast.error(websiteQuery.error instanceof Error ? websiteQuery.error.message : "Failed to load website integration data.");
+    }
+  }, [websiteQuery.error]);
 
   useEffect(() => {
-    void loadEvents(eventFilters);
-  }, [eventFilters, loadEvents]);
+    if (channelsQuery.error) {
+      toast.error(channelsQuery.error instanceof Error ? channelsQuery.error.message : "Failed to load integrations.");
+    }
+  }, [channelsQuery.error]);
+
+  useEffect(() => {
+    if (eventsQuery.error) {
+      toast.error(eventsQuery.error instanceof Error ? eventsQuery.error.message : "Failed to load event history.");
+    }
+  }, [eventsQuery.error]);
 
   async function createChannel() {
     try {
@@ -281,7 +287,7 @@ export default function IntegrationsPage() {
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
       setDraft(emptyDraft);
-      await loadChannels();
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "notification-channels"] });
       toast.success("Notification channel added.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to add channel.");
@@ -324,7 +330,7 @@ export default function IntegrationsPage() {
       if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
       setLatestApiKey(typeof body?.api_key === "string" ? body.api_key : null);
       setApiKeyDraft(emptyApiKeyDraft);
-      await loadWebsiteIntegrations();
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
       toast.success("Website API key created.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create API key.");
@@ -339,7 +345,7 @@ export default function IntegrationsPage() {
       const res = await apiFetch(`/integrations/api-keys/${key.id}`, { method: "DELETE" });
       const body = await readJson(res);
       if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
-      await loadWebsiteIntegrations();
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
       toast.success("Website API key revoked.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to revoke API key.");
@@ -354,7 +360,7 @@ export default function IntegrationsPage() {
       const res = await apiFetch(`/integrations/orders/${order.id}/create-pos-invoice`, { method: "POST" });
       const body = await readJson(res);
       if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
-      await loadWebsiteIntegrations();
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
       toast.success(body?.already_existing ? "POS invoice already exists." : "POS invoice created from website order.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create POS invoice.");
@@ -373,7 +379,7 @@ export default function IntegrationsPage() {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      await loadChannels();
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "notification-channels"] });
       toast.success("Notification channel updated.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update channel.");
@@ -390,7 +396,7 @@ export default function IntegrationsPage() {
         const body = await res.json().catch(() => null);
         throw new Error(body?.detail ?? `Failed with ${res.status}`);
       }
-      await loadChannels();
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "notification-channels"] });
       toast.success("Notification channel deleted.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to delete channel.");
@@ -426,7 +432,7 @@ export default function IntegrationsPage() {
             <h2 className="text-lg font-semibold text-neutral-100">Website APIs</h2>
             <p className="text-sm text-neutral-500">Manage API keys, public catalog items, and incoming website orders for WordPress or custom sites.</p>
           </div>
-          <Button type="button" variant="outline" size="sm" disabled={websiteLoading} onClick={() => loadWebsiteIntegrations()}>
+          <Button type="button" variant="outline" size="sm" disabled={websiteLoading} onClick={() => void websiteQuery.refetch()}>
             <RefreshCw size={14} />
             Refresh
           </Button>
@@ -796,7 +802,7 @@ export default function IntegrationsPage() {
                 ))}
               </SelectContent>
             </Select>
-            <Button type="button" variant="outline" size="sm" disabled={eventsLoading} onClick={() => loadEvents(eventFilters)}>
+            <Button type="button" variant="outline" size="sm" disabled={eventsLoading} onClick={() => void eventsQuery.refetch()}>
               <RefreshCw size={14} />
               Refresh
             </Button>

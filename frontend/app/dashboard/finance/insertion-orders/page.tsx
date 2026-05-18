@@ -58,7 +58,7 @@ export default function InsertionOrdersPage() {
     updateOrder,
     isSaving,
     isDeleting,
-  } = useInsertionOrders(visibleColumns, draftConfig.filters, 1, 10);
+  } = useInsertionOrders(visibleColumns, draftConfig.filters);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const currentPageIds = useMemo(() => orders.map((order) => order.id), [orders]);
   const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {

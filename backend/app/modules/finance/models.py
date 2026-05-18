@@ -132,7 +132,7 @@ class FinancePosInvoice(Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    created_by = relationship("User", lazy="joined")
+    assigned_user = relationship("User", lazy="joined")
     customer_contact = relationship("SalesContact", lazy="joined")
     customer_organization = relationship("SalesOrganization", lazy="joined")
     lines = relationship(

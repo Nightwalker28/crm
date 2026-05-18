@@ -169,8 +169,6 @@ function getErrorMessage(error: unknown) {
 export function useInsertionOrders(
   visibleColumns: string[],
   viewFilters: SavedViewFilters,
-  initialPage = 1,
-  initialPageSize = 10,
 ) {
   const queryClient = useQueryClient();
   const paged = usePagedList<InsertionOrder, InsertionOrdersResponse>({
@@ -178,8 +176,8 @@ export function useInsertionOrders(
     fetcher: fetchInsertionOrders,
     visibleColumns,
     filters: viewFilters,
-    initialPage,
-    initialPageSize,
+    initialPage: 1,
+    initialPageSize: 10,
     refetchOnWindowFocus: false,
     errorMessage: getErrorMessage,
   });

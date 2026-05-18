@@ -72,11 +72,18 @@ function sameSort(left: SavedViewConfig["sort"], right: SavedViewConfig["sort"])
   return leftKeys.every((key) => Object.is(left[key], right[key]));
 }
 
+function sameConditions(left: SavedViewCondition[] = [], right: SavedViewCondition[] = []) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
 function sameAppliedConfig(left: SavedViewConfig, right: SavedViewConfig) {
   return (
     sameStringArray(left.visible_columns, right.visible_columns) &&
     sameSort(left.sort ?? null, right.sort ?? null) &&
-    (left.filters?.search ?? "") === (right.filters?.search ?? "")
+    (left.filters?.search ?? "") === (right.filters?.search ?? "") &&
+    sameConditions(left.filters?.conditions ?? [], right.filters?.conditions ?? []) &&
+    sameConditions(left.filters?.all_conditions ?? [], right.filters?.all_conditions ?? []) &&
+    sameConditions(left.filters?.any_conditions ?? [], right.filters?.any_conditions ?? [])
   );
 }
 
@@ -139,10 +146,17 @@ export function useSavedViews(
   const [draftConfig, setDraftConfig] = useState<SavedViewConfig>(defaultConfig);
   const lastAppliedViewKeyRef = useRef<string | null>(null);
   const lastResolvedSelectedViewIdRef = useRef<string | null>(null);
+  const selectedViewIdRef = useRef(selectedViewId);
+  const defaultColumnsKey = JSON.stringify(defaultConfig.visible_columns);
+  const defaultVisibleColumns = useMemo(() => JSON.parse(defaultColumnsKey) as string[], [defaultColumnsKey]);
+
+  useEffect(() => {
+    selectedViewIdRef.current = selectedViewId;
+  }, [selectedViewId]);
 
   const query = useQuery({
-    queryKey: ["saved-views", moduleKey, defaultConfig.visible_columns],
-    queryFn: () => fetchSavedViews(moduleKey, defaultConfig.visible_columns),
+    queryKey: ["saved-views", moduleKey, defaultColumnsKey],
+    queryFn: () => fetchSavedViews(moduleKey, defaultVisibleColumns),
     enabled: Boolean(moduleKey) && enabled,
     staleTime: 5 * 60_000,
   });
@@ -161,7 +175,8 @@ export function useSavedViews(
     if (!views.length) return;
     const defaultView = views.find((view) => view.is_default) ?? views[0];
     const defaultViewId = String(defaultView.id ?? "system-default");
-    const normalizedCurrent = resolveViewId(selectedViewId);
+    const currentSelectedViewId = selectedViewIdRef.current;
+    const normalizedCurrent = resolveViewId(currentSelectedViewId);
     const nextViewId = normalizedCurrent && views.some((view) => String(view.id ?? "system-default") === normalizedCurrent)
       ? normalizedCurrent
       : defaultViewId;
@@ -171,11 +186,11 @@ export function useSavedViews(
     }
     lastResolvedSelectedViewIdRef.current = nextViewId;
 
-    if (selectedViewId !== nextViewId) {
+    if (currentSelectedViewId !== nextViewId) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedViewId(nextViewId);
     }
-  }, [resolveViewId, selectedViewId, views]);
+  }, [resolveViewId, views]);
 
   const selectedView = useMemo(
     () => {
@@ -188,7 +203,7 @@ export function useSavedViews(
   useEffect(() => {
     if (selectedView) {
       const nextConfig = {
-        visible_columns: selectedView.config.visible_columns ?? defaultConfig.visible_columns,
+        visible_columns: selectedView.config.visible_columns ?? defaultVisibleColumns,
         filters: {
           search: "",
           logic: "all" as const,
@@ -201,7 +216,6 @@ export function useSavedViews(
       };
       const viewKey = [
         selectedView.id ?? "system-default",
-        selectedView.updated_at ?? "no-version",
         selectedView.is_default ? "default" : "custom",
         selectedView.is_system ? "system" : "user",
       ].join(":");
@@ -212,7 +226,7 @@ export function useSavedViews(
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDraftConfig((current) => (sameAppliedConfig(current, nextConfig) ? current : nextConfig));
     }
-  }, [defaultConfig.visible_columns, selectedView]);
+  }, [defaultVisibleColumns, selectedView]);
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ["saved-views", moduleKey] });
@@ -272,8 +286,11 @@ export function useSavedViews(
       if (!selectedView || selectedView.id == null) {
         throw new Error("Default system view cannot be deleted.");
       }
+      const deletedViewId = selectedView.id;
       await deleteMutation.mutateAsync(selectedView.id);
-      setSelectedViewId("system-default");
+      const remainingViews = views.filter((view) => view.id !== deletedViewId);
+      const nextView = remainingViews.find((view) => view.is_default) ?? remainingViews.find((view) => view.is_system) ?? remainingViews[0];
+      setSelectedViewId(nextView ? String(nextView.id ?? "system-default") : "system-default");
     },
   };
 }

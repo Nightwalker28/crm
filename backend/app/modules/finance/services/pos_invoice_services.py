@@ -237,10 +237,10 @@ def serialize_invoice(invoice: FinancePosInvoice, *, current_user=None, include_
     user_name = None
     if current_user and invoice.user_id == current_user.id:
         user_name = "You"
-    elif getattr(invoice, "created_by", None):
+    elif getattr(invoice, "assigned_user", None):
         user_name = " ".join(
-            part for part in (invoice.created_by.first_name, invoice.created_by.last_name) if part
-        ) or invoice.created_by.email
+            part for part in (invoice.assigned_user.first_name, invoice.assigned_user.last_name) if part
+        ) or invoice.assigned_user.email
     total = _to_decimal(invoice.total_amount)
     paid = _to_decimal(invoice.amount_paid)
     data = {
