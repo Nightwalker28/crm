@@ -55,9 +55,9 @@ class FinanceIO(Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    assigned_user = relationship("User", lazy="joined")
-    customer_contact = relationship("SalesContact", lazy="joined")
-    customer_organization = relationship("SalesOrganization", lazy="joined")
+    assigned_user = relationship("User", lazy="selectin")
+    customer_contact = relationship("SalesContact", lazy="selectin")
+    customer_organization = relationship("SalesOrganization", lazy="selectin")
 
     # Runtime cache populated by custom-field hydration. Values are persisted in
     # platform custom-field tables, so services must hydrate this last before
@@ -132,14 +132,14 @@ class FinancePosInvoice(Base):
     created_at = Column(TIMESTAMP(timezone=True), server_default=func.now())
     updated_at = Column(TIMESTAMP(timezone=True), server_default=func.now(), onupdate=func.now())
 
-    assigned_user = relationship("User", lazy="joined")
-    customer_contact = relationship("SalesContact", lazy="joined")
-    customer_organization = relationship("SalesOrganization", lazy="joined")
+    assigned_user = relationship("User", lazy="selectin")
+    customer_contact = relationship("SalesContact", lazy="selectin")
+    customer_organization = relationship("SalesOrganization", lazy="selectin")
     lines = relationship(
         "FinancePosInvoiceLine",
         back_populates="invoice",
         cascade="all, delete-orphan",
-        lazy="joined",
+        lazy="selectin",
         order_by="FinancePosInvoiceLine.sort_order",
     )
 

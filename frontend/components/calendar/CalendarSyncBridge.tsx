@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { useCalendarActions, useCalendarContext } from "@/hooks/useCalendar";
+import { useJobPoller } from "@/hooks/useJobPoller";
 
 const AUTO_SYNC_KEY = "lynk:calendar-auto-sync";
 
@@ -24,9 +26,22 @@ function persistAttemptedKeys(values: Set<string>) {
 }
 
 export default function CalendarSyncBridge() {
+  const queryClient = useQueryClient();
   const attemptedKeysRef = useRef<Set<string>>(new Set<string>());
+  const [syncJobId, setSyncJobId] = useState<number | null>(null);
   const contextQuery = useCalendarContext();
   const { syncCalendar, isSyncingCalendar } = useCalendarActions();
+  const syncJob = useJobPoller<Record<string, unknown>>(
+    syncJobId,
+    () => {
+      setSyncJobId(null);
+      void queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["calendar-context"] });
+    },
+    { failureMessage: "Calendar bootstrap sync failed." },
+  );
+  const { start: startSyncJob, status: syncJobStatus } = syncJob;
+  const isBootstrapSyncJobActive = syncJobStatus === "queued" || syncJobStatus === "running";
   const activeConnection = contextQuery.data?.connections.find((connection) => connection.sync_enabled_for_current_session && connection.provider === "google");
   const needsBootstrapSync = Boolean(
     activeConnection &&
@@ -48,16 +63,23 @@ export default function CalendarSyncBridge() {
   useEffect(() => {
     if (!bootstrapSyncKey) return;
     if (isSyncingCalendar) return;
+    if (isBootstrapSyncJobActive) return;
     if (!needsBootstrapSync) return;
 
     if (attemptedKeysRef.current.has(bootstrapSyncKey)) return;
     attemptedKeysRef.current.add(bootstrapSyncKey);
     persistAttemptedKeys(attemptedKeysRef.current);
 
-    void syncCalendar().catch((error) => {
-      console.warn("Calendar bootstrap sync failed; manual retry remains available.", error);
-    });
-  }, [bootstrapSyncKey, isSyncingCalendar, needsBootstrapSync, syncCalendar]);
+    void syncCalendar()
+      .then((result) => {
+        if (!result.job_id) return;
+        setSyncJobId(result.job_id);
+        startSyncJob(result.job_status || "queued", result.message || "Calendar sync queued.");
+      })
+      .catch((error) => {
+        console.warn("Calendar bootstrap sync failed; manual retry remains available.", error);
+      });
+  }, [bootstrapSyncKey, isBootstrapSyncJobActive, isSyncingCalendar, needsBootstrapSync, syncCalendar, startSyncJob]);
 
   return null;
 }

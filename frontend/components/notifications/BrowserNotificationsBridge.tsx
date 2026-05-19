@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useNotifications } from "@/hooks/useNotifications";
 
 const SEEN_KEY = "lynk:browser-notification-seen";
+const MAX_SEEN_IDS = 200;
 
 function readSeenIds() {
   if (typeof window === "undefined") return new Set<number>();
@@ -21,17 +22,14 @@ function readSeenIds() {
 
 function persistSeenIds(values: Set<number>) {
   if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(SEEN_KEY, JSON.stringify(Array.from(values)));
+  const capped = Array.from(values).slice(-MAX_SEEN_IDS);
+  window.sessionStorage.setItem(SEEN_KEY, JSON.stringify(capped));
 }
 
 export default function BrowserNotificationsBridge() {
   const router = useRouter();
   const { notifications } = useNotifications();
-  const seenIdsRef = useRef<Set<number>>(new Set<number>());
-
-  useEffect(() => {
-    seenIdsRef.current = readSeenIds();
-  }, []);
+  const seenIdsRef = useRef<Set<number>>(readSeenIds());
 
   useEffect(() => {
     if (typeof window === "undefined" || !("Notification" in window)) return;
@@ -43,6 +41,12 @@ export default function BrowserNotificationsBridge() {
         if (seenIdsRef.current.has(notification.id)) return;
 
         seenIdsRef.current.add(notification.id);
+        if (seenIdsRef.current.size > MAX_SEEN_IDS) {
+          const oldestId = seenIdsRef.current.values().next().value;
+          if (typeof oldestId === "number") {
+            seenIdsRef.current.delete(oldestId);
+          }
+        }
         persistSeenIds(seenIdsRef.current);
 
         const browserNotification = new Notification(notification.title, {

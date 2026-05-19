@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timezone
+from email.message import EmailMessage
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
@@ -538,6 +539,105 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(microsoft_connection.access_token, "new-microsoft-token")
         self.assertEqual(db.flush.call_count, 1)
         db.commit.assert_not_called()
+
+    def test_list_mail_messages_uses_cursor_and_skips_tiny_search(self):
+        self.db.add_all(
+            [
+                MailMessage(
+                    id=10,
+                    tenant_id=10,
+                    owner_user_id=1,
+                    direction="inbound",
+                    folder="inbox",
+                    subject="Alpha",
+                ),
+                MailMessage(
+                    id=11,
+                    tenant_id=10,
+                    owner_user_id=1,
+                    direction="inbound",
+                    folder="inbox",
+                    subject="Beta",
+                ),
+            ]
+        )
+        self.db.commit()
+
+        with patch.object(mail_services, "apply_ranked_search", wraps=mail_services.apply_ranked_search) as search_mock:
+            messages = mail_services.list_mail_messages(
+                self.db,
+                tenant_id=10,
+                current_user=self.user,
+                folder=" inbox ",
+                search="a",
+                before_id=11,
+            )
+
+        self.assertEqual([message.id for message in messages], [10])
+        search_mock.assert_not_called()
+
+    def test_connect_imap_uses_timeout_for_ssl_and_plain_clients(self):
+        with patch.object(mail_services.imaplib, "IMAP4_SSL", return_value=Mock()) as ssl_mock:
+            mail_services._connect_imap("imap.example.com", 993, "ssl")
+
+        self.assertEqual(ssl_mock.call_args.kwargs["timeout"], 20)
+
+        plain_client = Mock()
+        with patch.object(mail_services.imaplib, "IMAP4", return_value=plain_client) as plain_mock:
+            mail_services._connect_imap("imap.example.com", 143, "none")
+
+        self.assertEqual(plain_mock.call_args.kwargs["timeout"], 20)
+        plain_client.starttls.assert_not_called()
+
+    def test_parse_recipients_unfolds_multiline_headers(self):
+        recipients = mail_services._parse_recipients(
+            "Ava Admin <ava@example.com>,\r\n\tBuyer <buyer@example.com>"
+        )
+
+        self.assertEqual(
+            recipients,
+            [
+                {"email": "ava@example.com", "name": "Ava Admin"},
+                {"email": "buyer@example.com", "name": "Buyer"},
+            ],
+        )
+
+    def test_extract_email_text_prefers_longest_plain_part(self):
+        message = EmailMessage()
+        message.set_content("Short")
+        message.add_alternative("<p>Ignored html body</p>", subtype="html")
+        message.add_attachment(
+            "This is the longer plain text body.",
+            subtype="plain",
+            filename=None,
+            disposition="inline",
+        )
+
+        self.assertEqual(mail_services._extract_email_text(message), "This is the longer plain text body.\n")
+
+    def test_google_sync_requests_partial_fields(self):
+        connection = UserMailConnection(
+            id=1,
+            tenant_id=10,
+            user_id=1,
+            provider=MailProvider.google.value,
+            status="connected",
+            account_email="ava@example.com",
+        )
+        self.db.add(connection)
+        self.db.commit()
+        list_response = SimpleNamespace(ok=True, json=lambda: {"messages": [{"id": "m1"}]})
+        detail_response = SimpleNamespace(ok=True, json=lambda: {"id": "m1", "payload": {"headers": []}})
+
+        with patch.object(mail_services.settings, "GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED", True), \
+             patch.object(mail_services, "_refresh_google_mail_token", return_value="token"), \
+             patch.object(mail_services.requests, "get", side_effect=[list_response, detail_response]) as get_mock, \
+             patch.object(mail_services, "_sync_google_message", return_value=True):
+            result = mail_services.sync_google_inbox(self.db, current_user=self.user)
+
+        self.assertEqual(result["synced_message_count"], 1)
+        self.assertEqual(get_mock.call_args_list[0].kwargs["params"]["fields"], mail_services.GMAIL_MESSAGE_LIST_FIELDS)
+        self.assertEqual(get_mock.call_args_list[1].kwargs["params"]["fields"], mail_services.GMAIL_MESSAGE_DETAIL_FIELDS)
 
     @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
     def test_disconnect_mail_connection_clears_credentials_and_disables_capabilities(self):

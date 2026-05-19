@@ -19,6 +19,7 @@ DATA_TRANSFER_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 MODULE_DISPLAY_NAMES = {
+    "calendar": "Calendar",
     "sales_contacts": "Contacts",
     "sales_organizations": "Organizations",
     "sales_opportunities": "Opportunities",
@@ -28,6 +29,7 @@ TRANSIENT_JOB_ERRORS = (OSError, ConnectionError, TimeoutError)
 
 
 MODULE_LINKS = {
+    "calendar": "/dashboard/calendar",
     "sales_contacts": "/dashboard/sales/contacts",
     "sales_organizations": "/dashboard/sales/organizations",
     "sales_opportunities": "/dashboard/sales/opportunities",

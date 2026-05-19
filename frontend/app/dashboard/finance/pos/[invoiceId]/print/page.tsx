@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -20,6 +20,13 @@ type CompanyProfile = {
   logo_url?: string | null;
 };
 
+async function fetchCompanyProfile(): Promise<CompanyProfile> {
+  const res = await apiFetch("/users/company");
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return body as CompanyProfile;
+}
+
 function money(amount: number, currency: string) {
   try {
     return new Intl.NumberFormat("en-US", { style: "currency", currency }).format(amount);
@@ -35,35 +42,23 @@ function lines(value?: string | null) {
 export default function PosInvoicePrintPage() {
   const params = useParams<{ invoiceId: string }>();
   const invoiceId = Number(params.invoiceId);
-  const [invoice, setInvoice] = useState<PosInvoice | null>(null);
-  const [company, setCompany] = useState<CompanyProfile | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [nextInvoice, companyRes] = await Promise.all([
-          fetchPosInvoice(invoiceId),
-          apiFetch("/users/company"),
-        ]);
-        const companyBody = await companyRes.json().catch(() => null);
-        if (!companyRes.ok) throw new Error(companyBody?.detail ?? `Failed with ${companyRes.status}`);
-        if (!cancelled) {
-          setInvoice(nextInvoice);
-          setCompany(companyBody as CompanyProfile);
-        }
-      } catch (loadError) {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Failed to load invoice");
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [invoiceId]);
+  const invoiceQuery = useQuery({
+    queryKey: ["pos-invoice", invoiceId],
+    queryFn: () => fetchPosInvoice(invoiceId),
+    enabled: Number.isFinite(invoiceId) && invoiceId > 0,
+    staleTime: 30_000,
+  });
+  const companyQuery = useQuery({
+    queryKey: ["company-profile"],
+    queryFn: fetchCompanyProfile,
+    staleTime: 10 * 60_000,
+  });
+  const invoice = invoiceQuery.data;
+  const company = companyQuery.data;
+  const error = invoiceQuery.error || companyQuery.error;
 
   if (error) {
-    return <div className="rounded-md border border-red-800 bg-red-950/30 px-4 py-3 text-sm text-red-200">{error}</div>;
+    return <div className="rounded-md border border-red-800 bg-red-950/30 px-4 py-3 text-sm text-red-200">{error instanceof Error ? error.message : "Failed to load invoice"}</div>;
   }
 
   if (!invoice || !company) {

@@ -29,6 +29,11 @@ type NotificationListResponse = {
   unread_count: number;
 };
 
+type NotificationQueryData = {
+  notifications: UserNotification[];
+  unreadCount: number;
+};
+
 async function fetchNotifications(): Promise<NotificationListResponse> {
   const res = await apiFetch("/notifications?page=1&page_size=10");
   const body = await res.json().catch(() => null);
@@ -66,8 +71,11 @@ export function useNotifications() {
   const query = useQuery({
     queryKey: ["user-notifications"],
     queryFn: fetchNotifications,
-    refetchInterval: 60000,
-    refetchIntervalInBackground: false,
+    select: (data): NotificationQueryData => ({
+      notifications: data.results,
+      unreadCount: data.unread_count,
+    }),
+    refetchOnWindowFocus: true,
     refetchOnMount: true,
     staleTime: 30000,
   });
@@ -103,14 +111,11 @@ export function useNotifications() {
         queryClient.setQueryData(["user-notifications"], context.previous);
       }
     },
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
-    },
   });
 
   return {
-    notifications: query.data?.results ?? [],
-    unreadCount: query.data?.unread_count ?? 0,
+    notifications: query.data?.notifications ?? [],
+    unreadCount: query.data?.unreadCount ?? 0,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     markRead: markReadMutation.mutateAsync,

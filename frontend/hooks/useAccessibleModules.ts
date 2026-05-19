@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
 
+const LEGACY_MODULE_CACHE_KEY = "lynk_modules";
 const MODULE_CACHE_KEY = "lynk_modules:v2";
 
 export type AccessibleModule = {
@@ -33,6 +34,29 @@ function readCachedModules(): AccessibleModule[] | null {
     window.sessionStorage.removeItem(MODULE_CACHE_KEY);
     return null;
   }
+}
+
+export function invalidateModuleCache() {
+  if (typeof window === "undefined") return;
+  window.sessionStorage.removeItem(LEGACY_MODULE_CACHE_KEY);
+  window.sessionStorage.removeItem(MODULE_CACHE_KEY);
+}
+
+function sameAccessibleModules(a: AccessibleModule[], b: AccessibleModule[]) {
+  if (a.length !== b.length) return false;
+  return a.every((item, index) => {
+    const next = b[index];
+    return (
+      item.id === next.id &&
+      item.name === next.name &&
+      item.base_route === next.base_route &&
+      item.description === next.description &&
+      item.is_enabled === next.is_enabled &&
+      item.sidebar_tab_key === next.sidebar_tab_key &&
+      item.sidebar_tab_label === next.sidebar_tab_label &&
+      item.display_name === next.display_name
+    );
+  });
 }
 
 export function useAccessibleModules() {
@@ -65,7 +89,7 @@ export function useAccessibleModules() {
       } finally {
         if (!cancelled) {
           setState((current) => ({
-            modules: nextModules ?? current.modules,
+            modules: nextModules && !sameAccessibleModules(current.modules, nextModules) ? nextModules : current.modules,
             isLoading: false,
           }));
         }

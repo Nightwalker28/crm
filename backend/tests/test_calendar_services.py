@@ -141,7 +141,7 @@ class CalendarGoogleSyncTests(unittest.TestCase):
         event = SimpleNamespace(id=12, owner_user_id=2, participants=[participant])
 
         with patch.object(calendar_services, "_sync_google_participant_event") as sync_mock, \
-             patch.object(calendar_services, "get_calendar_event_or_404", return_value=event) as get_mock:
+             patch.object(calendar_services, "get_calendar_event_or_404") as get_mock:
             result = calendar_services.respond_to_calendar_invite(
                 db,
                 event=event,
@@ -155,7 +155,7 @@ class CalendarGoogleSyncTests(unittest.TestCase):
         self.assertEqual(db.added, [participant])
         self.assertEqual(db.commits, 1)
         sync_mock.assert_called_once_with(db, event=event, participant=participant)
-        get_mock.assert_called_once_with(db, 12, tenant_id=10, current_user=current_user)
+        get_mock.assert_not_called()
 
     def test_calendar_participant_notification_failure_is_non_fatal(self):
         db = FakeDB()
@@ -195,6 +195,28 @@ class CalendarGoogleSyncTests(unittest.TestCase):
         sync_mock.assert_not_called()
         warning_mock.assert_called_once()
         self.assertEqual(warning_mock.call_args.kwargs["extra"]["event_id"], 12)
+
+    def test_calendar_full_sync_enqueue_creates_job_and_dispatches_worker(self):
+        db = FakeDB()
+        current_user = SimpleNamespace(id=1, tenant_id=10, last_login_provider="google")
+        connection = SimpleNamespace(status="connected")
+        job = SimpleNamespace(id=55, status="queued")
+
+        with patch.object(calendar_services, "_google_connection_for_user", return_value=connection), \
+             patch("app.modules.platform.services.data_transfer_jobs.create_data_transfer_job", return_value=job) as create_job_mock, \
+             patch("app.tasks.calendar_tasks.process_calendar_full_sync_job_task.delay") as delay_mock:
+            result = calendar_services.enqueue_current_user_calendar_sync(db, current_user=current_user)
+
+        self.assertIs(result, job)
+        create_job_mock.assert_called_once_with(
+            db,
+            tenant_id=10,
+            actor_user_id=1,
+            module_key="calendar",
+            operation_type="sync",
+            payload={"provider": "google"},
+        )
+        delay_mock.assert_called_once_with(55)
 
 
 if __name__ == "__main__":

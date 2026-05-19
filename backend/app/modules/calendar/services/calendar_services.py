@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
@@ -10,6 +11,7 @@ from fastapi import HTTPException, status
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.database import SessionLocal
 from app.modules.calendar.models import CalendarEvent, CalendarEventParticipant, UserCalendarConnection
 from app.modules.calendar.schema import CalendarProvider
 from app.modules.platform.models import UserNotification
@@ -27,6 +29,7 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_APP_CALENDAR_NAME = "CRM"
 GOOGLE_CALENDAR_ID_PATTERN = re.compile(r"^[A-Za-z0-9._%+-]+(?:@[A-Za-z0-9.-]+)?$")
 logger = logging.getLogger(__name__)
+CALENDAR_SYNC_BATCH_SIZE = 50
 
 
 def _utcnow() -> datetime:
@@ -652,6 +655,7 @@ def sync_external_events_for_event_id(db: Session, *, event_id: int) -> int:
     event = (
         db.query(CalendarEvent)
         .options(
+            selectinload(CalendarEvent.owner),
             selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.user),
             selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.team),
         )
@@ -989,19 +993,61 @@ def delete_calendar_event_from_task(db: Session, *, task_id: int, current_user) 
     return deleted_snapshot
 
 
-def sync_current_user_calendar(db: Session, *, current_user) -> dict:
+def enqueue_current_user_calendar_sync(db: Session, *, current_user):
     connection = _google_connection_for_user(db, tenant_id=current_user.tenant_id, user_id=current_user.id)
     if not connection or current_user.last_login_provider != CalendarProvider.google.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Google Calendar sync is only available for users currently signed in with Google.",
         )
+    if connection.status != "connected":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect Google Calendar before syncing.")
+
+    from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, mark_job_failed
+
+    job = create_data_transfer_job(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        module_key="calendar",
+        operation_type="sync",
+        payload={"provider": CalendarProvider.google.value},
+    )
+    try:
+        from app.tasks.calendar_tasks import process_calendar_full_sync_job_task
+
+        process_calendar_full_sync_job_task.delay(job.id)
+    except Exception as exc:
+        logger.warning(
+            "Calendar full sync enqueue failed",
+            extra={"tenant_id": current_user.tenant_id, "user_id": current_user.id, "job_id": job.id},
+            exc_info=True,
+        )
+        mark_job_failed(db, job, error_message="Calendar sync could not be queued.")
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Calendar sync could not be queued.") from exc
+    return job
+
+
+def sync_current_user_calendar(
+    db: Session,
+    *,
+    current_user,
+    progress_callback: Callable[[int, int, str], None] | None = None,
+) -> dict:
+    connection = _google_connection_for_user(db, tenant_id=current_user.tenant_id, user_id=current_user.id)
+    if not connection or current_user.last_login_provider != CalendarProvider.google.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Google Calendar sync is only available for users currently signed in with Google.",
+        )
+    if connection.status != "connected":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect Google Calendar before syncing.")
 
     calendar_id = _ensure_google_app_calendar(db, connection)
     if not calendar_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error or "Calendar sync failed.")
 
-    events = (
+    base_query = (
         db.query(CalendarEvent)
         .options(
             selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.user),
@@ -1020,21 +1066,36 @@ def sync_current_user_calendar(db: Session, *, current_user) -> dict:
                 ),
             ),
         )
-        .order_by(CalendarEvent.start_at.asc(), CalendarEvent.id.asc())
-        .all()
     )
 
+    total_count = base_query.order_by(None).count()
     synced_count = 0
-    for event in events:
-        participant = next((item for item in event.participants if item.user_id == current_user.id), None)
-        if not participant:
-            continue
-        if participant.response_status not in {"accepted", "shared"}:
-            continue
-        _sync_google_participant_event(db, event=event, participant=participant)
-        participant = next((item for item in event.participants if item.user_id == current_user.id), participant)
-        if not participant.last_sync_error:
-            synced_count += 1
+    processed_count = 0
+    last_event_id = 0
+    while True:
+        events = (
+            base_query
+            .filter(CalendarEvent.id > last_event_id)
+            .order_by(CalendarEvent.id.asc())
+            .limit(CALENDAR_SYNC_BATCH_SIZE)
+            .all()
+        )
+        if not events:
+            break
+        for event in events:
+            last_event_id = max(last_event_id, event.id)
+            processed_count += 1
+            participant = next((item for item in event.participants if item.user_id == current_user.id), None)
+            if not participant:
+                continue
+            if participant.response_status not in {"accepted", "shared"}:
+                continue
+            _sync_google_participant_event(db, event=event, participant=participant)
+            participant = next((item for item in event.participants if item.user_id == current_user.id), participant)
+            if not participant.last_sync_error:
+                synced_count += 1
+        if progress_callback:
+            progress_callback(processed_count, total_count, f"Synced {processed_count} of {total_count} calendar events.")
 
     db.refresh(connection)
     return {
@@ -1046,6 +1107,44 @@ def sync_current_user_calendar(db: Session, *, current_user) -> dict:
         "status": connection.status,
         "last_error": connection.last_error,
     }
+
+
+def process_calendar_sync_job(*, job_id: int) -> None:
+    from app.modules.platform.services.data_transfer_jobs import (
+        get_data_transfer_job_or_404,
+        mark_job_completed,
+        mark_job_running,
+        update_job_progress,
+    )
+
+    db = SessionLocal()
+    try:
+        job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
+        mark_job_running(db, job)
+        update_job_progress(db, job, progress_percent=10, progress_message="Preparing calendar sync.")
+
+        if job.module_key != "calendar" or job.operation_type != "sync":
+            raise ValueError("Unsupported calendar sync job.")
+        current_user = (
+            db.query(User)
+            .filter(User.id == job.actor_user_id, User.tenant_id == job.tenant_id)
+            .first()
+        )
+        if current_user is None:
+            raise ValueError("Calendar sync job actor was not found.")
+
+        def progress_callback(processed_count: int, total_count: int, message: str) -> None:
+            if total_count <= 0:
+                update_job_progress(db, job, progress_percent=90, progress_message="No calendar events to sync.")
+                return
+            progress = 10 + int((min(processed_count, total_count) / total_count) * 80)
+            update_job_progress(db, job, progress_percent=progress, progress_message=message)
+
+        summary = sync_current_user_calendar(db, current_user=current_user, progress_callback=progress_callback)
+        update_job_progress(db, job, progress_percent=95, progress_message="Finalizing calendar sync.")
+        mark_job_completed(db, job, summary=summary)
+    finally:
+        db.close()
 
 
 def create_calendar_event_from_task(db: Session, *, task_id: int, current_user) -> tuple[CalendarEvent, bool]:

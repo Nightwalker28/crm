@@ -20,6 +20,8 @@ class RequestTenantContext:
 
 
 _license_cache: tuple[float, dict | None] | None = None
+_tenant_context_cache: dict[str, tuple[float, RequestTenantContext | None]] = {}
+TENANT_CONTEXT_CACHE_TTL_SECONDS = 60
 
 
 def _clear_verified_deployment_license_cache() -> None:
@@ -192,3 +194,20 @@ def resolve_request_tenant(db: Session, request: Request) -> Tenant | None:
             detail="Tenant could not be resolved for this host",
         )
     return tenant_domain.tenant
+
+
+def resolve_request_tenant_context_cached(db: Session, request: Request) -> RequestTenantContext | None:
+    if is_auth_tenant_resolution_enabled() and is_cloud_mode_enabled():
+        return None
+
+    hostname = normalize_hostname(request.headers.get("host")) or "single"
+    cache_key = "single" if not is_cloud_mode_enabled() else f"host:{hostname}"
+    now = time.monotonic()
+    cached = _tenant_context_cache.get(cache_key)
+    if cached and now - cached[0] < TENANT_CONTEXT_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    tenant = resolve_request_tenant(db, request)
+    context = to_request_tenant_context(tenant) if tenant else None
+    _tenant_context_cache[cache_key] = (now, context)
+    return context

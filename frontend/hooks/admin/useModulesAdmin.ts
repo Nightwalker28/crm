@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { invalidateModuleCache } from "@/hooks/useAccessibleModules";
 import { apiFetch } from "@/lib/api";
 
 export type AdminModule = {
@@ -106,10 +107,7 @@ export function useSidebarTabsAdmin() {
     mutationFn: createSidebarTab,
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-sidebar-tabs"] });
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem("lynk_modules");
-        sessionStorage.removeItem("lynk_modules:v2");
-      }
+      invalidateModuleCache();
     },
   });
 
@@ -121,10 +119,7 @@ export function useSidebarTabsAdmin() {
         queryClient.invalidateQueries({ queryKey: ["admin-sidebar-tabs"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-modules"] }),
       ]);
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem("lynk_modules");
-        sessionStorage.removeItem("lynk_modules:v2");
-      }
+      invalidateModuleCache();
     },
   });
 
@@ -164,10 +159,7 @@ export function useModulesAdmin() {
       updateModule(moduleId, payload),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["admin-modules"] });
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem("lynk_modules");
-        sessionStorage.removeItem("lynk_modules:v2");
-      }
+      invalidateModuleCache();
     },
   });
 
@@ -196,10 +188,7 @@ export function useModuleAccessAdmin(moduleId: number | null) {
         queryClient.invalidateQueries({ queryKey: ["admin-module-access", moduleId] }),
         queryClient.invalidateQueries({ queryKey: ["admin-modules"] }),
       ]);
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem("lynk_modules");
-        sessionStorage.removeItem("lynk_modules:v2");
-      }
+      invalidateModuleCache();
     },
   });
 

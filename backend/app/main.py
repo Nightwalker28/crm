@@ -7,7 +7,7 @@ from app.api.v1.router import router as v1_router
 from app.core.cache import warn_if_local_cache_multi_worker
 from app.core.config import settings, validate_startup_settings
 from app.core.database import SessionLocal
-from app.core.tenancy import is_cloud_mode_enabled, resolve_request_tenant, to_request_tenant_context
+from app.core.tenancy import is_cloud_mode_enabled, resolve_request_tenant_context_cached
 from app.core.uploads import UPLOADS_DIR
 
 app = FastAPI(title="Lynk")
@@ -47,8 +47,7 @@ async def attach_tenant_context(request: Request, call_next):
     db = SessionLocal()
     try:
         request.state.cloud_mode = is_cloud_mode_enabled()
-        tenant = resolve_request_tenant(db, request)
-        request.state.tenant = to_request_tenant_context(tenant) if tenant else None
+        request.state.tenant = resolve_request_tenant_context_cached(db, request)
     except Exception as exc:
         status_code = getattr(exc, "status_code", 500)
         detail = getattr(exc, "detail", "Failed to resolve tenant")

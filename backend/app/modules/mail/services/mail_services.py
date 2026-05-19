@@ -5,6 +5,7 @@ import email
 import imaplib
 import email.utils
 import logging
+import re
 import smtplib
 import ssl
 from datetime import datetime, timedelta, timezone
@@ -45,6 +46,11 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 GMAIL_API_BASE = "https://gmail.googleapis.com/gmail/v1"
 GMAIL_READONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
 GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send"
+GMAIL_MESSAGE_LIST_FIELDS = "messages/id,nextPageToken"
+GMAIL_MESSAGE_DETAIL_FIELDS = (
+    "id,threadId,snippet,"
+    "payload(headers(name,value),mimeType,body(data),parts(mimeType,body(data),parts(mimeType,body(data))))"
+)
 MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
 MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
 MICROSOFT_GRAPH_BASE = "https://graph.microsoft.com/v1.0"
@@ -160,19 +166,21 @@ def list_mail_messages(
     limit: int = 50,
     before_id: int | None = None,
 ) -> list[MailMessage]:
+    normalized_folder = (folder or "").strip() or None
+    normalized_search = (search or "").strip()
     query = db.query(MailMessage).filter(
         MailMessage.tenant_id == tenant_id,
         MailMessage.owner_user_id == current_user.id,
         MailMessage.deleted_at.is_(None),
     )
-    if folder:
-        query = query.filter(MailMessage.folder == folder)
+    if normalized_folder:
+        query = query.filter(MailMessage.folder == normalized_folder)
     if before_id:
         query = query.filter(MailMessage.id < before_id)
-    if search and search.strip():
+    if len(normalized_search) >= 2:
         query = apply_ranked_search(
             query,
-            search=search.strip(),
+            search=normalized_search,
             document=searchable_text(
                 MailMessage.subject,
                 MailMessage.snippet,
@@ -301,6 +309,48 @@ def _token_expiry(token_json: dict) -> datetime | None:
     return _utcnow() + timedelta(seconds=int(expires_in))
 
 
+def _get_oauth_mail_connection(
+    db: Session,
+    *,
+    tenant_id: int,
+    user_id: int,
+    provider: MailProvider,
+) -> UserMailConnection | None:
+    return (
+        db.query(UserMailConnection)
+        .filter(
+            UserMailConnection.tenant_id == tenant_id,
+            UserMailConnection.user_id == user_id,
+            UserMailConnection.provider == provider.value,
+        )
+        .first()
+    )
+
+
+def _apply_oauth_mail_connection_state(
+    db: Session,
+    *,
+    connection: UserMailConnection,
+    token_json: dict,
+    account_email: str,
+    mailbox_name: str,
+) -> UserMailConnection:
+    connection.status = "connected"
+    connection.account_email = account_email
+    connection.scopes = token_json.get("scope", "").split()
+    connection.access_token = token_json.get("access_token")
+    if token_json.get("refresh_token"):
+        connection.refresh_token = token_json["refresh_token"]
+    connection.token_expires_at = _token_expiry(token_json)
+    connection.provider_mailbox_id = account_email
+    connection.provider_mailbox_name = mailbox_name
+    connection.last_error = None
+    db.add(connection)
+    db.commit()
+    db.refresh(connection)
+    return connection
+
+
 def upsert_google_mail_connection(
     db: Session,
     *,
@@ -309,15 +359,7 @@ def upsert_google_mail_connection(
     token_json: dict,
     account_email: str,
 ) -> UserMailConnection:
-    connection = (
-        db.query(UserMailConnection)
-        .filter(
-            UserMailConnection.tenant_id == tenant_id,
-            UserMailConnection.user_id == user.id,
-            UserMailConnection.provider == MailProvider.google.value,
-        )
-        .first()
-    )
+    connection = _get_oauth_mail_connection(db, tenant_id=tenant_id, user_id=user.id, provider=MailProvider.google)
     normalized_account_email = account_email.strip().lower()
     if not normalized_account_email:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google account email is missing.")
@@ -338,20 +380,13 @@ def upsert_google_mail_connection(
             user_id=user.id,
             provider=MailProvider.google.value,
         )
-    connection.status = "connected"
-    connection.account_email = normalized_account_email
-    connection.scopes = token_json.get("scope", "").split()
-    connection.access_token = token_json.get("access_token")
-    if token_json.get("refresh_token"):
-        connection.refresh_token = token_json["refresh_token"]
-    connection.token_expires_at = _token_expiry(token_json)
-    connection.provider_mailbox_id = normalized_account_email
-    connection.provider_mailbox_name = "Gmail Inbox"
-    connection.last_error = None
-    db.add(connection)
-    db.commit()
-    db.refresh(connection)
-    return connection
+    return _apply_oauth_mail_connection_state(
+        db,
+        connection=connection,
+        token_json=token_json,
+        account_email=normalized_account_email,
+        mailbox_name="Gmail Inbox",
+    )
 
 
 def upsert_microsoft_mail_connection(
@@ -362,35 +397,20 @@ def upsert_microsoft_mail_connection(
     token_json: dict,
     account_email: str,
 ) -> UserMailConnection:
-    connection = (
-        db.query(UserMailConnection)
-        .filter(
-            UserMailConnection.tenant_id == tenant_id,
-            UserMailConnection.user_id == user.id,
-            UserMailConnection.provider == MailProvider.microsoft.value,
-        )
-        .first()
-    )
+    connection = _get_oauth_mail_connection(db, tenant_id=tenant_id, user_id=user.id, provider=MailProvider.microsoft)
     if not connection:
         connection = UserMailConnection(
             tenant_id=tenant_id,
             user_id=user.id,
             provider=MailProvider.microsoft.value,
         )
-    connection.status = "connected"
-    connection.account_email = account_email
-    connection.scopes = token_json.get("scope", "").split()
-    connection.access_token = token_json.get("access_token")
-    if token_json.get("refresh_token"):
-        connection.refresh_token = token_json["refresh_token"]
-    connection.token_expires_at = _token_expiry(token_json)
-    connection.provider_mailbox_id = account_email
-    connection.provider_mailbox_name = "Outlook Inbox"
-    connection.last_error = None
-    db.add(connection)
-    db.commit()
-    db.refresh(connection)
-    return connection
+    return _apply_oauth_mail_connection_state(
+        db,
+        connection=connection,
+        token_json=token_json,
+        account_email=account_email,
+        mailbox_name="Outlook Inbox",
+    )
 
 
 def _mail_ssl_context() -> ssl.SSLContext:
@@ -399,8 +419,8 @@ def _mail_ssl_context() -> ssl.SSLContext:
 
 def _connect_imap(host: str, port: int, security: str):
     if security == "ssl":
-        return imaplib.IMAP4_SSL(host, port, ssl_context=_mail_ssl_context())
-    client = imaplib.IMAP4(host, port)
+        return imaplib.IMAP4_SSL(host, port, ssl_context=_mail_ssl_context(), timeout=20)
+    client = imaplib.IMAP4(host, port, timeout=20)
     if security == "starttls":
         client.starttls(ssl_context=_mail_ssl_context())
     return client
@@ -567,7 +587,22 @@ def disconnect_mail_connection(
     return connection
 
 
-def _refresh_google_mail_token(db: Session, connection: UserMailConnection) -> str:
+def _mark_mail_connection_error(db: Session, connection: UserMailConnection, detail: str) -> None:
+    connection.status = "error"
+    connection.last_error = detail
+    db.add(connection)
+    db.flush()
+
+
+def _refresh_oauth_mail_token(
+    db: Session,
+    connection: UserMailConnection,
+    *,
+    token_url: str,
+    token_data: dict,
+    missing_refresh_detail: str,
+    failed_refresh_detail: str,
+) -> str:
     expires_at = connection.token_expires_at
     if connection.access_token and expires_at:
         if expires_at.tzinfo is None:
@@ -576,28 +611,17 @@ def _refresh_google_mail_token(db: Session, connection: UserMailConnection) -> s
             return connection.access_token
 
     if not connection.refresh_token:
-        connection.status = "error"
-        connection.last_error = "Reconnect Gmail to refresh mailbox access."
-        db.add(connection)
-        db.flush()
+        _mark_mail_connection_error(db, connection, missing_refresh_detail)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
 
     res = requests.post(
-        GOOGLE_TOKEN_URL,
-        data={
-            "client_id": settings.GOOGLE_CLIENT_ID,
-            "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "refresh_token": connection.refresh_token,
-            "grant_type": "refresh_token",
-        },
+        token_url,
+        data=token_data,
         timeout=20,
     )
     body = res.json()
     if not res.ok or not body.get("access_token"):
-        connection.status = "error"
-        connection.last_error = "Failed to refresh Gmail access."
-        db.add(connection)
-        db.flush()
+        _mark_mail_connection_error(db, connection, failed_refresh_detail)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
 
     connection.access_token = body["access_token"]
@@ -609,50 +633,40 @@ def _refresh_google_mail_token(db: Session, connection: UserMailConnection) -> s
     return connection.access_token
 
 
+def _refresh_google_mail_token(db: Session, connection: UserMailConnection) -> str:
+    return _refresh_oauth_mail_token(
+        db,
+        connection,
+        token_url=GOOGLE_TOKEN_URL,
+        token_data={
+            "client_id": settings.GOOGLE_CLIENT_ID,
+            "client_secret": settings.GOOGLE_CLIENT_SECRET,
+            "refresh_token": connection.refresh_token,
+            "grant_type": "refresh_token",
+        },
+        missing_refresh_detail="Reconnect Gmail to refresh mailbox access.",
+        failed_refresh_detail="Failed to refresh Gmail access.",
+    )
+
+
 def _refresh_microsoft_mail_token(db: Session, connection: UserMailConnection) -> str:
-    expires_at = connection.token_expires_at
-    if connection.access_token and expires_at:
-        if expires_at.tzinfo is None:
-            expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if expires_at > _utcnow() + timedelta(minutes=2):
-            return connection.access_token
-
-    if not connection.refresh_token:
-        connection.status = "error"
-        connection.last_error = "Reconnect Microsoft to refresh mailbox access."
-        db.add(connection)
-        db.flush()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
-
     if not settings.MICROSOFT_CLIENT_ID or not settings.MICROSOFT_CLIENT_SECRET:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Microsoft Entra mail integration is not configured.")
 
-    res = requests.post(
-        MICROSOFT_TOKEN_URL,
-        data={
+    return _refresh_oauth_mail_token(
+        db,
+        connection,
+        token_url=MICROSOFT_TOKEN_URL,
+        token_data={
             "client_id": settings.MICROSOFT_CLIENT_ID,
             "client_secret": settings.MICROSOFT_CLIENT_SECRET,
             "refresh_token": connection.refresh_token,
             "grant_type": "refresh_token",
             "scope": MICROSOFT_MAIL_SCOPES,
         },
-        timeout=20,
+        missing_refresh_detail="Reconnect Microsoft to refresh mailbox access.",
+        failed_refresh_detail="Failed to refresh Microsoft mailbox access.",
     )
-    body = res.json()
-    if not res.ok or not body.get("access_token"):
-        connection.status = "error"
-        connection.last_error = "Failed to refresh Microsoft mailbox access."
-        db.add(connection)
-        db.flush()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
-
-    connection.access_token = body["access_token"]
-    connection.token_expires_at = _token_expiry(body)
-    connection.status = "connected"
-    connection.last_error = None
-    db.add(connection)
-    db.flush()
-    return connection.access_token
 
 
 def _mail_connection_for_user(
@@ -985,8 +999,10 @@ def _parse_address(value: str | None) -> tuple[str | None, str | None]:
 def _parse_recipients(value: str | None) -> list[dict] | None:
     if not value:
         return None
+    unfolded = re.sub(r"\r?\n[ \t]+", " ", value).replace("\r", " ").replace("\n", " ")
+    decoded = _decoded_header(unfolded) or unfolded
     recipients = []
-    for name, address in email.utils.getaddresses([value]):
+    for name, address in email.utils.getaddresses([decoded]):
         if address:
             recipients.append({"email": address, "name": name or None})
     return recipients or None
@@ -1097,7 +1113,7 @@ def sync_google_inbox(db: Session, *, current_user: User, max_results: int = 25)
         list_res = requests.get(
             f"{GMAIL_API_BASE}/users/me/messages",
             headers=headers,
-            params={"labelIds": "INBOX", "maxResults": max_results},
+            params={"labelIds": "INBOX", "maxResults": max_results, "fields": GMAIL_MESSAGE_LIST_FIELDS},
             timeout=20,
         )
         list_body = list_res.json()
@@ -1110,7 +1126,7 @@ def sync_google_inbox(db: Session, *, current_user: User, max_results: int = 25)
             detail_res = requests.get(
                 f"{GMAIL_API_BASE}/users/me/messages/{message_id}",
                 headers=headers,
-                params={"format": "full"},
+                params={"format": "full", "fields": GMAIL_MESSAGE_DETAIL_FIELDS},
                 timeout=20,
             )
             detail_body = detail_res.json()
@@ -1168,6 +1184,7 @@ def _decoded_header(value: str | None) -> str | None:
 
 def _extract_email_text(message: email.message.Message) -> str | None:
     if message.is_multipart():
+        text_parts: list[str] = []
         for part in message.walk():
             if part.get_content_disposition() == "attachment":
                 continue
@@ -1177,8 +1194,8 @@ def _extract_email_text(message: email.message.Message) -> str | None:
             if payload is None:
                 continue
             charset = part.get_content_charset() or "utf-8"
-            return payload.decode(charset, errors="replace")
-        return None
+            text_parts.append(payload.decode(charset, errors="replace"))
+        return max(text_parts, key=len) if text_parts else None
     payload = message.get_payload(decode=True)
     if payload is None:
         body = message.get_payload()

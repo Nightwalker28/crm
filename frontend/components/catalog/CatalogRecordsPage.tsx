@@ -36,7 +36,9 @@ export default function CatalogRecordsPage({ kind }: Props) {
     draftConfig,
     setDraftConfig,
   } = useSavedViews(moduleKey, defaultConfig);
-  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : defaultConfig.visible_columns;
+  const defaultVisibleColumnsKey = JSON.stringify(defaultConfig.visible_columns);
+  const defaultVisibleColumns = useMemo(() => JSON.parse(defaultVisibleColumnsKey) as string[], [defaultVisibleColumnsKey]);
+  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : defaultVisibleColumns;
 
   const {
     records,

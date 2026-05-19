@@ -17,7 +17,6 @@ export default function Providers({ children }: { children: React.ReactNode }) {
             retry: 1,
             refetchOnWindowFocus: false,
             refetchOnReconnect: false,
-            refetchOnMount: false,
           },
         },
       })

@@ -26,6 +26,21 @@ def dict_rows_to_csv_bytes(*, headers: Sequence[str], rows: Iterable[dict]) -> b
     return output.getvalue().encode("utf-8")
 
 
+def dict_rows_to_csv_file(*, headers: Sequence[str], rows: Iterable[dict]) -> Path:
+    temp_file = tempfile.NamedTemporaryFile(mode="w", suffix=".csv", newline="", encoding="utf-8", delete=False)
+    temp_path = Path(temp_file.name)
+    try:
+        with temp_file:
+            writer = csv.DictWriter(temp_file, fieldnames=list(headers))
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({header: _sanitize_csv_cell(row.get(header)) for header in headers})
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
+    return temp_path
+
+
 def batched_csv_zip_file(
     *,
     rows: Iterable,

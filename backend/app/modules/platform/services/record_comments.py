@@ -1,15 +1,24 @@
 from __future__ import annotations
 
 from fastapi import HTTPException, status
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.access_control import require_role_module_action_access
+from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, require_role_module_action_access
 from app.core.pagination import Pagination
 from app.modules.catalog.models import CatalogProduct
 from app.modules.platform.models import RecordComment
 from app.modules.platform.services.notifications import create_notification
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization
-from app.modules.user_management.models import User, UserStatus
+from app.modules.user_management.models import (
+    DepartmentModulePermission,
+    Module,
+    Role,
+    RoleModulePermission,
+    TeamModulePermission,
+    User,
+    UserStatus,
+)
 
 RECORD_COMMENT_MODULES = {
     "sales_contacts": {
@@ -132,24 +141,63 @@ def list_mentionable_record_users(
 ) -> list[dict]:
     get_record_reference(db, tenant_id=tenant_id, module_key=module_key, entity_id=entity_id)
     normalized_query = (query or "").strip().lower()
-    users = (
+    module = db.query(Module).filter(or_(Module.name == module_key, Module.base_route == module_key)).first()
+    if not module:
+        return []
+
+    users_query = (
         db.query(User)
         .options(joinedload(User.role), joinedload(User.team))
         .filter(
             User.tenant_id == tenant_id,
             User.is_active == UserStatus.active,
         )
-        .order_by(User.first_name.asc(), User.last_name.asc(), User.email.asc())
-        .all()
     )
+    if normalized_query:
+        like_query = f"%{normalized_query}%"
+        users_query = users_query.filter(
+            or_(
+                func.lower(User.first_name).like(like_query),
+                func.lower(User.last_name).like(like_query),
+                func.lower(User.email).like(like_query),
+                func.lower(func.coalesce(User.first_name, "") + " " + func.coalesce(User.last_name, "")).like(like_query),
+            )
+        )
+
+    users = users_query.order_by(User.first_name.asc(), User.last_name.asc(), User.email.asc()).limit(max(limit * 5, limit)).all()
+    role_ids_with_view = {
+        role_id
+        for (role_id,) in db.query(RoleModulePermission.role_id)
+        .filter(RoleModulePermission.module_id == module.id, RoleModulePermission.can_view == 1)
+        .all()
+    }
+    team_ids_with_access = {
+        team_id
+        for (team_id,) in db.query(TeamModulePermission.team_id)
+        .filter(TeamModulePermission.module_id == module.id)
+        .all()
+    }
+    department_ids_with_access = {
+        department_id
+        for (department_id,) in db.query(DepartmentModulePermission.department_id)
+        .filter(DepartmentModulePermission.module_id == module.id)
+        .all()
+    }
 
     results: list[dict] = []
     for user in users:
         label = _display_user_name(user)
-        haystack = f"{label} {user.email}".lower()
-        if normalized_query and normalized_query not in haystack:
-            continue
-        if not _user_can_view_record_module(db, user=user, module_key=module_key):
+        role_level = getattr(getattr(user, "role", None), "level", None)
+        is_admin = role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL
+        department_id = user.department_id or getattr(getattr(user, "team", None), "department_id", None)
+        can_view = is_admin or (
+            bool(user.role_id and user.role_id in role_ids_with_view)
+            and bool(
+                (user.team_id and user.team_id in team_ids_with_access)
+                or (department_id and department_id in department_ids_with_access)
+            )
+        )
+        if not can_view:
             continue
         results.append({"id": user.id, "label": label, "email": user.email})
         if len(results) >= limit:

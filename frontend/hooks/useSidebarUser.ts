@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
+import { invalidateModuleCache } from "@/hooks/useAccessibleModules";
 import { apiFetch } from "@/lib/api";
 
 const USER_CACHE_KEY = "lynk_user";
@@ -48,8 +49,7 @@ function clearAuthStorage() {
   if (typeof window === "undefined") return;
   sessionStorage.removeItem(USER_CACHE_KEY);
   sessionStorage.removeItem(USER_VERIFIED_AT_KEY);
-  sessionStorage.removeItem("lynk_modules");
-  sessionStorage.removeItem("lynk_modules:v2");
+  invalidateModuleCache();
 }
 
 export function useSidebarUser() {

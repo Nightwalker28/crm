@@ -12,24 +12,24 @@ from app.modules.calendar.schema import (
     CalendarEventListResponse,
     CalendarEventResponse,
     CalendarInviteResponseRequest,
-    CalendarSyncResponse,
     CalendarTaskEventResponse,
     CalendarTaskCreateResponse,
     CalendarEventUpdateRequest,
 )
+from app.modules.platform.schema import DataTransferExecutionResponse
 from app.modules.calendar.services.calendar_services import (
     build_calendar_context,
     create_calendar_event,
     create_calendar_event_from_task,
     delete_calendar_event_from_task,
     delete_calendar_event,
+    enqueue_current_user_calendar_sync,
     get_calendar_event_from_task,
     get_calendar_event_or_404,
     list_calendar_events,
     list_pending_invites,
     respond_to_calendar_invite,
     serialize_calendar_event,
-    sync_current_user_calendar,
     update_calendar_event,
 )
 from app.modules.platform.services.activity_logs import log_activity
@@ -251,15 +251,20 @@ def delete_calendar_event_from_task_route(
     return CalendarTaskEventResponse(event=None, task_id=task_id)
 
 
-@router.post("/sync", response_model=CalendarSyncResponse)
+@router.post("/sync", response_model=DataTransferExecutionResponse)
 def sync_calendar_route(
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("calendar")),
     require_permission=Depends(require_action_access("calendar", "edit")),
 ):
-    result = sync_current_user_calendar(db, current_user=current_user)
-    return CalendarSyncResponse.model_validate(result)
+    job = enqueue_current_user_calendar_sync(db, current_user=current_user)
+    return {
+        "mode": "background",
+        "message": "Calendar sync queued.",
+        "job_id": job.id,
+        "job_status": job.status,
+    }
 
 
 @router.delete("/events/{event_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -276,6 +281,7 @@ def delete_calendar_event_route(
 
     before_state = serialize_calendar_event(event, current_user=current_user)
     deleted = delete_calendar_event(db, event=event)
+    after_state = serialize_calendar_event(deleted, current_user=current_user)
     log_activity(
         db,
         tenant_id=current_user.tenant_id,
@@ -286,6 +292,6 @@ def delete_calendar_event_route(
         action="delete",
         description=f"Deleted calendar event {deleted.title}",
         before_state=before_state,
-        after_state=serialize_calendar_event(deleted, current_user=current_user),
+        after_state=after_state,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)

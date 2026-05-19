@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, text
 from sqlalchemy.orm import Session
 
 from app.core.access_control import require_department_module_access, require_role_module_action_access
@@ -38,6 +38,7 @@ GLOBAL_SEARCH_MODULES = (
         "module_label": "Opportunities",
     },
 )
+GLOBAL_SEARCH_STATEMENT_TIMEOUT_MS = 1500
 
 
 def _task_results(db: Session, *, tenant_id: int, current_user, query: str, limit: int) -> list[dict]:
@@ -290,8 +291,14 @@ def list_global_search_results(
     if not normalized_query:
         return []
 
+    if getattr(getattr(db, "bind", None), "dialect", None) and db.bind.dialect.name == "postgresql":
+        db.execute(text(f"SET LOCAL statement_timeout = {GLOBAL_SEARCH_STATEMENT_TIMEOUT_MS}"))
+
+    total_limit = max(1, limit_per_module) * len(GLOBAL_SEARCH_MODULES)
     results: list[dict] = []
     for module in GLOBAL_SEARCH_MODULES:
+        if len(results) >= total_limit:
+            break
         module_key = module["module_key"]
         try:
             require_department_module_access(db, user=current_user, module_key=module_key)
@@ -299,13 +306,14 @@ def list_global_search_results(
         except PermissionError:
             continue
         builder = SEARCH_BUILDERS[module_key]
+        remaining = total_limit - len(results)
         results.extend(
             builder(
                 db,
                 tenant_id=current_user.tenant_id,
                 current_user=current_user,
                 query=normalized_query,
-                limit=limit_per_module,
+                limit=min(limit_per_module, remaining),
             )
         )
     return results

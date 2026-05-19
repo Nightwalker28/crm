@@ -24,6 +24,8 @@ export function useJobPoller<TSummary>(
   { failureMessage }: UseJobPollerOptions,
 ) {
   const onCompleteRef = useRef(onComplete);
+  const failureMessageRef = useRef(failureMessage);
+  const statusRef = useRef<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
@@ -31,11 +33,17 @@ export function useJobPoller<TSummary>(
 
   useEffect(() => {
     onCompleteRef.current = onComplete;
+    failureMessageRef.current = failureMessage;
   });
+
+  const updateStatus = useCallback((nextStatus: string | null) => {
+    statusRef.current = nextStatus;
+    setStatus(nextStatus);
+  }, []);
 
   useEffect(() => {
     if (!jobId) return;
-    if (!status || !["queued", "running"].includes(status)) return;
+    if (!statusRef.current || !["queued", "running"].includes(statusRef.current)) return;
 
     let cancelled = false;
     const timer = window.setInterval(async () => {
@@ -46,14 +54,14 @@ export function useJobPoller<TSummary>(
         if (body.status === "completed" || body.status === "failed") {
           window.clearInterval(timer);
         }
-        setStatus(body.status);
+        updateStatus(body.status);
         setProgress(body.progress_percent ?? 0);
         setMessage(body.progress_message ?? null);
         if (body.status === "completed") {
           setError(null);
           onCompleteRef.current(body);
         } else if (body.status === "failed") {
-          setError(body.error_message || failureMessage);
+          setError(body.error_message || failureMessageRef.current);
         }
       } catch {
         // Keep polling quietly; transient fetch retry is handled by apiFetch.
@@ -64,21 +72,21 @@ export function useJobPoller<TSummary>(
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [failureMessage, jobId, status]);
+  }, [jobId, updateStatus]);
 
   const start = useCallback((nextStatus = "queued", nextMessage: string | null = null) => {
-    setStatus(nextStatus);
+    updateStatus(nextStatus);
     setError(null);
     setProgress(0);
     setMessage(nextMessage);
-  }, []);
+  }, [updateStatus]);
 
   const reset = useCallback(() => {
-    setStatus(null);
+    updateStatus(null);
     setError(null);
     setProgress(0);
     setMessage(null);
-  }, []);
+  }, [updateStatus]);
 
   return {
     status,

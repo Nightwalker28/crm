@@ -125,9 +125,11 @@ async function fetchMailMessages({
   limit?: number;
   beforeId?: number;
 }): Promise<MailMessageList> {
+  const normalizedFolder = normalizeMailFolder(folder);
+  const normalizedSearch = (search ?? "").trim();
   const params = new URLSearchParams();
-  if (folder) params.set("folder", folder);
-  if (search?.trim()) params.set("search", search.trim());
+  if (normalizedFolder) params.set("folder", normalizedFolder);
+  if (normalizedSearch.length >= 2) params.set("search", normalizedSearch);
   if (beforeId) params.set("before_id", String(beforeId));
   params.set("limit", String(limit));
   const res = await apiFetch(`/mail/messages?${params.toString()}`);
@@ -136,6 +138,11 @@ async function fetchMailMessages({
     throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load mail messages.");
   }
   return body as MailMessageList;
+}
+
+function normalizeMailFolder(folder?: string | null) {
+  const normalized = (folder ?? "").trim().toLowerCase();
+  return normalized || undefined;
 }
 
 async function connectMailProvider(provider: OAuthMailProvider): Promise<MailProviderConnectResponse> {
@@ -200,9 +207,22 @@ export function useMailContext() {
 }
 
 export function useMailMessages(folder?: string, search?: string, beforeId?: number) {
+  const queryClient = useQueryClient();
+  const normalizedFolder = normalizeMailFolder(folder);
+  const normalizedSearch = (search ?? "").trim();
   return useQuery({
-    queryKey: ["mail-messages", folder ?? "all", search ?? "", beforeId ?? "latest"],
-    queryFn: () => fetchMailMessages({ folder, search, beforeId }),
+    queryKey: ["mail-messages", normalizedFolder ?? "all", normalizedSearch, beforeId ?? "latest"],
+    queryFn: () => fetchMailMessages({ folder: normalizedFolder, search: normalizedSearch, beforeId }),
+    enabled: normalizedSearch.length === 0 || normalizedSearch.length >= 2,
+    placeholderData: () => {
+      if (beforeId || normalizedSearch || normalizedFolder !== "inbox") return undefined;
+      const allMessages = queryClient.getQueryData<MailMessageList>(["mail-messages", "all", "", "latest"]);
+      if (!allMessages) return undefined;
+      return {
+        ...allMessages,
+        results: allMessages.results.filter((message) => message.folder === "inbox"),
+      };
+    },
     staleTime: 30_000,
   });
 }

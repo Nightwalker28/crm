@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
+import { invalidateModuleCache } from "@/hooks/useAccessibleModules";
 import { apiFetch } from "@/lib/api";
 
 export type CustomFieldType =
@@ -109,7 +110,7 @@ export function useModuleBuilder() {
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["custom-modules"] });
-      if (typeof window !== "undefined") sessionStorage.removeItem("lynk_modules:v2");
+      invalidateModuleCache();
     },
   });
 
@@ -124,7 +125,7 @@ export function useModuleBuilder() {
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["custom-modules"] });
-      if (typeof window !== "undefined") sessionStorage.removeItem("lynk_modules:v2");
+      invalidateModuleCache();
     },
   });
 
@@ -137,7 +138,7 @@ export function useModuleBuilder() {
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["custom-modules"] });
-      if (typeof window !== "undefined") sessionStorage.removeItem("lynk_modules:v2");
+      invalidateModuleCache();
     },
   });
 
@@ -150,7 +151,7 @@ export function useModuleBuilder() {
       ),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["custom-modules"] });
-      if (typeof window !== "undefined") sessionStorage.removeItem("lynk_modules:v2");
+      invalidateModuleCache();
     },
   });
 

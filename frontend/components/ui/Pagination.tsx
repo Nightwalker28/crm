@@ -33,15 +33,12 @@ type PaginationConfig = {
 };
 
 async function fetchPaginationConfig() {
-  try {
-    const res = await apiFetch("/config/pagination");
-    if (!res.ok) {
-      return { page_size_options: FALLBACK_PAGE_SIZE_OPTIONS };
-    }
-    return res.json() as Promise<PaginationConfig>;
-  } catch {
-    return { page_size_options: FALLBACK_PAGE_SIZE_OPTIONS };
+  const res = await apiFetch("/config/pagination");
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load pagination config.");
   }
+  return body as PaginationConfig;
 }
 
 function getPageNumbers(current: number, total: number): (number | "...")[] {
@@ -82,8 +79,9 @@ export default function Pagination({
   const { data: paginationConfig } = useQuery({
     queryKey: ["pagination-config"],
     queryFn: fetchPaginationConfig,
-    staleTime: Infinity,
-    gcTime: Infinity,
+    placeholderData: { page_size_options: FALLBACK_PAGE_SIZE_OPTIONS },
+    staleTime: 24 * 60 * 60 * 1000,
+    gcTime: 24 * 60 * 60 * 1000,
   });
   const pageSizeOptions =
     Array.isArray(paginationConfig?.page_size_options) && paginationConfig.page_size_options.length > 0

@@ -8,6 +8,7 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
+from sqlalchemy import func
 from sqlalchemy.orm import Session, joinedload, object_session
 
 from app.core.cache import cache_delete, cache_get_json, cache_set_json
@@ -32,6 +33,7 @@ DEFAULT_CUSTOMER_GROUPS = [
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 CLIENT_LOGIN_RATE_LIMIT_PREFIX = "client_auth:login_failed"
 PUBLIC_CLIENT_PAGE_ACTION_RATE_LIMIT_PREFIX = "client_pages:actions"
+CUSTOMER_GROUP_SEEDED_CACHE_PREFIX = "client_portal:customer_groups_seeded"
 
 
 def _utcnow() -> datetime:
@@ -249,11 +251,11 @@ def _normalize_brand_settings(settings_payload: dict | None) -> dict | None:
 
 
 def _serialize_proposal_sections(sections: list[dict] | None) -> list[dict]:
-    return _normalize_proposal_sections(sections or [])
+    return list(sections or [])
 
 
 def _serialize_brand_settings(settings_payload: dict | None) -> dict | None:
-    return _normalize_brand_settings(settings_payload)
+    return dict(settings_payload) if settings_payload else None
 
 
 def _resolved_unit_price(public_unit_price: Decimal, group: CustomerGroup | None) -> tuple[Decimal, str, Decimal | None]:
@@ -351,7 +353,43 @@ def _client_page_action_summary(db: Session | None, page: ClientPage) -> dict:
     }
 
 
+def _client_page_action_summaries(db: Session, pages: list[ClientPage]) -> dict[int, dict]:
+    page_ids = [page.id for page in pages]
+    if not page_ids:
+        return {}
+    counts = {
+        page_id: count
+        for page_id, count in db.query(ClientPageAction.client_page_id, func.count(ClientPageAction.id))
+        .filter(ClientPageAction.tenant_id == pages[0].tenant_id, ClientPageAction.client_page_id.in_(page_ids))
+        .group_by(ClientPageAction.client_page_id)
+        .all()
+    }
+    recent_by_page: dict[int, list[ClientPageAction]] = {page_id: [] for page_id in page_ids}
+    recent_actions = (
+        db.query(ClientPageAction)
+        .filter(ClientPageAction.tenant_id == pages[0].tenant_id, ClientPageAction.client_page_id.in_(page_ids))
+        .order_by(ClientPageAction.client_page_id.asc(), ClientPageAction.created_at.desc(), ClientPageAction.id.desc())
+        .all()
+    )
+    for action in recent_actions:
+        bucket = recent_by_page.setdefault(action.client_page_id, [])
+        if len(bucket) < 3:
+            bucket.append(action)
+    return {
+        page_id: {
+            "action_count": int(counts.get(page_id, 0)),
+            "latest_action": _serialize_client_page_action(recent_by_page.get(page_id, [])[0]) if recent_by_page.get(page_id) else None,
+            "recent_actions": [_serialize_client_page_action(action) for action in recent_by_page.get(page_id, [])],
+        }
+        for page_id in page_ids
+    }
+
+
 def ensure_default_customer_groups(db: Session, *, tenant_id: int) -> None:
+    cache_key = f"{CUSTOMER_GROUP_SEEDED_CACHE_PREFIX}:{tenant_id}"
+    if cache_get_json(cache_key):
+        if db.query(CustomerGroup.id).filter(CustomerGroup.tenant_id == tenant_id, CustomerGroup.group_key == "default").first():
+            return
     existing_keys = {
         key
         for (key,) in db.query(CustomerGroup.group_key)
@@ -373,6 +411,7 @@ def ensure_default_customer_groups(db: Session, *, tenant_id: int) -> None:
             )
         )
     db.commit()
+    cache_set_json(cache_key, {"seeded": True}, ttl_seconds=24 * 60 * 60)
 
 
 def serialize_customer_group(group: CustomerGroup | None) -> dict | None:
@@ -654,7 +693,7 @@ def serialize_client_account(account: ClientAccount, *, setup_token: str | None 
 
 def serialize_client_page(page: ClientPage, *, group: CustomerGroup | None = None, public_token: str | None = None, db: Session | None = None) -> dict:
     personalized = group is not None
-    action_summary = _client_page_action_summary(db, page)
+    action_summary = getattr(page, "_action_summary", None) or _client_page_action_summary(db, page)
     return {
         "id": page.id,
         "title": page.title,
@@ -795,13 +834,17 @@ def update_client_account_status(db: Session, *, account: ClientAccount, status_
 
 
 def list_client_pages(db: Session, *, tenant_id: int) -> list[ClientPage]:
-    return (
+    pages = (
         db.query(ClientPage)
         .options(joinedload(ClientPage.contact), joinedload(ClientPage.organization))
         .filter(ClientPage.tenant_id == tenant_id)
         .order_by(ClientPage.created_at.desc(), ClientPage.id.desc())
         .all()
     )
+    action_summaries = _client_page_action_summaries(db, pages)
+    for page in pages:
+        page._action_summary = action_summaries.get(page.id, {"action_count": 0, "latest_action": None, "recent_actions": []})
+    return pages
 
 
 def get_client_page_or_404(db: Session, *, tenant_id: int, page_id: int) -> ClientPage:

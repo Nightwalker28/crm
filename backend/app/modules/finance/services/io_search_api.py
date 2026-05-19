@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.core.access_control import get_finance_user_scope
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, read_upload_bytes, require_csv_headers, rows_from_csv_bytes
-from app.core.module_export import dict_rows_to_csv_bytes
+from app.core.module_export import dict_rows_to_csv_file
 from app.core.duplicates import (
     DuplicateMode,
     detect_duplicates,
@@ -681,7 +681,7 @@ def export_generic_insertion_orders(
     status_filter: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
-) -> tuple[bytes, int]:
+) -> tuple[Path, int]:
     module_id = get_finance_module_id(db)
     user_scope = get_finance_user_scope(db, current_user)
     query = _build_insertion_orders_query(
@@ -697,7 +697,7 @@ def export_generic_insertion_orders(
     total_count = query.order_by(None).count()
     records = query.order_by(FinanceIO.updated_at.desc()).yield_per(500)
     return (
-        dict_rows_to_csv_bytes(
+        dict_rows_to_csv_file(
             headers=INSERTION_ORDER_EXPORT_HEADERS,
             rows=(_serialize_insertion_order_export_row(record) for record in records),
         ),

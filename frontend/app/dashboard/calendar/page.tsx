@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,6 +17,7 @@ import {
   type CalendarEvent,
   type CalendarEventPayload,
 } from "@/hooks/useCalendar";
+import { useJobPoller } from "@/hooks/useJobPoller";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 
 function startOfMonth(value: Date) {
@@ -67,6 +68,7 @@ function getEventTone(event: CalendarEvent) {
 
 export default function CalendarPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const searchParams = useSearchParams();
   const eventIdParam = searchParams.get("eventId");
   const eventId = eventIdParam && /^\d+$/.test(eventIdParam) ? Number(eventIdParam) : null;
@@ -77,11 +79,13 @@ export default function CalendarPage() {
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
   const [draftStartAt, setDraftStartAt] = useState(() => buildDayStart(new Date()));
   const [draftEndAt, setDraftEndAt] = useState(() => buildDayEnd(new Date()));
+  const [syncJobId, setSyncJobId] = useState<number | null>(null);
 
   const contextQuery = useCalendarContext();
   const rangeStart = useMemo(() => formatIso(startOfGrid(month)), [month]);
   const rangeEnd = useMemo(() => formatIso(endOfGrid(month)), [month]);
   const eventsQuery = useCalendarEvents(rangeStart, rangeEnd);
+  const events = useMemo(() => eventsQuery.data?.results ?? [], [eventsQuery.data?.results]);
   const {
     createEvent,
     updateEvent,
@@ -93,11 +97,27 @@ export default function CalendarPage() {
     isResponding,
     isSyncingCalendar,
   } = useCalendarActions();
+  const syncJob = useJobPoller<Record<string, unknown>>(
+    syncJobId,
+    (job) => {
+      setSyncJobId(null);
+      void queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
+      void queryClient.invalidateQueries({ queryKey: ["calendar-context"] });
+      const syncedCount = typeof job.summary?.synced_event_count === "number" ? job.summary.synced_event_count : null;
+      toast.success(
+        syncedCount === null
+          ? "Calendar sync completed."
+          : `Synced ${syncedCount} event${syncedCount === 1 ? "" : "s"}.`,
+      );
+    },
+    { failureMessage: "Calendar sync failed." },
+  );
 
   const eventDetailQuery = useQuery({
     queryKey: ["calendar-event", eventId],
     queryFn: () => fetchCalendarEvent(eventId as number),
     enabled: Boolean(eventId),
+    placeholderData: () => events.find((event) => event.id === eventId),
     staleTime: 30_000,
   });
 
@@ -116,7 +136,6 @@ export default function CalendarPage() {
     });
   }, [month]);
 
-  const events = useMemo(() => eventsQuery.data?.results ?? [], [eventsQuery.data?.results]);
   const eventsByDay = useMemo(() => {
     const grouped = new Map<string, CalendarEvent[]>();
     for (const event of events) {
@@ -131,6 +150,7 @@ export default function CalendarPage() {
   const hasActiveSyncConnection = Boolean(
     contextQuery.data?.connections.some((connection) => connection.sync_enabled_for_current_session),
   );
+  const isCalendarSyncActive = isSyncingCalendar || syncJob.status === "queued" || syncJob.status === "running";
   const selectedDayEvents = useMemo(
     () => (eventsByDay.get(dayKey(selectedDay)) ?? []).filter((event) => event.current_user_response !== "pending"),
     [eventsByDay, selectedDay],
@@ -179,11 +199,11 @@ export default function CalendarPage() {
 
   async function handleManualSync() {
     const result = await syncCalendar();
-    toast.success(
-      result.last_error
-        ? result.last_error
-        : `Synced ${result.synced_event_count} event${result.synced_event_count === 1 ? "" : "s"} to ${result.provider_calendar_name || "CRM"}.`,
-    );
+    if (result.job_id) {
+      setSyncJobId(result.job_id);
+      syncJob.start(result.job_status || "queued", result.message || "Calendar sync queued.");
+    }
+    toast.success(result.message || "Calendar sync queued.");
   }
 
   return (
@@ -199,9 +219,9 @@ export default function CalendarPage() {
                 ? "External sync active for this session"
                 : "Internal calendar only for this session"}
             </div>
-            <Button variant="outline" onClick={() => void handleManualSync()} disabled={isSyncingCalendar || !hasActiveSyncConnection}>
-              <RefreshCw className={"h-4 w-4 " + (isSyncingCalendar ? "animate-spin" : "")} />
-              Sync Now
+            <Button variant="outline" onClick={() => void handleManualSync()} disabled={isCalendarSyncActive || !hasActiveSyncConnection}>
+              <RefreshCw className={"h-4 w-4 " + (isCalendarSyncActive ? "animate-spin" : "")} />
+              {isCalendarSyncActive ? "Syncing" : "Sync Now"}
             </Button>
             <Button onClick={() => openCreateDialog(selectedDay)}>
               <Plus className="h-4 w-4" />

@@ -320,27 +320,38 @@ def save_custom_field_values(
 ) -> None:
     definitions = list_custom_field_definitions(db, tenant_id=tenant_id, module_key=module_key, include_inactive=True)
     definition_map = {definition.field_key: definition for definition in definitions}
-
-    (
+    existing_rows = (
         db.query(CustomFieldValue)
+        .join(CustomFieldDefinition, CustomFieldDefinition.id == CustomFieldValue.field_definition_id)
         .filter(
             CustomFieldValue.tenant_id == tenant_id,
             CustomFieldValue.module_key == module_key,
             CustomFieldValue.record_id == record_id,
+            CustomFieldDefinition.tenant_id == tenant_id,
+            CustomFieldDefinition.module_key == module_key,
         )
-        .delete(synchronize_session=False)
+        .all()
     )
+    existing_by_key = {row.definition.field_key: row for row in existing_rows if row.definition}
+
+    for field_key, row in existing_by_key.items():
+        if field_key not in values:
+            db.delete(row)
 
     for field_key, value in values.items():
         definition = definition_map.get(field_key)
         if not definition:
             continue
-        row = CustomFieldValue(
+        row = existing_by_key.get(field_key) or CustomFieldValue(
             tenant_id=tenant_id,
             module_key=module_key,
             record_id=record_id,
             field_definition_id=definition.id,
         )
+        row.value_text = None
+        row.value_number = None
+        row.value_date = None
+        row.value_boolean = None
         if definition.field_type in {"text", "long_text"}:
             row.value_text = str(value)
         elif definition.field_type == "number":
