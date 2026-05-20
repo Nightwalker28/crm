@@ -13,11 +13,14 @@ Use:
 
 Review for:
 - explicit tenant scoping in service queries
+- repository/service/route boundaries for tenant-owned operational modules
 - correct module/action permission enforcement
 - linked-record validation inside the same tenant
 - soft-delete/recovery behavior where expected
 - activity/audit logging for important writes where the domain supports it
 - use of existing shared helpers before new duplication
+- cursor pagination correctness when added: deterministic ordering must match the cursor value, with inherited ranked/timestamp ordering cleared first
+- Postgres-backed search through shared helpers/platform search rather than module-specific or external search engines
 - safe persistence, transaction, retry, idempotency, and failure behavior
 - correct auth boundary between CRM users, client accounts, signed public links, and integration keys
 - whether long-running work should be a persisted Celery job instead of request-thread work

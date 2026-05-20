@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
@@ -21,6 +22,7 @@ from app.modules.mail.services.mail_services import (
     get_google_mail_connect_url,
     get_mail_message_or_404,
     get_microsoft_mail_connect_url,
+    list_mail_messages_cursor,
     list_mail_messages,
     send_mail_message,
     serialize_mail_message,
@@ -65,6 +67,29 @@ def get_mail_messages(
         before_id=before_id,
     )
     return {"results": [MailMessageResponse.model_validate(serialize_mail_message(message)) for message in messages]}
+
+
+@router.get("/messages/cursor")
+def get_mail_messages_cursor(
+    folder: str | None = Query(default=None, max_length=80),
+    search: str | None = Query(default=None, max_length=100),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("mail")),
+    require_permission=Depends(require_action_access("mail", "view")),
+):
+    messages = list_mail_messages_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        current_user=current_user,
+        folder=folder,
+        search=search,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+    )
+    serialized = [MailMessageResponse.model_validate(serialize_mail_message(message)) for message in messages]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
 
 
 @router.get("/messages/{message_id}", response_model=MailMessageResponse)

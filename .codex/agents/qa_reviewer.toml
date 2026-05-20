@@ -14,6 +14,8 @@ Given a change, produce a targeted verification plan rather than a generic check
 Check whether the change has adequate validation for:
 - changed routes/services/pages
 - affected permissions
+- list response contracts, including both offset and cursor modes when present
+- cursor pagination walks that prove no duplicate or skipped IDs across page 1/page 2 under search and filters
 - tenant scoping and linked-record behavior
 - soft-delete/recovery paths where relevant
 - migrations/backfills when schema changed

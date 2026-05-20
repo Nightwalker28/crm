@@ -42,6 +42,20 @@ def list_invoices(db: Session, current_user, *, pagination, search: str | None =
     return records, total_count
 
 
+def list_invoices_cursor(
+    db: Session,
+    current_user,
+    *,
+    limit: int,
+    cursor: int | None = None,
+    search: str | None = None,
+    status_filter: str | None = None,
+) -> list[FinancePosInvoice]:
+    query = build_invoice_query(db, current_user, search=search, status_filter=status_filter)
+    if cursor is not None:
+        query = query.filter(FinancePosInvoice.id < cursor)
+    return query.order_by(None).order_by(FinancePosInvoice.id.desc()).limit(limit + 1).all()
+
+
 def get_invoice(db: Session, current_user, *, invoice_id: int) -> FinancePosInvoice | None:
     return build_invoice_query(db, current_user).filter(FinancePosInvoice.id == invoice_id).first()
-

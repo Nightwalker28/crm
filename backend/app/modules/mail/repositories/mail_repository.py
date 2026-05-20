@@ -50,6 +50,30 @@ def list_messages(
     limit: int = 50,
     before_id: int | None = None,
 ) -> list[MailMessage]:
+    query = build_messages_query(
+        db,
+        tenant_id=tenant_id,
+        owner_user_id=owner_user_id,
+        folder=folder,
+        search=search,
+    )
+    if before_id:
+        query = query.filter(MailMessage.id < before_id)
+    return (
+        query.order_by(MailMessage.received_at.desc().nullslast(), MailMessage.sent_at.desc().nullslast(), MailMessage.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def build_messages_query(
+    db: Session,
+    *,
+    tenant_id: int,
+    owner_user_id: int,
+    folder: str | None = None,
+    search: str | None = None,
+):
     normalized_folder = (folder or "").strip() or None
     normalized_search = (search or "").strip()
     query = db.query(MailMessage).filter(
@@ -74,19 +98,35 @@ def list_messages(
             ),
             default_order_column=MailMessage.created_at,
         )
-    return (
-        query
-        .filter(
-            or_(
-                MailMessage.received_at.is_not(None),
-                MailMessage.sent_at.is_not(None),
-                MailMessage.created_at.is_not(None),
-            )
+    return query.filter(
+        or_(
+            MailMessage.received_at.is_not(None),
+            MailMessage.sent_at.is_not(None),
+            MailMessage.created_at.is_not(None),
         )
-        .order_by(MailMessage.received_at.desc().nullslast(), MailMessage.sent_at.desc().nullslast(), MailMessage.created_at.desc())
-        .limit(limit)
-        .all()
     )
+
+
+def list_messages_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    owner_user_id: int,
+    limit: int,
+    cursor: int | None = None,
+    folder: str | None = None,
+    search: str | None = None,
+) -> list[MailMessage]:
+    query = build_messages_query(
+        db,
+        tenant_id=tenant_id,
+        owner_user_id=owner_user_id,
+        folder=folder,
+        search=search,
+    )
+    if cursor is not None:
+        query = query.filter(MailMessage.id < cursor)
+    return query.order_by(None).order_by(MailMessage.id.desc()).limit(limit + 1).all()
 
 
 def get_message(db: Session, *, tenant_id: int, owner_user_id: int, message_id: int) -> MailMessage | None:

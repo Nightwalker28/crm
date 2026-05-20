@@ -95,6 +95,30 @@ def list_tasks(
     return tasks, total_count
 
 
+def list_tasks_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    current_user,
+    limit: int,
+    cursor: int | None = None,
+    search: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+):
+    query = build_task_query(
+        db,
+        tenant_id=tenant_id,
+        current_user=current_user,
+        search=search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+    if cursor is not None:
+        query = query.filter(Task.id < cursor)
+    return query.order_by(None).order_by(Task.id.desc()).limit(limit + 1).all()
+
+
 def get_task(
     db: Session,
     *,
@@ -127,4 +151,3 @@ def list_deleted_tasks(db: Session, *, tenant_id: int, pagination):
     total_count = query.count()
     tasks = query.order_by(Task.deleted_at.desc(), Task.updated_at.desc()).offset(pagination.offset).limit(pagination.limit).all()
     return tasks, total_count
-

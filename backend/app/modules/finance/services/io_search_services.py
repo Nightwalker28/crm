@@ -608,6 +608,33 @@ def list_insertion_orders(
     )
 
 
+def list_insertion_orders_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    module_id: int,
+    user_id: int | None,
+    limit: int,
+    cursor: int | None = None,
+    search: str | None = None,
+    status_filter: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> list[FinanceIO]:
+    return io_repository.list_insertion_orders_cursor(
+        db,
+        tenant_id=tenant_id,
+        module_id=module_id,
+        user_id=user_id,
+        limit=limit,
+        cursor=cursor,
+        search=search,
+        status_filter=status_filter,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+
+
 def apply_insertion_order_sort(query, *, sort_by: str | None = None, sort_direction: str | None = None):
     return io_repository.apply_insertion_order_sort(query, sort_by=sort_by, sort_direction=sort_direction)
 

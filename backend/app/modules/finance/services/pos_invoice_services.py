@@ -320,6 +320,17 @@ def list_invoices(db: Session, current_user, *, pagination: Pagination, search: 
     )
 
 
+def list_invoices_cursor(db: Session, current_user, *, limit: int, cursor: int | None = None, search: str | None = None, status_filter: str | None = None):
+    return pos_invoice_repository.list_invoices_cursor(
+        db,
+        current_user,
+        limit=limit,
+        cursor=cursor,
+        search=search,
+        status_filter=status_filter,
+    )
+
+
 def get_invoice_or_404(db: Session, current_user, invoice_id: int) -> FinancePosInvoice:
     invoice = pos_invoice_repository.get_invoice(db, current_user, invoice_id=invoice_id)
     if not invoice:

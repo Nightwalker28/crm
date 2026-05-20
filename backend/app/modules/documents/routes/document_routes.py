@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Reques
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
 
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
@@ -24,6 +25,7 @@ from app.modules.documents.services.document_services import (
     get_document_or_404,
     list_document_storage_connections,
     list_documents,
+    list_documents_cursor,
     log_document_download,
     require_document_link_access,
     resolve_document_download,
@@ -124,6 +126,31 @@ def get_documents(
         current_user=current_user,
     )
     return {"results": [DocumentResponse.model_validate(document) for document in documents], "total": total}
+
+
+@router.get("/cursor")
+def get_documents_cursor(
+    search: str | None = Query(default=None, max_length=100),
+    module_key: str | None = Query(default=None, max_length=100),
+    entity_id: str | None = Query(default=None, max_length=100),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("documents")),
+    require_permission=Depends(require_action_access("documents", "view")),
+):
+    documents = list_documents_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        search=search,
+        module_key=module_key,
+        entity_id=entity_id,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+        current_user=current_user,
+    )
+    serialized = [DocumentResponse.model_validate(document) for document in documents]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
 
 
 @router.post("", response_model=DocumentResponse)

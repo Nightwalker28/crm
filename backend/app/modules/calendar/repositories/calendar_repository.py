@@ -37,14 +37,20 @@ def existing_participant_team_ids(db: Session, *, tenant_id: int, team_ids: set[
 
 
 def list_calendar_events(db: Session, *, tenant_id: int, current_user, start_at: datetime, end_at: datetime) -> list[CalendarEvent]:
+    query = build_visible_calendar_events_query(db, tenant_id=tenant_id, current_user=current_user).filter(
+        CalendarEvent.start_at < end_at,
+        CalendarEvent.end_at > start_at,
+    )
+    return query.order_by(CalendarEvent.start_at.asc(), CalendarEvent.id.asc()).all()
+
+
+def build_visible_calendar_events_query(db: Session, *, tenant_id: int, current_user):
     query = (
         db.query(CalendarEvent)
         .options(*event_load_options())
         .filter(
             CalendarEvent.tenant_id == tenant_id,
             CalendarEvent.deleted_at.is_(None),
-            CalendarEvent.start_at < end_at,
-            CalendarEvent.end_at > start_at,
         )
         .outerjoin(CalendarEventParticipant, CalendarEventParticipant.event_id == CalendarEvent.id)
     )
@@ -63,7 +69,27 @@ def list_calendar_events(db: Session, *, tenant_id: int, current_user, start_at:
             )
         )
 
-    return query.filter(or_(*visibility_filters)).distinct().order_by(CalendarEvent.start_at.asc(), CalendarEvent.id.asc()).all()
+    return query.filter(or_(*visibility_filters)).distinct()
+
+
+def list_calendar_events_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    current_user,
+    limit: int,
+    cursor: int | None = None,
+    start_at: datetime | None = None,
+    end_at: datetime | None = None,
+) -> list[CalendarEvent]:
+    query = build_visible_calendar_events_query(db, tenant_id=tenant_id, current_user=current_user)
+    if start_at is not None:
+        query = query.filter(CalendarEvent.end_at > start_at)
+    if end_at is not None:
+        query = query.filter(CalendarEvent.start_at < end_at)
+    if cursor is not None:
+        query = query.filter(CalendarEvent.id < cursor)
+    return query.order_by(None).order_by(CalendarEvent.id.desc()).limit(limit + 1).all()
 
 
 def list_pending_invites(db: Session, *, tenant_id: int, current_user) -> list[CalendarEvent]:

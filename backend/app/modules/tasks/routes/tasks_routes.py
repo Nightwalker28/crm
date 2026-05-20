@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.access_control import require_role_module_action_access
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
@@ -26,6 +27,7 @@ from app.modules.tasks.services.tasks_services import (
     delete_task,
     get_task_or_404,
     list_task_assignment_options,
+    list_tasks_cursor,
     list_tasks,
     serialize_task,
     update_task,
@@ -243,6 +245,42 @@ def get_tasks(
     )
     serialized = [TaskResponse.model_validate(serialize_task(task)) for task in tasks]
     return build_paged_response(serialized, total_count=total_count, pagination=pagination)
+
+
+@router.get("/cursor")
+def get_tasks_cursor(
+    query: str | None = Query(default=None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("tasks")),
+    require_permission=Depends(require_action_access("tasks", "view")),
+):
+    try:
+        all_conditions = parse_filter_conditions(
+            filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None)
+        )
+        any_conditions = parse_filter_conditions(
+            filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None)
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    tasks = list_tasks_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        current_user=current_user,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+        search=query,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+    )
+    serialized = [TaskResponse.model_validate(serialize_task(task)) for task in tasks]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
 
 
 @router.get("/options", response_model=TaskAssignmentOptionsResponse)

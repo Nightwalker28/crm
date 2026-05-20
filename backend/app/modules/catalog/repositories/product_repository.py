@@ -50,6 +50,35 @@ def list_products(
     return products, total
 
 
+def list_products_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    search: str | None = None,
+    include_inactive: bool = True,
+    limit: int = 50,
+    cursor: int | None = None,
+) -> list[CatalogProduct]:
+    query = db.query(CatalogProduct).filter(
+        CatalogProduct.tenant_id == tenant_id,
+        CatalogProduct.deleted_at.is_(None),
+    )
+    if not include_inactive:
+        query = query.filter(CatalogProduct.is_active == 1)
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                CatalogProduct.name.ilike(pattern),
+                CatalogProduct.sku.ilike(pattern),
+                CatalogProduct.description.ilike(pattern),
+            )
+        )
+    if cursor is not None:
+        query = query.filter(CatalogProduct.id < cursor)
+    return query.order_by(None).order_by(CatalogProduct.id.desc()).limit(limit + 1).all()
+
+
 def list_deleted_products(
     db: Session,
     *,
@@ -82,4 +111,3 @@ def get_product(
     if not include_deleted:
         query = query.filter(CatalogProduct.deleted_at.is_(None))
     return query.first()
-

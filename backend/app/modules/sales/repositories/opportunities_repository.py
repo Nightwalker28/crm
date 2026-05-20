@@ -131,6 +131,28 @@ def list_paginated(
     return items, total_count
 
 
+def list_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    limit: int,
+    cursor: int | None = None,
+    search: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> list[SalesOpportunity]:
+    query = build_opportunity_query(
+        db,
+        tenant_id=tenant_id,
+        search=search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+    if cursor is not None:
+        query = query.filter(SalesOpportunity.opportunity_id < cursor)
+    return query.order_by(None).order_by(SalesOpportunity.opportunity_id.desc()).limit(limit + 1).all()
+
+
 def list_deleted(db: Session, *, tenant_id: int, pagination) -> tuple[list[SalesOpportunity], int]:
     query = db.query(SalesOpportunity).filter(
         SalesOpportunity.tenant_id == tenant_id,
@@ -185,4 +207,3 @@ def active_by_name(db: Session, *, tenant_id: int, names: list[str]) -> dict[str
         )
         .all()
     }
-

@@ -80,6 +80,25 @@ def list_products(
     )
 
 
+def list_products_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    search: str | None = None,
+    include_inactive: bool = True,
+    limit: int = 50,
+    cursor: int | None = None,
+) -> list[CatalogProduct]:
+    return product_repository.list_products_cursor(
+        db,
+        tenant_id=tenant_id,
+        search=search,
+        include_inactive=include_inactive,
+        limit=limit,
+        cursor=cursor,
+    )
+
+
 def list_deleted_products(
     db: Session,
     *,

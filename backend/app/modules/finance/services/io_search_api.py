@@ -36,6 +36,7 @@ from app.modules.finance.services.io_search_services import (
     get_finance_module_id,
     get_insertion_order_or_404,
     list_insertion_orders,
+    list_insertion_orders_cursor,
     parse_human_date,
     soft_delete_insertion_order,
     update_insertion_order,
@@ -744,6 +745,35 @@ def list_generic_insertion_orders_page(
         total_count,
         pagination,
     )
+
+
+def list_generic_insertion_orders_cursor(
+    db: Session,
+    current_user,
+    *,
+    limit: int,
+    cursor: int | None,
+    request: Request | None,
+    search: str | None = None,
+    status_filter: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+):
+    module_id = get_finance_module_id(db)
+    user_scope = get_finance_user_scope(db, current_user)
+    records = list_insertion_orders_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_id=module_id,
+        user_id=user_scope.user_id_filter,
+        limit=limit,
+        cursor=cursor,
+        search=search,
+        status_filter=status_filter,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+    return [_serialize_finance_record_response(record, request=request, current_user=current_user) for record in records]
 
 
 def export_generic_insertion_orders(

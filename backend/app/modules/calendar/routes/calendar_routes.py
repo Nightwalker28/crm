@@ -3,6 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
@@ -26,6 +27,7 @@ from app.modules.calendar.services.calendar_services import (
     enqueue_current_user_calendar_sync,
     get_calendar_event_from_task,
     get_calendar_event_or_404,
+    list_calendar_events_cursor,
     list_calendar_events,
     list_pending_invites,
     respond_to_calendar_invite,
@@ -72,6 +74,29 @@ def get_calendar_events(
                 events.append(event)
         events.sort(key=lambda item: (item.start_at, item.id))
     return {"results": [CalendarEventResponse.model_validate(serialize_calendar_event(event, current_user=current_user)) for event in events]}
+
+
+@router.get("/events/cursor")
+def get_calendar_events_cursor(
+    start_at: datetime | None = Query(default=None),
+    end_at: datetime | None = Query(default=None),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("calendar")),
+    require_permission=Depends(require_action_access("calendar", "view")),
+):
+    events = list_calendar_events_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        current_user=current_user,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+        start_at=start_at,
+        end_at=end_at,
+    )
+    serialized = [CalendarEventResponse.model_validate(serialize_calendar_event(event, current_user=current_user)) for event in events]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
 
 
 @router.post("/events", response_model=CalendarEventResponse, status_code=status.HTTP_201_CREATED)

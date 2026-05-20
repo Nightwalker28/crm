@@ -278,6 +278,34 @@ def list_opportunities(
     return items, total_count
 
 
+def list_opportunities_cursor(
+    db: Session,
+    tenant_id: int,
+    *,
+    limit: int,
+    cursor: int | None = None,
+    search: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> list[SalesOpportunity]:
+    items = opportunities_repository.list_cursor(
+        db,
+        tenant_id=tenant_id,
+        limit=limit,
+        cursor=cursor,
+        search=search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+    return hydrate_custom_field_records(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_opportunities",
+        records=items,
+        record_id_attr="opportunity_id",
+    )
+
+
 def summarize_opportunity_pipeline(
     db: Session,
     tenant_id: int,

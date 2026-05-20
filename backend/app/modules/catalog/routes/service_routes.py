@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
@@ -16,6 +17,7 @@ from app.modules.catalog.services.service_services import (
     create_service,
     get_service_or_404,
     list_deleted_services,
+    list_services_cursor,
     list_services,
     restore_service,
     serialize_service,
@@ -50,6 +52,27 @@ def get_services(
         limit=pagination.limit,
     )
     return build_paged_response([_response(service) for service in services], total_count=total, pagination=pagination)
+
+
+@router.get("/cursor")
+def get_services_cursor(
+    search: str | None = Query(default=None, max_length=100),
+    include_inactive: bool = Query(default=True),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access(CATALOG_SERVICES_MODULE)),
+    require_permission=Depends(require_action_access(CATALOG_SERVICES_MODULE, "view")),
+):
+    services = list_services_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        search=search,
+        include_inactive=include_inactive,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+    )
+    return build_cursor_response([_response(service) for service in services], limit=pagination.limit, id_attr="id")
 
 
 @router.get("/recycle", response_model=CatalogServiceListResponse)

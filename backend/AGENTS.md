@@ -18,7 +18,10 @@ The backend is FastAPI + SQLAlchemy + Alembic on PostgreSQL, with Redis and Cele
 ## Architecture preferences
 
 - Put route concerns in routes, business logic in services, persistence in models, and reusable platform concerns in shared core/platform helpers.
+- For tenant-owned operational modules, use repositories for DB/query construction, services for business rules and side effects, and routes only for HTTP/auth/serialization concerns.
+- Keep offset pagination for existing list routes, and add cursor/keyset pagination for high-volume operational lists. Cursor endpoints must use deterministic ordering that matches the cursor value; the current default is strict descending primary-key order after clearing inherited ordering with `order_by(None)`.
 - Reuse shared search, import/export, pagination, upload/download, notification, activity, comments, and background-job patterns before adding new implementations.
+- Keep Postgres-backed search as the default. Use existing shared search helpers or the platform search backend rather than adding module-specific search engines or external services.
 - Long-running import/export or provider-sync work should use persisted jobs + Celery, not block request threads.
 - Prefer explicit, trusted serializers and variable maps over evaluating arbitrary user input.
 - Keep client portal auth, CRM user auth, and public integration-key auth as separate boundaries.

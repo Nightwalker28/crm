@@ -81,6 +81,28 @@ def list_paginated(
     return items, total
 
 
+def list_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    limit: int,
+    cursor: int | None = None,
+    search: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> list[SalesOrganization]:
+    query = build_organization_query(
+        db,
+        tenant_id=tenant_id,
+        search=search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+    if cursor is not None:
+        query = query.filter(SalesOrganization.org_id < cursor)
+    return query.order_by(None).order_by(SalesOrganization.org_id.desc()).limit(limit + 1).all()
+
+
 def get_organization(
     db: Session,
     *,
@@ -116,4 +138,3 @@ def list_deleted_paginated(
         .all()
     )
     return items, total
-

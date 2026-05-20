@@ -508,6 +508,35 @@ def list_documents(
     )
 
 
+def list_documents_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    search: str | None = None,
+    module_key: str | None = None,
+    entity_id: str | int | None = None,
+    limit: int = 50,
+    cursor: int | None = None,
+    current_user=None,
+) -> list[Document]:
+    if (module_key and entity_id is None) or (not module_key and entity_id is not None):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Both module key and record ID are required.")
+    if module_key and entity_id is not None:
+        if current_user is not None:
+            _require_linked_record_access(db, user=current_user, module_key=module_key, entity_id=entity_id, action="view")
+        else:
+            get_record_reference(db, tenant_id=tenant_id, module_key=module_key, entity_id=entity_id)
+    return documents_repository.list_documents_cursor(
+        db,
+        tenant_id=tenant_id,
+        search=search,
+        module_key=module_key,
+        entity_id=entity_id,
+        limit=limit,
+        cursor=cursor,
+    )
+
+
 def get_document_or_404(db: Session, *, tenant_id: int, document_id: int) -> Document:
     document = documents_repository.get_document(db, tenant_id=tenant_id, document_id=document_id)
     if not document:

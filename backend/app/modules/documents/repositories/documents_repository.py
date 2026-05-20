@@ -40,6 +40,41 @@ def list_documents(
     return documents, total
 
 
+def list_documents_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    search: str | None = None,
+    module_key: str | None = None,
+    entity_id: str | int | None = None,
+    limit: int = 50,
+    cursor: int | None = None,
+) -> list[Document]:
+    query = (
+        db.query(Document)
+        .options(joinedload(Document.links))
+        .filter(Document.tenant_id == tenant_id, Document.deleted_at.is_(None))
+    )
+    if module_key and entity_id is not None:
+        query = query.join(DocumentLink).filter(
+            DocumentLink.tenant_id == tenant_id,
+            DocumentLink.module_key == module_key,
+            DocumentLink.entity_id == str(entity_id),
+        )
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.filter(
+            or_(
+                Document.title.ilike(pattern),
+                Document.original_filename.ilike(pattern),
+                Document.description.ilike(pattern),
+            )
+        )
+    if cursor is not None:
+        query = query.filter(Document.id < cursor)
+    return query.order_by(None).order_by(Document.id.desc()).limit(limit + 1).all()
+
+
 def get_document(db: Session, *, tenant_id: int, document_id: int, include_deleted: bool = False) -> Document | None:
     query = (
         db.query(Document)
@@ -59,4 +94,3 @@ def list_deleted_documents(db: Session, *, tenant_id: int, pagination) -> tuple[
     total = query.count()
     items = query.order_by(Document.deleted_at.desc(), Document.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
     return items, total
-

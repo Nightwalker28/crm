@@ -23,7 +23,9 @@ def build_cursor_response(items, *, limit: int, id_attr: str):
     page_items = items[:limit]
     next_cursor = None
     if has_more and page_items:
-        next_cursor = str(getattr(page_items[-1], id_attr))
+        last_item = page_items[-1]
+        value = last_item.get(id_attr) if isinstance(last_item, dict) else getattr(last_item, id_attr)
+        next_cursor = str(value)
     return {
         "results": page_items,
         "next_cursor": next_cursor,
@@ -38,4 +40,3 @@ def apply_desc_id_cursor(query, column, cursor: int | None):
     if cursor < 1:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cursor")
     return query.filter(column < cursor)
-

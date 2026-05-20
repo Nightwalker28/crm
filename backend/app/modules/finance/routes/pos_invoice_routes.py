@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.pagination import Pagination, get_pagination
 from app.core.permissions import require_action_access
@@ -32,6 +33,27 @@ def list_pos_invoices(
         search=search,
         status_filter=status_filter,
     )
+
+
+@router.get("/pos-invoices/cursor")
+def list_pos_invoices_cursor(
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    search: str | None = Query(default=None),
+    status_filter: str | None = Query(default=None, alias="status"),
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+    require_permission=Depends(require_action_access("finance_pos", "view")),
+):
+    invoices = pos_invoice_services.list_invoices_cursor(
+        db,
+        current_user,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+        search=search,
+        status_filter=status_filter,
+    )
+    serialized = [pos_invoice_services.serialize_invoice(invoice, current_user=current_user, include_lines=False) for invoice in invoices]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
 
 
 @router.post("/pos-invoices", response_model=PosInvoiceResponse, status_code=status.HTTP_201_CREATED)

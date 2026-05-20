@@ -44,6 +44,29 @@ def list_services(
     return services, total
 
 
+def list_services_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    search: str | None = None,
+    include_inactive: bool = True,
+    limit: int = 50,
+    cursor: int | None = None,
+) -> list[CatalogService]:
+    query = db.query(CatalogService).filter(
+        CatalogService.tenant_id == tenant_id,
+        CatalogService.deleted_at.is_(None),
+    )
+    if not include_inactive:
+        query = query.filter(CatalogService.is_active == 1)
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.filter(or_(CatalogService.name.ilike(pattern), CatalogService.description.ilike(pattern)))
+    if cursor is not None:
+        query = query.filter(CatalogService.id < cursor)
+    return query.order_by(None).order_by(CatalogService.id.desc()).limit(limit + 1).all()
+
+
 def list_deleted_services(
     db: Session,
     *,
@@ -76,4 +99,3 @@ def get_service(
     if not include_deleted:
         query = query.filter(CatalogService.deleted_at.is_(None))
     return query.first()
-

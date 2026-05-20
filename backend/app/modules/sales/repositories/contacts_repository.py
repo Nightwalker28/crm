@@ -110,7 +110,7 @@ def list_contacts_cursor(
         any_filter_conditions=any_filter_conditions,
     )
     query = apply_desc_id_cursor(query, SalesContact.contact_id, cursor)
-    return query.order_by(SalesContact.contact_id.desc()).limit(limit + 1).all()
+    return query.order_by(None).order_by(SalesContact.contact_id.desc()).limit(limit + 1).all()
 
 
 def list_all_contacts(

@@ -563,7 +563,7 @@ class MailImapSmtpTests(unittest.TestCase):
         )
         self.db.commit()
 
-        with patch.object(mail_services, "apply_ranked_search", wraps=mail_services.apply_ranked_search) as search_mock:
+        with patch.object(mail_services.mail_repository, "apply_ranked_search", wraps=mail_services.mail_repository.apply_ranked_search) as search_mock:
             messages = mail_services.list_mail_messages(
                 self.db,
                 tenant_id=10,

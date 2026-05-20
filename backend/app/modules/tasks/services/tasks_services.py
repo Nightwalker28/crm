@@ -141,6 +141,29 @@ def list_tasks(
     return tasks, total_count
 
 
+def list_tasks_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    current_user,
+    limit: int,
+    cursor: int | None = None,
+    search: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> Sequence[Task]:
+    return tasks_repository.list_tasks_cursor(
+        db,
+        tenant_id=tenant_id,
+        current_user=current_user,
+        limit=limit,
+        cursor=cursor,
+        search=search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+
+
 def get_task_or_404(
     db: Session,
     task_id: int,

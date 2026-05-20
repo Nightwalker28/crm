@@ -149,6 +149,41 @@ def list_insertion_orders(
     )
 
 
+def list_insertion_orders_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    module_id: int,
+    user_id: int | None,
+    limit: int,
+    cursor: int | None = None,
+    search: str | None = None,
+    status_filter: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> list[FinanceIO]:
+    query = build_insertion_orders_query(
+        db,
+        tenant_id=tenant_id,
+        module_id=module_id,
+        user_id=user_id,
+        search=search,
+        status_filter=status_filter,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+    if cursor is not None:
+        query = query.filter(FinanceIO.id < cursor)
+    records = query.order_by(None).order_by(FinanceIO.id.desc()).limit(limit + 1).all()
+    return hydrate_custom_field_records(
+        db,
+        tenant_id=tenant_id,
+        module_key=FINANCE_IO_MODULE_KEY,
+        records=records,
+        record_id_attr="id",
+    )
+
+
 def get_insertion_order(
     db: Session,
     *,

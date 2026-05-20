@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, count_csv_rows_bytes, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
@@ -39,6 +40,7 @@ from app.modules.sales.services.opportunities_services import (
     get_opportunity_or_404,
     import_opportunities_from_csv,
     list_deleted_opportunities,
+    list_opportunities_cursor,
     list_opportunities,
     restore_opportunity,
     summarize_opportunity_pipeline,
@@ -197,6 +199,39 @@ def list_sales_opportunities(
     selected_fields = _parse_list_fields(fields)
     serialized = [_serialize_opportunity_list_item(item, selected_fields) for item in items]
     return build_paged_response(serialized, total_count, pagination)
+
+
+@router.get("/cursor")
+def list_sales_opportunities_cursor(
+    query: str | None = Query(default=None, min_length=1),
+    fields: str | None = Query(default=None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access("sales_opportunities")),
+    require_permission = Depends(require_action_access("sales_opportunities", "view")),
+):
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    items = list_opportunities_cursor(
+        db,
+        current_user.tenant_id,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+        search=query,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+    )
+    selected_fields = _parse_list_fields(fields)
+    serialized = [_serialize_opportunity_list_item(item, selected_fields) for item in items]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="opportunity_id")
 
 
 @router.get("/search", response_model=SalesOpportunityListResponse)

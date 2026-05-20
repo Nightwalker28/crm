@@ -268,6 +268,34 @@ def search_organizations_paginated(
     return items, total
 
 
+def list_organizations_cursor(
+    db: Session,
+    tenant_id: int,
+    *,
+    limit: int,
+    cursor: int | None = None,
+    search: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> list[SalesOrganization]:
+    items = organizations_repository.list_cursor(
+        db,
+        tenant_id=tenant_id,
+        limit=limit,
+        cursor=cursor,
+        search=search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+    return hydrate_custom_field_records(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_organizations",
+        records=items,
+        record_id_attr="org_id",
+    )
+
+
 def get_organization(db: Session, org_id: int, *, tenant_id: int, include_deleted: bool = False) -> SalesOrganization | None:
     """Return one organization by ID."""
     organization = organizations_repository.get_organization(

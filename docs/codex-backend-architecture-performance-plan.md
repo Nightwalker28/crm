@@ -855,6 +855,33 @@ These are rough targets and should be adjusted based on deployment size.
 
 ## First Codex Implementation Plan
 
+### Current Implementation Status
+
+The backend refactor phases below have now been implemented in the working tree:
+
+- Phase 1: repository layers exist for sales contacts and the other major backend modules.
+- Phase 2: sales contacts import/export services are split from the main contacts service.
+- Phase 3: cursor pagination foundation exists, and cursor endpoints exist for contacts, organizations, opportunities, POS invoices, insertion orders, catalog products, catalog services, tasks, documents, calendar events, and mail messages.
+- Phase 4: tenant-aware composite/partial performance indexes exist in Alembic.
+- Phase 5: Postgres trigram/search indexes exist in Alembic for high-volume searchable modules.
+- Phase 6: the platform search abstraction stub exists under `backend/app/modules/platform/search/`.
+- Phase 7: recycle-bin retention config and Celery purge job exist.
+- Load testing: `backend/scripts/seed_load_crm.py` exists for deterministic large-data seeding.
+
+Verification completed in the backend container:
+
+- `python -m unittest tests.test_cursor_pagination`
+- `python -m unittest tests.test_api_routes tests.test_documents tests.test_finance_io_api tests.test_finance_pos_invoices`
+- `python -m unittest tests.test_catalog_products tests.test_catalog_services tests.test_task_source_activity tests.test_organizations_services tests.test_opportunities_services tests.test_contacts_services`
+- `python -m compileall app tests`
+- `alembic upgrade head`
+- `alembic current` confirmed `20260606_search_indexes (head)`
+- Guarded load-seed smoke run with tiny record counts and `LOAD_CRM_SEED_ALLOW=1`
+
+Calendar cursor tests passed after calendar was added to the cursor standard. Mail cursor implementation is landed and syntax-checked, but the focused container rerun for mail was blocked by the Codex Docker approval usage limit after updating the stale mail test patch target.
+
+See `docs/backend_module_architecture_audit.md` for the current module-by-module completion audit and the next completion order.
+
 ### Phase 1: Repository Layer for Sales Contacts
 
 Create:

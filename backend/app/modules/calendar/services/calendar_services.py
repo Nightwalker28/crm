@@ -262,6 +262,27 @@ def list_calendar_events(
     return calendar_repository.list_calendar_events(db, tenant_id=tenant_id, current_user=current_user, start_at=start_at, end_at=end_at)
 
 
+def list_calendar_events_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    current_user,
+    limit: int,
+    cursor: int | None = None,
+    start_at: datetime | None = None,
+    end_at: datetime | None = None,
+) -> list[CalendarEvent]:
+    return calendar_repository.list_calendar_events_cursor(
+        db,
+        tenant_id=tenant_id,
+        current_user=current_user,
+        limit=limit,
+        cursor=cursor,
+        start_at=start_at,
+        end_at=end_at,
+    )
+
+
 def list_pending_invites(db: Session, *, tenant_id: int, current_user) -> list[CalendarEvent]:
     return calendar_repository.list_pending_invites(db, tenant_id=tenant_id, current_user=current_user)
 

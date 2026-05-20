@@ -167,6 +167,27 @@ def list_mail_messages(
     )
 
 
+def list_mail_messages_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    current_user,
+    limit: int,
+    cursor: int | None = None,
+    folder: str | None = None,
+    search: str | None = None,
+) -> list[MailMessage]:
+    return mail_repository.list_messages_cursor(
+        db,
+        tenant_id=tenant_id,
+        owner_user_id=current_user.id,
+        folder=folder,
+        search=search,
+        limit=limit,
+        cursor=cursor,
+    )
+
+
 def get_mail_message_or_404(
     db: Session,
     message_id: int,
