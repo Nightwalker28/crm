@@ -5,6 +5,7 @@ import { HandCoins, BriefcaseBusiness } from "lucide-react";
 
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
+import { CustomFieldCell } from "@/components/ui/CustomFieldCell";
 import { Pill } from "@/components/ui/Pill";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
@@ -19,7 +20,7 @@ import {
 } from "@/components/ui/Table";
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
-import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
+import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { getOpportunityStageLabel } from "@/components/opportunities/opportunityStages";
 import { getOpportunityStageStyle } from "@/lib/statusStyles";
@@ -73,17 +74,7 @@ export default function OpportunitiesTable({
 
   const renderCell = (opportunity: Opportunity, column: string) => {
     if (isCustomFieldColumnKey(column)) {
-      const fieldKey = getCustomFieldKeyFromColumn(column);
-      const value = opportunity.custom_fields?.[fieldKey];
-      return (
-        <TableCell>
-          <span className="text-sm text-neutral-300">
-            {value == null || value === "" ? (
-              <span className="text-neutral-600">—</span>
-            ) : String(value)}
-          </span>
-        </TableCell>
-      );
+      return <CustomFieldCell column={column} values={opportunity.custom_fields} />;
     }
 
     switch (column) {

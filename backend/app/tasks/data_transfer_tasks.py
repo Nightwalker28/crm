@@ -14,15 +14,15 @@ DATA_TRANSFER_TIME_LIMIT_SECONDS = 1800
 
 
 @celery_app.task(
+    bind=True,
     name="app.tasks.data_transfer.process_import_job",
-    autoretry_for=TRANSIENT_JOB_ERRORS,
     retry_backoff=True,
     retry_jitter=True,
-    retry_kwargs={"max_retries": 3},
+    max_retries=3,
     soft_time_limit=DATA_TRANSFER_SOFT_TIME_LIMIT_SECONDS,
     time_limit=DATA_TRANSFER_TIME_LIMIT_SECONDS,
 )
-def process_import_job_task(job_id: int) -> None:
+def process_import_job_task(self, job_id: int) -> None:
     try:
         process_import_job(job_id=job_id)
     except SoftTimeLimitExceeded:
@@ -30,22 +30,25 @@ def process_import_job_task(job_id: int) -> None:
             job_id=job_id,
             error_message="Import exceeded the 25 minute soft time limit.",
         )
-    except TRANSIENT_JOB_ERRORS:
-        raise
+    except TRANSIENT_JOB_ERRORS as exc:
+        if self.request.retries >= self.max_retries:
+            mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=str(exc))
+            raise
+        raise self.retry(exc=exc)
     except Exception as exc:
         mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=str(exc))
 
 
 @celery_app.task(
+    bind=True,
     name="app.tasks.data_transfer.process_export_job",
-    autoretry_for=TRANSIENT_JOB_ERRORS,
     retry_backoff=True,
     retry_jitter=True,
-    retry_kwargs={"max_retries": 3},
+    max_retries=3,
     soft_time_limit=DATA_TRANSFER_SOFT_TIME_LIMIT_SECONDS,
     time_limit=DATA_TRANSFER_TIME_LIMIT_SECONDS,
 )
-def process_export_job_task(job_id: int) -> None:
+def process_export_job_task(self, job_id: int) -> None:
     try:
         process_export_job(job_id=job_id)
     except SoftTimeLimitExceeded:
@@ -53,8 +56,11 @@ def process_export_job_task(job_id: int) -> None:
             job_id=job_id,
             error_message="Export exceeded the 25 minute soft time limit.",
         )
-    except TRANSIENT_JOB_ERRORS:
-        raise
+    except TRANSIENT_JOB_ERRORS as exc:
+        if self.request.retries >= self.max_retries:
+            mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=str(exc))
+            raise
+        raise self.retry(exc=exc)
     except Exception as exc:
         mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=str(exc))
 

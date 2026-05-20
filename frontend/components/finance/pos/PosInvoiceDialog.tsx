@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,7 @@ type Props = {
   onSubmit: (payload: PosInvoicePayload) => Promise<void>;
 };
 
-type FormState = {
+type HeaderFormState = {
   customer_name: string;
   customer_email: string;
   customer_address: string;
@@ -33,9 +33,15 @@ type FormState = {
   template_id: PosTemplateId;
   accent_color: string;
   currency: string;
+};
+
+type PricingFormState = {
   discount_amount: string;
   tax_rate: string;
   amount_paid: string;
+};
+
+type DetailFormState = {
   payment_terms: string;
   notes: string;
 };
@@ -49,7 +55,7 @@ type LineForm = {
 };
 
 const today = new Date().toISOString().slice(0, 10);
-const emptyForm: FormState = {
+const emptyHeaderForm: HeaderFormState = {
   customer_name: "Walk-in Customer",
   customer_email: "",
   customer_address: "",
@@ -62,9 +68,15 @@ const emptyForm: FormState = {
   template_id: "modern",
   accent_color: "#14b8a6",
   currency: "USD",
+};
+
+const emptyPricingForm: PricingFormState = {
   discount_amount: "0",
   tax_rate: "0",
   amount_paid: "0",
+};
+
+const emptyDetailForm: DetailFormState = {
   payment_terms: "Paid at counter unless marked unpaid.",
   notes: "",
 };
@@ -87,8 +99,8 @@ function toMoney(amount: number, currency: string) {
   }
 }
 
-function toForm(invoice: PosInvoice | null): FormState {
-  if (!invoice) return emptyForm;
+function toHeaderForm(invoice: PosInvoice | null): HeaderFormState {
+  if (!invoice) return emptyHeaderForm;
   return {
     customer_name: invoice.customer_name,
     customer_email: invoice.customer_email ?? "",
@@ -102,9 +114,21 @@ function toForm(invoice: PosInvoice | null): FormState {
     template_id: invoice.template_id,
     accent_color: invoice.accent_color,
     currency: invoice.currency,
+  };
+}
+
+function toPricingForm(invoice: PosInvoice | null): PricingFormState {
+  if (!invoice) return emptyPricingForm;
+  return {
     discount_amount: String(invoice.discount_amount ?? 0),
     tax_rate: String(invoice.tax_rate ?? 0),
     amount_paid: String(invoice.amount_paid ?? 0),
+  };
+}
+
+function toDetailForm(invoice: PosInvoice | null): DetailFormState {
+  if (!invoice) return emptyDetailForm;
+  return {
     payment_terms: invoice.payment_terms ?? "",
     notes: invoice.notes ?? "",
   };
@@ -121,8 +145,27 @@ function toLines(invoice: PosInvoice | null): LineForm[] {
   }));
 }
 
+const InvoiceTotalsSummary = memo(function InvoiceTotalsSummary({
+  totals,
+  currency,
+}: {
+  totals: { subtotal: number; discount: number; tax: number; total: number; balance: number };
+  currency: string;
+}) {
+  return (
+    <div className="mr-auto grid grid-cols-2 gap-x-5 gap-y-1 text-sm text-neutral-400">
+      <span>Subtotal</span><span className="text-right text-neutral-200">{toMoney(totals.subtotal, currency)}</span>
+      <span>Tax</span><span className="text-right text-neutral-200">{toMoney(totals.tax, currency)}</span>
+      <span>Total</span><span className="text-right text-neutral-200">{toMoney(totals.total, currency)}</span>
+      <span className="font-semibold text-neutral-200">Balance</span><span className="text-right font-semibold text-neutral-100">{toMoney(totals.balance, currency)}</span>
+    </div>
+  );
+});
+
 export function PosInvoiceDialog({ open, invoice, isSubmitting = false, onClose, onSubmit }: Props) {
-  const [form, setForm] = useState<FormState>(emptyForm);
+  const [headerForm, setHeaderForm] = useState<HeaderFormState>(emptyHeaderForm);
+  const [pricingForm, setPricingForm] = useState<PricingFormState>(emptyPricingForm);
+  const [detailForm, setDetailForm] = useState<DetailFormState>(emptyDetailForm);
   const [lines, setLines] = useState<LineForm[]>(defaultLines);
   const [nextLineId, setNextLineId] = useState(2);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +174,9 @@ export function PosInvoiceDialog({ open, invoice, isSubmitting = false, onClose,
     if (!open) return;
     const nextLines = toLines(invoice);
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setForm(toForm(invoice));
+    setHeaderForm(toHeaderForm(invoice));
+    setPricingForm(toPricingForm(invoice));
+    setDetailForm(toDetailForm(invoice));
     setLines(nextLines);
     setNextLineId(Math.max(...nextLines.map((line) => line.id), 1) + 1);
     setError(null);
@@ -139,13 +184,13 @@ export function PosInvoiceDialog({ open, invoice, isSubmitting = false, onClose,
 
   const totals = useMemo(() => {
     const subtotal = lines.reduce((sum, line) => sum + lineTotal(line), 0);
-    const discount = Math.max(0, Number(form.discount_amount) || 0);
+    const discount = Math.max(0, Number(pricingForm.discount_amount) || 0);
     const taxable = Math.max(0, subtotal - discount);
-    const tax = taxable * Math.max(0, Number(form.tax_rate) || 0) / 100;
+    const tax = taxable * Math.max(0, Number(pricingForm.tax_rate) || 0) / 100;
     const total = taxable + tax;
-    const paid = Math.max(0, Number(form.amount_paid) || 0);
+    const paid = Math.max(0, Number(pricingForm.amount_paid) || 0);
     return { subtotal, discount, tax, total, balance: Math.max(0, total - paid) };
-  }, [form.amount_paid, form.discount_amount, form.tax_rate, lines]);
+  }, [pricingForm.amount_paid, pricingForm.discount_amount, pricingForm.tax_rate, lines]);
 
   function updateLine(id: number, key: keyof LineForm, value: string) {
     setLines((current) => current.map((line) => line.id === id ? { ...line, [key]: value } : line));
@@ -155,23 +200,23 @@ export function PosInvoiceDialog({ open, invoice, isSubmitting = false, onClose,
     try {
       setError(null);
       await onSubmit({
-        customer_name: form.customer_name.trim(),
-        customer_email: form.customer_email.trim() || undefined,
-        customer_address: form.customer_address.trim() || undefined,
-        invoice_number: form.invoice_number.trim() || undefined,
-        issue_date: form.issue_date || undefined,
-        due_date: form.due_date || undefined,
-        status: form.status,
-        payment_status: form.payment_status,
-        payment_method: form.payment_method.trim() || undefined,
-        template_id: form.template_id,
-        accent_color: form.accent_color,
-        currency: form.currency.trim().toUpperCase() || "USD",
-        discount_amount: Math.max(0, Number(form.discount_amount) || 0),
-        tax_rate: Math.max(0, Number(form.tax_rate) || 0),
-        amount_paid: Math.max(0, Number(form.amount_paid) || 0),
-        payment_terms: form.payment_terms.trim() || undefined,
-        notes: form.notes.trim() || undefined,
+        customer_name: headerForm.customer_name.trim(),
+        customer_email: headerForm.customer_email.trim() || undefined,
+        customer_address: headerForm.customer_address.trim() || undefined,
+        invoice_number: headerForm.invoice_number.trim() || undefined,
+        issue_date: headerForm.issue_date || undefined,
+        due_date: headerForm.due_date || undefined,
+        status: headerForm.status,
+        payment_status: headerForm.payment_status,
+        payment_method: headerForm.payment_method.trim() || undefined,
+        template_id: headerForm.template_id,
+        accent_color: headerForm.accent_color,
+        currency: headerForm.currency.trim().toUpperCase() || "USD",
+        discount_amount: Math.max(0, Number(pricingForm.discount_amount) || 0),
+        tax_rate: Math.max(0, Number(pricingForm.tax_rate) || 0),
+        amount_paid: Math.max(0, Number(pricingForm.amount_paid) || 0),
+        payment_terms: detailForm.payment_terms.trim() || undefined,
+        notes: detailForm.notes.trim() || undefined,
         lines: lines.map<PosInvoiceLine>((line) => ({
           id: line.persistedId,
           description: line.description.trim(),
@@ -201,34 +246,34 @@ export function PosInvoiceDialog({ open, invoice, isSubmitting = false, onClose,
             <FieldGroup className="grid gap-4 md:grid-cols-3">
               <Field className="md:col-span-2">
                 <FieldLabel>Customer</FieldLabel>
-                <Input value={form.customer_name} onChange={(event) => setForm((current) => ({ ...current, customer_name: event.target.value }))} />
+                <Input value={headerForm.customer_name} onChange={(event) => setHeaderForm((current) => ({ ...current, customer_name: event.target.value }))} />
               </Field>
               <Field>
                 <FieldLabel>Invoice Number</FieldLabel>
-                <Input value={form.invoice_number} onChange={(event) => setForm((current) => ({ ...current, invoice_number: event.target.value }))} placeholder="Auto generated" disabled={Boolean(invoice)} />
+                <Input value={headerForm.invoice_number} onChange={(event) => setHeaderForm((current) => ({ ...current, invoice_number: event.target.value }))} placeholder="Auto generated" disabled={Boolean(invoice)} />
               </Field>
               <Field>
                 <FieldLabel>Email</FieldLabel>
-                <Input type="email" value={form.customer_email} onChange={(event) => setForm((current) => ({ ...current, customer_email: event.target.value }))} />
+                <Input type="email" value={headerForm.customer_email} onChange={(event) => setHeaderForm((current) => ({ ...current, customer_email: event.target.value }))} />
               </Field>
               <Field>
                 <FieldLabel>Issue Date</FieldLabel>
-                <Input type="date" value={form.issue_date} onChange={(event) => setForm((current) => ({ ...current, issue_date: event.target.value }))} />
+                <Input type="date" value={headerForm.issue_date} onChange={(event) => setHeaderForm((current) => ({ ...current, issue_date: event.target.value }))} />
               </Field>
               <Field>
                 <FieldLabel>Due Date</FieldLabel>
-                <Input type="date" value={form.due_date} onChange={(event) => setForm((current) => ({ ...current, due_date: event.target.value }))} />
+                <Input type="date" value={headerForm.due_date} onChange={(event) => setHeaderForm((current) => ({ ...current, due_date: event.target.value }))} />
               </Field>
               <Field className="md:col-span-3">
                 <FieldLabel>Customer Address</FieldLabel>
-                <Textarea value={form.customer_address} onChange={(event) => setForm((current) => ({ ...current, customer_address: event.target.value }))} />
+                <Textarea value={headerForm.customer_address} onChange={(event) => setHeaderForm((current) => ({ ...current, customer_address: event.target.value }))} />
               </Field>
             </FieldGroup>
 
             <FieldGroup className="grid gap-4 md:grid-cols-4">
               <Field>
                 <FieldLabel>Status</FieldLabel>
-                <Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value as PosInvoiceStatus }))}>
+                <Select value={headerForm.status} onValueChange={(value) => setHeaderForm((current) => ({ ...current, status: value as PosInvoiceStatus }))}>
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="draft">Draft</SelectItem>
@@ -240,7 +285,7 @@ export function PosInvoiceDialog({ open, invoice, isSubmitting = false, onClose,
               </Field>
               <Field>
                 <FieldLabel>Payment</FieldLabel>
-                <Select value={form.payment_status} onValueChange={(value) => setForm((current) => ({ ...current, payment_status: value as PosPaymentStatus }))}>
+                <Select value={headerForm.payment_status} onValueChange={(value) => setHeaderForm((current) => ({ ...current, payment_status: value as PosPaymentStatus }))}>
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="unpaid">Unpaid</SelectItem>
@@ -252,11 +297,11 @@ export function PosInvoiceDialog({ open, invoice, isSubmitting = false, onClose,
               </Field>
               <Field>
                 <FieldLabel>Method</FieldLabel>
-                <Input value={form.payment_method} onChange={(event) => setForm((current) => ({ ...current, payment_method: event.target.value }))} />
+                <Input value={headerForm.payment_method} onChange={(event) => setHeaderForm((current) => ({ ...current, payment_method: event.target.value }))} />
               </Field>
               <Field>
                 <FieldLabel>Template</FieldLabel>
-                <Select value={form.template_id} onValueChange={(value) => setForm((current) => ({ ...current, template_id: value as PosTemplateId }))}>
+                <Select value={headerForm.template_id} onValueChange={(value) => setHeaderForm((current) => ({ ...current, template_id: value as PosTemplateId }))}>
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="modern">Modern</SelectItem>
@@ -267,19 +312,19 @@ export function PosInvoiceDialog({ open, invoice, isSubmitting = false, onClose,
               </Field>
               <Field>
                 <FieldLabel>Currency</FieldLabel>
-                <Input value={form.currency} onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value.toUpperCase() }))} />
+                <Input value={headerForm.currency} onChange={(event) => setHeaderForm((current) => ({ ...current, currency: event.target.value.toUpperCase() }))} />
               </Field>
               <Field>
                 <FieldLabel>Discount</FieldLabel>
-                <Input type="number" min="0" step="0.01" value={form.discount_amount} onChange={(event) => setForm((current) => ({ ...current, discount_amount: event.target.value }))} />
+                <Input type="number" min="0" step="0.01" value={pricingForm.discount_amount} onChange={(event) => setPricingForm((current) => ({ ...current, discount_amount: event.target.value }))} />
               </Field>
               <Field>
                 <FieldLabel>Tax %</FieldLabel>
-                <Input type="number" min="0" step="0.01" value={form.tax_rate} onChange={(event) => setForm((current) => ({ ...current, tax_rate: event.target.value }))} />
+                <Input type="number" min="0" step="0.01" value={pricingForm.tax_rate} onChange={(event) => setPricingForm((current) => ({ ...current, tax_rate: event.target.value }))} />
               </Field>
               <Field>
                 <FieldLabel>Amount Paid</FieldLabel>
-                <Input type="number" min="0" step="0.01" value={form.amount_paid} onChange={(event) => setForm((current) => ({ ...current, amount_paid: event.target.value }))} />
+                <Input type="number" min="0" step="0.01" value={pricingForm.amount_paid} onChange={(event) => setPricingForm((current) => ({ ...current, amount_paid: event.target.value }))} />
               </Field>
             </FieldGroup>
 
@@ -298,7 +343,7 @@ export function PosInvoiceDialog({ open, invoice, isSubmitting = false, onClose,
                   <Input value={line.description} onChange={(event) => updateLine(line.id, "description", event.target.value)} placeholder="Description" />
                   <Input type="number" min="0" step="0.01" value={line.quantity} onChange={(event) => updateLine(line.id, "quantity", event.target.value)} />
                   <Input type="number" min="0" step="0.01" value={line.unit_price} onChange={(event) => updateLine(line.id, "unit_price", event.target.value)} />
-                  <div className="flex items-center justify-end rounded-md border border-neutral-800 px-3 text-sm font-medium text-neutral-300">{toMoney(lineTotal(line), form.currency)}</div>
+                  <div className="flex items-center justify-end rounded-md border border-neutral-800 px-3 text-sm font-medium text-neutral-300">{toMoney(lineTotal(line), headerForm.currency)}</div>
                   <Button variant="ghost" size="icon" onClick={() => setLines((current) => current.length > 1 ? current.filter((item) => item.id !== line.id) : current)} aria-label="Remove line item">
                     <Trash2 />
                   </Button>
@@ -309,22 +354,17 @@ export function PosInvoiceDialog({ open, invoice, isSubmitting = false, onClose,
             <FieldGroup className="grid gap-4 md:grid-cols-2">
               <Field>
                 <FieldLabel>Payment Terms</FieldLabel>
-                <Textarea value={form.payment_terms} onChange={(event) => setForm((current) => ({ ...current, payment_terms: event.target.value }))} />
+                <Textarea value={detailForm.payment_terms} onChange={(event) => setDetailForm((current) => ({ ...current, payment_terms: event.target.value }))} />
               </Field>
               <Field>
                 <FieldLabel>Notes</FieldLabel>
-                <Textarea value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} />
+                <Textarea value={detailForm.notes} onChange={(event) => setDetailForm((current) => ({ ...current, notes: event.target.value }))} />
               </Field>
             </FieldGroup>
           </div>
 
           <DialogFooter className="sticky bottom-0 mt-5 border-t border-neutral-800 bg-neutral-900/95 px-0 py-4 backdrop-blur">
-            <div className="mr-auto grid grid-cols-2 gap-x-5 gap-y-1 text-sm text-neutral-400">
-              <span>Subtotal</span><span className="text-right text-neutral-200">{toMoney(totals.subtotal, form.currency)}</span>
-              <span>Tax</span><span className="text-right text-neutral-200">{toMoney(totals.tax, form.currency)}</span>
-              <span>Total</span><span className="text-right text-neutral-200">{toMoney(totals.total, form.currency)}</span>
-              <span className="font-semibold text-neutral-200">Balance</span><span className="text-right font-semibold text-neutral-100">{toMoney(totals.balance, form.currency)}</span>
-            </div>
+            <InvoiceTotalsSummary totals={totals} currency={headerForm.currency} />
             <Button variant="outline" onClick={onClose}>Cancel</Button>
             <Button onClick={handleSubmit} disabled={isSubmitting}>{isSubmitting ? "Saving..." : "Save POS Invoice"}</Button>
           </DialogFooter>

@@ -23,6 +23,7 @@ type UsePagedListOptions<T, Response extends PagedListResponse<T>> = {
   initialPageSize?: number;
   refetchOnWindowFocus?: boolean;
   errorMessage?: (error: unknown) => string | null;
+  fallbackErrorMessage?: string;
 };
 
 export function usePagedList<T, Response extends PagedListResponse<T>>({
@@ -34,6 +35,7 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
   initialPageSize = 10,
   refetchOnWindowFocus,
   errorMessage,
+  fallbackErrorMessage = "Failed to load records",
 }: UsePagedListOptions<T, Response>) {
   const [pageSize, setPageSize] = useState(initialPageSize);
   const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
@@ -71,7 +73,7 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
     rangeEnd: data?.range_end ?? 0,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
-    error: query.error ? (errorMessage ? errorMessage(query.error) : query.error instanceof Error ? query.error.message : "Failed to load records") : null,
+    error: query.error ? (errorMessage ? errorMessage(query.error) : query.error instanceof Error ? query.error.message : fallbackErrorMessage) : null,
     goToPage,
     onPageSizeChange,
     refresh,

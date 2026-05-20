@@ -1,7 +1,6 @@
 from fastapi import APIRouter
 
-from app.modules.finance.routes.io_search_routes import router as io_search_router
-from app.modules.finance.routes.pos_invoice_routes import router as pos_invoice_router
+from app.modules.finance.routes.router import router as finance_router
 from app.modules.calendar.routes.calendar_routes import router as calendar_router
 from app.modules.client_portal.routes.client_portal_routes import (
     router as client_portal_router,
@@ -65,8 +64,7 @@ router.include_router(catalog_products_router)
 router.include_router(catalog_services_router)
 router.include_router(documents_router)
 router.include_router(mail_router)
-router.include_router(io_search_router,  prefix="/finance",)
-router.include_router(pos_invoice_router, prefix="/finance")
+router.include_router(finance_router)
 router.include_router(sales_contacts_router, prefix="/sales")
 router.include_router(sales_organization_router, prefix="/sales")
 router.include_router(sales_opportunities_router, prefix="/sales")

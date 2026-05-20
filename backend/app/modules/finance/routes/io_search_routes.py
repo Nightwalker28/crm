@@ -133,6 +133,8 @@ def list_insertion_orders(
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
     filters_any: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user = Depends(get_current_user),
     require_permission = Depends(require_action_access("finance_io", "view")),
@@ -151,6 +153,8 @@ def list_insertion_orders(
         status_filter=status_filter,
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     selected_fields = _parse_list_fields(fields)
     response["results"] = [_serialize_insertion_order_list_item(item, selected_fields) for item in response["results"]]

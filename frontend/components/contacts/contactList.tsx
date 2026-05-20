@@ -15,13 +15,14 @@ import {
   SortableHead,
 } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { CustomFieldCell } from "@/components/ui/CustomFieldCell";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { Contact } from "@/hooks/sales/useContacts";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
-import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
+import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 
 type SortDirection = "asc" | "desc";
 type SortState = { column: string; direction: SortDirection } | null;
@@ -82,17 +83,7 @@ export default function ContactList({
 
   const renderCell = (contact: Contact, column: string) => {
     if (isCustomFieldColumnKey(column)) {
-      const fieldKey = getCustomFieldKeyFromColumn(column);
-      const value = contact.custom_fields?.[fieldKey];
-      return (
-        <TableCell>
-          <span className="text-sm text-neutral-300">
-            {value == null || value === "" ? (
-              <span className="text-neutral-600">—</span>
-            ) : String(value)}
-          </span>
-        </TableCell>
-      );
+      return <CustomFieldCell column={column} values={contact.custom_fields} />;
     }
 
     switch (column) {

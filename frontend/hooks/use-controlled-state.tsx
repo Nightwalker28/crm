@@ -18,7 +18,7 @@ export function useControlledState<T, Rest extends any[] = []>(
   );
   const onChangeRef = React.useRef(onChange);
 
-  React.useLayoutEffect(() => {
+  React.useEffect(() => {
     onChangeRef.current = onChange;
   });
 

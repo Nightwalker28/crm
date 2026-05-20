@@ -117,7 +117,7 @@ async function readJsonSafely(res: Response) {
   return res.json().catch(() => null);
 }
 
-export async function fetchCalendarContext() {
+async function fetchCalendarContext() {
   const res = await apiFetch("/calendar/context");
   const body = await readJsonSafely(res);
   if (!res.ok) {
@@ -126,7 +126,7 @@ export async function fetchCalendarContext() {
   return body as CalendarContext;
 }
 
-export async function fetchCalendarEvents(startAt: string, endAt: string) {
+async function fetchCalendarEvents(startAt: string, endAt: string) {
   const params = new URLSearchParams({
     start_at: startAt,
     end_at: endAt,

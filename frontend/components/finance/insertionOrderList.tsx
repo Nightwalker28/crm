@@ -1,7 +1,7 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment } from "react";
 import Image from "next/image";
 import { FileSpreadsheet } from "lucide-react";
-import type { InsertionOrder } from "@/hooks/finance/useInsertionOrders";
+import type { InsertionOrder, InsertionOrderSortState } from "@/hooks/finance/useInsertionOrders";
 import {
   Table,
   TableBody,
@@ -13,18 +13,16 @@ import {
   SortableHead,
 } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { CustomFieldCell } from "@/components/ui/CustomFieldCell";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
-import { getCustomFieldKeyFromColumn, getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
+import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { resolveMediaUrl } from "@/lib/media";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { getInsertionOrderStatusStyle } from "@/lib/statusStyles";
-
-type SortDirection = "asc" | "desc";
-type SortState = { column: string; direction: SortDirection } | null;
 
 type InsertionOrdersListProps = {
   orders: InsertionOrder[];
@@ -37,6 +35,8 @@ type InsertionOrdersListProps = {
   currentPageSelectionState?: boolean | "indeterminate";
   onToggleRow?: (orderId: number, checked: boolean) => void;
   onToggleCurrentPage?: (checked: boolean) => void;
+  sort: InsertionOrderSortState;
+  onSortChange: (sort: InsertionOrderSortState) => void;
 };
 
 function formatAmount(amount?: number | null, currency?: string): string {
@@ -84,8 +84,9 @@ export default function InsertionOrdersList({
   currentPageSelectionState = false,
   onToggleRow,
   onToggleCurrentPage,
+  sort,
+  onSortChange,
 }: InsertionOrdersListProps) {
-  const [sort, setSort] = useState<SortState>(null);
   const columnCount = visibleColumns.length + 1;
   const headers: Record<string, string> = {
     io_number: "IO Number",
@@ -102,17 +103,7 @@ export default function InsertionOrdersList({
 
   const renderCell = (order: InsertionOrder, column: string) => {
     if (isCustomFieldColumnKey(column)) {
-      const fieldKey = getCustomFieldKeyFromColumn(column);
-      const value = order.custom_fields?.[fieldKey];
-      return (
-        <TableCell>
-          <span className="text-sm text-neutral-300">
-            {value == null || value === "" ? (
-              <span className="text-neutral-600">—</span>
-            ) : String(value)}
-          </span>
-        </TableCell>
-      );
+      return <CustomFieldCell column={column} values={order.custom_fields} />;
     }
 
     switch (column) {
@@ -230,26 +221,12 @@ export default function InsertionOrdersList({
     }
   };
 
-  const sortedOrders = useMemo(() => {
-    if (!sort) return orders;
-    return [...orders].sort((left, right) => {
-      const leftRaw = left[sort.column as keyof InsertionOrder];
-      const rightRaw = right[sort.column as keyof InsertionOrder];
-      const leftValue = typeof leftRaw === "number" ? leftRaw : String(leftRaw ?? "").toLowerCase();
-      const rightValue = typeof rightRaw === "number" ? rightRaw : String(rightRaw ?? "").toLowerCase();
-      const result =
-        typeof leftValue === "number" && typeof rightValue === "number"
-          ? leftValue - rightValue
-          : String(leftValue).localeCompare(String(rightValue), undefined, { numeric: true });
-      return sort.direction === "asc" ? result : -result;
-    });
-  }, [orders, sort]);
-
   function toggleSort(column: string) {
-    setSort((current) => {
-      if (current?.column !== column) return { column, direction: "asc" };
-      return { column, direction: current.direction === "asc" ? "desc" : "asc" };
-    });
+    const nextSort: InsertionOrderSortState =
+      sort?.column === column
+        ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
+        : { column, direction: "asc" };
+    onSortChange(nextSort);
   }
 
   return (
@@ -296,7 +273,7 @@ export default function InsertionOrdersList({
               </TableCell>
             </TableRow>
           ) : (
-            sortedOrders.map((order) => (
+            orders.map((order) => (
               <TableRow
                 key={order.id}
                 className={`group cursor-pointer ${statusBorderClass(order.status)}`}

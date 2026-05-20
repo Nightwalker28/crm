@@ -1,6 +1,6 @@
 "use client";
 
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Inbox, KeyRound, Mail, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -38,6 +38,12 @@ type ImapForm = {
   smtpUsername: string;
   password: string;
 };
+type OAuthProvider = Extract<MailProvider, "google" | "microsoft">;
+type ProviderAction = {
+  label: string;
+  provider: OAuthProvider;
+  mode: "connect" | "reconnect" | "sync";
+};
 
 const emptyImapForm: ImapForm = {
   accountEmail: "",
@@ -68,6 +74,7 @@ export default function MailPage() {
   const [composeBody, setComposeBody] = useState("");
   const [imapFormOpen, setImapFormOpen] = useState(false);
   const [imapForm, setImapForm] = useState<ImapForm>(emptyImapForm);
+  const [connectingProvider, setConnectingProvider] = useState<OAuthProvider | null>(null);
   const deferredSearch = useDeferredValue(search);
 
   const contextQuery = useMailContext();
@@ -78,35 +85,61 @@ export default function MailPage() {
   const microsoftConnection = contextQuery.data?.connections.find((connection) => connection.provider === "microsoft");
   const imapSmtpConnection = contextQuery.data?.connections.find((connection) => connection.provider === "imap_smtp");
   const hasSendProvider = Boolean(googleConnection?.can_send || microsoftConnection?.can_send || imapSmtpConnection?.can_send);
+  const mailConnectStatus = searchParams.get("mailConnect");
+  const defaultComposeProvider = useMemo<MailProvider>(() => {
+    if (googleConnection?.can_send) return "google";
+    if (microsoftConnection?.can_send) return "microsoft";
+    return "imap_smtp";
+  }, [googleConnection?.can_send, microsoftConnection?.can_send]);
+  const googleAction = useMemo<ProviderAction>(() => {
+    if (googleConnection?.can_sync) return { provider: "google", mode: "sync", label: "Sync Gmail" };
+    if (googleConnection?.status === "connected") return { provider: "google", mode: "reconnect", label: "Reconnect Gmail" };
+    return { provider: "google", mode: "connect", label: "Connect Gmail" };
+  }, [googleConnection?.can_sync, googleConnection?.status]);
+  const microsoftAction = useMemo<ProviderAction>(() => {
+    if (microsoftConnection?.can_sync) return { provider: "microsoft", mode: "sync", label: "Sync Microsoft" };
+    if (microsoftConnection?.status === "connected") return { provider: "microsoft", mode: "reconnect", label: "Reconnect Microsoft" };
+    return { provider: "microsoft", mode: "connect", label: "Connect Microsoft" };
+  }, [microsoftConnection?.can_sync, microsoftConnection?.status]);
 
   useEffect(() => {
-    const status = searchParams.get("mailConnect");
-    if (status === "connected") {
+    if (mailConnectStatus === "connected") {
       toast.success("Gmail inbox connected.");
       router.replace("/dashboard/mail");
     }
-    if (status === "error") {
+    if (mailConnectStatus === "error") {
       toast.error("Failed to connect Gmail inbox.");
       router.replace("/dashboard/mail");
     }
-  }, [router, searchParams]);
+  }, [mailConnectStatus, router]);
 
   async function handleConnectGoogle() {
+    setConnectingProvider("google");
     try {
       const result = await connectMail("google");
       window.location.href = result.auth_url;
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to start Gmail connection."));
+      setConnectingProvider(null);
     }
   }
 
   async function handleConnectMicrosoft() {
+    setConnectingProvider("microsoft");
     try {
       const result = await connectMail("microsoft");
       window.location.href = result.auth_url;
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to start Microsoft mailbox connection."));
+      setConnectingProvider(null);
     }
+  }
+
+  function handleProviderAction(action: ProviderAction) {
+    if (action.mode === "sync") {
+      return action.provider === "google" ? handleSyncGoogle() : handleSyncMicrosoft();
+    }
+    return action.provider === "google" ? handleConnectGoogle() : handleConnectMicrosoft();
   }
 
   async function handleSyncGoogle() {
@@ -192,7 +225,7 @@ export default function MailPage() {
       smtpHost: "smtp.gmail.com",
       smtpPort: "587",
       smtpSecurity: "starttls",
-      smtpUsername: current.smtpUsername || current.accountEmail.trim(),
+      smtpUsername: current.smtpUsername || current.imapUsername.trim() || current.accountEmail.trim(),
     }));
   }
 
@@ -222,15 +255,21 @@ export default function MailPage() {
 
   function toggleCompose() {
     if (!composeOpen) {
-      if (!googleConnection?.can_send && microsoftConnection?.can_send) {
-        setComposeProvider("microsoft");
-      } else if (!googleConnection?.can_send && !microsoftConnection?.can_send && imapSmtpConnection?.can_send) {
-        setComposeProvider("imap_smtp");
-      } else if (googleConnection?.can_send) {
-        setComposeProvider("google");
-      }
+      setComposeProvider(defaultComposeProvider);
     }
     setComposeOpen((current) => !current);
+  }
+
+  function renderProviderAction(action: ProviderAction) {
+    const isConnectingThisProvider = isConnectingMail && connectingProvider === action.provider;
+    const isBusy = action.mode === "sync" ? isSyncingMail : isConnectingMail;
+    const label = isConnectingThisProvider ? "Connecting..." : action.label;
+    return (
+      <Button type="button" variant="outline" onClick={() => void handleProviderAction(action)} disabled={isBusy}>
+        <RefreshCw className={"h-4 w-4 " + (isBusy ? "animate-spin" : "")} />
+        {label}
+      </Button>
+    );
   }
 
   return (
@@ -244,38 +283,8 @@ export default function MailPage() {
               <ShieldCheck className="h-4 w-4 text-neutral-500" />
               {contextQuery.data?.sync_available ? "Mailbox sync connected" : "Mailbox sync not connected"}
             </div>
-            {googleConnection?.can_sync ? (
-              <Button type="button" variant="outline" onClick={() => void handleSyncGoogle()} disabled={isSyncingMail}>
-                <RefreshCw className={"h-4 w-4 " + (isSyncingMail ? "animate-spin" : "")} />
-                Sync Gmail
-              </Button>
-            ) : googleConnection?.status === "connected" ? (
-              <Button type="button" variant="outline" onClick={() => void handleConnectGoogle()} disabled={isConnectingMail}>
-                <RefreshCw className={"h-4 w-4 " + (isConnectingMail ? "animate-spin" : "")} />
-                {isConnectingMail ? "Connecting..." : "Reconnect Gmail"}
-              </Button>
-            ) : (
-              <Button type="button" variant="outline" onClick={() => void handleConnectGoogle()} disabled={isConnectingMail}>
-                <RefreshCw className={"h-4 w-4 " + (isConnectingMail ? "animate-spin" : "")} />
-                {isConnectingMail ? "Connecting..." : "Connect Gmail"}
-              </Button>
-            )}
-            {microsoftConnection?.can_sync ? (
-              <Button type="button" variant="outline" onClick={() => void handleSyncMicrosoft()} disabled={isSyncingMail}>
-                <RefreshCw className={"h-4 w-4 " + (isSyncingMail ? "animate-spin" : "")} />
-                Sync Microsoft
-              </Button>
-            ) : microsoftConnection?.status === "connected" ? (
-              <Button type="button" variant="outline" onClick={() => void handleConnectMicrosoft()} disabled={isConnectingMail}>
-                <RefreshCw className={"h-4 w-4 " + (isConnectingMail ? "animate-spin" : "")} />
-                {isConnectingMail ? "Connecting..." : "Reconnect Microsoft"}
-              </Button>
-            ) : (
-              <Button type="button" variant="outline" onClick={() => void handleConnectMicrosoft()} disabled={isConnectingMail}>
-                <RefreshCw className={"h-4 w-4 " + (isConnectingMail ? "animate-spin" : "")} />
-                {isConnectingMail ? "Connecting..." : "Connect Microsoft"}
-              </Button>
-            )}
+            {renderProviderAction(googleAction)}
+            {renderProviderAction(microsoftAction)}
             {imapSmtpConnection?.can_sync ? (
               <>
                 <Button type="button" variant="outline" onClick={() => void handleSyncImapSmtp()} disabled={isSyncingMail}>

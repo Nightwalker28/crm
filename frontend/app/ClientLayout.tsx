@@ -8,10 +8,7 @@ type ClientLayoutProps = {
   children: ReactNode;
 };
 
-const MIN_SPLASH_TIME = 3000; // milliseconds
-
-// set this to false when you are done designing the splash
-const DEV_ALWAYS_SHOW_SPLASH = false;
+const MIN_SPLASH_TIME = 800;
 
 export default function ClientLayout(props: ClientLayoutProps) {
   const { children } = props;
@@ -27,7 +24,7 @@ export default function ClientLayout(props: ClientLayoutProps) {
   useEffect(() => {
     let timeoutId: number | undefined;
 
-    if (!DEV_ALWAYS_SHOW_SPLASH && !authLoading) {
+    if (!authLoading) {
       const elapsed = Date.now() - mountedAt;
       const remaining = Math.max(MIN_SPLASH_TIME - elapsed, 0);
 
@@ -42,14 +39,6 @@ export default function ClientLayout(props: ClientLayoutProps) {
       }
     };
   }, [authLoading, mountedAt]);
-
-  if (DEV_ALWAYS_SHOW_SPLASH) {
-    return (
-      <div className="relative min-h-screen">
-        <LynkSplash />
-      </div>
-    );
-  }
 
   return (
     <div className="relative min-h-screen">

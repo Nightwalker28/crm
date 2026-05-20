@@ -182,6 +182,8 @@ def create_calendar_event_from_task_route(
     task_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    # Creating from a task intentionally requires calendar create access plus
+    # task view access because the route reads task details before creating an event.
     require_calendar_module=Depends(require_module_access("calendar")),
     require_calendar_permission=Depends(require_action_access("calendar", "create")),
     require_task_module=Depends(require_module_access("tasks")),

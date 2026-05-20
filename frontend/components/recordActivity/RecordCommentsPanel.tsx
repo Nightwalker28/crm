@@ -11,17 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
-
-type CommentItem = {
-  id: number;
-  actor_user_id?: number | null;
-  module_key: string;
-  entity_id: string;
-  body: string;
-  author_name: string;
-  created_at: string;
-  updated_at: string;
-};
+import type { CommentItem, RecordModuleKey } from "@/types/record-activity";
 
 type CommentsResponse = {
   results: CommentItem[];
@@ -38,7 +28,7 @@ type MentionableUsersResponse = {
 };
 
 type Props = {
-  moduleKey: "sales_contacts" | "sales_organizations" | "sales_opportunities";
+  moduleKey: RecordModuleKey;
   entityId: string | number;
   title?: string;
   description?: string;
@@ -113,7 +103,7 @@ export default function RecordCommentsPanel({
       return;
     }
     const prefix = value.slice(0, cursorPosition);
-    const match = /(^|\s)@([^\s@]*)$/.exec(prefix);
+    const match = /(^|[\s([{])@([^\s@]*)$/.exec(prefix);
     if (!match) {
       setMentionStart(null);
       setMentionQuery(null);

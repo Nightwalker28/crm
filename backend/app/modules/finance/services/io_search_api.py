@@ -66,6 +66,7 @@ INSERTION_ORDER_EXPORT_HEADERS = [
     "notes",
     "updated_at",
 ]
+INSERTION_ORDER_IMPORT_CHUNK_SIZE = 500
 
 
 def _serialize_insertion_order_export_row(record: FinanceIO) -> dict:
@@ -321,6 +322,7 @@ def _create_imported_insertion_order(
     payload: dict[str, Any],
     contact: SalesContact | None,
     organization: SalesOrganization | None,
+    commit: bool = True,
 ) -> FinanceIO:
     requested_io_number = _normalize_text(payload.get("io_number"))
     if requested_io_number:
@@ -359,13 +361,117 @@ def _create_imported_insertion_order(
         notes=_normalize_text(payload.get("notes")),
     )
     db.add(record)
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise ValueError("Insertion order number already exists") from exc
+    if commit:
+        try:
+            db.commit()
+        except IntegrityError as exc:
+            db.rollback()
+            raise ValueError("Insertion order number already exists") from exc
+    else:
+        try:
+            db.flush()
+        except IntegrityError as exc:
+            raise ValueError("Insertion order number already exists") from exc
     db.refresh(record)
     return record
+
+
+def _process_insertion_order_import_chunk(
+    db: Session,
+    current_user,
+    *,
+    module_id: int,
+    prepared_rows: list[dict[str, Any]],
+    mode: DuplicateMode,
+    failures: list[dict[str, str | int | None]],
+) -> dict[str, int]:
+    new_rows = overwritten_rows = merged_rows = skipped_rows = 0
+    create_rows = [
+        item
+        for item in prepared_rows
+        if not item["existing"]
+    ]
+    contacts_by_row, orgs_by_row, resolution_failures = _bulk_resolve_import_customers(
+        db,
+        current_user,
+        create_rows,
+    )
+    for item in create_rows:
+        row_number = item["row_number"]
+        if row_number in resolution_failures:
+            row = item["row"]
+            logger.warning("Insertion order import failed on row %s: %s", row_number, resolution_failures[row_number])
+            failures.append(
+                {
+                    "row_number": row_number,
+                    "record_identifier": item["row_io_number"] or (row.get("customer_name") or "").strip() or None,
+                    "reason": resolution_failures[row_number],
+                }
+            )
+
+    for item in prepared_rows:
+        index = item["row_number"]
+        row = item["row"]
+        row_io_number = item["row_io_number"]
+        payload = item["payload"]
+        existing = item["existing"]
+        try:
+            with db.begin_nested():
+                if existing and mode == DuplicateMode.skip:
+                    skipped_rows += 1
+                    continue
+                if existing and mode == DuplicateMode.overwrite:
+                    update_insertion_order(db, record=existing, current_user=current_user, data=payload, commit=False)
+                    overwritten_rows += 1
+                    continue
+                if existing and mode == DuplicateMode.merge:
+                    merge_payload = {
+                        field: value
+                        for field, value in payload.items()
+                        if should_merge_value(getattr(existing, field, None), value)
+                    }
+                    if merge_payload:
+                        update_insertion_order(db, record=existing, current_user=current_user, data=merge_payload, commit=False)
+                    merged_rows += 1
+                    continue
+                if index in resolution_failures:
+                    continue
+                _create_imported_insertion_order(
+                    db,
+                    current_user,
+                    module_id=module_id,
+                    payload=payload,
+                    contact=contacts_by_row.get(index),
+                    organization=orgs_by_row.get(index),
+                    commit=False,
+                )
+                new_rows += 1
+        except Exception as exc:
+            db.expire_all()
+            logger.warning("Insertion order import failed on row %s: %s", index, exc)
+            failures.append(
+                {
+                    "row_number": index,
+                    "record_identifier": row_io_number or (row.get("customer_name") or "").strip() or None,
+                    "reason": str(exc),
+                }
+            )
+
+    db.commit()
+
+    return {
+        "new_rows": new_rows,
+        "overwritten_rows": overwritten_rows,
+        "merged_rows": merged_rows,
+        "skipped_rows": skipped_rows,
+    }
+
+
+def _add_import_chunk_counts(target: dict[str, int], chunk_summary: dict[str, int]) -> None:
+    target["new_rows"] += chunk_summary["new_rows"]
+    target["overwritten_rows"] += chunk_summary["overwritten_rows"]
+    target["merged_rows"] += chunk_summary["merged_rows"]
+    target["skipped_rows"] += chunk_summary["skipped_rows"]
 
 
 def _resolve_io_download_path(record: FinanceIO) -> Path:
@@ -423,7 +529,6 @@ def import_insertion_orders_csv_bytes(
     import_io_numbers: list[str] = []
     total_rows = 0
     failures: list[dict[str, str | int | None]] = []
-    valid_rows: list[tuple[int, dict[str, str | None]]] = []
     for index, row in enumerate(row_iter, start=2):
         total_rows += 1
         if not (row.get("customer_name") or "").strip():
@@ -438,7 +543,6 @@ def import_insertion_orders_csv_bytes(
         io_number = (row.get("io_number") or "").strip()
         if io_number:
             import_io_numbers.append(io_number)
-        valid_rows.append((index, row))
 
     existing_by_io_number = {
         row.io_number: row
@@ -468,12 +572,20 @@ def import_insertion_orders_csv_bytes(
             },
         )
 
-    new_rows = overwritten_rows = merged_rows = skipped_rows = 0
+    summary_counts = {
+        "new_rows": 0,
+        "overwritten_rows": 0,
+        "merged_rows": 0,
+        "skipped_rows": 0,
+    }
     prepared_rows: list[dict[str, Any]] = []
 
-    for index, row in valid_rows:
+    _, row_iter = iter_csv_rows_from_bytes(file_bytes)
+    for index, row in enumerate(row_iter, start=2):
+        if not (row.get("customer_name") or "").strip():
+            continue
+        row_io_number = (row.get("io_number") or "").strip() or None
         try:
-            row_io_number = (row.get("io_number") or "").strip() or None
             payload = _build_import_payload(row)
             existing = existing_by_io_number.get(row_io_number) if row_io_number else None
             prepared_rows.append(
@@ -494,81 +606,38 @@ def import_insertion_orders_csv_bytes(
                     "reason": str(exc),
                 }
             )
+            continue
 
-    create_rows = [
-        item
-        for item in prepared_rows
-        if not item["existing"]
-    ]
-    contacts_by_row, orgs_by_row, resolution_failures = _bulk_resolve_import_customers(
-        db,
-        current_user,
-        create_rows,
-    )
-    for item in create_rows:
-        row_number = item["row_number"]
-        if row_number in resolution_failures:
-            row = item["row"]
-            logger.warning("Insertion order import failed on row %s: %s", row_number, resolution_failures[row_number])
-            failures.append(
-                {
-                    "row_number": row_number,
-                    "record_identifier": item["row_io_number"] or (row.get("customer_name") or "").strip() or None,
-                    "reason": resolution_failures[row_number],
-                }
-            )
+        if len(prepared_rows) < INSERTION_ORDER_IMPORT_CHUNK_SIZE:
+            continue
+        chunk_summary = _process_insertion_order_import_chunk(
+            db,
+            current_user,
+            module_id=module_id,
+            prepared_rows=prepared_rows,
+            mode=mode,
+            failures=failures,
+        )
+        _add_import_chunk_counts(summary_counts, chunk_summary)
+        prepared_rows = []
 
-    for item in prepared_rows:
-        index = item["row_number"]
-        row = item["row"]
-        row_io_number = item["row_io_number"]
-        payload = item["payload"]
-        existing = item["existing"]
-        try:
-            if existing and mode == DuplicateMode.skip:
-                skipped_rows += 1
-                continue
-            if existing and mode == DuplicateMode.overwrite:
-                update_insertion_order(db, record=existing, current_user=current_user, data=payload)
-                overwritten_rows += 1
-                continue
-            if existing and mode == DuplicateMode.merge:
-                merge_payload = {
-                    field: value
-                    for field, value in payload.items()
-                    if should_merge_value(getattr(existing, field, None), value)
-                }
-                if merge_payload:
-                    update_insertion_order(db, record=existing, current_user=current_user, data=merge_payload)
-                merged_rows += 1
-                continue
-            if index in resolution_failures:
-                continue
-            _create_imported_insertion_order(
-                db,
-                current_user,
-                module_id=module_id,
-                payload=payload,
-                contact=contacts_by_row.get(index),
-                organization=orgs_by_row.get(index),
-            )
-            new_rows += 1
-        except Exception as exc:
-            logger.warning("Insertion order import failed on row %s: %s", index, exc)
-            failures.append(
-                {
-                    "row_number": index,
-                    "record_identifier": row_io_number or (row.get("customer_name") or "").strip() or None,
-                    "reason": str(exc),
-                }
-            )
+    if prepared_rows:
+        chunk_summary = _process_insertion_order_import_chunk(
+            db,
+            current_user,
+            module_id=module_id,
+            prepared_rows=prepared_rows,
+            mode=mode,
+            failures=failures,
+        )
+        _add_import_chunk_counts(summary_counts, chunk_summary)
 
     return build_import_summary(
         total_rows=total_rows,
-        new_rows=new_rows,
-        skipped_rows=skipped_rows,
-        overwritten_rows=overwritten_rows,
-        merged_rows=merged_rows,
+        new_rows=summary_counts["new_rows"],
+        skipped_rows=summary_counts["skipped_rows"],
+        overwritten_rows=summary_counts["overwritten_rows"],
+        merged_rows=summary_counts["merged_rows"],
         failures=failures,
     )
 
@@ -652,6 +721,8 @@ def list_generic_insertion_orders_page(
     status_filter: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ):
     module_id = get_finance_module_id(db)
     user_scope = get_finance_user_scope(db, current_user)
@@ -665,6 +736,8 @@ def list_generic_insertion_orders_page(
         status_filter=status_filter,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     return build_paged_response(
         [_serialize_finance_record_response(record, request=request, current_user=current_user) for record in records],

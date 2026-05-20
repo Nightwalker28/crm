@@ -42,12 +42,8 @@ function formatIso(date: Date) {
   return date.toISOString();
 }
 
-function buildDayStart(day: Date) {
-  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), 9, 0, 0, 0).toISOString();
-}
-
-function buildDayEnd(day: Date) {
-  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), 10, 0, 0, 0).toISOString();
+function buildDayTime(day: Date, hour: number) {
+  return new Date(day.getFullYear(), day.getMonth(), day.getDate(), hour, 0, 0, 0).toISOString();
 }
 
 function sameDay(a: Date, b: Date) {
@@ -77,8 +73,8 @@ export default function CalendarPage() {
   const [selectedDay, setSelectedDay] = useState(() => new Date());
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
-  const [draftStartAt, setDraftStartAt] = useState(() => buildDayStart(new Date()));
-  const [draftEndAt, setDraftEndAt] = useState(() => buildDayEnd(new Date()));
+  const [draftStartAt, setDraftStartAt] = useState(() => buildDayTime(new Date(), 9));
+  const [draftEndAt, setDraftEndAt] = useState(() => buildDayTime(new Date(), 10));
   const [syncJobId, setSyncJobId] = useState<number | null>(null);
 
   const contextQuery = useCalendarContext();
@@ -158,8 +154,8 @@ export default function CalendarPage() {
 
   function openCreateDialog(day: Date) {
     setSelectedEvent(null);
-    setDraftStartAt(buildDayStart(day));
-    setDraftEndAt(buildDayEnd(day));
+    setDraftStartAt(buildDayTime(day, 9));
+    setDraftEndAt(buildDayTime(day, 10));
     setDialogOpen(true);
     router.replace("/dashboard/calendar");
   }

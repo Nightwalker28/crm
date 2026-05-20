@@ -29,9 +29,16 @@ export const OPERATOR_LABELS: Record<SavedViewFilterOperator, string> = {
   is_not_empty: "is not empty",
 };
 
+function createConditionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `condition-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function buildCondition(): SavedViewCondition {
   return {
-    id: crypto.randomUUID(),
+    id: createConditionId(),
     field: "",
     operator: "is",
     value: "",

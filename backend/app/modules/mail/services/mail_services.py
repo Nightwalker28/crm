@@ -715,6 +715,14 @@ def _mail_header_recipients(emails: list[str]) -> str:
     return ", ".join(emails)
 
 
+def _apply_email_message_recipients(message: EmailMessage, payload: dict) -> None:
+    message["To"] = _mail_header_recipients(payload["to"])
+    if payload.get("cc"):
+        message["Cc"] = _mail_header_recipients(payload["cc"])
+    if payload.get("bcc"):
+        message["Bcc"] = _mail_header_recipients(payload["bcc"])
+
+
 def _microsoft_recipients(emails: list[str]) -> list[dict]:
     return [{"emailAddress": {"address": value}} for value in emails]
 
@@ -792,11 +800,7 @@ def _send_gmail_message(
     token = _refresh_google_mail_token(db, connection)
     message = EmailMessage()
     message["From"] = sender_email
-    message["To"] = _mail_header_recipients(payload["to"])
-    if payload.get("cc"):
-        message["Cc"] = _mail_header_recipients(payload["cc"])
-    if payload.get("bcc"):
-        message["Bcc"] = _mail_header_recipients(payload["bcc"])
+    _apply_email_message_recipients(message, payload)
     message["Subject"] = payload.get("subject") or ""
     message.set_content(payload.get("body_text") or "")
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
@@ -871,11 +875,7 @@ def _send_imap_smtp_message(*, db: Session, connection: UserMailConnection, payl
     message = EmailMessage()
     message_id = make_msgid()
     message["From"] = sender_email
-    message["To"] = _mail_header_recipients(payload["to"])
-    if payload.get("cc"):
-        message["Cc"] = _mail_header_recipients(payload["cc"])
-    if payload.get("bcc"):
-        message["Bcc"] = _mail_header_recipients(payload["bcc"])
+    _apply_email_message_recipients(message, payload)
     message["Subject"] = payload.get("subject") or ""
     message["Message-ID"] = message_id
     message.set_content(payload.get("body_text") or "")

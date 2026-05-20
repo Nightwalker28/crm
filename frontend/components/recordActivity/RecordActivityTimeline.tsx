@@ -6,24 +6,14 @@ import { ClipboardList } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
-
-type ActivityItem = {
-  id: number;
-  actor_user_id?: number | null;
-  module_key: string;
-  entity_type: string;
-  entity_id: string;
-  action: string;
-  description?: string | null;
-  created_at: string;
-};
+import type { ActivityItem, RecordModuleKey } from "@/types/record-activity";
 
 type ActivityResponse = {
   results: ActivityItem[];
 };
 
 type Props = {
-  moduleKey: "sales_contacts" | "sales_organizations" | "sales_opportunities";
+  moduleKey: RecordModuleKey;
   entityId: string | number;
   title?: string;
   description?: string;

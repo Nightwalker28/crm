@@ -78,11 +78,11 @@ export default function GlobalCommandPalette() {
     if (!open) {
       return;
     }
-    const frame = window.requestAnimationFrame(() => {
+    const focusTimer = window.setTimeout(() => {
       inputRef.current?.focus();
       inputRef.current?.select();
-    });
-    return () => window.cancelAnimationFrame(frame);
+    }, 80);
+    return () => window.clearTimeout(focusTimer);
   }, [open]);
 
   const searchQuery = useQuery({

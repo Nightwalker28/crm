@@ -331,7 +331,6 @@ def get_calendar_event_or_404(
     tenant_id: int,
     current_user,
     include_deleted: bool = False,
-    bypass_visibility: bool = False,
 ) -> CalendarEvent:
     query = (
         db.query(CalendarEvent)
@@ -350,17 +349,13 @@ def get_calendar_event_or_404(
     else:
         query = query.filter(CalendarEvent.deleted_at.is_(None))
 
-    event = None
-    if bypass_visibility:
-        event = query.first()
-    else:
-        visibility_filters = [
-            CalendarEvent.owner_user_id == current_user.id,
-            CalendarEvent.participants.any(CalendarEventParticipant.user_id == current_user.id),
-        ]
-        if getattr(current_user, "team_id", None):
-            visibility_filters.append(CalendarEvent.participants.any(CalendarEventParticipant.team_id == current_user.team_id))
-        event = query.filter(or_(*visibility_filters)).first()
+    visibility_filters = [
+        CalendarEvent.owner_user_id == current_user.id,
+        CalendarEvent.participants.any(CalendarEventParticipant.user_id == current_user.id),
+    ]
+    if getattr(current_user, "team_id", None):
+        visibility_filters.append(CalendarEvent.participants.any(CalendarEventParticipant.team_id == current_user.team_id))
+    event = query.filter(or_(*visibility_filters)).first()
     if not event:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
     return event

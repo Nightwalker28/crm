@@ -9,7 +9,7 @@ import { ArrowLeft, Printer } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/media";
-import { fetchPosInvoice, type PosInvoice } from "@/hooks/finance/usePosInvoices";
+import { fetchPosInvoice } from "@/hooks/finance/usePosInvoices";
 
 type CompanyProfile = {
   name?: string | null;

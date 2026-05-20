@@ -7,6 +7,8 @@ import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList } from "@/hooks/usePagedList";
 
+export type InsertionOrderSortDirection = "asc" | "desc";
+export type InsertionOrderSortState = { column: string; direction: InsertionOrderSortDirection } | null;
 export type InsertionOrderStatus = "draft" | "issued" | "active" | "completed" | "cancelled" | "imported";
 
 export type InsertionOrder = {
@@ -85,6 +87,7 @@ async function fetchInsertionOrders(
   pageSize: number,
   filters: SavedViewFilters,
   visibleColumns: string[],
+  sort: InsertionOrderSortState,
 ): Promise<InsertionOrdersResponse> {
   const params = new URLSearchParams({
     page: String(page),
@@ -99,6 +102,10 @@ async function fetchInsertionOrders(
   const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
   if (baseVisibleColumns.length) {
     params.set("fields", baseVisibleColumns.join(","));
+  }
+  if (sort) {
+    params.set("sort_by", sort.column);
+    params.set("sort_direction", sort.direction);
   }
 
   const res = await apiFetch(`/finance/insertion-orders?${params.toString()}`);
@@ -169,11 +176,12 @@ function getErrorMessage(error: unknown) {
 export function useInsertionOrders(
   visibleColumns: string[],
   viewFilters: SavedViewFilters,
+  sort: InsertionOrderSortState = null,
 ) {
   const queryClient = useQueryClient();
   const paged = usePagedList<InsertionOrder, InsertionOrdersResponse>({
-    queryKey: ["insertion-orders"],
-    fetcher: fetchInsertionOrders,
+    queryKey: ["insertion-orders", sort],
+    fetcher: (page, pageSize, filters, columns) => fetchInsertionOrders(page, pageSize, filters, columns, sort),
     visibleColumns,
     filters: viewFilters,
     initialPage: 1,

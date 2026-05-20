@@ -582,8 +582,6 @@ def parse_human_date(value: str) -> datetime.date | None:
     except ValueError:
         return None
 
-    return None
-
 
 def list_insertion_orders(
     db: Session,
@@ -596,6 +594,8 @@ def list_insertion_orders(
     status_filter: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[list[FinanceIO], int]:
     query = _build_insertion_orders_query(
         db,
@@ -609,6 +609,7 @@ def list_insertion_orders(
     )
 
     total_count = query.count()
+    query = apply_insertion_order_sort(query, sort_by=sort_by, sort_direction=sort_direction)
     records = query.offset(pagination.offset).limit(pagination.limit).all()
     records = hydrate_custom_field_records(
         db,
@@ -618,6 +619,26 @@ def list_insertion_orders(
         record_id_attr="id",
     )
     return records, total_count
+
+
+INSERTION_ORDER_SORT_FIELDS = {
+    "io_number": FinanceIO.io_number,
+    "customer_name": FinanceIO.customer_name,
+    "status": FinanceIO.status,
+    "total_amount": FinanceIO.total_amount,
+    "issue_date": FinanceIO.issue_date,
+    "due_date": FinanceIO.due_date,
+    "updated_at": FinanceIO.updated_at,
+}
+
+
+def apply_insertion_order_sort(query, *, sort_by: str | None = None, sort_direction: str | None = None):
+    sort_column = INSERTION_ORDER_SORT_FIELDS.get((sort_by or "").strip())
+    if sort_column is None:
+        return query
+    direction = (sort_direction or "asc").strip().lower()
+    ordered = sort_column.desc() if direction == "desc" else sort_column.asc()
+    return query.order_by(None).order_by(ordered.nullslast(), FinanceIO.id.desc())
 
 
 def _build_insertion_orders_query(
@@ -833,6 +854,7 @@ def update_insertion_order(
     record: FinanceIO,
     current_user=None,
     data: dict[str, Any],
+    commit: bool = True,
 ) -> FinanceIO:
     custom_data_to_save: dict[str, Any] | None = None
     if "custom_fields" in data:
@@ -922,7 +944,10 @@ def update_insertion_order(
         record.file_name = record.external_reference
 
     db.add(record)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     db.refresh(record)
     if custom_data_to_save is not None:
         save_custom_field_values(
@@ -932,7 +957,10 @@ def update_insertion_order(
             record_id=record.id,
             values=custom_data_to_save,
         )
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
     return hydrate_custom_field_record(
         db,
         tenant_id=record.tenant_id,

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
@@ -11,13 +11,12 @@ import InsertionOrdersHeader from "../../../../components/finance/InsertionOrder
 import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
-import type { InsertionOrder, InsertionOrderPayload } from "@/hooks/finance/useInsertionOrders";
+import type { InsertionOrder, InsertionOrderPayload, InsertionOrderSortState } from "@/hooks/finance/useInsertionOrders";
 import { Button } from "@/components/ui/button";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
-import { useMemo } from "react";
 
 export default function InsertionOrdersPage() {
   const router = useRouter();
@@ -40,6 +39,16 @@ export default function InsertionOrdersPage() {
   );
   const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : MODULE_VIEW_DEFAULTS.finance_io.visible_columns;
   const statusFilter = typeof draftConfig.filters?.status === "string" ? draftConfig.filters.status : "all";
+  const sort = useMemo<InsertionOrderSortState>(() => {
+    if (
+      draftConfig.sort &&
+      typeof draftConfig.sort.column === "string" &&
+      (draftConfig.sort.direction === "asc" || draftConfig.sort.direction === "desc")
+    ) {
+      return { column: draftConfig.sort.column, direction: draftConfig.sort.direction };
+    }
+    return null;
+  }, [draftConfig.sort]);
   const {
     orders,
     page,
@@ -58,7 +67,7 @@ export default function InsertionOrdersPage() {
     updateOrder,
     isSaving,
     isDeleting,
-  } = useInsertionOrders(visibleColumns, draftConfig.filters);
+  } = useInsertionOrders(visibleColumns, draftConfig.filters, sort);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const currentPageIds = useMemo(() => orders.map((order) => order.id), [orders]);
   const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
@@ -82,6 +91,13 @@ export default function InsertionOrdersPage() {
       }
       return current.filter((id) => !currentPageIds.includes(id));
     });
+  }
+
+  function handleSortChange(nextSort: InsertionOrderSortState) {
+    setDraftConfig((current) => ({
+      ...current,
+      sort: nextSort,
+    }));
   }
 
   const handleCreateClick = () => {
@@ -191,6 +207,8 @@ export default function InsertionOrdersPage() {
           currentPageSelectionState={currentPageSelectionState}
           onToggleRow={toggleRow}
           onToggleCurrentPage={toggleCurrentPage}
+          sort={sort}
+          onSortChange={handleSortChange}
         />
 
         <Pagination

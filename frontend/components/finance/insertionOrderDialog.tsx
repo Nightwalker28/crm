@@ -245,7 +245,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                     onBlur={() => {
                       window.setTimeout(() => {
                         setIsCustomerDropdownOpen(false);
-                      }, 120);
+                      }, 180);
                     }}
                     onChange={(event) =>
                       setForm((current) => ({
