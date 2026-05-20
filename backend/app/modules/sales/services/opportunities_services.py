@@ -22,6 +22,7 @@ from app.modules.platform.services.custom_fields import (
     validate_custom_field_payload,
 )
 from app.modules.sales.models import SalesOpportunity, SalesContact, SalesOrganization
+from app.modules.sales.repositories import opportunities_repository
 from app.modules.user_management.services.profile import get_company_operating_currencies
 from app.modules.user_management.models import User
 
@@ -98,51 +99,24 @@ def _serialize_attachment_paths(value: str | list[str] | None) -> str | None:
 
 
 def _ensure_user(db: Session, user_id: int, *, tenant_id: int):
-    exists = db.query(User.id).filter(User.id == user_id, User.tenant_id == tenant_id).first()
-    if not exists:
+    if not opportunities_repository.user_exists(db, user_id=user_id, tenant_id=tenant_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assigned user not found")
 
 
 def _ensure_contact(db: Session, contact_id: int, *, tenant_id: int):
-    exists = (
-        db.query(SalesContact.contact_id)
-        .filter(
-            SalesContact.contact_id == contact_id,
-            SalesContact.tenant_id == tenant_id,
-            SalesContact.deleted_at.is_(None),
-        )
-        .first()
-    )
-    if not exists:
+    if not opportunities_repository.get_contact(db, contact_id=contact_id, tenant_id=tenant_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact not found")
 
 
 def _get_contact_or_404(db: Session, contact_id: int, *, tenant_id: int) -> SalesContact:
-    contact = (
-        db.query(SalesContact)
-        .filter(
-            SalesContact.contact_id == contact_id,
-            SalesContact.tenant_id == tenant_id,
-            SalesContact.deleted_at.is_(None),
-        )
-        .first()
-    )
+    contact = opportunities_repository.get_contact(db, contact_id=contact_id, tenant_id=tenant_id)
     if not contact:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact not found")
     return contact
 
 
 def _ensure_organization(db: Session, organization_id: int, *, tenant_id: int):
-    exists = (
-        db.query(SalesOrganization.org_id)
-        .filter(
-            SalesOrganization.org_id == organization_id,
-            SalesOrganization.tenant_id == tenant_id,
-            SalesOrganization.deleted_at.is_(None),
-        )
-        .first()
-    )
-    if not exists:
+    if not opportunities_repository.organization_exists(db, organization_id=organization_id, tenant_id=tenant_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not found")
 
 
@@ -215,16 +189,12 @@ def list_all_opportunities(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> list[SalesOpportunity]:
-    return (
-        _build_opportunity_query(
-            db,
-            tenant_id,
-            search,
-            all_filter_conditions=all_filter_conditions,
-            any_filter_conditions=any_filter_conditions,
-        )
-        .order_by(SalesOpportunity.created_time.desc())
-        .all()
+    return opportunities_repository.list_all(
+        db,
+        tenant_id=tenant_id,
+        search=search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
     )
 
 
@@ -290,15 +260,14 @@ def list_opportunities(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[SalesOpportunity], int]:
-    query = _build_opportunity_query(
+    items, total_count = opportunities_repository.list_paginated(
         db,
-        tenant_id,
-        search,
+        tenant_id=tenant_id,
+        pagination=pagination,
+        search=search,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
     )
-    total_count = query.count()
-    items = query.offset(pagination.offset).limit(pagination.limit).all()
     items = hydrate_custom_field_records(
         db,
         tenant_id=tenant_id,
@@ -317,10 +286,10 @@ def summarize_opportunity_pipeline(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> dict:
-    query = _build_opportunity_query(
+    query = opportunities_repository.build_opportunity_query(
         db,
-        tenant_id,
-        search,
+        tenant_id=tenant_id,
+        search=search,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
     )
@@ -364,17 +333,7 @@ def list_deleted_opportunities(
     tenant_id: int,
     pagination: Pagination,
 ) -> tuple[list[SalesOpportunity], int]:
-    query = db.query(SalesOpportunity).filter(
-        SalesOpportunity.tenant_id == tenant_id,
-        SalesOpportunity.deleted_at.is_not(None),
-    )
-    total_count = query.count()
-    items = (
-        query.order_by(SalesOpportunity.deleted_at.desc(), SalesOpportunity.created_time.desc())
-        .offset(pagination.offset)
-        .limit(pagination.limit)
-        .all()
-    )
+    items, total_count = opportunities_repository.list_deleted(db, tenant_id=tenant_id, pagination=pagination)
     items = hydrate_custom_field_records(
         db,
         tenant_id=tenant_id,
@@ -392,14 +351,11 @@ def get_opportunity_or_404(
     tenant_id: int,
     include_deleted: bool = False,
 ) -> SalesOpportunity:
-    opportunity = (
-        db.query(SalesOpportunity)
-        .filter(
-            SalesOpportunity.opportunity_id == opportunity_id,
-            SalesOpportunity.tenant_id == tenant_id,
-        )
-        .filter(SalesOpportunity.deleted_at.is_not(None) if include_deleted else SalesOpportunity.deleted_at.is_(None))
-        .first()
+    opportunity = opportunities_repository.get_opportunity(
+        db,
+        tenant_id=tenant_id,
+        opportunity_id=opportunity_id,
+        include_deleted=include_deleted,
     )
     if not opportunity:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found")
@@ -643,15 +599,11 @@ def import_opportunities_from_csv(
         rows.append((row_number, payload))
         names.append(opportunity_name)
 
-    existing_duplicates = {
-        row.opportunity_name
-        for row in db.query(SalesOpportunity.opportunity_name)
-        .filter(
-            SalesOpportunity.opportunity_name.in_(names),
-            SalesOpportunity.deleted_at.is_(None),
-        )
-        .distinct()
-    }
+    existing_duplicates = opportunities_repository.existing_names(
+        db,
+        tenant_id=current_user.tenant_id,
+        names=names,
+    )
     detection = detect_duplicates(names, existing_values=existing_duplicates)
     if existing_duplicates and duplicate_mode is None and not any((replace_duplicates, skip_duplicates, create_new_records)) and default_duplicate_mode is None:
         raise HTTPException(
@@ -668,15 +620,11 @@ def import_opportunities_from_csv(
             },
         )
 
-    existing_by_name = {
-        row.opportunity_name: row
-        for row in db.query(SalesOpportunity)
-        .filter(
-            SalesOpportunity.opportunity_name.in_(names),
-            SalesOpportunity.deleted_at.is_(None),
-        )
-        .all()
-    }
+    existing_by_name = opportunities_repository.active_by_name(
+        db,
+        tenant_id=current_user.tenant_id,
+        names=names,
+    )
 
     for row_number, payload in rows:
         existing = None if create_new_records else existing_by_name.get(payload["opportunity_name"])
@@ -685,7 +633,7 @@ def import_opportunities_from_csv(
                 skipped_rows += 1
                 continue
             if existing and mode == DuplicateMode.overwrite:
-                update_opportunity(db, existing, payload)
+                update_opportunity(db, existing, payload, current_user=current_user)
                 overwritten_rows += 1
                 continue
             if existing and mode == DuplicateMode.merge:
@@ -695,10 +643,10 @@ def import_opportunities_from_csv(
                     if should_merge_value(getattr(existing, field, None), value)
                 }
                 if merge_payload:
-                    update_opportunity(db, existing, merge_payload)
+                    update_opportunity(db, existing, merge_payload, current_user=current_user)
                 merged_rows += 1
                 continue
-            create_opportunity(db, payload)
+            create_opportunity(db, payload, current_user=current_user)
             new_rows += 1
         except HTTPException as exc:
             failures.append(

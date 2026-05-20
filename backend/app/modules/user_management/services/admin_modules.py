@@ -415,11 +415,7 @@ def is_module_enabled_for_tenant(db: Session, *, tenant_id: int, module: Module)
 def _module_belongs_to_tenant_or_global(db: Session, *, module: Module, tenant_id: int) -> bool:
     from app.modules.platform.models import CustomModuleDefinition
 
-    custom_definition = (
-        db.query(CustomModuleDefinition.tenant_id, CustomModuleDefinition.deleted_at)
-        .filter(CustomModuleDefinition.module_id == module.id)
-        .first()
-    )
+    custom_definition = db.query(CustomModuleDefinition).filter(CustomModuleDefinition.module_id == module.id).first()
     if custom_definition is None:
         return True
     return custom_definition.tenant_id == tenant_id and custom_definition.deleted_at is None

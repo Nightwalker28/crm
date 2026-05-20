@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.access_control import require_role_module_action_access
 from app.core.tenancy import get_frontend_origin_for_request, get_google_redirect_uri_for_request
 from app.modules.documents.models import Document, DocumentLink, DocumentStorageConnection
+from app.modules.documents.repositories import documents_repository
 from app.modules.documents.schema import DocumentResponse
 from app.modules.documents.services.storage_backends import get_document_storage_backend, supported_storage_providers
 from app.modules.platform.services.activity_logs import log_activity
@@ -497,58 +498,25 @@ def list_documents(
         else:
             get_record_reference(db, tenant_id=tenant_id, module_key=module_key, entity_id=entity_id)
 
-    query = (
-        db.query(Document)
-        .options(joinedload(Document.links))
-        .filter(Document.tenant_id == tenant_id, Document.deleted_at.is_(None))
+    return documents_repository.list_documents(
+        db,
+        tenant_id=tenant_id,
+        search=search,
+        module_key=module_key,
+        entity_id=entity_id,
+        limit=limit,
     )
-    if module_key and entity_id is not None:
-        query = query.join(DocumentLink).filter(
-            DocumentLink.tenant_id == tenant_id,
-            DocumentLink.module_key == module_key,
-            DocumentLink.entity_id == str(entity_id),
-        )
-    if search and search.strip():
-        pattern = f"%{search.strip()}%"
-        query = query.filter(
-            or_(
-                Document.title.ilike(pattern),
-                Document.original_filename.ilike(pattern),
-                Document.description.ilike(pattern),
-            )
-        )
-    total = query.count()
-    documents = query.order_by(Document.created_at.desc(), Document.id.desc()).limit(limit).all()
-    return documents, total
 
 
 def get_document_or_404(db: Session, *, tenant_id: int, document_id: int) -> Document:
-    document = (
-        db.query(Document)
-        .options(joinedload(Document.links))
-        .filter(
-            Document.id == document_id,
-            Document.tenant_id == tenant_id,
-            Document.deleted_at.is_(None),
-        )
-        .first()
-    )
+    document = documents_repository.get_document(db, tenant_id=tenant_id, document_id=document_id)
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
     return document
 
 
 def get_deleted_document_or_404(db: Session, *, tenant_id: int, document_id: int) -> Document:
-    document = (
-        db.query(Document)
-        .options(joinedload(Document.links))
-        .filter(
-            Document.id == document_id,
-            Document.tenant_id == tenant_id,
-            Document.deleted_at.is_not(None),
-        )
-        .first()
-    )
+    document = documents_repository.get_document(db, tenant_id=tenant_id, document_id=document_id, include_deleted=True)
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deleted document not found.")
     return document
@@ -661,14 +629,7 @@ async def create_document(
 
 
 def list_deleted_documents(db: Session, *, tenant_id: int, pagination) -> tuple[list[Document], int]:
-    query = (
-        db.query(Document)
-        .options(joinedload(Document.links))
-        .filter(Document.tenant_id == tenant_id, Document.deleted_at.is_not(None))
-    )
-    total = query.count()
-    items = query.order_by(Document.deleted_at.desc(), Document.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
-    return items, total
+    return documents_repository.list_deleted_documents(db, tenant_id=tenant_id, pagination=pagination)
 
 
 def soft_delete_document(db: Session, *, tenant_id: int, document_id: int, current_user=None) -> Document:

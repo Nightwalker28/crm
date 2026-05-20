@@ -8,11 +8,11 @@ from urllib.parse import quote
 
 import requests
 from fastapi import HTTPException, status
-from sqlalchemy import and_, or_
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.modules.calendar.models import CalendarEvent, CalendarEventParticipant, UserCalendarConnection
+from app.modules.calendar.repositories import calendar_repository
 from app.modules.calendar.schema import CalendarProvider
 from app.modules.platform.models import UserNotification
 from app.modules.tasks.services.tasks_services import get_task_or_404
@@ -82,14 +82,8 @@ def _normalize_participants(
             user_ids.add(_coerce_participant_id(item.get("user_id"), "User participant requires user_id"))
         if item.get("participant_type") == "team" and item.get("team_id"):
             team_ids.add(_coerce_participant_id(item.get("team_id"), "Team participant requires team_id"))
-    existing_user_ids = {
-        user_id
-        for (user_id,) in db.query(User.id).filter(User.tenant_id == tenant_id, User.id.in_(user_ids)).all()
-    } if user_ids else set()
-    existing_team_ids = {
-        team_id
-        for (team_id,) in db.query(Team.id).filter(Team.tenant_id == tenant_id, Team.id.in_(team_ids)).all()
-    } if team_ids else set()
+    existing_user_ids = calendar_repository.existing_participant_user_ids(db, tenant_id=tenant_id, user_ids=user_ids)
+    existing_team_ids = calendar_repository.existing_participant_team_ids(db, tenant_id=tenant_id, team_ids=team_ids)
 
     for item in participants_payload or []:
         participant_type = item.get("participant_type")
@@ -265,63 +259,11 @@ def list_calendar_events(
     start_at: datetime,
     end_at: datetime,
 ) -> list[CalendarEvent]:
-    query = (
-        db.query(CalendarEvent)
-        .options(
-            selectinload(CalendarEvent.owner),
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.user),
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.team),
-        )
-        .filter(
-            CalendarEvent.tenant_id == tenant_id,
-            CalendarEvent.deleted_at.is_(None),
-            CalendarEvent.start_at < end_at,
-            CalendarEvent.end_at > start_at,
-        )
-    )
-
-    query = query.outerjoin(CalendarEventParticipant, CalendarEventParticipant.event_id == CalendarEvent.id)
-    visibility_filters = [
-        CalendarEvent.owner_user_id == current_user.id,
-        and_(
-            CalendarEventParticipant.user_id == current_user.id,
-            CalendarEventParticipant.response_status != "declined",
-        ),
-    ]
-    if getattr(current_user, "team_id", None):
-        visibility_filters.append(
-            and_(
-                CalendarEventParticipant.team_id == current_user.team_id,
-                CalendarEventParticipant.response_status == "shared",
-            )
-        )
-
-    return (
-        query.filter(or_(*visibility_filters))
-        .distinct()
-        .order_by(CalendarEvent.start_at.asc(), CalendarEvent.id.asc())
-        .all()
-    )
+    return calendar_repository.list_calendar_events(db, tenant_id=tenant_id, current_user=current_user, start_at=start_at, end_at=end_at)
 
 
 def list_pending_invites(db: Session, *, tenant_id: int, current_user) -> list[CalendarEvent]:
-    return (
-        db.query(CalendarEvent)
-        .options(
-            selectinload(CalendarEvent.owner),
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.user),
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.team),
-        )
-        .join(CalendarEventParticipant, CalendarEventParticipant.event_id == CalendarEvent.id)
-        .filter(
-            CalendarEvent.tenant_id == tenant_id,
-            CalendarEvent.deleted_at.is_(None),
-            CalendarEventParticipant.user_id == current_user.id,
-            CalendarEventParticipant.response_status == "pending",
-        )
-        .order_by(CalendarEvent.start_at.asc(), CalendarEvent.id.asc())
-        .all()
-    )
+    return calendar_repository.list_pending_invites(db, tenant_id=tenant_id, current_user=current_user)
 
 
 def get_calendar_event_or_404(
@@ -332,30 +274,13 @@ def get_calendar_event_or_404(
     current_user,
     include_deleted: bool = False,
 ) -> CalendarEvent:
-    query = (
-        db.query(CalendarEvent)
-        .options(
-            selectinload(CalendarEvent.owner),
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.user),
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.team),
-        )
-        .filter(
-            CalendarEvent.id == event_id,
-            CalendarEvent.tenant_id == tenant_id,
-        )
+    event = calendar_repository.get_visible_calendar_event(
+        db,
+        event_id=event_id,
+        tenant_id=tenant_id,
+        current_user=current_user,
+        include_deleted=include_deleted,
     )
-    if include_deleted:
-        query = query.filter(CalendarEvent.deleted_at.is_not(None))
-    else:
-        query = query.filter(CalendarEvent.deleted_at.is_(None))
-
-    visibility_filters = [
-        CalendarEvent.owner_user_id == current_user.id,
-        CalendarEvent.participants.any(CalendarEventParticipant.user_id == current_user.id),
-    ]
-    if getattr(current_user, "team_id", None):
-        visibility_filters.append(CalendarEvent.participants.any(CalendarEventParticipant.team_id == current_user.team_id))
-    event = query.filter(or_(*visibility_filters)).first()
     if not event:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Calendar event not found")
     return event
@@ -368,19 +293,11 @@ def _google_connection_for_user(
     user_id: int,
     include_non_connected: bool = False,
 ) -> UserCalendarConnection | None:
-    query = (
-        db.query(UserCalendarConnection)
-        .filter(
-            UserCalendarConnection.tenant_id == tenant_id,
-            UserCalendarConnection.user_id == user_id,
-            UserCalendarConnection.provider == CalendarProvider.google.value,
-        )
-    )
-    if not include_non_connected:
-        query = query.filter(UserCalendarConnection.status == "connected")
-    return (
-        query.order_by(UserCalendarConnection.id.asc())
-        .first()
+    return calendar_repository.google_connection_for_user(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        include_non_connected=include_non_connected,
     )
 
 
@@ -647,16 +564,7 @@ def _sync_external_events_for_event(db: Session, event: CalendarEvent) -> None:
 
 
 def sync_external_events_for_event_id(db: Session, *, event_id: int) -> int:
-    event = (
-        db.query(CalendarEvent)
-        .options(
-            selectinload(CalendarEvent.owner),
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.user),
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.team),
-        )
-        .filter(CalendarEvent.id == event_id, CalendarEvent.deleted_at.is_(None))
-        .first()
-    )
+    event = calendar_repository.get_event_for_external_sync(db, event_id=event_id)
     if not event:
         return 0
     _sync_external_events_for_event(db, event)
@@ -684,11 +592,7 @@ def _notify_new_participants(db: Session, *, event: CalendarEvent, actor_name: s
         team_ids = [participant.team_id for participant in participants if participant.participant_type == "team" and participant.team_id]
         invitee_user_ids = {participant.user_id for participant in participants if participant.participant_type == "user" and participant.user_id and not participant.is_owner}
         if team_ids:
-            members = (
-                db.query(User.id)
-                .filter(User.tenant_id == event.tenant_id, User.team_id.in_(team_ids))
-                .all()
-            )
+            members = calendar_repository.team_member_ids(db, tenant_id=event.tenant_id, team_ids=team_ids)
             invitee_user_ids.update(user_id for (user_id,) in members)
 
         start_label = event.start_at.strftime("%b %d, %Y %H:%M")
@@ -843,25 +747,7 @@ def delete_calendar_event(db: Session, *, event: CalendarEvent) -> CalendarEvent
 
 
 def list_deleted_calendar_events(db: Session, *, tenant_id: int, pagination) -> tuple[list[CalendarEvent], int]:
-    query = (
-        db.query(CalendarEvent)
-        .options(
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.user),
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.team),
-        )
-        .filter(
-            CalendarEvent.tenant_id == tenant_id,
-            CalendarEvent.deleted_at.is_not(None),
-        )
-    )
-    total_count = query.count()
-    items = (
-        query.order_by(CalendarEvent.deleted_at.desc(), CalendarEvent.start_at.asc())
-        .offset(pagination.offset)
-        .limit(pagination.limit)
-        .all()
-    )
-    return items, total_count
+    return calendar_repository.list_deleted_calendar_events(db, tenant_id=tenant_id, pagination=pagination)
 
 
 def restore_calendar_event(db: Session, *, event: CalendarEvent) -> CalendarEvent:
@@ -873,32 +759,10 @@ def restore_calendar_event(db: Session, *, event: CalendarEvent) -> CalendarEven
 
 
 def build_calendar_context(db: Session, *, tenant_id: int, current_user) -> dict:
-    users = (
-        db.query(User)
-        .options(selectinload(User.team))
-        .filter(User.tenant_id == tenant_id)
-        .order_by(User.first_name.asc(), User.last_name.asc(), User.email.asc())
-        .limit(500)
-        .all()
-    )
-    teams = db.query(Team).filter(Team.tenant_id == tenant_id).order_by(Team.name.asc()).all()
-    connections = (
-        db.query(UserCalendarConnection)
-        .filter(UserCalendarConnection.tenant_id == tenant_id, UserCalendarConnection.user_id == current_user.id)
-        .order_by(UserCalendarConnection.provider.asc())
-        .all()
-    )
-    pending_invite_count = (
-        db.query(CalendarEventParticipant)
-        .join(CalendarEvent, CalendarEvent.id == CalendarEventParticipant.event_id)
-        .filter(
-            CalendarEventParticipant.tenant_id == tenant_id,
-            CalendarEventParticipant.user_id == current_user.id,
-            CalendarEventParticipant.response_status == "pending",
-            CalendarEvent.deleted_at.is_(None),
-        )
-        .count()
-    )
+    users = calendar_repository.list_context_users(db, tenant_id=tenant_id)
+    teams = calendar_repository.list_context_teams(db, tenant_id=tenant_id)
+    connections = calendar_repository.list_user_calendar_connections(db, tenant_id=tenant_id, user_id=current_user.id)
+    pending_invite_count = calendar_repository.pending_invite_count(db, tenant_id=tenant_id, user_id=current_user.id)
     return {
         "users": [
             {
@@ -946,24 +810,12 @@ def _list_duplicate_task_events(
     current_user,
     include_deleted: bool = False,
 ) -> list[CalendarEvent]:
-    query = (
-        db.query(CalendarEvent)
-        .options(
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.user),
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.team),
-        )
-        .filter(
-            CalendarEvent.tenant_id == current_user.tenant_id,
-            CalendarEvent.owner_user_id == current_user.id,
-            CalendarEvent.source_module_key == "tasks",
-            CalendarEvent.source_entity_id == str(task_id),
-        )
+    return calendar_repository.list_duplicate_task_events(
+        db,
+        task_id=task_id,
+        current_user=current_user,
+        include_deleted=include_deleted,
     )
-    if include_deleted:
-        query = query.filter(CalendarEvent.deleted_at.is_not(None))
-    else:
-        query = query.filter(CalendarEvent.deleted_at.is_(None))
-    return query.order_by(CalendarEvent.id.asc()).all()
 
 
 def _dedupe_calendar_events_from_task(db: Session, *, task_id: int, current_user) -> CalendarEvent | None:
@@ -1042,26 +894,7 @@ def sync_current_user_calendar(
     if not calendar_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error or "Calendar sync failed.")
 
-    base_query = (
-        db.query(CalendarEvent)
-        .options(
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.user),
-            selectinload(CalendarEvent.participants).selectinload(CalendarEventParticipant.team),
-        )
-        .filter(
-            CalendarEvent.tenant_id == current_user.tenant_id,
-            CalendarEvent.deleted_at.is_(None),
-            or_(
-                CalendarEvent.owner_user_id == current_user.id,
-                CalendarEvent.participants.any(
-                    and_(
-                        CalendarEventParticipant.user_id == current_user.id,
-                        CalendarEventParticipant.response_status != "declined",
-                    )
-                ),
-            ),
-        )
-    )
+    base_query = calendar_repository.build_user_sync_query(db, current_user=current_user)
 
     total_count = base_query.order_by(None).count()
     synced_count = 0
@@ -1120,11 +953,7 @@ def process_calendar_sync_job(*, job_id: int) -> None:
 
         if job.module_key != "calendar" or job.operation_type != "sync":
             raise ValueError("Unsupported calendar sync job.")
-        current_user = (
-            db.query(User)
-            .filter(User.id == job.actor_user_id, User.tenant_id == job.tenant_id)
-            .first()
-        )
+        current_user = calendar_repository.get_sync_job_actor(db, user_id=job.actor_user_id, tenant_id=job.tenant_id)
         if current_user is None:
             raise ValueError("Calendar sync job actor was not found.")
 

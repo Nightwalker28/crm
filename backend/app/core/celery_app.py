@@ -11,6 +11,7 @@ celery_app = Celery(
         "app.tasks.calendar_tasks",
         "app.tasks.data_transfer_tasks",
         "app.tasks.task_reminder_tasks",
+        "app.tasks.recycle_purge_tasks",
     ],
 )
 
@@ -38,6 +39,10 @@ celery_app.conf.update(
         "scan-follow-up-reminders": {
             "task": "app.tasks.task_reminders.scan_follow_up_reminders",
             "schedule": settings.FOLLOW_UP_REMINDER_SCAN_INTERVAL_SECONDS,
+        },
+        "purge-expired-recycle-bin-records": {
+            "task": "app.tasks.recycle_bin.purge_expired_records",
+            "schedule": settings.RECYCLE_BIN_PURGE_INTERVAL_SECONDS,
         },
     },
 )

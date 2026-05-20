@@ -42,6 +42,7 @@ const MODULE_ROUTE_PREFIXES = [
   DASHBOARD_ROUTES.contacts,
   DASHBOARD_ROUTES.accounts,
   DASHBOARD_ROUTES.deals,
+  "/dashboard/modules",
 ];
 
 function isAdminOnlyPath(pathname: string) {
@@ -116,13 +117,18 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     .map((module) => module.base_route)
     .filter((route): route is string => Boolean(route?.startsWith("/dashboard/custom/")))
     .find((route) => pathname === route || pathname.startsWith(route + "/"));
+  const genericSystemModuleRoute = modules
+    .map((module) => module.base_route)
+    .filter((route): route is string => Boolean(route?.startsWith("/dashboard/modules/")))
+    .find((route) => pathname === route || pathname.startsWith(route + "/"));
   const isCheckingAdminAccess = requiresAdmin && isLoading;
   const isCustomModulePath = pathname === "/dashboard/custom" || pathname.startsWith("/dashboard/custom/");
   const isCheckingModuleAccess = Boolean((moduleRoute || isCustomModulePath) && modulesLoading);
   const isCheckingAccess = isCheckingAdminAccess || isCheckingModuleAccess;
   const isBlocked = requiresAdmin && !isLoading && !isAdmin;
   const isModuleBlocked = Boolean(
-    (moduleRoute && !modulesLoading && !allowedModuleRoutes.has(moduleRoute)) ||
+    (moduleRoute && moduleRoute !== "/dashboard/modules" && !modulesLoading && !allowedModuleRoutes.has(moduleRoute)) ||
+      (moduleRoute === "/dashboard/modules" && !modulesLoading && !genericSystemModuleRoute) ||
       (isCustomModulePath && !modulesLoading && !customModuleRoute),
   );
 

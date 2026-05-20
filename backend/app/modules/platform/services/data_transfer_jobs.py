@@ -381,7 +381,7 @@ def process_import_job(*, job_id: int) -> None:
         update_job_progress(db, job, progress_percent=25, progress_message="Validating import file.")
 
         if module_key == "sales_contacts":
-            from app.modules.sales.services.contacts_services import import_contacts_from_csv
+            from app.modules.sales.services.contacts_import_service import import_contacts_from_csv
             from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
 
             update_job_progress(db, job, progress_percent=65, progress_message="Importing contacts.")
@@ -474,7 +474,7 @@ def process_export_job(*, job_id: int) -> None:
 
         if module_key == "sales_contacts":
             from app.modules.sales.models import SalesContact
-            from app.modules.sales.services.contacts_services import export_contacts_to_csv
+            from app.modules.sales.services.contacts_export_service import export_contacts_to_csv
             from app.modules.sales.services.contacts_services import list_all_sales_contacts
 
             if export_ids is not None:

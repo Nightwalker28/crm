@@ -5,12 +5,12 @@ from decimal import Decimal
 import re
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.uploads import build_media_url, delete_local_media_file, persist_media_file, read_image_upload
 from app.modules.catalog.models import CatalogProduct, CatalogService
+from app.modules.catalog.repositories import service_repository
 from app.modules.catalog.schema import CatalogServiceResponse
 from app.modules.platform.services.activity_logs import log_activity
 
@@ -32,16 +32,8 @@ def _ensure_slug_available(
 ) -> None:
     if not slug:
         return
-    service_query = db.query(CatalogService).filter(
-        CatalogService.tenant_id == tenant_id,
-        CatalogService.slug == slug,
-    )
-    if service_id is not None:
-        service_query = service_query.filter(CatalogService.id != service_id)
-    if service_query.first():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Service slug already exists.")
-    if db.query(CatalogProduct).filter(CatalogProduct.tenant_id == tenant_id, CatalogProduct.slug == slug).first():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Catalog slug already exists on a product.")
+    if service_repository.slug_exists(db, tenant_id=tenant_id, slug=slug, service_id=service_id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Catalog slug already exists.")
 
 
 def _service_state(service: CatalogService) -> dict:
@@ -75,28 +67,14 @@ def list_services(
     offset: int = 0,
     limit: int = 50,
 ) -> tuple[list[CatalogService], int]:
-    query = db.query(CatalogService).filter(
-        CatalogService.tenant_id == tenant_id,
-        CatalogService.deleted_at.is_(None),
+    return service_repository.list_services(
+        db,
+        tenant_id=tenant_id,
+        search=search,
+        include_inactive=include_inactive,
+        offset=offset,
+        limit=limit,
     )
-    if not include_inactive:
-        query = query.filter(CatalogService.is_active == 1)
-    if search and search.strip():
-        pattern = f"%{search.strip()}%"
-        query = query.filter(
-            or_(
-                CatalogService.name.ilike(pattern),
-                CatalogService.description.ilike(pattern),
-            )
-        )
-    total = query.count()
-    services = (
-        query.order_by(CatalogService.updated_at.desc(), CatalogService.id.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-    return services, total
 
 
 def list_deleted_services(
@@ -106,18 +84,7 @@ def list_deleted_services(
     offset: int = 0,
     limit: int = 50,
 ) -> tuple[list[CatalogService], int]:
-    query = db.query(CatalogService).filter(
-        CatalogService.tenant_id == tenant_id,
-        CatalogService.deleted_at.is_not(None),
-    )
-    total = query.count()
-    services = (
-        query.order_by(CatalogService.deleted_at.desc(), CatalogService.updated_at.desc(), CatalogService.id.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-    return services, total
+    return service_repository.list_deleted_services(db, tenant_id=tenant_id, offset=offset, limit=limit)
 
 
 def get_service_or_404(
@@ -127,13 +94,12 @@ def get_service_or_404(
     service_id: int,
     include_deleted: bool = False,
 ) -> CatalogService:
-    query = db.query(CatalogService).filter(
-        CatalogService.tenant_id == tenant_id,
-        CatalogService.id == service_id,
+    service = service_repository.get_service(
+        db,
+        tenant_id=tenant_id,
+        service_id=service_id,
+        include_deleted=include_deleted,
     )
-    if not include_deleted:
-        query = query.filter(CatalogService.deleted_at.is_(None))
-    service = query.first()
     if not service:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Service not found.")
     return service

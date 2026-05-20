@@ -5,12 +5,12 @@ from decimal import Decimal
 import re
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.uploads import build_media_url, delete_local_media_file, persist_media_file, read_image_upload
 from app.modules.catalog.models import CatalogProduct, CatalogService
+from app.modules.catalog.repositories import product_repository
 from app.modules.catalog.schema import CatalogProductResponse
 from app.modules.platform.services.activity_logs import log_activity
 
@@ -32,16 +32,8 @@ def _ensure_slug_available(
 ) -> None:
     if not slug:
         return
-    product_query = db.query(CatalogProduct).filter(
-        CatalogProduct.tenant_id == tenant_id,
-        CatalogProduct.slug == slug,
-    )
-    if product_id is not None:
-        product_query = product_query.filter(CatalogProduct.id != product_id)
-    if product_query.first():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product slug already exists.")
-    if db.query(CatalogService).filter(CatalogService.tenant_id == tenant_id, CatalogService.slug == slug).first():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Catalog slug already exists on a service.")
+    if product_repository.slug_exists(db, tenant_id=tenant_id, slug=slug, product_id=product_id):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Catalog slug already exists.")
 
 
 def _product_state(product: CatalogProduct) -> dict:
@@ -78,29 +70,14 @@ def list_products(
     offset: int = 0,
     limit: int = 50,
 ) -> tuple[list[CatalogProduct], int]:
-    query = db.query(CatalogProduct).filter(
-        CatalogProduct.tenant_id == tenant_id,
-        CatalogProduct.deleted_at.is_(None),
+    return product_repository.list_products(
+        db,
+        tenant_id=tenant_id,
+        search=search,
+        include_inactive=include_inactive,
+        offset=offset,
+        limit=limit,
     )
-    if not include_inactive:
-        query = query.filter(CatalogProduct.is_active == 1)
-    if search and search.strip():
-        pattern = f"%{search.strip()}%"
-        query = query.filter(
-            or_(
-                CatalogProduct.name.ilike(pattern),
-                CatalogProduct.sku.ilike(pattern),
-                CatalogProduct.description.ilike(pattern),
-            )
-        )
-    total = query.count()
-    products = (
-        query.order_by(CatalogProduct.updated_at.desc(), CatalogProduct.id.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-    return products, total
 
 
 def list_deleted_products(
@@ -110,18 +87,7 @@ def list_deleted_products(
     offset: int = 0,
     limit: int = 50,
 ) -> tuple[list[CatalogProduct], int]:
-    query = db.query(CatalogProduct).filter(
-        CatalogProduct.tenant_id == tenant_id,
-        CatalogProduct.deleted_at.is_not(None),
-    )
-    total = query.count()
-    products = (
-        query.order_by(CatalogProduct.deleted_at.desc(), CatalogProduct.updated_at.desc(), CatalogProduct.id.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
-    )
-    return products, total
+    return product_repository.list_deleted_products(db, tenant_id=tenant_id, offset=offset, limit=limit)
 
 
 def get_product_or_404(
@@ -131,13 +97,12 @@ def get_product_or_404(
     product_id: int,
     include_deleted: bool = False,
 ) -> CatalogProduct:
-    query = db.query(CatalogProduct).filter(
-        CatalogProduct.tenant_id == tenant_id,
-        CatalogProduct.id == product_id,
+    product = product_repository.get_product(
+        db,
+        tenant_id=tenant_id,
+        product_id=product_id,
+        include_deleted=include_deleted,
     )
-    if not include_deleted:
-        query = query.filter(CatalogProduct.deleted_at.is_(None))
-    product = query.first()
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found.")
     return product

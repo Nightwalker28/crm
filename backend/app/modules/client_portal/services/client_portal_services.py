@@ -8,13 +8,13 @@ from decimal import Decimal, ROUND_HALF_UP
 
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
-from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload, object_session
+from sqlalchemy.orm import Session
 
 from app.core.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.config import settings
 from app.core.passwords import hash_password, password_hash_needs_upgrade, verify_password
 from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPageAction, CustomerGroup
+from app.modules.client_portal.repositories import client_portal_repository
 from app.modules.documents.models import Document
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.models import SalesContact, SalesOrganization
@@ -301,16 +301,7 @@ def _list_client_page_documents(db: Session | None, page: ClientPage) -> list[di
     document_ids = [int(document_id) for document_id in page.document_ids or [] if int(document_id) > 0]
     if not db or not document_ids:
         return []
-    documents = (
-        db.query(Document)
-        .filter(
-            Document.tenant_id == page.tenant_id,
-            Document.id.in_(document_ids),
-            Document.deleted_at.is_(None),
-        )
-        .order_by(Document.created_at.desc(), Document.id.desc())
-        .all()
-    )
+    documents = client_portal_repository.list_page_documents(db, tenant_id=page.tenant_id, document_ids=document_ids)
     document_map = {document.id: document for document in documents}
     ordered = [document_map[document_id] for document_id in document_ids if document_id in document_map]
     return [
@@ -341,13 +332,9 @@ def _serialize_client_page_action(action: ClientPageAction) -> dict:
 def _client_page_action_summary(db: Session | None, page: ClientPage) -> dict:
     if not db:
         return {"action_count": 0, "latest_action": None, "recent_actions": []}
-    query = db.query(ClientPageAction).filter(
-        ClientPageAction.tenant_id == page.tenant_id,
-        ClientPageAction.client_page_id == page.id,
-    )
-    recent = query.order_by(ClientPageAction.created_at.desc(), ClientPageAction.id.desc()).limit(3).all()
+    recent, count = client_portal_repository.action_summary(db, tenant_id=page.tenant_id, page_id=page.id)
     return {
-        "action_count": query.count(),
+        "action_count": count,
         "latest_action": _serialize_client_page_action(recent[0]) if recent else None,
         "recent_actions": [_serialize_client_page_action(action) for action in recent],
     }
@@ -357,20 +344,8 @@ def _client_page_action_summaries(db: Session, pages: list[ClientPage]) -> dict[
     page_ids = [page.id for page in pages]
     if not page_ids:
         return {}
-    counts = {
-        page_id: count
-        for page_id, count in db.query(ClientPageAction.client_page_id, func.count(ClientPageAction.id))
-        .filter(ClientPageAction.tenant_id == pages[0].tenant_id, ClientPageAction.client_page_id.in_(page_ids))
-        .group_by(ClientPageAction.client_page_id)
-        .all()
-    }
+    counts, recent_actions = client_portal_repository.action_summaries(db, tenant_id=pages[0].tenant_id, page_ids=page_ids)
     recent_by_page: dict[int, list[ClientPageAction]] = {page_id: [] for page_id in page_ids}
-    recent_actions = (
-        db.query(ClientPageAction)
-        .filter(ClientPageAction.tenant_id == pages[0].tenant_id, ClientPageAction.client_page_id.in_(page_ids))
-        .order_by(ClientPageAction.client_page_id.asc(), ClientPageAction.created_at.desc(), ClientPageAction.id.desc())
-        .all()
-    )
     for action in recent_actions:
         bucket = recent_by_page.setdefault(action.client_page_id, [])
         if len(bucket) < 3:
@@ -388,14 +363,9 @@ def _client_page_action_summaries(db: Session, pages: list[ClientPage]) -> dict[
 def ensure_default_customer_groups(db: Session, *, tenant_id: int) -> None:
     cache_key = f"{CUSTOMER_GROUP_SEEDED_CACHE_PREFIX}:{tenant_id}"
     if cache_get_json(cache_key):
-        if db.query(CustomerGroup.id).filter(CustomerGroup.tenant_id == tenant_id, CustomerGroup.group_key == "default").first():
+        if client_portal_repository.has_default_customer_group(db, tenant_id=tenant_id):
             return
-    existing_keys = {
-        key
-        for (key,) in db.query(CustomerGroup.group_key)
-        .filter(CustomerGroup.tenant_id == tenant_id)
-        .all()
-    }
+    existing_keys = client_portal_repository.customer_group_keys(db, tenant_id=tenant_id)
     for item in DEFAULT_CUSTOMER_GROUPS:
         if item["group_key"] in existing_keys:
             continue
@@ -433,18 +403,13 @@ def serialize_customer_group(group: CustomerGroup | None) -> dict | None:
 
 def list_customer_groups(db: Session, *, tenant_id: int) -> list[CustomerGroup]:
     ensure_default_customer_groups(db, tenant_id=tenant_id)
-    return (
-        db.query(CustomerGroup)
-        .filter(CustomerGroup.tenant_id == tenant_id)
-        .order_by(CustomerGroup.is_default.desc(), CustomerGroup.name.asc(), CustomerGroup.id.asc())
-        .all()
-    )
+    return client_portal_repository.list_customer_groups(db, tenant_id=tenant_id)
 
 
 def create_customer_group(db: Session, *, tenant_id: int, payload: dict, actor_user_id: int | None = None) -> CustomerGroup:
     ensure_default_customer_groups(db, tenant_id=tenant_id)
     group_key = _normalize_key(payload["group_key"])
-    if db.query(CustomerGroup.id).filter(CustomerGroup.tenant_id == tenant_id, CustomerGroup.group_key == group_key).first():
+    if client_portal_repository.customer_group_exists(db, tenant_id=tenant_id, group_key=group_key):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Customer group key already exists")
     discount_type = _normalize_discount_type(payload.get("discount_type"))
     group = CustomerGroup(
@@ -458,7 +423,7 @@ def create_customer_group(db: Session, *, tenant_id: int, payload: dict, actor_u
         is_active=1 if payload.get("is_active", True) else 0,
     )
     if group.is_default:
-        db.query(CustomerGroup).filter(CustomerGroup.tenant_id == tenant_id).update({CustomerGroup.is_default: 0})
+        client_portal_repository.clear_default_customer_groups(db, tenant_id=tenant_id)
     db.add(group)
     db.commit()
     db.refresh(group)
@@ -477,7 +442,7 @@ def create_customer_group(db: Session, *, tenant_id: int, payload: dict, actor_u
 
 
 def get_customer_group_or_404(db: Session, *, tenant_id: int, group_id: int) -> CustomerGroup:
-    group = db.query(CustomerGroup).filter(CustomerGroup.tenant_id == tenant_id, CustomerGroup.id == group_id).first()
+    group = client_portal_repository.get_customer_group(db, tenant_id=tenant_id, group_id=group_id)
     if not group:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer group not found")
     return group
@@ -500,10 +465,7 @@ def update_customer_group(db: Session, *, group: CustomerGroup, payload: dict, a
     if "is_default" in payload and payload["is_default"] is not None:
         group.is_default = 1 if payload["is_default"] else 0
         if group.is_default:
-            db.query(CustomerGroup).filter(
-                CustomerGroup.tenant_id == group.tenant_id,
-                CustomerGroup.id != group.id,
-            ).update({CustomerGroup.is_default: 0})
+            client_portal_repository.clear_default_customer_groups(db, tenant_id=group.tenant_id, except_group_id=group.id)
     db.add(group)
     db.commit()
     db.refresh(group)
@@ -540,11 +502,7 @@ def assign_contact_customer_group(
     actor_user_id: int | None = None,
 ):
     _validate_group_for_tenant(db, tenant_id=tenant_id, group_id=group_id)
-    contact = (
-        db.query(SalesContact)
-        .filter(SalesContact.tenant_id == tenant_id, SalesContact.contact_id == contact_id, SalesContact.deleted_at.is_(None))
-        .first()
-    )
+    contact = client_portal_repository.get_active_contact(db, tenant_id=tenant_id, contact_id=contact_id)
     if not contact:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
     previous_group_id = contact.customer_group_id
@@ -576,11 +534,7 @@ def assign_organization_customer_group(
     actor_user_id: int | None = None,
 ):
     _validate_group_for_tenant(db, tenant_id=tenant_id, group_id=group_id)
-    organization = (
-        db.query(SalesOrganization)
-        .filter(SalesOrganization.tenant_id == tenant_id, SalesOrganization.org_id == organization_id, SalesOrganization.deleted_at.is_(None))
-        .first()
-    )
+    organization = client_portal_repository.get_active_organization(db, tenant_id=tenant_id, organization_id=organization_id)
     if not organization:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
     previous_group_id = organization.customer_group_id
@@ -622,30 +576,15 @@ def _validate_client_link(db: Session, *, tenant_id: int, contact_id: int | None
     if bool(contact_id) == bool(organization_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Link exactly one contact or organization")
     if contact_id:
-        exists = db.query(SalesContact.contact_id).filter(
-            SalesContact.tenant_id == tenant_id,
-            SalesContact.contact_id == contact_id,
-            SalesContact.deleted_at.is_(None),
-        ).first()
-        if not exists:
+        if not client_portal_repository.get_active_contact(db, tenant_id=tenant_id, contact_id=contact_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
     if organization_id:
-        exists = db.query(SalesOrganization.org_id).filter(
-            SalesOrganization.tenant_id == tenant_id,
-            SalesOrganization.org_id == organization_id,
-            SalesOrganization.deleted_at.is_(None),
-        ).first()
-        if not exists:
+        if not client_portal_repository.get_active_organization(db, tenant_id=tenant_id, organization_id=organization_id):
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
 
 def _validate_unique_client_link(db: Session, *, tenant_id: int, contact_id: int | None, organization_id: int | None) -> None:
-    query = db.query(ClientAccount.id).filter(ClientAccount.tenant_id == tenant_id)
-    if contact_id:
-        query = query.filter(ClientAccount.contact_id == contact_id)
-    else:
-        query = query.filter(ClientAccount.organization_id == organization_id)
-    if query.first():
+    if client_portal_repository.client_link_exists(db, tenant_id=tenant_id, contact_id=contact_id, organization_id=organization_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client access already exists for this customer")
 
 
@@ -730,7 +669,7 @@ def create_client_account(db: Session, *, tenant_id: int, actor_user_id: int | N
     _validate_client_link(db, tenant_id=tenant_id, contact_id=contact_id, organization_id=organization_id)
     if payload.get("status", "pending") not in CLIENT_ACCOUNT_STATUSES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported client account status")
-    if db.query(ClientAccount.id).filter(ClientAccount.tenant_id == tenant_id, ClientAccount.email == email).first():
+    if client_portal_repository.client_email_exists(db, tenant_id=tenant_id, email=email):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client account email already exists")
     _validate_unique_client_link(db, tenant_id=tenant_id, contact_id=contact_id, organization_id=organization_id)
 
@@ -762,22 +701,11 @@ def create_client_account(db: Session, *, tenant_id: int, actor_user_id: int | N
 
 
 def list_client_accounts(db: Session, *, tenant_id: int) -> list[ClientAccount]:
-    return (
-        db.query(ClientAccount)
-        .options(joinedload(ClientAccount.contact), joinedload(ClientAccount.organization))
-        .filter(ClientAccount.tenant_id == tenant_id)
-        .order_by(ClientAccount.created_at.desc(), ClientAccount.id.desc())
-        .all()
-    )
+    return client_portal_repository.list_client_accounts(db, tenant_id=tenant_id)
 
 
 def get_client_account_or_404(db: Session, *, tenant_id: int, account_id: int) -> ClientAccount:
-    account = (
-        db.query(ClientAccount)
-        .options(joinedload(ClientAccount.contact), joinedload(ClientAccount.organization))
-        .filter(ClientAccount.tenant_id == tenant_id, ClientAccount.id == account_id)
-        .first()
-    )
+    account = client_portal_repository.get_client_account(db, tenant_id=tenant_id, account_id=account_id)
     if not account:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client account not found")
     return account
@@ -834,13 +762,7 @@ def update_client_account_status(db: Session, *, account: ClientAccount, status_
 
 
 def list_client_pages(db: Session, *, tenant_id: int) -> list[ClientPage]:
-    pages = (
-        db.query(ClientPage)
-        .options(joinedload(ClientPage.contact), joinedload(ClientPage.organization))
-        .filter(ClientPage.tenant_id == tenant_id)
-        .order_by(ClientPage.created_at.desc(), ClientPage.id.desc())
-        .all()
-    )
+    pages = client_portal_repository.list_client_pages(db, tenant_id=tenant_id)
     action_summaries = _client_page_action_summaries(db, pages)
     for page in pages:
         page._action_summary = action_summaries.get(page.id, {"action_count": 0, "latest_action": None, "recent_actions": []})
@@ -848,12 +770,7 @@ def list_client_pages(db: Session, *, tenant_id: int) -> list[ClientPage]:
 
 
 def get_client_page_or_404(db: Session, *, tenant_id: int, page_id: int) -> ClientPage:
-    page = (
-        db.query(ClientPage)
-        .options(joinedload(ClientPage.contact), joinedload(ClientPage.organization))
-        .filter(ClientPage.tenant_id == tenant_id, ClientPage.id == page_id)
-        .first()
-    )
+    page = client_portal_repository.get_client_page(db, tenant_id=tenant_id, page_id=page_id)
     if not page:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client page not found")
     return page
@@ -979,7 +896,7 @@ def publish_client_page_link(
 
 def get_public_client_page(db: Session, *, token: str) -> ClientPage:
     token_hash = _hash_token(token)
-    page = db.query(ClientPage).filter(ClientPage.public_token_hash == token_hash).first()
+    page = client_portal_repository.get_public_client_page_by_token_hash(db, token_hash=token_hash)
     if not page or page.status != "published" or not page.public_token_expires_at:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client page not found")
     expires_at = page.public_token_expires_at
@@ -1009,15 +926,7 @@ def get_client_page_document_or_404(db: Session, *, page: ClientPage, document_i
     allowed_ids = {int(item) for item in page.document_ids or []}
     if document_id not in allowed_ids:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
-    document = (
-        db.query(Document)
-        .filter(
-            Document.tenant_id == page.tenant_id,
-            Document.id == document_id,
-            Document.deleted_at.is_(None),
-        )
-        .first()
-    )
+    document = client_portal_repository.get_page_document(db, tenant_id=page.tenant_id, document_id=document_id)
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
     return document
@@ -1071,7 +980,7 @@ def record_client_page_action(
 
 def setup_client_password(db: Session, *, token: str, password: str, expected_tenant_id: int | None = None) -> ClientAccount:
     token_hash = _hash_token(token)
-    account = db.query(ClientAccount).filter(ClientAccount.setup_token_hash == token_hash).first()
+    account = client_portal_repository.get_client_account_by_setup_hash(db, token_hash=token_hash)
     if not account or not account.setup_token_expires_at:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Setup link is invalid")
     if expected_tenant_id is not None and account.tenant_id != expected_tenant_id:
@@ -1123,11 +1032,7 @@ def _client_access_token(account: ClientAccount) -> str:
 
 def authenticate_client_account(db: Session, *, tenant_id: int, email: str, password: str) -> tuple[ClientAccount, str]:
     normalized_email = email.strip().lower()
-    account = (
-        db.query(ClientAccount)
-        .filter(ClientAccount.tenant_id == tenant_id, ClientAccount.email == normalized_email)
-        .first()
-    )
+    account = client_portal_repository.get_client_account_by_email(db, tenant_id=tenant_id, email=normalized_email)
     if not account or not verify_password(password, account.password_hash):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
     if account.status != "active":
@@ -1153,13 +1058,10 @@ def decode_client_access_token(token: str) -> dict:
 
 def client_account_from_token(db: Session, *, token: str) -> ClientAccount:
     payload = decode_client_access_token(token)
-    account = (
-        db.query(ClientAccount)
-        .filter(
-            ClientAccount.id == int(payload["sub"]),
-            ClientAccount.tenant_id == int(payload["tenant_id"]),
-        )
-        .first()
+    account = client_portal_repository.get_client_account_by_token_payload(
+        db,
+        tenant_id=int(payload["tenant_id"]),
+        account_id=int(payload["sub"]),
     )
     if not account or account.status != "active":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Client account is not active")
@@ -1174,31 +1076,17 @@ def resolve_client_customer_group(db: Session | None, *, account: ClientAccount)
     if loaded_organization:
         return loaded_organization.customer_group
     if db is None:
-        db = object_session(account)
+        db = client_portal_repository.get_object_session(account)
     if db is None:
         return None
     if account.contact_id:
-        contact = (
-            db.query(SalesContact)
-            .options(joinedload(SalesContact.customer_group))
-            .filter(
-                SalesContact.tenant_id == account.tenant_id,
-                SalesContact.contact_id == account.contact_id,
-                SalesContact.deleted_at.is_(None),
-            )
-            .first()
-        )
+        contact = client_portal_repository.get_contact_with_customer_group(db, tenant_id=account.tenant_id, contact_id=account.contact_id)
         return contact.customer_group if contact else None
     if account.organization_id:
-        organization = (
-            db.query(SalesOrganization)
-            .options(joinedload(SalesOrganization.customer_group))
-            .filter(
-                SalesOrganization.tenant_id == account.tenant_id,
-                SalesOrganization.org_id == account.organization_id,
-                SalesOrganization.deleted_at.is_(None),
-            )
-            .first()
+        organization = client_portal_repository.get_organization_with_customer_group(
+            db,
+            tenant_id=account.tenant_id,
+            organization_id=account.organization_id,
         )
         return organization.customer_group if organization else None
     return None

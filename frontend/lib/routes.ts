@@ -3,6 +3,7 @@ export const DASHBOARD_ROUTES = {
   accounts: "/dashboard/sales/organizations",
   contacts: "/dashboard/sales/contacts",
   deals: "/dashboard/sales/opportunities",
+  genericModule: (moduleKey: string) => `/dashboard/modules/${moduleKey}`,
   clientPortal: "/dashboard/client-portal",
   financePos: "/dashboard/finance/pos",
   insertionOrders: "/dashboard/finance/insertion-orders",

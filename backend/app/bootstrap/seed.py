@@ -5,6 +5,7 @@ from sqlalchemy import func
 from app.core.database import SessionLocal
 from app.core.passwords import hash_password
 from app.core.tenancy import get_or_create_single_tenant
+from app.modules.platform.services.system_module_sync import sync_system_modules
 from app.modules.user_management.models import (
     Department,
     DepartmentModulePermission,
@@ -152,6 +153,8 @@ def seed_initial_data(
                 if module_names_by_id.get(module_id) == "mail" and role_name == "User":
                     permission.can_edit = 1
                 db.add(permission)
+
+        sync_system_modules(db, tenant_id=tenant.id, commit=False)
 
         admin_role = roles_by_name["Admin"]
         admin_user = (

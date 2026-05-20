@@ -14,9 +14,9 @@ from app.modules.platform.services.message_templates import (
     get_message_template_or_404,
     render_template_body,
 )
+from app.modules.whatsapp.repositories import whatsapp_repository
 from app.modules.sales.models import SalesContact
 from app.modules.tasks.services.tasks_services import create_task, create_task_assignment_notifications, serialize_task
-from app.modules.user_management.models import CompanyProfile
 from app.modules.whatsapp.models import WhatsAppInteraction
 
 
@@ -94,15 +94,7 @@ def record_contact_whatsapp_click(
     follow_up_due_at: datetime | None = None,
     follow_up_title: str | None = None,
 ) -> dict[str, Any]:
-    contact = (
-        db.query(SalesContact)
-        .filter(
-            SalesContact.contact_id == contact_id,
-            SalesContact.tenant_id == current_user.tenant_id,
-            SalesContact.deleted_at.is_(None),
-        )
-        .first()
-    )
+    contact = whatsapp_repository.get_active_contact(db, tenant_id=current_user.tenant_id, contact_id=contact_id)
     if not contact:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
 
@@ -119,11 +111,7 @@ def record_contact_whatsapp_click(
     if template.channel != "whatsapp":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Template is not a WhatsApp template")
 
-    company_country = (
-        db.query(CompanyProfile.country)
-        .filter(CompanyProfile.tenant_id == current_user.tenant_id)
-        .scalar()
-    )
+    company_country = whatsapp_repository.get_company_country(db, tenant_id=current_user.tenant_id)
     phone_number = _normalize_phone_for_whatsapp(contact.contact_telephone, country=contact.country or company_country)
     rendered_message = render_template_body(template, build_contact_template_values(contact, variables))
     whatsapp_url = _build_whatsapp_url(phone_number=phone_number, message=rendered_message)

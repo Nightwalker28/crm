@@ -19,6 +19,7 @@ from app.modules.platform.routes.data_transfer_jobs import router as data_transf
 from app.modules.platform.routes.module_fields import admin_router as module_fields_admin_router, router as module_fields_router
 from app.modules.platform.routes.crm_events import router as crm_events_router
 from app.modules.platform.routes.global_search import router as global_search_router
+from app.modules.platform.routes.generic_system_records import router as generic_system_records_router
 from app.modules.platform.routes.notifications import router as notifications_router
 from app.modules.platform.routes.record_comments import router as record_comments_router
 from app.modules.platform.routes.message_templates import router as message_templates_router
@@ -54,6 +55,7 @@ router.include_router(module_fields_router)
 router.include_router(data_transfer_job_router)
 router.include_router(crm_events_router)
 router.include_router(global_search_router)
+router.include_router(generic_system_records_router)
 router.include_router(notifications_router)
 router.include_router(record_comments_router)
 router.include_router(message_templates_router)

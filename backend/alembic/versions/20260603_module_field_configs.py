@@ -1,7 +1,7 @@
 """add tenant module field configs
 
 Revision ID: 20260603_module_fields
-Revises: 20260602_finance_pos_route_cleanup
+Revises: 20260602_finance_pos_cleanup
 Create Date: 2026-05-20
 """
 
@@ -12,7 +12,7 @@ from alembic import op
 
 
 revision: str = "20260603_module_fields"
-down_revision: Union[str, None] = "20260602_finance_pos_route_cleanup"
+down_revision: Union[str, None] = "20260602_finance_pos_cleanup"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

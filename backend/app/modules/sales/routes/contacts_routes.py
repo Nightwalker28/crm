@@ -6,6 +6,7 @@ from app.core.module_filters import normalize_filter_logic, parse_filter_conditi
 from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, count_csv_rows_bytes, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
 from app.core.module_export import bytes_download_response
 from app.core.pagination import Pagination, build_paged_response, get_pagination
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.security import require_user
 from app.core.permissions import require_action_access, require_module_access
 from app.modules.sales.schema import (
@@ -23,15 +24,16 @@ from app.modules.sales.services.followups import log_contact_follow_up
 from app.modules.sales.services.contacts_services import (
     create_sales_contact,
     delete_sales_contact,
-    export_contacts_to_csv,
     get_all_contacts,
     get_contact_or_404,
-    import_contacts_from_csv,
     list_deleted_sales_contacts,
     list_sales_contacts,
+    list_sales_contacts_cursor,
     restore_sales_contact,
     update_sales_contact,
 )
+from app.modules.sales.services.contacts_export_service import export_contacts_to_csv
+from app.modules.sales.services.contacts_import_service import import_contacts_from_csv
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
 from app.modules.platform.services.data_transfer_jobs import (
@@ -155,6 +157,37 @@ def list_contacts(
     selected_fields = _parse_list_fields(fields, CONTACT_LIST_FIELDS)
     serialized = [_serialize_contact_list_item(contact, selected_fields) for contact in contacts]
     return build_paged_response(serialized, total_count, pagination)
+
+
+@router.get("/cursor")
+def list_contacts_cursor(
+    fields: str | None = Query(default=None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access('sales_contacts')),
+    require_permission = Depends(require_action_access("sales_contacts", "view")),
+):
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    contacts = list_sales_contacts_cursor(
+        db,
+        current_user.tenant_id,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+    )
+    selected_fields = _parse_list_fields(fields, CONTACT_LIST_FIELDS)
+    serialized = [_serialize_contact_list_item(contact, selected_fields) for contact in contacts]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="contact_id")
 
 
 @router.get("/search", response_model=SalesContactListResponse)

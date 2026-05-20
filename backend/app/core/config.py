@@ -37,6 +37,9 @@ class Settings:
     DB_IDLE_IN_TRANSACTION_TIMEOUT_MS: int = int(
         os.getenv("DB_IDLE_IN_TRANSACTION_TIMEOUT_MS", "60000")
     )
+    RECYCLE_BIN_RETENTION_DAYS: int = int(os.getenv("RECYCLE_BIN_RETENTION_DAYS", "90"))
+    RECYCLE_BIN_PURGE_BATCH_SIZE: int = int(os.getenv("RECYCLE_BIN_PURGE_BATCH_SIZE", "1000"))
+    RECYCLE_BIN_PURGE_INTERVAL_SECONDS: int = int(os.getenv("RECYCLE_BIN_PURGE_INTERVAL_SECONDS", str(24 * 60 * 60)))
 
     # -------------------------
     # Google OAuth

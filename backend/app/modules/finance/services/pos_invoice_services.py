@@ -14,6 +14,7 @@ from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination, build_paged_response
 from app.core.postgres_search import searchable_text
 from app.modules.finance.models import FinancePosInvoice, FinancePosInvoiceLine
+from app.modules.finance.repositories import pos_invoice_repository
 from app.modules.finance.services.io_search_services import _normalize_allowed_currency, parse_human_date
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.models import SalesContact, SalesOrganization
@@ -305,9 +306,13 @@ def _query_invoices(db: Session, current_user, *, search: str | None = None, sta
 
 
 def list_invoices(db: Session, current_user, *, pagination: Pagination, search: str | None = None, status_filter: str | None = None):
-    query = _query_invoices(db, current_user, search=search, status_filter=status_filter)
-    total_count = query.count()
-    records = query.offset(pagination.offset).limit(pagination.limit).all()
+    records, total_count = pos_invoice_repository.list_invoices(
+        db,
+        current_user,
+        pagination=pagination,
+        search=search,
+        status_filter=status_filter,
+    )
     return build_paged_response(
         [serialize_invoice(record, current_user=current_user, include_lines=False) for record in records],
         total_count,
@@ -316,8 +321,7 @@ def list_invoices(db: Session, current_user, *, pagination: Pagination, search: 
 
 
 def get_invoice_or_404(db: Session, current_user, invoice_id: int) -> FinancePosInvoice:
-    query = _query_invoices(db, current_user).filter(FinancePosInvoice.id == invoice_id)
-    invoice = query.first()
+    invoice = pos_invoice_repository.get_invoice(db, current_user, invoice_id=invoice_id)
     if not invoice:
         raise HTTPException(status_code=404, detail="POS invoice not found")
     return invoice

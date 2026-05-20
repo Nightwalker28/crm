@@ -9,9 +9,8 @@ import secrets
 
 from fastapi.encoders import jsonable_encoder
 from fastapi import HTTPException, status
-from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.core.cache import cache_get_json, cache_set_json
 from app.core.config import settings
@@ -19,6 +18,7 @@ from app.core.uploads import build_media_url
 from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.finance.services import pos_invoice_services
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.website_integrations.repositories import website_integration_repository
 from app.modules.website_integrations.models import (
     WebsiteCatalogItem,
     WebsiteIntegrationApiKey,
@@ -239,20 +239,11 @@ def create_api_key(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
 
 
 def list_api_keys(db: Session, *, tenant_id: int) -> list[WebsiteIntegrationApiKey]:
-    return (
-        db.query(WebsiteIntegrationApiKey)
-        .filter(WebsiteIntegrationApiKey.tenant_id == tenant_id)
-        .order_by(WebsiteIntegrationApiKey.created_at.desc(), WebsiteIntegrationApiKey.id.desc())
-        .all()
-    )
+    return website_integration_repository.list_api_keys(db, tenant_id=tenant_id)
 
 
 def get_api_key_or_404(db: Session, *, tenant_id: int, key_id: int) -> WebsiteIntegrationApiKey:
-    record = (
-        db.query(WebsiteIntegrationApiKey)
-        .filter(WebsiteIntegrationApiKey.tenant_id == tenant_id, WebsiteIntegrationApiKey.id == key_id)
-        .first()
-    )
+    record = website_integration_repository.get_api_key(db, tenant_id=tenant_id, key_id=key_id)
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Integration API key not found")
     return record
@@ -285,7 +276,7 @@ def resolve_public_api_key(db: Session, *, api_key: str | None, required_scope: 
     if not api_key:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing integration API key")
     key_hash = _hash_api_key(api_key.strip())
-    record = db.query(WebsiteIntegrationApiKey).filter(WebsiteIntegrationApiKey.key_hash == key_hash).first()
+    record = website_integration_repository.get_api_key_by_hash(db, key_hash=key_hash)
     if not record or record.status != "active":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid integration API key")
     if required_scope not in _normalize_scopes(record.scopes):
@@ -365,43 +356,13 @@ def list_catalog_items(
     limit: int | None = None,
     offset: int = 0,
 ) -> tuple[list[PublicCatalogItem], int]:
-    product_query = db.query(CatalogProduct).filter(
-        CatalogProduct.tenant_id == tenant_id,
-        CatalogProduct.deleted_at.is_(None),
-        CatalogProduct.slug.is_not(None),
+    product_query, service_query = website_integration_repository.build_catalog_queries(
+        db,
+        tenant_id=tenant_id,
+        include_private=include_private,
+        search=search,
+        item_type=item_type,
     )
-    service_query = db.query(CatalogService).filter(
-        CatalogService.tenant_id == tenant_id,
-        CatalogService.deleted_at.is_(None),
-        CatalogService.slug.is_not(None),
-    )
-    if not include_private:
-        product_query = product_query.filter(CatalogProduct.is_public == 1, CatalogProduct.is_active == 1)
-        service_query = service_query.filter(CatalogService.is_public == 1, CatalogService.is_active == 1)
-    if item_type:
-        item_type = item_type.strip().lower()
-        if item_type == "product":
-            service_query = service_query.filter(False)
-        elif item_type == "service":
-            product_query = product_query.filter(False)
-        else:
-            product_query = product_query.filter(False)
-            service_query = service_query.filter(False)
-    if search:
-        value = f"%{search.strip()}%"
-        product_query = product_query.filter(
-            or_(
-                CatalogProduct.name.ilike(value),
-                CatalogProduct.slug.ilike(value),
-                CatalogProduct.sku.ilike(value),
-            )
-        )
-        service_query = service_query.filter(
-            or_(
-                CatalogService.name.ilike(value),
-                CatalogService.slug.ilike(value),
-            )
-        )
     product_total = product_query.count()
     service_total = service_query.count()
     page_limit = (offset + limit) if limit is not None else None
@@ -422,27 +383,11 @@ def list_catalog_items(
 
 
 def list_orders(db: Session, *, tenant_id: int, limit: int | None = None, offset: int = 0) -> tuple[list[WebsiteIntegrationOrder], int]:
-    query = (
-        db.query(WebsiteIntegrationOrder)
-        .options(selectinload(WebsiteIntegrationOrder.line_items))
-        .filter(WebsiteIntegrationOrder.tenant_id == tenant_id)
-    )
-    total = query.count()
-    query = query.order_by(WebsiteIntegrationOrder.created_at.desc(), WebsiteIntegrationOrder.id.desc())
-    if offset:
-        query = query.offset(offset)
-    if limit is not None:
-        query = query.limit(limit)
-    return query.all(), total
+    return website_integration_repository.list_orders(db, tenant_id=tenant_id, limit=limit, offset=offset)
 
 
 def get_order_or_404(db: Session, *, tenant_id: int, order_id: int) -> WebsiteIntegrationOrder:
-    order = (
-        db.query(WebsiteIntegrationOrder)
-        .options(selectinload(WebsiteIntegrationOrder.line_items))
-        .filter(WebsiteIntegrationOrder.tenant_id == tenant_id, WebsiteIntegrationOrder.id == order_id)
-        .first()
-    )
+    order = website_integration_repository.get_order(db, tenant_id=tenant_id, order_id=order_id)
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Website order not found")
     return order
@@ -499,31 +444,13 @@ def create_pos_invoice_for_order(db: Session, *, current_user, order_id: int):
 
 
 def _existing_order_by_reference(db: Session, *, tenant_id: int, external_reference: str) -> WebsiteIntegrationOrder | None:
-    return (
-        db.query(WebsiteIntegrationOrder)
-        .options(selectinload(WebsiteIntegrationOrder.line_items))
-        .filter(
-            WebsiteIntegrationOrder.tenant_id == tenant_id,
-            WebsiteIntegrationOrder.external_reference == external_reference,
-        )
-        .first()
-    )
+    return website_integration_repository.get_order_by_reference(db, tenant_id=tenant_id, external_reference=external_reference)
 
 
 def _resolve_public_catalog_item_for_order(db: Session, *, tenant_id: int, line: dict) -> PublicCatalogItem:
     item_type = (line.get("item_type") or "").strip().lower() or None
-    product_query = db.query(CatalogProduct).filter(
-        CatalogProduct.tenant_id == tenant_id,
-        CatalogProduct.is_public == 1,
-        CatalogProduct.is_active == 1,
-        CatalogProduct.deleted_at.is_(None),
-    )
-    service_query = db.query(CatalogService).filter(
-        CatalogService.tenant_id == tenant_id,
-        CatalogService.is_public == 1,
-        CatalogService.is_active == 1,
-        CatalogService.deleted_at.is_(None),
-    )
+    product_query = website_integration_repository.build_public_product_query(db, tenant_id=tenant_id, for_update=True)
+    service_query = website_integration_repository.build_public_service_query(db, tenant_id=tenant_id)
     if line.get("catalog_product_id"):
         product = product_query.filter(CatalogProduct.id == line["catalog_product_id"]).with_for_update().first()
         if not product:
@@ -576,19 +503,7 @@ def _resolve_public_catalog_item_for_order(db: Session, *, tenant_id: int, line:
 def _apply_stock_decrement(db: Session, item: PublicCatalogItem, quantity: Decimal) -> tuple[Decimal | None, Decimal | None]:
     if item.product is None:
         return None, None
-    product = (
-        db.query(CatalogProduct)
-        .filter(
-            CatalogProduct.tenant_id == item.product.tenant_id,
-            CatalogProduct.id == item.product.id,
-            CatalogProduct.is_public == 1,
-            CatalogProduct.is_active == 1,
-            CatalogProduct.deleted_at.is_(None),
-        )
-        .populate_existing()
-        .with_for_update()
-        .first()
-    )
+    product = website_integration_repository.get_public_product_for_stock_update(db, product=item.product)
     if not product:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog product not found for order line")
     if product.stock_status == "out_of_stock":
@@ -707,28 +622,8 @@ def create_public_order(
 
 def get_public_catalog_item_by_slug_or_404(db: Session, *, tenant_id: int, slug: str) -> PublicCatalogItem:
     normalized = slug.strip().lower()
-    product = (
-        db.query(CatalogProduct)
-        .filter(
-            CatalogProduct.tenant_id == tenant_id,
-            CatalogProduct.slug == normalized,
-            CatalogProduct.is_public == 1,
-            CatalogProduct.is_active == 1,
-            CatalogProduct.deleted_at.is_(None),
-        )
-        .first()
-    )
-    service = (
-        db.query(CatalogService)
-        .filter(
-            CatalogService.tenant_id == tenant_id,
-            CatalogService.slug == normalized,
-            CatalogService.is_public == 1,
-            CatalogService.is_active == 1,
-            CatalogService.deleted_at.is_(None),
-        )
-        .first()
-    )
+    product = website_integration_repository.get_public_product_by_slug(db, tenant_id=tenant_id, slug=normalized)
+    service = website_integration_repository.get_public_service_by_slug(db, tenant_id=tenant_id, slug=normalized)
     if product and service:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Catalog slug matches multiple item types")
     if product:

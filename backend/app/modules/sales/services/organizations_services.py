@@ -19,6 +19,7 @@ from app.modules.platform.services.custom_fields import (
     validate_custom_field_payload,
 )
 from app.modules.sales.models import SalesOrganization
+from app.modules.sales.repositories import organizations_repository
 from app.modules.sales.schema import SalesOrganizationCreate, SalesOrganizationUpdate
 
 
@@ -76,13 +77,10 @@ def create_organization(
         create_new_records=create_new_records,
     )
 
-    existing = (
-        db.query(SalesOrganization)
-        .filter(
-            SalesOrganization.org_name == payload.org_name,
-            SalesOrganization.deleted_at.is_(None),
-        )
-        .first()
+    existing = organizations_repository.find_active_by_name(
+        db,
+        tenant_id=current_user.tenant_id,
+        org_name=payload.org_name,
     )
     if existing and not create_new_records:
         if skip_duplicates:
@@ -223,19 +221,13 @@ def list_organizations_paginated(
     any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[SalesOrganization], int]:
     """Return a page of organizations and the total count."""
-    base_query = _build_organization_query(
+    items, total = organizations_repository.list_paginated(
         db,
         tenant_id=tenant_id,
+        offset=offset,
+        limit=limit,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
-    )
-    total = base_query.count()
-    items = (
-        base_query
-        .order_by(SalesOrganization.created_time.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
     )
     items = hydrate_custom_field_records(
         db,
@@ -257,19 +249,14 @@ def search_organizations_paginated(
     any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[SalesOrganization], int]:
     """Return a page of organizations matching the name and the total count."""
-    base_query = _build_organization_query(
+    items, total = organizations_repository.list_paginated(
         db,
         tenant_id=tenant_id,
         search=name,
+        offset=offset,
+        limit=limit,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
-    )
-    total = base_query.count()
-    items = (
-        base_query
-        .offset(offset)
-        .limit(limit)
-        .all()
     )
     items = hydrate_custom_field_records(
         db,
@@ -283,13 +270,12 @@ def search_organizations_paginated(
 
 def get_organization(db: Session, org_id: int, *, tenant_id: int, include_deleted: bool = False) -> SalesOrganization | None:
     """Return one organization by ID."""
-    query = db.query(SalesOrganization).filter(
-        SalesOrganization.org_id == org_id,
-        SalesOrganization.tenant_id == tenant_id,
+    organization = organizations_repository.get_organization(
+        db,
+        org_id=org_id,
+        tenant_id=tenant_id,
+        include_deleted=include_deleted,
     )
-    if not include_deleted:
-        query = query.filter(SalesOrganization.deleted_at.is_(None))
-    organization = query.first()
     if not organization:
         return None
     return hydrate_custom_field_record(
@@ -361,17 +347,11 @@ def delete_organization(db: Session, org_id: int, *, tenant_id: int) -> bool:
 
 
 def list_deleted_organizations_paginated(db: Session, *, tenant_id: int, offset: int, limit: int) -> tuple[list[SalesOrganization], int]:
-    base_query = db.query(SalesOrganization).filter(
-        SalesOrganization.tenant_id == tenant_id,
-        SalesOrganization.deleted_at.is_not(None),
-    )
-    total = base_query.count()
-    items = (
-        base_query
-        .order_by(SalesOrganization.deleted_at.desc(), SalesOrganization.created_time.desc())
-        .offset(offset)
-        .limit(limit)
-        .all()
+    items, total = organizations_repository.list_deleted_paginated(
+        db,
+        tenant_id=tenant_id,
+        offset=offset,
+        limit=limit,
     )
     items = hydrate_custom_field_records(
         db,

@@ -16,6 +16,7 @@ from app.modules.platform.models import CrmEvent
 from app.modules.platform.services.crm_events import safe_emit_crm_event
 from app.modules.platform.services.notifications import create_notification
 from app.modules.tasks.models import Task, TaskAssignee
+from app.modules.tasks.repositories import tasks_repository
 from app.modules.tasks.schema import TaskResponse
 from app.modules.user_management.models import Team, User
 
@@ -128,20 +129,14 @@ def list_tasks(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> tuple[Sequence[Task], int]:
-    query = _build_task_query(
+    tasks, total_count = tasks_repository.list_tasks(
         db,
         tenant_id=tenant_id,
         current_user=current_user,
+        pagination=pagination,
         search=search,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
-    )
-    total_count = query.count()
-    tasks = (
-        query.order_by(Task.due_at.is_(None), Task.due_at.asc(), Task.created_at.desc())
-        .offset(pagination.offset)
-        .limit(pagination.limit)
-        .all()
     )
     return tasks, total_count
 
@@ -154,13 +149,13 @@ def get_task_or_404(
     current_user,
     include_deleted: bool = False,
 ) -> Task:
-    query = _build_task_query(
+    task = tasks_repository.get_task(
         db,
         tenant_id=tenant_id,
         current_user=current_user,
-        only_deleted=include_deleted,
-    ).filter(Task.id == task_id)
-    task = query.first()
+        task_id=task_id,
+        include_deleted=include_deleted,
+    )
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
     return task
@@ -581,25 +576,7 @@ def list_deleted_tasks(
     tenant_id: int,
     pagination: Pagination,
 ) -> tuple[Sequence[Task], int]:
-    query = (
-        db.query(Task)
-        .options(
-            selectinload(Task.assignees).selectinload(TaskAssignee.user),
-            selectinload(Task.assignees).selectinload(TaskAssignee.team),
-        )
-        .filter(
-            Task.tenant_id == tenant_id,
-            Task.deleted_at.is_not(None),
-        )
-    )
-    total_count = query.count()
-    tasks = (
-        query.order_by(Task.deleted_at.desc(), Task.updated_at.desc())
-        .offset(pagination.offset)
-        .limit(pagination.limit)
-        .all()
-    )
-    return tasks, total_count
+    return tasks_repository.list_deleted_tasks(db, tenant_id=tenant_id, pagination=pagination)
 
 
 def restore_task(db: Session, *, task: Task, current_user) -> Task:

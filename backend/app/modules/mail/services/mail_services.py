@@ -18,13 +18,10 @@ import urllib.parse
 import requests
 from fastapi import HTTPException, Request, status
 from jose import jwt, JWTError
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.access_control import require_role_module_action_access
-from app.core.module_search import apply_ranked_search
-from app.core.postgres_search import searchable_text
 from app.core.secrets import decrypt_secret_with_rotation, encrypt_secret
 from app.core.tenancy import (
     get_frontend_origin_for_request,
@@ -32,6 +29,7 @@ from app.core.tenancy import (
     get_microsoft_redirect_uri_for_request,
 )
 from app.modules.mail.models import MailMessage, UserMailConnection
+from app.modules.mail.repositories import mail_repository
 from app.modules.mail.schema import MailProvider
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.record_comments import get_record_comment_module_config, get_record_reference
@@ -98,15 +96,7 @@ def _serialize_connection(connection: UserMailConnection) -> dict:
 
 
 def build_mail_context(db: Session, *, tenant_id: int, current_user) -> dict:
-    connections = (
-        db.query(UserMailConnection)
-        .filter(
-            UserMailConnection.tenant_id == tenant_id,
-            UserMailConnection.user_id == current_user.id,
-        )
-        .order_by(UserMailConnection.provider.asc(), UserMailConnection.id.asc())
-        .all()
-    )
+    connections = mail_repository.list_connections(db, tenant_id=tenant_id, user_id=current_user.id)
     serialized_connections = [_serialize_connection(connection) for connection in connections]
     connected = any(connection["status"] == "connected" for connection in serialized_connections)
     can_sync = any(connection["can_sync"] for connection in serialized_connections)
@@ -166,42 +156,14 @@ def list_mail_messages(
     limit: int = 50,
     before_id: int | None = None,
 ) -> list[MailMessage]:
-    normalized_folder = (folder or "").strip() or None
-    normalized_search = (search or "").strip()
-    query = db.query(MailMessage).filter(
-        MailMessage.tenant_id == tenant_id,
-        MailMessage.owner_user_id == current_user.id,
-        MailMessage.deleted_at.is_(None),
-    )
-    if normalized_folder:
-        query = query.filter(MailMessage.folder == normalized_folder)
-    if before_id:
-        query = query.filter(MailMessage.id < before_id)
-    if len(normalized_search) >= 2:
-        query = apply_ranked_search(
-            query,
-            search=normalized_search,
-            document=searchable_text(
-                MailMessage.subject,
-                MailMessage.snippet,
-                MailMessage.from_email,
-                MailMessage.from_name,
-                MailMessage.source_label,
-            ),
-            default_order_column=MailMessage.created_at,
-        )
-    return (
-        query
-        .filter(
-            or_(
-                MailMessage.received_at.is_not(None),
-                MailMessage.sent_at.is_not(None),
-                MailMessage.created_at.is_not(None),
-            )
-        )
-        .order_by(MailMessage.received_at.desc().nullslast(), MailMessage.sent_at.desc().nullslast(), MailMessage.created_at.desc())
-        .limit(limit)
-        .all()
+    return mail_repository.list_messages(
+        db,
+        tenant_id=tenant_id,
+        owner_user_id=current_user.id,
+        folder=folder,
+        search=search,
+        limit=limit,
+        before_id=before_id,
     )
 
 
@@ -212,16 +174,7 @@ def get_mail_message_or_404(
     tenant_id: int,
     current_user,
 ) -> MailMessage:
-    message = (
-        db.query(MailMessage)
-        .filter(
-            MailMessage.id == message_id,
-            MailMessage.tenant_id == tenant_id,
-            MailMessage.owner_user_id == current_user.id,
-            MailMessage.deleted_at.is_(None),
-        )
-        .first()
-    )
+    message = mail_repository.get_message(db, tenant_id=tenant_id, owner_user_id=current_user.id, message_id=message_id)
     if not message:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mail message not found")
     return message
@@ -316,15 +269,7 @@ def _get_oauth_mail_connection(
     user_id: int,
     provider: MailProvider,
 ) -> UserMailConnection | None:
-    return (
-        db.query(UserMailConnection)
-        .filter(
-            UserMailConnection.tenant_id == tenant_id,
-            UserMailConnection.user_id == user_id,
-            UserMailConnection.provider == provider.value,
-        )
-        .first()
-    )
+    return mail_repository.get_connection(db, tenant_id=tenant_id, user_id=user_id, provider=provider)
 
 
 def _apply_oauth_mail_connection_state(
@@ -508,15 +453,7 @@ def upsert_imap_smtp_mail_connection(
             detail=f"Failed to verify IMAP/SMTP settings: {_mail_provider_error(exc, protocol='Mailbox')}",
         ) from exc
 
-    connection = (
-        db.query(UserMailConnection)
-        .filter(
-            UserMailConnection.tenant_id == tenant_id,
-            UserMailConnection.user_id == user.id,
-            UserMailConnection.provider == MailProvider.imap_smtp.value,
-        )
-        .first()
-    )
+    connection = mail_repository.get_connection(db, tenant_id=tenant_id, user_id=user.id, provider=MailProvider.imap_smtp)
     if not connection:
         connection = UserMailConnection(
             tenant_id=tenant_id,
@@ -552,15 +489,7 @@ def disconnect_mail_connection(
     user_id: int,
     provider: MailProvider,
 ) -> UserMailConnection:
-    connection = (
-        db.query(UserMailConnection)
-        .filter(
-            UserMailConnection.tenant_id == tenant_id,
-            UserMailConnection.user_id == user_id,
-            UserMailConnection.provider == provider.value,
-        )
-        .first()
-    )
+    connection = mail_repository.get_connection(db, tenant_id=tenant_id, user_id=user_id, provider=provider)
     if not connection:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mail connection not found.")
     connection.status = "disconnected"
@@ -676,16 +605,7 @@ def _mail_connection_for_user(
     user_id: int,
     provider: MailProvider,
 ) -> UserMailConnection:
-    connection = (
-        db.query(UserMailConnection)
-        .filter(
-            UserMailConnection.tenant_id == tenant_id,
-            UserMailConnection.user_id == user_id,
-            UserMailConnection.provider == provider.value,
-            UserMailConnection.status == "connected",
-        )
-        .first()
-    )
+    connection = mail_repository.get_connection(db, tenant_id=tenant_id, user_id=user_id, provider=provider, connected_only=True)
     if not connection:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Connect {provider.value} mail before sending.")
     return connection
@@ -1053,14 +973,11 @@ def _sync_google_message(
     from_email, from_name = _parse_address(_header(headers, "From"))
     subject = _header(headers, "Subject")
     received_at = _parse_message_datetime(_header(headers, "Date"))
-    existing = (
-        db.query(MailMessage)
-        .filter(
-            MailMessage.tenant_id == tenant_id,
-            MailMessage.connection_id == connection.id,
-            MailMessage.provider_message_id == provider_message_id,
-        )
-        .first()
+    existing = mail_repository.find_message_by_provider_id(
+        db,
+        tenant_id=tenant_id,
+        connection_id=connection.id,
+        provider_message_id=provider_message_id,
     )
     message = existing or MailMessage(
         tenant_id=tenant_id,
@@ -1094,15 +1011,7 @@ def sync_google_inbox(db: Session, *, current_user: User, max_results: int = 25)
                 "Enable GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED only after restricted-scope verification is planned."
             ),
         )
-    connection = (
-        db.query(UserMailConnection)
-        .filter(
-            UserMailConnection.tenant_id == current_user.tenant_id,
-            UserMailConnection.user_id == current_user.id,
-            UserMailConnection.provider == MailProvider.google.value,
-        )
-        .first()
-    )
+    connection = mail_repository.get_connection(db, tenant_id=current_user.tenant_id, user_id=current_user.id, provider=MailProvider.google)
     if not connection or connection.status != "connected":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect Gmail before syncing the inbox.")
 
@@ -1147,15 +1056,7 @@ def sync_google_inbox(db: Session, *, current_user: User, max_results: int = 25)
         db.commit()
     except Exception as exc:
         db.rollback()
-        connection = (
-            db.query(UserMailConnection)
-            .filter(
-                UserMailConnection.tenant_id == current_user.tenant_id,
-                UserMailConnection.user_id == current_user.id,
-                UserMailConnection.provider == MailProvider.google.value,
-            )
-            .first()
-        )
+        connection = mail_repository.get_connection(db, tenant_id=current_user.tenant_id, user_id=current_user.id, provider=MailProvider.google)
         if connection is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         connection.status = "error"
@@ -1218,14 +1119,11 @@ def _sync_imap_message(
     from_email, from_name = _parse_address(str(parsed.get("From") or ""))
     subject = _decoded_header(str(parsed.get("Subject") or "")) or None
     body_text = _extract_email_text(parsed)
-    existing = (
-        db.query(MailMessage)
-        .filter(
-            MailMessage.tenant_id == tenant_id,
-            MailMessage.connection_id == connection.id,
-            MailMessage.provider_message_id == provider_message_id,
-        )
-        .first()
+    existing = mail_repository.find_message_by_provider_id(
+        db,
+        tenant_id=tenant_id,
+        connection_id=connection.id,
+        provider_message_id=provider_message_id,
     )
     message = existing or MailMessage(
         tenant_id=tenant_id,
@@ -1252,15 +1150,7 @@ def _sync_imap_message(
 
 
 def sync_imap_smtp_inbox(db: Session, *, current_user: User, max_results: int = 25) -> dict:
-    connection = (
-        db.query(UserMailConnection)
-        .filter(
-            UserMailConnection.tenant_id == current_user.tenant_id,
-            UserMailConnection.user_id == current_user.id,
-            UserMailConnection.provider == MailProvider.imap_smtp.value,
-        )
-        .first()
-    )
+    connection = mail_repository.get_connection(db, tenant_id=current_user.tenant_id, user_id=current_user.id, provider=MailProvider.imap_smtp)
     if not connection or connection.status != "connected":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect IMAP/SMTP mail before syncing the inbox.")
     password = _decrypt_connection_password(db, connection)
@@ -1326,15 +1216,7 @@ def sync_imap_smtp_inbox(db: Session, *, current_user: User, max_results: int = 
         db.commit()
     except Exception as exc:
         db.rollback()
-        connection = (
-            db.query(UserMailConnection)
-            .filter(
-                UserMailConnection.tenant_id == current_user.tenant_id,
-                UserMailConnection.user_id == current_user.id,
-                UserMailConnection.provider == MailProvider.imap_smtp.value,
-            )
-            .first()
-        )
+        connection = mail_repository.get_connection(db, tenant_id=current_user.tenant_id, user_id=current_user.id, provider=MailProvider.imap_smtp)
         if connection is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
         connection.status = "error"
@@ -1397,14 +1279,11 @@ def _sync_microsoft_message(
     if not provider_message_id:
         return False
     sender = _recipient_from_graph(message_payload.get("from"))
-    existing = (
-        db.query(MailMessage)
-        .filter(
-            MailMessage.tenant_id == tenant_id,
-            MailMessage.connection_id == connection.id,
-            MailMessage.provider_message_id == provider_message_id,
-        )
-        .first()
+    existing = mail_repository.find_message_by_provider_id(
+        db,
+        tenant_id=tenant_id,
+        connection_id=connection.id,
+        provider_message_id=provider_message_id,
     )
     message = existing or MailMessage(
         tenant_id=tenant_id,
@@ -1431,15 +1310,7 @@ def _sync_microsoft_message(
 
 
 def sync_microsoft_inbox(db: Session, *, current_user: User, max_results: int = 25) -> dict:
-    connection = (
-        db.query(UserMailConnection)
-        .filter(
-            UserMailConnection.tenant_id == current_user.tenant_id,
-            UserMailConnection.user_id == current_user.id,
-            UserMailConnection.provider == MailProvider.microsoft.value,
-        )
-        .first()
-    )
+    connection = mail_repository.get_connection(db, tenant_id=current_user.tenant_id, user_id=current_user.id, provider=MailProvider.microsoft)
     if not connection or connection.status != "connected":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect Microsoft before syncing the inbox.")
 
@@ -1498,14 +1369,7 @@ def handle_google_mail_callback(
     request: Request,
     state_payload: dict,
 ) -> dict:
-    user = (
-        db.query(User)
-        .filter(
-            User.tenant_id == tenant.id,
-            User.id == int(state_payload["user_id"]),
-        )
-        .first()
-    )
+    user = mail_repository.get_user(db, tenant_id=tenant.id, user_id=int(state_payload["user_id"]))
     if not user or user.is_active != UserStatus.active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Mailbox user is not active")
 
@@ -1562,14 +1426,7 @@ def handle_microsoft_mail_callback(
 ) -> dict:
     if not settings.MICROSOFT_CLIENT_ID or not settings.MICROSOFT_CLIENT_SECRET:
         raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Microsoft Entra mail integration is not configured.")
-    user = (
-        db.query(User)
-        .filter(
-            User.tenant_id == tenant.id,
-            User.id == int(state_payload["user_id"]),
-        )
-        .first()
-    )
+    user = mail_repository.get_user(db, tenant_id=tenant.id, user_id=int(state_payload["user_id"]))
     if not user or user.is_active != UserStatus.active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Mailbox user is not active")
 
@@ -1614,15 +1471,7 @@ def ensure_disconnected_mail_connection(
     user_id: int,
     provider: MailProvider,
 ) -> UserMailConnection:
-    connection = (
-        db.query(UserMailConnection)
-        .filter(
-            UserMailConnection.tenant_id == tenant_id,
-            UserMailConnection.user_id == user_id,
-            UserMailConnection.provider == provider.value,
-        )
-        .first()
-    )
+    connection = mail_repository.get_connection(db, tenant_id=tenant_id, user_id=user_id, provider=provider)
     if connection:
         return connection
     connection = UserMailConnection(

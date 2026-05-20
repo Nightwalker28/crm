@@ -102,6 +102,29 @@ class ModuleFieldConfig(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class GenericSystemRecord(Base):
+    __tablename__ = "generic_system_records"
+    __table_args__ = (
+        Index("ix_generic_system_records_tenant_module_deleted", "tenant_id", "module_key", "deleted_at"),
+        Index("ix_generic_system_records_tenant_module_title", "tenant_id", "module_key", "title"),
+    )
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    title = Column(String(255), nullable=False)
+    status = Column(String(80), nullable=True, index=True)
+    data = Column(JSON, nullable=True)
+    created_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    updated_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+
+    creator = relationship("User", foreign_keys=[created_by_user_id])
+    updated_by = relationship("User", foreign_keys=[updated_by_user_id])
+
+
 class DataTransferJob(Base):
     __tablename__ = "data_transfer_jobs"
     __table_args__ = (

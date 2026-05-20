@@ -71,6 +71,12 @@ class RouteTestSession:
     def refresh(self, item):
         return None
 
+    def flush(self):
+        return None
+
+    def rollback(self):
+        return None
+
 
 class GoogleAuthModeQuery:
     def __init__(self, users):

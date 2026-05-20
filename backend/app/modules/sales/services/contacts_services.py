@@ -12,6 +12,7 @@ from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, 
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination
+from app.modules.sales.repositories import contacts_repository
 from app.modules.platform.services.custom_fields import (
     build_custom_field_filter_map,
     hydrate_custom_field_record,
@@ -111,11 +112,20 @@ def _build_contacts_query(
 
 
 def _ensure_assigned_user(db: Session, user_id: int, *, tenant_id: int):
-    exists = db.query(User.id).filter(User.id == user_id, User.tenant_id == tenant_id).first()
-    if not exists:
+    if not contacts_repository.user_exists(db, user_id=user_id, tenant_id=tenant_id):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Assigned user not found",
+        )
+
+
+def _ensure_organization(db: Session, organization_id: int | None, *, tenant_id: int) -> None:
+    if organization_id is None:
+        return
+    if not contacts_repository.organization_exists(db, organization_id=organization_id, tenant_id=tenant_id):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Organization not found",
         )
 
 
@@ -128,16 +138,14 @@ def list_sales_contacts(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> tuple[Sequence[SalesContact], int]:
-    query = _build_contacts_query(
+    contacts, total_count = contacts_repository.list_contacts(
         db,
-        tenant_id,
-        search,
+        tenant_id=tenant_id,
+        pagination=pagination,
+        search=search,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
     )
-
-    total_count = query.count()
-    contacts = query.offset(pagination.offset).limit(pagination.limit).all()
     contacts = hydrate_custom_field_records(
         db,
         tenant_id=tenant_id,
@@ -148,6 +156,34 @@ def list_sales_contacts(
     return contacts, total_count
 
 
+def list_sales_contacts_cursor(
+    db: Session,
+    tenant_id: int,
+    *,
+    limit: int,
+    cursor: int | None = None,
+    search: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> Sequence[SalesContact]:
+    contacts = contacts_repository.list_contacts_cursor(
+        db,
+        tenant_id=tenant_id,
+        limit=limit,
+        cursor=cursor,
+        search=search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+    return hydrate_custom_field_records(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_contacts",
+        records=contacts,
+        record_id_attr="contact_id",
+    )
+
+
 def list_all_sales_contacts(
     db: Session,
     tenant_id: int,
@@ -156,27 +192,22 @@ def list_all_sales_contacts(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> Sequence[SalesContact]:
-    return (
-        _build_contacts_query(
-            db,
-            tenant_id,
-            search,
-            all_filter_conditions=all_filter_conditions,
-            any_filter_conditions=any_filter_conditions,
-        )
-        .order_by(SalesContact.created_time.desc())
-        .all()
+    return contacts_repository.list_all_contacts(
+        db,
+        tenant_id=tenant_id,
+        search=search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
     )
 
 
 def get_contact_or_404(db: Session, contact_id: int, *, tenant_id: int, include_deleted: bool = False) -> SalesContact:
-    query = db.query(SalesContact).filter(
-        SalesContact.contact_id == contact_id,
-        SalesContact.tenant_id == tenant_id,
+    contact = contacts_repository.get_contact(
+        db,
+        tenant_id=tenant_id,
+        contact_id=contact_id,
+        include_deleted=include_deleted,
     )
-    if not include_deleted:
-        query = query.filter(SalesContact.deleted_at.is_(None))
-    contact = query.first()
     if not contact:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found")
     return hydrate_custom_field_record(
@@ -229,6 +260,7 @@ def create_sales_contact(
             detail="assigned_to is required",
         )
     _ensure_assigned_user(db, data["assigned_to"], tenant_id=current_user.tenant_id)
+    _ensure_organization(db, data.get("organization_id"), tenant_id=current_user.tenant_id)
 
     email = data.get("primary_email")
     if not email:
@@ -342,6 +374,9 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
             )
         _ensure_assigned_user(db, data["assigned_to"], tenant_id=contact.tenant_id)
 
+    if "organization_id" in data:
+        _ensure_organization(db, data["organization_id"], tenant_id=contact.tenant_id)
+
     if "primary_email" in data and data["primary_email"]:
         normalized_email = _normalize_email(data["primary_email"])
         duplicate = (
@@ -401,18 +436,7 @@ def list_deleted_sales_contacts(
     tenant_id: int,
     pagination: Pagination,
 ) -> tuple[Sequence[SalesContact], int]:
-    query = db.query(SalesContact).filter(
-        SalesContact.tenant_id == tenant_id,
-        SalesContact.deleted_at.is_not(None),
-    )
-    total_count = query.count()
-    contacts = (
-        query.order_by(SalesContact.deleted_at.desc(), SalesContact.created_time.desc())
-        .offset(pagination.offset)
-        .limit(pagination.limit)
-        .all()
-    )
-    return contacts, total_count
+    return contacts_repository.list_deleted_contacts(db, tenant_id=tenant_id, pagination=pagination)
 
 
 def restore_sales_contact(db: Session, contact: SalesContact) -> SalesContact:
@@ -542,6 +566,19 @@ def import_contacts_from_csv(
                     "row_number": row_number,
                     "record_identifier": email,
                     "reason": f"Invalid organization_id '{org_raw}'.",
+                }
+            )
+            continue
+        if organization_id is not None and not contacts_repository.organization_exists(
+            db,
+            organization_id=organization_id,
+            tenant_id=tenant_id,
+        ):
+            failures.append(
+                {
+                    "row_number": row_number,
+                    "record_identifier": email,
+                    "reason": f"organization_id '{organization_id}' does not reference a valid organization.",
                 }
             )
             continue
