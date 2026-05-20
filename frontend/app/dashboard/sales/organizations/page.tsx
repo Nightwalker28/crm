@@ -10,15 +10,18 @@ import { useOrganizations } from "@/hooks/sales/useOrganizations";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
-import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 import { useMemo, useState } from "react";
 
 export default function OrganizationsPage() {
   const { data: customFields = [] } = useModuleCustomFields("sales_organizations");
+  const { fields: moduleFields } = useModuleFieldConfigs("sales_organizations");
   const definition = useMemo(
-    () => buildModuleViewDefinition("sales_organizations", customFields),
-    [customFields],
+    () => buildModuleViewDefinition("sales_organizations", customFields, moduleFields),
+    [customFields, moduleFields],
   );
+  const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.sales_organizations;
   const {
     views,
     selectedViewId,
@@ -27,9 +30,10 @@ export default function OrganizationsPage() {
     setDraftConfig,
   } = useSavedViews(
     "sales_organizations",
-    MODULE_VIEW_DEFAULTS.sales_organizations,
+    defaultConfig,
   );
-  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : MODULE_VIEW_DEFAULTS.sales_organizations.visible_columns;
+  const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
+  const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
   const {
     organizations,
     page,
@@ -48,7 +52,7 @@ export default function OrganizationsPage() {
     isCreating,
     setCreateOpen,
     createOrganization,
-  } = useOrganizations(visibleColumns, draftConfig.filters);
+  } = useOrganizations(visibleColumns, activeFilters);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const currentPageIds = useMemo(
     () => organizations.map((org) => org.org_id).filter((id): id is number => typeof id === "number"),
@@ -84,7 +88,7 @@ export default function OrganizationsPage() {
         onImportSuccess={refresh}
         selectedIds={selectedIds}
         currentPageIds={currentPageIds}
-        exportFilters={draftConfig.filters}
+        exportFilters={activeFilters}
         viewSelector={
           <SavedViewSelector
           moduleKey="sales_organizations"
@@ -96,7 +100,7 @@ export default function OrganizationsPage() {
       />
 
       <SearchBar
-        value={typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : ""}
+        value={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
         onChange={(value) =>
           setDraftConfig((current) => ({
             ...current,
@@ -111,7 +115,7 @@ export default function OrganizationsPage() {
 
       <InlineSavedViewFilters
         filterFields={definition?.filterFields ?? []}
-        filters={draftConfig.filters}
+        filters={activeFilters}
         onChange={(nextFilters) =>
           setDraftConfig((current) => ({
             ...current,

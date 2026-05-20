@@ -13,8 +13,9 @@ import SearchBar from "@/components/ui/SearchBar";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import type { CatalogKind, CatalogRecord, CatalogRecordPayload } from "@/hooks/catalog/useCatalogRecords";
 import { useCatalogRecords } from "@/hooks/catalog/useCatalogRecords";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
-import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
+import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 
 type Props = {
   kind: CatalogKind;
@@ -27,8 +28,9 @@ export default function CatalogRecordsPage({ kind }: Props) {
   const title = isProduct ? "Products" : "Services";
   const lowerTitle = title.toLowerCase();
   const moduleKey = isProduct ? "catalog_products" : "catalog_services";
-  const definition = useMemo(() => buildModuleViewDefinition(moduleKey), [moduleKey]);
-  const defaultConfig = MODULE_VIEW_DEFAULTS[moduleKey];
+  const { fields: moduleFields } = useModuleFieldConfigs(moduleKey);
+  const definition = useMemo(() => buildModuleViewDefinition(moduleKey, [], moduleFields), [moduleKey, moduleFields]);
+  const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS[moduleKey];
   const {
     views,
     selectedViewId,
@@ -38,7 +40,8 @@ export default function CatalogRecordsPage({ kind }: Props) {
   } = useSavedViews(moduleKey, defaultConfig);
   const defaultVisibleColumnsKey = JSON.stringify(defaultConfig.visible_columns);
   const defaultVisibleColumns = useMemo(() => JSON.parse(defaultVisibleColumnsKey) as string[], [defaultVisibleColumnsKey]);
-  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : defaultVisibleColumns;
+  const visibleColumns = resolveVisibleColumns(definition, draftConfig, { ...defaultConfig, visible_columns: defaultVisibleColumns });
+  const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
 
   const {
     records,
@@ -58,9 +61,9 @@ export default function CatalogRecordsPage({ kind }: Props) {
     updateRecord,
     uploadMedia,
     isSaving,
-  } = useCatalogRecords(kind, visibleColumns, draftConfig.filters);
+  } = useCatalogRecords(kind, visibleColumns, activeFilters);
 
-  const searchValue = useMemo(() => (typeof draftConfig.filters.search === "string" ? draftConfig.filters.search : ""), [draftConfig.filters.search]);
+  const searchValue = useMemo(() => (typeof activeFilters.search === "string" ? activeFilters.search : ""), [activeFilters.search]);
 
   async function handleSubmit(payload: CatalogRecordPayload, mediaFile: File | null) {
     const created = await createRecord(payload);

@@ -31,6 +31,7 @@ from app.modules.platform.models import (
     CustomModuleRecordValue,
 )
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.module_fields import is_protected_module_field
 from app.modules.user_management.models import (
     Department,
     DepartmentModulePermission,
@@ -68,6 +69,31 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _is_protected_field(field: CustomModuleFieldDefinition) -> bool:
+    return is_protected_module_field(field.key)
+
+
+def _serialize_field(field: CustomModuleFieldDefinition) -> dict[str, Any]:
+    return {
+        "id": field.id,
+        "key": field.key,
+        "label": field.label,
+        "field_type": field.field_type,
+        "help_text": field.help_text,
+        "placeholder": field.placeholder,
+        "is_required": bool(field.is_required),
+        "is_unique": bool(field.is_unique),
+        "display_in_list": bool(field.display_in_list),
+        "default_value": field.default_value,
+        "validation_json": field.validation_json,
+        "sort_order": field.sort_order or 0,
+        "is_active": bool(field.is_active),
+        "is_protected": _is_protected_field(field),
+        "created_at": field.created_at,
+        "updated_at": field.updated_at,
+    }
+
+
 def _serialize_module(module: CustomModuleDefinition) -> CustomModuleResponse:
     fields = sorted(
         [field for field in module.fields if field.deleted_at is None],
@@ -102,7 +128,7 @@ def _serialize_module(module: CustomModuleDefinition) -> CustomModuleResponse:
             "created_at": module.created_at,
             "updated_at": module.updated_at,
             "deleted_at": module.deleted_at,
-            "fields": fields,
+            "fields": [_serialize_field(field) for field in fields],
         }
     )
 
@@ -475,6 +501,9 @@ def _add_field(db: Session, *, definition: CustomModuleDefinition, payload: Cust
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Field key already exists")
     if payload.is_unique and payload.field_type.value == "multi_select":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Multi-select fields cannot be unique")
+    is_protected = is_protected_module_field(key)
+    if is_protected and payload.is_active is False:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Protected identifier fields cannot be disabled")
     field = CustomModuleFieldDefinition(
         tenant_id=definition.tenant_id,
         custom_module_id=definition.id,
@@ -489,7 +518,7 @@ def _add_field(db: Session, *, definition: CustomModuleDefinition, payload: Cust
         default_value=payload.default_value,
         validation_json=payload.validation_json,
         sort_order=payload.sort_order if sort_order is None else sort_order,
-        is_active=payload.is_active,
+        is_active=True if is_protected else payload.is_active,
     )
     db.add(field)
     db.flush()
@@ -515,6 +544,8 @@ def update_field(db: Session, *, tenant_id: int, module_id: int, field_id: int, 
     update_data = payload.model_dump(exclude_unset=True)
     if update_data.get("is_unique") is True and field.field_type == "multi_select":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Multi-select fields cannot be unique")
+    if update_data.get("is_active") is False and _is_protected_field(field):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Protected identifier fields cannot be disabled")
     for name, value in update_data.items():
         setattr(field, name, value.strip() if isinstance(value, str) else value)
     definition.updated_by_user_id = actor_user_id
@@ -529,6 +560,8 @@ def delete_field(db: Session, *, tenant_id: int, module_id: int, field_id: int, 
     field = next((item for item in definition.fields if item.id == field_id and item.deleted_at is None), None)
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
+    if _is_protected_field(field):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Protected identifier fields cannot be deleted")
     field.deleted_at = _now()
     field.is_active = False
     definition.updated_by_user_id = actor_user_id

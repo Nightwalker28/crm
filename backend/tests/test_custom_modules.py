@@ -5,7 +5,8 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 
-from app.modules.platform.custom_modules_schema import CustomModuleCreate, CustomModuleFieldCreate
+from app.modules.platform.custom_modules_schema import CustomModuleCreate, CustomModuleFieldCreate, CustomModuleFieldUpdate
+from app.modules.platform.schema import ModuleFieldConfigUpdateRequest
 from app.modules.platform.models import (
     CustomModuleDefinition,
     CustomModuleFieldDefinition,
@@ -13,6 +14,7 @@ from app.modules.platform.models import (
     CustomModuleRecordValue,
 )
 from app.modules.platform.services import custom_modules
+from app.modules.platform.services import module_fields
 from app.modules.user_management.models import (
     Department,
     DepartmentModulePermission,
@@ -49,6 +51,14 @@ class FirstResultQuery:
 
     def first(self):
         return self.result
+
+
+class EmptyQuery:
+    def filter(self, *args):
+        return self
+
+    def first(self):
+        return None
 
 
 class ReservedModuleDB(FakeDB):
@@ -161,6 +171,122 @@ class CustomModuleFieldTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "Multi-select fields cannot be unique")
+
+    def test_add_field_rejects_disabled_protected_identifier(self):
+        definition = CustomModuleDefinition(id=1, tenant_id=7, key="assets", name="Assets")
+
+        with self.assertRaises(HTTPException) as exc:
+            custom_modules._add_field(
+                FakeDB(),
+                definition=definition,
+                payload=CustomModuleFieldCreate(label="Name", field_type="text", is_active=False),
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Protected identifier fields cannot be disabled")
+
+    def test_update_field_rejects_disabling_protected_identifier(self):
+        field = CustomModuleFieldDefinition(
+            id=1,
+            tenant_id=7,
+            custom_module_id=1,
+            key="name",
+            label="Name",
+            field_type="text",
+            is_active=True,
+        )
+        definition = CustomModuleDefinition(id=1, tenant_id=7, key="assets", name="Assets")
+        definition.fields.append(field)
+
+        with patch("app.modules.platform.services.custom_modules._get_module_definition", return_value=definition):
+            with self.assertRaises(HTTPException) as exc:
+                custom_modules.update_field(
+                    FakeDB(),
+                    tenant_id=7,
+                    module_id=1,
+                    field_id=1,
+                    actor_user_id=9,
+                    payload=CustomModuleFieldUpdate(is_active=False),
+                )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Protected identifier fields cannot be disabled")
+
+    def test_serialize_module_marks_protected_fields(self):
+        definition = CustomModuleDefinition(id=1, tenant_id=7, key="assets", name="Assets")
+        definition.fields.extend(
+            [
+                CustomModuleFieldDefinition(
+                    id=1,
+                    tenant_id=7,
+                    custom_module_id=1,
+                    key="name",
+                    label="Name",
+                    field_type="text",
+                    is_active=True,
+                ),
+                CustomModuleFieldDefinition(
+                    id=2,
+                    tenant_id=7,
+                    custom_module_id=1,
+                    key="serial_number",
+                    label="Serial Number",
+                    field_type="text",
+                    is_active=True,
+                ),
+            ]
+        )
+
+        response = custom_modules._serialize_module(definition)
+
+        fields = {field.key: field for field in response.fields}
+        self.assertTrue(fields["name"].is_protected)
+        self.assertFalse(fields["serial_number"].is_protected)
+
+    def test_module_field_config_rejects_disabled_identifier(self):
+        with self.assertRaises(HTTPException) as exc:
+            module_fields.update_module_field_config(
+                FakeDB(),
+                tenant_id=7,
+                module_key="sales_contacts",
+                field_key="contact_id",
+                payload=ModuleFieldConfigUpdateRequest(label="Contact ID", is_enabled=False),
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Protected identifier fields cannot be disabled")
+
+    def test_module_field_config_allows_disabling_system_field(self):
+        class ModuleFieldConfigDB(FakeDB):
+            def query(self, model):
+                return EmptyQuery()
+
+            def commit(self):
+                self.committed = True
+
+            def refresh(self, value):
+                value.id = value.id or 1
+
+        db = ModuleFieldConfigDB()
+
+        response = module_fields.update_module_field_config(
+            db,
+            tenant_id=7,
+            module_key="sales_contacts",
+            field_key="linkedin_url",
+            payload=ModuleFieldConfigUpdateRequest(
+                label="LinkedIn",
+                field_type="text",
+                field_source="system",
+                is_enabled=False,
+                sort_order=8,
+            ),
+        )
+
+        self.assertFalse(response.is_enabled)
+        self.assertFalse(response.is_protected)
+        self.assertEqual(response.field_key, "linkedin_url")
+        self.assertTrue(db.committed)
 
     def test_create_module_rejects_built_in_module_key(self):
         with self.assertRaises(HTTPException) as exc:

@@ -13,6 +13,7 @@ type TablePreferenceResponse = {
 export type TableColumnOption = {
   key: string;
   label: string;
+  is_protected?: boolean;
 };
 
 async function fetchTablePreference(moduleKey: string): Promise<TablePreferenceResponse> {

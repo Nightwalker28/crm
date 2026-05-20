@@ -16,15 +16,18 @@ import { Button } from "@/components/ui/button";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
-import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 
 export default function InsertionOrdersPage() {
   const router = useRouter();
   const { data: customFields = [] } = useModuleCustomFields("finance_io");
+  const { fields: moduleFields } = useModuleFieldConfigs("finance_io");
   const definition = useMemo(
-    () => buildModuleViewDefinition("finance_io", customFields),
-    [customFields],
+    () => buildModuleViewDefinition("finance_io", customFields, moduleFields),
+    [customFields, moduleFields],
   );
+  const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.finance_io;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<InsertionOrder | null>(null);
   const {
@@ -35,10 +38,11 @@ export default function InsertionOrdersPage() {
     setDraftConfig,
   } = useSavedViews(
     "finance_io",
-    MODULE_VIEW_DEFAULTS.finance_io,
+    defaultConfig,
   );
-  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : MODULE_VIEW_DEFAULTS.finance_io.visible_columns;
-  const statusFilter = typeof draftConfig.filters?.status === "string" ? draftConfig.filters.status : "all";
+  const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
+  const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
+  const statusFilter = typeof activeFilters?.status === "string" ? activeFilters.status : "all";
   const sort = useMemo<InsertionOrderSortState>(() => {
     if (
       draftConfig.sort &&
@@ -67,7 +71,7 @@ export default function InsertionOrdersPage() {
     updateOrder,
     isSaving,
     isDeleting,
-  } = useInsertionOrders(visibleColumns, draftConfig.filters, sort);
+  } = useInsertionOrders(visibleColumns, activeFilters, sort);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const currentPageIds = useMemo(() => orders.map((order) => order.id), [orders]);
   const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
@@ -123,7 +127,7 @@ export default function InsertionOrdersPage() {
           onUploadSuccess={refresh}
           selectedIds={selectedIds}
           currentPageIds={currentPageIds}
-          exportFilters={draftConfig.filters}
+          exportFilters={activeFilters}
           viewSelector={
             <SavedViewSelector
             moduleKey="finance_io"
@@ -137,7 +141,7 @@ export default function InsertionOrdersPage() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div className="flex w-full flex-col gap-3 md:flex-row md:items-center">
             <SearchBar
-              value={typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : ""}
+              value={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
               onChange={(value) =>
                 setDraftConfig((current) => ({
                   ...current,
@@ -175,7 +179,7 @@ export default function InsertionOrdersPage() {
 
         <InlineSavedViewFilters
           filterFields={definition?.filterFields ?? []}
-          filters={draftConfig.filters}
+          filters={activeFilters}
           onChange={(nextFilters) =>
             setDraftConfig((current) => ({
               ...current,

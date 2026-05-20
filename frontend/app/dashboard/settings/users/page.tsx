@@ -11,11 +11,15 @@ import CreateUserDialog from "@/components/users/createUserDialog";
 import EditUserDialog from "@/components/users/editUserDialog";
 import { useUserManagement } from "@/hooks/admin/useUserManagement";
 import { useSavedViews } from "@/hooks/useSavedViews";
-import { getModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 import type { UserFiltersValue } from "@/components/users/userFilters";
 import { useMemo } from "react";
 
 export default function UserManagementPage() {
+  const { fields: moduleFields } = useModuleFieldConfigs("admin_users");
+  const definition = useMemo(() => buildModuleViewDefinition("admin_users", [], moduleFields), [moduleFields]);
+  const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.admin_users;
   const {
     currentUserId,
     editUserData,
@@ -39,19 +43,20 @@ export default function UserManagementPage() {
     setDraftConfig,
   } = useSavedViews(
     "admin_users",
-    MODULE_VIEW_DEFAULTS.admin_users,
+    defaultConfig,
   );
-  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : MODULE_VIEW_DEFAULTS.admin_users.visible_columns;
+  const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
+  const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
   const viewFilters = useMemo(
     () =>
       ({
-        search: typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : "",
-        filtersOpen: Boolean(draftConfig.filters?.filtersOpen),
-        selectedTeams: Array.isArray(draftConfig.filters?.selectedTeams) ? draftConfig.filters.selectedTeams as string[] : [],
-        selectedRoles: Array.isArray(draftConfig.filters?.selectedRoles) ? draftConfig.filters.selectedRoles as string[] : [],
-        selectedStatuses: Array.isArray(draftConfig.filters?.selectedStatuses) ? draftConfig.filters.selectedStatuses as string[] : [],
+        search: typeof activeFilters?.search === "string" ? activeFilters.search : "",
+        filtersOpen: Boolean(activeFilters?.filtersOpen),
+        selectedTeams: Array.isArray(activeFilters?.selectedTeams) ? activeFilters.selectedTeams as string[] : [],
+        selectedRoles: Array.isArray(activeFilters?.selectedRoles) ? activeFilters.selectedRoles as string[] : [],
+        selectedStatuses: Array.isArray(activeFilters?.selectedStatuses) ? activeFilters.selectedStatuses as string[] : [],
       }) satisfies UserFiltersValue,
-    [draftConfig.filters],
+    [activeFilters],
   );
   const viewSort = useMemo(
     () => ({
@@ -60,9 +65,6 @@ export default function UserManagementPage() {
     }),
     [draftConfig.sort],
   );
-  const definition = getModuleViewDefinition("admin_users");
-
-
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
@@ -86,7 +88,7 @@ export default function UserManagementPage() {
 
       <InlineSavedViewFilters
         filterFields={definition?.filterFields ?? []}
-        filters={draftConfig.filters}
+        filters={activeFilters}
         onChange={(nextFilters) =>
           setDraftConfig((current) => ({
             ...current,
@@ -109,16 +111,16 @@ export default function UserManagementPage() {
         initialFilters={viewFilters}
         initialSortKey={viewSort.key}
         initialSortDirection={viewSort.direction}
-        allViewConditions={Array.isArray(draftConfig.filters.all_conditions) ? draftConfig.filters.all_conditions : []}
-        anyViewConditions={Array.isArray(draftConfig.filters.any_conditions) ? draftConfig.filters.any_conditions : []}
+        allViewConditions={Array.isArray(activeFilters.all_conditions) ? activeFilters.all_conditions : []}
+        anyViewConditions={Array.isArray(activeFilters.any_conditions) ? activeFilters.any_conditions : []}
         onStateChange={({ filters, sortKey, sortDirection }) =>
           setDraftConfig((current) => {
             const nextSort = { key: sortKey, direction: sortDirection };
             const nextFilters = {
               ...filters,
               conditions: [],
-              all_conditions: Array.isArray(current.filters?.all_conditions) ? current.filters.all_conditions : [],
-              any_conditions: Array.isArray(current.filters?.any_conditions) ? current.filters.any_conditions : [],
+              all_conditions: Array.isArray(activeFilters.all_conditions) ? activeFilters.all_conditions : [],
+              any_conditions: Array.isArray(activeFilters.any_conditions) ? activeFilters.any_conditions : [],
             };
             const sameFilters =
               JSON.stringify(current.filters ?? {}) === JSON.stringify(nextFilters);

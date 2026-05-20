@@ -15,10 +15,11 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useCustomModuleSchema } from "@/hooks/useModuleBuilder";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { SavedViewConditionEditor } from "@/components/ui/SavedViewConditionEditor";
-import { buildCustomModuleViewDefinition, buildModuleViewDefinition, CUSTOM_FIELD_SUPPORTED_MODULES, getModuleViewDefinition } from "@/lib/moduleViewConfigs";
+import { buildCustomModuleViewDefinition, buildModuleViewDefinition, CUSTOM_FIELD_SUPPORTED_MODULES, getModuleViewDefinition, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 
 export default function ManageModuleViewPage() {
   const params = useParams<{ moduleKey: string }>();
@@ -33,13 +34,14 @@ export default function ManageModuleViewPage() {
     CUSTOM_FIELD_SUPPORTED_MODULES.has(moduleKey),
   );
   const customModuleSchema = useCustomModuleSchema(moduleKey, shouldLoadCustomModule);
+  const { fields: moduleFields } = useModuleFieldConfigs(moduleKey);
   const definition = useMemo(
     () => {
-      const moduleDefinition = buildModuleViewDefinition(moduleKey, customFields);
+      const moduleDefinition = buildModuleViewDefinition(moduleKey, customFields, moduleFields);
       if (moduleDefinition) return moduleDefinition;
-      return customModuleSchema.data ? buildCustomModuleViewDefinition(customModuleSchema.data) : null;
+      return customModuleSchema.data ? buildCustomModuleViewDefinition(customModuleSchema.data, moduleFields) : null;
     },
-    [customFields, customModuleSchema.data, moduleKey],
+    [customFields, customModuleSchema.data, moduleFields, moduleKey],
   );
   const safeDefinition = definition ?? {
     key: moduleKey,
@@ -94,14 +96,15 @@ export default function ManageModuleViewPage() {
   }
 
   const filterFields = safeDefinition.filterFields;
-  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : safeDefinition.defaultConfig.visible_columns;
+  const visibleColumns = resolveVisibleColumns(safeDefinition, draftConfig, safeDefinition.defaultConfig);
+  const safeFilters = resolveSavedViewFilters(safeDefinition, draftConfig.filters);
   async function handleSave() {
     if (!selectedView) return;
     if (selectedView.id == null) return;
 
     await updateView(selectedView.id, {
       name: viewName.trim() || selectedView.name,
-      config: draftConfig,
+      config: { ...draftConfig, visible_columns: visibleColumns, filters: safeFilters },
     });
     toast.success("Saved view updated.");
   }
@@ -113,7 +116,7 @@ export default function ManageModuleViewPage() {
     }
     const created = await createViewWithConfig({
       name: viewName.trim(),
-      config: draftConfig,
+      config: { ...draftConfig, visible_columns: visibleColumns, filters: safeFilters },
     });
     toast.success("Saved view created.");
     router.replace(`/dashboard/views/${moduleKey}?viewId=${created.id}`);
@@ -189,7 +192,7 @@ export default function ManageModuleViewPage() {
             <Label htmlFor="default-search">Default search</Label>
             <Input
               id="default-search"
-              value={typeof draftConfig.filters.search === "string" ? draftConfig.filters.search : ""}
+              value={typeof safeFilters.search === "string" ? safeFilters.search : ""}
               onChange={(event) =>
                 setDraftConfig((current) => ({
                   ...current,
@@ -228,7 +231,7 @@ export default function ManageModuleViewPage() {
 
       <SavedViewConditionEditor
         filterFields={filterFields}
-        filters={draftConfig.filters}
+        filters={safeFilters}
         onChange={(nextFilters) =>
           setDraftConfig((current) => ({
             ...current,

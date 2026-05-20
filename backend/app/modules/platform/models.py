@@ -81,6 +81,27 @@ class CustomFieldValue(Base):
     definition = relationship("CustomFieldDefinition", back_populates="values")
 
 
+class ModuleFieldConfig(Base):
+    __tablename__ = "module_field_configs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "module_key", "field_key", name="uq_module_field_configs_tenant_module_field"),
+        Index("ix_module_field_configs_tenant_module", "tenant_id", "module_key", "is_enabled"),
+    )
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    field_key = Column(String(150), nullable=False, index=True)
+    label = Column(String(150), nullable=False)
+    field_type = Column(String(50), nullable=True)
+    field_source = Column(String(40), nullable=False, server_default="system")
+    is_enabled = Column(Boolean, nullable=False, server_default="true")
+    is_protected = Column(Boolean, nullable=False, server_default="false")
+    sort_order = Column(Integer, nullable=False, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class DataTransferJob(Base):
     __tablename__ = "data_transfer_jobs"
     __table_args__ = (

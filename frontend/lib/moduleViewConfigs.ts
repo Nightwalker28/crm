@@ -1,8 +1,11 @@
 import type {
+  SavedViewCondition,
   SavedViewConfig,
   SavedViewFilterOperator,
 } from "@/hooks/useSavedViews";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
+import type { ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
+import { isProtectedFieldKey } from "@/hooks/useModuleFieldConfigs";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
 import type { CustomModuleDefinition, CustomModuleField } from "@/hooks/useModuleBuilder";
 import { getModuleDisplayName } from "@/lib/module-display";
@@ -377,6 +380,31 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
   },
 };
 
+function isFieldEnabled(fieldKey: string, fieldConfigs: ModuleFieldConfig[] = []) {
+  if (isProtectedFieldKey(fieldKey)) return true;
+  const config = fieldConfigs.find((item) => item.field_key === fieldKey);
+  return config ? config.is_enabled : true;
+}
+
+function applyFieldConfigs(definition: ModuleViewDefinition, fieldConfigs: ModuleFieldConfig[] = []): ModuleViewDefinition {
+  if (!fieldConfigs.length) {
+    return definition;
+  }
+  const columns = definition.columns.filter((column) => isFieldEnabled(column.key, fieldConfigs));
+  const filterFields = definition.filterFields.filter((field) => isFieldEnabled(field.key, fieldConfigs));
+  const visibleColumns = definition.defaultConfig.visible_columns.filter((column) => isFieldEnabled(column, fieldConfigs));
+
+  return {
+    ...definition,
+    columns,
+    filterFields,
+    defaultConfig: {
+      ...definition.defaultConfig,
+      visible_columns: visibleColumns.length ? visibleColumns : columns.slice(0, 1).map((column) => column.key),
+    },
+  };
+}
+
 export function getModuleViewDefinition(moduleKey: string): ModuleViewDefinition | null {
   return MODULE_VIEW_DEFINITIONS[moduleKey] ?? null;
 }
@@ -409,9 +437,45 @@ export function getReadableColumnLabel(columnKey: string, columnOptions: TableCo
     .join(" ");
 }
 
+export function resolveVisibleColumns(
+  definition: ModuleViewDefinition | null,
+  draftConfig: SavedViewConfig,
+  defaultConfig: SavedViewConfig,
+) {
+  const allowedKeys = new Set((definition?.columns ?? []).map((column) => column.key));
+  const draftColumns = (draftConfig.visible_columns ?? []).filter((column) => allowedKeys.has(column));
+  if (draftColumns.length) {
+    return draftColumns;
+  }
+  return defaultConfig.visible_columns.filter((column) => allowedKeys.has(column));
+}
+
+export function resolveSavedViewFilters(
+  definition: ModuleViewDefinition | null,
+  filters: SavedViewConfig["filters"],
+): SavedViewConfig["filters"] {
+  const allowedFields = new Set((definition?.filterFields ?? []).map((field) => field.key));
+  const filterConditions = (conditions: unknown): SavedViewCondition[] => {
+    if (!Array.isArray(conditions)) return [];
+    return conditions.filter((condition): condition is SavedViewCondition => {
+      if (!condition || typeof condition !== "object") return false;
+      const field = (condition as { field?: unknown }).field;
+      return typeof field === "string" && allowedFields.has(field);
+    });
+  };
+
+  return {
+    ...filters,
+    conditions: filterConditions(filters?.conditions),
+    all_conditions: filterConditions(filters?.all_conditions),
+    any_conditions: filterConditions(filters?.any_conditions),
+  };
+}
+
 export function buildModuleViewDefinition(
   moduleKey: string,
   customFields: CustomFieldDefinition[] = [],
+  fieldConfigs: ModuleFieldConfig[] = [],
 ): ModuleViewDefinition | null {
   const baseDefinition = getModuleViewDefinition(moduleKey);
   if (!baseDefinition) {
@@ -419,7 +483,7 @@ export function buildModuleViewDefinition(
   }
 
   if (!CUSTOM_FIELD_SUPPORTED_MODULES.has(moduleKey) || !customFields.length) {
-    return baseDefinition;
+    return applyFieldConfigs(baseDefinition, fieldConfigs);
   }
 
   const customColumns: TableColumnOption[] = customFields
@@ -462,9 +526,14 @@ export function buildModuleViewDefinition(
     }));
 
   return {
-    ...baseDefinition,
-    columns: [...baseDefinition.columns, ...customColumns],
-    filterFields: [...baseDefinition.filterFields, ...customFilterFields],
+    ...applyFieldConfigs(
+      {
+        ...baseDefinition,
+        columns: [...baseDefinition.columns, ...customColumns],
+        filterFields: [...baseDefinition.filterFields, ...customFilterFields],
+      },
+      fieldConfigs,
+    ),
   };
 }
 
@@ -483,7 +552,7 @@ function customModuleOperators(field: CustomModuleField): SavedViewFilterOperato
   return TEXT_OPERATORS;
 }
 
-export function buildCustomModuleViewDefinition(module: CustomModuleDefinition): ModuleViewDefinition {
+export function buildCustomModuleViewDefinition(module: CustomModuleDefinition, fieldConfigs: ModuleFieldConfig[] = []): ModuleViewDefinition {
   const activeFields = module.fields
     .filter((field) => field.is_active)
     .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id);
@@ -496,7 +565,7 @@ export function buildCustomModuleViewDefinition(module: CustomModuleDefinition):
     ...activeFields.filter((field) => field.display_in_list).slice(0, 8).map((field) => field.key),
   ];
 
-  return {
+  return applyFieldConfigs({
     key: module.key,
     label: getModuleDisplayName(module.key, module.description ?? module.name),
     route: `/dashboard/custom/${module.key}`,
@@ -522,5 +591,5 @@ export function buildCustomModuleViewDefinition(module: CustomModuleDefinition):
       filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
       sort: null,
     },
-  };
+  }, fieldConfigs);
 }

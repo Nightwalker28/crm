@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RequiredMark } from "@/components/ui/RequiredMark";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useCustomModuleRecord, useCustomModuleSchema, type CustomModuleField, type CustomModuleRecord } from "@/hooks/useModuleBuilder";
 
 function getInitialValues(fields: CustomModuleField[], record: CustomModuleRecord) {
@@ -91,9 +92,16 @@ export default function CustomModuleRecordDetailPage() {
   const recordId = params.recordId;
   const schema = useCustomModuleSchema(moduleKey);
   const recordQuery = useCustomModuleRecord(moduleKey, recordId);
+  const { fields: moduleFields } = useModuleFieldConfigs(moduleKey);
+  const enabledFieldKeys = useMemo(
+    () => new Map(moduleFields.map((field) => [field.field_key, field.is_protected || field.is_enabled])),
+    [moduleFields],
+  );
   const fields = useMemo(
-    () => (schema.data?.fields ?? []).filter((field) => field.is_active).sort((a, b) => a.sort_order - b.sort_order),
-    [schema.data],
+    () => (schema.data?.fields ?? [])
+      .filter((field) => field.is_active && (enabledFieldKeys.get(field.key) ?? true))
+      .sort((a, b) => a.sort_order - b.sort_order),
+    [enabledFieldKeys, schema.data],
   );
   const backHref = `/dashboard/custom/${moduleKey}`;
   const description = schema.data?.name ? `${schema.data.name} record` : "Custom module record";

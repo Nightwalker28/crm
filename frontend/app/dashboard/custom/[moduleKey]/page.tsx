@@ -15,9 +15,10 @@ import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useCustomModuleRecords, useCustomModuleSchema } from "@/hooks/useModuleBuilder";
 import { useSavedViews } from "@/hooks/useSavedViews";
-import { buildCustomModuleViewDefinition } from "@/lib/moduleViewConfigs";
+import { buildCustomModuleViewDefinition, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 
 function renderValue(value: unknown) {
   if (Array.isArray(value)) return value.join(", ");
@@ -33,15 +34,25 @@ export default function CustomModulePage() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const schema = useCustomModuleSchema(moduleKey);
-  const fields = useMemo(() => (schema.data?.fields ?? []).filter((field) => field.is_active).sort((a, b) => a.sort_order - b.sort_order), [schema.data]);
-  const viewDefinition = useMemo(() => (schema.data ? buildCustomModuleViewDefinition(schema.data) : null), [schema.data]);
+  const { fields: moduleFields } = useModuleFieldConfigs(moduleKey);
+  const enabledFieldKeys = useMemo(
+    () => new Map(moduleFields.map((field) => [field.field_key, field.is_protected || field.is_enabled])),
+    [moduleFields],
+  );
+  const fields = useMemo(
+    () => (schema.data?.fields ?? [])
+      .filter((field) => field.is_active && (enabledFieldKeys.get(field.key) ?? true))
+      .sort((a, b) => a.sort_order - b.sort_order),
+    [enabledFieldKeys, schema.data],
+  );
+  const viewDefinition = useMemo(() => (schema.data ? buildCustomModuleViewDefinition(schema.data, moduleFields) : null), [moduleFields, schema.data]);
   const defaultViewConfig = viewDefinition?.defaultConfig ?? {
     visible_columns: ["title"],
     filters: { search: "", logic: "all" as const, conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   };
   const { views, selectedViewId, setSelectedViewId, draftConfig, setDraftConfig } = useSavedViews(moduleKey, defaultViewConfig, Boolean(viewDefinition));
-  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : defaultViewConfig.visible_columns;
+  const visibleColumns = resolveVisibleColumns(viewDefinition, draftConfig, defaultViewConfig);
   const search = typeof draftConfig.filters.search === "string" ? draftConfig.filters.search : "";
   const records = useCustomModuleRecords(moduleKey, page, search);
   const fieldsByKey = useMemo(() => new Map(fields.map((field) => [field.key, field])), [fields]);

@@ -127,6 +127,7 @@ function FieldEditor({
   const [defaultValue, setDefaultValue] = useState(field.default_value == null ? "" : String(field.default_value));
   const [optionsText, setOptionsText] = useState((field.validation_json?.options ?? []).join("\n"));
   const supportsOptions = field.field_type === "single_select" || field.field_type === "multi_select";
+  const locked = field.is_protected;
 
   async function save() {
     await onUpdate(module.id, field.id, {
@@ -166,7 +167,7 @@ function FieldEditor({
           <button type="button" disabled={disabled || index === fieldCount - 1} onClick={() => move(1)} className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-neutral-800 text-neutral-400 hover:bg-neutral-900 disabled:opacity-40" aria-label="Move field down">
             <ArrowDown size={15} />
           </button>
-          <button type="button" disabled={disabled} onClick={() => onDelete(module.id, field.id)} className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-red-900/70 text-red-200 hover:bg-red-950/30" aria-label="Delete field">
+          <button type="button" disabled={disabled || locked} onClick={() => onDelete(module.id, field.id)} className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-red-900/70 text-red-200 hover:bg-red-950/30 disabled:opacity-40" aria-label="Delete field" title={locked ? "Protected identifier fields cannot be deleted" : undefined}>
             <Trash2 size={15} />
           </button>
         </div>
@@ -196,9 +197,10 @@ function FieldEditor({
           List
         </label>
         <label className="flex items-center gap-2">
-          <input type="checkbox" checked={field.is_active} disabled={disabled} onChange={(event) => onUpdate(module.id, field.id, { is_active: event.target.checked })} />
-          Active
+          <input type="checkbox" checked={field.is_active} disabled={disabled || locked} onChange={(event) => onUpdate(module.id, field.id, { is_active: event.target.checked })} />
+          Enabled
         </label>
+        {locked ? <span className="text-xs text-neutral-500">Protected identifier</span> : null}
         <Button type="button" size="sm" disabled={disabled || !label.trim()} onClick={save} className="ml-auto border border-neutral-700 bg-neutral-900 text-neutral-100 hover:bg-neutral-800">
           <Save size={14} />
           Save

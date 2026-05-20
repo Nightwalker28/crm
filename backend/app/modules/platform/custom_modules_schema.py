@@ -68,6 +68,7 @@ class CustomModuleFieldResponse(BaseModel):
     validation_json: dict[str, Any] | None = None
     sort_order: int = 0
     is_active: bool = True
+    is_protected: bool = False
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

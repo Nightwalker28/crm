@@ -16,8 +16,9 @@ import SearchBar from "@/components/ui/SearchBar";
 import { Button } from "@/components/ui/button";
 import { fetchTaskCalendarEvent, useCalendarActions } from "@/hooks/useCalendar";
 import { fetchTask, useTasks, type Task, type TaskPayload } from "@/hooks/useTasks";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
-import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
+import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 
 export default function TasksPage() {
   const router = useRouter();
@@ -26,18 +27,18 @@ export default function TasksPage() {
   const taskId = taskIdParam && /^\d+$/.test(taskIdParam) ? Number(taskIdParam) : null;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const definition = useMemo(() => buildModuleViewDefinition("tasks"), []);
+  const { fields: moduleFields } = useModuleFieldConfigs("tasks");
+  const definition = useMemo(() => buildModuleViewDefinition("tasks", [], moduleFields), [moduleFields]);
+  const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.tasks;
   const {
     views,
     selectedViewId,
     setSelectedViewId,
     draftConfig,
     setDraftConfig,
-  } = useSavedViews("tasks", MODULE_VIEW_DEFAULTS.tasks);
-  const visibleColumns =
-    draftConfig.visible_columns?.length
-      ? draftConfig.visible_columns
-      : MODULE_VIEW_DEFAULTS.tasks.visible_columns;
+  } = useSavedViews("tasks", defaultConfig);
+  const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
+  const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
   const {
     tasks,
     page,
@@ -57,7 +58,7 @@ export default function TasksPage() {
     deleteTask,
     isSaving,
     isDeleting,
-  } = useTasks(draftConfig.filters);
+  } = useTasks(activeFilters);
   const {
     createEventFromTask,
     deleteTaskCalendarEvent,
@@ -165,7 +166,7 @@ export default function TasksPage() {
 
       <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
         <SearchBar
-          value={typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : ""}
+          value={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
           onChange={(value) =>
             setDraftConfig((current) => ({
               ...current,
@@ -188,7 +189,7 @@ export default function TasksPage() {
 
       <InlineSavedViewFilters
         filterFields={definition?.filterFields ?? []}
-        filters={draftConfig.filters}
+        filters={activeFilters}
         onChange={(nextFilters) =>
           setDraftConfig((current) => ({
             ...current,

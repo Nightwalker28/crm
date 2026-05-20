@@ -33,6 +33,7 @@ export type CustomModuleField = {
   validation_json?: { options?: string[] } | null;
   sort_order: number;
   is_active: boolean;
+  is_protected: boolean;
 };
 
 export type CustomModuleDefinition = {

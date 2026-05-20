@@ -11,15 +11,18 @@ import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
-import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 import { useMemo } from "react";
 
 export default function ContactsPage() {
   const { data: customFields = [] } = useModuleCustomFields("sales_contacts");
+  const { fields: moduleFields } = useModuleFieldConfigs("sales_contacts");
   const definition = useMemo(
-    () => buildModuleViewDefinition("sales_contacts", customFields),
-    [customFields],
+    () => buildModuleViewDefinition("sales_contacts", customFields, moduleFields),
+    [customFields, moduleFields],
   );
+  const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.sales_contacts;
   const {
     views,
     selectedViewId,
@@ -28,11 +31,10 @@ export default function ContactsPage() {
     setDraftConfig,
   } = useSavedViews(
     "sales_contacts",
-    MODULE_VIEW_DEFAULTS.sales_contacts,
+    defaultConfig,
   );
-  const visibleColumns = draftConfig.visible_columns?.length
-    ? draftConfig.visible_columns
-    : MODULE_VIEW_DEFAULTS.sales_contacts.visible_columns;
+  const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
+  const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
 
   const {
     contacts,
@@ -48,7 +50,7 @@ export default function ContactsPage() {
     error,
     goToPage,
     refresh,
-  } = useContacts(visibleColumns, draftConfig.filters);
+  } = useContacts(visibleColumns, activeFilters);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -90,7 +92,7 @@ export default function ContactsPage() {
         onImportSuccess={refresh}
         selectedIds={selectedIds}
         currentPageIds={currentPageIds}
-        exportFilters={draftConfig.filters}
+        exportFilters={activeFilters}
         viewSelector={
           <SavedViewSelector
             moduleKey="sales_contacts"
@@ -103,8 +105,8 @@ export default function ContactsPage() {
 
       <SearchBar
         value={
-          typeof draftConfig.filters?.search === "string"
-            ? draftConfig.filters.search
+          typeof activeFilters?.search === "string"
+            ? activeFilters.search
             : ""
         }
         onChange={(value) =>
@@ -121,7 +123,7 @@ export default function ContactsPage() {
 
       <InlineSavedViewFilters
         filterFields={definition?.filterFields ?? []}
-        filters={draftConfig.filters}
+        filters={activeFilters}
         onChange={(nextFilters) =>
           setDraftConfig((current) => ({
             ...current,

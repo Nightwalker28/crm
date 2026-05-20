@@ -18,8 +18,9 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
-import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS } from "@/lib/moduleViewConfigs";
+import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 import { useOpportunities, type Opportunity, type OpportunityPayload } from "@/hooks/sales/useOpportunities";
 import { useMemo } from "react";
 import { Columns3, Plus, Table2 } from "lucide-react";
@@ -69,10 +70,12 @@ async function fetchPipelineSummary(filters: unknown) {
 export default function OpportunitiesPage() {
   const router = useRouter();
   const { data: customFields = [] } = useModuleCustomFields("sales_opportunities");
+  const { fields: moduleFields } = useModuleFieldConfigs("sales_opportunities");
   const definition = useMemo(
-    () => buildModuleViewDefinition("sales_opportunities", customFields),
-    [customFields],
+    () => buildModuleViewDefinition("sales_opportunities", customFields, moduleFields),
+    [customFields, moduleFields],
   );
+  const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.sales_opportunities;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedOpportunity, setSelectedOpportunity] = useState<Opportunity | null>(null);
   const [displayMode, setDisplayMode] = useState<"table" | "pipeline">("table");
@@ -84,12 +87,13 @@ export default function OpportunitiesPage() {
     setDraftConfig,
   } = useSavedViews(
     "sales_opportunities",
-    MODULE_VIEW_DEFAULTS.sales_opportunities,
+    defaultConfig,
   );
-  const visibleColumns = draftConfig.visible_columns?.length ? draftConfig.visible_columns : MODULE_VIEW_DEFAULTS.sales_opportunities.visible_columns;
+  const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
+  const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
   const pipelineSummaryQuery = useQuery({
-    queryKey: ["sales-opportunities-pipeline-summary", draftConfig.filters],
-    queryFn: () => fetchPipelineSummary(draftConfig.filters),
+    queryKey: ["sales-opportunities-pipeline-summary", activeFilters],
+    queryFn: () => fetchPipelineSummary(activeFilters),
     staleTime: 30000,
   });
   const {
@@ -110,7 +114,7 @@ export default function OpportunitiesPage() {
     createFinanceIo,
     isSaving,
     isDeleting,
-  } = useOpportunities(visibleColumns, draftConfig.filters);
+  } = useOpportunities(visibleColumns, activeFilters);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const currentPageIds = useMemo(() => opportunities.map((opportunity) => opportunity.opportunity_id), [opportunities]);
   const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
@@ -167,7 +171,7 @@ export default function OpportunitiesPage() {
               importEndpoint="/sales/opportunities/import"
               exportEndpoint="/sales/opportunities/export"
               exportMethod="POST"
-              exportBody={buildSavedViewExportPayload(draftConfig.filters)}
+              exportBody={buildSavedViewExportPayload(activeFilters)}
               selectedIds={selectedIds}
               currentPageIds={currentPageIds}
             />
@@ -186,7 +190,7 @@ export default function OpportunitiesPage() {
       />
 
       <SearchBar
-        value={typeof draftConfig.filters?.search === "string" ? draftConfig.filters.search : ""}
+        value={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
         onChange={(value) =>
           setDraftConfig((current) => ({
             ...current,
@@ -256,7 +260,7 @@ export default function OpportunitiesPage() {
 
       <InlineSavedViewFilters
         filterFields={definition?.filterFields ?? []}
-        filters={draftConfig.filters}
+        filters={activeFilters}
         onChange={(nextFilters) =>
           setDraftConfig((current) => ({
             ...current,

@@ -66,6 +66,31 @@ class CustomFieldDefinitionUpdateRequest(BaseModel):
     sort_order: int | None = None
 
 
+class ModuleFieldConfigResponse(BaseModel):
+    id: int | None = None
+    module_key: str
+    field_key: str
+    label: str
+    field_type: str | None = None
+    field_source: str = "system"
+    is_enabled: bool = True
+    is_protected: bool = False
+    sort_order: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ModuleFieldConfigUpdateRequest(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=150)
+    field_type: str | None = Field(default=None, max_length=50)
+    field_source: str | None = Field(default=None, max_length=40)
+    is_enabled: bool | None = None
+    is_protected: bool | None = None
+    sort_order: int | None = None
+
+
 class DataTransferJobResponse(BaseModel):
     id: int
     actor_user_id: int | None = None
