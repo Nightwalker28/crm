@@ -7,6 +7,7 @@ from app.core.config import settings
 
 
 PURGE_TARGETS: tuple[tuple[str, str], ...] = (
+    ("sales_leads", "lead_id"),
     ("sales_contacts", "contact_id"),
     ("sales_organizations", "org_id"),
     ("sales_opportunities", "opportunity_id"),

@@ -1,5 +1,6 @@
 export const DASHBOARD_ROUTES = {
   home: "/dashboard",
+  leads: "/dashboard/sales/leads",
   accounts: "/dashboard/sales/organizations",
   contacts: "/dashboard/sales/contacts",
   deals: "/dashboard/sales/opportunities",
@@ -28,6 +29,7 @@ export const SETTINGS_ROUTES = {
 } as const;
 
 const FRIENDLY_ROUTE_LABELS: Record<string, string> = {
+  leads: "Leads",
   organizations: "Accounts",
   opportunities: "Deals",
   sales: "Sales",

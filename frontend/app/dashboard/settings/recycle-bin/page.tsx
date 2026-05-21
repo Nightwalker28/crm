@@ -36,6 +36,7 @@ type RecycleResponse = {
 
 const MODULE_OPTIONS = [
   "finance_insertion_orders",
+  "sales_leads",
   "sales_contacts",
   "sales_organizations",
   "sales_opportunities",
@@ -92,6 +93,7 @@ export default function RecycleBinPage() {
       query.refetch(),
       queryClient.invalidateQueries({ queryKey: ["activity-log"] }),
       queryClient.invalidateQueries({ queryKey: ["insertion-orders"] }),
+      queryClient.invalidateQueries({ queryKey: ["sales-leads"] }),
       queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
       queryClient.invalidateQueries({ queryKey: ["sales-contacts"] }),
       queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),

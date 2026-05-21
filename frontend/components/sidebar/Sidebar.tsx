@@ -80,6 +80,7 @@ function moduleLabel(module: AccessibleModule) {
 }
 
 function getCanonicalHref(module: AccessibleModule) {
+  if (module.name === "sales_leads") return DASHBOARD_ROUTES.leads;
   if (module.name === "sales_organizations") return DASHBOARD_ROUTES.accounts;
   if (module.name === "sales_contacts") return DASHBOARD_ROUTES.contacts;
   if (module.name === "sales_opportunities") return DASHBOARD_ROUTES.deals;

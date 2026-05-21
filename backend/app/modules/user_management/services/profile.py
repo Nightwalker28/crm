@@ -10,6 +10,7 @@ from app.modules.user_management.models import CompanyProfile, User, UserSavedVi
 
 TABLE_PREFERENCE_MODULES = {
     "tasks",
+    "sales_leads",
     "sales_contacts",
     "sales_organizations",
     "sales_opportunities",

@@ -31,6 +31,11 @@ from app.modules.sales.services.contacts_services import (
     list_deleted_sales_contacts,
     restore_sales_contact,
 )
+from app.modules.sales.services.leads_services import (
+    get_lead_or_404,
+    list_deleted_sales_leads,
+    restore_sales_lead,
+)
 from app.modules.sales.services.organizations_services import (
     get_organization,
     list_deleted_organizations_paginated,
@@ -41,7 +46,7 @@ from app.modules.sales.services.opportunities_services import (
     list_deleted_opportunities,
     restore_opportunity,
 )
-from app.modules.sales.schema import SalesContactResponse, SalesOrganizationResponse
+from app.modules.sales.schema import SalesContactResponse, SalesLeadResponse, SalesOrganizationResponse
 from app.modules.sales.schema import SalesOpportunityResponse
 from app.modules.calendar.services.calendar_services import (
     get_calendar_event_or_404,
@@ -59,6 +64,7 @@ from app.modules.tasks.services.tasks_services import (
 
 SUPPORTED_RECYCLE_MODULES = {
     "finance_insertion_orders",
+    "sales_leads",
     "sales_contacts",
     "sales_organizations",
     "sales_opportunities",
@@ -108,6 +114,21 @@ def list_recycle_items(
                 "subtitle": item.primary_email,
                 "deleted_at": item.deleted_at,
                 "details": SalesContactResponse.model_validate(item).model_dump(mode="json"),
+            }
+            for item in items
+        ]
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key == "sales_leads":
+        items, total = list_deleted_sales_leads(db, tenant_id, pagination)
+        serialized = [
+            {
+                "module_key": module_key,
+                "record_id": item.lead_id,
+                "title": " ".join([part for part in (item.first_name, item.last_name) if part]).strip() or item.primary_email,
+                "subtitle": item.company or item.status or item.primary_email,
+                "deleted_at": item.deleted_at,
+                "details": SalesLeadResponse.model_validate(item).model_dump(mode="json"),
             }
             for item in items
         ]
@@ -299,6 +320,23 @@ def restore_recycle_item(
             entity_id=restored.contact_id,
             action="restore",
             description=f"Restored contact {restored.primary_email} from recycle bin",
+            after_state=serialized,
+        )
+        return serialized
+
+    if module_key == "sales_leads":
+        lead = get_lead_or_404(db, record_id, tenant_id=current_user.tenant_id, include_deleted=True)
+        restored = restore_sales_lead(db, lead)
+        serialized = SalesLeadResponse.model_validate(restored).model_dump(mode="json")
+        log_activity(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            module_key=module_key,
+            entity_type="sales_lead",
+            entity_id=restored.lead_id,
+            action="restore",
+            description=f"Restored lead {restored.primary_email} from recycle bin",
             after_state=serialized,
         )
         return serialized

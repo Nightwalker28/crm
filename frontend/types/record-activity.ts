@@ -1,4 +1,4 @@
-export type RecordModuleKey = "sales_contacts" | "sales_organizations" | "sales_opportunities";
+export type RecordModuleKey = "sales_leads" | "sales_contacts" | "sales_organizations" | "sales_opportunities";
 
 export type ActivityItem = {
   id: number;

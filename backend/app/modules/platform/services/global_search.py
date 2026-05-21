@@ -8,7 +8,7 @@ from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
 from app.modules.calendar.models import CalendarEvent, CalendarEventParticipant
 from app.modules.mail.models import MailMessage
-from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization
+from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization
 from app.modules.tasks.models import Task, TaskAssignee
 
 
@@ -24,6 +24,10 @@ GLOBAL_SEARCH_MODULES = (
     {
         "module_key": "mail",
         "module_label": "Mail",
+    },
+    {
+        "module_key": "sales_leads",
+        "module_label": "Leads",
     },
     {
         "module_key": "sales_contacts",
@@ -210,6 +214,42 @@ def _contact_results(db: Session, *, tenant_id: int, query: str, limit: int, cur
     return results
 
 
+def _lead_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+    ranked = apply_ranked_search(
+        db.query(SalesLead).filter(
+            SalesLead.tenant_id == tenant_id,
+            SalesLead.deleted_at.is_(None),
+        ),
+        search=query,
+        document=searchable_text(
+            SalesLead.first_name,
+            SalesLead.last_name,
+            SalesLead.company,
+            SalesLead.primary_email,
+            SalesLead.title,
+            SalesLead.source,
+            SalesLead.status,
+        ),
+        default_order_column=SalesLead.created_time,
+    )
+    items = ranked.limit(limit).all()
+    results: list[dict] = []
+    for record in items:
+        title = " ".join(part for part in [record.first_name, record.last_name] if part).strip() or record.primary_email or "Unnamed lead"
+        subtitle = " · ".join(part for part in [record.company, record.title, record.status] if part) or None
+        results.append(
+            {
+                "module_key": "sales_leads",
+                "module_label": "Leads",
+                "record_id": str(record.lead_id),
+                "title": title,
+                "subtitle": subtitle,
+                "href": f"/dashboard/sales/leads/{record.lead_id}",
+            }
+        )
+    return results
+
+
 def _organization_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
     ranked = apply_ranked_search(
         db.query(SalesOrganization).filter(
@@ -274,6 +314,7 @@ SEARCH_BUILDERS = {
     "tasks": _task_results,
     "calendar": _calendar_results,
     "mail": _mail_results,
+    "sales_leads": _lead_results,
     "sales_contacts": _contact_results,
     "sales_organizations": _organization_results,
     "sales_opportunities": _opportunity_results,

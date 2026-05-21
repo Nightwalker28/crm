@@ -34,6 +34,11 @@ def _display_opportunity_name(opportunity) -> str:
     return getattr(opportunity, "opportunity_name", None) or "Opportunity"
 
 
+def _display_lead_name(lead) -> str:
+    full_name = " ".join(part for part in [getattr(lead, "first_name", None), getattr(lead, "last_name", None)] if part).strip()
+    return full_name or getattr(lead, "primary_email", None) or "Lead"
+
+
 def _require_task_create_access(db: Session, *, current_user) -> None:
     try:
         require_department_module_access(db, user=current_user, module_key="tasks")
@@ -90,7 +95,11 @@ def _create_follow_up_task(
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id,
         module_key=module_key,
-        entity_type="sales_contact" if module_key == "sales_contacts" else "sales_opportunity",
+        entity_type={
+            "sales_contacts": "sales_contact",
+            "sales_opportunities": "sales_opportunity",
+            "sales_leads": "sales_lead",
+        }.get(module_key, module_key),
         entity_id=entity_id,
         action="task.follow_up_created",
         description=f"Created follow-up task: {task.title}",
@@ -147,6 +156,58 @@ def log_contact_follow_up(db: Session, *, contact, payload: dict, current_user) 
     return {
         "module_key": "sales_contacts",
         "entity_id": str(contact.contact_id),
+        "channel": channel,
+        "last_contacted_at": contacted_at,
+        "follow_up_task_id": task.id if task else None,
+    }
+
+
+def log_lead_follow_up(db: Session, *, lead, payload: dict, current_user) -> dict:
+    channel = payload["channel"]
+    if payload.get("create_follow_up_task"):
+        _require_task_create_access(db, current_user=current_user)
+    contacted_at = _utcnow()
+    lead.last_contacted_at = contacted_at
+    lead.last_contacted_channel = channel
+    lead.last_contacted_by_user_id = current_user.id
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+
+    source_label = _display_lead_name(lead)
+    note = (payload.get("note") or "").strip() or None
+    log_activity(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        module_key="sales_leads",
+        entity_type="sales_lead",
+        entity_id=str(lead.lead_id),
+        action=f"follow_up.{channel}",
+        description=f"Logged {CHANNEL_LABELS[channel]} follow-up for {source_label}",
+        after_state={
+            "channel": channel,
+            "note": note,
+            "last_contacted_at": contacted_at.isoformat(),
+        },
+    )
+
+    task = None
+    if payload.get("create_follow_up_task"):
+        task = _create_follow_up_task(
+            db,
+            current_user=current_user,
+            module_key="sales_leads",
+            entity_id=str(lead.lead_id),
+            source_label=source_label,
+            channel=channel,
+            due_at=payload.get("follow_up_due_at"),
+            note=note,
+        )
+
+    return {
+        "module_key": "sales_leads",
+        "entity_id": str(lead.lead_id),
         "channel": channel,
         "last_contacted_at": contacted_at,
         "follow_up_task_id": task.id if task else None,

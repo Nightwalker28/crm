@@ -165,6 +165,66 @@ class SalesContact(Base):
         return self.organization.org_name if self.organization else None
 
 
+class SalesLead(Base):
+    __tablename__ = "sales_leads"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('new', 'contacted', 'qualified', 'unqualified', 'converted')",
+            name="ck_sales_leads_status",
+        ),
+        Index("ix_sales_leads_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+        Index("ix_sales_leads_tenant_status_active", "tenant_id", "status", postgresql_where=text("deleted_at IS NULL")),
+    )
+
+    lead_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    first_name = Column(Text, nullable=True)
+    last_name = Column(Text, nullable=True)
+    company = Column(Text, nullable=True)
+    primary_email = Column(Text, nullable=False, index=True)
+    phone = Column(Text, nullable=True)
+    title = Column(Text, nullable=True)
+    source = Column(Text, nullable=True)
+    status = Column(Text, nullable=False, server_default="new")
+    notes = Column(Text, nullable=True)
+    assigned_to = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    last_contacted_channel = Column(Text, nullable=True)
+    last_contacted_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    search_doc = Column(
+        Text,
+        Computed(
+            "lower(coalesce(first_name, '') || ' ' || coalesce(last_name, '') || ' ' || "
+            "coalesce(company, '') || ' ' || coalesce(primary_email, '') || ' ' || "
+            "coalesce(phone, '') || ' ' || coalesce(title, '') || ' ' || "
+            "coalesce(source, '') || ' ' || coalesce(status, ''))",
+            persisted=True,
+        ),
+        nullable=True,
+    )
+
+    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
+    last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="joined")
+
+    @property
+    def custom_data(self) -> dict | None:
+        return _get_custom_field_cache(self)
+
+    @custom_data.setter
+    def custom_data(self, value: dict | None) -> None:
+        _set_custom_field_cache(self, value)
+
+    @property
+    def custom_fields(self) -> dict | None:
+        return self.custom_data
+
+    @custom_fields.setter
+    def custom_fields(self, value: dict | None) -> None:
+        self.custom_data = value
+
+
 class SalesOpportunity(Base):
     __tablename__ = "sales_opportunities"
     __table_args__ = (

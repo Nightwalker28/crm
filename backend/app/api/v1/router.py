@@ -28,6 +28,7 @@ from app.modules.user_management.routes.signin import router as signin_router
 from app.modules.user_management.routes.profile import router as profile_router
 from app.modules.user_management.routes.admin import router as admin_user_router
 from app.modules.sales.routes.contacts_routes import router as sales_contacts_router
+from app.modules.sales.routes.leads_routes import router as sales_leads_router
 from app.modules.sales.routes.organizations_routes import router as sales_organization_router
 from app.modules.sales.routes.opportunities_routes import router as sales_opportunities_router
 from app.modules.tasks.routes.tasks_routes import router as tasks_router
@@ -68,6 +69,7 @@ router.include_router(catalog_services_router)
 router.include_router(documents_router)
 router.include_router(mail_router)
 router.include_router(finance_router)
+router.include_router(sales_leads_router, prefix="/sales")
 router.include_router(sales_contacts_router, prefix="/sales")
 router.include_router(sales_organization_router, prefix="/sales")
 router.include_router(sales_opportunities_router, prefix="/sales")

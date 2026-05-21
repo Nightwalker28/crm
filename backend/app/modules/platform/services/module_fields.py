@@ -19,6 +19,7 @@ PROTECTED_FIELD_KEYS = {
 }
 
 MODULE_PROTECTED_FIELD_KEYS = {
+    "sales_leads": {"primary_email"},
     "sales_contacts": {"primary_email"},
     "sales_organizations": {"org_name", "primary_email"},
     "sales_opportunities": {"opportunity_name"},

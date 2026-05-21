@@ -9,7 +9,7 @@ from app.core.pagination import Pagination
 from app.modules.catalog.models import CatalogProduct
 from app.modules.platform.models import RecordComment
 from app.modules.platform.services.notifications import create_notification
-from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization
+from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization
 from app.modules.user_management.models import (
     DepartmentModulePermission,
     Module,
@@ -21,6 +21,13 @@ from app.modules.user_management.models import (
 )
 
 RECORD_COMMENT_MODULES = {
+    "sales_leads": {
+        "model": SalesLead,
+        "id_field": "lead_id",
+        "entity_type": "sales_lead",
+        "label_field": "primary_email",
+        "record_path": "/dashboard/sales/leads/{entity_id}",
+    },
     "sales_contacts": {
         "model": SalesContact,
         "id_field": "contact_id",

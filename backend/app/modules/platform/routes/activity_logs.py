@@ -12,6 +12,7 @@ from app.modules.platform.services.activity_logs import list_activity_logs, list
 router = APIRouter(prefix="/activity", tags=["Activity"])
 
 TIMELINE_ALLOWED_MODULES = {
+    "sales_leads",
     "sales_contacts",
     "sales_organizations",
     "sales_opportunities",

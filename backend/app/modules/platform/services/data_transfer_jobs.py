@@ -20,6 +20,7 @@ DATA_TRANSFER_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 MODULE_DISPLAY_NAMES = {
     "calendar": "Calendar",
+    "sales_leads": "Leads",
     "sales_contacts": "Contacts",
     "sales_organizations": "Organizations",
     "sales_opportunities": "Opportunities",
@@ -30,6 +31,7 @@ TRANSIENT_JOB_ERRORS = (OSError, ConnectionError, TimeoutError)
 
 MODULE_LINKS = {
     "calendar": "/dashboard/calendar",
+    "sales_leads": "/dashboard/sales/leads",
     "sales_contacts": "/dashboard/sales/contacts",
     "sales_organizations": "/dashboard/sales/organizations",
     "sales_opportunities": "/dashboard/sales/opportunities",
@@ -402,7 +404,20 @@ def process_import_job(*, job_id: int) -> None:
         file_bytes = path.read_bytes()
         update_job_progress(db, job, progress_percent=25, progress_message="Validating import file.")
 
-        if module_key == "sales_contacts":
+        if module_key == "sales_leads":
+            from app.modules.sales.services.leads_services import import_leads_from_csv
+            from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
+
+            update_job_progress(db, job, progress_percent=65, progress_message="Importing leads.")
+            summary = import_leads_from_csv(
+                db,
+                file_bytes,
+                tenant_id=job.tenant_id,
+                default_assigned_to=actor_user_id,
+                duplicate_mode=duplicate_mode,
+                default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+            )
+        elif module_key == "sales_contacts":
             from app.modules.sales.services.contacts_import_service import import_contacts_from_csv
             from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
 
@@ -494,7 +509,32 @@ def process_export_job(*, job_id: int) -> None:
         update_job_progress(db, job, progress_percent=35, progress_message="Collecting records for export.")
         exported_rows = 0
 
-        if module_key == "sales_contacts":
+        if module_key == "sales_leads":
+            from app.modules.sales.models import SalesLead
+            from app.modules.sales.services.leads_services import export_leads_to_csv
+            from app.modules.sales.services.leads_services import list_all_sales_leads
+
+            if export_ids is not None:
+                query = db.query(SalesLead).filter(
+                    SalesLead.tenant_id == job.tenant_id,
+                    SalesLead.deleted_at.is_(None),
+                    SalesLead.lead_id.in_(export_ids),
+                )
+                records = query.order_by(SalesLead.created_time.desc()).all()
+            else:
+                records = list_all_sales_leads(
+                    db,
+                    job.tenant_id,
+                    search=search,
+                    all_filter_conditions=all_filter_conditions,
+                    any_filter_conditions=any_filter_conditions,
+                )
+            exported_rows = len(records)
+            update_job_progress(db, job, progress_percent=70, progress_message="Serializing leads export.")
+            content = export_leads_to_csv(records, field_keys=payload.get("field_keys"))
+            file_name = "sales_leads.csv"
+            media_type = "text/csv"
+        elif module_key == "sales_contacts":
             from app.modules.sales.models import SalesContact
             from app.modules.sales.services.contacts_export_service import export_contacts_to_csv
             from app.modules.sales.services.contacts_services import list_all_sales_contacts

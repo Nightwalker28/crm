@@ -37,6 +37,7 @@ export type ModuleViewDefinition = {
 
 export const CUSTOM_FIELD_COLUMN_PREFIX = "custom:";
 export const CUSTOM_FIELD_SUPPORTED_MODULES = new Set([
+  "sales_leads",
   "sales_contacts",
   "sales_organizations",
   "sales_opportunities",
@@ -58,6 +59,18 @@ export const CONTACT_COLUMNS: TableColumnOption[] = [
   { key: "region", label: "Region" },
   { key: "country", label: "Country" },
   { key: "linkedin_url", label: "LinkedIn" },
+];
+
+export const LEAD_COLUMNS: TableColumnOption[] = [
+  { key: "first_name", label: "First Name" },
+  { key: "last_name", label: "Last Name" },
+  { key: "company", label: "Company" },
+  { key: "primary_email", label: "Email" },
+  { key: "phone", label: "Phone" },
+  { key: "title", label: "Job Title" },
+  { key: "source", label: "Source" },
+  { key: "status", label: "Status" },
+  { key: "created_time", label: "Created" },
 ];
 
 export const ORGANIZATION_COLUMNS: TableColumnOption[] = [
@@ -134,6 +147,11 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
       all_conditions: [{ id: "default-hide-completed", field: "status", operator: "is_not", value: "completed" }],
       any_conditions: [],
     },
+    sort: null,
+  },
+  sales_leads: {
+    visible_columns: ["first_name", "last_name", "company", "primary_email", "phone", "status"],
+    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },
   sales_contacts: {
@@ -229,6 +247,36 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "created_at", label: "Created At", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.tasks,
+  },
+  sales_leads: {
+    key: "sales_leads",
+    label: "Leads",
+    route: "/dashboard/sales/leads",
+    columns: LEAD_COLUMNS,
+    filterFields: [
+      { key: "first_name", label: "First Name", type: "text", operators: TEXT_OPERATORS },
+      { key: "last_name", label: "Last Name", type: "text", operators: TEXT_OPERATORS },
+      { key: "company", label: "Company", type: "text", operators: TEXT_OPERATORS },
+      { key: "primary_email", label: "Email", type: "text", operators: TEXT_OPERATORS },
+      { key: "phone", label: "Phone", type: "text", operators: TEXT_OPERATORS },
+      { key: "title", label: "Job Title", type: "text", operators: TEXT_OPERATORS },
+      { key: "source", label: "Source", type: "text", operators: TEXT_OPERATORS },
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        operators: SELECT_OPERATORS,
+        options: [
+          { value: "new", label: "New" },
+          { value: "contacted", label: "Contacted" },
+          { value: "qualified", label: "Qualified" },
+          { value: "unqualified", label: "Unqualified" },
+          { value: "converted", label: "Converted" },
+        ],
+      },
+      { key: "created_time", label: "Created Time", type: "date", operators: DATE_OPERATORS },
+    ],
+    defaultConfig: MODULE_VIEW_DEFAULTS.sales_leads,
   },
   sales_contacts: {
     key: "sales_contacts",

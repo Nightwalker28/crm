@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { useDocumentActions, useDocuments } from "@/hooks/useDocuments";
 
 type Props = {
-  moduleKey: "sales_contacts" | "sales_organizations" | "sales_opportunities";
+  moduleKey: "sales_leads" | "sales_contacts" | "sales_organizations" | "sales_opportunities";
   entityId: string | number;
 };
 

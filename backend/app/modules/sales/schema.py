@@ -172,6 +172,80 @@ class SalesContactListResponse(BaseModel):
     page: int
 
 
+class SalesLeadBase(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    company: str | None = None
+    phone: str | None = None
+    title: str | None = None
+    source: str | None = None
+    status: str = "new"
+    notes: str | None = None
+    custom_fields: dict[str, Any] | None = None
+
+
+class SalesLeadCreateRequest(SalesLeadBase):
+    primary_email: EmailStr
+    assigned_to: int | None = None
+
+
+class SalesLeadUpdateRequest(BaseModel):
+    first_name: str | None = None
+    last_name: str | None = None
+    company: str | None = None
+    primary_email: EmailStr | None = None
+    phone: str | None = None
+    title: str | None = None
+    source: str | None = None
+    status: str | None = None
+    notes: str | None = None
+    assigned_to: int | None = None
+    custom_fields: dict[str, Any] | None = None
+
+
+class SalesLeadResponse(SalesLeadBase):
+    lead_id: int
+    primary_email: EmailStr
+    assigned_to: int | None = None
+    created_time: datetime
+    last_contacted_at: datetime | None = None
+    last_contacted_channel: str | None = None
+    last_contacted_by_user_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SalesLeadListItem(BaseModel):
+    lead_id: int
+    first_name: str | None = None
+    last_name: str | None = None
+    company: str | None = None
+    primary_email: EmailStr | None = None
+    phone: str | None = None
+    title: str | None = None
+    source: str | None = None
+    status: str | None = None
+    assigned_to: int | None = None
+    created_time: datetime | None = None
+    last_contacted_at: datetime | None = None
+    last_contacted_channel: str | None = None
+    last_contacted_by_user_id: int | None = None
+    custom_fields: dict[str, Any] | None = None
+
+
+class SalesLeadListResponse(BaseModel):
+    results: list[SalesLeadListItem]
+    range_start: int
+    range_end: int
+    total_count: int
+    total_pages: int
+    page: int
+
+
+class LeadSummaryResponse(BaseModel):
+    lead: SalesLeadResponse
+
+
 class RelatedOpportunitySummary(BaseModel):
     opportunity_id: int
     opportunity_name: str

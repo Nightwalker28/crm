@@ -19,6 +19,7 @@ from app.modules.platform.schema import (
 
 SUPPORTED_MODULE_KEYS = {
     "finance_io",
+    "sales_leads",
     "sales_contacts",
     "sales_organizations",
     "sales_opportunities",
