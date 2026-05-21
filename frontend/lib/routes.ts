@@ -9,6 +9,7 @@ export const DASHBOARD_ROUTES = {
   insertionOrders: "/dashboard/finance/insertion-orders",
   products: "/dashboard/catalog/products",
   services: "/dashboard/catalog/services",
+  reports: "/dashboard/reports",
 } as const;
 
 export const SETTINGS_ROUTES = {
@@ -47,6 +48,7 @@ const FRIENDLY_ROUTE_LABELS: Record<string, string> = {
   "recycle-bin": "Recycle Bin",
   "activity-log": "Activity Log",
   "message-templates": "Templates",
+  reports: "Reports",
 };
 
 export function getFriendlyRouteLabel(pathOrSegment: string): string {

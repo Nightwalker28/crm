@@ -140,6 +140,41 @@ class DataTransferExportRequest(BaseModel):
     filters_any: list[dict[str, Any]] | None = None
 
 
+class ModuleReportField(BaseModel):
+    key: str
+    label: str
+    field_type: str
+
+
+class ModuleReportModule(BaseModel):
+    module_key: str
+    label: str
+    dimensions: list[ModuleReportField]
+    metrics: list[ModuleReportField]
+    filter_fields: list[ModuleReportField]
+    default_dimension: str | None = None
+
+
+class ModuleReportModuleListResponse(BaseModel):
+    results: list[ModuleReportModule]
+
+
+class ModuleReportRow(BaseModel):
+    key: str
+    label: str
+    count: int
+    value: float
+
+
+class ModuleReportResponse(BaseModel):
+    module_key: str
+    dimension: ModuleReportField
+    metric: str
+    metric_field: ModuleReportField | None = None
+    total_count: int
+    rows: list[ModuleReportRow]
+
+
 class UserNotificationResponse(BaseModel):
     id: int
     user_id: int

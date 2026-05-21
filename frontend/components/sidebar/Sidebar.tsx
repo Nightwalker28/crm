@@ -152,6 +152,20 @@ function settingsGroup(): SidebarGroupConfig {
   };
 }
 
+function addReportsGroup(groups: SidebarGroupConfig[]) {
+  const item = { href: DASHBOARD_ROUTES.reports, label: "Reports" };
+  const existing = groups.find((group) => group.key === "other");
+  if (existing) {
+    if (!existing.items.some((candidate) => candidate.href === item.href)) {
+      existing.items.push(item);
+      existing.items.sort((a, b) => a.label.localeCompare(b.label));
+    }
+    return groups;
+  }
+  groups.push({ ...SYSTEM_GROUPS.other, items: [item] });
+  return groups.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
+}
+
 function activeGroupKey(pathname: string, groups: SidebarGroupConfig[]) {
   const active = groups.find((group) =>
     group.items.some((item) => pathname === item.href || pathname.startsWith(item.href + "/")),
@@ -171,6 +185,7 @@ export default function Sidebar() {
 
   const groups = useMemo(() => {
     const next = buildOperationalGroups(modules);
+    if (modules.length) addReportsGroup(next);
     if (isAdmin) next.push(settingsGroup());
     return next;
   }, [isAdmin, modules]);
