@@ -38,6 +38,7 @@ DEFAULT_MODULES = [
     {"name": "sales_contacts", "base_route": "/dashboard/sales/contacts", "description": "Sales contacts"},
     {"name": "sales_organizations", "base_route": "/dashboard/sales/organizations", "description": "Sales organizations"},
     {"name": "sales_opportunities", "base_route": "/dashboard/sales/opportunities", "description": "Sales opportunities"},
+    {"name": "sales_quotes", "base_route": "/dashboard/sales/quotes", "description": "Sales quotes"},
 ]
 
 DEFAULT_DEPARTMENT = {"name": "Administration", "description": "Initial system administration department"}

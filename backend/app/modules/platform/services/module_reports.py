@@ -3,10 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
+import csv
+from io import StringIO
 from typing import Any, Callable
 
 from fastapi import HTTPException, status
 from sqlalchemy import Date, Numeric, String, cast, func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.access_control import get_finance_user_scope, require_role_module_action_access
@@ -14,17 +17,18 @@ from app.core.module_filters import apply_filter_conditions
 from app.modules.finance.models import FinanceIO
 from app.modules.finance.repositories import io_repository
 from app.modules.finance.services.io_search_services import get_finance_module_id
-from app.modules.platform.models import CustomFieldValue, CustomModuleDefinition, CustomModuleRecord, CustomModuleRecordValue
+from app.modules.platform.models import CustomFieldValue, CustomModuleDefinition, CustomModuleRecord, CustomModuleRecordValue, UserModuleReport
 from app.modules.platform.services import custom_modules
 from app.modules.platform.services.custom_fields import CUSTOM_FIELD_FILTER_PREFIX, list_custom_field_definitions
 from app.modules.platform.services.module_fields import module_field_enabled_map, sanitize_disabled_filter_conditions
-from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization
-from app.modules.sales.repositories import contacts_repository, leads_repository, opportunities_repository, organizations_repository
+from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization, SalesQuote
+from app.modules.sales.repositories import contacts_repository, leads_repository, opportunities_repository, organizations_repository, quotes_repository
 from app.modules.tasks.models import Task
 from app.modules.tasks.repositories import tasks_repository
 
 
 MAX_REPORT_BUCKETS = 50
+SAVED_REPORT_VIEW_MODES = {"table", "bar", "pie"}
 
 
 @dataclass(frozen=True)
@@ -171,6 +175,19 @@ def _opportunity_fields(db: Session, tenant_id: int) -> list[ReportField]:
     ])
 
 
+def _quote_fields(db: Session, tenant_id: int) -> list[ReportField]:
+    return _enabled_fields(db, tenant_id=tenant_id, module_key="sales_quotes", fields=[
+        ReportField("status", "Status", "select", SalesQuote.status),
+        ReportField("customer_name", "Customer", "text", SalesQuote.customer_name),
+        ReportField("currency", "Currency", "text", SalesQuote.currency),
+        ReportField("issue_date", "Issue Date", "date", SalesQuote.issue_date),
+        ReportField("expiry_date", "Expiry Date", "date", SalesQuote.expiry_date),
+        ReportField("created_time", "Created Date", "date", cast(SalesQuote.created_time, Date)),
+        ReportField("total_amount", "Total Amount", "number", SalesQuote.total_amount),
+        *_custom_field_report_fields(db, tenant_id=tenant_id, module_key="sales_quotes", record_id_expression=SalesQuote.quote_id),
+    ])
+
+
 def _task_fields(db: Session, tenant_id: int) -> list[ReportField]:
     return _enabled_fields(db, tenant_id=tenant_id, module_key="tasks", fields=[
         ReportField("status", "Status", "select", Task.status),
@@ -213,6 +230,7 @@ BUILT_IN_ADAPTERS: dict[str, ReportAdapter] = {
     "sales_contacts": ReportAdapter("sales_contacts", "Contacts", lambda db, user, search, all_c, any_c: contacts_repository.build_contacts_query(db, tenant_id=user.tenant_id, search=search, all_filter_conditions=all_c, any_filter_conditions=any_c), _contact_fields),
     "sales_organizations": ReportAdapter("sales_organizations", "Accounts", lambda db, user, search, all_c, any_c: organizations_repository.build_organization_query(db, tenant_id=user.tenant_id, search=search, all_filter_conditions=all_c, any_filter_conditions=any_c), _organization_fields),
     "sales_opportunities": ReportAdapter("sales_opportunities", "Deals", lambda db, user, search, all_c, any_c: opportunities_repository.build_opportunity_query(db, tenant_id=user.tenant_id, search=search, all_filter_conditions=all_c, any_filter_conditions=any_c), _opportunity_fields),
+    "sales_quotes": ReportAdapter("sales_quotes", "Quotes", lambda db, user, search, all_c, any_c: quotes_repository.build_quotes_query(db, tenant_id=user.tenant_id, search=search, all_filter_conditions=all_c, any_filter_conditions=any_c), _quote_fields),
     "finance_io": ReportAdapter("finance_io", "Insertion Orders", _build_finance_query, _finance_fields),
 }
 
@@ -301,6 +319,159 @@ def _module_payload(module_key: str, label: str, fields: list[ReportField]) -> d
         "filter_fields": [_as_field_payload(field) for field in fields],
         "default_dimension": dimensions[0].key if dimensions else None,
     }
+
+
+def _get_report_fields_for_module(db: Session, current_user, module_key: str) -> tuple[str, list[ReportField]]:
+    adapter = BUILT_IN_ADAPTERS.get(module_key)
+    if adapter:
+        try:
+            require_role_module_action_access(db, user=current_user, module_key=module_key, action="view")
+        except PermissionError as exc:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+        return adapter.label, adapter.fields(db, current_user.tenant_id)
+
+    definition, fields = _custom_report_context(db, current_user, module_key)
+    return definition.name, fields
+
+
+def validate_report_config(db: Session, current_user, *, module_key: str, config: dict[str, Any]) -> dict[str, Any]:
+    _label, fields = _get_report_fields_for_module(db, current_user, module_key)
+    dimension_fields = {field.key: field for field in _dimension_fields(fields)}
+    metric_fields = {field.key: field for field in _metric_fields(fields)}
+    if not dimension_fields:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This module does not have report dimensions")
+
+    dimension = str(config.get("dimension") or "").strip()
+    if dimension not in dimension_fields:
+        dimension = next(iter(dimension_fields.values())).key
+
+    metric = _normalize_metric(str(config.get("metric") or "count"))
+    metric_field = str(config.get("metric_field") or "").strip()
+    if metric == "sum":
+        if metric_field not in metric_fields:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select a numeric field for sum reports")
+    else:
+        metric_field = ""
+
+    filters = config.get("filters") if isinstance(config.get("filters"), dict) else {}
+    all_conditions = filters.get("all_conditions") if isinstance(filters.get("all_conditions"), list) else []
+    any_conditions = filters.get("any_conditions") if isinstance(filters.get("any_conditions"), list) else []
+    sanitized_filters = {
+        "search": str(filters.get("search") or ""),
+        "logic": "all",
+        "conditions": [],
+        "all_conditions": sanitize_disabled_filter_conditions(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key=module_key,
+            conditions=all_conditions,
+        ),
+        "any_conditions": sanitize_disabled_filter_conditions(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key=module_key,
+            conditions=any_conditions,
+        ),
+    }
+    view_mode = str(config.get("view_mode") or "bar").strip().lower()
+    if view_mode not in SAVED_REPORT_VIEW_MODES:
+        view_mode = "bar"
+
+    return {
+        "dimension": dimension,
+        "metric": metric,
+        "metric_field": metric_field,
+        "filters": sanitized_filters,
+        "view_mode": view_mode,
+    }
+
+
+def _serialize_saved_report(report: UserModuleReport) -> dict[str, Any]:
+    return {
+        "id": report.id,
+        "module_key": report.module_key,
+        "name": report.name,
+        "config": report.config or {},
+        "created_at": report.created_at,
+        "updated_at": report.updated_at,
+    }
+
+
+def list_saved_reports(db: Session, current_user, *, module_key: str | None = None) -> list[dict[str, Any]]:
+    query = db.query(UserModuleReport).filter(
+        UserModuleReport.tenant_id == current_user.tenant_id,
+        UserModuleReport.user_id == current_user.id,
+    )
+    if module_key:
+        _get_report_fields_for_module(db, current_user, module_key)
+        query = query.filter(UserModuleReport.module_key == module_key)
+    reports = query.order_by(UserModuleReport.updated_at.desc(), UserModuleReport.id.desc()).all()
+    return [_serialize_saved_report(report) for report in reports]
+
+
+def create_saved_report(db: Session, current_user, *, module_key: str, name: str, config: dict[str, Any]) -> dict[str, Any]:
+    normalized_module_key = module_key.strip()
+    normalized_name = name.strip()
+    if not normalized_name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Report name is required")
+    normalized_config = validate_report_config(db, current_user, module_key=normalized_module_key, config=config)
+    report = UserModuleReport(
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        module_key=normalized_module_key,
+        name=normalized_name,
+        config=normalized_config,
+    )
+    db.add(report)
+    try:
+        db.commit()
+        db.refresh(report)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A saved report with this name already exists") from exc
+    return _serialize_saved_report(report)
+
+
+def _get_saved_report_or_404(db: Session, current_user, report_id: int) -> UserModuleReport:
+    report = (
+        db.query(UserModuleReport)
+        .filter(
+            UserModuleReport.id == report_id,
+            UserModuleReport.tenant_id == current_user.tenant_id,
+            UserModuleReport.user_id == current_user.id,
+        )
+        .first()
+    )
+    if not report:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Saved report not found")
+    return report
+
+
+def update_saved_report(db: Session, current_user, *, report_id: int, name: str | None = None, config: dict[str, Any] | None = None) -> dict[str, Any]:
+    report = _get_saved_report_or_404(db, current_user, report_id)
+    if name is not None:
+        normalized_name = name.strip()
+        if not normalized_name:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Report name is required")
+        report.name = normalized_name
+    if config is not None:
+        report.config = validate_report_config(db, current_user, module_key=report.module_key, config=config)
+    db.add(report)
+    try:
+        db.commit()
+        db.refresh(report)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="A saved report with this name already exists") from exc
+    return _serialize_saved_report(report)
+
+
+def delete_saved_report(db: Session, current_user, *, report_id: int) -> None:
+    report = _get_saved_report_or_404(db, current_user, report_id)
+    db.delete(report)
+    db.commit()
 
 
 def list_report_modules(db: Session, current_user) -> list[dict[str, Any]]:
@@ -408,3 +579,14 @@ def generate_module_report(
             for row in rows
         ],
     }
+
+
+def module_report_csv_bytes(report: dict[str, Any]) -> bytes:
+    output = StringIO()
+    writer = csv.writer(output)
+    dimension_label = report["dimension"]["label"]
+    metric_label = report["metric_field"]["label"] if report.get("metric_field") else "Records"
+    writer.writerow([dimension_label, "Records", metric_label])
+    for row in report.get("rows", []):
+        writer.writerow([row.get("label", ""), row.get("count", 0), row.get("value", 0)])
+    return output.getvalue().encode("utf-8")

@@ -14,6 +14,7 @@ TABLE_PREFERENCE_MODULES = {
     "sales_contacts",
     "sales_organizations",
     "sales_opportunities",
+    "sales_quotes",
     "admin_users",
     "finance_io",
 }

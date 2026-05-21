@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BarChart3, PieChart as PieChartIcon, Table2 } from "lucide-react";
+import { BarChart3, Download, FileDown, PieChart as PieChartIcon, Save, Table2, Trash2 } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
+import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogBackdrop, DialogFooter, DialogHeader, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -48,6 +50,23 @@ type ReportResponse = {
   rows: ReportRow[];
 };
 
+type SavedReportConfig = {
+  dimension: string;
+  metric: "count" | "sum";
+  metric_field: string;
+  filters: SavedViewFilters;
+  view_mode: "table" | "bar" | "pie";
+};
+
+type SavedReport = {
+  id: number;
+  module_key: string;
+  name: string;
+  config: SavedReportConfig;
+  created_at: string;
+  updated_at: string;
+};
+
 const DEFAULT_FILTERS: SavedViewFilters = {
   search: "",
   logic: "all",
@@ -76,12 +95,7 @@ async function fetchReportModules() {
 }
 
 async function fetchReport(moduleKey: string, dimension: string, metric: string, metricField: string, filters: SavedViewFilters) {
-  const params = new URLSearchParams();
-  params.set("dimension", dimension);
-  params.set("metric", metric);
-  params.set("limit", "20");
-  if (metric === "sum" && metricField) params.set("metric_field", metricField);
-  appendSavedViewFilterParams(params, filters);
+  const params = buildReportParams(dimension, metric, metricField, filters, 20);
   const res = await apiFetch(`/reports/modules/${moduleKey}?${params.toString()}`);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -90,17 +104,89 @@ async function fetchReport(moduleKey: string, dimension: string, metric: string,
   return res.json() as Promise<ReportResponse>;
 }
 
+async function fetchSavedReports(moduleKey: string) {
+  const params = new URLSearchParams();
+  params.set("module_key", moduleKey);
+  const res = await apiFetch(`/reports/saved?${params.toString()}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  }
+  return res.json() as Promise<{ results: SavedReport[] }>;
+}
+
+async function createSavedReport(payload: { module_key: string; name: string; config: SavedReportConfig }) {
+  const res = await apiFetch("/reports/saved", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  }
+  return res.json() as Promise<SavedReport>;
+}
+
+async function updateSavedReport(reportId: number, payload: { name?: string; config?: SavedReportConfig }) {
+  const res = await apiFetch(`/reports/saved/${reportId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  }
+  return res.json() as Promise<SavedReport>;
+}
+
+async function deleteSavedReport(reportId: number) {
+  const res = await apiFetch(`/reports/saved/${reportId}`, { method: "DELETE" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  }
+}
+
+function buildReportParams(dimension: string, metric: string, metricField: string, filters: SavedViewFilters, limit: number) {
+  const params = new URLSearchParams();
+  params.set("dimension", dimension);
+  params.set("metric", metric);
+  params.set("limit", String(limit));
+  if (metric === "sum" && metricField) params.set("metric_field", metricField);
+  appendSavedViewFilterParams(params, filters);
+  return params;
+}
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
 }
 
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = window.URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = fileName;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.URL.revokeObjectURL(url);
+}
+
 export default function ReportsPage() {
+  const queryClient = useQueryClient();
+  const chartRef = useRef<HTMLDivElement | null>(null);
   const [moduleKey, setModuleKey] = useState("");
   const [dimension, setDimension] = useState("");
   const [metric, setMetric] = useState<"count" | "sum">("count");
   const [metricField, setMetricField] = useState("");
   const [filters, setFilters] = useState<SavedViewFilters>(DEFAULT_FILTERS);
   const [viewMode, setViewMode] = useState<"table" | "bar" | "pie">("bar");
+  const [selectedSavedId, setSelectedSavedId] = useState("");
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveName, setSaveName] = useState("");
+  const [actionError, setActionError] = useState("");
 
   const modulesQuery = useQuery({ queryKey: ["report-modules"], queryFn: fetchReportModules, staleTime: 5 * 60_000 });
   const modules = modulesQuery.data?.results ?? [];
@@ -118,6 +204,52 @@ export default function ReportsPage() {
   const report = reportQuery.data;
   const chartData = report?.rows ?? [];
   const valueLabel = metric === "sum" ? report?.metric_field?.label ?? "Value" : "Records";
+  const savedReportsQuery = useQuery({
+    queryKey: ["saved-module-reports", activeModuleKey],
+    queryFn: () => fetchSavedReports(activeModuleKey),
+    enabled: Boolean(activeModuleKey),
+  });
+  const savedReports = savedReportsQuery.data?.results ?? [];
+  const selectedSavedReport = savedReports.find((item) => String(item.id) === selectedSavedId) ?? null;
+  const currentConfig: SavedReportConfig = {
+    dimension: activeDimension,
+    metric,
+    metric_field: metric === "sum" ? activeMetricField : "",
+    filters,
+    view_mode: viewMode,
+  };
+
+  const createMutation = useMutation({
+    mutationFn: createSavedReport,
+    onSuccess: async (created) => {
+      await queryClient.invalidateQueries({ queryKey: ["saved-module-reports", created.module_key] });
+      setSelectedSavedId(String(created.id));
+      setSaveDialogOpen(false);
+      setSaveName("");
+      setActionError("");
+    },
+    onError: (error) => setActionError(error instanceof Error ? error.message : "Failed to save report"),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ reportId, payload }: { reportId: number; payload: { name?: string; config?: SavedReportConfig } }) =>
+      updateSavedReport(reportId, payload),
+    onSuccess: async (updated) => {
+      await queryClient.invalidateQueries({ queryKey: ["saved-module-reports", updated.module_key] });
+      setActionError("");
+    },
+    onError: (error) => setActionError(error instanceof Error ? error.message : "Failed to update report"),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: deleteSavedReport,
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["saved-module-reports", activeModuleKey] });
+      setSelectedSavedId("");
+      setActionError("");
+    },
+    onError: (error) => setActionError(error instanceof Error ? error.message : "Failed to delete report"),
+  });
 
   function changeModule(nextModuleKey: string) {
     const nextModule = modules.find((item) => item.module_key === nextModuleKey);
@@ -126,6 +258,59 @@ export default function ReportsPage() {
     setMetric("count");
     setMetricField(nextModule?.metrics[0]?.key || "");
     setFilters(DEFAULT_FILTERS);
+    setViewMode("bar");
+    setSelectedSavedId("");
+    setActionError("");
+  }
+
+  function applySavedReport(reportId: string) {
+    setSelectedSavedId(reportId);
+    const saved = savedReports.find((item) => String(item.id) === reportId);
+    if (!saved) return;
+    setDimension(saved.config.dimension || "");
+    setMetric(saved.config.metric || "count");
+    setMetricField(saved.config.metric_field || "");
+    setFilters({ ...DEFAULT_FILTERS, ...(saved.config.filters ?? {}) });
+    setViewMode(saved.config.view_mode || "bar");
+    setActionError("");
+  }
+
+  async function saveCurrentReport() {
+    if (!selectedSavedReport) {
+      setSaveName("");
+      setActionError("");
+      setSaveDialogOpen(true);
+      return;
+    }
+    await updateMutation.mutateAsync({ reportId: selectedSavedReport.id, payload: { config: currentConfig } });
+  }
+
+  async function saveReportAs() {
+    const trimmedName = saveName.trim();
+    if (!trimmedName || !activeModuleKey) return;
+    await createMutation.mutateAsync({ module_key: activeModuleKey, name: trimmedName, config: currentConfig });
+  }
+
+  async function exportCsv() {
+    if (!activeModuleKey || !activeDimension) return;
+    const params = buildReportParams(activeDimension, metric, activeMetricField, filters, 50);
+    const res = await apiFetch(`/reports/modules/${activeModuleKey}/export.csv?${params.toString()}`);
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      setActionError(body?.detail ?? `Failed with ${res.status}`);
+      return;
+    }
+    const blob = await res.blob();
+    downloadBlob(blob, `${activeModuleKey}-report.csv`);
+    setActionError("");
+  }
+
+  function exportChartSvg() {
+    const svg = chartRef.current?.querySelector("svg");
+    if (!svg || viewMode === "table") return;
+    const source = new XMLSerializer().serializeToString(svg);
+    const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+    downloadBlob(blob, `${activeModuleKey || "module"}-chart.svg`);
   }
 
   return (
@@ -135,6 +320,26 @@ export default function ReportsPage() {
           <h1 className="text-xl font-semibold text-neutral-100">Reports</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" size="sm" onClick={exportCsv} disabled={!chartData.length}>
+            <FileDown className="h-4 w-4" />
+            CSV
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={exportChartSvg} disabled={viewMode === "table" || !chartData.length}>
+            <Download className="h-4 w-4" />
+            SVG
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={saveCurrentReport} disabled={!activeModuleKey || updateMutation.isPending}>
+            <Save className="h-4 w-4" />
+            Save
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => { setSaveName(""); setActionError(""); setSaveDialogOpen(true); }} disabled={!activeModuleKey || createMutation.isPending}>
+            <Save className="h-4 w-4" />
+            Save As
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => selectedSavedReport && deleteMutation.mutate(selectedSavedReport.id)} disabled={!selectedSavedReport || deleteMutation.isPending}>
+            <Trash2 className="h-4 w-4" />
+            Delete
+          </Button>
           <Button type="button" variant={viewMode === "table" ? "default" : "outline"} size="sm" onClick={() => setViewMode("table")}>
             <Table2 className="h-4 w-4" />
             Table
@@ -151,6 +356,27 @@ export default function ReportsPage() {
       </div>
 
       <Card className="px-4 py-4">
+        <div className="mb-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
+          <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
+            Saved Report
+            <Select value={selectedSavedId} onValueChange={applySavedReport} disabled={!savedReports.length}>
+              <SelectTrigger className="w-full border-neutral-700 bg-neutral-950 text-neutral-100">
+                <SelectValue placeholder="Select saved report" />
+              </SelectTrigger>
+              <SelectContent className="border-neutral-800 bg-neutral-950 text-neutral-100">
+                {savedReports.map((item) => (
+                  <SelectItem key={item.id} value={String(item.id)}>{item.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+          <div className="flex items-end">
+            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedSavedId("")} disabled={!selectedSavedId}>
+              Clear
+            </Button>
+          </div>
+        </div>
+
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
             Module
@@ -226,6 +452,11 @@ export default function ReportsPage() {
           {(reportQuery.error as Error).message}
         </div>
       ) : null}
+      {actionError ? (
+        <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+          {actionError}
+        </div>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <Card className="min-h-[28rem] px-4 py-4">
@@ -251,11 +482,11 @@ export default function ReportsPage() {
               </Table>
             </ModuleTableShell>
           ) : (
-            <div className="h-[24rem] w-full">
+            <ChartContainer ref={chartRef} config={{ value: { label: valueLabel, color: CHART_COLORS[0] } }} className="h-[24rem] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 {viewMode === "pie" ? (
                   <PieChart>
-                    <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #262626", borderRadius: 6 }} />
+                    <Tooltip content={<ChartTooltipContent />} />
                     <Pie data={chartData} dataKey="value" nameKey="label" outerRadius="82%" innerRadius="52%" paddingAngle={2}>
                       {chartData.map((row, index) => (
                         <Cell key={row.key} fill={CHART_COLORS[index % CHART_COLORS.length]} />
@@ -267,7 +498,7 @@ export default function ReportsPage() {
                     <CartesianGrid stroke="#262626" vertical={false} />
                     <XAxis dataKey="label" stroke="#a3a3a3" tick={{ fill: "#a3a3a3", fontSize: 11 }} angle={-28} textAnchor="end" interval={0} height={58} />
                     <YAxis stroke="#a3a3a3" tick={{ fill: "#a3a3a3", fontSize: 11 }} />
-                    <Tooltip contentStyle={{ background: "#0a0a0a", border: "1px solid #262626", borderRadius: 6 }} />
+                    <Tooltip content={<ChartTooltipContent />} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                       {chartData.map((row, index) => (
                         <Cell key={row.key} fill={CHART_COLORS[index % CHART_COLORS.length]} />
@@ -276,7 +507,7 @@ export default function ReportsPage() {
                   </BarChart>
                 )}
               </ResponsiveContainer>
-            </div>
+            </ChartContainer>
           )}
         </Card>
 
@@ -298,6 +529,41 @@ export default function ReportsPage() {
           </div>
         </Card>
       </div>
+
+      <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)}>
+        <DialogBackdrop />
+        <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
+          <DialogPanel size="md">
+            <DialogHeader>
+              <DialogTitle>Save report</DialogTitle>
+            </DialogHeader>
+            <div className="mt-4 space-y-4">
+              <label className="flex flex-col gap-2 text-sm text-neutral-300">
+                Name
+                <Input
+                  value={saveName}
+                  onChange={(event) => setSaveName(event.target.value)}
+                  placeholder="Monthly lead status"
+                  className="border-neutral-700 bg-neutral-950 text-neutral-100"
+                />
+              </label>
+              {actionError ? (
+                <div className="rounded-md border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+                  {actionError}
+                </div>
+              ) : null}
+            </div>
+            <DialogFooter className="mt-5">
+              <Button type="button" variant="ghost" onClick={() => setSaveDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={saveReportAs} disabled={!saveName.trim() || createMutation.isPending}>
+                Save
+              </Button>
+            </DialogFooter>
+          </DialogPanel>
+        </div>
+      </Dialog>
     </div>
   );
 }

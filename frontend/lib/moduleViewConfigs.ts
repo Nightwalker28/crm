@@ -41,6 +41,7 @@ export const CUSTOM_FIELD_SUPPORTED_MODULES = new Set([
   "sales_contacts",
   "sales_organizations",
   "sales_opportunities",
+  "sales_quotes",
   "finance_io",
 ]);
 
@@ -91,6 +92,18 @@ export const OPPORTUNITY_COLUMNS: TableColumnOption[] = [
   { key: "total_cost_of_project", label: "Project Cost" },
   { key: "currency_type", label: "Currency" },
   { key: "created_time", label: "Created" },
+];
+
+export const QUOTE_COLUMNS: TableColumnOption[] = [
+  { key: "quote_number", label: "Quote Number" },
+  { key: "customer_name", label: "Customer" },
+  { key: "title", label: "Title" },
+  { key: "status", label: "Status" },
+  { key: "total_amount", label: "Total" },
+  { key: "currency", label: "Currency" },
+  { key: "issue_date", label: "Issue Date" },
+  { key: "expiry_date", label: "Expiry Date" },
+  { key: "updated_at", label: "Updated" },
 ];
 
 export const INSERTION_ORDER_COLUMNS: TableColumnOption[] = [
@@ -166,6 +179,11 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
   },
   sales_opportunities: {
     visible_columns: ["opportunity_name", "client", "sales_stage", "expected_close_date", "total_cost_of_project"],
+    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
+    sort: null,
+  },
+  sales_quotes: {
+    visible_columns: ["quote_number", "customer_name", "status", "total_amount", "expiry_date"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },
@@ -343,6 +361,40 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "created_time", label: "Created Time", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.sales_opportunities,
+  },
+  sales_quotes: {
+    key: "sales_quotes",
+    label: "Quotes",
+    route: "/dashboard/sales/quotes",
+    columns: QUOTE_COLUMNS,
+    filterFields: [
+      { key: "quote_number", label: "Quote Number", type: "text", operators: TEXT_OPERATORS },
+      { key: "customer_name", label: "Customer", type: "text", operators: TEXT_OPERATORS },
+      { key: "title", label: "Title", type: "text", operators: TEXT_OPERATORS },
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        operators: SELECT_OPERATORS,
+        options: [
+          { value: "draft", label: "Draft" },
+          { value: "sent", label: "Sent" },
+          { value: "accepted", label: "Accepted" },
+          { value: "declined", label: "Declined" },
+          { value: "expired", label: "Expired" },
+        ],
+      },
+      { key: "issue_date", label: "Issue Date", type: "date", operators: DATE_OPERATORS },
+      { key: "expiry_date", label: "Expiry Date", type: "date", operators: DATE_OPERATORS },
+      { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
+      { key: "subtotal_amount", label: "Subtotal", type: "number", operators: NUMBER_OPERATORS },
+      { key: "discount_amount", label: "Discount", type: "number", operators: NUMBER_OPERATORS },
+      { key: "tax_amount", label: "Tax", type: "number", operators: NUMBER_OPERATORS },
+      { key: "total_amount", label: "Total", type: "number", operators: NUMBER_OPERATORS },
+      { key: "created_time", label: "Created Time", type: "date", operators: DATE_OPERATORS },
+      { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
+    ],
+    defaultConfig: MODULE_VIEW_DEFAULTS.sales_quotes,
   },
   finance_io: {
     key: "finance_io",

@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 import json
 from typing import Any, Optional
 
@@ -244,6 +245,91 @@ class SalesLeadListResponse(BaseModel):
 
 class LeadSummaryResponse(BaseModel):
     lead: SalesLeadResponse
+
+
+class SalesQuoteBase(BaseModel):
+    title: str | None = None
+    customer_name: str
+    contact_id: int | None = None
+    organization_id: int | None = None
+    status: str = "draft"
+    issue_date: date | None = None
+    expiry_date: date | None = None
+    currency: str = "USD"
+    subtotal_amount: Decimal = Decimal("0")
+    discount_amount: Decimal = Decimal("0")
+    tax_amount: Decimal = Decimal("0")
+    total_amount: Decimal = Decimal("0")
+    notes: str | None = None
+    custom_fields: dict[str, Any] | None = None
+
+
+class SalesQuoteCreateRequest(SalesQuoteBase):
+    quote_number: str | None = None
+    assigned_to: int | None = None
+
+
+class SalesQuoteUpdateRequest(BaseModel):
+    quote_number: str | None = None
+    title: str | None = None
+    customer_name: str | None = None
+    contact_id: int | None = None
+    organization_id: int | None = None
+    status: str | None = None
+    issue_date: date | None = None
+    expiry_date: date | None = None
+    currency: str | None = None
+    subtotal_amount: Decimal | None = None
+    discount_amount: Decimal | None = None
+    tax_amount: Decimal | None = None
+    total_amount: Decimal | None = None
+    notes: str | None = None
+    assigned_to: int | None = None
+    custom_fields: dict[str, Any] | None = None
+
+
+class SalesQuoteResponse(SalesQuoteBase):
+    quote_id: int
+    quote_number: str
+    assigned_to: int | None = None
+    created_time: datetime
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SalesQuoteListItem(BaseModel):
+    quote_id: int
+    quote_number: str
+    title: str | None = None
+    customer_name: str | None = None
+    contact_id: int | None = None
+    organization_id: int | None = None
+    status: str | None = None
+    issue_date: date | None = None
+    expiry_date: date | None = None
+    currency: str | None = None
+    subtotal_amount: Decimal | None = None
+    discount_amount: Decimal | None = None
+    tax_amount: Decimal | None = None
+    total_amount: Decimal | None = None
+    assigned_to: int | None = None
+    created_time: datetime | None = None
+    updated_at: datetime | None = None
+    custom_fields: dict[str, Any] | None = None
+
+
+class SalesQuoteListResponse(BaseModel):
+    results: list[SalesQuoteListItem]
+    range_start: int
+    range_end: int
+    total_count: int
+    total_pages: int
+    page: int
+
+
+class QuoteSummaryResponse(BaseModel):
+    quote: SalesQuoteResponse
 
 
 class RelatedOpportunitySummary(BaseModel):

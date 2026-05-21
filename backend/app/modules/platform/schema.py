@@ -175,6 +175,32 @@ class ModuleReportResponse(BaseModel):
     rows: list[ModuleReportRow]
 
 
+class SavedModuleReportCreateRequest(BaseModel):
+    module_key: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=150)
+    config: dict[str, Any]
+
+
+class SavedModuleReportUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    config: dict[str, Any] | None = None
+
+
+class SavedModuleReportResponse(BaseModel):
+    id: int
+    module_key: str
+    name: str
+    config: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SavedModuleReportListResponse(BaseModel):
+    results: list[SavedModuleReportResponse]
+
+
 class UserNotificationResponse(BaseModel):
     id: int
     user_id: int

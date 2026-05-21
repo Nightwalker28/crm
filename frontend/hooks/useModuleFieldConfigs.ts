@@ -32,6 +32,7 @@ const MODULE_PROTECTED_FIELD_KEYS: Record<string, Set<string>> = {
   sales_contacts: new Set(["primary_email"]),
   sales_organizations: new Set(["org_name", "primary_email"]),
   sales_opportunities: new Set(["opportunity_name"]),
+  sales_quotes: new Set(["quote_number", "customer_name"]),
   finance_io: new Set(["io_number", "customer_name"]),
 };
 

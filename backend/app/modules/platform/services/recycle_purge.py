@@ -11,6 +11,7 @@ PURGE_TARGETS: tuple[tuple[str, str], ...] = (
     ("sales_contacts", "contact_id"),
     ("sales_organizations", "org_id"),
     ("sales_opportunities", "opportunity_id"),
+    ("sales_quotes", "quote_id"),
     ("finance_io", "id"),
     ("finance_pos_invoices", "id"),
     ("catalog_products", "id"),

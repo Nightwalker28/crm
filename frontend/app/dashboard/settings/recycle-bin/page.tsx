@@ -40,6 +40,7 @@ const MODULE_OPTIONS = [
   "sales_contacts",
   "sales_organizations",
   "sales_opportunities",
+  "sales_quotes",
   "tasks",
   "documents",
 ];
@@ -97,6 +98,7 @@ export default function RecycleBinPage() {
       queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
       queryClient.invalidateQueries({ queryKey: ["sales-contacts"] }),
       queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
+      queryClient.invalidateQueries({ queryKey: ["sales-quotes"] }),
       queryClient.invalidateQueries({ queryKey: ["tasks"] }),
       queryClient.invalidateQueries({ queryKey: ["documents"] }),
     ]);

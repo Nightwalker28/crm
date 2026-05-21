@@ -16,6 +16,7 @@ TIMELINE_ALLOWED_MODULES = {
     "sales_contacts",
     "sales_organizations",
     "sales_opportunities",
+    "sales_quotes",
 }
 
 

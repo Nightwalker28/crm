@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, Date, DateTime, ForeignKey, Index, Text, func, TIMESTAMP, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, Date, DateTime, ForeignKey, Index, Numeric, Text, func, TIMESTAMP, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import expression
 
@@ -207,6 +207,71 @@ class SalesLead(Base):
 
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
     last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="joined")
+
+    @property
+    def custom_data(self) -> dict | None:
+        return _get_custom_field_cache(self)
+
+    @custom_data.setter
+    def custom_data(self, value: dict | None) -> None:
+        _set_custom_field_cache(self, value)
+
+    @property
+    def custom_fields(self) -> dict | None:
+        return self.custom_data
+
+    @custom_fields.setter
+    def custom_fields(self, value: dict | None) -> None:
+        self.custom_data = value
+
+
+class SalesQuote(Base):
+    __tablename__ = "sales_quotes"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'sent', 'accepted', 'declined', 'expired')",
+            name="ck_sales_quotes_status",
+        ),
+        Index("ix_sales_quotes_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+        Index("ix_sales_quotes_tenant_status_active", "tenant_id", "status", postgresql_where=text("deleted_at IS NULL")),
+        Index("ix_sales_quotes_tenant_contact", "tenant_id", "contact_id"),
+        Index("ix_sales_quotes_tenant_organization", "tenant_id", "organization_id"),
+    )
+
+    quote_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    quote_number = Column(Text, nullable=False, index=True)
+    title = Column(Text, nullable=True)
+    customer_name = Column(Text, nullable=False)
+    contact_id = Column(BigInteger, ForeignKey("sales_contacts.contact_id", ondelete="SET NULL"), nullable=True)
+    organization_id = Column(BigInteger, ForeignKey("sales_organizations.org_id", ondelete="SET NULL"), nullable=True)
+    status = Column(Text, nullable=False, server_default="draft")
+    issue_date = Column(Date, nullable=True)
+    expiry_date = Column(Date, nullable=True)
+    currency = Column(Text, nullable=False, server_default="USD")
+    subtotal_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    discount_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    tax_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    total_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    notes = Column(Text, nullable=True)
+    assigned_to = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    search_doc = Column(
+        Text,
+        Computed(
+            "lower(coalesce(quote_number, '') || ' ' || coalesce(title, '') || ' ' || "
+            "coalesce(customer_name, '') || ' ' || coalesce(status, '') || ' ' || "
+            "coalesce(currency, '') || ' ' || coalesce(notes, ''))",
+            persisted=True,
+        ),
+        nullable=True,
+    )
+
+    contact = relationship("SalesContact", lazy="joined")
+    organization = relationship("SalesOrganization", lazy="joined")
+    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
 
     @property
     def custom_data(self) -> dict | None:

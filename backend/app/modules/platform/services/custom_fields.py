@@ -23,6 +23,7 @@ SUPPORTED_MODULE_KEYS = {
     "sales_contacts",
     "sales_organizations",
     "sales_opportunities",
+    "sales_quotes",
 }
 
 SUPPORTED_FIELD_TYPES = {"text", "long_text", "number", "date", "boolean"}

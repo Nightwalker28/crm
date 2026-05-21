@@ -46,7 +46,12 @@ from app.modules.sales.services.opportunities_services import (
     list_deleted_opportunities,
     restore_opportunity,
 )
-from app.modules.sales.schema import SalesContactResponse, SalesLeadResponse, SalesOrganizationResponse
+from app.modules.sales.services.quotes_services import (
+    get_quote_or_404,
+    list_deleted_sales_quotes,
+    restore_sales_quote,
+)
+from app.modules.sales.schema import SalesContactResponse, SalesLeadResponse, SalesOrganizationResponse, SalesQuoteResponse
 from app.modules.sales.schema import SalesOpportunityResponse
 from app.modules.calendar.services.calendar_services import (
     get_calendar_event_or_404,
@@ -68,6 +73,7 @@ SUPPORTED_RECYCLE_MODULES = {
     "sales_contacts",
     "sales_organizations",
     "sales_opportunities",
+    "sales_quotes",
     "calendar",
     "tasks",
     "documents",
@@ -164,6 +170,21 @@ def list_recycle_items(
                 "subtitle": item.client or item.sales_stage or "Opportunity",
                 "deleted_at": item.deleted_at,
                 "details": SalesOpportunityResponse.model_validate(item).model_dump(mode="json"),
+            }
+            for item in items
+        ]
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key == "sales_quotes":
+        items, total = list_deleted_sales_quotes(db, tenant_id, pagination)
+        serialized = [
+            {
+                "module_key": module_key,
+                "record_id": item.quote_id,
+                "title": item.quote_number,
+                "subtitle": item.customer_name or item.status or "Quote",
+                "deleted_at": item.deleted_at,
+                "details": SalesQuoteResponse.model_validate(item).model_dump(mode="json"),
             }
             for item in items
         ]
@@ -372,6 +393,23 @@ def restore_recycle_item(
             entity_id=restored.opportunity_id,
             action="restore",
             description=f"Restored opportunity {restored.opportunity_name} from recycle bin",
+            after_state=serialized,
+        )
+        return serialized
+
+    if module_key == "sales_quotes":
+        quote = get_quote_or_404(db, record_id, tenant_id=current_user.tenant_id, include_deleted=True)
+        restored = restore_sales_quote(db, quote)
+        serialized = SalesQuoteResponse.model_validate(restored).model_dump(mode="json")
+        log_activity(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            module_key=module_key,
+            entity_type="sales_quote",
+            entity_id=restored.quote_id,
+            action="restore",
+            description=f"Restored quote {restored.quote_number} from recycle bin",
             after_state=serialized,
         )
         return serialized

@@ -8,7 +8,7 @@ from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
 from app.modules.calendar.models import CalendarEvent, CalendarEventParticipant
 from app.modules.mail.models import MailMessage
-from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization
+from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization, SalesQuote
 from app.modules.tasks.models import Task, TaskAssignee
 
 
@@ -40,6 +40,10 @@ GLOBAL_SEARCH_MODULES = (
     {
         "module_key": "sales_opportunities",
         "module_label": "Opportunities",
+    },
+    {
+        "module_key": "sales_quotes",
+        "module_label": "Quotes",
     },
 )
 GLOBAL_SEARCH_STATEMENT_TIMEOUT_MS = 1500
@@ -310,6 +314,36 @@ def _opportunity_results(db: Session, *, tenant_id: int, query: str, limit: int,
     ]
 
 
+def _quote_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+    ranked = apply_ranked_search(
+        db.query(SalesQuote).filter(
+            SalesQuote.tenant_id == tenant_id,
+            SalesQuote.deleted_at.is_(None),
+        ),
+        search=query,
+        document=searchable_text(
+            SalesQuote.quote_number,
+            SalesQuote.title,
+            SalesQuote.customer_name,
+            SalesQuote.status,
+            SalesQuote.currency,
+        ),
+        default_order_column=SalesQuote.created_time,
+    )
+    items = ranked.limit(limit).all()
+    return [
+        {
+            "module_key": "sales_quotes",
+            "module_label": "Quotes",
+            "record_id": str(record.quote_id),
+            "title": record.quote_number,
+            "subtitle": " · ".join(part for part in [record.customer_name, record.status, record.currency] if part) or None,
+            "href": f"/dashboard/sales/quotes/{record.quote_id}",
+        }
+        for record in items
+    ]
+
+
 SEARCH_BUILDERS = {
     "tasks": _task_results,
     "calendar": _calendar_results,
@@ -318,6 +352,7 @@ SEARCH_BUILDERS = {
     "sales_contacts": _contact_results,
     "sales_organizations": _organization_results,
     "sales_opportunities": _opportunity_results,
+    "sales_quotes": _quote_results,
 }
 
 

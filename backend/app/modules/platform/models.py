@@ -102,6 +102,25 @@ class ModuleFieldConfig(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class UserModuleReport(Base):
+    __tablename__ = "user_module_reports"
+    __table_args__ = (
+        UniqueConstraint("user_id", "module_key", "name", name="uq_user_module_reports_user_module_name"),
+        Index("ix_user_module_reports_tenant_user_module", "tenant_id", "user_id", "module_key"),
+    )
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    config = Column(JSON, nullable=False, server_default="{}")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User")
+
+
 class DataTransferJob(Base):
     __tablename__ = "data_transfer_jobs"
     __table_args__ = (

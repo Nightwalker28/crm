@@ -24,6 +24,7 @@ MODULE_DISPLAY_NAMES = {
     "sales_contacts": "Contacts",
     "sales_organizations": "Organizations",
     "sales_opportunities": "Opportunities",
+    "sales_quotes": "Quotes",
     "finance_io": "Insertion Orders",
 }
 TRANSIENT_JOB_ERRORS = (OSError, ConnectionError, TimeoutError)
@@ -35,6 +36,7 @@ MODULE_LINKS = {
     "sales_contacts": "/dashboard/sales/contacts",
     "sales_organizations": "/dashboard/sales/organizations",
     "sales_opportunities": "/dashboard/sales/opportunities",
+    "sales_quotes": "/dashboard/sales/quotes",
     "finance_io": "/dashboard/finance/insertion-orders",
 }
 
@@ -454,6 +456,19 @@ def process_import_job(*, job_id: int) -> None:
                 duplicate_mode=duplicate_mode,
                 default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
             )
+        elif module_key == "sales_quotes":
+            from app.modules.sales.services.quotes_services import import_quotes_from_csv
+            from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
+
+            update_job_progress(db, job, progress_percent=65, progress_message="Importing quotes.")
+            summary = import_quotes_from_csv(
+                db,
+                file_bytes,
+                tenant_id=job.tenant_id,
+                default_assigned_to=actor_user_id,
+                duplicate_mode=duplicate_mode,
+                default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+            )
         elif module_key == "finance_io":
             from app.modules.finance.services import io_search_api
             from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
@@ -607,6 +622,30 @@ def process_export_job(*, job_id: int) -> None:
             update_job_progress(db, job, progress_percent=70, progress_message="Serializing opportunities export.")
             content = export_opportunities_to_csv(records, field_keys=payload.get("field_keys"))
             file_name = "sales_opportunities.csv"
+            media_type = "text/csv"
+        elif module_key == "sales_quotes":
+            from app.modules.sales.models import SalesQuote
+            from app.modules.sales.services.quotes_services import export_quotes_to_csv, list_all_sales_quotes
+
+            if export_ids is not None:
+                query = db.query(SalesQuote).filter(
+                    SalesQuote.tenant_id == job.tenant_id,
+                    SalesQuote.deleted_at.is_(None),
+                    SalesQuote.quote_id.in_(export_ids),
+                )
+                records = query.order_by(SalesQuote.created_time.desc()).all()
+            else:
+                records = list_all_sales_quotes(
+                    db,
+                    job.tenant_id,
+                    search=search,
+                    all_filter_conditions=all_filter_conditions,
+                    any_filter_conditions=any_filter_conditions,
+                )
+            exported_rows = len(records)
+            update_job_progress(db, job, progress_percent=70, progress_message="Serializing quotes export.")
+            content = export_quotes_to_csv(records, field_keys=payload.get("field_keys"))
+            file_name = "sales_quotes.csv"
             media_type = "text/csv"
         elif module_key == "finance_io":
             from app.modules.finance.models import FinanceIO
