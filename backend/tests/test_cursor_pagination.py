@@ -11,7 +11,6 @@ from app.modules.documents.repositories import documents_repository
 from app.modules.finance.repositories import io_repository, pos_invoice_repository
 from app.modules.mail.repositories import mail_repository
 from app.modules.platform.repositories import custom_modules_repository
-from app.modules.platform.repositories import generic_system_records_repository
 from app.modules.platform.services import activity_logs, crm_events, data_transfer_jobs, notifications, record_comments
 from app.modules.sales.repositories import contacts_repository, opportunities_repository, organizations_repository
 from app.modules.tasks.repositories import tasks_repository
@@ -157,7 +156,6 @@ class CursorRepositoryOrderingTests(unittest.TestCase):
             (client_portal_repository.list_client_accounts_cursor, {"tenant_id": 10}),
             (client_portal_repository.list_client_pages_cursor, {"tenant_id": 10}),
             (website_integration_repository.list_orders_cursor, {"tenant_id": 10}),
-            (generic_system_records_repository.list_records_cursor, {"tenant_id": 10, "module_key": "purchase_orders"}),
         ]
         for function, kwargs in cases:
             with self.subTest(function=function.__name__):

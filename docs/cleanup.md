@@ -2,6 +2,8 @@
 
 This is a Codex cleanup brief.
 
+Status: Done. The temporary generic system module API, model, services, repository, frontend route, route helper, seed sync, recycle purge target, cursor test case, placeholder display entries, and obsolete generic refactor plan have been removed. The Alembic chain keeps the original revision slot and adds a follow-up cleanup revision so existing databases drop the temporary table and exact placeholder module rows.
+
 The recent generic system module implementation should be removed completely. Do not replace it with a new framework and do not create new modules. New modules will be implemented properly later.
 
 ## Remove these backend pieces

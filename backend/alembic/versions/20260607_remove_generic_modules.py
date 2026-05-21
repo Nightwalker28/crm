@@ -1,8 +1,8 @@
-"""remove temporary generic system records
+"""remove temporary generic system modules
 
-Revision ID: 20260605_generic_records
-Revises: 20260604_perf_indexes
-Create Date: 2026-05-20
+Revision ID: 20260607_remove_generic_mods
+Revises: 20260606_search_indexes
+Create Date: 2026-05-21
 """
 
 from typing import Sequence, Union
@@ -11,8 +11,8 @@ import sqlalchemy as sa
 from alembic import op
 
 
-revision: str = "20260605_generic_records"
-down_revision: Union[str, None] = "20260604_perf_indexes"
+revision: str = "20260607_remove_generic_mods"
+down_revision: Union[str, None] = "20260606_search_indexes"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

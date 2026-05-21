@@ -82,12 +82,6 @@ EXPRESSION_SEARCH_INDEXES = (
         "deleted_at IS NULL",
     ),
     (
-        "ix_generic_system_records_search_trgm_active",
-        "generic_system_records",
-        "lower(coalesce(title, '') || ' ' || coalesce(status, ''))",
-        "deleted_at IS NULL",
-    ),
-    (
         "ix_mail_messages_search_trgm_active",
         "mail_messages",
         "lower(coalesce(subject, '') || ' ' || coalesce(snippet, '') || ' ' || coalesce(from_email, '') || ' ' || coalesce(from_name, '') || ' ' || coalesce(source_label, ''))",

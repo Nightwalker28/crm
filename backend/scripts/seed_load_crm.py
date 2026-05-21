@@ -45,6 +45,17 @@ MODULE_KEYS = (
     "catalog_products",
     "catalog_services",
 )
+MODULE_ROUTES = {
+    "sales_contacts": "/dashboard/sales/contacts",
+    "sales_organizations": "/dashboard/sales/organizations",
+    "sales_opportunities": "/dashboard/sales/opportunities",
+    "finance_io": "/dashboard/finance/insertion-orders",
+    "finance_pos": "/dashboard/finance/pos",
+    "tasks": "/dashboard/tasks",
+    "calendar": "/dashboard/calendar",
+    "catalog_products": "/dashboard/catalog/products",
+    "catalog_services": "/dashboard/catalog/services",
+}
 
 
 def _now() -> datetime:
@@ -66,7 +77,7 @@ def _ensure_module(db: Session, key: str) -> Module:
     module = db.query(Module).filter(Module.name == key).first()
     if module:
         return module
-    module = Module(name=key, base_route=f"/dashboard/modules/{key}", description=f"Load test {key}", is_enabled=1)
+    module = Module(name=key, base_route=MODULE_ROUTES[key], description=f"Load test {key}", is_enabled=1)
     db.add(module)
     db.flush()
     return module

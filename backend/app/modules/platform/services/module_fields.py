@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from app.modules.platform.models import ModuleFieldConfig
 from app.modules.platform.schema import ModuleFieldConfigResponse, ModuleFieldConfigUpdateRequest
-from app.modules.platform.system_modules import SYSTEM_MODULES
 
 
 PROTECTED_FIELD_KEYS = {
@@ -70,13 +69,7 @@ def list_module_field_configs(db: Session, *, tenant_id: int, module_key: str) -
 
 
 def _default_field_state(module_key: str) -> dict[str, bool]:
-    definition = SYSTEM_MODULES.get(module_key) or {}
-    states: dict[str, bool] = {}
-    for field_definition in definition.get("fields") or []:
-        field_key = str(field_definition["field_key"])
-        protected = bool(field_definition.get("is_protected")) or is_protected_module_field(field_key, module_key)
-        states[field_key] = protected or bool(field_definition.get("is_enabled", True))
-    return states
+    return {}
 
 
 def module_field_enabled_map(db: Session, *, tenant_id: int, module_key: str) -> dict[str, bool]:

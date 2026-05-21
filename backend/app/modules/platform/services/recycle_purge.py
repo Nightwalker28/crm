@@ -17,7 +17,6 @@ PURGE_TARGETS: tuple[tuple[str, str], ...] = (
     ("tasks", "id"),
     ("calendar_events", "id"),
     ("documents", "id"),
-    ("generic_system_records", "id"),
     ("custom_module_records", "id"),
 )
 
@@ -47,4 +46,3 @@ def purge_expired_recycle_bin_records(db: Session, *, retention_days: int | None
         purged[table_name] = int(result.rowcount or 0)
     db.commit()
     return purged
-
