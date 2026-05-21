@@ -24,6 +24,7 @@ import { COUNTRIES } from "@/lib/countries";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useCreateContact } from "@/hooks/sales/useCreateContact";
+import { isModuleFieldEnabled, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 
@@ -63,6 +64,8 @@ export default function CreateContactModal({
   });
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const customFieldsQuery = useModuleCustomFields("sales_contacts", isOpen);
+  const { fields: moduleFields } = useModuleFieldConfigs("sales_contacts", false, isOpen);
+  const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -85,6 +88,7 @@ export default function CreateContactModal({
 
             {/* NAME */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {fieldEnabled("first_name") ? (
               <Field label="First name">
                 <Input
                   value={form.first_name}
@@ -93,7 +97,9 @@ export default function CreateContactModal({
                   }
                 />
               </Field>
+              ) : null}
 
+              {fieldEnabled("last_name") ? (
               <Field label="Last name">
                 <Input
                   value={form.last_name}
@@ -102,10 +108,12 @@ export default function CreateContactModal({
                   }
                 />
               </Field>
+              ) : null}
             </div>
 
             {/* EMAIL + PHONE */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {fieldEnabled("primary_email") ? (
               <Field label="Email" required>
                 <Input
                   value={form.primary_email}
@@ -116,7 +124,9 @@ export default function CreateContactModal({
                   placeholder="person@company.com"
                 />
               </Field>
+              ) : null}
 
+              {fieldEnabled("contact_telephone") ? (
               <Field label="Phone">
                 <Input
                   value={form.contact_telephone}
@@ -127,10 +137,12 @@ export default function CreateContactModal({
                   placeholder="+94771234567"
                 />
               </Field>
+              ) : null}
             </div>
 
             {/* TITLE */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {fieldEnabled("current_title") ? (
               <Field label="Job title">
                 <Input
                   value={form.current_title}
@@ -139,10 +151,12 @@ export default function CreateContactModal({
                   }
                 />
               </Field>
+              ) : null}
             </div>
 
             {/* LINKEDIN + REGION + COUNTRY */}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+              {fieldEnabled("linkedin_url") ? (
               <Field label="LinkedIn URL" className="md:col-span-2">
                 <Input
                   value={form.linkedin_url}
@@ -151,7 +165,9 @@ export default function CreateContactModal({
                   }
                 />
               </Field>
+              ) : null}
 
+              {fieldEnabled("region") ? (
               <Field label="Region">
                 <Select
                   value={form.region}
@@ -171,7 +187,9 @@ export default function CreateContactModal({
                   </SelectContent>
                 </Select>
               </Field>
+              ) : null}
 
+              {fieldEnabled("country") ? (
               <Field label="Country">
                 <Select
                   value={form.country}
@@ -191,9 +209,11 @@ export default function CreateContactModal({
                   </SelectContent>
                 </Select>
               </Field>
+              ) : null}
             </div>
 
             {/* ORGANIZATION (SEARCHABLE INPUT) */}
+            {fieldEnabled("organization_id") ? (
             <Field label="Organization">
               <div ref={orgRef} className="relative">
                 <Input
@@ -245,6 +265,7 @@ export default function CreateContactModal({
                 )}
               </div>
             </Field>
+            ) : null}
 
             <CustomFieldInputs
               definitions={customFieldsQuery.data ?? []}
@@ -260,7 +281,7 @@ export default function CreateContactModal({
               Cancel
             </Button>
             <Button
-              onClick={() => submit({ custom_fields: customFieldValues })}
+              onClick={() => submit({ custom_fields: customFieldValues }, moduleFields)}
               disabled={!canSubmit || isSubmitting}
             >
               {isSubmitting ? "Creating…" : "Create"}

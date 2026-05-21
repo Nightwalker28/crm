@@ -7,6 +7,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
 from app.core.access_control import require_department_module_access, require_role_module_action_access
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
@@ -47,7 +48,9 @@ from app.modules.client_portal.services.client_portal_services import (
     get_customer_group_or_404,
     get_public_client_page,
     list_client_accounts,
+    list_client_accounts_cursor,
     list_client_pages,
+    list_client_pages_cursor,
     list_customer_groups,
     publish_client_page_link,
     record_failed_client_login_attempt,
@@ -274,6 +277,27 @@ def get_client_accounts(
     return [ClientAccountResponse.model_validate(serialize_client_account(account)) for account in accounts]
 
 
+@router.get("/accounts/cursor", response_model=dict)
+def get_client_accounts_cursor(
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("sales_contacts")),
+    require_permission=Depends(require_action_access("sales_contacts", "view")),
+):
+    accounts = list_client_accounts_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+    )
+    return build_cursor_response(
+        [ClientAccountResponse.model_validate(serialize_client_account(account)).model_dump(mode="json") for account in accounts],
+        limit=pagination.limit,
+        id_attr="id",
+    )
+
+
 @router.post("/accounts", response_model=ClientAccountResponse, status_code=status.HTTP_201_CREATED)
 def create_client_account_route(
     payload: ClientAccountCreateRequest,
@@ -347,6 +371,27 @@ def get_client_pages(
 ):
     pages = list_client_pages(db, tenant_id=current_user.tenant_id)
     return [ClientPageResponse.model_validate(serialize_client_page(page, db=db)) for page in pages]
+
+
+@router.get("/pages/cursor", response_model=dict)
+def get_client_pages_cursor(
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("sales_contacts")),
+    require_permission=Depends(require_action_access("sales_contacts", "view")),
+):
+    pages = list_client_pages_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+    )
+    return build_cursor_response(
+        [ClientPageResponse.model_validate(serialize_client_page(page, db=db)).model_dump(mode="json") for page in pages],
+        limit=pagination.limit,
+        id_attr="id",
+    )
 
 
 @router.post("/pages", response_model=ClientPageResponse, status_code=status.HTTP_201_CREATED)

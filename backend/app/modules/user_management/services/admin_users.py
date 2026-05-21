@@ -1,14 +1,12 @@
 from typing import Optional
 
 from fastapi import HTTPException, status
-from sqlalchemy import and_, func
-from sqlalchemy.orm import Session, contains_eager
+from sqlalchemy import func
+from sqlalchemy.orm import Session
 
 from app.core.cache import cache_delete, cache_get_json, cache_set_json
-from app.core.module_filters import apply_filter_conditions
-from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination, build_paged_response
-from app.core.postgres_search import searchable_text
+from app.modules.user_management.repositories import admin_users_repository
 from app.modules.user_management.models import Role, Team, User, UserAuthMode, UserStatus
 from app.modules.user_management.schema import (
     AdminCreateUserRequest,
@@ -23,38 +21,19 @@ USER_UPDATE_OPTIONS_CACHE_TTL_SECONDS = 300
 UNSET_ASSIGNMENT = object()
 
 
-USER_FILTER_FIELD_MAP = {
-    "first_name": {"expression": User.first_name, "type": "text"},
-    "last_name": {"expression": User.last_name, "type": "text"},
-    "email": {"expression": User.email, "type": "text"},
-    "team_name": {"expression": Team.name, "type": "text"},
-    "role_name": {"expression": Role.name, "type": "text"},
-    "auth_mode": {"expression": User.auth_mode, "type": "text"},
-    "is_active": {"expression": User.is_active, "type": "text"},
-}
-
-
 def list_all_users(db: Session, *, tenant_id: int, pagination: Pagination):
-    query = (
-        db.query(User)
-        .outerjoin(Team, and_(Team.id == User.team_id, Team.tenant_id == User.tenant_id))
-        .outerjoin(Role, and_(Role.id == User.role_id, Role.tenant_id == User.tenant_id))
-        .options(contains_eager(User.team), contains_eager(User.role))
-        .filter(User.tenant_id == tenant_id)
+    items, total_count = admin_users_repository.list_users(
+        db,
+        tenant_id=tenant_id,
+        offset=pagination.offset,
+        limit=pagination.limit,
     )
-    unassigned_label = "Unassigned"
-
-    team_sort = func.coalesce(Team.name, unassigned_label)
-    query = query.order_by(
-        team_sort.asc(),
-        User.first_name.asc(),
-        User.id.asc(),
-    )
-
-    total_count = _count_user_query(db, query)
-    items = query.offset(pagination.offset).limit(pagination.limit).all()
     serialized = _serialize_user_profiles(items)
     return build_paged_response(serialized, total_count, pagination)
+
+
+def list_all_users_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None):
+    return admin_users_repository.list_users_cursor(db, tenant_id=tenant_id, limit=limit, cursor=cursor)
 
 
 def search_users(
@@ -71,84 +50,53 @@ def search_users(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ):
-    query = (
-        db.query(User)
-        .outerjoin(Team, and_(Team.id == User.team_id, Team.tenant_id == User.tenant_id))
-        .outerjoin(Role, and_(Role.id == User.role_id, Role.tenant_id == User.tenant_id))
-        .options(contains_eager(User.team), contains_eager(User.role))
-        .filter(User.tenant_id == tenant_id)
+    items, total_count = admin_users_repository.search_users(
+        db,
+        tenant_id=tenant_id,
+        offset=pagination.offset,
+        limit=pagination.limit,
+        q=q,
+        teams=teams,
+        roles=roles,
+        status_filter=status_filter,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
     )
-
-    unassigned_label = "Unassigned"
-
-    if teams and teams.lower() != "all":
-        try:
-            ids = [int(x) for x in teams.split(",") if x.strip().isdigit()]
-            if ids:
-                query = query.filter(User.team_id.in_(ids))
-        except ValueError:
-            pass
-
-    if roles and roles.lower() != "all":
-        try:
-            ids = [int(x) for x in roles.split(",") if x.strip().isdigit()]
-            if ids:
-                query = query.filter(User.role_id.in_(ids))
-        except ValueError:
-            pass
-
-    if status_filter:
-        raw_statuses = [s.strip().lower() for s in status_filter.split(",") if s.strip()]
-        valid_statuses = []
-        for current_status in raw_statuses:
-            try:
-                valid_statuses.append(UserStatus(current_status))
-            except ValueError:
-                pass
-
-        if valid_statuses:
-            query = query.filter(User.is_active.in_(valid_statuses))
-
-    query = apply_filter_conditions(
-        query,
-        conditions=all_filter_conditions,
-        logic="all",
-        field_map=USER_FILTER_FIELD_MAP,
-    )
-    query = apply_filter_conditions(
-        query,
-        conditions=any_filter_conditions,
-        logic="any",
-        field_map=USER_FILTER_FIELD_MAP,
-    )
-
-    team_sort = func.coalesce(Team.name, unassigned_label)
-
-    if sort_by == "email":
-        user_sort = User.email
-    elif sort_by == "role":
-        user_sort = Role.name
-    elif sort_by == "status":
-        user_sort = User.is_active
-    else:
-        user_sort = User.first_name
-
-    if sort_order == "desc":
-        default_order_by = [team_sort.asc(), user_sort.desc(), User.id.desc()]
-    else:
-        default_order_by = [team_sort.asc(), user_sort.asc(), User.id.asc()]
-
-    query = apply_ranked_search(
-        query,
-        search=q,
-        document=searchable_text(User.first_name, User.last_name, User.email),
-        default_order_by=default_order_by,
-    )
-
-    total_count = _count_user_query(db, query)
-    items = query.offset(pagination.offset).limit(pagination.limit).all()
     serialized = _serialize_user_profiles(items)
     return build_paged_response(serialized, total_count, pagination)
+
+
+def search_users_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    limit: int,
+    cursor: int | None = None,
+    q: Optional[str] = None,
+    teams: Optional[str] = None,
+    roles: Optional[str] = None,
+    status_filter: Optional[str] = None,
+    sort_by: str = "name",
+    sort_order: str = "asc",
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+):
+    return admin_users_repository.search_users_cursor(
+        db,
+        tenant_id=tenant_id,
+        limit=limit,
+        cursor=cursor,
+        q=q,
+        teams=teams,
+        roles=roles,
+        status_filter=status_filter,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
 
 
 def list_user_update_options(db: Session, *, tenant_id: int) -> UserUpdateOptions:
@@ -291,11 +239,6 @@ def update_user(db: Session, user_id: int, payload: UpdateUserRequest, *, tenant
 
 def _serialize_user_profiles(users: list[User]):
     return [serialize_user_profile(user) for user in users]
-
-
-def _count_user_query(db: Session, query) -> int:
-    count_source = query.order_by(None).with_entities(User.id).subquery()
-    return int(db.query(func.count()).select_from(count_source).scalar() or 0)
 
 
 def serialize_user_profile(user: User) -> UserProfile:

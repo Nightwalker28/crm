@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from sqlalchemy.orm import Session
 
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.module_csv import ImportExecutionResponse, parse_mapping_json, read_upload_bytes, remap_csv_bytes
 from app.core.module_export import bytes_download_response
@@ -126,6 +127,25 @@ def list_custom_module_records(
     current_user=Depends(require_user),
 ):
     return custom_modules.list_records(db, module_key=module_key, current_user=current_user, pagination=pagination, search=search)
+
+
+@runtime_router.get("/{module_key}/records/cursor")
+def list_custom_module_records_cursor(
+    module_key: str,
+    search: str | None = Query(None),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+):
+    records = custom_modules.list_records_cursor(
+        db,
+        module_key=module_key,
+        current_user=current_user,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+        search=search,
+    )
+    return build_cursor_response(records, limit=pagination.limit, id_attr="id")
 
 
 @runtime_router.post("/{module_key}/records", response_model=CustomModuleRecordResponse, status_code=201)

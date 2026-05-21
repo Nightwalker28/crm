@@ -18,6 +18,14 @@ from app.modules.platform.services.data_transfer_jobs import (
     should_background_data_transfer_with_size,
 )
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
+from app.modules.platform.services.module_fields import (
+    enabled_module_fields,
+    enabled_module_field_sequence,
+    reject_disabled_field_writes,
+    sanitize_data_transfer_export_payload,
+    sanitize_disabled_field_payload,
+    sanitize_disabled_filter_conditions,
+)
 from app.modules.user_management.services import admin_modules
 from app.modules.sales.schema import (
     FollowUpActionRequest,
@@ -34,6 +42,7 @@ from app.modules.sales.services.followups import log_opportunity_follow_up
 from app.modules.sales.services import opportunities_api
 from app.modules.sales.services.summary_services import build_opportunity_summary
 from app.modules.sales.services.opportunities_services import (
+    OPPORTUNITY_EXPORT_HEADERS,
     create_opportunity,
     delete_opportunity,
     export_opportunities_to_csv,
@@ -134,12 +143,30 @@ def _emit_deal_assigned_event(db: Session, *, current_user, opportunity) -> None
     )
 
 
-def _parse_list_fields(raw_fields: str | None) -> set[str]:
+def _parse_list_fields(raw_fields: str | None, allowed_fields: set[str]) -> set[str]:
     if not raw_fields:
-        return OPPORTUNITY_LIST_FIELDS
+        return allowed_fields
     requested = {field.strip() for field in raw_fields.split(",") if field.strip()}
-    valid = requested & OPPORTUNITY_LIST_FIELDS
-    return valid or OPPORTUNITY_LIST_FIELDS
+    valid = requested & allowed_fields
+    return valid or allowed_fields
+
+
+def _enabled_opportunity_list_fields(db: Session, tenant_id: int) -> set[str]:
+    return enabled_module_fields(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_opportunities",
+        field_keys=OPPORTUNITY_LIST_FIELDS,
+    )
+
+
+def _enabled_opportunity_import_fields(db: Session, tenant_id: int) -> list[str]:
+    return enabled_module_field_sequence(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_opportunities",
+        field_keys=OPPORTUNITY_IMPORT_TARGET_FIELDS,
+    )
 
 
 def _serialize_opportunity_list_item(opportunity, fields: set[str]) -> SalesOpportunityListItem:
@@ -189,6 +216,8 @@ def list_sales_opportunities(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_opportunities", conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_opportunities", conditions=any_conditions)
     items, total_count = list_opportunities(
         db,
         current_user.tenant_id,
@@ -196,7 +225,7 @@ def list_sales_opportunities(
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
     )
-    selected_fields = _parse_list_fields(fields)
+    selected_fields = _parse_list_fields(fields, _enabled_opportunity_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_opportunity_list_item(item, selected_fields) for item in items]
     return build_paged_response(serialized, total_count, pagination)
 
@@ -220,6 +249,8 @@ def list_sales_opportunities_cursor(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_opportunities", conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_opportunities", conditions=any_conditions)
     items = list_opportunities_cursor(
         db,
         current_user.tenant_id,
@@ -229,7 +260,7 @@ def list_sales_opportunities_cursor(
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
     )
-    selected_fields = _parse_list_fields(fields)
+    selected_fields = _parse_list_fields(fields, _enabled_opportunity_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_opportunity_list_item(item, selected_fields) for item in items]
     return build_cursor_response(serialized, limit=pagination.limit, id_attr="opportunity_id")
 
@@ -253,6 +284,8 @@ def search_sales_opportunities(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_opportunities", conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_opportunities", conditions=any_conditions)
     items, total_count = list_opportunities(
         db,
         current_user.tenant_id,
@@ -261,7 +294,7 @@ def search_sales_opportunities(
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
     )
-    selected_fields = _parse_list_fields(fields)
+    selected_fields = _parse_list_fields(fields, _enabled_opportunity_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_opportunity_list_item(item, selected_fields) for item in items]
     return build_paged_response(serialized, total_count, pagination)
 
@@ -283,6 +316,8 @@ def get_sales_opportunity_pipeline_summary(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_opportunities", conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_opportunities", conditions=any_conditions)
 
     return summarize_opportunity_pipeline(
         db,
@@ -314,7 +349,18 @@ def create_sales_opportunity(
     require_module = Depends(require_module_access("sales_opportunities")),
     require_permission = Depends(require_action_access("sales_opportunities", "create")),
 ):
-    data = payload.model_dump()
+    reject_disabled_field_writes(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_opportunities",
+        field_keys=set(payload.model_fields_set) - {"custom_fields"},
+    )
+    data = sanitize_disabled_field_payload(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_opportunities",
+        payload=payload.model_dump(),
+    )
     if not data.get("assigned_to"):
         data["assigned_to"] = current_user.id
     opportunity = create_opportunity(db, data, current_user=current_user)
@@ -422,6 +468,18 @@ def update_sales_opportunity(
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
         return SalesOpportunityResponse.model_validate(opportunity)
+    reject_disabled_field_writes(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_opportunities",
+        field_keys=set(update_data) - {"custom_fields"},
+    )
+    update_data = sanitize_disabled_field_payload(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_opportunities",
+        payload=update_data,
+    )
 
     before_state = _serialize_opportunity(opportunity)
     updated = update_opportunity(db, opportunity, update_data, current_user=current_user)
@@ -521,10 +579,11 @@ async def import_sales_opportunities(
     require_permission = Depends(require_action_access("sales_opportunities", "create")),
 ):
     content = await read_upload_bytes(file, allowed_extensions={"csv"})
-    mapping = parse_mapping_json(mapping_json, target_headers=OPPORTUNITY_IMPORT_TARGET_FIELDS)
+    target_headers = _enabled_opportunity_import_fields(db, current_user.tenant_id)
+    mapping = parse_mapping_json(mapping_json, target_headers=target_headers)
     remapped_content = remap_csv_bytes(
         content,
-        target_headers=OPPORTUNITY_IMPORT_TARGET_FIELDS,
+        target_headers=target_headers,
         mapping=mapping,
     )
     row_count = count_csv_rows_bytes(remapped_content)
@@ -585,12 +644,12 @@ async def preview_sales_opportunities_import(
     source_headers, _ = rows_from_csv_bytes(content)
     return {
         "source_headers": source_headers,
-        "target_headers": OPPORTUNITY_IMPORT_TARGET_FIELDS,
+        "target_headers": _enabled_opportunity_import_fields(db, current_user.tenant_id),
         "required_headers": ["opportunity_name", "contact_id"],
         "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "sales_opportunities", tenant_id=current_user.tenant_id),
         "suggested_mapping": suggest_header_mapping(
             source_headers=source_headers,
-            target_headers=OPPORTUNITY_IMPORT_TARGET_FIELDS,
+            target_headers=_enabled_opportunity_import_fields(db, current_user.tenant_id),
             aliases=OPPORTUNITY_IMPORT_ALIASES,
         ),
     }
@@ -604,13 +663,20 @@ def export_sales_opportunities(
     require_module = Depends(require_module_access("sales_opportunities")),
     require_permission = Depends(require_action_access("sales_opportunities", "export")),
 ):
+    sanitized_payload = sanitize_data_transfer_export_payload(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_opportunities",
+        payload=payload.model_dump(),
+        export_field_keys=OPPORTUNITY_EXPORT_HEADERS,
+    )
     job = create_data_transfer_job(
         db,
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_opportunities",
         operation_type="export",
-        payload=payload.model_dump(),
+        payload=sanitized_payload,
     )
     enqueue_export_job(job.id)
     return DataTransferExecutionResponse(

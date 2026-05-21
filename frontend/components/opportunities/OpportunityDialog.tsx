@@ -22,6 +22,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
 import type { Opportunity, OpportunityPayload } from "@/hooks/sales/useOpportunities";
 
@@ -95,6 +96,8 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
   const [isContactDropdownOpen, setIsContactDropdownOpen] = useState(false);
   const debouncedContactSearch = useDebouncedValue(contactSearch.trim(), 300);
   const customFieldsQuery = useModuleCustomFields("sales_opportunities", open);
+  const { fields: moduleFields } = useModuleFieldConfigs("sales_opportunities", false, open);
+  const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
   const currenciesQuery = useCompanyCurrencies(open);
   const contactQuery = useQuery({
     queryKey: ["opportunity-contact-options", debouncedContactSearch],
@@ -140,7 +143,7 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
   async function handleSubmit() {
     try {
       setError(null);
-      await onSubmit(form);
+      await onSubmit(pickEnabledModulePayload(form, moduleFields, ["opportunity_name", "contact_id", "custom_fields"]) as OpportunityPayload);
       onClose();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Failed to save opportunity");
@@ -161,10 +164,13 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
             {error && <div className="rounded-md border border-red-800/60 bg-red-950/30 px-4 py-3 text-sm text-red-200">{error}</div>}
 
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
+              {fieldEnabled("opportunity_name") ? (
               <Field>
                 <FieldLabel>Deal Name <RequiredMark /></FieldLabel>
                 <Input value={form.opportunity_name} onChange={(e) => setForm((c) => ({ ...c, opportunity_name: e.target.value }))} />
               </Field>
+              ) : null}
+              {fieldEnabled("contact_id") ? (
               <Field>
                 <FieldLabel>Client Contact <RequiredMark /></FieldLabel>
                 <div className="relative">
@@ -230,18 +236,26 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
                 </div>
                 <FieldDescription>Deals must be linked to an existing sales contact.</FieldDescription>
               </Field>
+              ) : null}
+              {fieldEnabled("sales_stage") ? (
               <Field>
                 <FieldLabel>Sales Stage</FieldLabel>
                 <Input value={form.sales_stage ?? ""} onChange={(e) => setForm((c) => ({ ...c, sales_stage: e.target.value }))} />
               </Field>
+              ) : null}
+              {fieldEnabled("expected_close_date") ? (
               <Field>
                 <FieldLabel>Expected Close Date</FieldLabel>
                 <Input type="date" value={form.expected_close_date ?? ""} onChange={(e) => setForm((c) => ({ ...c, expected_close_date: e.target.value }))} />
               </Field>
+              ) : null}
+              {fieldEnabled("total_cost_of_project") ? (
               <Field>
                 <FieldLabel>Total Project Cost</FieldLabel>
                 <Input value={form.total_cost_of_project ?? ""} onChange={(e) => setForm((c) => ({ ...c, total_cost_of_project: e.target.value }))} />
               </Field>
+              ) : null}
+              {fieldEnabled("currency_type") ? (
               <Field>
                 <FieldLabel>Currency</FieldLabel>
                 <Select
@@ -260,10 +274,13 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
                   </SelectContent>
                 </Select>
               </Field>
+              ) : null}
+              {fieldEnabled("tactics") ? (
               <Field className="sm:col-span-2">
                 <FieldLabel>Tactics</FieldLabel>
                 <Textarea rows={3} value={form.tactics ?? ""} onChange={(e) => setForm((c) => ({ ...c, tactics: e.target.value }))} />
               </Field>
+              ) : null}
             </FieldGroup>
 
             {customFieldsQuery.data?.length ? (

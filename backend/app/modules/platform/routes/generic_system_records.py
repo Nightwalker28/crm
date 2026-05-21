@@ -3,6 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
@@ -38,6 +39,29 @@ def list_generic_system_records(
     )
     serialized = [GenericSystemRecordResponse.model_validate(record) for record in records]
     return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+
+@router.get("/{module_key}/cursor", response_model=dict)
+def list_generic_system_records_cursor(
+    module_key: str,
+    search: str | None = Query(default=None),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+):
+    generic_system_records.ensure_generic_module_key(module_key)
+    require_module_access(module_key)(db=db, current_user=current_user)
+    require_action_access(module_key, "view")(db=db, current_user=current_user)
+    records = generic_system_records.list_records_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key=module_key,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+        search=search,
+    )
+    serialized = [GenericSystemRecordResponse.model_validate(record) for record in records]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
 
 
 @router.post("/{module_key}", response_model=GenericSystemRecordResponse, status_code=status.HTTP_201_CREATED)
@@ -139,4 +163,3 @@ def restore_generic_system_record(
         include_deleted=True,
     )
     return generic_system_records.restore_record(db, record=record)
-

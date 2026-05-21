@@ -601,6 +601,48 @@ class ClientPortalServiceTests(unittest.TestCase):
         actions = {row.action for row in self.db.query(ActivityLog).all()}
         self.assertIn("client_page.request_changes", actions)
 
+    def test_client_page_action_exact_replay_returns_existing_record(self):
+        page = client_portal_services.create_client_page(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "title": "Proposal A",
+                "contact_id": 7,
+                "pricing_items": [{"name": "Implementation", "quantity": 1, "currency": "USD", "public_unit_price": 100}],
+            },
+        )
+        payload = {
+            "message": "Approved",
+            "actor_name": "Buyer Contact",
+            "actor_email": "buyer@example.com",
+        }
+
+        first = client_portal_services.record_client_page_action(
+            self.db,
+            page=page,
+            action="accept",
+            payload=payload,
+            request_metadata={"client_host": "127.0.0.1"},
+        )
+        second = client_portal_services.record_client_page_action(
+            self.db,
+            page=page,
+            action="accept",
+            payload=payload,
+            request_metadata={"client_host": "127.0.0.2"},
+        )
+        changed = client_portal_services.record_client_page_action(
+            self.db,
+            page=page,
+            action="request_changes",
+            payload={**payload, "message": "Please revise scope"},
+        )
+
+        self.assertEqual(second.id, first.id)
+        self.assertNotEqual(changed.id, first.id)
+        self.assertEqual(self.db.query(ClientPageAction).count(), 2)
+
     def test_client_page_brand_proposal_and_actions_are_serialized(self):
         page = client_portal_services.create_client_page(
             self.db,

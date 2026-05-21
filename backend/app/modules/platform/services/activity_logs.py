@@ -66,3 +66,28 @@ def list_activity_logs(
         .all()
     )
     return items, total
+
+
+def list_activity_logs_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    limit: int,
+    cursor: int | None = None,
+    module_key: str | None = None,
+    entity_type: str | None = None,
+    entity_id: str | int | None = None,
+    action: str | None = None,
+) -> list[ActivityLog]:
+    query = db.query(ActivityLog).filter(ActivityLog.tenant_id == tenant_id)
+    if module_key:
+        query = query.filter(ActivityLog.module_key == module_key)
+    if entity_type:
+        query = query.filter(ActivityLog.entity_type == entity_type)
+    if entity_id is not None:
+        query = query.filter(ActivityLog.entity_id == str(entity_id))
+    if action:
+        query = query.filter(ActivityLog.action == action)
+    if cursor is not None:
+        query = query.filter(ActivityLog.id < cursor)
+    return query.order_by(None).order_by(ActivityLog.id.desc()).limit(limit + 1).all()

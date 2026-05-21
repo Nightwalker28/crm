@@ -18,6 +18,14 @@ from app.modules.platform.services.data_transfer_jobs import (
     should_background_data_transfer_with_size,
 )
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
+from app.modules.platform.services.module_fields import (
+    enabled_module_fields,
+    enabled_module_field_sequence,
+    reject_disabled_field_writes,
+    sanitize_data_transfer_export_payload,
+    sanitize_disabled_field_payload,
+    sanitize_disabled_filter_conditions,
+)
 from app.modules.sales.schema import (
     SalesOrganizationCreate,
     SalesOrganizationListItem,
@@ -27,6 +35,7 @@ from app.modules.sales.schema import (
     SalesOrganizationListResponse,
 )
 from app.modules.sales.services.organizations_services import (
+    EXPORT_HEADERS,
     create_organization,
     list_deleted_organizations_paginated,
     list_organizations_paginated,
@@ -101,6 +110,24 @@ def _parse_list_fields(raw_fields: str | None, allowed_fields: set[str]) -> set[
     return valid or allowed_fields
 
 
+def _enabled_organization_list_fields(db: Session, tenant_id: int) -> set[str]:
+    return enabled_module_fields(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_organizations",
+        field_keys=ORGANIZATION_LIST_FIELDS,
+    )
+
+
+def _enabled_organization_import_fields(db: Session, tenant_id: int) -> list[str]:
+    return enabled_module_field_sequence(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_organizations",
+        field_keys=ORGANIZATION_IMPORT_TARGET_FIELDS,
+    )
+
+
 def _serialize_organization_list_item(org, fields: set[str]) -> SalesOrganizationListItem:
     payload = {"org_id": org.org_id}
     for field in fields:
@@ -121,9 +148,24 @@ def create_sales_organization(
     require_permission = Depends(require_action_access("sales_organizations", "create")),
 ):
     try:
+        submitted_fields = set(payload.model_fields_set) - {"custom_fields"}
+        reject_disabled_field_writes(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key="sales_organizations",
+            field_keys=submitted_fields,
+        )
+        sanitized_payload = SalesOrganizationCreate.model_validate(
+            sanitize_disabled_field_payload(
+                db,
+                tenant_id=current_user.tenant_id,
+                module_key="sales_organizations",
+                payload=payload.model_dump(),
+            )
+        )
         created = create_organization(
             db=db,
-            payload=payload,
+            payload=sanitized_payload,
             current_user=current_user,
             replace_duplicates=replace_duplicates,
             skip_duplicates=skip_duplicates,
@@ -165,6 +207,8 @@ def get_sales_organizations(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_organizations", conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_organizations", conditions=any_conditions)
     if search:
         items, total = search_organizations_paginated(
             db=db,
@@ -184,7 +228,7 @@ def get_sales_organizations(
             all_filter_conditions=all_conditions,
             any_filter_conditions=any_conditions,
         )
-    selected_fields = _parse_list_fields(fields, ORGANIZATION_LIST_FIELDS)
+    selected_fields = _parse_list_fields(fields, _enabled_organization_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_organization_list_item(item, selected_fields) for item in items]
     return build_paged_response(serialized, total_count=total, pagination=pagination)
 
@@ -208,6 +252,8 @@ def get_sales_organizations_cursor(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_organizations", conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_organizations", conditions=any_conditions)
     items = list_organizations_cursor(
         db,
         current_user.tenant_id,
@@ -217,7 +263,7 @@ def get_sales_organizations_cursor(
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
     )
-    selected_fields = _parse_list_fields(fields, ORGANIZATION_LIST_FIELDS)
+    selected_fields = _parse_list_fields(fields, _enabled_organization_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_organization_list_item(item, selected_fields) for item in items]
     return build_cursor_response(serialized, limit=pagination.limit, id_attr="org_id")
 
@@ -259,6 +305,8 @@ def search_sales_organizations(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_organizations", conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_organizations", conditions=any_conditions)
     items, total = search_organizations_paginated(
         db=db,
         tenant_id=current_user.tenant_id,
@@ -268,7 +316,7 @@ def search_sales_organizations(
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
     )
-    selected_fields = _parse_list_fields(fields, ORGANIZATION_LIST_FIELDS)
+    selected_fields = _parse_list_fields(fields, _enabled_organization_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_organization_list_item(item, selected_fields) for item in items]
     return build_paged_response(serialized, total_count=total, pagination=pagination)
 
@@ -315,9 +363,24 @@ def edit_sales_organization(
     existing = get_organization(db=db, org_id=org_id, tenant_id=current_user.tenant_id)
     if not existing:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    update_data = payload.model_dump(exclude_unset=True)
+    reject_disabled_field_writes(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_organizations",
+        field_keys=set(update_data) - {"custom_fields"},
+    )
+    sanitized_payload = SalesOrganizationUpdate.model_validate(
+        sanitize_disabled_field_payload(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key="sales_organizations",
+            payload=update_data,
+        )
+    )
 
     before_state = _serialize_organization(existing)
-    org = update_organization(db=db, org_id=org_id, payload=payload, tenant_id=current_user.tenant_id)
+    org = update_organization(db=db, org_id=org_id, payload=sanitized_payload, tenant_id=current_user.tenant_id)
     if not org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
@@ -406,10 +469,11 @@ async def import_sales_organizations(
     require_permission = Depends(require_action_access("sales_organizations", "create")),
 ):
     content = await read_upload_bytes(file, allowed_extensions={"csv"})
-    mapping = parse_mapping_json(mapping_json, target_headers=ORGANIZATION_IMPORT_TARGET_FIELDS)
+    target_headers = _enabled_organization_import_fields(db, current_user.tenant_id)
+    mapping = parse_mapping_json(mapping_json, target_headers=target_headers)
     remapped_content = remap_csv_bytes(
         content,
-        target_headers=ORGANIZATION_IMPORT_TARGET_FIELDS,
+        target_headers=target_headers,
         mapping=mapping,
     )
     row_count = count_csv_rows_bytes(remapped_content)
@@ -475,12 +539,12 @@ async def preview_sales_organizations_import(
     source_headers, _ = rows_from_csv_bytes(content)
     return {
         "source_headers": source_headers,
-        "target_headers": ORGANIZATION_IMPORT_TARGET_FIELDS,
+        "target_headers": _enabled_organization_import_fields(db, current_user.tenant_id),
         "required_headers": ["org_name", "primary_email"],
         "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "sales_organizations", tenant_id=current_user.tenant_id),
         "suggested_mapping": suggest_header_mapping(
             source_headers=source_headers,
-            target_headers=ORGANIZATION_IMPORT_TARGET_FIELDS,
+            target_headers=_enabled_organization_import_fields(db, current_user.tenant_id),
             aliases=ORGANIZATION_IMPORT_ALIASES,
         ),
     }
@@ -494,13 +558,20 @@ def export_sales_organizations(
     require_module = Depends(require_module_access('sales_organizations')),
     require_permission = Depends(require_action_access("sales_organizations", "export")),
 ):
+    sanitized_payload = sanitize_data_transfer_export_payload(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_organizations",
+        payload=payload.model_dump(),
+        export_field_keys=EXPORT_HEADERS,
+    )
     job = create_data_transfer_job(
         db,
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_organizations",
         operation_type="export",
-        payload=payload.model_dump(),
+        payload=sanitized_payload,
     )
     enqueue_export_job(job.id)
     return DataTransferExecutionResponse(

@@ -2,11 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.access_control import require_department_module_access, require_role_module_action_access
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.security import require_admin, require_user
 from app.modules.platform.schema import ActivityLogListResponse, ActivityLogResponse
-from app.modules.platform.services.activity_logs import list_activity_logs
+from app.modules.platform.services.activity_logs import list_activity_logs, list_activity_logs_cursor
 
 router = APIRouter(prefix="/activity", tags=["Activity"])
 
@@ -47,6 +48,36 @@ def get_record_activity_logs(
     return build_paged_response(serialized, total_count=total, pagination=pagination)
 
 
+@router.get("/record/cursor", response_model=dict)
+def get_record_activity_logs_cursor(
+    module_key: str = Query(...),
+    entity_id: str = Query(...),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+):
+    if module_key not in TIMELINE_ALLOWED_MODULES:
+        raise HTTPException(status_code=400, detail="Unsupported record timeline module")
+    try:
+        require_department_module_access(db, user=current_user, module_key=module_key)
+        require_role_module_action_access(db, user=current_user, module_key=module_key, action="view")
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc))
+
+    items = list_activity_logs_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+        module_key=module_key,
+        entity_id=entity_id,
+    )
+    serialized = [ActivityLogResponse.model_validate(item).model_dump(mode="json") for item in items]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+
+
 @router.get("", response_model=ActivityLogListResponse)
 def get_activity_logs(
     module_key: str | None = Query(default=None),
@@ -68,3 +99,27 @@ def get_activity_logs(
     )
     serialized = [ActivityLogResponse.model_validate(item) for item in items]
     return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+
+@router.get("/cursor", response_model=dict)
+def get_activity_logs_cursor(
+    module_key: str | None = Query(default=None),
+    entity_type: str | None = Query(default=None),
+    entity_id: str | None = Query(default=None),
+    action: str | None = Query(default=None),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    items = list_activity_logs_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+        module_key=module_key,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        action=action,
+    )
+    serialized = [ActivityLogResponse.model_validate(item).model_dump(mode="json") for item in items]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")

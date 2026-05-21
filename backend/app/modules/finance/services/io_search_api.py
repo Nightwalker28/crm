@@ -526,6 +526,7 @@ def import_insertion_orders_csv_bytes(
 
     headers, row_iter = iter_csv_rows_from_bytes(file_bytes)
     require_csv_headers(headers, required={"customer_name"})
+    imported_fields = {header.strip().lower() for header in headers}
 
     import_io_numbers: list[str] = []
     total_rows = 0
@@ -588,6 +589,11 @@ def import_insertion_orders_csv_bytes(
         row_io_number = (row.get("io_number") or "").strip() or None
         try:
             payload = _build_import_payload(row)
+            payload = {
+                field: value
+                for field, value in payload.items()
+                if field in imported_fields or field in {"io_number", "customer_name"}
+            }
             existing = existing_by_io_number.get(row_io_number) if row_io_number else None
             prepared_rows.append(
                 {
@@ -784,6 +790,7 @@ def export_generic_insertion_orders(
     status_filter: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    field_keys: list[str] | None = None,
 ) -> tuple[Path, int]:
     module_id = get_finance_module_id(db)
     user_scope = get_finance_user_scope(db, current_user)
@@ -799,9 +806,12 @@ def export_generic_insertion_orders(
     )
     total_count = query.order_by(None).count()
     records = query.order_by(FinanceIO.updated_at.desc()).yield_per(500)
+    headers = [field for field in (field_keys or INSERTION_ORDER_EXPORT_HEADERS) if field in INSERTION_ORDER_EXPORT_HEADERS]
+    if not headers:
+        headers = ["id", "io_number"]
     return (
         dict_rows_to_csv_file(
-            headers=INSERTION_ORDER_EXPORT_HEADERS,
+            headers=headers,
             rows=(_serialize_insertion_order_export_row(record) for record in records),
         ),
         total_count,

@@ -250,6 +250,54 @@ def list_crm_events(
     return events, deliveries_by_event_id, total
 
 
+def list_crm_events_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    limit: int,
+    cursor: int | None = None,
+    event_type: str | None = None,
+    entity_type: str | None = None,
+    delivery_provider: str | None = None,
+    delivery_status: str | None = None,
+) -> tuple[list[CrmEvent], dict[int, list[CrmEventDelivery]]]:
+    query = db.query(CrmEvent).filter(CrmEvent.tenant_id == tenant_id)
+    if event_type:
+        query = query.filter(CrmEvent.event_type == event_type.strip())
+    if entity_type:
+        query = query.filter(CrmEvent.entity_type == entity_type.strip())
+
+    normalized_provider = (delivery_provider or "").strip().lower()
+    normalized_status = (delivery_status or "").strip().lower()
+    if normalized_provider or normalized_status:
+        delivery_query = db.query(CrmEventDelivery.event_id).filter(CrmEventDelivery.tenant_id == tenant_id)
+        if normalized_provider:
+            delivery_query = delivery_query.filter(CrmEventDelivery.provider == normalized_provider)
+        if normalized_status:
+            delivery_query = delivery_query.filter(CrmEventDelivery.status == normalized_status)
+        query = query.filter(CrmEvent.id.in_(delivery_query.distinct()))
+    if cursor is not None:
+        query = query.filter(CrmEvent.id < cursor)
+
+    events = query.order_by(None).order_by(CrmEvent.id.desc()).limit(limit + 1).all()
+    event_ids = [event.id for event in events]
+    deliveries_by_event_id: dict[int, list[CrmEventDelivery]] = {event_id: [] for event_id in event_ids}
+    if event_ids:
+        deliveries = (
+            db.query(CrmEventDelivery)
+            .options(joinedload(CrmEventDelivery.channel))
+            .filter(
+                CrmEventDelivery.tenant_id == tenant_id,
+                CrmEventDelivery.event_id.in_(event_ids),
+            )
+            .order_by(CrmEventDelivery.created_at.desc(), CrmEventDelivery.id.desc())
+            .all()
+        )
+        for delivery in deliveries:
+            deliveries_by_event_id.setdefault(delivery.event_id, []).append(delivery)
+    return events, deliveries_by_event_id
+
+
 def list_notification_channels(db: Session, *, tenant_id: int) -> list[NotificationChannel]:
     return (
         db.query(NotificationChannel)

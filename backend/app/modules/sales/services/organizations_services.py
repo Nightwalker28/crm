@@ -435,6 +435,7 @@ def import_organizations_from_csv(
     )
     headers, row_iter = iter_csv_rows_from_bytes(file_bytes)
     require_csv_headers(headers, required=REQUIRED_IMPORT_FIELDS)
+    imported_fields = {header.strip() for header in headers}
 
     new_rows = overwritten_rows = merged_rows = skipped_rows = 0
     total_rows = 0
@@ -507,38 +508,57 @@ def import_organizations_from_csv(
             skipped_rows += 1
             continue
 
-        payload = SalesOrganizationCreate(
-            org_name=org_name,
-            primary_email=data.get("primary_email"),
-            website=data.get("website"),
-            primary_phone=data.get("primary_phone"),
-            secondary_phone=data.get("secondary_phone"),
-            secondary_email=data.get("secondary_email"),
-            industry=data.get("industry"),
-            annual_revenue=data.get("annual_revenue"),
-            billing_address=data.get("billing_address"),
-            billing_city=data.get("billing_city"),
-            billing_state=data.get("billing_state"),
-            billing_postal_code=data.get("billing_postal_code"),
-            billing_country=data.get("billing_country"),
-        )
+        payload_data = {
+            "org_name": org_name,
+            "primary_email": data.get("primary_email"),
+            "website": data.get("website"),
+            "primary_phone": data.get("primary_phone"),
+            "secondary_phone": data.get("secondary_phone"),
+            "secondary_email": data.get("secondary_email"),
+            "industry": data.get("industry"),
+            "annual_revenue": data.get("annual_revenue"),
+            "billing_address": data.get("billing_address"),
+            "billing_city": data.get("billing_city"),
+            "billing_state": data.get("billing_state"),
+            "billing_postal_code": data.get("billing_postal_code"),
+            "billing_country": data.get("billing_country"),
+        }
+        payload_data = {
+            field: value
+            for field, value in payload_data.items()
+            if field in imported_fields or field in {"org_name", "primary_email"}
+        }
 
         if existing and mode == DuplicateMode.overwrite:
-            _apply_org_payload(existing, payload, current_user)
-            db.add(existing)
+            update_organization(
+                db,
+                existing.org_id,
+                SalesOrganizationUpdate(**payload_data),
+                tenant_id=current_user.tenant_id,
+            )
             overwritten_rows += 1
             continue
 
         if existing and mode == DuplicateMode.merge:
-            _merge_org_payload(existing, payload, current_user)
-            db.add(existing)
+            merge_payload = {
+                field: value
+                for field, value in payload_data.items()
+                if should_merge_value(getattr(existing, field, None), value)
+            }
+            if merge_payload:
+                update_organization(
+                    db,
+                    existing.org_id,
+                    SalesOrganizationUpdate(**merge_payload),
+                    tenant_id=current_user.tenant_id,
+                )
             merged_rows += 1
             continue
 
         try:
             created = create_organization(
                 db=db,
-                payload=payload,
+                payload=SalesOrganizationCreate(**payload_data),
                 current_user=current_user,
                 create_new_records=create_new_records,
             )
@@ -587,9 +607,12 @@ EXPORT_HEADERS = [
 ]
 
 
-def _serialize_orgs_to_csv(rows: list[SalesOrganization]) -> bytes:
+def _serialize_orgs_to_csv(rows: list[SalesOrganization], field_keys: list[str] | None = None) -> bytes:
+    headers = [field for field in (field_keys or EXPORT_HEADERS) if field in EXPORT_HEADERS]
+    if not headers:
+        headers = ["org_id", "org_name", "primary_email"]
     return dict_rows_to_csv_bytes(
-        headers=EXPORT_HEADERS,
+        headers=headers,
         rows=(
             {
                 "org_id": org.org_id,
@@ -614,7 +637,13 @@ def _serialize_orgs_to_csv(rows: list[SalesOrganization]) -> bytes:
     )
 
 
-def export_organizations(db: Session, *, tenant_id: int, org_ids: list[int] | None = None) -> tuple[Path, dict]:
+def export_organizations(
+    db: Session,
+    *,
+    tenant_id: int,
+    org_ids: list[int] | None = None,
+    field_keys: list[str] | None = None,
+) -> tuple[Path, dict]:
     """Export organizations to a ZIP of CSV batches (1k rows per batch)."""
     query = (
         db.query(SalesOrganization)
@@ -631,7 +660,7 @@ def export_organizations(db: Session, *, tenant_id: int, org_ids: list[int] | No
         rows=query.yield_per(500),
         batch_size=EXPORT_BATCH_SIZE,
         file_prefix="organizations",
-        serialize_row=_serialize_orgs_to_csv,
+        serialize_row=lambda rows: _serialize_orgs_to_csv(rows, field_keys=field_keys),
     )
 
 
@@ -642,6 +671,7 @@ def export_organizations_for_view(
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    field_keys: list[str] | None = None,
 ) -> tuple[Path, dict]:
     query = (
         _build_organization_query(
@@ -657,5 +687,5 @@ def export_organizations_for_view(
         rows=query.yield_per(500),
         batch_size=EXPORT_BATCH_SIZE,
         file_prefix="organizations",
-        serialize_row=_serialize_orgs_to_csv,
+        serialize_row=lambda rows: _serialize_orgs_to_csv(rows, field_keys=field_keys),
     )

@@ -6,11 +6,17 @@ from unittest.mock import patch
 from app.core.cursor_pagination import build_cursor_response
 from app.modules.calendar.repositories import calendar_repository
 from app.modules.catalog.repositories import product_repository, service_repository
+from app.modules.client_portal.repositories import client_portal_repository
 from app.modules.documents.repositories import documents_repository
 from app.modules.finance.repositories import io_repository, pos_invoice_repository
 from app.modules.mail.repositories import mail_repository
+from app.modules.platform.repositories import custom_modules_repository
+from app.modules.platform.repositories import generic_system_records_repository
+from app.modules.platform.services import activity_logs, crm_events, data_transfer_jobs, notifications, record_comments
 from app.modules.sales.repositories import contacts_repository, opportunities_repository, organizations_repository
 from app.modules.tasks.repositories import tasks_repository
+from app.modules.user_management.repositories import admin_users_repository
+from app.modules.website_integrations.repositories import website_integration_repository
 from scripts import seed_load_crm
 
 
@@ -36,8 +42,14 @@ class CursorQuery:
         self.limit_value = value
         return self
 
+    def count(self):
+        return 0
+
+    def distinct(self):
+        return self
+
     def all(self):
-        return [SimpleNamespace(id=9)]
+        return [SimpleNamespace(id=9, event_id=9)]
 
 
 class CursorDB:
@@ -70,7 +82,7 @@ class CursorPaginationContractTests(unittest.TestCase):
 
 class CursorRepositoryOrderingTests(unittest.TestCase):
     def _assert_strict_id_cursor_order(self, query):
-        self.assertIn((None,), query.order_by_calls)
+        self.assertTrue(any(len(call) == 1 and call[0] is None for call in query.order_by_calls))
         self.assertGreaterEqual(len(query.order_by_calls), 2)
         self.assertEqual(query.limit_value, 3)
 
@@ -142,6 +154,10 @@ class CursorRepositoryOrderingTests(unittest.TestCase):
             (product_repository.list_products_cursor, {"tenant_id": 10}),
             (service_repository.list_services_cursor, {"tenant_id": 10}),
             (documents_repository.list_documents_cursor, {"tenant_id": 10}),
+            (client_portal_repository.list_client_accounts_cursor, {"tenant_id": 10}),
+            (client_portal_repository.list_client_pages_cursor, {"tenant_id": 10}),
+            (website_integration_repository.list_orders_cursor, {"tenant_id": 10}),
+            (generic_system_records_repository.list_records_cursor, {"tenant_id": 10, "module_key": "purchase_orders"}),
         ]
         for function, kwargs in cases:
             with self.subTest(function=function.__name__):
@@ -152,6 +168,60 @@ class CursorRepositoryOrderingTests(unittest.TestCase):
                 else:
                     function(CursorDB(query), limit=2, cursor=9, **kwargs)
                 self._assert_strict_id_cursor_order(query)
+
+    def test_custom_module_record_cursor_repository_uses_strict_id_order(self):
+        query = CursorQuery()
+        definition = SimpleNamespace(id=1, tenant_id=10)
+
+        custom_modules_repository.list_records_cursor(CursorDB(query), definition=definition, limit=2, cursor=9)
+
+        self._assert_strict_id_cursor_order(query)
+
+    def test_admin_user_cursor_repositories_clear_existing_ordering(self):
+        for function in [admin_users_repository.list_users_cursor, admin_users_repository.search_users_cursor]:
+            with self.subTest(function=function.__name__):
+                query = CursorQuery()
+                with patch.object(admin_users_repository, "build_user_query", return_value=query):
+                    kwargs = {"tenant_id": 10, "limit": 2, "cursor": 9}
+                    if function is admin_users_repository.search_users_cursor:
+                        kwargs.update(
+                            {
+                                "q": None,
+                                "teams": None,
+                                "roles": None,
+                                "status_filter": None,
+                                "sort_by": "name",
+                                "sort_order": "asc",
+                            }
+                        )
+                    function(CursorDB(query), **kwargs)
+                self._assert_strict_id_cursor_order(query)
+
+    def test_platform_cursor_services_use_strict_id_order(self):
+        cases = [
+            (activity_logs.list_activity_logs_cursor, {"tenant_id": 10}),
+            (notifications.list_notifications_cursor, {"tenant_id": 10, "user_id": 1}),
+            (data_transfer_jobs.list_data_transfer_jobs_cursor, {"tenant_id": 10, "actor_user_id": 1}),
+            (crm_events.list_crm_events_cursor, {"tenant_id": 10}),
+        ]
+        for function, kwargs in cases:
+            with self.subTest(function=function.__name__):
+                query = CursorQuery()
+                function(CursorDB(query), limit=2, cursor=9, **kwargs)
+                self._assert_strict_id_cursor_order(query)
+
+    def test_record_comments_cursor_service_uses_strict_id_order(self):
+        query = CursorQuery()
+        with patch.object(record_comments, "get_record_reference", return_value=SimpleNamespace(id=1)):
+            record_comments.list_record_comments_cursor(
+                CursorDB(query),
+                tenant_id=10,
+                module_key="sales_contacts",
+                entity_id="1",
+                limit=2,
+                cursor=9,
+            )
+        self._assert_strict_id_cursor_order(query)
 
 
 class LoadSeedSafetyTests(unittest.TestCase):

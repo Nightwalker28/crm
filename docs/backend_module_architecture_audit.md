@@ -34,23 +34,21 @@ Tenant-owned operational modules should use this shape by default:
 | Tasks | Complete | Repository/service/routes, tenant and assignee visibility, cursor endpoint, soft delete, task-source validation, tests. | None for current standard. |
 | Documents | Complete | Repository/service/routes, tenant-scoped list/cursor, linked-record access validation, secure storage paths, soft delete, tests. | Restore route is not exposed; document recovery stays through shared recycle behavior if supported. |
 | Calendar | Complete | Repository/service/routes, tenant and participant visibility, additive `/events/cursor`, soft delete, task links, tests. | Provider sync remains background-job scoped; no external-search work needed now. |
-| Mail | Complete, pending container rerun | Repository/service/routes exist, tenant and owner-user scoping, Postgres search helper usage, additive `/mail/messages/cursor`, syntax-checked. | Re-run `tests.test_cursor_pagination tests.test_mail_imap_smtp` in the backend container after the Docker approval limit clears. Mail sync/send remain provider-specific integration flows and should stay background/scope-aware. |
-| Client portal | Partial | Repository/service/routes exist, tenant-scoped account/page/customer-group behavior, public/private auth boundaries. | Add cursor mode only for internal admin lists if needed; keep public signed/token surfaces separate. |
-| Website integrations | Integration | Repository/service/routes exist, public catalog/order integration boundaries, POS invoice bridge. | Do not force generic cursor/recycle onto public integration endpoints; audit internal orders list separately. |
+| Mail | Complete | Repository/service/routes exist, tenant and owner-user scoping, Postgres search helper usage, additive `/mail/messages/cursor`, tests. | Mail sync/send remain provider-specific integration flows and should stay background/scope-aware. |
+| Client portal | Complete | Repository/service/routes exist, tenant-scoped account/page/customer-group behavior, public/private auth boundaries, additive cursor lists for internal admin accounts/pages. | Keep public signed/token surfaces separate. |
+| Website integrations | Integration complete | Repository/service/routes exist, public catalog/order integration boundaries, POS invoice bridge, additive cursor list for internal website orders. | Do not force generic cursor/recycle onto public integration endpoints. |
 | WhatsApp | Integration | Repository/service/routes exist for click/interaction tracking. | Keep intentionally deferred automated sending closed; add cursor/list only if an internal operational interaction list is exposed. |
-| User management/admin | Partial | Services/routes for users, modules, roles, departments, teams, profile, saved views. | Add repositories for admin users/modules/structure where query complexity justifies it; add cursor mode for admin user lists if they become high-volume. |
+| User management/admin | Complete for admin users | Admin user list/search query construction now lives in a repository, existing offset routes remain, and additive cursor routes exist for list/search. | Add repositories for modules/structure later only where query complexity justifies it. |
 | Platform custom fields/module fields | Platform | Shared tenant-scoped configuration services and routes. | Keep as platform primitives, not business modules. |
-| Platform custom modules | Partial | Runtime custom module definitions/records/services/routes exist. | Add cursor mode and stricter repository split for custom module record lists. |
-| Generic system records | Partial | Generic record service/routes for new ERP/CRM modules, soft delete/restore. | Add cursor mode for generic record lists and route tests. |
+| Platform custom modules | Complete | Runtime custom module definitions/records/services/routes exist; record lists now use a repository boundary and additive cursor mode, tests. | Keep module-builder/admin-only boundaries intact. |
+| Generic system records | Complete | Generic record repository/service/routes for new ERP/CRM modules, soft delete/restore, additive cursor list, tests. | None for current standard. |
 | Global search | Platform | Shared service across modules using Postgres search helpers. | Wire future module search through `backend/app/modules/platform/search` when changing search behavior. |
-| Activity logs, comments, notifications, message templates, data-transfer jobs, recycle bin | Platform | Shared services/routes with tenant scoping and module-aware behavior. | Add cursor mode only where list volume requires it; keep shared contracts stable. |
+| Activity logs, comments, notifications, CRM events, data-transfer jobs, message templates, recycle bin | Platform | Shared services/routes with tenant scoping and module-aware behavior; additive cursor mode exists for high-volume activity, comment, notification, CRM event, and data-transfer job lists. | Keep shared contracts stable; add cursor mode to any future high-volume shared list when introduced. |
 
 ## Next Completion Order
 
-1. Generic system records cursor list and tests.
-2. Custom module records cursor list and tests.
-3. Client portal internal admin lists, only where volume justifies cursor mode.
-4. User management admin users list repository/cursor cleanup.
-5. Website integration orders audit without changing public API contracts unless needed.
+1. Keep WhatsApp as integration-specific unless an internal operational interaction list becomes a product surface.
+2. Add repositories for user-management modules/roles/departments/teams later only when query complexity or volume justifies it.
+3. Continue enforcing these defaults for all new operational modules and shared high-volume platform lists.
 
 Do not broaden integration/public surfaces just to match internal module ergonomics.

@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.permissions import require_action_access
 from app.core.security import require_admin
@@ -22,6 +23,7 @@ from app.modules.website_integrations.services.website_integration_services impo
     list_api_keys,
     list_catalog_items,
     list_orders,
+    list_orders_cursor,
     create_pos_invoice_for_order,
     resolve_public_api_key,
     revoke_api_key,
@@ -124,6 +126,25 @@ def get_website_orders(
 ):
     orders, _total = list_orders(db, tenant_id=current_user.tenant_id, limit=limit, offset=offset)
     return [WebsiteOrderResponse.model_validate(serialize_order(order)) for order in orders]
+
+
+@router.get("/orders/cursor", response_model=dict)
+def get_website_orders_cursor(
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    orders = list_orders_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+    )
+    return build_cursor_response(
+        [WebsiteOrderResponse.model_validate(serialize_order(order)).model_dump(mode="json") for order in orders],
+        limit=pagination.limit,
+        id_attr="id",
+    )
 
 
 @router.post("/orders/{order_id}/create-pos-invoice")

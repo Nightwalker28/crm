@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
 import type { InsertionOrder, InsertionOrderPayload } from "@/hooks/finance/useInsertionOrders";
 
@@ -141,6 +142,8 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
   const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
   const debouncedCustomerSearch = useDebouncedValue(form.customer_name.trim(), 300);
   const customFieldsQuery = useModuleCustomFields("finance_io", open);
+  const { fields: moduleFields } = useModuleFieldConfigs("finance_io", false, open);
+  const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
   const currenciesQuery = useCompanyCurrencies(open);
 
   const customerQuery = useQuery({
@@ -189,7 +192,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
   async function handleSubmit() {
     try {
       setError(null);
-      await onSubmit({
+      await onSubmit(pickEnabledModulePayload({
         customer_name: form.customer_name.trim(),
         customer_contact_id: form.customer_contact_id,
         customer_organization_id: form.customer_organization_id,
@@ -209,7 +212,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
         total_amount: toOptionalNumber(form.total_amount),
         notes: form.notes.trim() || undefined,
         custom_fields: customFieldValues,
-      });
+      }, moduleFields, ["customer_name", "custom_fields"]) as InsertionOrderPayload);
       handleClose();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Failed to save insertion order");
@@ -234,6 +237,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
             )}
 
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
+              {fieldEnabled("customer_name") ? (
               <Field>
                 <FieldLabel>
                   Customer Name <RequiredMark />
@@ -363,7 +367,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   </div>
                 ) : null}
               </Field>
+              ) : null}
 
+              {fieldEnabled("counterparty_reference") ? (
               <Field>
                 <FieldLabel>Counterparty Reference</FieldLabel>
                 <Input
@@ -372,7 +378,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   placeholder="PO-4821"
                 />
               </Field>
+              ) : null}
 
+              {fieldEnabled("external_reference") ? (
               <Field>
                 <FieldLabel>External Reference</FieldLabel>
                 <Input
@@ -381,7 +389,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   placeholder="Vendor reference or filename"
                 />
               </Field>
+              ) : null}
 
+              {fieldEnabled("status") ? (
               <Field>
                 <FieldLabel>
                   Status <RequiredMark />
@@ -399,7 +409,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   </SelectContent>
                 </Select>
               </Field>
+              ) : null}
 
+              {fieldEnabled("currency") ? (
               <Field>
                 <FieldLabel>
                   Currency <RequiredMark />
@@ -417,7 +429,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   </SelectContent>
                 </Select>
               </Field>
+              ) : null}
 
+              {fieldEnabled("issue_date") ? (
               <Field>
                 <FieldLabel>Issue Date</FieldLabel>
                 <Input
@@ -426,7 +440,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   onChange={(event) => setForm((current) => ({ ...current, issue_date: event.target.value }))}
                 />
               </Field>
+              ) : null}
 
+              {fieldEnabled("effective_date") ? (
               <Field>
                 <FieldLabel>Effective Date</FieldLabel>
                 <Input
@@ -435,7 +451,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   onChange={(event) => setForm((current) => ({ ...current, effective_date: event.target.value }))}
                 />
               </Field>
+              ) : null}
 
+              {fieldEnabled("due_date") ? (
               <Field>
                 <FieldLabel>Due Date</FieldLabel>
                 <Input
@@ -444,7 +462,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   onChange={(event) => setForm((current) => ({ ...current, due_date: event.target.value }))}
                 />
               </Field>
+              ) : null}
 
+              {fieldEnabled("start_date") ? (
               <Field>
                 <FieldLabel>Start Date</FieldLabel>
                 <Input
@@ -453,7 +473,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   onChange={(event) => setForm((current) => ({ ...current, start_date: event.target.value }))}
                 />
               </Field>
+              ) : null}
 
+              {fieldEnabled("end_date") ? (
               <Field>
                 <FieldLabel>End Date</FieldLabel>
                 <Input
@@ -462,7 +484,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   onChange={(event) => setForm((current) => ({ ...current, end_date: event.target.value }))}
                 />
               </Field>
+              ) : null}
 
+              {fieldEnabled("subtotal_amount") ? (
               <Field>
                 <FieldLabel>Subtotal</FieldLabel>
                 <Input
@@ -473,7 +497,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   placeholder="0.00"
                 />
               </Field>
+              ) : null}
 
+              {fieldEnabled("tax_amount") ? (
               <Field>
                 <FieldLabel>Tax</FieldLabel>
                 <Input
@@ -484,7 +510,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   placeholder="0.00"
                 />
               </Field>
+              ) : null}
 
+              {fieldEnabled("total_amount") ? (
               <Field>
                 <FieldLabel>Total</FieldLabel>
                 <Input
@@ -496,7 +524,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                 />
                 <FieldDescription>Leave blank if the total is still being finalized.</FieldDescription>
               </Field>
+              ) : null}
 
+              {fieldEnabled("notes") ? (
               <Field className="sm:col-span-2">
                 <FieldLabel>Notes</FieldLabel>
                 <Textarea
@@ -506,6 +536,7 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   rows={4}
                 />
               </Field>
+              ) : null}
             </FieldGroup>
 
             <CustomFieldInputs

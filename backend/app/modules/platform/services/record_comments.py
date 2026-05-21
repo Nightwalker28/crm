@@ -117,6 +117,30 @@ def list_record_comments(
     return items, total
 
 
+def list_record_comments_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    module_key: str,
+    entity_id: str | int,
+    limit: int,
+    cursor: int | None = None,
+) -> list[RecordComment]:
+    get_record_reference(db, tenant_id=tenant_id, module_key=module_key, entity_id=entity_id)
+    query = (
+        db.query(RecordComment)
+        .options(joinedload(RecordComment.actor))
+        .filter(
+            RecordComment.tenant_id == tenant_id,
+            RecordComment.module_key == module_key,
+            RecordComment.entity_id == str(entity_id),
+        )
+    )
+    if cursor is not None:
+        query = query.filter(RecordComment.id < cursor)
+    return query.order_by(None).order_by(RecordComment.id.desc()).limit(limit + 1).all()
+
+
 def _display_user_name(user: User) -> str:
     full_name = " ".join(part for part in [user.first_name, user.last_name] if part).strip()
     return full_name or user.email

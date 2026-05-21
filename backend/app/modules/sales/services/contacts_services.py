@@ -491,6 +491,7 @@ def import_contacts_from_csv(
     )
     headers, row_iter = iter_csv_rows_from_bytes(file_bytes)
     require_csv_headers(headers, required={"primary_email"})
+    imported_fields = {header.strip().lower() for header in headers}
 
     new_rows = overwritten_rows = merged_rows = skipped_rows = 0
     total_rows = 0
@@ -595,6 +596,11 @@ def import_contacts_from_csv(
             "organization_id": organization_id,
             "email_opt_out": parsed_opt_out if parsed_opt_out is not None else False,
             "assigned_to": assigned_to,
+        }
+        payload = {
+            field: value
+            for field, value in payload.items()
+            if field in imported_fields or field in {"primary_email", "assigned_to"}
         }
         rows.append(payload)
         emails.append(_normalize_email(email))
@@ -729,7 +735,10 @@ def _parse_int_or_none(value: str | None) -> int | None:
         return None
 
 
-def export_contacts_to_csv(contacts: Iterable[SalesContact]) -> bytes:
+def export_contacts_to_csv(contacts: Iterable[SalesContact], field_keys: list[str] | None = None) -> bytes:
+    headers = [field for field in (field_keys or EXPORT_COLUMNS) if field in EXPORT_COLUMNS]
+    if not headers:
+        headers = ["contact_id", "primary_email"]
     rows = [
         {
             "contact_id": contact.contact_id,
@@ -749,7 +758,7 @@ def export_contacts_to_csv(contacts: Iterable[SalesContact]) -> bytes:
         for contact in contacts
     ]
     return dict_rows_to_csv_bytes(
-        headers=EXPORT_COLUMNS,
+        headers=headers,
         rows=rows,
     )
 

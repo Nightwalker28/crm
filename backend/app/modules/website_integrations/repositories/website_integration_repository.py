@@ -110,6 +110,17 @@ def list_orders(db: Session, *, tenant_id: int, limit: int | None = None, offset
     return query.all(), total
 
 
+def list_orders_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[WebsiteIntegrationOrder]:
+    query = (
+        db.query(WebsiteIntegrationOrder)
+        .options(selectinload(WebsiteIntegrationOrder.line_items))
+        .filter(WebsiteIntegrationOrder.tenant_id == tenant_id)
+    )
+    if cursor is not None:
+        query = query.filter(WebsiteIntegrationOrder.id < cursor)
+    return query.order_by(None).order_by(WebsiteIntegrationOrder.id.desc()).limit(limit + 1).all()
+
+
 def get_order(db: Session, *, tenant_id: int, order_id: int) -> WebsiteIntegrationOrder | None:
     return (
         db.query(WebsiteIntegrationOrder)

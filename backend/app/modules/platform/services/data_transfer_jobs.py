@@ -257,6 +257,28 @@ def list_data_transfer_jobs(
     return items, total
 
 
+def list_data_transfer_jobs_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    actor_user_id: int | None = None,
+    limit: int,
+    cursor: int | None = None,
+    module_key: str | None = None,
+    operation_type: str | None = None,
+):
+    query = db.query(DataTransferJob).filter(DataTransferJob.tenant_id == tenant_id)
+    if actor_user_id is not None:
+        query = query.filter(DataTransferJob.actor_user_id == actor_user_id)
+    if module_key:
+        query = query.filter(DataTransferJob.module_key == module_key)
+    if operation_type:
+        query = query.filter(DataTransferJob.operation_type == operation_type)
+    if cursor is not None:
+        query = query.filter(DataTransferJob.id < cursor)
+    return query.order_by(None).order_by(DataTransferJob.id.desc()).limit(limit + 1).all()
+
+
 def get_data_transfer_job_or_404(
     db: Session,
     *,
@@ -494,7 +516,7 @@ def process_export_job(*, job_id: int) -> None:
                 )
             exported_rows = len(records)
             update_job_progress(db, job, progress_percent=70, progress_message="Serializing contacts export.")
-            content = export_contacts_to_csv(records)
+            content = export_contacts_to_csv(records, field_keys=payload.get("field_keys"))
             file_name = "sales_contacts.csv"
             media_type = "text/csv"
         elif module_key == "sales_organizations":
@@ -503,7 +525,12 @@ def process_export_job(*, job_id: int) -> None:
 
             update_job_progress(db, job, progress_percent=70, progress_message="Building organizations export package.")
             if export_ids is not None:
-                content, export_meta = export_organizations(db=db, tenant_id=job.tenant_id, org_ids=export_ids)
+                content, export_meta = export_organizations(
+                    db=db,
+                    tenant_id=job.tenant_id,
+                    org_ids=export_ids,
+                    field_keys=payload.get("field_keys"),
+                )
             else:
                 content, export_meta = export_organizations_for_view(
                     db=db,
@@ -511,6 +538,7 @@ def process_export_job(*, job_id: int) -> None:
                     search=search,
                     all_filter_conditions=all_filter_conditions,
                     any_filter_conditions=any_filter_conditions,
+                    field_keys=payload.get("field_keys"),
                 )
             exported_rows = exported_rows or int(export_meta.get("rows") or 0)
             file_name = "organizations_export.zip"
@@ -537,7 +565,7 @@ def process_export_job(*, job_id: int) -> None:
                 )
             exported_rows = len(records)
             update_job_progress(db, job, progress_percent=70, progress_message="Serializing opportunities export.")
-            content = export_opportunities_to_csv(records)
+            content = export_opportunities_to_csv(records, field_keys=payload.get("field_keys"))
             file_name = "sales_opportunities.csv"
             media_type = "text/csv"
         elif module_key == "finance_io":
@@ -560,10 +588,14 @@ def process_export_job(*, job_id: int) -> None:
                 exported_rows = len(records)
                 from app.modules.finance.services.io_search_api import INSERTION_ORDER_EXPORT_HEADERS
                 from app.core.module_export import dict_rows_to_csv_bytes
+                field_keys = [
+                    field for field in (payload.get("field_keys") or INSERTION_ORDER_EXPORT_HEADERS)
+                    if field in INSERTION_ORDER_EXPORT_HEADERS
+                ] or ["id", "io_number"]
 
                 update_job_progress(db, job, progress_percent=70, progress_message="Serializing insertion orders export.")
                 content = dict_rows_to_csv_bytes(
-                    headers=INSERTION_ORDER_EXPORT_HEADERS,
+                    headers=field_keys,
                     rows=(
                         {
                             "id": record.id,
@@ -598,6 +630,7 @@ def process_export_job(*, job_id: int) -> None:
                     status_filter=status_filter,
                     all_filter_conditions=all_filter_conditions,
                     any_filter_conditions=any_filter_conditions,
+                    field_keys=payload.get("field_keys"),
                 )
             file_name = "insertion_orders.csv"
             media_type = "text/csv"

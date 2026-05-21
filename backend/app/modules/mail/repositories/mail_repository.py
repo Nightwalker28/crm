@@ -83,8 +83,6 @@ def build_messages_query(
     )
     if normalized_folder:
         query = query.filter(MailMessage.folder == normalized_folder)
-    if before_id:
-        query = query.filter(MailMessage.id < before_id)
     if len(normalized_search) >= 2:
         query = apply_ranked_search(
             query,

@@ -23,6 +23,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 
 type ContactOption = {
@@ -176,6 +177,8 @@ export default function OpportunityDetailPage() {
   const [isContactDropdownOpen, setIsContactDropdownOpen] = useState(false);
   const deferredContactSearch = useDeferredValue(contactSearch.trim());
   const customFieldsQuery = useModuleCustomFields("sales_opportunities", true);
+  const { fields: moduleFields } = useModuleFieldConfigs("sales_opportunities");
+  const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
   const currenciesQuery = useCompanyCurrencies(true);
   const contactQuery = useQuery({
     queryKey: ["opportunity-detail-contact-options", deferredContactSearch],
@@ -239,7 +242,7 @@ export default function OpportunityDetailPage() {
     try {
       setSaving(true);
       setError(null);
-      const payload = {
+      const payload = pickEnabledModulePayload({
         opportunity_name: form.opportunity_name.trim(),
         client: form.client.trim() || null,
         sales_stage: form.sales_stage.trim() || null,
@@ -260,7 +263,7 @@ export default function OpportunityDetailPage() {
         delivery_format: form.delivery_format.trim() || null,
         attachments: form.attachments,
         custom_fields: form.custom_fields,
-      };
+      }, moduleFields, ["opportunity_name", "contact_id", "custom_fields"]);
       const res = await apiFetch(`/sales/opportunities/${params.opportunityId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -308,10 +311,13 @@ export default function OpportunityDetailPage() {
                 <p className="mt-1 text-sm text-neutral-500">Edit the pipeline record directly on the page.</p>
               </div>
               <FieldGroup className="grid gap-4 md:grid-cols-2">
+                {fieldEnabled("opportunity_name") ? (
                 <Field>
                   <FieldLabel>Deal Name</FieldLabel>
                   <Input value={form.opportunity_name} onChange={(event) => setForm((current) => ({ ...current, opportunity_name: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("contact_id") ? (
                 <Field>
                   <FieldLabel>Client Contact</FieldLabel>
                   <div className="relative">
@@ -374,18 +380,26 @@ export default function OpportunityDetailPage() {
                   </div>
                   <FieldDescription>Deals must stay linked to an existing sales contact.</FieldDescription>
                 </Field>
+                ) : null}
+                {fieldEnabled("sales_stage") ? (
                 <Field>
                   <FieldLabel>Sales Stage</FieldLabel>
                   <Input value={form.sales_stage} onChange={(event) => setForm((current) => ({ ...current, sales_stage: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("expected_close_date") ? (
                 <Field>
                   <FieldLabel>Expected Close Date</FieldLabel>
                   <Input type="date" value={form.expected_close_date} onChange={(event) => setForm((current) => ({ ...current, expected_close_date: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("total_cost_of_project") ? (
                 <Field>
                   <FieldLabel>Total Project Cost</FieldLabel>
                   <Input value={form.total_cost_of_project} onChange={(event) => setForm((current) => ({ ...current, total_cost_of_project: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("currency_type") ? (
                 <Field>
                   <FieldLabel>Currency</FieldLabel>
                   <Select
@@ -404,26 +418,37 @@ export default function OpportunityDetailPage() {
                     </SelectContent>
                   </Select>
                 </Field>
+                ) : null}
+                {fieldEnabled("campaign_type") ? (
                 <Field>
                   <FieldLabel>Campaign Type</FieldLabel>
                   <Input value={form.campaign_type} onChange={(event) => setForm((current) => ({ ...current, campaign_type: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("target_geography") ? (
                 <Field>
                   <FieldLabel>Target Geography</FieldLabel>
                   <Input value={form.target_geography} onChange={(event) => setForm((current) => ({ ...current, target_geography: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("target_audience") ? (
                 <Field>
                   <FieldLabel>Target Audience</FieldLabel>
                   <Input value={form.target_audience} onChange={(event) => setForm((current) => ({ ...current, target_audience: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("delivery_format") ? (
                 <Field>
                   <FieldLabel>Delivery Format</FieldLabel>
                   <Input value={form.delivery_format} onChange={(event) => setForm((current) => ({ ...current, delivery_format: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("tactics") ? (
                 <Field className="md:col-span-2">
                   <FieldLabel>Tactics</FieldLabel>
                   <Textarea rows={3} value={form.tactics} onChange={(event) => setForm((current) => ({ ...current, tactics: event.target.value }))} />
                 </Field>
+                ) : null}
               </FieldGroup>
 
               <div className="mt-4">

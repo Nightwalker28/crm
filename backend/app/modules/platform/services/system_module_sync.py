@@ -99,7 +99,7 @@ def sync_system_modules(db: Session, *, tenant_id: int | None = None, commit: bo
 
             for field_definition in definition.get("fields") or []:
                 field_key = str(field_definition["field_key"])
-                protected = bool(field_definition.get("is_protected")) or is_protected_module_field(field_key)
+                protected = bool(field_definition.get("is_protected")) or is_protected_module_field(field_key, module_key)
                 field_config = (
                     db.query(ModuleFieldConfig)
                     .filter(

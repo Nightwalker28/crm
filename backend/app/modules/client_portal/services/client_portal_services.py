@@ -704,6 +704,15 @@ def list_client_accounts(db: Session, *, tenant_id: int) -> list[ClientAccount]:
     return client_portal_repository.list_client_accounts(db, tenant_id=tenant_id)
 
 
+def list_client_accounts_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[ClientAccount]:
+    return client_portal_repository.list_client_accounts_cursor(
+        db,
+        tenant_id=tenant_id,
+        limit=limit,
+        cursor=cursor,
+    )
+
+
 def get_client_account_or_404(db: Session, *, tenant_id: int, account_id: int) -> ClientAccount:
     account = client_portal_repository.get_client_account(db, tenant_id=tenant_id, account_id=account_id)
     if not account:
@@ -763,6 +772,19 @@ def update_client_account_status(db: Session, *, account: ClientAccount, status_
 
 def list_client_pages(db: Session, *, tenant_id: int) -> list[ClientPage]:
     pages = client_portal_repository.list_client_pages(db, tenant_id=tenant_id)
+    action_summaries = _client_page_action_summaries(db, pages)
+    for page in pages:
+        page._action_summary = action_summaries.get(page.id, {"action_count": 0, "latest_action": None, "recent_actions": []})
+    return pages
+
+
+def list_client_pages_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[ClientPage]:
+    pages = client_portal_repository.list_client_pages_cursor(
+        db,
+        tenant_id=tenant_id,
+        limit=limit,
+        cursor=cursor,
+    )
     action_summaries = _client_page_action_summaries(db, pages)
     for page in pages:
         page._action_summary = action_summaries.get(page.id, {"action_count": 0, "latest_action": None, "recent_actions": []})
@@ -947,14 +969,29 @@ def record_client_page_action(
     if account and not _validate_client_account_matches_page(account, page):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Client account cannot act on this page")
     data = payload or {}
+    message = (data.get("message") or "").strip() or None
+    actor_name = (data.get("actor_name") or "").strip() or None
+    actor_email = str(data.get("actor_email")).strip().lower() if data.get("actor_email") else None
+    existing = client_portal_repository.find_matching_page_action(
+        db,
+        tenant_id=page.tenant_id,
+        page_id=page.id,
+        action=action,
+        client_account_id=account.id if account else None,
+        message=message,
+        actor_name=actor_name,
+        actor_email=actor_email,
+    )
+    if existing:
+        return existing
     record = ClientPageAction(
         tenant_id=page.tenant_id,
         client_page_id=page.id,
         client_account_id=account.id if account else None,
         action=action,
-        message=(data.get("message") or "").strip() or None,
-        actor_name=(data.get("actor_name") or "").strip() or None,
-        actor_email=str(data.get("actor_email")).strip().lower() if data.get("actor_email") else None,
+        message=message,
+        actor_name=actor_name,
+        actor_email=actor_email,
         request_metadata=request_metadata,
     )
     db.add(record)

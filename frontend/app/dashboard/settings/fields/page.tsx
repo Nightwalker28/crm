@@ -92,11 +92,11 @@ function buildSystemCatalog(moduleKey: string): FieldCatalogItem[] {
     field_source: "system",
     sort_order: index,
     is_enabled: true,
-    is_protected: isProtectedFieldKey(column.key),
+    is_protected: isProtectedFieldKey(column.key, moduleKey),
   }));
 }
 
-function buildCustomFieldCatalog(fields: CustomFieldDefinition[], offset: number): FieldCatalogItem[] {
+function buildCustomFieldCatalog(moduleKey: string, fields: CustomFieldDefinition[], offset: number): FieldCatalogItem[] {
   return fields.map((field, index) => {
     const fieldKey = getCustomFieldColumnKey(field.field_key);
     return {
@@ -106,7 +106,7 @@ function buildCustomFieldCatalog(fields: CustomFieldDefinition[], offset: number
       field_source: "custom_field",
       sort_order: offset + index,
       is_enabled: field.is_active,
-      is_protected: isProtectedFieldKey(fieldKey),
+      is_protected: isProtectedFieldKey(fieldKey, moduleKey),
       custom_field_id: field.id,
     };
   });
@@ -121,7 +121,7 @@ function buildCustomModuleCatalog(module: CustomModuleDefinition | null): FieldC
     field_source: "custom_module",
     sort_order: field.sort_order ?? index,
     is_enabled: field.is_active,
-    is_protected: field.is_protected || isProtectedFieldKey(field.key),
+    is_protected: field.is_protected || isProtectedFieldKey(field.key, module.key),
     custom_module_id: module.id,
     custom_module_field: field,
   }));
@@ -205,13 +205,13 @@ export default function FieldsPage() {
       ? buildCustomModuleCatalog(selectedCustomModule)
       : [
           ...buildSystemCatalog(moduleKey),
-          ...buildCustomFieldCatalog(customFieldsQuery.data ?? [], buildSystemCatalog(moduleKey).length),
+          ...buildCustomFieldCatalog(moduleKey, customFieldsQuery.data ?? [], buildSystemCatalog(moduleKey).length),
         ];
     const configMap = new Map(moduleFieldConfigs.map((config) => [config.field_key, config]));
     return base
       .map((field) => {
         const config = configMap.get(field.field_key);
-        const isProtected = field.is_protected || config?.is_protected || isProtectedFieldKey(field.field_key);
+        const isProtected = field.is_protected || config?.is_protected || isProtectedFieldKey(field.field_key, moduleKey);
         return {
           ...field,
           label: config?.label ?? field.label,

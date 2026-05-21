@@ -22,6 +22,7 @@ from app.modules.sales.schema import (
 )
 from app.modules.sales.services.followups import log_contact_follow_up
 from app.modules.sales.services.contacts_services import (
+    EXPORT_COLUMNS,
     create_sales_contact,
     delete_sales_contact,
     get_all_contacts,
@@ -44,6 +45,14 @@ from app.modules.platform.services.data_transfer_jobs import (
     should_background_data_transfer_with_size,
 )
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
+from app.modules.platform.services.module_fields import (
+    enabled_module_fields,
+    enabled_module_field_sequence,
+    reject_disabled_field_writes,
+    sanitize_data_transfer_export_payload,
+    sanitize_disabled_field_payload,
+    sanitize_disabled_filter_conditions,
+)
 from app.modules.sales.services.organizations_services import search_organizations_paginated
 from app.modules.sales.services.summary_services import build_contact_summary
 from app.modules.user_management.services import admin_modules
@@ -120,6 +129,24 @@ def _parse_list_fields(raw_fields: str | None, allowed_fields: set[str]) -> set[
     return valid or allowed_fields
 
 
+def _enabled_contact_list_fields(db: Session, tenant_id: int) -> set[str]:
+    return enabled_module_fields(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_contacts",
+        field_keys=CONTACT_LIST_FIELDS,
+    )
+
+
+def _enabled_contact_import_fields(db: Session, tenant_id: int) -> list[str]:
+    return enabled_module_field_sequence(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_contacts",
+        field_keys=CONTACT_IMPORT_TARGET_FIELDS,
+    )
+
+
 def _serialize_contact_list_item(contact, fields: set[str]) -> SalesContactListItem:
     payload = {"contact_id": contact.contact_id}
     for field in fields:
@@ -146,6 +173,8 @@ def list_contacts(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_contacts", conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_contacts", conditions=any_conditions)
     contacts, total_count = list_sales_contacts(
         db,
         current_user.tenant_id,
@@ -154,7 +183,7 @@ def list_contacts(
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
     )
-    selected_fields = _parse_list_fields(fields, CONTACT_LIST_FIELDS)
+    selected_fields = _parse_list_fields(fields, _enabled_contact_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_contact_list_item(contact, selected_fields) for contact in contacts]
     return build_paged_response(serialized, total_count, pagination)
 
@@ -177,6 +206,8 @@ def list_contacts_cursor(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_contacts", conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_contacts", conditions=any_conditions)
     contacts = list_sales_contacts_cursor(
         db,
         current_user.tenant_id,
@@ -185,7 +216,7 @@ def list_contacts_cursor(
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
     )
-    selected_fields = _parse_list_fields(fields, CONTACT_LIST_FIELDS)
+    selected_fields = _parse_list_fields(fields, _enabled_contact_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_contact_list_item(contact, selected_fields) for contact in contacts]
     return build_cursor_response(serialized, limit=pagination.limit, id_attr="contact_id")
 
@@ -213,6 +244,8 @@ def search_contacts(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_contacts", conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="sales_contacts", conditions=any_conditions)
     contacts, total_count = list_sales_contacts(
         db,
         current_user.tenant_id,
@@ -221,7 +254,7 @@ def search_contacts(
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
     )
-    selected_fields = _parse_list_fields(fields, CONTACT_LIST_FIELDS)
+    selected_fields = _parse_list_fields(fields, _enabled_contact_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_contact_list_item(contact, selected_fields) for contact in contacts]
     return build_paged_response(serialized, total_count, pagination)
 
@@ -251,9 +284,22 @@ def create_contact(
     require_permission = Depends(require_action_access("sales_contacts", "create")),
 ):
     try:
+        submitted_fields = set(payload.model_fields_set) - {"custom_fields"}
+        reject_disabled_field_writes(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key="sales_contacts",
+            field_keys=submitted_fields,
+        )
+        sanitized_payload = sanitize_disabled_field_payload(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key="sales_contacts",
+            payload=payload.model_dump(),
+        )
         created = create_sales_contact(
             db=db,
-            payload=payload.model_dump(),
+            payload=sanitized_payload,
             current_user=current_user,
             replace_duplicates=replace_duplicates,
             skip_duplicates=skip_duplicates,
@@ -310,10 +356,11 @@ async def import_contacts(
     require_permission = Depends(require_action_access("sales_contacts", "create")),
 ):
     file_bytes = await read_upload_bytes(file, allowed_extensions={"csv"})
-    mapping = parse_mapping_json(mapping_json, target_headers=CONTACT_IMPORT_TARGET_FIELDS)
+    target_headers = _enabled_contact_import_fields(db, current_user.tenant_id)
+    mapping = parse_mapping_json(mapping_json, target_headers=target_headers)
     remapped_file_bytes = remap_csv_bytes(
         file_bytes,
-        target_headers=CONTACT_IMPORT_TARGET_FIELDS,
+        target_headers=target_headers,
         mapping=mapping,
     )
     row_count = count_csv_rows_bytes(remapped_file_bytes)
@@ -378,12 +425,12 @@ async def preview_contact_import(
     source_headers, _ = rows_from_csv_bytes(file_bytes)
     return {
         "source_headers": source_headers,
-        "target_headers": CONTACT_IMPORT_TARGET_FIELDS,
+        "target_headers": _enabled_contact_import_fields(db, current_user.tenant_id),
         "required_headers": ["primary_email"],
         "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "sales_contacts", tenant_id=current_user.tenant_id),
         "suggested_mapping": suggest_header_mapping(
             source_headers=source_headers,
-            target_headers=CONTACT_IMPORT_TARGET_FIELDS,
+            target_headers=_enabled_contact_import_fields(db, current_user.tenant_id),
             aliases=CONTACT_IMPORT_ALIASES,
         ),
     }
@@ -397,13 +444,20 @@ def export_contacts(
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "export")),
 ):
+    sanitized_payload = sanitize_data_transfer_export_payload(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_contacts",
+        payload=payload.model_dump(),
+        export_field_keys=EXPORT_COLUMNS,
+    )
     job = create_data_transfer_job(
         db,
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="sales_contacts",
         operation_type="export",
-        payload=payload.model_dump(),
+        payload=sanitized_payload,
     )
     enqueue_export_job(job.id)
     return DataTransferExecutionResponse(
@@ -488,6 +542,18 @@ def update_contact(
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
         return contact
+    reject_disabled_field_writes(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_contacts",
+        field_keys=set(update_data) - {"custom_fields"},
+    )
+    update_data = sanitize_disabled_field_payload(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_contacts",
+        payload=update_data,
+    )
 
     before_state = _serialize_contact(contact)
     updated = update_sales_contact(db, contact, update_data)

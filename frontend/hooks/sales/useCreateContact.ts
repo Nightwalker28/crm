@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
+import { pickEnabledModulePayload, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 
 type OrgOption = {
   id: number;
@@ -117,21 +118,26 @@ export function useCreateContact({
     onClose();
   }
 
-  async function submit(overrides?: Record<string, unknown>) {
+  async function submit(overrides?: Record<string, unknown>, moduleFields?: ModuleFieldConfig[]) {
     try {
       setIsSubmitting(true);
       setError(null);
+
+      const payload = {
+        ...form,
+        ...overrides,
+        organization_id: form.organization_id ? Number(form.organization_id) : null,
+      };
+      const requestPayload = moduleFields
+        ? pickEnabledModulePayload(payload, moduleFields, ["primary_email", "custom_fields"])
+        : payload;
 
       const res = await apiFetch("/sales/contacts", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          ...form,
-          ...overrides,
-          organization_id: form.organization_id ? Number(form.organization_id) : null,
-        }),
+        body: JSON.stringify(requestPayload),
       });
 
       if (!res.ok) {

@@ -386,6 +386,15 @@ def list_orders(db: Session, *, tenant_id: int, limit: int | None = None, offset
     return website_integration_repository.list_orders(db, tenant_id=tenant_id, limit=limit, offset=offset)
 
 
+def list_orders_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[WebsiteIntegrationOrder]:
+    return website_integration_repository.list_orders_cursor(
+        db,
+        tenant_id=tenant_id,
+        limit=limit,
+        cursor=cursor,
+    )
+
+
 def get_order_or_404(db: Session, *, tenant_id: int, order_id: int) -> WebsiteIntegrationOrder:
     order = website_integration_repository.get_order(db, tenant_id=tenant_id, order_id=order_id)
     if not order:

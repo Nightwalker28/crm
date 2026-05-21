@@ -4,11 +4,11 @@ from datetime import datetime
 from typing import Sequence
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination
 from app.modules.platform.models import GenericSystemRecord
+from app.modules.platform.repositories import generic_system_records_repository
 from app.modules.platform.system_modules import SYSTEM_MODULES
 
 
@@ -35,17 +35,34 @@ def list_records(
     search: str | None = None,
 ) -> tuple[Sequence[GenericSystemRecord], int]:
     module_key = ensure_generic_module_key(module_key)
-    query = db.query(GenericSystemRecord).filter(
-        GenericSystemRecord.tenant_id == tenant_id,
-        GenericSystemRecord.module_key == module_key,
-        GenericSystemRecord.deleted_at.is_(None),
+    return generic_system_records_repository.list_records(
+        db,
+        tenant_id=tenant_id,
+        module_key=module_key,
+        offset=pagination.offset,
+        limit=pagination.limit,
+        search=search,
     )
-    if search:
-        pattern = f"%{search.strip()}%"
-        query = query.filter(or_(GenericSystemRecord.title.ilike(pattern), GenericSystemRecord.status.ilike(pattern)))
-    total = query.count()
-    records = query.order_by(GenericSystemRecord.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
-    return records, total
+
+
+def list_records_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    module_key: str,
+    limit: int,
+    cursor: int | None = None,
+    search: str | None = None,
+) -> Sequence[GenericSystemRecord]:
+    module_key = ensure_generic_module_key(module_key)
+    return generic_system_records_repository.list_records_cursor(
+        db,
+        tenant_id=tenant_id,
+        module_key=module_key,
+        limit=limit,
+        cursor=cursor,
+        search=search,
+    )
 
 
 def get_record_or_404(
@@ -57,14 +74,13 @@ def get_record_or_404(
     include_deleted: bool = False,
 ) -> GenericSystemRecord:
     module_key = ensure_generic_module_key(module_key)
-    query = db.query(GenericSystemRecord).filter(
-        GenericSystemRecord.tenant_id == tenant_id,
-        GenericSystemRecord.module_key == module_key,
-        GenericSystemRecord.id == record_id,
+    record = generic_system_records_repository.get_record(
+        db,
+        tenant_id=tenant_id,
+        module_key=module_key,
+        record_id=record_id,
+        include_deleted=include_deleted,
     )
-    if not include_deleted:
-        query = query.filter(GenericSystemRecord.deleted_at.is_(None))
-    record = query.first()
     if record is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
     return record
@@ -113,4 +129,3 @@ def restore_record(db: Session, *, record: GenericSystemRecord):
     db.commit()
     db.refresh(record)
     return record
-

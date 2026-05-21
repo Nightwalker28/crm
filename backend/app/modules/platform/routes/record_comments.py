@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
@@ -22,6 +23,7 @@ from app.modules.platform.services.record_comments import (
     list_mentionable_record_users,
     validate_record_mentions,
     list_record_comments,
+    list_record_comments_cursor,
 )
 
 router = APIRouter(prefix="/record-comments", tags=["Record Comments"])
@@ -70,6 +72,29 @@ def get_record_comments(
     )
     serialized = [RecordCommentResponse.model_validate(item) for item in items]
     return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+
+@router.get("/cursor", response_model=dict)
+def get_record_comments_cursor(
+    module_key: str,
+    entity_id: str,
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+):
+    get_record_comment_module_config(module_key)
+    require_module_access(module_key)(current_user=current_user, db=db)
+    require_action_access(module_key, "view")(current_user=current_user, db=db)
+    items = list_record_comments_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key=module_key,
+        entity_id=entity_id,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+    )
+    serialized = [RecordCommentResponse.model_validate(item).model_dump(mode="json") for item in items]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
 
 
 @router.post("", response_model=RecordCommentResponse)

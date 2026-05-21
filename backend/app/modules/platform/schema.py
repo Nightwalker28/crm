@@ -134,6 +134,8 @@ class DataTransferExportRequest(BaseModel):
     current_page_ids: list[int] | None = None
     search: str | None = None
     status: str | None = None
+    visible_columns: list[str] | None = None
+    field_keys: list[str] | None = None
     filters_all: list[dict[str, Any]] | None = None
     filters_any: list[dict[str, Any]] | None = None
 

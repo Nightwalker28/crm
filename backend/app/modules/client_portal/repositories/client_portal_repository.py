@@ -51,6 +51,35 @@ def action_summaries(db: Session, *, tenant_id: int, page_ids: list[int]) -> tup
     return counts, recent_actions
 
 
+def find_matching_page_action(
+    db: Session,
+    *,
+    tenant_id: int,
+    page_id: int,
+    action: str,
+    client_account_id: int | None,
+    message: str | None,
+    actor_name: str | None,
+    actor_email: str | None,
+) -> ClientPageAction | None:
+    return (
+        db.query(ClientPageAction)
+        .filter(
+            ClientPageAction.tenant_id == tenant_id,
+            ClientPageAction.client_page_id == page_id,
+            ClientPageAction.action == action,
+            ClientPageAction.client_account_id.is_(None)
+            if client_account_id is None
+            else ClientPageAction.client_account_id == client_account_id,
+            ClientPageAction.message.is_(None) if message is None else ClientPageAction.message == message,
+            ClientPageAction.actor_name.is_(None) if actor_name is None else ClientPageAction.actor_name == actor_name,
+            ClientPageAction.actor_email.is_(None) if actor_email is None else ClientPageAction.actor_email == actor_email,
+        )
+        .order_by(ClientPageAction.created_at.desc(), ClientPageAction.id.desc())
+        .first()
+    )
+
+
 def has_default_customer_group(db: Session, *, tenant_id: int) -> bool:
     return bool(db.query(CustomerGroup.id).filter(CustomerGroup.tenant_id == tenant_id, CustomerGroup.group_key == "default").first())
 
@@ -127,6 +156,17 @@ def list_client_accounts(db: Session, *, tenant_id: int) -> list[ClientAccount]:
     )
 
 
+def list_client_accounts_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[ClientAccount]:
+    query = (
+        db.query(ClientAccount)
+        .options(joinedload(ClientAccount.contact), joinedload(ClientAccount.organization))
+        .filter(ClientAccount.tenant_id == tenant_id)
+    )
+    if cursor is not None:
+        query = query.filter(ClientAccount.id < cursor)
+    return query.order_by(None).order_by(ClientAccount.id.desc()).limit(limit + 1).all()
+
+
 def get_client_account(db: Session, *, tenant_id: int, account_id: int) -> ClientAccount | None:
     return (
         db.query(ClientAccount)
@@ -144,6 +184,17 @@ def list_client_pages(db: Session, *, tenant_id: int) -> list[ClientPage]:
         .order_by(ClientPage.created_at.desc(), ClientPage.id.desc())
         .all()
     )
+
+
+def list_client_pages_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[ClientPage]:
+    query = (
+        db.query(ClientPage)
+        .options(joinedload(ClientPage.contact), joinedload(ClientPage.organization))
+        .filter(ClientPage.tenant_id == tenant_id)
+    )
+    if cursor is not None:
+        query = query.filter(ClientPage.id < cursor)
+    return query.order_by(None).order_by(ClientPage.id.desc()).limit(limit + 1).all()
 
 
 def get_client_page(db: Session, *, tenant_id: int, page_id: int) -> ClientPage | None:

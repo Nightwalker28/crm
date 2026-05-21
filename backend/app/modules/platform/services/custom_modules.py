@@ -7,7 +7,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, object_session, selectinload
 
@@ -30,6 +29,7 @@ from app.modules.platform.models import (
     CustomModuleRecord,
     CustomModuleRecordValue,
 )
+from app.modules.platform.repositories import custom_modules_repository
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.module_fields import is_protected_module_field
 from app.modules.user_management.models import (
@@ -649,27 +649,28 @@ def serialize_record(record: CustomModuleRecord) -> CustomModuleRecordResponse:
 def list_records(db: Session, *, module_key: str, current_user: User, pagination: Pagination, search: str | None = None, include_deleted: bool = False):
     definition = _get_module_definition(db, tenant_id=current_user.tenant_id, key=module_key)
     _require_module_action(db, user=current_user, definition=definition, action="view")
-    query = (
-        db.query(CustomModuleRecord)
-        .options(selectinload(CustomModuleRecord.values).selectinload(CustomModuleRecordValue.field))
-        .filter(CustomModuleRecord.tenant_id == current_user.tenant_id, CustomModuleRecord.custom_module_id == definition.id)
+    records, total = custom_modules_repository.list_records(
+        db,
+        definition=definition,
+        offset=pagination.offset,
+        limit=pagination.limit,
+        search=search,
+        include_deleted=include_deleted,
     )
-    if not include_deleted:
-        query = query.filter(CustomModuleRecord.deleted_at.is_(None))
-    if search:
-        query = (
-            query.outerjoin(CustomModuleRecordValue, CustomModuleRecordValue.record_id == CustomModuleRecord.id)
-            .filter(
-                or_(
-                    CustomModuleRecord.title.ilike(f"%{search}%"),
-                    CustomModuleRecordValue.text_value.ilike(f"%{search}%"),
-                )
-            )
-            .distinct()
-        )
-    total = query.count()
-    records = query.order_by(CustomModuleRecord.updated_at.desc(), CustomModuleRecord.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
     return build_paged_response([serialize_record(record) for record in records], total, pagination)
+
+
+def list_records_cursor(db: Session, *, module_key: str, current_user: User, limit: int, cursor: int | None = None, search: str | None = None):
+    definition = _get_module_definition(db, tenant_id=current_user.tenant_id, key=module_key)
+    _require_module_action(db, user=current_user, definition=definition, action="view")
+    records = custom_modules_repository.list_records_cursor(
+        db,
+        definition=definition,
+        limit=limit,
+        cursor=cursor,
+        search=search,
+    )
+    return [serialize_record(record) for record in records]
 
 
 def list_deleted_records_for_recycle(db: Session, *, tenant_id: int, module_key: str, pagination: Pagination):
@@ -758,14 +759,12 @@ def create_record(db: Session, *, module_key: str, current_user: User, payload: 
 
 
 def _get_record(db: Session, *, definition: CustomModuleDefinition, record_id: int, include_deleted: bool = False) -> CustomModuleRecord:
-    query = (
-        db.query(CustomModuleRecord)
-        .options(selectinload(CustomModuleRecord.values).selectinload(CustomModuleRecordValue.field))
-        .filter(CustomModuleRecord.tenant_id == definition.tenant_id, CustomModuleRecord.custom_module_id == definition.id, CustomModuleRecord.id == record_id)
+    record = custom_modules_repository.get_record(
+        db,
+        definition=definition,
+        record_id=record_id,
+        include_deleted=include_deleted,
     )
-    if not include_deleted:
-        query = query.filter(CustomModuleRecord.deleted_at.is_(None))
-    record = query.first()
     if not record:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record not found")
     return record

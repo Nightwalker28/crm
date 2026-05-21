@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.module_filters import parse_filter_conditions
 from app.core.security import require_admin
@@ -81,6 +82,25 @@ def list_all_users(
     response["results"] = [_serialize_user_list_item(user, selected_fields) for user in response["results"]]
     return response
 
+
+@router.get("/cursor", response_model=dict)
+def list_all_users_cursor(
+    fields: Optional[str] = Query(None),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    users = admin_users.list_all_users_cursor(
+        db,
+        tenant_id=admin.tenant_id,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+    )
+    selected_fields = _parse_list_fields(fields)
+    serialized = [_serialize_user_list_item(user, selected_fields).model_dump(mode="json") for user in users]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+
+
 @router.get("/search", response_model=UserListResponse)
 def search_users(
     q: Optional[str] = Query(None, alias="search"),
@@ -117,6 +137,46 @@ def search_users(
     selected_fields = _parse_list_fields(fields)
     response["results"] = [_serialize_user_list_item(user, selected_fields) for user in response["results"]]
     return response
+
+
+@router.get("/search/cursor", response_model=dict)
+def search_users_cursor(
+    q: Optional[str] = Query(None, alias="search"),
+    teams: Optional[str] = Query(None),
+    roles: Optional[str] = Query(None),
+    status: Optional[str] = Query(None),
+    sort_by: str = Query("name"),
+    sort_order: str = Query("asc"),
+    fields: Optional[str] = Query(None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    try:
+        all_conditions = parse_filter_conditions(filters_all)
+        any_conditions = parse_filter_conditions(filters_any)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    users = admin_users.search_users_cursor(
+        db,
+        tenant_id=admin.tenant_id,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+        q=q,
+        teams=teams,
+        roles=roles,
+        status_filter=status,
+        sort_by=sort_by,
+        sort_order=sort_order,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+    )
+    selected_fields = _parse_list_fields(fields)
+    serialized = [_serialize_user_list_item(user, selected_fields).model_dump(mode="json") for user in users]
+    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+
 
 @router.get("/options", response_model=UserUpdateOptions)
 def list_user_update_options(

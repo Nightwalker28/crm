@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useClientPortalActions, useCustomerGroups, type CustomerGroup } from "@/hooks/useClientPortal";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -128,6 +129,8 @@ export default function OrganizationDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const customFieldsQuery = useModuleCustomFields("sales_organizations", true);
+  const { fields: moduleFields } = useModuleFieldConfigs("sales_organizations");
+  const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
   const customerGroupsQuery = useCustomerGroups();
   const { assignOrganizationGroup, isAssigningCustomerGroup } = useClientPortalActions();
 
@@ -183,7 +186,7 @@ export default function OrganizationDetailPage() {
         Object.entries(form).map(([key, value]) => [key, value.trim() || null]),
       );
       const requestPayload = {
-        ...payload,
+        ...pickEnabledModulePayload(payload, moduleFields, ["org_name", "primary_email"]),
         custom_fields: customFieldValues,
       };
       const res = await apiFetch(`/sales/organizations/${params.orgId}`, {
@@ -248,58 +251,84 @@ export default function OrganizationDetailPage() {
                 <p className="mt-1 text-sm text-neutral-500">Primary commercial and billing information.</p>
               </div>
               <FieldGroup className="grid gap-4 md:grid-cols-2">
+                {fieldEnabled("org_name") ? (
                 <Field>
                   <FieldLabel>Name</FieldLabel>
                   <Input value={form.org_name} onChange={(event) => setForm((current) => ({ ...current, org_name: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("primary_email") ? (
                 <Field>
                   <FieldLabel>Primary Email</FieldLabel>
                   <Input type="email" value={form.primary_email} onChange={(event) => setForm((current) => ({ ...current, primary_email: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("secondary_email") ? (
                 <Field>
                   <FieldLabel>Secondary Email</FieldLabel>
                   <Input type="email" value={form.secondary_email} onChange={(event) => setForm((current) => ({ ...current, secondary_email: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("website") ? (
                 <Field>
                   <FieldLabel>Website</FieldLabel>
                   <Input value={form.website} onChange={(event) => setForm((current) => ({ ...current, website: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("primary_phone") ? (
                 <Field>
                   <FieldLabel>Primary Phone</FieldLabel>
                   <Input value={form.primary_phone} onChange={(event) => setForm((current) => ({ ...current, primary_phone: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("secondary_phone") ? (
                 <Field>
                   <FieldLabel>Secondary Phone</FieldLabel>
                   <Input value={form.secondary_phone} onChange={(event) => setForm((current) => ({ ...current, secondary_phone: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("industry") ? (
                 <Field>
                   <FieldLabel>Industry</FieldLabel>
                   <Input value={form.industry} onChange={(event) => setForm((current) => ({ ...current, industry: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("annual_revenue") ? (
                 <Field>
                   <FieldLabel>Annual Revenue</FieldLabel>
                   <Input value={form.annual_revenue} onChange={(event) => setForm((current) => ({ ...current, annual_revenue: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("billing_address") ? (
                 <Field className="md:col-span-2">
                   <FieldLabel>Billing Address</FieldLabel>
                   <Textarea value={form.billing_address} onChange={(event) => setForm((current) => ({ ...current, billing_address: event.target.value }))} rows={3} />
                 </Field>
+                ) : null}
+                {fieldEnabled("billing_city") ? (
                 <Field>
                   <FieldLabel>Billing City</FieldLabel>
                   <Input value={form.billing_city} onChange={(event) => setForm((current) => ({ ...current, billing_city: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("billing_state") ? (
                 <Field>
                   <FieldLabel>Billing State</FieldLabel>
                   <Input value={form.billing_state} onChange={(event) => setForm((current) => ({ ...current, billing_state: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("billing_postal_code") ? (
                 <Field>
                   <FieldLabel>Billing Postal Code</FieldLabel>
                   <Input value={form.billing_postal_code} onChange={(event) => setForm((current) => ({ ...current, billing_postal_code: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("billing_country") ? (
                 <Field>
                   <FieldLabel>Billing Country</FieldLabel>
                   <Input value={form.billing_country} onChange={(event) => setForm((current) => ({ ...current, billing_country: event.target.value }))} />
                 </Field>
+                ) : null}
               </FieldGroup>
 
               <div className="mt-4">

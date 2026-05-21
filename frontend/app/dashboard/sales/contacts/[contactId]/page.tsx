@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useClientPortalActions, useCustomerGroups, type CustomerGroup } from "@/hooks/useClientPortal";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -131,6 +132,8 @@ export default function ContactDetailPage() {
   const [createWhatsAppReminder, setCreateWhatsAppReminder] = useState(true);
   const [whatsAppReminderDueAt, setWhatsAppReminderDueAt] = useState("");
   const customFieldsQuery = useModuleCustomFields("sales_contacts", true);
+  const { fields: moduleFields } = useModuleFieldConfigs("sales_contacts");
+  const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
   const customerGroupsQuery = useCustomerGroups();
   const { assignContactGroup, isAssigningCustomerGroup } = useClientPortalActions();
 
@@ -198,7 +201,7 @@ export default function ContactDetailPage() {
     try {
       setSaving(true);
       setError(null);
-      const payload = {
+      const payload = pickEnabledModulePayload({
         first_name: form.first_name.trim() || null,
         last_name: form.last_name.trim() || null,
         primary_email: form.primary_email.trim(),
@@ -209,7 +212,7 @@ export default function ContactDetailPage() {
         country: form.country.trim() || null,
         organization_id: summary?.organization?.org_id ?? summary?.contact.organization_id ?? null,
         custom_fields: customFieldValues,
-      };
+      }, moduleFields, ["primary_email", "custom_fields"]);
       const res = await apiFetch(`/sales/contacts/${params.contactId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -295,10 +298,12 @@ export default function ContactDetailPage() {
         <>
           <Card className="px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
+              {fieldEnabled("contact_telephone") ? (
               <Button type="button" size="sm" onClick={handleWhatsAppClick} disabled={whatsAppSending || !summary.contact.contact_telephone || !whatsAppTemplates.length}>
                 <MessageCircle />
                 WhatsApp
               </Button>
+              ) : null}
               {summary.contact.primary_email ? (
                 <Button asChild size="sm" variant="outline">
                   <a href={`mailto:${summary.contact.primary_email}`}>
@@ -312,19 +317,19 @@ export default function ContactDetailPage() {
                   Email
                 </Button>
               )}
-              {summary.contact.contact_telephone ? (
+              {fieldEnabled("contact_telephone") && summary.contact.contact_telephone ? (
                 <Button asChild size="sm" variant="outline">
                   <a href={`tel:${summary.contact.contact_telephone}`}>
                     <Phone />
                     Call
                   </a>
                 </Button>
-              ) : (
+              ) : fieldEnabled("contact_telephone") ? (
                 <Button type="button" size="sm" variant="outline" disabled>
                   <Phone />
                   Call
                 </Button>
-              )}
+              ) : null}
               <Button type="button" size="sm" variant="ghost" onClick={() => document.getElementById("contact-record-tools")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
                 <StickyNote />
                 Note
@@ -346,38 +351,54 @@ export default function ContactDetailPage() {
                 <p className="mt-1 text-sm text-neutral-500">Edit the record directly on the page.</p>
               </div>
               <FieldGroup className="grid gap-4 md:grid-cols-2">
+                {fieldEnabled("first_name") ? (
                 <Field>
                   <FieldLabel>First Name</FieldLabel>
                   <Input value={form.first_name} onChange={(event) => setForm((current) => ({ ...current, first_name: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("last_name") ? (
                 <Field>
                   <FieldLabel>Last Name</FieldLabel>
                   <Input value={form.last_name} onChange={(event) => setForm((current) => ({ ...current, last_name: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("primary_email") ? (
                 <Field>
                   <FieldLabel>Email</FieldLabel>
                   <Input type="email" value={form.primary_email} onChange={(event) => setForm((current) => ({ ...current, primary_email: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("contact_telephone") ? (
                 <Field>
                   <FieldLabel>Phone</FieldLabel>
                   <Input value={form.contact_telephone} onChange={(event) => setForm((current) => ({ ...current, contact_telephone: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("current_title") ? (
                 <Field>
                   <FieldLabel>Job Title</FieldLabel>
                   <Input value={form.current_title} onChange={(event) => setForm((current) => ({ ...current, current_title: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("linkedin_url") ? (
                 <Field>
                   <FieldLabel>LinkedIn URL</FieldLabel>
                   <Input value={form.linkedin_url} onChange={(event) => setForm((current) => ({ ...current, linkedin_url: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("region") ? (
                 <Field>
                   <FieldLabel>Region</FieldLabel>
                   <Input value={form.region} onChange={(event) => setForm((current) => ({ ...current, region: event.target.value }))} />
                 </Field>
+                ) : null}
+                {fieldEnabled("country") ? (
                 <Field>
                   <FieldLabel>Country</FieldLabel>
                   <Input value={form.country} onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))} />
                 </Field>
+                ) : null}
               </FieldGroup>
 
               <div className="mt-4">

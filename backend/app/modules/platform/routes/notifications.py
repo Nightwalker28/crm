@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.security import require_user
@@ -8,6 +9,7 @@ from app.modules.platform.schema import UserNotificationListResponse, UserNotifi
 from app.modules.platform.services.notifications import (
     get_notification_or_404,
     list_notifications,
+    list_notifications_cursor,
     mark_all_notifications_read,
     mark_notification_read,
 )
@@ -31,6 +33,27 @@ def get_notifications(
     )
     serialized = [UserNotificationResponse.model_validate(item) for item in items]
     response = build_paged_response(serialized, total_count=total, pagination=pagination)
+    response["unread_count"] = unread_count
+    return response
+
+
+@router.get("/cursor", response_model=dict)
+def get_notifications_cursor(
+    status_filter: str | None = Query(default=None, alias="status"),
+    pagination: CursorPagination = Depends(get_cursor_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+):
+    items, unread_count = list_notifications_cursor(
+        db,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        limit=pagination.limit,
+        cursor=pagination.cursor,
+        status_filter=status_filter,
+    )
+    serialized = [UserNotificationResponse.model_validate(item).model_dump(mode="json") for item in items]
+    response = build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
     response["unread_count"] = unread_count
     return response
 

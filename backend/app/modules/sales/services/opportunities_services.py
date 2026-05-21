@@ -548,6 +548,7 @@ def import_opportunities_from_csv(
     )
     headers, row_iter = iter_csv_rows_from_bytes(file_bytes)
     require_csv_headers(headers, required=OPPORTUNITY_IMPORT_HEADERS)
+    imported_fields = {header.strip().lower() for header in headers}
 
     new_rows = overwritten_rows = merged_rows = skipped_rows = 0
     total_rows = 0
@@ -613,6 +614,11 @@ def import_opportunities_from_csv(
                 "domain_cap": (normalized.get("domain_cap") or "").strip() or None,
                 "tactics": (normalized.get("tactics") or "").strip() or None,
                 "delivery_format": (normalized.get("delivery_format") or "").strip() or None,
+            }
+            payload = {
+                field: value
+                for field, value in payload.items()
+                if field in imported_fields or field in {"opportunity_name", "contact_id", "assigned_to"}
             }
         except HTTPException as exc:
             failures.append(
@@ -695,9 +701,12 @@ def import_opportunities_from_csv(
     )
 
 
-def export_opportunities_to_csv(opportunities: list[SalesOpportunity]) -> bytes:
+def export_opportunities_to_csv(opportunities: list[SalesOpportunity], field_keys: list[str] | None = None) -> bytes:
+    headers = [field for field in (field_keys or OPPORTUNITY_EXPORT_HEADERS) if field in OPPORTUNITY_EXPORT_HEADERS]
+    if not headers:
+        headers = ["opportunity_id", "opportunity_name", "contact_id"]
     return dict_rows_to_csv_bytes(
-        headers=OPPORTUNITY_EXPORT_HEADERS,
+        headers=headers,
         rows=(
             {
                 "opportunity_id": opportunity.opportunity_id,

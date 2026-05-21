@@ -67,6 +67,36 @@ def list_notifications(
     return items, total, unread_count
 
 
+def list_notifications_cursor(
+    db: Session,
+    *,
+    tenant_id: int,
+    user_id: int,
+    limit: int,
+    cursor: int | None = None,
+    status_filter: str | None = None,
+):
+    query = db.query(UserNotification).filter(
+        UserNotification.tenant_id == tenant_id,
+        UserNotification.user_id == user_id,
+    )
+    if status_filter in {"read", "unread"}:
+        query = query.filter(UserNotification.status == status_filter)
+    if cursor is not None:
+        query = query.filter(UserNotification.id < cursor)
+    unread_count = (
+        db.query(UserNotification)
+        .filter(
+            UserNotification.tenant_id == tenant_id,
+            UserNotification.user_id == user_id,
+            UserNotification.status == "unread",
+        )
+        .count()
+    )
+    items = query.order_by(None).order_by(UserNotification.id.desc()).limit(limit + 1).all()
+    return items, unread_count
+
+
 def get_notification_or_404(db: Session, *, notification_id: int, tenant_id: int, user_id: int) -> UserNotification:
     notification = (
         db.query(UserNotification)

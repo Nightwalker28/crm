@@ -26,6 +26,15 @@ from app.modules.platform.services.data_transfer_jobs import (
     should_background_data_transfer_with_size,
 )
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
+from app.modules.platform.services.module_fields import (
+    enabled_module_fields,
+    enabled_module_field_sequence,
+    reject_disabled_field_writes,
+    sanitize_data_transfer_export_payload,
+    sanitize_disabled_field_payload,
+    sanitize_disabled_filter_conditions,
+)
+from app.modules.finance.services.io_search_api import INSERTION_ORDER_EXPORT_HEADERS
 
 router = APIRouter(tags=["Finance"])
 
@@ -87,12 +96,30 @@ INSERTION_ORDER_IMPORT_ALIASES = {
 }
 
 
-def _parse_list_fields(raw_fields: str | None) -> set[str]:
+def _parse_list_fields(raw_fields: str | None, allowed_fields: set[str]) -> set[str]:
     if not raw_fields:
-        return INSERTION_ORDER_LIST_FIELDS
+        return allowed_fields
     requested = {field.strip() for field in raw_fields.split(",") if field.strip()}
-    valid = requested & INSERTION_ORDER_LIST_FIELDS
-    return valid or INSERTION_ORDER_LIST_FIELDS
+    valid = requested & allowed_fields
+    return valid or allowed_fields
+
+
+def _enabled_insertion_order_list_fields(db: Session, tenant_id: int) -> set[str]:
+    return enabled_module_fields(
+        db,
+        tenant_id=tenant_id,
+        module_key="finance_io",
+        field_keys=INSERTION_ORDER_LIST_FIELDS,
+    )
+
+
+def _enabled_insertion_order_import_fields(db: Session, tenant_id: int) -> list[str]:
+    return enabled_module_field_sequence(
+        db,
+        tenant_id=tenant_id,
+        module_key="finance_io",
+        field_keys=INSERTION_ORDER_IMPORT_TARGET_FIELDS,
+    )
 
 
 def _serialize_insertion_order_list_item(record: dict, fields: set[str]) -> InsertionOrderListItem:
@@ -145,6 +172,8 @@ def list_insertion_orders(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="finance_io", conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="finance_io", conditions=any_conditions)
     response = io_search_api.list_generic_insertion_orders_page(
         db,
         current_user,
@@ -157,7 +186,7 @@ def list_insertion_orders(
         sort_by=sort_by,
         sort_direction=sort_direction,
     )
-    selected_fields = _parse_list_fields(fields)
+    selected_fields = _parse_list_fields(fields, _enabled_insertion_order_list_fields(db, current_user.tenant_id))
     response["results"] = [_serialize_insertion_order_list_item(item, selected_fields) for item in response["results"]]
     return response
 
@@ -182,6 +211,8 @@ def list_insertion_orders_cursor_route(
         any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="finance_io", conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key="finance_io", conditions=any_conditions)
     records = io_search_api.list_generic_insertion_orders_cursor(
         db,
         current_user,
@@ -193,7 +224,7 @@ def list_insertion_orders_cursor_route(
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
     )
-    selected_fields = _parse_list_fields(fields)
+    selected_fields = _parse_list_fields(fields, _enabled_insertion_order_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_insertion_order_list_item(item, selected_fields) for item in records]
     return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
 
@@ -206,10 +237,21 @@ def create_insertion_order(
     current_user = Depends(get_current_user),
     require_permission = Depends(require_action_access("finance_io", "create")),
 ):
+    reject_disabled_field_writes(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="finance_io",
+        field_keys=set(payload.model_fields_set) - {"custom_fields"},
+    )
     return io_search_api.create_generic_insertion_order(
         db,
         current_user,
-        data=payload.model_dump(),
+        data=sanitize_disabled_field_payload(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key="finance_io",
+            payload=payload.model_dump(),
+        ),
         request=request,
     )
 
@@ -239,11 +281,23 @@ def update_insertion_order(
     current_user = Depends(get_current_user),
     require_permission = Depends(require_action_access("finance_io", "edit")),
 ):
+    update_data = payload.model_dump(exclude_unset=True)
+    reject_disabled_field_writes(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="finance_io",
+        field_keys=set(update_data) - {"custom_fields"},
+    )
     return io_search_api.update_generic_insertion_order(
         db,
         current_user,
         io_id=io_id,
-        data=payload.model_dump(exclude_unset=True),
+        data=sanitize_disabled_field_payload(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key="finance_io",
+            payload=update_data,
+        ),
         request=request,
     )
 
@@ -274,10 +328,11 @@ async def import_insertion_orders(
     require_permission = Depends(require_action_access("finance_io", "create")),
 ):
     file_bytes = await read_upload_bytes(file, allowed_extensions={"csv"})
-    mapping = parse_mapping_json(mapping_json, target_headers=INSERTION_ORDER_IMPORT_TARGET_FIELDS)
+    target_headers = _enabled_insertion_order_import_fields(db, current_user.tenant_id)
+    mapping = parse_mapping_json(mapping_json, target_headers=target_headers)
     remapped_file_bytes = remap_csv_bytes(
         file_bytes,
-        target_headers=INSERTION_ORDER_IMPORT_TARGET_FIELDS,
+        target_headers=target_headers,
         mapping=mapping,
     )
     row_count = count_csv_rows_bytes(remapped_file_bytes)
@@ -336,12 +391,12 @@ async def preview_insertion_orders_import(
     source_headers, _ = await read_csv_upload(file)
     return {
         "source_headers": source_headers,
-        "target_headers": INSERTION_ORDER_IMPORT_TARGET_FIELDS,
+        "target_headers": _enabled_insertion_order_import_fields(db, current_user.tenant_id),
         "required_headers": ["customer_name"],
         "default_duplicate_mode": admin_modules.get_module_duplicate_mode(db, "finance_io", tenant_id=current_user.tenant_id),
         "suggested_mapping": suggest_header_mapping(
             source_headers=source_headers,
-            target_headers=INSERTION_ORDER_IMPORT_TARGET_FIELDS,
+            target_headers=_enabled_insertion_order_import_fields(db, current_user.tenant_id),
             aliases=INSERTION_ORDER_IMPORT_ALIASES,
         ),
     }
@@ -354,13 +409,20 @@ def export_insertion_orders(
     current_user = Depends(get_current_user),
     require_permission = Depends(require_action_access("finance_io", "export")),
 ):
+    sanitized_payload = sanitize_data_transfer_export_payload(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="finance_io",
+        payload=payload.model_dump(),
+        export_field_keys=INSERTION_ORDER_EXPORT_HEADERS,
+    )
     job = create_data_transfer_job(
         db,
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
         module_key="finance_io",
         operation_type="export",
-        payload=payload.model_dump(),
+        payload=sanitized_payload,
     )
     enqueue_export_job(job.id)
     return DataTransferExecutionResponse(

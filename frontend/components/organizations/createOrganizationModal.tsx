@@ -15,6 +15,7 @@ import {
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { Input } from "@/components/ui/input";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 
@@ -54,6 +55,8 @@ export default function CreateOrganizationModal({
   const [form, setForm] = useState<OrganizationForm>(emptyForm);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const customFieldsQuery = useModuleCustomFields("sales_organizations", isOpen);
+  const { fields: moduleFields } = useModuleFieldConfigs("sales_organizations", false, isOpen);
+  const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
 
   function closeAndReset() {
     setForm(emptyForm);
@@ -72,14 +75,14 @@ export default function CreateOrganizationModal({
       annual_revenue: form.annual_revenue.trim(),
     };
 
-    await onCreate(
-      {
-        ...Object.fromEntries(
-          Object.entries(payload).filter(([, value]) => value.length > 0),
-        ),
-        custom_fields: customFieldValues,
-      },
-    );
+    await onCreate({
+      ...pickEnabledModulePayload(
+        Object.fromEntries(Object.entries(payload).filter(([, value]) => value.length > 0)),
+        moduleFields,
+        ["org_name", "primary_email"],
+      ),
+      custom_fields: customFieldValues,
+    });
     setForm(emptyForm);
     setCustomFieldValues({});
   }
@@ -95,6 +98,7 @@ export default function CreateOrganizationModal({
           </DialogHeader>
 
           <FieldGroup className="mt-4 grid gap-4 sm:grid-cols-2">
+            {fieldEnabled("org_name") ? (
             <Field className="sm:col-span-2">
               <FieldLabel>Account Name <RequiredMark /></FieldLabel>
               <Input
@@ -103,7 +107,9 @@ export default function CreateOrganizationModal({
                 placeholder="Acme Inc."
               />
             </Field>
+            ) : null}
 
+            {fieldEnabled("primary_email") ? (
             <Field>
               <FieldLabel>Primary Email <RequiredMark /></FieldLabel>
               <Input
@@ -113,7 +119,9 @@ export default function CreateOrganizationModal({
                 placeholder="ops@acme.com"
               />
             </Field>
+            ) : null}
 
+            {fieldEnabled("website") ? (
             <Field>
               <FieldLabel>Website</FieldLabel>
               <Input
@@ -122,7 +130,9 @@ export default function CreateOrganizationModal({
                 placeholder="https://acme.com"
               />
             </Field>
+            ) : null}
 
+            {fieldEnabled("primary_phone") ? (
             <Field>
               <FieldLabel>Primary Phone</FieldLabel>
               <Input
@@ -131,7 +141,9 @@ export default function CreateOrganizationModal({
                 placeholder="+1 555 123 4567"
               />
             </Field>
+            ) : null}
 
+            {fieldEnabled("secondary_email") ? (
             <Field>
               <FieldLabel>Secondary Email</FieldLabel>
               <Input
@@ -141,7 +153,9 @@ export default function CreateOrganizationModal({
                 placeholder="finance@acme.com"
               />
             </Field>
+            ) : null}
 
+            {fieldEnabled("industry") ? (
             <Field>
               <FieldLabel>Industry</FieldLabel>
               <Input
@@ -150,7 +164,9 @@ export default function CreateOrganizationModal({
                 placeholder="SaaS"
               />
             </Field>
+            ) : null}
 
+            {fieldEnabled("annual_revenue") ? (
             <Field>
               <FieldLabel>Annual Revenue</FieldLabel>
               <Input
@@ -160,6 +176,7 @@ export default function CreateOrganizationModal({
               />
               <FieldDescription>Keep this lightweight for now. Full editing can come later.</FieldDescription>
             </Field>
+            ) : null}
           </FieldGroup>
 
           <div className="mt-4">

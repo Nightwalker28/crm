@@ -861,7 +861,7 @@ The backend refactor phases below have now been implemented in the working tree:
 
 - Phase 1: repository layers exist for sales contacts and the other major backend modules.
 - Phase 2: sales contacts import/export services are split from the main contacts service.
-- Phase 3: cursor pagination foundation exists, and cursor endpoints exist for contacts, organizations, opportunities, POS invoices, insertion orders, catalog products, catalog services, tasks, documents, calendar events, and mail messages.
+- Phase 3: cursor pagination foundation exists, and cursor endpoints exist for contacts, organizations, opportunities, POS invoices, insertion orders, catalog products, catalog services, tasks, documents, calendar events, mail messages, client portal admin accounts/pages, admin users, website integration orders, generic system records, custom module records, activity logs, record comments, notifications, CRM events, and data-transfer jobs.
 - Phase 4: tenant-aware composite/partial performance indexes exist in Alembic.
 - Phase 5: Postgres trigram/search indexes exist in Alembic for high-volume searchable modules.
 - Phase 6: the platform search abstraction stub exists under `backend/app/modules/platform/search/`.
@@ -878,7 +878,7 @@ Verification completed in the backend container:
 - `alembic current` confirmed `20260606_search_indexes (head)`
 - Guarded load-seed smoke run with tiny record counts and `LOAD_CRM_SEED_ALLOW=1`
 
-Calendar cursor tests passed after calendar was added to the cursor standard. Mail cursor implementation is landed and syntax-checked, but the focused container rerun for mail was blocked by the Codex Docker approval usage limit after updating the stale mail test patch target.
+Calendar cursor tests passed after calendar was added to the cursor standard. Mail, generic-system-record, custom-module-record, client-portal, admin-user, website-order, and shared platform cursor implementations were added after the first phase verification pass; the focused reruns `tests.test_cursor_pagination tests.test_custom_modules tests.test_mail_imap_smtp`, `tests.test_cursor_pagination tests.test_client_portal tests.test_admin_users tests.test_api_routes`, and shared platform cursor tests now pass in the backend container.
 
 See `docs/backend_module_architecture_audit.md` for the current module-by-module completion audit and the next completion order.
 

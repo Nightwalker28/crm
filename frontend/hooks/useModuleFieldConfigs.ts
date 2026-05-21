@@ -27,6 +27,13 @@ export type ModuleFieldConfigPayload = {
   sort_order?: number;
 };
 
+const MODULE_PROTECTED_FIELD_KEYS: Record<string, Set<string>> = {
+  sales_contacts: new Set(["primary_email"]),
+  sales_organizations: new Set(["org_name", "primary_email"]),
+  sales_opportunities: new Set(["opportunity_name"]),
+  finance_io: new Set(["io_number", "customer_name"]),
+};
+
 async function parseJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -35,13 +42,30 @@ async function parseJson<T>(res: Response): Promise<T> {
   return res.json();
 }
 
-export function isProtectedFieldKey(fieldKey: string) {
+export function isProtectedFieldKey(fieldKey: string, moduleKey?: string) {
   const normalized = fieldKey.startsWith("custom:") ? fieldKey.slice("custom:".length) : fieldKey;
   return (
     ["id", "record_id", "primary_key", "uuid", "key", "title", "name"].includes(normalized) ||
+    (moduleKey ? MODULE_PROTECTED_FIELD_KEYS[moduleKey]?.has(normalized) : false) ||
     normalized.endsWith("_id") ||
     normalized.endsWith("_key")
   );
+}
+
+export function isModuleFieldEnabled(fields: ModuleFieldConfig[], fieldKey: string) {
+  const config = fields.find((field) => field.field_key === fieldKey);
+  return config ? config.is_protected || config.is_enabled : true;
+}
+
+export function pickEnabledModulePayload<T extends Record<string, unknown>>(
+  payload: T,
+  fields: ModuleFieldConfig[],
+  alwaysInclude: string[] = [],
+) {
+  const forced = new Set(alwaysInclude);
+  return Object.fromEntries(
+    Object.entries(payload).filter(([fieldKey]) => forced.has(fieldKey) || isModuleFieldEnabled(fields, fieldKey)),
+  ) as Partial<T>;
 }
 
 export function useModuleFieldConfigs(moduleKey: string, admin = false, enabled = true) {
