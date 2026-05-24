@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.platform.services.custom_fields import hydrate_custom_field_record, hydrate_custom_field_records
 from app.modules.finance.models import FinanceIO
-from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization
+from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
 
 
 def _to_float(value: Decimal | None) -> float | None:
@@ -38,6 +38,33 @@ def _collect_services(opportunities: list[SalesOpportunity]) -> list[str]:
             if value and value.strip():
                 labels.add(value.strip())
     return sorted(labels)
+
+
+def _get_related_quotes(
+    db: Session,
+    *,
+    tenant_id: int,
+    organization_id: int | None = None,
+    contact_id: int | None = None,
+    limit: int = 10,
+) -> list[SalesQuote]:
+    quote_filters = [SalesQuote.tenant_id == tenant_id, SalesQuote.deleted_at.is_(None)]
+    if organization_id is not None and contact_id is not None:
+        quote_filters.append(or_(SalesQuote.organization_id == organization_id, SalesQuote.contact_id == contact_id))
+    elif organization_id is not None:
+        quote_filters.append(SalesQuote.organization_id == organization_id)
+    elif contact_id is not None:
+        quote_filters.append(SalesQuote.contact_id == contact_id)
+    else:
+        return []
+
+    return (
+        db.query(SalesQuote)
+        .filter(*quote_filters)
+        .order_by(SalesQuote.updated_at.desc(), SalesQuote.created_time.desc())
+        .limit(limit)
+        .all()
+    )
 
 
 def _get_related_insertion_orders(
@@ -147,14 +174,29 @@ def build_contact_summary(db: Session, contact: SalesContact) -> dict:
         organization.org_id if organization else None,
         contact.contact_id,
     )
+    quotes = _get_related_quotes(
+        db,
+        tenant_id=contact.tenant_id,
+        organization_id=organization.org_id if organization else contact.organization_id,
+        contact_id=contact.contact_id,
+    )
+    quotes = hydrate_custom_field_records(
+        db,
+        tenant_id=contact.tenant_id,
+        module_key="sales_quotes",
+        records=quotes,
+        record_id_attr="quote_id",
+    )
 
     return {
         "contact": contact,
         "organization": organization,
         "related_opportunities": opportunities,
+        "related_quotes": quotes,
         "related_insertion_orders": [_serialize_io(record) for record in insertion_orders],
         "inferred_services": _collect_services(opportunities),
         "opportunity_count": len(opportunities),
+        "quote_count": len(quotes),
         "insertion_order_count": len(insertion_orders),
     }
 
@@ -197,15 +239,25 @@ def build_organization_summary(db: Session, organization: SalesOrganization) -> 
         record_id_attr="opportunity_id",
     )
     insertion_orders = _get_related_insertion_orders(db, organization.tenant_id, organization.org_name, organization.org_id)
+    quotes = _get_related_quotes(db, tenant_id=organization.tenant_id, organization_id=organization.org_id)
+    quotes = hydrate_custom_field_records(
+        db,
+        tenant_id=organization.tenant_id,
+        module_key="sales_quotes",
+        records=quotes,
+        record_id_attr="quote_id",
+    )
 
     return {
         "organization": organization,
         "related_contacts": contacts,
         "related_opportunities": opportunities,
+        "related_quotes": quotes,
         "related_insertion_orders": [_serialize_io(record) for record in insertion_orders],
         "inferred_services": _collect_services(opportunities),
         "contact_count": len(contacts),
         "opportunity_count": len(opportunities),
+        "quote_count": len(quotes),
         "insertion_order_count": len(insertion_orders),
     }
 

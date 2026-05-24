@@ -12,6 +12,7 @@ import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
 import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -38,6 +39,17 @@ type RelatedOpportunity = {
   expected_close_date?: string | null;
   total_cost_of_project?: string | null;
   currency_type?: string | null;
+};
+
+type RelatedQuote = {
+  quote_id: number;
+  quote_number: string;
+  title?: string | null;
+  customer_name: string;
+  status?: string | null;
+  currency?: string | null;
+  total_amount?: number | string | null;
+  expiry_date?: string | null;
 };
 
 type RelatedInsertionOrder = {
@@ -71,10 +83,12 @@ type OrganizationSummary = {
   };
   related_contacts: RelatedContact[];
   related_opportunities: RelatedOpportunity[];
+  related_quotes: RelatedQuote[];
   related_insertion_orders: RelatedInsertionOrder[];
   inferred_services: string[];
   contact_count: number;
   opportunity_count: number;
+  quote_count: number;
   insertion_order_count: number;
 };
 
@@ -110,13 +124,14 @@ const emptyForm: OrganizationForm = {
   billing_country: "",
 };
 
-function formatMoney(value?: number | null, currency?: string | null) {
-  if (typeof value !== "number") return "Unspecified";
+function formatMoney(value?: number | string | null, currency?: string | null) {
+  const amount = typeof value === "string" ? Number(value) : value;
+  if (typeof amount !== "number" || Number.isNaN(amount)) return "Unspecified";
   return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: currency || "USD",
     maximumFractionDigits: 2,
-  }).format(value);
+  }).format(amount);
 }
 
 export default function OrganizationDetailPage() {
@@ -358,6 +373,10 @@ export default function OrganizationDetailPage() {
                     <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.opportunity_count}</div>
                   </div>
                   <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+                    <div className="text-xs uppercase tracking-wide text-neutral-500">Quotes</div>
+                    <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.quote_count}</div>
+                  </div>
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
                     <div className="text-xs uppercase tracking-wide text-neutral-500">Insertion Orders</div>
                     <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.insertion_order_count}</div>
                   </div>
@@ -420,19 +439,34 @@ export default function OrganizationDetailPage() {
               <h2 className="text-lg font-semibold text-neutral-100">Deals</h2>
               <div className="mt-4 space-y-3">
                 {summary.related_opportunities.length ? summary.related_opportunities.map((opportunity) => (
-                  <div key={opportunity.opportunity_id} className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+                  <Link key={opportunity.opportunity_id} href={`/dashboard/sales/opportunities/${opportunity.opportunity_id}`} className="block rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4 hover:border-neutral-700">
                     <div className="text-sm font-semibold text-neutral-100">{opportunity.opportunity_name}</div>
                     <div className="mt-1 text-sm text-neutral-500">{opportunity.sales_stage || "Unstaged"}</div>
                     <div className="mt-2 text-sm text-neutral-300">{opportunity.total_cost_of_project || "No value recorded"}{opportunity.currency_type ? ` ${opportunity.currency_type}` : ""}</div>
-                  </div>
+                  </Link>
                 )) : <div className="text-sm text-neutral-500">No linked deals.</div>}
               </div>
             </Card>
 
             <Card className="px-5 py-5">
-              <h2 className="text-lg font-semibold text-neutral-100">Insertion Orders</h2>
-              <FieldDescription className="mt-1">Matched by organization name against the finance customer fields.</FieldDescription>
+              <h2 className="text-lg font-semibold text-neutral-100">Quotes</h2>
+              <FieldDescription className="mt-1">Quotes linked to this account or its contacts.</FieldDescription>
               <div className="mt-4 space-y-3">
+                {summary.related_quotes.length ? summary.related_quotes.map((quote) => (
+                  <Link key={quote.quote_id} href={`/dashboard/sales/quotes/${quote.quote_id}`} className="block rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4 hover:border-neutral-700">
+                    <div className="text-sm font-semibold text-neutral-100">{quote.quote_number}</div>
+                    <div className="mt-1 text-sm text-neutral-500">{quote.title || quote.customer_name} · {quote.status || "Unknown status"}</div>
+                    <div className="mt-2 text-sm text-neutral-300">{formatMoney(quote.total_amount, quote.currency)}</div>
+                  </Link>
+                )) : <div className="text-sm text-neutral-500">No linked quotes.</div>}
+              </div>
+            </Card>
+          </div>
+
+          <Card className="px-5 py-5">
+            <h2 className="text-lg font-semibold text-neutral-100">Insertion Orders</h2>
+            <FieldDescription className="mt-1">Matched by organization name against the finance customer fields.</FieldDescription>
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                 {summary.related_insertion_orders.length ? summary.related_insertion_orders.map((order) => (
                   <div key={order.id} className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
                     <div className="text-sm font-semibold text-neutral-100">{order.io_number}</div>
@@ -440,15 +474,15 @@ export default function OrganizationDetailPage() {
                     <div className="mt-2 text-sm text-neutral-300">{formatMoney(order.total_amount, order.currency)}</div>
                   </div>
                 )) : <div className="text-sm text-neutral-500">No linked insertion orders.</div>}
-              </div>
-            </Card>
-          </div>
+            </div>
+          </Card>
 
           <RecordTabs
             tabs={[
               { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_organizations" entityId={summary.organization.org_id} description="Account-level create, update, delete, restore, and note history." /> },
               { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_organizations" entityId={summary.organization.org_id} /> },
               { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_organizations" entityId={summary.organization.org_id} /> },
+              { id: "tasks", label: "Tasks", content: <RecordTasksPanel moduleKey="sales_organizations" entityId={summary.organization.org_id} /> },
             ]}
           />
         </>

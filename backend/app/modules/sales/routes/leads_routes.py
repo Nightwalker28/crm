@@ -35,6 +35,8 @@ from app.modules.platform.services.module_fields import (
     sanitize_disabled_filter_conditions,
 )
 from app.modules.sales.schema import (
+    LeadConversionRequest,
+    LeadConversionResponse,
     LeadSummaryResponse,
     SalesLeadCreateRequest,
     SalesLeadListItem,
@@ -46,6 +48,7 @@ from app.modules.sales.services.followups import log_lead_follow_up
 from app.modules.sales.schema import FollowUpActionRequest, FollowUpActionResponse
 from app.modules.sales.services.leads_services import (
     EXPORT_COLUMNS,
+    convert_sales_lead,
     create_sales_lead,
     delete_sales_lead,
     get_lead_or_404,
@@ -400,6 +403,38 @@ def log_lead_follow_up_route(
 ):
     lead = get_lead_or_404(db, lead_id, tenant_id=current_user.tenant_id)
     return log_lead_follow_up(db, lead=lead, payload=payload.model_dump(), current_user=current_user)
+
+
+@router.post("/{lead_id}/convert", response_model=LeadConversionResponse)
+def convert_lead(
+    lead_id: int,
+    payload: LeadConversionRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("sales_leads")),
+    require_permission=Depends(require_action_access("sales_leads", "edit")),
+):
+    lead = get_lead_or_404(db, lead_id, tenant_id=current_user.tenant_id)
+    before_state = _serialize_lead(lead)
+    result = convert_sales_lead(db, lead, payload.model_dump(), current_user=current_user)
+    log_activity(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="sales_leads",
+        entity_type="sales_lead",
+        entity_id=result["lead"].lead_id,
+        action="convert",
+        description=f"Converted lead {_display_lead_name(result['lead'])}",
+        before_state=before_state,
+        after_state={
+            **_serialize_lead(result["lead"]),
+            "account_id": result["account_id"],
+            "contact_id": result["contact_id"],
+            "deal_id": result["deal_id"],
+        },
+    )
+    return LeadConversionResponse.model_validate(result)
 
 
 @router.put("/{lead_id}", response_model=SalesLeadResponse)

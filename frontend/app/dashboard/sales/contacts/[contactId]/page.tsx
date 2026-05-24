@@ -35,6 +35,17 @@ type RelatedOpportunity = {
   currency_type?: string | null;
 };
 
+type RelatedQuote = {
+  quote_id: number;
+  quote_number: string;
+  title?: string | null;
+  customer_name: string;
+  status?: string | null;
+  currency?: string | null;
+  total_amount?: number | string | null;
+  expiry_date?: string | null;
+};
+
 type RelatedInsertionOrder = {
   id: number;
   io_number: string;
@@ -73,9 +84,11 @@ type ContactSummary = {
   };
   organization?: OrganizationCompact | null;
   related_opportunities: RelatedOpportunity[];
+  related_quotes: RelatedQuote[];
   related_insertion_orders: RelatedInsertionOrder[];
   inferred_services: string[];
   opportunity_count: number;
+  quote_count: number;
   insertion_order_count: number;
 };
 
@@ -108,13 +121,14 @@ const emptyForm: ContactForm = {
   country: "",
 };
 
-function formatMoney(value?: number | null, currency?: string | null) {
-  if (typeof value !== "number") return "Unspecified";
+function formatMoney(value?: number | string | null, currency?: string | null) {
+  const amount = typeof value === "string" ? Number(value) : value;
+  if (typeof amount !== "number" || Number.isNaN(amount)) return "Unspecified";
   return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: currency || "USD",
     maximumFractionDigits: 2,
-  }).format(value);
+  }).format(amount);
 }
 
 export default function ContactDetailPage() {
@@ -436,6 +450,10 @@ export default function ContactDetailPage() {
                     <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.opportunity_count}</div>
                   </div>
                   <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+                    <div className="text-xs uppercase tracking-wide text-neutral-500">Quotes</div>
+                    <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.quote_count}</div>
+                  </div>
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
                     <div className="text-xs uppercase tracking-wide text-neutral-500">Insertion Orders</div>
                     <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.insertion_order_count}</div>
                   </div>
@@ -532,12 +550,12 @@ export default function ContactDetailPage() {
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-3">
             <Card className="px-5 py-5">
               <h2 className="text-lg font-semibold text-neutral-100">Related Deals</h2>
               <div className="mt-4 space-y-3">
                 {summary.related_opportunities.length ? summary.related_opportunities.map((opportunity) => (
-                  <div key={opportunity.opportunity_id} className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+                  <Link key={opportunity.opportunity_id} href={`/dashboard/sales/opportunities/${opportunity.opportunity_id}`} className="block rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4 hover:border-neutral-700">
                     <div className="text-sm font-semibold text-neutral-100">{opportunity.opportunity_name}</div>
                     <div className="mt-1 text-sm text-neutral-500">
                       {opportunity.sales_stage || "Unstaged"}{opportunity.expected_close_date ? ` · closes ${opportunity.expected_close_date}` : ""}
@@ -545,8 +563,22 @@ export default function ContactDetailPage() {
                     <div className="mt-2 text-sm text-neutral-300">
                       {opportunity.total_cost_of_project ? `${opportunity.total_cost_of_project}${opportunity.currency_type ? ` ${opportunity.currency_type}` : ""}` : "No commercial value recorded"}
                     </div>
-                  </div>
+                  </Link>
                 )) : <div className="text-sm text-neutral-500">No related deals yet.</div>}
+              </div>
+            </Card>
+
+            <Card className="px-5 py-5">
+              <h2 className="text-lg font-semibold text-neutral-100">Related Quotes</h2>
+              <FieldDescription className="mt-1">Quotes linked directly to this contact or its account.</FieldDescription>
+              <div className="mt-4 space-y-3">
+                {summary.related_quotes.length ? summary.related_quotes.map((quote) => (
+                  <Link key={quote.quote_id} href={`/dashboard/sales/quotes/${quote.quote_id}`} className="block rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4 hover:border-neutral-700">
+                    <div className="text-sm font-semibold text-neutral-100">{quote.quote_number}</div>
+                    <div className="mt-1 text-sm text-neutral-500">{quote.title || quote.customer_name} · {quote.status || "Unknown status"}</div>
+                    <div className="mt-2 text-sm text-neutral-300">{formatMoney(quote.total_amount, quote.currency)}</div>
+                  </Link>
+                )) : <div className="text-sm text-neutral-500">No related quotes yet.</div>}
               </div>
             </Card>
 

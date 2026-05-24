@@ -19,8 +19,8 @@ from app.modules.platform.services.custom_fields import (
     save_custom_field_values,
     validate_custom_field_payload,
 )
-from app.modules.sales.models import SalesLead
-from app.modules.sales.repositories import leads_repository
+from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization
+from app.modules.sales.repositories import leads_repository, organizations_repository
 from app.modules.user_management.models import User
 
 
@@ -52,11 +52,58 @@ def _coerce_optional(value: str | None) -> str | None:
     return cleaned or None
 
 
+def _display_lead_name(lead: SalesLead) -> str:
+    full_name = " ".join(part for part in [lead.first_name, lead.last_name] if part).strip()
+    return full_name or lead.primary_email or "Lead"
+
+
 def _ensure_assigned_user(db: Session, user_id: int | None, *, tenant_id: int) -> None:
     if user_id is None:
         return
     if not leads_repository.user_exists(db, user_id=user_id, tenant_id=tenant_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assigned user not found")
+
+
+def _get_active_organization(db: Session, *, tenant_id: int, organization_id: int) -> SalesOrganization:
+    organization = (
+        db.query(SalesOrganization)
+        .filter(
+            SalesOrganization.org_id == organization_id,
+            SalesOrganization.tenant_id == tenant_id,
+            SalesOrganization.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not organization:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Account not found")
+    return organization
+
+
+def _get_active_contact(db: Session, *, tenant_id: int, contact_id: int) -> SalesContact:
+    contact = (
+        db.query(SalesContact)
+        .filter(
+            SalesContact.contact_id == contact_id,
+            SalesContact.tenant_id == tenant_id,
+            SalesContact.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not contact:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact not found")
+    return contact
+
+
+def _find_contact_by_email(db: Session, *, tenant_id: int, email: str) -> SalesContact | None:
+    return (
+        db.query(SalesContact)
+        .filter(
+            SalesContact.tenant_id == tenant_id,
+            SalesContact.deleted_at.is_(None),
+            func.lower(SalesContact.primary_email) == _normalize_email(email),
+        )
+        .first()
+    )
 
 
 def _validate_status(value: str | None) -> str:
@@ -302,6 +349,110 @@ def restore_sales_lead(db: Session, lead: SalesLead) -> SalesLead:
     db.commit()
     db.refresh(lead)
     return hydrate_custom_field_record(db, tenant_id=lead.tenant_id, module_key="sales_leads", record=lead, record_id=lead.lead_id)
+
+
+def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_user) -> dict:
+    tenant_id = current_user.tenant_id
+    if lead.tenant_id != tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
+    if lead.status == "converted":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lead is already converted")
+
+    assigned_to = payload.get("assigned_to") or lead.assigned_to or current_user.id
+    _ensure_assigned_user(db, assigned_to, tenant_id=tenant_id)
+
+    create_account = bool(payload.get("create_account", True))
+    account_id = payload.get("account_id")
+    organization: SalesOrganization | None = None
+    created_account = False
+
+    if account_id is not None:
+        organization = _get_active_organization(db, tenant_id=tenant_id, organization_id=account_id)
+    elif create_account:
+        org_name = _coerce_optional(lead.company) or _display_lead_name(lead)
+        organization = organizations_repository.find_active_by_name(db, tenant_id=tenant_id, org_name=org_name)
+        if organization is None:
+            organization = SalesOrganization(
+                tenant_id=tenant_id,
+                org_name=org_name,
+                primary_email=lead.primary_email,
+                primary_phone=lead.phone,
+                assigned_to=assigned_to,
+            )
+            db.add(organization)
+            db.flush()
+            created_account = True
+
+    create_contact = bool(payload.get("create_contact", True))
+    contact_id = payload.get("contact_id")
+    contact: SalesContact | None = None
+    created_contact = False
+
+    if contact_id is not None:
+        contact = _get_active_contact(db, tenant_id=tenant_id, contact_id=contact_id)
+        if organization is not None and contact.organization_id is None:
+            contact.organization_id = organization.org_id
+    elif create_contact:
+        contact = _find_contact_by_email(db, tenant_id=tenant_id, email=lead.primary_email)
+        if contact is None:
+            contact = SalesContact(
+                tenant_id=tenant_id,
+                first_name=lead.first_name,
+                last_name=lead.last_name,
+                contact_telephone=lead.phone,
+                primary_email=lead.primary_email,
+                current_title=lead.title,
+                assigned_to=assigned_to,
+                organization_id=organization.org_id if organization else None,
+            )
+            db.add(contact)
+            db.flush()
+            created_contact = True
+        elif organization is not None and contact.organization_id is None:
+            contact.organization_id = organization.org_id
+
+    opportunity: SalesOpportunity | None = None
+    created_deal = False
+    if payload.get("create_deal"):
+        if contact is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A contact is required to create a deal")
+        deal_name = _coerce_optional(payload.get("deal_name")) or f"{_display_lead_name(lead)} opportunity"
+        stage = _coerce_optional(payload.get("deal_stage")) or "qualified"
+        opportunity = SalesOpportunity(
+            tenant_id=tenant_id,
+            opportunity_name=deal_name,
+            client=" ".join(part for part in [contact.first_name, contact.last_name] if part).strip() or contact.primary_email,
+            sales_stage=stage,
+            contact_id=contact.contact_id,
+            organization_id=organization.org_id if organization else contact.organization_id,
+            assigned_to=assigned_to,
+        )
+        db.add(opportunity)
+        db.flush()
+        created_deal = True
+
+    lead.status = "converted"
+    if assigned_to and lead.assigned_to is None:
+        lead.assigned_to = assigned_to
+    db.add(lead)
+    db.commit()
+    db.refresh(lead)
+    if organization is not None:
+        db.refresh(organization)
+    if contact is not None:
+        db.refresh(contact)
+    if opportunity is not None:
+        db.refresh(opportunity)
+
+    return {
+        "lead": hydrate_custom_field_record(db, tenant_id=tenant_id, module_key="sales_leads", record=lead, record_id=lead.lead_id),
+        "account_id": organization.org_id if organization else None,
+        "contact_id": contact.contact_id if contact else None,
+        "deal_id": opportunity.opportunity_id if opportunity else None,
+        "created_account": created_account,
+        "created_contact": created_contact,
+        "created_deal": created_deal,
+    }
 
 
 def import_leads_from_csv(

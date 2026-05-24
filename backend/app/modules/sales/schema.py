@@ -247,6 +247,27 @@ class LeadSummaryResponse(BaseModel):
     lead: SalesLeadResponse
 
 
+class LeadConversionRequest(BaseModel):
+    create_account: bool = True
+    account_id: int | None = None
+    create_contact: bool = True
+    contact_id: int | None = None
+    create_deal: bool = False
+    deal_name: str | None = None
+    deal_stage: str | None = "qualified"
+    assigned_to: int | None = None
+
+
+class LeadConversionResponse(BaseModel):
+    lead: SalesLeadResponse
+    account_id: int | None = None
+    contact_id: int | None = None
+    deal_id: int | None = None
+    created_account: bool = False
+    created_contact: bool = False
+    created_deal: bool = False
+
+
 class SalesQuoteBase(BaseModel):
     title: str | None = None
     customer_name: str
@@ -353,6 +374,20 @@ class RelatedInsertionOrderSummary(BaseModel):
     updated_at: datetime | None = None
 
 
+class RelatedQuoteSummary(BaseModel):
+    quote_id: int
+    quote_number: str
+    title: str | None = None
+    customer_name: str
+    status: str | None = None
+    currency: str | None = None
+    total_amount: Decimal | None = None
+    issue_date: date | None = None
+    expiry_date: date | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class OrganizationCompactSummary(BaseModel):
     org_id: int
     org_name: str
@@ -366,9 +401,11 @@ class ContactSummaryResponse(BaseModel):
     contact: SalesContactResponse
     organization: OrganizationCompactSummary | None = None
     related_opportunities: list[RelatedOpportunitySummary]
+    related_quotes: list[RelatedQuoteSummary]
     related_insertion_orders: list[RelatedInsertionOrderSummary]
     inferred_services: list[str]
     opportunity_count: int
+    quote_count: int
     insertion_order_count: int
 
 
@@ -391,10 +428,12 @@ class OrganizationSummaryResponse(BaseModel):
     organization: SalesOrganizationResponse
     related_contacts: list[SalesContactResponse]
     related_opportunities: list[RelatedOpportunitySummary]
+    related_quotes: list[RelatedQuoteSummary]
     related_insertion_orders: list[RelatedInsertionOrderSummary]
     inferred_services: list[str]
     contact_count: int
     opportunity_count: int
+    quote_count: int
     insertion_order_count: int
 
 

@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckSquare, Mail, Phone, StickyNote } from "lucide-react";
+import { ArrowRightLeft, CheckSquare, Mail, Phone, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
+import ConvertLeadDialog from "@/components/leads/ConvertLeadDialog";
 import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
 import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
@@ -82,6 +83,7 @@ export default function LeadDetailPage() {
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [convertOpen, setConvertOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const customFieldsQuery = useModuleCustomFields("sales_leads", true);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_leads");
@@ -161,6 +163,16 @@ export default function LeadDetailPage() {
     }
   }
 
+  async function handleConverted() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["sales-leads"] }),
+      queryClient.invalidateQueries({ queryKey: ["sales-contacts"] }),
+      queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
+      queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
+    ]);
+    await loadSummary();
+  }
+
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <RecordPageHeader
@@ -179,6 +191,9 @@ export default function LeadDetailPage() {
         <>
           <Card className="px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" size="sm" onClick={() => setConvertOpen(true)} disabled={summary.lead.status === "converted"}>
+                <ArrowRightLeft />{summary.lead.status === "converted" ? "Converted" : "Convert"}
+              </Button>
               {summary.lead.primary_email ? (
                 <Button asChild size="sm" variant="outline">
                   <a href={`mailto:${summary.lead.primary_email}`}><Mail />Email</a>
@@ -262,6 +277,14 @@ export default function LeadDetailPage() {
               ]}
             />
           </div>
+          <ConvertLeadDialog
+            leadId={summary.lead.lead_id}
+            leadName={`${summary.lead.first_name || ""} ${summary.lead.last_name || ""}`.trim() || summary.lead.primary_email}
+            company={summary.lead.company}
+            isOpen={convertOpen}
+            onClose={() => setConvertOpen(false)}
+            onConverted={() => void handleConverted()}
+          />
         </>
       )}
     </div>
