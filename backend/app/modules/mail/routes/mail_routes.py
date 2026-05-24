@@ -9,6 +9,7 @@ from app.modules.mail.schema import (
     MailContextResponse,
     MailDisconnectResponse,
     MailImapSmtpConnectRequest,
+    MailMessageLinkRequest,
     MailMessageListResponse,
     MailMessageResponse,
     MailProvider,
@@ -21,6 +22,7 @@ from app.modules.mail.services.mail_services import (
     disconnect_mail_connection,
     get_google_mail_connect_url,
     get_mail_message_or_404,
+    link_mail_message_to_record,
     get_microsoft_mail_connect_url,
     list_mail_messages_cursor,
     list_mail_messages,
@@ -105,6 +107,24 @@ def get_mail_message(
         message_id,
         tenant_id=current_user.tenant_id,
         current_user=current_user,
+    )
+    return MailMessageResponse.model_validate(serialize_mail_message(message))
+
+
+@router.put("/messages/{message_id}/link", response_model=MailMessageResponse)
+def link_mail_message(
+    message_id: int,
+    payload: MailMessageLinkRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("mail")),
+    require_permission=Depends(require_action_access("mail", "edit")),
+):
+    message = link_mail_message_to_record(
+        db,
+        message_id=message_id,
+        current_user=current_user,
+        payload=payload.model_dump(),
     )
     return MailMessageResponse.model_validate(serialize_mail_message(message))
 

@@ -201,6 +201,68 @@ def get_mail_message_or_404(
     return message
 
 
+def _record_label(record, config: dict) -> str:
+    label = getattr(record, config["label_field"], None)
+    if label:
+        return str(label)
+    return f"{config['entity_type']} #{getattr(record, config['id_field'])}"
+
+
+def link_mail_message_to_record(
+    db: Session,
+    *,
+    message_id: int,
+    current_user: User,
+    payload: dict,
+) -> MailMessage:
+    message = get_mail_message_or_404(
+        db,
+        message_id,
+        tenant_id=current_user.tenant_id,
+        current_user=current_user,
+    )
+    module_key = _normalize_source_value(payload.get("source_module_key"))
+    entity_id = _normalize_source_value(payload.get("source_entity_id"))
+    if not module_key or not entity_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a record to link this mail message.")
+
+    try:
+        require_role_module_action_access(db, user=current_user, module_key=module_key, action="view")
+        config = get_record_comment_module_config(module_key)
+        record = get_record_reference(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key=module_key,
+            entity_id=entity_id,
+        )
+    except HTTPException as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected record is not available.") from exc
+    except (PermissionError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected record is not available.") from exc
+
+    before_state = serialize_mail_message(message)
+    message.source_module_key = module_key
+    message.source_entity_id = str(entity_id)
+    message.source_label = _record_label(record, config)
+    db.add(message)
+    db.commit()
+    db.refresh(message)
+    after_state = serialize_mail_message(message)
+    log_activity(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        module_key=module_key,
+        entity_type=config["entity_type"],
+        entity_id=entity_id,
+        action="mail.linked",
+        description=f"Linked email: {message.subject or '(no subject)'}",
+        before_state=before_state,
+        after_state=after_state,
+    )
+    return message
+
+
 def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 

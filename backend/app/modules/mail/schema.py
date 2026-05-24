@@ -77,6 +77,11 @@ class MailMessageListResponse(BaseModel):
     results: list[MailMessageResponse]
 
 
+class MailMessageLinkRequest(BaseModel):
+    source_module_key: str = Field(max_length=100)
+    source_entity_id: str = Field(max_length=100)
+
+
 class MailSendRequest(BaseModel):
     provider: MailProvider
     to: list[EmailStr] = Field(min_length=1)

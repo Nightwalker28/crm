@@ -81,6 +81,11 @@ export type MailSendPayload = {
   source_label?: string | null;
 };
 
+export type MailMessageLinkPayload = {
+  source_module_key: string;
+  source_entity_id: string;
+};
+
 export type MailProvider = "google" | "microsoft" | "imap_smtp";
 export type OAuthMailProvider = Exclude<MailProvider, "imap_smtp">;
 
@@ -198,6 +203,28 @@ async function sendMailMessage(payload: MailSendPayload): Promise<MailMessage> {
   return body as MailMessage;
 }
 
+async function fetchMailMessage(messageId: number | string): Promise<MailMessage> {
+  const res = await apiFetch(`/mail/messages/${messageId}`);
+  const body = await readJsonSafely(res);
+  if (!res.ok) {
+    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load mail message.");
+  }
+  return body as MailMessage;
+}
+
+async function linkMailMessage({ messageId, payload }: { messageId: number; payload: MailMessageLinkPayload }): Promise<MailMessage> {
+  const res = await apiFetch(`/mail/messages/${messageId}/link`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await readJsonSafely(res);
+  if (!res.ok) {
+    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to link mail message.");
+  }
+  return body as MailMessage;
+}
+
 export function useMailContext() {
   return useQuery({
     queryKey: ["mail-context"],
@@ -223,6 +250,15 @@ export function useMailMessages(folder?: string, search?: string, beforeId?: num
         results: allMessages.results.filter((message) => message.folder === "inbox"),
       };
     },
+    staleTime: 30_000,
+  });
+}
+
+export function useMailMessage(messageId?: number | null) {
+  return useQuery({
+    queryKey: ["mail-message", messageId],
+    queryFn: () => fetchMailMessage(messageId as number),
+    enabled: Boolean(messageId),
     staleTime: 30_000,
   });
 }
@@ -258,6 +294,15 @@ export function useMailActions() {
       await queryClient.invalidateQueries({ queryKey: ["mail-messages"] });
     },
   });
+  const linkMutation = useMutation({
+    mutationFn: linkMailMessage,
+    onSuccess: async (message) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["mail-messages"] }),
+        queryClient.invalidateQueries({ queryKey: ["mail-message", message.id] }),
+      ]);
+    },
+  });
 
   return {
     connectMail: connectMutation.mutateAsync,
@@ -265,9 +310,11 @@ export function useMailActions() {
     syncMail: syncMutation.mutateAsync,
     disconnectMail: disconnectMutation.mutateAsync,
     sendMail: sendMutation.mutateAsync,
+    linkMail: (messageId: number, payload: MailMessageLinkPayload) => linkMutation.mutateAsync({ messageId, payload }),
     isConnectingMail: connectMutation.isPending || connectImapSmtpMutation.isPending,
     isSyncingMail: syncMutation.isPending,
     isDisconnectingMail: disconnectMutation.isPending,
     isSendingMail: sendMutation.isPending,
+    isLinkingMail: linkMutation.isPending,
   };
 }

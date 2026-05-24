@@ -2,13 +2,14 @@
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Inbox, KeyRound, Mail, RefreshCw, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { Inbox, KeyRound, Link2, Mail, RefreshCw, Search, ShieldCheck, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/button";
-import { useMailActions, useMailContext, useMailMessages } from "@/hooks/useMail";
-import type { MailProvider } from "@/hooks/useMail";
+import { apiFetch } from "@/lib/api";
+import { useMailActions, useMailContext, useMailMessage, useMailMessages } from "@/hooks/useMail";
+import type { MailMessage, MailProvider } from "@/hooks/useMail";
 import { formatDateTime } from "@/lib/datetime";
 
 const FOLDERS = [
@@ -25,6 +26,13 @@ const VARIABLE_TOKENS = [
   "{{organization.name}}",
   "{{opportunity.name}}",
 ];
+const LINK_TARGET_MODULES = [
+  { key: "sales_contacts", label: "Contact", searchPath: "/sales/contacts/search", idField: "contact_id", labelFields: ["first_name", "last_name", "primary_email"] },
+  { key: "sales_opportunities", label: "Opportunity", searchPath: "/sales/opportunities/search", idField: "opportunity_id", labelFields: ["opportunity_name", "client"] },
+  { key: "sales_quotes", label: "Quote", searchPath: "/sales/quotes/search", idField: "quote_id", labelFields: ["quote_number", "customer_name"] },
+  { key: "finance_io", label: "Insertion Order", searchPath: "/finance/insertion-orders", idField: "id", labelFields: ["io_number", "customer_name"] },
+  { key: "finance_pos", label: "POS Invoice", searchPath: "/finance/pos-invoices", idField: "id", labelFields: ["invoice_number", "customer_name"] },
+] as const;
 
 type ImapForm = {
   accountEmail: string;
@@ -44,6 +52,12 @@ type ProviderAction = {
   provider: OAuthProvider;
   mode: "connect" | "reconnect" | "sync";
 };
+type LinkTargetModuleKey = typeof LINK_TARGET_MODULES[number]["key"];
+type LinkTarget = {
+  id: string;
+  label: string;
+  subtitle?: string;
+};
 
 const emptyImapForm: ImapForm = {
   accountEmail: "",
@@ -62,11 +76,94 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+async function readJsonSafely(res: Response) {
+  try {
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+function recipientText(recipients?: Record<string, unknown>[] | null) {
+  return (recipients ?? [])
+    .map((item) => {
+      const name = typeof item.name === "string" ? item.name.trim() : "";
+      const email = typeof item.email === "string" ? item.email.trim() : "";
+      if (name && email) return `${name} <${email}>`;
+      return email || name;
+    })
+    .filter(Boolean)
+    .join(", ");
+}
+
+function getMessageTime(message: MailMessage) {
+  return message.received_at ? formatDateTime(message.received_at) : message.sent_at ? formatDateTime(message.sent_at) : formatDateTime(message.created_at);
+}
+
+function linkedRecordHref(message: MailMessage) {
+  if (!message.source_module_key || !message.source_entity_id) return null;
+  const id = message.source_entity_id;
+  if (message.source_module_key === "sales_contacts") return `/dashboard/sales/contacts/${id}`;
+  if (message.source_module_key === "sales_opportunities") return `/dashboard/sales/opportunities/${id}`;
+  if (message.source_module_key === "sales_quotes") return `/dashboard/sales/quotes/${id}`;
+  if (message.source_module_key === "finance_io") return `/dashboard/finance/insertion-orders/${id}`;
+  if (message.source_module_key === "finance_pos") return `/dashboard/finance/pos/${id}`;
+  return null;
+}
+
+function splitSenderName(name?: string | null) {
+  const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { first_name: null, last_name: null };
+  if (parts.length === 1) return { first_name: parts[0], last_name: null };
+  return { first_name: parts.slice(0, -1).join(" "), last_name: parts[parts.length - 1] };
+}
+
+async function createContactFromMessage(message: MailMessage) {
+  if (!message.from_email) throw new Error("This email has no sender address.");
+  const names = splitSenderName(message.from_name);
+  const res = await apiFetch("/sales/contacts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...names,
+      primary_email: message.from_email,
+    }),
+  });
+  const body = await readJsonSafely(res);
+  if (!res.ok) throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to create contact.");
+  return body as { contact_id: number };
+}
+
+async function searchLinkTargets(moduleKey: LinkTargetModuleKey, query: string): Promise<LinkTarget[]> {
+  const moduleConfig = LINK_TARGET_MODULES.find((item) => item.key === moduleKey);
+  if (!moduleConfig || query.trim().length < 2) return [];
+  const params = new URLSearchParams({ page: "1", page_size: "8" });
+  if (moduleConfig.searchPath.includes("/search")) {
+    params.set("query", query.trim());
+  } else {
+    params.set("search", query.trim());
+  }
+  const res = await apiFetch(`${moduleConfig.searchPath}?${params.toString()}`);
+  const body = await readJsonSafely(res);
+  if (!res.ok) throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to search records.");
+  const results = Array.isArray(body?.results) ? body.results : [];
+  return results.map((record: Record<string, unknown>) => {
+    const id = String(record[moduleConfig.idField] ?? "");
+    const labelParts = moduleConfig.labelFields.map((field) => record[field]).filter((value) => typeof value === "string" && value.trim());
+    return {
+      id,
+      label: labelParts.length ? labelParts.join(" / ") : `${moduleConfig.label} #${id}`,
+      subtitle: moduleConfig.label,
+    };
+  }).filter((item: LinkTarget) => item.id);
+}
+
 export default function MailPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [folder, setFolder] = useState("");
   const [search, setSearch] = useState("");
+  const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null);
   const [composeOpen, setComposeOpen] = useState(false);
   const [composeProvider, setComposeProvider] = useState<MailProvider>("google");
   const [composeTo, setComposeTo] = useState("");
@@ -75,12 +172,19 @@ export default function MailPage() {
   const [imapFormOpen, setImapFormOpen] = useState(false);
   const [imapForm, setImapForm] = useState<ImapForm>(emptyImapForm);
   const [connectingProvider, setConnectingProvider] = useState<OAuthProvider | null>(null);
+  const [linkModuleKey, setLinkModuleKey] = useState<LinkTargetModuleKey>("sales_contacts");
+  const [linkSearch, setLinkSearch] = useState("");
+  const [linkTargets, setLinkTargets] = useState<LinkTarget[]>([]);
+  const [isSearchingLinks, setIsSearchingLinks] = useState(false);
+  const [creatingContact, setCreatingContact] = useState(false);
   const deferredSearch = useDeferredValue(search);
 
   const contextQuery = useMailContext();
   const messagesQuery = useMailMessages(folder || undefined, deferredSearch);
-  const { connectMail, connectImapSmtp, syncMail, disconnectMail, sendMail, isConnectingMail, isSyncingMail, isDisconnectingMail, isSendingMail } = useMailActions();
-  const messages = messagesQuery.data?.results ?? [];
+  const selectedMessageQuery = useMailMessage(selectedMessageId);
+  const { connectMail, connectImapSmtp, syncMail, disconnectMail, sendMail, linkMail, isConnectingMail, isSyncingMail, isDisconnectingMail, isSendingMail, isLinkingMail } = useMailActions();
+  const messages = useMemo(() => messagesQuery.data?.results ?? [], [messagesQuery.data?.results]);
+  const selectedMessage = selectedMessageQuery.data ?? messages.find((message) => message.id === selectedMessageId) ?? null;
   const googleConnection = contextQuery.data?.connections.find((connection) => connection.provider === "google");
   const microsoftConnection = contextQuery.data?.connections.find((connection) => connection.provider === "microsoft");
   const imapSmtpConnection = contextQuery.data?.connections.find((connection) => connection.provider === "imap_smtp");
@@ -112,6 +216,40 @@ export default function MailPage() {
       router.replace("/dashboard/mail");
     }
   }, [mailConnectStatus, router]);
+
+  useEffect(() => {
+    if (!messages.length) {
+      setSelectedMessageId(null);
+      return;
+    }
+    setSelectedMessageId((current) => current ?? messages[0].id);
+  }, [messages]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const trimmed = linkSearch.trim();
+    if (trimmed.length < 2) {
+      setLinkTargets([]);
+      return;
+    }
+    setIsSearchingLinks(true);
+    searchLinkTargets(linkModuleKey, trimmed)
+      .then((targets) => {
+        if (!cancelled) setLinkTargets(targets);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setLinkTargets([]);
+          toast.error(getErrorMessage(error, "Failed to search records."));
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIsSearchingLinks(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [linkModuleKey, linkSearch]);
 
   async function handleConnectGoogle() {
     setConnectingProvider("google");
@@ -250,6 +388,38 @@ export default function MailPage() {
       setFolder("sent");
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to send mail."));
+    }
+  }
+
+  async function handleCreateContactFromSelectedMessage() {
+    if (!selectedMessage) return;
+    try {
+      setCreatingContact(true);
+      const contact = await createContactFromMessage(selectedMessage);
+      await linkMail(selectedMessage.id, {
+        source_module_key: "sales_contacts",
+        source_entity_id: String(contact.contact_id),
+      });
+      toast.success("Contact created and mail linked.");
+      setLinkModuleKey("sales_contacts");
+      setLinkSearch(selectedMessage.from_email ?? "");
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to create contact from this email."));
+    } finally {
+      setCreatingContact(false);
+    }
+  }
+
+  async function handleLinkMessage(target: LinkTarget) {
+    if (!selectedMessage) return;
+    try {
+      await linkMail(selectedMessage.id, {
+        source_module_key: linkModuleKey,
+        source_entity_id: target.id,
+      });
+      toast.success(`Mail linked to ${target.label}.`);
+    } catch (error) {
+      toast.error(getErrorMessage(error, "Failed to link mail."));
     }
   }
 
@@ -527,7 +697,14 @@ export default function MailPage() {
           ) : messages.length ? (
             <div className="divide-y divide-neutral-800">
               {messages.map((message) => (
-                <article key={message.id} className="p-5 transition-colors hover:bg-white/[0.02]">
+                <article
+                  key={message.id}
+                  onClick={() => setSelectedMessageId(message.id)}
+                  className={
+                    "cursor-pointer p-5 transition-colors hover:bg-white/[0.02] " +
+                    (selectedMessageId === message.id ? "bg-white/[0.04]" : "")
+                  }
+                >
                   <div className="flex items-start justify-between gap-4">
                     <div className="min-w-0">
                       <h3 className="truncate text-sm font-semibold text-neutral-100">{message.subject || "(no subject)"}</h3>
@@ -537,7 +714,7 @@ export default function MailPage() {
                       </p>
                     </div>
                     <div className="shrink-0 text-xs text-neutral-500">
-                      {message.received_at ? formatDateTime(message.received_at) : message.sent_at ? formatDateTime(message.sent_at) : formatDateTime(message.created_at)}
+                      {getMessageTime(message)}
                     </div>
                   </div>
                   {message.snippet ? <p className="mt-3 line-clamp-2 text-sm text-neutral-400">{message.snippet}</p> : null}
@@ -555,6 +732,94 @@ export default function MailPage() {
               </p>
             </div>
           )}
+
+          {selectedMessage ? (
+            <div className="border-t border-neutral-800 p-5">
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div className="min-w-0">
+                    <h2 className="text-base font-semibold text-neutral-100">{selectedMessage.subject || "(no subject)"}</h2>
+                    <div className="mt-2 space-y-1 text-xs text-neutral-500">
+                      <div>From: {selectedMessage.from_name || selectedMessage.from_email || "Unknown sender"}</div>
+                      {recipientText(selectedMessage.to_recipients) ? <div>To: {recipientText(selectedMessage.to_recipients)}</div> : null}
+                      <div>{getMessageTime(selectedMessage)}</div>
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 flex-wrap gap-2">
+                    {selectedMessage.from_email ? (
+                      <Button type="button" variant="outline" onClick={() => void handleCreateContactFromSelectedMessage()} disabled={creatingContact || isLinkingMail}>
+                        <UserPlus className="h-4 w-4" />
+                        {creatingContact ? "Creating..." : "Create Contact"}
+                      </Button>
+                    ) : null}
+                    {linkedRecordHref(selectedMessage) ? (
+                      <Button type="button" variant="outline" asChild>
+                        <a href={linkedRecordHref(selectedMessage) ?? undefined}>
+                          <Link2 className="h-4 w-4" />
+                          Open Linked Record
+                        </a>
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {selectedMessage.source_label ? (
+                  <div className="rounded-xl border border-emerald-900/50 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-100">
+                    Linked to {selectedMessage.source_label}
+                  </div>
+                ) : null}
+
+                <div className="rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4">
+                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">Link Mail To Record</div>
+                  <div className="grid gap-3 md:grid-cols-[180px_1fr]">
+                    <select
+                      value={linkModuleKey}
+                      onChange={(event) => {
+                        setLinkModuleKey(event.target.value as LinkTargetModuleKey);
+                        setLinkSearch("");
+                        setLinkTargets([]);
+                      }}
+                      className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none"
+                    >
+                      {LINK_TARGET_MODULES.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+                    </select>
+                    <div className="relative">
+                      <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
+                      <input
+                        value={linkSearch}
+                        onChange={(event) => setLinkSearch(event.target.value)}
+                        placeholder="Search records to link"
+                        className="h-10 w-full rounded-xl border border-neutral-800 bg-neutral-950 pl-9 pr-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600"
+                      />
+                    </div>
+                  </div>
+                  <div className="mt-3 space-y-2">
+                    {isSearchingLinks ? <div className="text-sm text-neutral-500">Searching records...</div> : null}
+                    {!isSearchingLinks && linkSearch.trim().length >= 2 && !linkTargets.length ? <div className="text-sm text-neutral-500">No matching records found.</div> : null}
+                    {linkTargets.map((target) => (
+                      <button
+                        key={`${linkModuleKey}:${target.id}`}
+                        type="button"
+                        onClick={() => void handleLinkMessage(target)}
+                        disabled={isLinkingMail}
+                        className="flex w-full items-center justify-between gap-3 rounded-xl border border-neutral-800 bg-neutral-900/50 px-4 py-3 text-left text-sm text-neutral-200 hover:border-neutral-700 disabled:opacity-60"
+                      >
+                        <span>
+                          <span className="block font-medium">{target.label}</span>
+                          {target.subtitle ? <span className="mt-1 block text-xs text-neutral-500">{target.subtitle}</span> : null}
+                        </span>
+                        <span className="text-xs text-neutral-500">{isLinkingMail ? "Linking..." : "Link"}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="whitespace-pre-wrap rounded-xl border border-neutral-800 bg-neutral-950 px-4 py-4 text-sm leading-6 text-neutral-200">
+                  {selectedMessageQuery.isLoading ? "Loading message..." : selectedMessage.body_text || selectedMessage.snippet || "This synced message has no readable text body."}
+                </div>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
     </div>

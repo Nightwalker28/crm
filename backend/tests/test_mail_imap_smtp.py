@@ -461,6 +461,59 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(call_kwargs["entity_id"], "7")
         self.assertEqual(call_kwargs["action"], "mail.sent")
 
+    def test_link_mail_message_to_record_sets_source_with_tenant_scope(self):
+        message = MailMessage(
+            id=78,
+            tenant_id=10,
+            owner_user_id=1,
+            provider=MailProvider.imap_smtp.value,
+            direction="inbound",
+            folder="inbox",
+            from_email="lead@example.com",
+            subject="Intro",
+        )
+        self.db.add(message)
+        self.db.commit()
+
+        with patch.object(mail_services, "log_activity") as log_mock:
+            linked = mail_services.link_mail_message_to_record(
+                self.db,
+                message_id=78,
+                current_user=self.user,
+                payload={"source_module_key": "sales_contacts", "source_entity_id": "7"},
+            )
+
+        self.assertEqual(linked.source_module_key, "sales_contacts")
+        self.assertEqual(linked.source_entity_id, "7")
+        self.assertEqual(linked.source_label, "lead@example.com")
+        log_mock.assert_called_once()
+        self.assertEqual(log_mock.call_args.kwargs["action"], "mail.linked")
+
+    def test_link_mail_message_to_record_rejects_cross_tenant_record(self):
+        message = MailMessage(
+            id=79,
+            tenant_id=10,
+            owner_user_id=1,
+            provider=MailProvider.imap_smtp.value,
+            direction="inbound",
+            folder="inbox",
+            from_email="other@example.com",
+            subject="Intro",
+        )
+        self.db.add(message)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as exc:
+            mail_services.link_mail_message_to_record(
+                self.db,
+                message_id=79,
+                current_user=self.user,
+                payload={"source_module_key": "sales_contacts", "source_entity_id": "8"},
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Selected record is not available.")
+
     def test_send_mail_message_keeps_success_when_activity_logging_fails(self):
         connection = UserMailConnection(
             id=1,
