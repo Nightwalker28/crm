@@ -695,7 +695,7 @@ export default function MailPage() {
               {messagesQuery.error instanceof Error ? messagesQuery.error.message : "Failed to load mail messages."}
             </div>
           ) : messages.length ? (
-            <div className="divide-y divide-neutral-800">
+            <div className="max-h-[28rem] overflow-y-auto divide-y divide-neutral-800">
               {messages.map((message) => (
                 <article
                   key={message.id}
