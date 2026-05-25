@@ -111,6 +111,7 @@ export default function OpportunitiesPage() {
     onPageSizeChange,
     createOpportunity,
     updateOpportunity,
+    updateOpportunityStage,
     createFinanceIo,
     isSaving,
     isDeleting,
@@ -301,6 +302,12 @@ export default function OpportunitiesPage() {
           isRefreshing={isFetching && !isLoading}
           onEdit={(opportunity) => {
             router.push(`/dashboard/sales/opportunities/${opportunity.opportunity_id}`);
+          }}
+          onStageChange={async (opportunity, salesStage) => {
+            if (opportunity.sales_stage === salesStage) return;
+            await updateOpportunityStage(opportunity.opportunity_id, salesStage);
+            await pipelineSummaryQuery.refetch();
+            toast.success("Deal stage updated.");
           }}
           onCreateFinanceIo={async (opportunity) => {
             await createFinanceIo(opportunity.opportunity_id);

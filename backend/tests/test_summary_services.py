@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.modules.catalog import models as catalog_models  # noqa: F401
-from app.modules.sales.models import SalesContact, SalesOrganization, SalesQuote
+from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
 from app.modules.sales.services import summary_services
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant
@@ -97,6 +97,7 @@ class SummaryRelatedQuoteTests(unittest.TestCase):
                 Tenant(id=99, slug="other", name="Other"),
                 SalesOrganization(org_id=20, tenant_id=10, org_name="Acme", primary_email="hello@acme.test"),
                 SalesContact(contact_id=30, tenant_id=10, first_name="Ada", primary_email="ada@acme.test", assigned_to=1, organization_id=20),
+                SalesOpportunity(opportunity_id=35, tenant_id=10, opportunity_name="Acme Pilot", client="Ada", contact_id=30, organization_id=20, sales_stage="proposal"),
                 SalesQuote(
                     quote_id=40,
                     tenant_id=10,
@@ -104,6 +105,7 @@ class SummaryRelatedQuoteTests(unittest.TestCase):
                     customer_name="Acme",
                     contact_id=30,
                     organization_id=20,
+                    opportunity_id=35,
                     status="sent",
                     currency="USD",
                     total_amount=Decimal("1200.00"),
@@ -153,6 +155,13 @@ class SummaryRelatedQuoteTests(unittest.TestCase):
 
         self.assertEqual([quote.quote_id for quote in summary["related_quotes"]], [40])
         self.assertEqual(summary["quote_count"], 1)
+
+    def test_opportunity_summary_returns_explicitly_linked_quotes(self):
+        opportunity = self.db.query(SalesOpportunity).filter(SalesOpportunity.opportunity_id == 35).one()
+
+        summary = summary_services.build_opportunity_summary(self.db, opportunity)
+
+        self.assertEqual([quote.quote_id for quote in summary["related_quotes"]], [40])
 
 
 if __name__ == "__main__":

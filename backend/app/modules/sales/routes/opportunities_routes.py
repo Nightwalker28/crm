@@ -36,6 +36,7 @@ from app.modules.sales.schema import (
     SalesOpportunityListItem,
     SalesOpportunityListResponse,
     SalesOpportunityResponse,
+    SalesOpportunityStageUpdate,
     SalesOpportunityUpdate,
 )
 from app.modules.sales.services.followups import log_opportunity_follow_up
@@ -54,6 +55,7 @@ from app.modules.sales.services.opportunities_services import (
     restore_opportunity,
     summarize_opportunity_pipeline,
     update_opportunity,
+    update_opportunity_stage,
 )
 
 router = APIRouter(prefix="/opportunities", tags=["Sales"])
@@ -497,6 +499,34 @@ def update_sales_opportunity(
     )
     if "assigned_to" in update_data and before_state.get("assigned_to") != updated.assigned_to:
         _emit_deal_assigned_event(db, current_user=current_user, opportunity=updated)
+    return SalesOpportunityResponse.model_validate(updated)
+
+
+@router.patch("/{opportunity_id}/stage", response_model=SalesOpportunityResponse)
+def update_sales_opportunity_stage(
+    opportunity_id: int,
+    payload: SalesOpportunityStageUpdate,
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access("sales_opportunities")),
+    require_permission = Depends(require_action_access("sales_opportunities", "edit")),
+):
+    opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
+    before_state = _serialize_opportunity(opportunity)
+    updated = update_opportunity_stage(db, opportunity, sales_stage=payload.sales_stage)
+    action = "close" if updated.sales_stage in {"closed_won", "closed_lost"} else "stage_change"
+    log_activity(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="sales_opportunities",
+        entity_type="sales_opportunity",
+        entity_id=updated.opportunity_id,
+        action=action,
+        description=f"Moved opportunity {updated.opportunity_name} to {updated.sales_stage}",
+        before_state=before_state,
+        after_state=_serialize_opportunity(updated),
+    )
     return SalesOpportunityResponse.model_validate(updated)
 
 

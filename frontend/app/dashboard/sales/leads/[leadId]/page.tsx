@@ -3,22 +3,18 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { ArrowRightLeft, CheckSquare, Mail, Phone, StickyNote } from "lucide-react";
+import { ArrowRightLeft, CheckSquare, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import ConvertLeadDialog from "@/components/leads/ConvertLeadDialog";
-import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
-import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
-import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
-import FollowUpPanel from "@/components/recordActivity/FollowUpPanel";
+import CommunicationActions from "@/components/recordActivity/CommunicationActions";
+import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
@@ -194,16 +190,11 @@ export default function LeadDetailPage() {
               <Button type="button" size="sm" onClick={() => setConvertOpen(true)} disabled={summary.lead.status === "converted"}>
                 <ArrowRightLeft />{summary.lead.status === "converted" ? "Converted" : "Convert"}
               </Button>
-              {summary.lead.primary_email ? (
-                <Button asChild size="sm" variant="outline">
-                  <a href={`mailto:${summary.lead.primary_email}`}><Mail />Email</a>
-                </Button>
-              ) : null}
-              {fieldEnabled("phone") && summary.lead.phone ? (
-                <Button asChild size="sm" variant="outline">
-                  <a href={`tel:${summary.lead.phone}`}><Phone />Call</a>
-                </Button>
-              ) : null}
+              <CommunicationActions
+                email={summary.lead.primary_email}
+                phone={fieldEnabled("phone") ? summary.lead.phone : null}
+                followUpTargetId="lead-record-tools"
+              />
               <Button type="button" size="sm" variant="ghost" onClick={() => document.getElementById("lead-record-tools")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
                 <StickyNote />Note
               </Button>
@@ -267,14 +258,19 @@ export default function LeadDetailPage() {
           </div>
 
           <div id="lead-record-tools" className="scroll-mt-6">
-            <RecordTabs
-              tabs={[
-                { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_leads" entityId={summary.lead.lead_id} description="Lead-level create, update, delete, restore, and note history." /> },
-                { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_leads" entityId={summary.lead.lead_id} /> },
-                { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_leads" entityId={summary.lead.lead_id} /> },
-                { id: "tasks", label: "Tasks", content: <RecordTasksPanel moduleKey="sales_leads" entityId={summary.lead.lead_id} /> },
-                { id: "follow-up", label: "Follow-up", content: <FollowUpPanel endpoint={`/sales/leads/${summary.lead.lead_id}/follow-up`} lastContactedAt={summary.lead.last_contacted_at} lastContactedChannel={summary.lead.last_contacted_channel} email={summary.lead.primary_email} phone={summary.lead.phone} onLogged={() => loadSummary()} /> },
-              ]}
+            <CrmRecordActivitySection
+              moduleKey="sales_leads"
+              entityId={summary.lead.lead_id}
+              recordLabel="Lead-level"
+              taskSourceLabel={`${summary.lead.first_name || ""} ${summary.lead.last_name || ""}`.trim() || summary.lead.primary_email}
+              followUp={{
+                endpoint: `/sales/leads/${summary.lead.lead_id}/follow-up`,
+                lastContactedAt: summary.lead.last_contacted_at,
+                lastContactedChannel: summary.lead.last_contacted_channel,
+                email: summary.lead.primary_email,
+                phone: summary.lead.phone,
+                onLogged: () => loadSummary(),
+              }}
             />
           </div>
           <ConvertLeadDialog

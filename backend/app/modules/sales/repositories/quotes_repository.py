@@ -9,7 +9,7 @@ from app.core.cursor_pagination import apply_desc_id_cursor
 from app.core.module_filters import apply_filter_conditions
 from app.core.module_search import apply_ranked_search
 from app.modules.platform.services.custom_fields import build_custom_field_filter_map
-from app.modules.sales.models import SalesContact, SalesOrganization, SalesQuote
+from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
 from app.modules.user_management.models import User
 
 
@@ -36,6 +36,18 @@ def organization_exists(db: Session, *, tenant_id: int, organization_id: int) ->
             SalesOrganization.org_id == organization_id,
             SalesOrganization.tenant_id == tenant_id,
             SalesOrganization.deleted_at.is_(None),
+        )
+        .first()
+    )
+
+
+def get_opportunity(db: Session, *, tenant_id: int, opportunity_id: int) -> SalesOpportunity | None:
+    return (
+        db.query(SalesOpportunity)
+        .filter(
+            SalesOpportunity.opportunity_id == opportunity_id,
+            SalesOpportunity.tenant_id == tenant_id,
+            SalesOpportunity.deleted_at.is_(None),
         )
         .first()
     )
@@ -77,6 +89,7 @@ def build_quotes_query(
         "quote_number": {"expression": SalesQuote.quote_number, "type": "text"},
         "title": {"expression": SalesQuote.title, "type": "text"},
         "customer_name": {"expression": SalesQuote.customer_name, "type": "text"},
+        "opportunity_id": {"expression": SalesQuote.opportunity_id, "type": "number"},
         "status": {"expression": SalesQuote.status, "type": "text"},
         "issue_date": {"expression": SalesQuote.issue_date, "type": "date"},
         "expiry_date": {"expression": SalesQuote.expiry_date, "type": "date"},

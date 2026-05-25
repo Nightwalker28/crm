@@ -4,18 +4,14 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { CheckSquare, Mail, MessageCircle, Phone, StickyNote } from "lucide-react";
+import { CheckSquare, MessageCircle, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
-import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
-import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
-import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
-import FollowUpPanel from "@/components/recordActivity/FollowUpPanel";
-import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
+import CommunicationActions from "@/components/recordActivity/CommunicationActions";
+import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -71,6 +67,7 @@ type ContactSummary = {
     contact_telephone?: string | null;
     linkedin_url?: string | null;
     primary_email: string;
+    email_opt_out?: boolean | null;
     current_title?: string | null;
     region?: string | null;
     country?: string | null;
@@ -312,38 +309,15 @@ export default function ContactDetailPage() {
         <>
           <Card className="px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
-              {fieldEnabled("contact_telephone") ? (
-              <Button type="button" size="sm" onClick={handleWhatsAppClick} disabled={whatsAppSending || !summary.contact.contact_telephone || !whatsAppTemplates.length}>
-                <MessageCircle />
-                WhatsApp
-              </Button>
-              ) : null}
-              {summary.contact.primary_email ? (
-                <Button asChild size="sm" variant="outline">
-                  <a href={`mailto:${summary.contact.primary_email}`}>
-                    <Mail />
-                    Email
-                  </a>
-                </Button>
-              ) : (
-                <Button type="button" size="sm" variant="outline" disabled>
-                  <Mail />
-                  Email
-                </Button>
-              )}
-              {fieldEnabled("contact_telephone") && summary.contact.contact_telephone ? (
-                <Button asChild size="sm" variant="outline">
-                  <a href={`tel:${summary.contact.contact_telephone}`}>
-                    <Phone />
-                    Call
-                  </a>
-                </Button>
-              ) : fieldEnabled("contact_telephone") ? (
-                <Button type="button" size="sm" variant="outline" disabled>
-                  <Phone />
-                  Call
-                </Button>
-              ) : null}
+              <CommunicationActions
+                email={summary.contact.primary_email}
+                phone={fieldEnabled("contact_telephone") ? summary.contact.contact_telephone : null}
+                emailOptOut={Boolean(summary.contact.email_opt_out)}
+                whatsAppBusy={whatsAppSending}
+                whatsAppDisabled={!whatsAppTemplates.length}
+                onWhatsAppClick={handleWhatsAppClick}
+                followUpTargetId="contact-record-tools"
+              />
               <Button type="button" size="sm" variant="ghost" onClick={() => document.getElementById("contact-record-tools")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
                 <StickyNote />
                 Note
@@ -598,14 +572,19 @@ export default function ContactDetailPage() {
           </div>
 
           <div id="contact-record-tools" className="scroll-mt-6">
-            <RecordTabs
-              tabs={[
-                { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_contacts" entityId={summary.contact.contact_id} description="Contact-level create, update, delete, restore, and note history." /> },
-                { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
-                { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
-                { id: "tasks", label: "Tasks", content: <RecordTasksPanel moduleKey="sales_contacts" entityId={summary.contact.contact_id} /> },
-                { id: "follow-up", label: "Follow-up", content: <FollowUpPanel endpoint={`/sales/contacts/${summary.contact.contact_id}/follow-up`} lastContactedAt={summary.contact.last_contacted_at} lastContactedChannel={summary.contact.last_contacted_channel} email={summary.contact.primary_email} phone={summary.contact.contact_telephone} onLogged={() => loadSummary()} /> },
-              ]}
+            <CrmRecordActivitySection
+              moduleKey="sales_contacts"
+              entityId={summary.contact.contact_id}
+              recordLabel="Contact-level"
+              taskSourceLabel={`${summary.contact.first_name || ""} ${summary.contact.last_name || ""}`.trim() || summary.contact.primary_email}
+              followUp={{
+                endpoint: `/sales/contacts/${summary.contact.contact_id}/follow-up`,
+                lastContactedAt: summary.contact.last_contacted_at,
+                lastContactedChannel: summary.contact.last_contacted_channel,
+                email: summary.contact.primary_email,
+                phone: summary.contact.contact_telephone,
+                onLogged: () => loadSummary(),
+              }}
             />
           </div>
         </>

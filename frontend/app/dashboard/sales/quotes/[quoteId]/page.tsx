@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
@@ -7,16 +8,12 @@ import { FileText, StickyNote, CheckSquare } from "lucide-react";
 import { toast } from "sonner";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
-import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
-import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
-import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
+import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
@@ -29,6 +26,9 @@ type QuoteSummary = {
     quote_number: string;
     title?: string | null;
     customer_name: string;
+    contact_id?: number | null;
+    organization_id?: number | null;
+    opportunity_id?: number | null;
     status?: string | null;
     issue_date?: string | null;
     expiry_date?: string | null;
@@ -42,12 +42,21 @@ type QuoteSummary = {
     updated_at?: string | null;
     custom_fields?: Record<string, unknown> | null;
   };
+  opportunity?: {
+    opportunity_id: number;
+    opportunity_name: string;
+    sales_stage?: string | null;
+    expected_close_date?: string | null;
+    total_cost_of_project?: string | null;
+    currency_type?: string | null;
+  } | null;
 };
 
 type QuoteForm = {
   quote_number: string;
   title: string;
   customer_name: string;
+  opportunity_id: string;
   status: string;
   issue_date: string;
   expiry_date: string;
@@ -63,6 +72,7 @@ const emptyForm: QuoteForm = {
   quote_number: "",
   title: "",
   customer_name: "",
+  opportunity_id: "",
   status: "draft",
   issue_date: "",
   expiry_date: "",
@@ -119,6 +129,7 @@ export default function QuoteDetailPage() {
         quote_number: data.quote.quote_number ?? "",
         title: data.quote.title ?? "",
         customer_name: data.quote.customer_name ?? "",
+        opportunity_id: data.quote.opportunity_id ? String(data.quote.opportunity_id) : "",
         status: data.quote.status ?? "draft",
         issue_date: data.quote.issue_date ?? "",
         expiry_date: data.quote.expiry_date ?? "",
@@ -154,6 +165,7 @@ export default function QuoteDetailPage() {
         quote_number: form.quote_number.trim(),
         title: form.title.trim() || null,
         customer_name: form.customer_name.trim(),
+        opportunity_id: form.opportunity_id.trim() ? Number(form.opportunity_id) : null,
         status: form.status,
         issue_date: form.issue_date || null,
         expiry_date: form.expiry_date || null,
@@ -164,7 +176,7 @@ export default function QuoteDetailPage() {
         total_amount: form.total_amount || "0",
         notes: form.notes.trim() || null,
         custom_fields: customFieldValues,
-      }, moduleFields, ["quote_number", "customer_name", "custom_fields"]);
+      }, moduleFields, ["quote_number", "customer_name", "opportunity_id", "custom_fields"]);
       const res = await apiFetch(`/sales/quotes/${params.quoteId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -227,6 +239,11 @@ export default function QuoteDetailPage() {
               <FieldGroup className="grid gap-4 md:grid-cols-2">
                 {fieldEnabled("quote_number") ? <Field><FieldLabel>Quote Number</FieldLabel><Input value={form.quote_number} onChange={(event) => setForm((current) => ({ ...current, quote_number: event.target.value }))} /></Field> : null}
                 {fieldEnabled("customer_name") ? <Field><FieldLabel>Customer</FieldLabel><Input value={form.customer_name} onChange={(event) => setForm((current) => ({ ...current, customer_name: event.target.value }))} /></Field> : null}
+                <Field>
+                  <FieldLabel>Deal ID</FieldLabel>
+                  <Input inputMode="numeric" value={form.opportunity_id} onChange={(event) => setForm((current) => ({ ...current, opportunity_id: event.target.value }))} placeholder="Optional opportunity ID" />
+                  <FieldDescription>Links this quote to a sales deal and inherits contact/account when available.</FieldDescription>
+                </Field>
                 {fieldEnabled("title") ? <Field><FieldLabel>Title</FieldLabel><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></Field> : null}
                 {fieldEnabled("status") ? (
                   <Field>
@@ -255,6 +272,22 @@ export default function QuoteDetailPage() {
               <h2 className="text-lg font-semibold text-neutral-100">Summary</h2>
               <div className="mt-4 grid gap-3">
                 <SummaryTile label="Customer" value={summary.quote.customer_name || "No customer recorded"} />
+                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Deal</div>
+                  <div className="mt-2 text-sm text-neutral-100">
+                    {summary.opportunity ? (
+                      <Link href={`/dashboard/sales/opportunities/${summary.opportunity.opportunity_id}`} className="hover:text-white">
+                        {summary.opportunity.opportunity_name}
+                      </Link>
+                    ) : (
+                      "No linked deal"
+                    )}
+                  </div>
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  <LinkedRecordTile label="Contact" value={summary.quote.contact_id ? `#${summary.quote.contact_id}` : "No contact"} href={summary.quote.contact_id ? `/dashboard/sales/contacts/${summary.quote.contact_id}` : null} />
+                  <LinkedRecordTile label="Account" value={summary.quote.organization_id ? `#${summary.quote.organization_id}` : "No account"} href={summary.quote.organization_id ? `/dashboard/sales/organizations/${summary.quote.organization_id}` : null} />
+                </div>
                 <SummaryTile label="Status" value={(summary.quote.status || "draft").replace(/_/g, " ")} />
                 <SummaryTile label="Total" value={formatMoney(summary.quote.total_amount, summary.quote.currency)} />
                 <SummaryTile label="Expires" value={summary.quote.expiry_date ? formatDateOnly(summary.quote.expiry_date) : "No expiry date"} />
@@ -263,13 +296,11 @@ export default function QuoteDetailPage() {
           </div>
 
           <div id="quote-record-tools" className="scroll-mt-6">
-            <RecordTabs
-              tabs={[
-                { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_quotes" entityId={summary.quote.quote_id} description="Quote-level create, update, delete, restore, and note history." /> },
-                { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_quotes" entityId={summary.quote.quote_id} /> },
-                { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_quotes" entityId={summary.quote.quote_id} /> },
-                { id: "tasks", label: "Tasks", content: <RecordTasksPanel moduleKey="sales_quotes" entityId={summary.quote.quote_id} /> },
-              ]}
+            <CrmRecordActivitySection
+              moduleKey="sales_quotes"
+              entityId={summary.quote.quote_id}
+              recordLabel="Quote-level"
+              taskSourceLabel={summary.quote.quote_number}
             />
           </div>
         </>
@@ -283,6 +314,17 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
     <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
       <div className="text-xs uppercase tracking-wide text-neutral-500">{label}</div>
       <div className="mt-2 text-sm capitalize text-neutral-100">{value}</div>
+    </div>
+  );
+}
+
+function LinkedRecordTile({ label, value, href }: { label: string; value: string; href: string | null }) {
+  return (
+    <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+      <div className="text-xs uppercase tracking-wide text-neutral-500">{label}</div>
+      <div className="mt-2 text-sm text-neutral-100">
+        {href ? <Link href={href} className="hover:text-white">{value}</Link> : value}
+      </div>
     </div>
   );
 }

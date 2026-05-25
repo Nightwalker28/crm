@@ -31,6 +31,7 @@ EXPORT_COLUMNS = [
     "customer_name",
     "contact_id",
     "organization_id",
+    "opportunity_id",
     "status",
     "issue_date",
     "expiry_date",
@@ -88,12 +89,27 @@ def _ensure_assigned_user(db: Session, user_id: int | None, *, tenant_id: int) -
 
 
 def _ensure_linked_records(db: Session, data: dict, *, tenant_id: int) -> None:
+    opportunity = None
+    opportunity_id = data.get("opportunity_id")
+    if opportunity_id is not None:
+        opportunity = quotes_repository.get_opportunity(db, tenant_id=tenant_id, opportunity_id=opportunity_id)
+        if not opportunity:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Opportunity not found")
     contact_id = data.get("contact_id")
     if contact_id is not None and not quotes_repository.contact_exists(db, tenant_id=tenant_id, contact_id=contact_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact not found")
     organization_id = data.get("organization_id")
     if organization_id is not None and not quotes_repository.organization_exists(db, tenant_id=tenant_id, organization_id=organization_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not found")
+    if opportunity is not None:
+        if contact_id is not None and opportunity.contact_id is not None and contact_id != opportunity.contact_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote contact must match the linked opportunity")
+        if organization_id is not None and opportunity.organization_id is not None and organization_id != opportunity.organization_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote organization must match the linked opportunity")
+        if data.get("contact_id") is None and opportunity.contact_id is not None:
+            data["contact_id"] = opportunity.contact_id
+        if data.get("organization_id") is None and opportunity.organization_id is not None:
+            data["organization_id"] = opportunity.organization_id
 
 
 def _normalize_quote_payload(data: dict, *, partial: bool = False) -> dict:
@@ -107,6 +123,9 @@ def _normalize_quote_payload(data: dict, *, partial: bool = False) -> dict:
     for field in {"title", "notes"}:
         if field in normalized:
             normalized[field] = _coerce_optional(normalized[field])
+    for field in {"contact_id", "organization_id", "opportunity_id", "assigned_to"}:
+        if field in normalized and normalized[field] == "":
+            normalized[field] = None
     if "status" in normalized and normalized["status"] is not None:
         normalized["status"] = _validate_status(normalized["status"])
     elif not partial:

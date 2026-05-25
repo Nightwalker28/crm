@@ -97,6 +97,7 @@ export const OPPORTUNITY_COLUMNS: TableColumnOption[] = [
 export const QUOTE_COLUMNS: TableColumnOption[] = [
   { key: "quote_number", label: "Quote Number" },
   { key: "customer_name", label: "Customer" },
+  { key: "opportunity_id", label: "Deal ID" },
   { key: "title", label: "Title" },
   { key: "status", label: "Status" },
   { key: "total_amount", label: "Total" },
@@ -183,7 +184,7 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
     sort: null,
   },
   sales_quotes: {
-    visible_columns: ["quote_number", "customer_name", "status", "total_amount", "expiry_date"],
+    visible_columns: ["quote_number", "customer_name", "opportunity_id", "status", "total_amount", "expiry_date"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },
@@ -370,6 +371,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     filterFields: [
       { key: "quote_number", label: "Quote Number", type: "text", operators: TEXT_OPERATORS },
       { key: "customer_name", label: "Customer", type: "text", operators: TEXT_OPERATORS },
+      { key: "opportunity_id", label: "Deal ID", type: "number", operators: NUMBER_OPERATORS },
       { key: "title", label: "Title", type: "text", operators: TEXT_OPERATORS },
       {
         key: "status",

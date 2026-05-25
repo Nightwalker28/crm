@@ -8,12 +8,9 @@ import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
-import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
-import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
-import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
+import CommunicationActions from "@/components/recordActivity/CommunicationActions";
+import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
-import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -362,6 +359,13 @@ export default function OrganizationDetailPage() {
                 <h2 className="text-lg font-semibold text-neutral-100">Summary</h2>
                 <p className="mt-1 text-sm text-neutral-500">Cross-module context for this organization.</p>
               </div>
+              <div className="mb-4">
+                <CommunicationActions
+                  email={summary.organization.primary_email}
+                  phone={summary.organization.primary_phone}
+                  followUpTargetId={undefined}
+                />
+              </div>
               <div className="grid gap-3">
                 <div className="grid gap-3 md:grid-cols-3">
                   <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
@@ -477,13 +481,11 @@ export default function OrganizationDetailPage() {
             </div>
           </Card>
 
-          <RecordTabs
-            tabs={[
-              { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_organizations" entityId={summary.organization.org_id} description="Account-level create, update, delete, restore, and note history." /> },
-              { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_organizations" entityId={summary.organization.org_id} /> },
-              { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_organizations" entityId={summary.organization.org_id} /> },
-              { id: "tasks", label: "Tasks", content: <RecordTasksPanel moduleKey="sales_organizations" entityId={summary.organization.org_id} /> },
-            ]}
+          <CrmRecordActivitySection
+            moduleKey="sales_organizations"
+            entityId={summary.organization.org_id}
+            recordLabel="Account-level"
+            taskSourceLabel={summary.organization.org_name}
           />
         </>
       )}

@@ -14,22 +14,26 @@ from app.modules.platform.services.data_transfer_jobs import create_data_transfe
 from app.modules.platform.services.module_fields import enabled_module_fields, enabled_module_field_sequence, reject_disabled_field_writes, sanitize_data_transfer_export_payload, sanitize_disabled_field_payload, sanitize_disabled_filter_conditions
 from app.modules.sales.schema import QuoteSummaryResponse, SalesQuoteCreateRequest, SalesQuoteListItem, SalesQuoteListResponse, SalesQuoteResponse, SalesQuoteUpdateRequest
 from app.modules.sales.services.quotes_services import EXPORT_COLUMNS, create_sales_quote, delete_sales_quote, get_quote_or_404, import_quotes_from_csv, list_deleted_sales_quotes, list_sales_quotes, list_sales_quotes_cursor, restore_sales_quote, update_sales_quote
+from app.modules.sales.services.summary_services import build_quote_summary
 from app.modules.user_management.services import admin_modules
 
 router = APIRouter(prefix="/quotes", tags=["Sales"])
 
 QUOTE_LIST_FIELDS = {
-    "quote_number", "title", "customer_name", "contact_id", "organization_id", "status", "issue_date", "expiry_date",
+    "quote_number", "title", "customer_name", "contact_id", "organization_id", "opportunity_id", "status", "issue_date", "expiry_date",
     "currency", "subtotal_amount", "discount_amount", "tax_amount", "total_amount", "assigned_to", "created_time", "updated_at",
 }
 QUOTE_IMPORT_TARGET_FIELDS = [
-    "quote_number", "title", "customer_name", "status", "currency", "subtotal_amount", "discount_amount", "tax_amount",
-    "total_amount", "notes", "assigned_to",
+    "quote_number", "title", "customer_name", "contact_id", "organization_id", "opportunity_id", "status", "currency",
+    "subtotal_amount", "discount_amount", "tax_amount", "total_amount", "notes", "assigned_to",
 ]
 QUOTE_IMPORT_ALIASES = {
     "quote_number": ["quote number", "quote no", "quote id"],
     "title": ["quote title", "subject"],
     "customer_name": ["customer", "client", "account", "customer name"],
+    "contact_id": ["contact", "contact id"],
+    "organization_id": ["organization", "organization id", "account id"],
+    "opportunity_id": ["deal", "deal id", "opportunity", "opportunity id"],
     "status": ["quote status", "status"],
     "currency": ["currency"],
     "subtotal_amount": ["subtotal", "subtotal amount"],
@@ -166,7 +170,7 @@ def get_quote(quote_id: int, db: Session = Depends(get_db), current_user=Depends
 
 @router.get("/{quote_id}/summary", response_model=QuoteSummaryResponse)
 def get_quote_summary(quote_id: int, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "view"))):
-    return QuoteSummaryResponse(quote=get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id))
+    return build_quote_summary(db, get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id))
 
 
 @router.put("/{quote_id}", response_model=SalesQuoteResponse)

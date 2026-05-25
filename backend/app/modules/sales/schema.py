@@ -273,6 +273,7 @@ class SalesQuoteBase(BaseModel):
     customer_name: str
     contact_id: int | None = None
     organization_id: int | None = None
+    opportunity_id: int | None = None
     status: str = "draft"
     issue_date: date | None = None
     expiry_date: date | None = None
@@ -296,6 +297,7 @@ class SalesQuoteUpdateRequest(BaseModel):
     customer_name: str | None = None
     contact_id: int | None = None
     organization_id: int | None = None
+    opportunity_id: int | None = None
     status: str | None = None
     issue_date: date | None = None
     expiry_date: date | None = None
@@ -326,6 +328,7 @@ class SalesQuoteListItem(BaseModel):
     customer_name: str | None = None
     contact_id: int | None = None
     organization_id: int | None = None
+    opportunity_id: int | None = None
     status: str | None = None
     issue_date: date | None = None
     expiry_date: date | None = None
@@ -349,10 +352,6 @@ class SalesQuoteListResponse(BaseModel):
     page: int
 
 
-class QuoteSummaryResponse(BaseModel):
-    quote: SalesQuoteResponse
-
-
 class RelatedOpportunitySummary(BaseModel):
     opportunity_id: int
     opportunity_name: str
@@ -362,6 +361,11 @@ class RelatedOpportunitySummary(BaseModel):
     currency_type: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class QuoteSummaryResponse(BaseModel):
+    quote: SalesQuoteResponse
+    opportunity: RelatedOpportunitySummary | None = None
 
 
 class RelatedInsertionOrderSummary(BaseModel):
@@ -379,6 +383,7 @@ class RelatedQuoteSummary(BaseModel):
     quote_number: str
     title: str | None = None
     customer_name: str
+    opportunity_id: int | None = None
     status: str | None = None
     currency: str | None = None
     total_amount: Decimal | None = None
@@ -523,6 +528,10 @@ class SalesOpportunityUpdate(BaseModel):
     custom_fields: dict[str, Any] | None = None
 
 
+class SalesOpportunityStageUpdate(BaseModel):
+    sales_stage: str = Field(pattern="^(lead|qualified|proposal|negotiation|closed_won|closed_lost)$")
+
+
 class SalesOpportunityResponse(SalesOpportunityBase):
     opportunity_id: int
     created_time: datetime | None = None
@@ -574,6 +583,7 @@ class OpportunitySummaryResponse(BaseModel):
     opportunity: SalesOpportunityResponse
     contact: ContactCompactSummary | None = None
     organization: OrganizationCompactSummary | None = None
+    related_quotes: list[RelatedQuoteSummary]
     related_insertion_orders: list[RelatedInsertionOrderSummary]
     inferred_services: list[str]
     insertion_order_count: int

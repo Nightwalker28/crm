@@ -18,6 +18,7 @@ type QuoteForm = {
   quote_number: string;
   title: string;
   customer_name: string;
+  opportunity_id: string;
   status: string;
   issue_date: string;
   expiry_date: string;
@@ -33,6 +34,7 @@ const emptyForm: QuoteForm = {
   quote_number: "",
   title: "",
   customer_name: "",
+  opportunity_id: "",
   status: "draft",
   issue_date: "",
   expiry_date: "",
@@ -90,6 +92,7 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
         quote_number: form.quote_number.trim() || null,
         title: form.title.trim() || null,
         customer_name: form.customer_name.trim(),
+        opportunity_id: form.opportunity_id.trim() ? Number(form.opportunity_id) : null,
         status: form.status,
         issue_date: form.issue_date || null,
         expiry_date: form.expiry_date || null,
@@ -100,7 +103,7 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
         total_amount: form.total_amount || "0",
         notes: form.notes.trim() || null,
         custom_fields: customFieldValues,
-      }, moduleFields, ["customer_name", "custom_fields"]);
+      }, moduleFields, ["customer_name", "opportunity_id", "custom_fields"]);
       const res = await apiFetch("/sales/quotes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -132,6 +135,7 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
               {fieldEnabled("quote_number") ? <Field label="Quote number"><Input value={form.quote_number} onChange={(event) => setForm({ ...form, quote_number: event.target.value })} placeholder="Auto-generated if blank" /></Field> : null}
               {fieldEnabled("customer_name") ? <Field label="Customer" required><Input value={form.customer_name} onChange={(event) => setForm({ ...form, customer_name: event.target.value })} /></Field> : null}
             </div>
+            <Field label="Deal ID"><Input inputMode="numeric" value={form.opportunity_id} onChange={(event) => setForm({ ...form, opportunity_id: event.target.value })} placeholder="Optional opportunity ID" /></Field>
             {fieldEnabled("title") ? <Field label="Title"><Input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></Field> : null}
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               {fieldEnabled("status") ? (

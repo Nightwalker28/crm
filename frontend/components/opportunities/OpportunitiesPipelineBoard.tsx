@@ -3,6 +3,8 @@
 import { HandCoins } from "lucide-react";
 
 import { Pill } from "@/components/ui/Pill";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import { formatDateOnly } from "@/lib/datetime";
@@ -18,6 +20,7 @@ type Props = {
   isLoading: boolean;
   isRefreshing?: boolean;
   onEdit: (opportunity: Opportunity) => void;
+  onStageChange: (opportunity: Opportunity, salesStage: string) => void;
   onCreateFinanceIo: (opportunity: Opportunity) => void;
 };
 
@@ -30,6 +33,7 @@ export default function OpportunitiesPipelineBoard({
   isLoading,
   isRefreshing = false,
   onEdit,
+  onStageChange,
   onCreateFinanceIo,
 }: Props) {
   const grouped = new Map<string, Opportunity[]>();
@@ -121,20 +125,15 @@ export default function OpportunitiesPipelineBoard({
                     entry.items.map((opportunity) => (
                       <div
                         key={opportunity.opportunity_id}
-                        onClick={() => onEdit(opportunity)}
-                        role="button"
-                        tabIndex={0}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            onEdit(opportunity);
-                          }
-                        }}
                         className="rounded-lg border border-neutral-800 bg-neutral-950/80 p-3 text-left transition-colors hover:border-neutral-700 hover:bg-neutral-900"
                       >
-                        <div className="text-sm font-medium text-neutral-100">
+                        <button
+                          type="button"
+                          onClick={() => onEdit(opportunity)}
+                          className="w-full text-left text-sm font-medium text-neutral-100 hover:text-white"
+                        >
                           {opportunity.opportunity_name}
-                        </div>
+                        </button>
                         <div className="mt-1 text-sm text-neutral-400">
                           {formatValue(opportunity.client)}
                         </div>
@@ -144,21 +143,40 @@ export default function OpportunitiesPipelineBoard({
                         <div className="mt-1 text-xs text-neutral-500">
                           Value {formatValue(opportunity.total_cost_of_project)}
                         </div>
+                        <div className="mt-3">
+                          <Select
+                            value={normalizeOpportunityStage(opportunity.sales_stage) || "lead"}
+                            onValueChange={(value) => onStageChange(opportunity, value)}
+                          >
+                            <SelectTrigger className="h-8 w-full text-xs">
+                              <SelectValue placeholder="Move stage" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {OPPORTUNITY_STAGE_ORDER.map((stage) => (
+                                <SelectItem key={stage} value={stage}>
+                                  {getOpportunityStageLabel(stage)}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
                         <div className="mt-3 flex items-center justify-between gap-2">
                           <span className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">
                             {opportunity.currency_type || "USD"}
                           </span>
-                          <button
+                          <Button
                             type="button"
                             onClick={(event) => {
                               event.stopPropagation();
                               onCreateFinanceIo(opportunity);
                             }}
-                            className="inline-flex items-center gap-1 rounded-md border border-emerald-800/60 bg-emerald-950/20 px-2 py-1 text-[11px] font-medium text-emerald-300 transition-colors hover:bg-emerald-950/40"
+                            size="sm"
+                            variant="outline"
+                            className="h-7 gap-1 border-emerald-800/60 bg-emerald-950/20 px-2 text-[11px] text-emerald-300 hover:bg-emerald-950/40 hover:text-emerald-200"
                           >
                             <HandCoins className="h-3.5 w-3.5" />
                             Finance
-                          </button>
+                          </Button>
                         </div>
                       </div>
                     ))

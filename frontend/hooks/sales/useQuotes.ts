@@ -12,6 +12,7 @@ export type Quote = {
   customer_name: string | null;
   contact_id: number | null;
   organization_id: number | null;
+  opportunity_id: number | null;
   status: string | null;
   issue_date: string | null;
   expiry_date: string | null;

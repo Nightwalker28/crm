@@ -46,10 +46,13 @@ def _get_related_quotes(
     tenant_id: int,
     organization_id: int | None = None,
     contact_id: int | None = None,
+    opportunity_id: int | None = None,
     limit: int = 10,
 ) -> list[SalesQuote]:
     quote_filters = [SalesQuote.tenant_id == tenant_id, SalesQuote.deleted_at.is_(None)]
-    if organization_id is not None and contact_id is not None:
+    if opportunity_id is not None:
+        quote_filters.append(SalesQuote.opportunity_id == opportunity_id)
+    elif organization_id is not None and contact_id is not None:
         quote_filters.append(or_(SalesQuote.organization_id == organization_id, SalesQuote.contact_id == contact_id))
     elif organization_id is not None:
         quote_filters.append(SalesQuote.organization_id == organization_id)
@@ -314,7 +317,41 @@ def build_opportunity_summary(db: Session, opportunity: SalesOpportunity) -> dic
         "opportunity": opportunity,
         "contact": contact,
         "organization": organization,
+        "related_quotes": hydrate_custom_field_records(
+            db,
+            tenant_id=opportunity.tenant_id,
+            module_key="sales_quotes",
+            records=_get_related_quotes(db, tenant_id=opportunity.tenant_id, opportunity_id=opportunity.opportunity_id),
+            record_id_attr="quote_id",
+        ),
         "related_insertion_orders": [_serialize_io(record) for record in insertion_orders],
         "inferred_services": _collect_services([opportunity]),
         "insertion_order_count": len(insertion_orders),
+    }
+
+
+def build_quote_summary(db: Session, quote: SalesQuote) -> dict:
+    opportunity = None
+    if quote.opportunity_id:
+        opportunity = (
+            db.query(SalesOpportunity)
+            .filter(
+                SalesOpportunity.opportunity_id == quote.opportunity_id,
+                SalesOpportunity.tenant_id == quote.tenant_id,
+                SalesOpportunity.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if opportunity:
+            opportunity = hydrate_custom_field_record(
+                db,
+                tenant_id=quote.tenant_id,
+                module_key="sales_opportunities",
+                record=opportunity,
+                record_id=opportunity.opportunity_id,
+            )
+
+    return {
+        "quote": quote,
+        "opportunity": opportunity,
     }

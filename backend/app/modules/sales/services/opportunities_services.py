@@ -73,6 +73,8 @@ OPPORTUNITY_STAGE_LABELS = {
     "unstaged": "Unstaged",
 }
 
+OPPORTUNITY_STAGE_SET = set(OPPORTUNITY_STAGE_ORDER)
+
 
 def parse_attachment_paths(value: str | list[str] | None) -> list[str]:
     if value is None:
@@ -494,6 +496,28 @@ def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict, *
             values=custom_data_to_save,
         )
         db.commit()
+    return hydrate_custom_field_record(
+        db,
+        tenant_id=opportunity.tenant_id,
+        module_key="sales_opportunities",
+        record=opportunity,
+        record_id=opportunity.opportunity_id,
+    )
+
+
+def update_opportunity_stage(
+    db: Session,
+    opportunity: SalesOpportunity,
+    *,
+    sales_stage: str,
+) -> SalesOpportunity:
+    normalized_stage = _normalize_stage(sales_stage)
+    if normalized_stage not in OPPORTUNITY_STAGE_SET:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported opportunity stage")
+
+    opportunity.sales_stage = normalized_stage
+    db.commit()
+    db.refresh(opportunity)
     return hydrate_custom_field_record(
         db,
         tenant_id=opportunity.tenant_id,

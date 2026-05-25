@@ -725,6 +725,45 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response.json(), fake_result)
         create_mock.assert_called_once()
 
+    def test_sales_opportunity_stage_route_logs_close_activity(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+        before = SalesOpportunityResponse(
+            opportunity_id=13,
+            opportunity_name="ACME Launch",
+            client="ACME",
+            sales_stage="proposal",
+            attachments=[],
+        )
+        updated = SalesOpportunityResponse(
+            opportunity_id=13,
+            opportunity_name="ACME Launch",
+            client="ACME",
+            sales_stage="closed_won",
+            attachments=[],
+        )
+
+        with patch("app.core.permissions.require_department_module_access"), patch(
+            "app.modules.sales.routes.opportunities_routes.get_opportunity_or_404",
+            return_value=before,
+        ), patch(
+            "app.modules.sales.routes.opportunities_routes.update_opportunity_stage",
+            return_value=updated,
+        ) as update_mock, patch(
+            "app.modules.sales.routes.opportunities_routes.log_activity",
+        ) as activity_mock:
+            response = self.client.patch(
+                "/api/v1/sales/opportunities/13/stage",
+                json={"sales_stage": "closed_won"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["sales_stage"], "closed_won")
+        update_mock.assert_called_once()
+        self.assertEqual(update_mock.call_args.kwargs["sales_stage"], "closed_won")
+        activity_mock.assert_called_once()
+        self.assertEqual(activity_mock.call_args.kwargs["action"], "close")
+
     def test_sales_contacts_list_route_returns_paged_payload(self):
         app.dependency_overrides[require_user] = self._active_user
         app.dependency_overrides[get_db] = self._override_db

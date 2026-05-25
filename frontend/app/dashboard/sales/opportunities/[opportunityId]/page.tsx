@@ -4,17 +4,15 @@ import Link from "next/link";
 import { useDeferredValue, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
+import { getOpportunityStageLabel, normalizeOpportunityStage, OPPORTUNITY_STAGE_ORDER } from "@/components/opportunities/opportunityStages";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
-import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
-import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
-import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
-import FollowUpPanel from "@/components/recordActivity/FollowUpPanel";
-import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
+import CommunicationActions from "@/components/recordActivity/CommunicationActions";
+import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -76,6 +74,16 @@ type OpportunitySummary = {
     primary_email?: string | null;
     website?: string | null;
   } | null;
+  related_quotes: Array<{
+    quote_id: number;
+    quote_number: string;
+    title?: string | null;
+    customer_name: string;
+    status?: string | null;
+    currency?: string | null;
+    total_amount?: number | string | null;
+    expiry_date?: string | null;
+  }>;
   related_insertion_orders: Array<{
     id: number;
     io_number: string;
@@ -156,13 +164,14 @@ function getContactDisplay(option: ContactOption): string {
   return `${option.first_name ?? ""} ${option.last_name ?? ""}`.trim() || option.primary_email || "Unnamed contact";
 }
 
-function formatMoney(value?: number | null, currency?: string | null) {
-  if (typeof value !== "number") return "Unspecified";
+function formatMoney(value?: number | string | null, currency?: string | null) {
+  const amount = typeof value === "string" ? Number(value) : value;
+  if (typeof amount !== "number" || Number.isNaN(amount)) return "Unspecified";
   return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: currency || "USD",
     maximumFractionDigits: 2,
-  }).format(value);
+  }).format(amount);
 }
 
 export default function OpportunityDetailPage() {
@@ -284,6 +293,30 @@ export default function OpportunityDetailPage() {
     }
   }
 
+  async function handleStageChange(salesStage: string) {
+    try {
+      setSaving(true);
+      setError(null);
+      const res = await apiFetch(`/sales/opportunities/${params.opportunityId}/stage`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sales_stage: salesStage }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
+        queryClient.invalidateQueries({ queryKey: ["sales-opportunities-pipeline-summary"] }),
+      ]);
+      await loadSummary();
+      toast.success(salesStage === "closed_won" || salesStage === "closed_lost" ? "Deal closed." : "Deal stage updated.");
+    } catch (stageError) {
+      setError(stageError instanceof Error ? stageError.message : "Failed to update deal stage");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <RecordPageHeader
@@ -384,7 +417,24 @@ export default function OpportunityDetailPage() {
                 {fieldEnabled("sales_stage") ? (
                 <Field>
                   <FieldLabel>Sales Stage</FieldLabel>
-                  <Input value={form.sales_stage} onChange={(event) => setForm((current) => ({ ...current, sales_stage: event.target.value }))} />
+                  <Select
+                    value={normalizeOpportunityStage(form.sales_stage) || "lead"}
+                    onValueChange={(value) => {
+                      setForm((current) => ({ ...current, sales_stage: value }));
+                      void handleStageChange(value);
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Select stage" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {OPPORTUNITY_STAGE_ORDER.map((stage) => (
+                        <SelectItem key={stage} value={stage}>
+                          {getOpportunityStageLabel(stage)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Field>
                 ) : null}
                 {fieldEnabled("expected_close_date") ? (
@@ -481,6 +531,15 @@ export default function OpportunityDetailPage() {
                     ) : "No linked contact"}
                   </div>
                   {summary.contact?.current_title ? <div className="mt-1 text-sm text-neutral-500">{summary.contact.current_title}</div> : null}
+                  {summary.contact ? (
+                    <div className="mt-3">
+                      <CommunicationActions
+                        email={summary.contact.primary_email}
+                        phone={summary.contact.contact_telephone}
+                        followUpTargetId="opportunity-record-tools"
+                      />
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
@@ -502,8 +561,47 @@ export default function OpportunityDetailPage() {
                     </div>
                   </div>
                   <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+                    <div className="text-xs uppercase tracking-wide text-neutral-500">Quotes</div>
+                    <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.related_quotes.length}</div>
+                  </div>
+                  <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
                     <div className="text-xs uppercase tracking-wide text-neutral-500">Insertion Orders</div>
                     <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.insertion_order_count}</div>
+                  </div>
+                </div>
+
+                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <div className="text-xs uppercase tracking-wide text-neutral-500">Stage</div>
+                      <div className="mt-2 text-sm text-neutral-100">
+                        {getOpportunityStageLabel(summary.opportunity.sales_stage)}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleStageChange("closed_won")}
+                        disabled={saving || summary.opportunity.sales_stage === "closed_won"}
+                        className="border-emerald-800/60 bg-emerald-950/20 text-emerald-300 hover:bg-emerald-950/40 hover:text-emerald-200"
+                      >
+                        <CheckCircle2 className="h-4 w-4" />
+                        Won
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => void handleStageChange("closed_lost")}
+                        disabled={saving || summary.opportunity.sales_stage === "closed_lost"}
+                        className="border-red-800/60 bg-red-950/20 text-red-300 hover:bg-red-950/40 hover:text-red-200"
+                      >
+                        <XCircle className="h-4 w-4" />
+                        Lost
+                      </Button>
+                    </div>
                   </div>
                 </div>
 
@@ -521,7 +619,23 @@ export default function OpportunityDetailPage() {
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-3">
+            <Card className="px-5 py-5">
+              <h2 className="text-lg font-semibold text-neutral-100">Related Quotes</h2>
+              <FieldDescription className="mt-1">
+                Quotes explicitly linked to this deal.
+              </FieldDescription>
+              <div className="mt-4 space-y-3">
+                {summary.related_quotes.length ? summary.related_quotes.map((quote) => (
+                  <Link key={quote.quote_id} href={`/dashboard/sales/quotes/${quote.quote_id}`} className="block rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4 hover:border-neutral-700">
+                    <div className="text-sm font-semibold text-neutral-100">{quote.quote_number}</div>
+                    <div className="mt-1 text-sm text-neutral-500">{quote.title || quote.customer_name} · {quote.status || "Unknown status"}</div>
+                    <div className="mt-2 text-sm text-neutral-300">{formatMoney(quote.total_amount, quote.currency)}</div>
+                  </Link>
+                )) : <div className="text-sm text-neutral-500">No quotes are linked to this deal yet.</div>}
+              </div>
+            </Card>
+
             <Card className="px-5 py-5">
               <h2 className="text-lg font-semibold text-neutral-100">Finance Handoff</h2>
               <p className="mt-1 text-sm text-neutral-500">
@@ -563,15 +677,22 @@ export default function OpportunityDetailPage() {
             </Card>
           </div>
 
-          <RecordTabs
-            tabs={[
-              { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_opportunities" entityId={summary.opportunity.opportunity_id} description="Deal-level create, update, delete, restore, and note history." /> },
-              { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_opportunities" entityId={summary.opportunity.opportunity_id} /> },
-              { id: "documents", label: "Documents", content: <RecordDocumentsPanel moduleKey="sales_opportunities" entityId={summary.opportunity.opportunity_id} /> },
-              { id: "tasks", label: "Tasks", content: <RecordTasksPanel moduleKey="sales_opportunities" entityId={summary.opportunity.opportunity_id} /> },
-              { id: "follow-up", label: "Follow-up", content: <FollowUpPanel endpoint={`/sales/opportunities/${summary.opportunity.opportunity_id}/follow-up`} lastContactedAt={summary.opportunity.last_contacted_at} lastContactedChannel={summary.opportunity.last_contacted_channel} email={summary.contact?.primary_email} phone={summary.contact?.contact_telephone} onLogged={() => loadSummary()} /> },
-            ]}
-          />
+          <div id="opportunity-record-tools" className="scroll-mt-6">
+            <CrmRecordActivitySection
+              moduleKey="sales_opportunities"
+              entityId={summary.opportunity.opportunity_id}
+              recordLabel="Deal-level"
+              taskSourceLabel={summary.opportunity.opportunity_name}
+              followUp={{
+                endpoint: `/sales/opportunities/${summary.opportunity.opportunity_id}/follow-up`,
+                lastContactedAt: summary.opportunity.last_contacted_at,
+                lastContactedChannel: summary.opportunity.last_contacted_channel,
+                email: summary.contact?.primary_email,
+                phone: summary.contact?.contact_telephone,
+                onLogged: () => loadSummary(),
+              }}
+            />
+          </div>
         </>
       )}
     </div>

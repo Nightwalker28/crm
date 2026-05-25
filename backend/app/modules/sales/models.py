@@ -236,6 +236,7 @@ class SalesQuote(Base):
         Index("ix_sales_quotes_tenant_status_active", "tenant_id", "status", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_sales_quotes_tenant_contact", "tenant_id", "contact_id"),
         Index("ix_sales_quotes_tenant_organization", "tenant_id", "organization_id"),
+        Index("ix_sales_quotes_tenant_opportunity", "tenant_id", "opportunity_id"),
     )
 
     quote_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
@@ -245,6 +246,7 @@ class SalesQuote(Base):
     customer_name = Column(Text, nullable=False)
     contact_id = Column(BigInteger, ForeignKey("sales_contacts.contact_id", ondelete="SET NULL"), nullable=True)
     organization_id = Column(BigInteger, ForeignKey("sales_organizations.org_id", ondelete="SET NULL"), nullable=True)
+    opportunity_id = Column(BigInteger, ForeignKey("sales_opportunities.opportunity_id", ondelete="SET NULL"), nullable=True)
     status = Column(Text, nullable=False, server_default="draft")
     issue_date = Column(Date, nullable=True)
     expiry_date = Column(Date, nullable=True)
@@ -271,6 +273,7 @@ class SalesQuote(Base):
 
     contact = relationship("SalesContact", lazy="joined")
     organization = relationship("SalesOrganization", lazy="joined")
+    opportunity = relationship("SalesOpportunity", lazy="joined")
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
 
     @property

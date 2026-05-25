@@ -83,6 +83,19 @@ async function updateOpportunity(opportunityId: number, payload: Partial<Opportu
   return res.json();
 }
 
+async function updateOpportunityStage(opportunityId: number, salesStage: string) {
+  const res = await apiFetch(`/sales/opportunities/${opportunityId}/stage`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sales_stage: salesStage }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  }
+  return res.json();
+}
+
 async function deleteOpportunity(opportunityId: number) {
   const res = await apiFetch(`/sales/opportunities/${opportunityId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`Failed with ${res.status}`);
@@ -123,6 +136,11 @@ export function useOpportunities(
       updateOpportunity(opportunityId, payload),
     onSuccess: refreshLists,
   });
+  const stageMutation = useMutation({
+    mutationFn: ({ opportunityId, salesStage }: { opportunityId: number; salesStage: string }) =>
+      updateOpportunityStage(opportunityId, salesStage),
+    onSuccess: refreshLists,
+  });
   const deleteMutation = useMutation({
     mutationFn: deleteOpportunity,
     onSuccess: refreshLists,
@@ -148,9 +166,11 @@ export function useOpportunities(
     createOpportunity: (payload: OpportunityPayload) => createMutation.mutateAsync(payload),
     updateOpportunity: (opportunityId: number, payload: Partial<OpportunityPayload>) =>
       updateMutation.mutateAsync({ opportunityId, payload }),
+    updateOpportunityStage: (opportunityId: number, salesStage: string) =>
+      stageMutation.mutateAsync({ opportunityId, salesStage }),
     deleteOpportunity: (opportunityId: number) => deleteMutation.mutateAsync(opportunityId),
     createFinanceIo: (opportunityId: number) => financeMutation.mutateAsync(opportunityId),
-    isSaving: createMutation.isPending || updateMutation.isPending,
+    isSaving: createMutation.isPending || updateMutation.isPending || stageMutation.isPending,
     isDeleting: deleteMutation.isPending,
     isCreatingFinanceIo: financeMutation.isPending,
   };
