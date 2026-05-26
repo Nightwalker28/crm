@@ -14,6 +14,21 @@ class ConfigTests(unittest.TestCase):
     def test_debug_setting_is_boolean(self):
         self.assertIsInstance(config.settings.DEBUG, bool)
 
+    def test_frontend_cors_origins_include_loopback_alias(self):
+        self.assertEqual(
+            config._frontend_cors_origins("http://localhost:3000", []),
+            ["http://localhost:3000", "http://127.0.0.1:3000"],
+        )
+
+    def test_frontend_cors_origins_deduplicate_extra_origins(self):
+        self.assertEqual(
+            config._frontend_cors_origins(
+                "http://localhost:3000",
+                ["http://127.0.0.1:3000", "https://crm.example.com/"],
+            ),
+            ["http://localhost:3000", "http://127.0.0.1:3000", "https://crm.example.com"],
+        )
+
     def test_startup_validation_rejects_missing_jwt_secret_when_debug_is_false(self):
         with patch.object(
             config,

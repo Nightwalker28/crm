@@ -12,7 +12,8 @@ from app.modules.platform.schema import DataTransferExecutionResponse, DataTrans
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_export_job, enqueue_import_job, persist_job_upload, should_background_data_transfer_with_size
 from app.modules.platform.services.module_fields import enabled_module_fields, enabled_module_field_sequence, reject_disabled_field_writes, sanitize_data_transfer_export_payload, sanitize_disabled_field_payload, sanitize_disabled_filter_conditions
-from app.modules.sales.schema import QuoteSummaryResponse, SalesQuoteCreateRequest, SalesQuoteListItem, SalesQuoteListResponse, SalesQuoteResponse, SalesQuoteUpdateRequest
+from app.modules.sales.schema import FollowUpActionRequest, FollowUpActionResponse, QuoteSummaryResponse, SalesQuoteCreateRequest, SalesQuoteListItem, SalesQuoteListResponse, SalesQuoteResponse, SalesQuoteUpdateRequest
+from app.modules.sales.services.followups import log_quote_follow_up
 from app.modules.sales.services.quotes_services import EXPORT_COLUMNS, create_sales_quote, delete_sales_quote, get_quote_or_404, import_quotes_from_csv, list_deleted_sales_quotes, list_sales_quotes, list_sales_quotes_cursor, restore_sales_quote, update_sales_quote
 from app.modules.sales.services.summary_services import build_quote_summary
 from app.modules.user_management.services import admin_modules
@@ -171,6 +172,12 @@ def get_quote(quote_id: int, db: Session = Depends(get_db), current_user=Depends
 @router.get("/{quote_id}/summary", response_model=QuoteSummaryResponse)
 def get_quote_summary(quote_id: int, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "view"))):
     return build_quote_summary(db, get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id))
+
+
+@router.post("/{quote_id}/follow-up", response_model=FollowUpActionResponse)
+def log_quote_follow_up_route(quote_id: int, payload: FollowUpActionRequest, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "edit"))):
+    quote = get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id)
+    return log_quote_follow_up(db, quote=quote, payload=payload.model_dump(), current_user=current_user)
 
 
 @router.put("/{quote_id}", response_model=SalesQuoteResponse)

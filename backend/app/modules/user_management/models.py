@@ -451,6 +451,27 @@ class UserTablePreference(Base):
     user = relationship("User")
 
 
+class UserDashboardLayout(Base):
+    __tablename__ = "user_dashboard_layouts"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", name="uq_user_dashboard_layouts_tenant_user"),
+    )
+
+    id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    layout = Column(JSON, nullable=False, server_default="{}")
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    user = relationship("User")
+    tenant = relationship("Tenant")
+
+
 class UserSavedView(Base):
     __tablename__ = "user_saved_views"
     __table_args__ = (

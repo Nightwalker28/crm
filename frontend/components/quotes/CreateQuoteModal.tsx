@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
+import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBackdrop, DialogFooter, DialogHeader, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
@@ -18,6 +19,8 @@ type QuoteForm = {
   quote_number: string;
   title: string;
   customer_name: string;
+  contact_id: number | null;
+  organization_id: number | null;
   opportunity_id: string;
   status: string;
   issue_date: string;
@@ -34,6 +37,8 @@ const emptyForm: QuoteForm = {
   quote_number: "",
   title: "",
   customer_name: "",
+  contact_id: null,
+  organization_id: null,
   opportunity_id: "",
   status: "draft",
   issue_date: "",
@@ -62,6 +67,9 @@ type Props = {
 
 export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) {
   const [form, setForm] = useState<QuoteForm>(emptyForm);
+  const [contactSearch, setContactSearch] = useState("");
+  const [accountSearch, setAccountSearch] = useState("");
+  const [dealSearch, setDealSearch] = useState("");
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,12 +81,18 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
   useEffect(() => {
     if (!isOpen) return;
     setForm(emptyForm);
+    setContactSearch("");
+    setAccountSearch("");
+    setDealSearch("");
     setCustomFieldValues({});
     setError(null);
   }, [isOpen]);
 
   function closeModal() {
     setForm(emptyForm);
+    setContactSearch("");
+    setAccountSearch("");
+    setDealSearch("");
     setCustomFieldValues({});
     setError(null);
     onClose();
@@ -92,6 +106,8 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
         quote_number: form.quote_number.trim() || null,
         title: form.title.trim() || null,
         customer_name: form.customer_name.trim(),
+        contact_id: form.contact_id,
+        organization_id: form.organization_id,
         opportunity_id: form.opportunity_id.trim() ? Number(form.opportunity_id) : null,
         status: form.status,
         issue_date: form.issue_date || null,
@@ -103,7 +119,7 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
         total_amount: form.total_amount || "0",
         notes: form.notes.trim() || null,
         custom_fields: customFieldValues,
-      }, moduleFields, ["customer_name", "opportunity_id", "custom_fields"]);
+      }, moduleFields, ["customer_name", "contact_id", "organization_id", "opportunity_id", "custom_fields"]);
       const res = await apiFetch("/sales/quotes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -135,7 +151,101 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
               {fieldEnabled("quote_number") ? <Field label="Quote number"><Input value={form.quote_number} onChange={(event) => setForm({ ...form, quote_number: event.target.value })} placeholder="Auto-generated if blank" /></Field> : null}
               {fieldEnabled("customer_name") ? <Field label="Customer" required><Input value={form.customer_name} onChange={(event) => setForm({ ...form, customer_name: event.target.value })} /></Field> : null}
             </div>
-            <Field label="Deal ID"><Input inputMode="numeric" value={form.opportunity_id} onChange={(event) => setForm({ ...form, opportunity_id: event.target.value })} placeholder="Optional opportunity ID" /></Field>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              {fieldEnabled("contact_id") ? (
+                <Field label="Contact">
+                  <LinkedRecordPicker
+                    recordType="contact"
+                    valueId={form.contact_id}
+                    displayValue={contactSearch}
+                    onDisplayValueChange={(value) => {
+                      setContactSearch(value);
+                      setForm((current) => ({ ...current, contact_id: null }));
+                    }}
+                    onSelect={(option) => {
+                      setContactSearch(option.label);
+                      setForm((current) => ({
+                        ...current,
+                        contact_id: option.id,
+                        organization_id: option.organization_id ?? current.organization_id,
+                        customer_name: current.customer_name.trim() ? current.customer_name : option.label,
+                      }));
+                      if (option.organization_id) {
+                        setAccountSearch(option.organization_name || `Account #${option.organization_id}`);
+                      }
+                    }}
+                    onClear={() => {
+                      setContactSearch("");
+                      setForm((current) => ({ ...current, contact_id: null }));
+                    }}
+                    placeholder="Search contacts"
+                    queryKeyPrefix="quote-create-contact"
+                  />
+                </Field>
+              ) : null}
+              {fieldEnabled("organization_id") ? (
+                <Field label="Account">
+                  <LinkedRecordPicker
+                    recordType="organization"
+                    valueId={form.organization_id}
+                    displayValue={accountSearch}
+                    onDisplayValueChange={(value) => {
+                      setAccountSearch(value);
+                      setForm((current) => ({ ...current, organization_id: null }));
+                    }}
+                    onSelect={(option) => {
+                      setAccountSearch(option.label);
+                      setForm((current) => ({
+                        ...current,
+                        organization_id: option.id,
+                        customer_name: current.customer_name.trim() ? current.customer_name : option.label,
+                      }));
+                    }}
+                    onClear={() => {
+                      setAccountSearch("");
+                      setForm((current) => ({ ...current, organization_id: null }));
+                    }}
+                    placeholder="Search accounts"
+                    queryKeyPrefix="quote-create-account"
+                  />
+                </Field>
+              ) : null}
+              {fieldEnabled("opportunity_id") ? (
+                <Field label="Deal">
+                  <LinkedRecordPicker
+                    recordType="opportunity"
+                    valueId={form.opportunity_id ? Number(form.opportunity_id) : null}
+                    displayValue={dealSearch}
+                    onDisplayValueChange={(value) => {
+                      setDealSearch(value);
+                      setForm((current) => ({ ...current, opportunity_id: "" }));
+                    }}
+                    onSelect={(option) => {
+                      setDealSearch(option.label);
+                      if (option.contact_id) {
+                        setContactSearch(`Contact #${option.contact_id}`);
+                      }
+                      if (option.organization_id) {
+                        setAccountSearch(`Account #${option.organization_id}`);
+                      }
+                      setForm((current) => ({
+                        ...current,
+                        opportunity_id: String(option.id),
+                        contact_id: option.contact_id ?? current.contact_id,
+                        organization_id: option.organization_id ?? current.organization_id,
+                        customer_name: current.customer_name.trim() ? current.customer_name : option.description?.split(" · ")[0] || option.label,
+                      }));
+                    }}
+                    onClear={() => {
+                      setDealSearch("");
+                      setForm((current) => ({ ...current, opportunity_id: "" }));
+                    }}
+                    placeholder="Search deals"
+                    queryKeyPrefix="quote-create-deal"
+                  />
+                </Field>
+              ) : null}
+            </div>
             {fieldEnabled("title") ? <Field label="Title"><Input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} /></Field> : null}
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
               {fieldEnabled("status") ? (

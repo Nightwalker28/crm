@@ -351,7 +351,49 @@ def build_quote_summary(db: Session, quote: SalesQuote) -> dict:
                 record_id=opportunity.opportunity_id,
             )
 
+    contact = None
+    if quote.contact_id:
+        contact = (
+            db.query(SalesContact)
+            .filter(
+                SalesContact.contact_id == quote.contact_id,
+                SalesContact.tenant_id == quote.tenant_id,
+                SalesContact.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if contact:
+            contact = hydrate_custom_field_record(
+                db,
+                tenant_id=quote.tenant_id,
+                module_key="sales_contacts",
+                record=contact,
+                record_id=contact.contact_id,
+            )
+
+    organization = None
+    if quote.organization_id:
+        organization = (
+            db.query(SalesOrganization)
+            .filter(
+                SalesOrganization.org_id == quote.organization_id,
+                SalesOrganization.tenant_id == quote.tenant_id,
+                SalesOrganization.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if organization:
+            organization = hydrate_custom_field_record(
+                db,
+                tenant_id=quote.tenant_id,
+                module_key="sales_organizations",
+                record=organization,
+                record_id=organization.org_id,
+            )
+
     return {
         "quote": quote,
         "opportunity": opportunity,
+        "contact": contact,
+        "organization": organization,
     }

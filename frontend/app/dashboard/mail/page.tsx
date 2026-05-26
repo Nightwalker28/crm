@@ -485,7 +485,7 @@ export default function MailPage() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div>
                 <h2 className="text-base font-semibold text-neutral-100">Compose Mail</h2>
-                <p className="mt-1 text-sm text-neutral-500">Use CRM variable tokens now; merge resolution and record-linked templates can build on this.</p>
+                <p className="mt-1 text-sm text-neutral-500">CRM variables resolve from the linked record or matching contact recipient when mail is sent.</p>
               </div>
               <select
                 value={composeProvider}

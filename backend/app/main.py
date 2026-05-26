@@ -28,7 +28,7 @@ def validate_runtime_configuration():
 # -------------------------
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[] if is_cloud_mode_enabled() else [settings.FRONTEND_ORIGIN],
+    allow_origins=[] if is_cloud_mode_enabled() else settings.FRONTEND_CORS_ORIGINS,
     allow_origin_regex=r"https?://.*" if is_cloud_mode_enabled() else None,
     allow_credentials=True,
     allow_methods=["*"],

@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlparse, urlunparse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,6 +23,32 @@ def _env_int_list(name: str, default: list[int]) -> list[int]:
             continue
         values.append(int(stripped))
     return values or default
+
+
+def _env_str_list(name: str) -> list[str]:
+    return [item.strip() for item in os.getenv(name, "").split(",") if item.strip()]
+
+
+def _loopback_origin_alias(origin: str) -> str | None:
+    parsed = urlparse(origin)
+    if parsed.scheme not in {"http", "https"} or parsed.hostname not in {"localhost", "127.0.0.1"}:
+        return None
+    alias_host = "127.0.0.1" if parsed.hostname == "localhost" else "localhost"
+    netloc = alias_host
+    if parsed.port:
+        netloc = f"{alias_host}:{parsed.port}"
+    return urlunparse((parsed.scheme, netloc, "", "", "", ""))
+
+
+def _frontend_cors_origins(frontend_origin: str, extra_origins: list[str]) -> list[str]:
+    origins: list[str] = []
+    for origin in [frontend_origin.rstrip("/"), *[value.rstrip("/") for value in extra_origins]]:
+        if origin and origin not in origins:
+            origins.append(origin)
+        alias = _loopback_origin_alias(origin)
+        if alias and alias not in origins:
+            origins.append(alias)
+    return origins
 
 
 class Settings:
@@ -130,6 +157,10 @@ class Settings:
     # Frontend
     # -------------------------
     FRONTEND_ORIGIN: str = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")
+    FRONTEND_CORS_ORIGINS: list[str] = _frontend_cors_origins(
+        FRONTEND_ORIGIN,
+        _env_str_list("FRONTEND_CORS_ORIGINS"),
+    )
     REDIS_URL: str | None = os.getenv("REDIS_URL")
     REDIS_CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = int(os.getenv("REDIS_CIRCUIT_BREAKER_FAILURE_THRESHOLD", "3"))
     REDIS_CIRCUIT_BREAKER_COOLDOWN_SECONDS: int = int(os.getenv("REDIS_CIRCUIT_BREAKER_COOLDOWN_SECONDS", "60"))

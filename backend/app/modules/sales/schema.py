@@ -366,6 +366,8 @@ class RelatedOpportunitySummary(BaseModel):
 class QuoteSummaryResponse(BaseModel):
     quote: SalesQuoteResponse
     opportunity: RelatedOpportunitySummary | None = None
+    contact: "ContactCompactSummary | None" = None
+    organization: "OrganizationCompactSummary | None" = None
 
 
 class RelatedInsertionOrderSummary(BaseModel):

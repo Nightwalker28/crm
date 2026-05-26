@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.uploads import build_media_url, delete_local_media_file, persist_media_file, read_image_upload
 from app.modules.platform.models import CustomModuleDefinition
-from app.modules.user_management.models import CompanyProfile, User, UserSavedView, UserTablePreference
+from app.modules.user_management.models import CompanyProfile, User, UserDashboardLayout, UserSavedView, UserTablePreference
 
 
 TABLE_PREFERENCE_MODULES = {
@@ -22,6 +22,25 @@ TABLE_PREFERENCE_MODULES = {
 SAVED_VIEW_MODULES = TABLE_PREFERENCE_MODULES
 SYSTEM_DEFAULT_VIEW_NAME = "Default View"
 COMPANY_OPERATING_CURRENCIES_CACHE_TTL_SECONDS = 300
+DASHBOARD_WIDGET_TYPES = {
+    "crm_snapshot",
+    "module_entry_points",
+    "quick_actions",
+    "recent_activity",
+    "notifications",
+    "lead_status",
+    "deal_stages",
+    "quote_status",
+    "owner_performance",
+    "module_summary",
+    "note",
+    "summary_table",
+    "pipeline_funnel",
+    "report_chart",
+}
+DASHBOARD_WIDGET_SIZES = {"small", "medium", "large", "wide"}
+DASHBOARD_MAX_WIDGETS = 24
+DASHBOARD_MAX_ID_LENGTH = 120
 
 
 def _clean(value: str | None) -> str | None:
@@ -193,6 +212,85 @@ def save_user_table_preference(
     db.commit()
     db.refresh(preference)
     return preference
+
+
+def _normalize_dashboard_layout(layout: dict | None) -> dict:
+    raw_widgets = (layout or {}).get("widgets", [])
+    if not isinstance(raw_widgets, list):
+        raise ValueError("Dashboard layout widgets must be a list")
+    if len(raw_widgets) > DASHBOARD_MAX_WIDGETS:
+        raise ValueError(f"Dashboard layout can include at most {DASHBOARD_MAX_WIDGETS} widgets")
+
+    widgets: list[dict] = []
+    seen_ids: set[str] = set()
+    for index, raw_widget in enumerate(raw_widgets):
+        if not isinstance(raw_widget, dict):
+            raise ValueError("Dashboard widget entries must be objects")
+        widget_type = str(raw_widget.get("type") or "").strip()
+        if widget_type not in DASHBOARD_WIDGET_TYPES:
+            raise ValueError("Unsupported dashboard widget type")
+
+        widget_id = str(raw_widget.get("id") or f"{widget_type}-{index}").strip()
+        if not widget_id or len(widget_id) > DASHBOARD_MAX_ID_LENGTH:
+            raise ValueError("Dashboard widget id is invalid")
+        if widget_id in seen_ids:
+            raise ValueError("Dashboard widget ids must be unique")
+        seen_ids.add(widget_id)
+
+        size = str(raw_widget.get("size") or "medium").strip()
+        if size not in DASHBOARD_WIDGET_SIZES:
+            size = "medium"
+
+        widget = {
+            "id": widget_id,
+            "type": widget_type,
+            "size": size,
+        }
+        module_key = str(raw_widget.get("module_key") or "").strip()
+        if module_key:
+            widget["module_key"] = module_key[:100]
+        config = raw_widget.get("config")
+        if isinstance(config, dict):
+            widget["config"] = config
+        widgets.append(widget)
+    return {"widgets": widgets}
+
+
+def get_user_dashboard_layout(db: Session, user: User) -> dict:
+    layout = (
+        db.query(UserDashboardLayout)
+        .filter(
+            UserDashboardLayout.tenant_id == user.tenant_id,
+            UserDashboardLayout.user_id == user.id,
+        )
+        .first()
+    )
+    if not layout:
+        return {"widgets": [], "has_layout": False}
+    normalized = _normalize_dashboard_layout(layout.layout)
+    normalized["has_layout"] = True
+    return normalized
+
+
+def save_user_dashboard_layout(db: Session, user: User, layout: dict) -> dict:
+    normalized = _normalize_dashboard_layout(layout)
+    record = (
+        db.query(UserDashboardLayout)
+        .filter(
+            UserDashboardLayout.tenant_id == user.tenant_id,
+            UserDashboardLayout.user_id == user.id,
+        )
+        .first()
+    )
+    if not record:
+        record = UserDashboardLayout(tenant_id=user.tenant_id, user_id=user.id)
+
+    record.layout = normalized
+    db.add(record)
+    db.commit()
+    db.refresh(record)
+    normalized["has_layout"] = True
+    return normalized
 
 
 def _is_custom_module_for_user(db: Session, user: User, module_key: str) -> bool:

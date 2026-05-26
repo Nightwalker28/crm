@@ -8,6 +8,8 @@ import { FileText, StickyNote, CheckSquare } from "lucide-react";
 import { toast } from "sonner";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
+import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import CommunicationActions from "@/components/recordActivity/CommunicationActions";
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
@@ -51,12 +53,27 @@ type QuoteSummary = {
     total_cost_of_project?: string | null;
     currency_type?: string | null;
   } | null;
+  contact?: {
+    contact_id: number;
+    first_name?: string | null;
+    last_name?: string | null;
+    primary_email?: string | null;
+    contact_telephone?: string | null;
+  } | null;
+  organization?: {
+    org_id: number;
+    org_name: string;
+    primary_email?: string | null;
+    website?: string | null;
+  } | null;
 };
 
 type QuoteForm = {
   quote_number: string;
   title: string;
   customer_name: string;
+  contact_id: number | null;
+  organization_id: number | null;
   opportunity_id: string;
   status: string;
   issue_date: string;
@@ -73,6 +90,8 @@ const emptyForm: QuoteForm = {
   quote_number: "",
   title: "",
   customer_name: "",
+  contact_id: null,
+  organization_id: null,
   opportunity_id: "",
   status: "draft",
   issue_date: "",
@@ -103,11 +122,19 @@ function formatMoney(value: string | number | null | undefined, currency: string
   return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "USD" }).format(amount);
 }
 
+function getContactLabel(contact: QuoteSummary["contact"]) {
+  if (!contact) return "";
+  return `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() || contact.primary_email || `Contact #${contact.contact_id}`;
+}
+
 export default function QuoteDetailPage() {
   const params = useParams<{ quoteId: string }>();
   const queryClient = useQueryClient();
   const [summary, setSummary] = useState<QuoteSummary | null>(null);
   const [form, setForm] = useState<QuoteForm>(emptyForm);
+  const [contactSearch, setContactSearch] = useState("");
+  const [accountSearch, setAccountSearch] = useState("");
+  const [dealSearch, setDealSearch] = useState("");
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -130,6 +157,8 @@ export default function QuoteDetailPage() {
         quote_number: data.quote.quote_number ?? "",
         title: data.quote.title ?? "",
         customer_name: data.quote.customer_name ?? "",
+        contact_id: data.quote.contact_id ?? null,
+        organization_id: data.quote.organization_id ?? null,
         opportunity_id: data.quote.opportunity_id ? String(data.quote.opportunity_id) : "",
         status: data.quote.status ?? "draft",
         issue_date: data.quote.issue_date ?? "",
@@ -141,6 +170,9 @@ export default function QuoteDetailPage() {
         total_amount: asInputValue(data.quote.total_amount),
         notes: data.quote.notes ?? "",
       });
+      setContactSearch(getContactLabel(data.contact));
+      setAccountSearch(data.organization?.org_name ?? (data.quote.organization_id ? `Account #${data.quote.organization_id}` : ""));
+      setDealSearch(data.opportunity?.opportunity_name ?? (data.quote.opportunity_id ? `Deal #${data.quote.opportunity_id}` : ""));
       setCustomFieldValues(data.quote.custom_fields ?? {});
     } catch (loadError) {
       if (!signal?.cancelled) setError(loadError instanceof Error ? loadError.message : "Failed to load quote");
@@ -166,6 +198,8 @@ export default function QuoteDetailPage() {
         quote_number: form.quote_number.trim(),
         title: form.title.trim() || null,
         customer_name: form.customer_name.trim(),
+        contact_id: form.contact_id,
+        organization_id: form.organization_id,
         opportunity_id: form.opportunity_id.trim() ? Number(form.opportunity_id) : null,
         status: form.status,
         issue_date: form.issue_date || null,
@@ -177,7 +211,7 @@ export default function QuoteDetailPage() {
         total_amount: form.total_amount || "0",
         notes: form.notes.trim() || null,
         custom_fields: customFieldValues,
-      }, moduleFields, ["quote_number", "customer_name", "opportunity_id", "custom_fields"]);
+      }, moduleFields, ["quote_number", "customer_name", "contact_id", "organization_id", "opportunity_id", "custom_fields"]);
       const res = await apiFetch(`/sales/quotes/${params.quoteId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -251,11 +285,103 @@ export default function QuoteDetailPage() {
               <FieldGroup className="grid gap-4 md:grid-cols-2">
                 {fieldEnabled("quote_number") ? <Field><FieldLabel>Quote Number</FieldLabel><Input value={form.quote_number} onChange={(event) => setForm((current) => ({ ...current, quote_number: event.target.value }))} /></Field> : null}
                 {fieldEnabled("customer_name") ? <Field><FieldLabel>Customer</FieldLabel><Input value={form.customer_name} onChange={(event) => setForm((current) => ({ ...current, customer_name: event.target.value }))} /></Field> : null}
+                {fieldEnabled("contact_id") ? (
                 <Field>
-                  <FieldLabel>Deal ID</FieldLabel>
-                  <Input inputMode="numeric" value={form.opportunity_id} onChange={(event) => setForm((current) => ({ ...current, opportunity_id: event.target.value }))} placeholder="Optional opportunity ID" />
+                  <FieldLabel>Contact</FieldLabel>
+                  <LinkedRecordPicker
+                    recordType="contact"
+                    valueId={form.contact_id}
+                    displayValue={contactSearch}
+                    onDisplayValueChange={(value) => {
+                      setContactSearch(value);
+                      setForm((current) => ({ ...current, contact_id: null }));
+                    }}
+                    onSelect={(option) => {
+                      setContactSearch(option.label);
+                      setForm((current) => ({
+                        ...current,
+                        contact_id: option.id,
+                        organization_id: option.organization_id ?? current.organization_id,
+                        customer_name: current.customer_name.trim() ? current.customer_name : option.label,
+                      }));
+                      if (option.organization_id) {
+                        setAccountSearch(option.organization_name || `Account #${option.organization_id}`);
+                      }
+                    }}
+                    onClear={() => {
+                      setContactSearch("");
+                      setForm((current) => ({ ...current, contact_id: null }));
+                    }}
+                    placeholder="Search contacts"
+                    queryKeyPrefix="quote-detail-contact"
+                  />
+                </Field>
+                ) : null}
+                {fieldEnabled("organization_id") ? (
+                <Field>
+                  <FieldLabel>Account</FieldLabel>
+                  <LinkedRecordPicker
+                    recordType="organization"
+                    valueId={form.organization_id}
+                    displayValue={accountSearch}
+                    onDisplayValueChange={(value) => {
+                      setAccountSearch(value);
+                      setForm((current) => ({ ...current, organization_id: null }));
+                    }}
+                    onSelect={(option) => {
+                      setAccountSearch(option.label);
+                      setForm((current) => ({
+                        ...current,
+                        organization_id: option.id,
+                        customer_name: current.customer_name.trim() ? current.customer_name : option.label,
+                      }));
+                    }}
+                    onClear={() => {
+                      setAccountSearch("");
+                      setForm((current) => ({ ...current, organization_id: null }));
+                    }}
+                    placeholder="Search accounts"
+                    queryKeyPrefix="quote-detail-account"
+                  />
+                </Field>
+                ) : null}
+                {fieldEnabled("opportunity_id") ? (
+                <Field>
+                  <FieldLabel>Deal</FieldLabel>
+                  <LinkedRecordPicker
+                    recordType="opportunity"
+                    valueId={form.opportunity_id ? Number(form.opportunity_id) : null}
+                    displayValue={dealSearch}
+                    onDisplayValueChange={(value) => {
+                      setDealSearch(value);
+                      setForm((current) => ({ ...current, opportunity_id: "" }));
+                    }}
+                    onSelect={(option) => {
+                      setDealSearch(option.label);
+                      if (option.contact_id) {
+                        setContactSearch(`Contact #${option.contact_id}`);
+                      }
+                      if (option.organization_id) {
+                        setAccountSearch(`Account #${option.organization_id}`);
+                      }
+                      setForm((current) => ({
+                        ...current,
+                        opportunity_id: String(option.id),
+                        contact_id: option.contact_id ?? current.contact_id,
+                        organization_id: option.organization_id ?? current.organization_id,
+                        customer_name: current.customer_name.trim() ? current.customer_name : option.description?.split(" · ")[0] || option.label,
+                      }));
+                    }}
+                    onClear={() => {
+                      setDealSearch("");
+                      setForm((current) => ({ ...current, opportunity_id: "" }));
+                    }}
+                    placeholder="Search deals"
+                    queryKeyPrefix="quote-detail-deal"
+                  />
                   <FieldDescription>Links this quote to a sales deal and inherits contact/account when available.</FieldDescription>
                 </Field>
+                ) : null}
                 {fieldEnabled("title") ? <Field><FieldLabel>Title</FieldLabel><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></Field> : null}
                 {fieldEnabled("status") ? (
                   <Field>
@@ -297,12 +423,24 @@ export default function QuoteDetailPage() {
                   </div>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <LinkedRecordTile label="Contact" value={summary.quote.contact_id ? `#${summary.quote.contact_id}` : "No contact"} href={summary.quote.contact_id ? `/dashboard/sales/contacts/${summary.quote.contact_id}` : null} />
-                  <LinkedRecordTile label="Account" value={summary.quote.organization_id ? `#${summary.quote.organization_id}` : "No account"} href={summary.quote.organization_id ? `/dashboard/sales/organizations/${summary.quote.organization_id}` : null} />
+                  <LinkedRecordTile label="Contact" value={summary.contact ? getContactLabel(summary.contact) : "No contact"} href={summary.quote.contact_id ? `/dashboard/sales/contacts/${summary.quote.contact_id}` : null} />
+                  <LinkedRecordTile label="Account" value={summary.organization?.org_name || "No account"} href={summary.quote.organization_id ? `/dashboard/sales/organizations/${summary.quote.organization_id}` : null} />
                 </div>
                 <SummaryTile label="Status" value={(summary.quote.status || "draft").replace(/_/g, " ")} />
                 <SummaryTile label="Total" value={formatMoney(summary.quote.total_amount, summary.quote.currency)} />
                 <SummaryTile label="Expires" value={summary.quote.expiry_date ? formatDateOnly(summary.quote.expiry_date) : "No expiry date"} />
+              </div>
+            </Card>
+
+            <Card className="px-5 py-5">
+              <h2 className="text-lg font-semibold text-neutral-100">Communication</h2>
+              <p className="mt-1 text-sm text-neutral-500">Follow up on this quote through the linked contact.</p>
+              <div className="mt-4">
+                <CommunicationActions
+                  email={summary.contact?.primary_email}
+                  phone={summary.contact?.contact_telephone}
+                  followUpTargetId="quote-record-tools"
+                />
               </div>
             </Card>
           </div>
@@ -313,6 +451,12 @@ export default function QuoteDetailPage() {
               entityId={summary.quote.quote_id}
               recordLabel="Quote-level"
               taskSourceLabel={summary.quote.quote_number}
+              followUp={{
+                endpoint: `/sales/quotes/${summary.quote.quote_id}/follow-up`,
+                email: summary.contact?.primary_email,
+                phone: summary.contact?.contact_telephone,
+                onLogged: loadSummary,
+              }}
             />
           </div>
         </>

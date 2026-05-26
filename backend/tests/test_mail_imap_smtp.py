@@ -555,6 +555,46 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(exception_mock.call_args.kwargs["extra"]["tenant_id"], 10)
         self.assertEqual(exception_mock.call_args.kwargs["extra"]["message_id"], message.id)
 
+    def test_send_mail_message_renders_contact_variables_from_recipient(self):
+        connection = UserMailConnection(
+            id=1,
+            tenant_id=10,
+            user_id=1,
+            provider=MailProvider.imap_smtp.value,
+            status="connected",
+            account_email="ava@example.com",
+        )
+        contact = self.db.query(SalesContact).filter(SalesContact.contact_id == 7).first()
+        contact.first_name = "Maya"
+        contact.last_name = "Perera"
+        self.db.add(connection)
+        self.db.commit()
+
+        def mail_message_factory(**kwargs):
+            return MailMessage(id=78, **kwargs)
+
+        with patch.object(mail_services, "_mail_connection_for_user", return_value=connection), \
+             patch.object(mail_services, "_send_imap_smtp_message", return_value="smtp-id") as send_mock, \
+             patch.object(mail_services, "MailMessage", side_effect=mail_message_factory):
+            message = mail_services.send_mail_message(
+                self.db,
+                current_user=self.user,
+                payload={
+                    "provider": MailProvider.imap_smtp.value,
+                    "to": ["lead@example.com"],
+                    "cc": [],
+                    "bcc": [],
+                    "subject": "Hello {{contact.first_name}}",
+                    "body_text": "Dear {{contact.first_name}},\nWelcome to my newsletter",
+                },
+            )
+
+        sent_payload = send_mock.call_args.kwargs["payload"]
+        self.assertEqual(sent_payload["subject"], "Hello Maya")
+        self.assertEqual(sent_payload["body_text"], "Dear Maya,\nWelcome to my newsletter")
+        self.assertEqual(message.subject, "Hello Maya")
+        self.assertEqual(message.body_text, "Dear Maya,\nWelcome to my newsletter")
+
     def test_mail_token_refresh_flushes_without_committing(self):
         db = Mock()
 

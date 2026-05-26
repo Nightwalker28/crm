@@ -34,6 +34,10 @@ def _display_opportunity_name(opportunity) -> str:
     return getattr(opportunity, "opportunity_name", None) or "Opportunity"
 
 
+def _display_quote_name(quote) -> str:
+    return getattr(quote, "quote_number", None) or getattr(quote, "title", None) or "Quote"
+
+
 def _display_lead_name(lead) -> str:
     full_name = " ".join(part for part in [getattr(lead, "first_name", None), getattr(lead, "last_name", None)] if part).strip()
     return full_name or getattr(lead, "primary_email", None) or "Lead"
@@ -99,6 +103,7 @@ def _create_follow_up_task(
             "sales_contacts": "sales_contact",
             "sales_opportunities": "sales_opportunity",
             "sales_leads": "sales_lead",
+            "sales_quotes": "sales_quote",
         }.get(module_key, module_key),
         entity_id=entity_id,
         action="task.follow_up_created",
@@ -260,6 +265,52 @@ def log_opportunity_follow_up(db: Session, *, opportunity, payload: dict, curren
     return {
         "module_key": "sales_opportunities",
         "entity_id": str(opportunity.opportunity_id),
+        "channel": channel,
+        "last_contacted_at": contacted_at,
+        "follow_up_task_id": task.id if task else None,
+    }
+
+
+def log_quote_follow_up(db: Session, *, quote, payload: dict, current_user) -> dict:
+    channel = payload["channel"]
+    if payload.get("create_follow_up_task"):
+        _require_task_create_access(db, current_user=current_user)
+    contacted_at = _utcnow()
+    source_label = _display_quote_name(quote)
+    note = (payload.get("note") or "").strip() or None
+
+    log_activity(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        module_key="sales_quotes",
+        entity_type="sales_quote",
+        entity_id=str(quote.quote_id),
+        action=f"follow_up.{channel}",
+        description=f"Logged {CHANNEL_LABELS[channel]} follow-up for {source_label}",
+        after_state={
+            "channel": channel,
+            "note": note,
+            "last_contacted_at": contacted_at.isoformat(),
+        },
+    )
+
+    task = None
+    if payload.get("create_follow_up_task"):
+        task = _create_follow_up_task(
+            db,
+            current_user=current_user,
+            module_key="sales_quotes",
+            entity_id=str(quote.quote_id),
+            source_label=source_label,
+            channel=channel,
+            due_at=payload.get("follow_up_due_at"),
+            note=note,
+        )
+
+    return {
+        "module_key": "sales_quotes",
+        "entity_id": str(quote.quote_id),
         "channel": channel,
         "last_contacted_at": contacted_at,
         "follow_up_task_id": task.id if task else None,

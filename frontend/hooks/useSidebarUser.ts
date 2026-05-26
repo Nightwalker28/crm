@@ -9,6 +9,7 @@ import { apiFetch } from "@/lib/api";
 const USER_CACHE_KEY = "lynk_user";
 const USER_VERIFIED_AT_KEY = "lynk_user_verified_at";
 const USER_VERIFICATION_TTL_MS = 5 * 60_000;
+const ADMIN_MIN_ROLE_LEVEL = 100;
 
 type UserProfile = {
   id?: number;
@@ -110,7 +111,7 @@ export function useSidebarUser() {
   return {
     user,
     isLoading: !hydrated || needsFreshUser,
-    isAdmin: verified && Boolean(user?.is_admin),
+    isAdmin: verified && Boolean(user?.is_admin || (typeof user?.role_level === "number" && user.role_level >= ADMIN_MIN_ROLE_LEVEL)),
     logout,
   };
 }

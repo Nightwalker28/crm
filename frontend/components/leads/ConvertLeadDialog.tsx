@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ArrowRightLeft } from "lucide-react";
 import { toast } from "sonner";
 
+import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBackdrop, DialogFooter, DialogHeader, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
@@ -42,9 +43,11 @@ const DEAL_STAGES = [
 
 export default function ConvertLeadDialog({ leadId, leadName, company, isOpen, onClose, onConverted }: Props) {
   const [createAccount, setCreateAccount] = useState(true);
-  const [accountId, setAccountId] = useState("");
+  const [accountId, setAccountId] = useState<number | null>(null);
+  const [accountSearch, setAccountSearch] = useState("");
   const [createContact, setCreateContact] = useState(true);
-  const [contactId, setContactId] = useState("");
+  const [contactId, setContactId] = useState<number | null>(null);
+  const [contactSearch, setContactSearch] = useState("");
   const [createDeal, setCreateDeal] = useState(false);
   const [dealName, setDealName] = useState("");
   const [dealStage, setDealStage] = useState("qualified");
@@ -53,7 +56,7 @@ export default function ConvertLeadDialog({ leadId, leadName, company, isOpen, o
   const [result, setResult] = useState<LeadConversionResult | null>(null);
 
   const defaultDealName = useMemo(() => `${company || leadName} opportunity`, [company, leadName]);
-  const canSubmit = !submitting && (createContact || contactId.trim() || !createDeal);
+  const canSubmit = !submitting && (createContact || contactId || !createDeal);
 
   function resetAndClose() {
     setError(null);
@@ -67,9 +70,9 @@ export default function ConvertLeadDialog({ leadId, leadName, company, isOpen, o
       setError(null);
       const payload = {
         create_account: createAccount,
-        account_id: createAccount || !accountId.trim() ? null : Number(accountId),
+        account_id: createAccount ? null : accountId,
         create_contact: createContact,
-        contact_id: createContact || !contactId.trim() ? null : Number(contactId),
+        contact_id: createContact ? null : contactId,
         create_deal: createDeal,
         deal_name: createDeal ? (dealName.trim() || defaultDealName) : null,
         deal_stage: createDeal ? dealStage : null,
@@ -122,8 +125,27 @@ export default function ConvertLeadDialog({ leadId, leadName, company, isOpen, o
             />
             {!createAccount ? (
               <Field>
-                <FieldLabel>Existing account ID</FieldLabel>
-                <Input inputMode="numeric" value={accountId} onChange={(event) => setAccountId(event.target.value)} />
+                <FieldLabel>Existing account</FieldLabel>
+                <LinkedRecordPicker
+                  recordType="organization"
+                  valueId={accountId}
+                  displayValue={accountSearch}
+                  onDisplayValueChange={(value) => {
+                    setAccountSearch(value);
+                    setAccountId(null);
+                  }}
+                  onSelect={(option) => {
+                    setAccountId(option.id);
+                    setAccountSearch(option.label);
+                  }}
+                  onClear={() => {
+                    setAccountId(null);
+                    setAccountSearch("");
+                  }}
+                  placeholder="Search accounts"
+                  queryKeyPrefix="convert-lead-account"
+                  noResultsText="No accounts matched this search."
+                />
               </Field>
             ) : null}
 
@@ -135,8 +157,31 @@ export default function ConvertLeadDialog({ leadId, leadName, company, isOpen, o
             />
             {!createContact ? (
               <Field>
-                <FieldLabel>Existing contact ID</FieldLabel>
-                <Input inputMode="numeric" value={contactId} onChange={(event) => setContactId(event.target.value)} />
+                <FieldLabel>Existing contact</FieldLabel>
+                <LinkedRecordPicker
+                  recordType="contact"
+                  valueId={contactId}
+                  displayValue={contactSearch}
+                  onDisplayValueChange={(value) => {
+                    setContactSearch(value);
+                    setContactId(null);
+                  }}
+                  onSelect={(option) => {
+                    setContactId(option.id);
+                    setContactSearch(option.label);
+                    if (!createAccount && !accountId && option.organization_id) {
+                      setAccountId(option.organization_id);
+                      setAccountSearch(option.organization_name || `Account #${option.organization_id}`);
+                    }
+                  }}
+                  onClear={() => {
+                    setContactId(null);
+                    setContactSearch("");
+                  }}
+                  placeholder="Search contacts"
+                  queryKeyPrefix="convert-lead-contact"
+                  noResultsText="No contacts matched this search."
+                />
               </Field>
             ) : null}
 

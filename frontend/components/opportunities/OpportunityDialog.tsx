@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
+import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -20,10 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
-import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
-import { apiFetch } from "@/lib/api";
 import type { Opportunity, OpportunityPayload } from "@/hooks/sales/useOpportunities";
 
 type Props = {
@@ -35,15 +33,6 @@ type Props = {
 };
 
 type FormState = OpportunityPayload;
-
-type ContactOption = {
-  contact_id: number;
-  first_name?: string | null;
-  last_name?: string | null;
-  primary_email?: string | null;
-  organization_id?: number | null;
-  organization_name?: string | null;
-};
 
 const emptyForm: FormState = {
   opportunity_name: "",
@@ -68,43 +57,14 @@ const emptyForm: FormState = {
   custom_fields: {},
 };
 
-async function fetchContactOptions(search: string): Promise<ContactOption[]> {
-  const params = new URLSearchParams({
-    page: "1",
-    page_size: "10",
-    query: search,
-  });
-
-  const res = await apiFetch(`/sales/contacts/search?${params.toString()}`);
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Failed with ${res.status}`);
-  }
-
-  const body = await res.json().catch(() => ({ results: [] }));
-  return Array.isArray(body?.results) ? body.results : [];
-}
-
-function getContactDisplay(option: ContactOption): string {
-  return `${option.first_name ?? ""} ${option.last_name ?? ""}`.trim() || option.primary_email || "Unnamed contact";
-}
-
 export default function OpportunityDialog({ open, opportunity, isSubmitting = false, onClose, onSubmit }: Props) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [error, setError] = useState<string | null>(null);
   const [contactSearch, setContactSearch] = useState("");
-  const [isContactDropdownOpen, setIsContactDropdownOpen] = useState(false);
-  const debouncedContactSearch = useDebouncedValue(contactSearch.trim(), 300);
   const customFieldsQuery = useModuleCustomFields("sales_opportunities", open);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_opportunities", false, open);
   const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
   const currenciesQuery = useCompanyCurrencies(open);
-  const contactQuery = useQuery({
-    queryKey: ["opportunity-contact-options", debouncedContactSearch],
-    queryFn: () => fetchContactOptions(debouncedContactSearch),
-    enabled: open && debouncedContactSearch.length > 0,
-    staleTime: 30_000,
-  });
 
   useEffect(() => {
     if (!open) return;
@@ -137,7 +97,6 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
     );
     setError(null);
     setContactSearch(opportunity?.client ?? "");
-    setIsContactDropdownOpen(false);
   }, [open, opportunity]);
 
   async function handleSubmit() {
@@ -173,67 +132,36 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
               {fieldEnabled("contact_id") ? (
               <Field>
                 <FieldLabel>Client Contact <RequiredMark /></FieldLabel>
-                <div className="relative">
-                  <Input
-                    value={contactSearch}
-                    onFocus={() => setIsContactDropdownOpen(true)}
-                    onBlur={() => {
-                      window.setTimeout(() => setIsContactDropdownOpen(false), 120);
-                    }}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      setContactSearch(value);
-                      setForm((c) => ({
-                        ...c,
-                        contact_id: null,
-                        organization_id: null,
-                        client: value,
-                      }));
-                    }}
-                    placeholder="Search existing contact"
-                  />
-
-                  {isContactDropdownOpen && contactSearch.trim() ? (
-                    <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-20 rounded-md border border-neutral-800 bg-neutral-950 shadow-2xl">
-                      {contactQuery.isLoading ? (
-                        <div className="px-3 py-2 text-sm text-neutral-500">Searching contacts…</div>
-                      ) : contactQuery.error ? (
-                        <div className="px-3 py-2 text-sm text-red-300">
-                          {contactQuery.error instanceof Error ? contactQuery.error.message : "Failed to search contacts."}
-                        </div>
-                      ) : (contactQuery.data ?? []).length ? (
-                        <div className="max-h-56 overflow-y-auto py-1">
-                          {(contactQuery.data ?? []).map((option) => (
-                            <button
-                              key={option.contact_id}
-                              type="button"
-                              className="flex w-full items-center justify-between px-3 py-2 text-left hover:bg-neutral-900"
-                              onMouseDown={(event) => event.preventDefault()}
-                              onClick={() => {
-                                const display = getContactDisplay(option);
-                                setContactSearch(display);
-                                setForm((c) => ({
-                                  ...c,
-                                  contact_id: option.contact_id,
-                                  organization_id: option.organization_id ?? c.organization_id ?? null,
-                                  client: display,
-                                }));
-                                setIsContactDropdownOpen(false);
-                              }}
-                            >
-                              <span className="text-sm text-neutral-100">{getContactDisplay(option)}</span>
-                              <span className="text-xs text-neutral-500">
-                                {option.organization_name || option.primary_email || "Existing contact"}
-                              </span>
-                            </button>
-                          ))}
-                        </div>
-                      ) : (
-                        <div className="px-3 py-2 text-sm text-neutral-500">No existing contacts matched this search.</div>
-                      )}
-                    </div>
-                  ) : null}
-                </div>
+                <LinkedRecordPicker
+                  recordType="contact"
+                  valueId={form.contact_id ?? null}
+                  displayValue={contactSearch}
+                  onDisplayValueChange={(value) => {
+                    setContactSearch(value);
+                    setForm((c) => ({
+                      ...c,
+                      contact_id: null,
+                      organization_id: null,
+                      client: value,
+                    }));
+                  }}
+                  onSelect={(option) => {
+                    setContactSearch(option.label);
+                    setForm((c) => ({
+                      ...c,
+                      contact_id: option.id,
+                      organization_id: option.organization_id ?? c.organization_id ?? null,
+                      client: option.label,
+                    }));
+                  }}
+                  onClear={() => {
+                    setContactSearch("");
+                    setForm((c) => ({ ...c, contact_id: null, organization_id: null, client: "" }));
+                  }}
+                  placeholder="Search existing contact"
+                  queryKeyPrefix="opportunity-dialog-contact"
+                  noResultsText="No existing contacts matched this search."
+                />
                 <FieldDescription>Deals must be linked to an existing sales contact.</FieldDescription>
               </Field>
               ) : null}

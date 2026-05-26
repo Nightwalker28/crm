@@ -2,7 +2,7 @@ from typing import Optional, List, Any
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 class UserStatus(str, Enum):
     pending = "pending"
@@ -356,6 +356,23 @@ class TablePreferenceResponse(BaseModel):
 
 class TablePreferenceUpdateRequest(BaseModel):
     visible_columns: list[str]
+
+
+class DashboardWidgetLayout(BaseModel):
+    id: str
+    type: str
+    size: str = "medium"
+    module_key: str | None = None
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class DashboardLayoutResponse(BaseModel):
+    widgets: list[DashboardWidgetLayout]
+    has_layout: bool = False
+
+
+class DashboardLayoutUpdateRequest(BaseModel):
+    widgets: list[DashboardWidgetLayout]
 
 
 class SavedViewConfig(BaseModel):

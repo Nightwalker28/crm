@@ -8,6 +8,8 @@ from app.modules.user_management.schema import (
     CompanyProfileResponse,
     CompanyLogoUploadResponse,
     CompanyProfileUpdateRequest,
+    DashboardLayoutResponse,
+    DashboardLayoutUpdateRequest,
     ModuleSchema,
     SavedViewCreateRequest,
     SavedViewResponse,
@@ -28,7 +30,9 @@ from app.modules.user_management.services.profile import (
     _is_system_saved_view,
     update_saved_view,
     delete_saved_view,
+    get_user_dashboard_layout,
     get_user_table_preference,
+    save_user_dashboard_layout,
     save_user_table_preference,
     upload_company_logo,
     upload_user_photo,
@@ -75,6 +79,26 @@ def get_my_modules(
     db: Session = Depends(get_db),
 ):
     return get_user_accessible_modules(current_user, db)
+
+
+@router.get("/dashboard-layout", response_model=DashboardLayoutResponse)
+def get_dashboard_layout(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+):
+    return get_user_dashboard_layout(db, current_user)
+
+
+@router.put("/dashboard-layout", response_model=DashboardLayoutResponse)
+def update_dashboard_layout(
+    payload: DashboardLayoutUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+):
+    try:
+        return save_user_dashboard_layout(db, current_user, payload.model_dump())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/company", response_model=CompanyProfileResponse)

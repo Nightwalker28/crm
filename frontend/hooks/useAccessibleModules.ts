@@ -60,16 +60,15 @@ function sameAccessibleModules(a: AccessibleModule[], b: AccessibleModule[]) {
 }
 
 export function useAccessibleModules() {
-  const [state, setState] = useState(() => {
-    const cachedModules = readCachedModules();
-    return {
-      modules: cachedModules ?? [],
-      isLoading: cachedModules === null,
-    };
+  const [state, setState] = useState({
+    modules: [] as AccessibleModule[],
+    isLoading: true,
   });
 
   useEffect(() => {
-    if (readCachedModules() !== null) {
+    const cachedModules = readCachedModules();
+    if (cachedModules !== null) {
+      setState({ modules: cachedModules, isLoading: false });
       return;
     }
 

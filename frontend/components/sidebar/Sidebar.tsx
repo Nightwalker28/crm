@@ -5,6 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   BriefcaseBusiness,
+  Boxes,
+  Landmark,
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
@@ -42,26 +44,24 @@ type SidebarGroupConfig = {
 
 const SYSTEM_GROUPS: Record<string, Omit<SidebarGroupConfig, "items">> = {
   sales: { key: "sales", label: "Sales", icon: BriefcaseBusiness, sortOrder: 10 },
-  other: { key: "other", label: "Other", icon: Wrench, sortOrder: 80 },
+  finance: { key: "finance", label: "Finance", icon: Landmark, sortOrder: 20 },
+  catalog: { key: "catalog", label: "Products & Services", icon: Boxes, sortOrder: 30 },
+  other: { key: "other", label: "Other", icon: Wrench, sortOrder: 100 },
   settings: { key: "settings", label: "Settings", icon: Settings2, sortOrder: 90 },
 };
 
-const CRM_SIDEBAR_MODULES = new Set([
-  "sales_leads",
-  "sales_organizations",
-  "sales_contacts",
-  "sales_opportunities",
-  "sales_quotes",
-  "tasks",
-  "reports",
-]);
-
-const CRM_SALES_MODULE_ORDER: Record<string, number> = {
+const MODULE_ITEM_ORDER: Record<string, number> = {
   sales_leads: 10,
   sales_organizations: 20,
   sales_contacts: 30,
   sales_opportunities: 40,
   sales_quotes: 50,
+  finance_io: 10,
+  finance_insertion_orders: 10,
+  finance_pos: 20,
+  catalog_products: 10,
+  catalog_services: 20,
+  reports: 90,
 };
 
 function subscribeToSidebarCollapse(onStoreChange: () => void) {
@@ -105,8 +105,8 @@ function getCanonicalHref(module: AccessibleModule) {
 }
 
 function sidebarItemSortValue(item: { label: string; moduleName?: string }) {
-  if (item.moduleName && item.moduleName in CRM_SALES_MODULE_ORDER) {
-    return CRM_SALES_MODULE_ORDER[item.moduleName];
+  if (item.moduleName && item.moduleName in MODULE_ITEM_ORDER) {
+    return MODULE_ITEM_ORDER[item.moduleName];
   }
   return 1_000;
 }
@@ -131,7 +131,6 @@ function buildOperationalGroups(modules: AccessibleModule[]) {
   }
 
   for (const crmModule of modules) {
-    if (!CRM_SIDEBAR_MODULES.has(crmModule.name)) continue;
     if (!crmModule.base_route) continue;
     if (crmModule.sidebar_tab_key === HIDDEN_SIDEBAR_TAB_KEY) continue;
     if (crmModule.base_route === DASHBOARD_ROUTES.home || crmModule.base_route.startsWith(SETTINGS_ROUTES.root)) continue;

@@ -18,6 +18,7 @@ import urllib.parse
 import requests
 from fastapi import HTTPException, Request, status
 from jose import jwt, JWTError
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
@@ -32,7 +33,9 @@ from app.modules.mail.models import MailMessage, UserMailConnection
 from app.modules.mail.repositories import mail_repository
 from app.modules.mail.schema import MailProvider
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.message_templates import render_template_text
 from app.modules.platform.services.record_comments import get_record_comment_module_config, get_record_reference
+from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
 from app.modules.user_management.models import Tenant, User, UserStatus
 
 
@@ -737,6 +740,173 @@ def _normalize_source_value(value) -> str | None:
     return normalized or None
 
 
+def _full_name(first_name: str | None, last_name: str | None, fallback: str | None = None) -> str:
+    return " ".join(part for part in [first_name, last_name] if part).strip() or fallback or ""
+
+
+def _organization_token_values(organization: SalesOrganization | None) -> dict[str, str]:
+    if not organization:
+        return {}
+    return {
+        "id": str(organization.org_id),
+        "name": organization.org_name or "",
+        "email": organization.primary_email or "",
+        "phone": organization.primary_phone or "",
+        "website": organization.website or "",
+        "industry": organization.industry or "",
+    }
+
+
+def _contact_token_values(contact: SalesContact | None) -> dict[str, str]:
+    if not contact:
+        return {}
+    return {
+        "id": str(contact.contact_id),
+        "first_name": contact.first_name or "",
+        "last_name": contact.last_name or "",
+        "full_name": _full_name(contact.first_name, contact.last_name, contact.primary_email),
+        "email": contact.primary_email or "",
+        "primary_email": contact.primary_email or "",
+        "phone": contact.contact_telephone or "",
+        "title": contact.current_title or "",
+        "organization_name": contact.organization_name or "",
+    }
+
+
+def _opportunity_token_values(opportunity: SalesOpportunity | None) -> dict[str, str]:
+    if not opportunity:
+        return {}
+    return {
+        "id": str(opportunity.opportunity_id),
+        "name": opportunity.opportunity_name or "",
+        "stage": opportunity.sales_stage or "",
+        "client": opportunity.client or "",
+        "value": opportunity.total_cost_of_project or "",
+        "currency": opportunity.currency_type or "",
+    }
+
+
+def _quote_token_values(quote: SalesQuote | None) -> dict[str, str]:
+    if not quote:
+        return {}
+    return {
+        "id": str(quote.quote_id),
+        "number": quote.quote_number or "",
+        "title": quote.title or "",
+        "customer_name": quote.customer_name or "",
+        "status": quote.status or "",
+        "currency": quote.currency or "",
+        "total": str(quote.total_amount or ""),
+    }
+
+
+def _lead_token_values(lead) -> dict[str, str]:
+    if not lead:
+        return {}
+    return {
+        "id": str(lead.lead_id),
+        "first_name": lead.first_name or "",
+        "last_name": lead.last_name or "",
+        "full_name": _full_name(lead.first_name, lead.last_name, lead.primary_email),
+        "email": lead.primary_email or "",
+        "primary_email": lead.primary_email or "",
+        "phone": lead.phone or "",
+        "company": lead.company or "",
+        "title": lead.title or "",
+        "status": lead.status or "",
+    }
+
+
+def _template_values_for_contact(contact: SalesContact) -> dict[str, object]:
+    organization = contact.organization
+    contact_values = _contact_token_values(contact)
+    organization_values = _organization_token_values(organization)
+    return {
+        "contact": contact_values,
+        "organization": organization_values,
+        "customer_name": contact_values.get("full_name", ""),
+        "first_name": contact_values.get("first_name", ""),
+        "last_name": contact_values.get("last_name", ""),
+        "primary_email": contact_values.get("primary_email", ""),
+        "organization_name": organization_values.get("name") or contact_values.get("organization_name", ""),
+    }
+
+
+def _find_contact_for_single_recipient(db: Session, *, tenant_id: int, recipients: list[str]) -> SalesContact | None:
+    if len(recipients) != 1:
+        return None
+    email_address = recipients[0].strip().lower()
+    if not email_address:
+        return None
+    return (
+        db.query(SalesContact)
+        .filter(
+            SalesContact.tenant_id == tenant_id,
+            SalesContact.deleted_at.is_(None),
+            func.lower(SalesContact.primary_email) == email_address,
+        )
+        .first()
+    )
+
+
+def _mail_template_values(db: Session, *, current_user: User, payload: dict) -> dict[str, object]:
+    values: dict[str, object] = {
+        "user": {
+            "first_name": current_user.first_name or "",
+            "last_name": current_user.last_name or "",
+            "full_name": _full_name(current_user.first_name, current_user.last_name, current_user.email),
+            "email": current_user.email or "",
+        }
+    }
+    module_key = _normalize_source_value(payload.get("source_module_key"))
+    entity_id = _normalize_source_value(payload.get("source_entity_id"))
+    contact: SalesContact | None = None
+    organization: SalesOrganization | None = None
+    opportunity: SalesOpportunity | None = None
+    quote: SalesQuote | None = None
+
+    if module_key == "sales_contacts" and entity_id:
+        contact = db.query(SalesContact).filter(SalesContact.tenant_id == current_user.tenant_id, SalesContact.contact_id == int(entity_id), SalesContact.deleted_at.is_(None)).first()
+    elif module_key == "sales_organizations" and entity_id:
+        organization = db.query(SalesOrganization).filter(SalesOrganization.tenant_id == current_user.tenant_id, SalesOrganization.org_id == int(entity_id), SalesOrganization.deleted_at.is_(None)).first()
+    elif module_key == "sales_opportunities" and entity_id:
+        opportunity = db.query(SalesOpportunity).filter(SalesOpportunity.tenant_id == current_user.tenant_id, SalesOpportunity.opportunity_id == int(entity_id), SalesOpportunity.deleted_at.is_(None)).first()
+        contact = opportunity.contact if opportunity else None
+        organization = opportunity.organization if opportunity else None
+    elif module_key == "sales_quotes" and entity_id:
+        quote = db.query(SalesQuote).filter(SalesQuote.tenant_id == current_user.tenant_id, SalesQuote.quote_id == int(entity_id), SalesQuote.deleted_at.is_(None)).first()
+        contact = quote.contact if quote else None
+        organization = quote.organization if quote else None
+        opportunity = quote.opportunity if quote else None
+    elif module_key == "sales_leads" and entity_id:
+        from app.modules.sales.models import SalesLead
+
+        lead = db.query(SalesLead).filter(SalesLead.tenant_id == current_user.tenant_id, SalesLead.lead_id == int(entity_id), SalesLead.deleted_at.is_(None)).first()
+        if lead:
+            lead_values = _lead_token_values(lead)
+            values["lead"] = lead_values
+            values.setdefault("contact", lead_values)
+            values.setdefault("organization", {"name": lead_values.get("company", "")})
+    if not contact:
+        contact = _find_contact_for_single_recipient(db, tenant_id=current_user.tenant_id, recipients=payload.get("to") or [])
+    if contact and "contact" not in values:
+        values.update(_template_values_for_contact(contact))
+        organization = organization or contact.organization
+    values.setdefault("contact", {})
+    values.setdefault("organization", _organization_token_values(organization))
+    values.setdefault("opportunity", _opportunity_token_values(opportunity))
+    values.setdefault("quote", _quote_token_values(quote))
+    return values
+
+
+def _render_mail_template_variables(db: Session, *, current_user: User, payload: dict) -> dict:
+    values = _mail_template_values(db, current_user=current_user, payload=payload)
+    rendered = dict(payload)
+    rendered["subject"] = render_template_text(payload.get("subject") or "", values)
+    rendered["body_text"] = render_template_text(payload.get("body_text") or "", values)
+    return rendered
+
+
 def _resolve_mail_source_context(db: Session, *, current_user: User, payload: dict) -> dict | None:
     module_key = _normalize_source_value(payload.get("source_module_key"))
     entity_id = _normalize_source_value(payload.get("source_entity_id"))
@@ -917,6 +1087,7 @@ def _send_imap_smtp_message(*, db: Session, connection: UserMailConnection, payl
 def send_mail_message(db: Session, *, current_user: User, payload: dict) -> MailMessage:
     provider = MailProvider(payload["provider"])
     source_context = _resolve_mail_source_context(db, current_user=current_user, payload=payload)
+    payload = _render_mail_template_variables(db, current_user=current_user, payload=payload)
     connection = _mail_connection_for_user(
         db,
         tenant_id=current_user.tenant_id,

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.modules.platform.models import MessageTemplate
 
 
-PLACEHOLDER_REGEX = re.compile(r"{{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*}}")
+PLACEHOLDER_REGEX = re.compile(r"{{\s*([a-zA-Z_][a-zA-Z0-9_]*(?:\.[a-zA-Z_][a-zA-Z0-9_]*)*)\s*}}")
 
 
 def _utcnow() -> datetime:
@@ -41,15 +41,33 @@ def validate_template_body(body: str, variables: list[str]) -> None:
         )
 
 
-def render_template_body(template: MessageTemplate, values: dict[str, Any]) -> str:
+def _resolve_template_value(values: dict[str, Any], key: str) -> Any:
+    if key in values:
+        return values[key]
+    current: Any = values
+    for part in key.split("."):
+        if isinstance(current, dict):
+            current = current.get(part)
+        else:
+            current = getattr(current, part, None)
+        if current is None:
+            return None
+    return current
+
+
+def render_template_text(body: str, values: dict[str, Any]) -> str:
     def replace(match: re.Match[str]) -> str:
         key = match.group(1)
-        value = values.get(key)
+        value = _resolve_template_value(values, key)
         if value is None:
             return ""
         return str(value)
 
-    return PLACEHOLDER_REGEX.sub(replace, template.body)
+    return PLACEHOLDER_REGEX.sub(replace, body or "")
+
+
+def render_template_body(template: MessageTemplate, values: dict[str, Any]) -> str:
+    return render_template_text(template.body, values)
 
 
 def serialize_message_template(template: MessageTemplate) -> dict[str, Any]:
