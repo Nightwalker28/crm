@@ -2,12 +2,12 @@
 
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Edit3, Plus, Power, Trash2 } from "lucide-react";
+import { Edit3, Plus, Power, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -44,15 +44,76 @@ type TemplateDraft = {
 const CHANNEL_OPTIONS = [
   { value: "whatsapp", label: "WhatsApp" },
   { value: "mail", label: "Mail" },
-  { value: "task", label: "Tasks" },
 ];
 
 const MODULE_OPTIONS = [
+  "sales_leads",
   "sales_contacts",
   "sales_organizations",
   "sales_opportunities",
-  "finance_io",
+  "sales_quotes",
   "tasks",
+];
+
+const VARIABLE_LIBRARY: Record<string, string[]> = {
+  common: ["company_name", "sender_name", "meeting_date", "meeting_time", "next_step"],
+  sales_leads: ["lead_name", "first_name", "last_name", "company", "primary_email", "phone", "source"],
+  sales_contacts: ["customer_name", "first_name", "last_name", "primary_email", "phone", "organization_name"],
+  sales_organizations: ["organization_name", "primary_email", "primary_phone", "website"],
+  sales_opportunities: ["deal_name", "customer_name", "organization_name", "deal_value", "expected_close_date"],
+  sales_quotes: ["quote_number", "customer_name", "organization_name", "total_amount", "expiry_date"],
+  tasks: ["task_title", "due_at", "priority", "source_label"],
+};
+
+const CRM_TEMPLATE_PRESETS = [
+  {
+    label: "Lead intro",
+    channel: "mail",
+    module_key: "sales_leads",
+    name: "Lead intro",
+    description: "First response to a new or qualified lead.",
+    body: "Hi {{first_name}},\n\nThanks for reaching out to {{company_name}}. I wanted to introduce myself and learn a little more about what you are looking for.\n\nWould {{meeting_date}} work for a quick conversation?\n\nBest,\n{{sender_name}}",
+  },
+  {
+    label: "Follow-up",
+    channel: "whatsapp",
+    module_key: "sales_contacts",
+    name: "Follow-up",
+    description: "General customer follow-up after a conversation.",
+    body: "Hi {{first_name}}, following up on our last conversation. Please let me know if {{next_step}} still works for you.",
+  },
+  {
+    label: "Meeting request",
+    channel: "mail",
+    module_key: "sales_contacts",
+    name: "Meeting request",
+    description: "Request a meeting with a known contact.",
+    body: "Hi {{first_name}},\n\nCan we schedule a meeting on {{meeting_date}} at {{meeting_time}} to discuss the next steps?\n\nBest,\n{{sender_name}}",
+  },
+  {
+    label: "Quote follow-up",
+    channel: "whatsapp",
+    module_key: "sales_quotes",
+    name: "Quote follow-up",
+    description: "Follow up after sharing a quote.",
+    body: "Hi {{customer_name}}, checking in on quote {{quote_number}} for {{total_amount}}. Please let us know if you have questions before {{expiry_date}}.",
+  },
+  {
+    label: "Deal negotiation",
+    channel: "mail",
+    module_key: "sales_opportunities",
+    name: "Deal negotiation",
+    description: "Continue a negotiation on an open deal.",
+    body: "Hi {{customer_name}},\n\nFollowing up on {{deal_name}}. Based on our discussion, the next step is {{next_step}}.\n\nBest,\n{{sender_name}}",
+  },
+  {
+    label: "Support handoff",
+    channel: "mail",
+    module_key: "sales_contacts",
+    name: "Support handoff",
+    description: "Hand a customer from sales to support or delivery.",
+    body: "Hi {{first_name}},\n\nI am connecting you with our support team for {{next_step}}. They will have the context from our sales conversation.\n\nBest,\n{{sender_name}}",
+  },
 ];
 
 const emptyDraft: TemplateDraft = {
@@ -74,6 +135,16 @@ function textToVariables(value: string) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function extractTemplateVariables(body: string) {
+  return Array.from(body.matchAll(/{{\s*([a-zA-Z_][a-zA-Z0-9_]*)\s*}}/g))
+    .map((match) => match[1])
+    .filter(Boolean);
+}
+
+function mergedVariables(body: string, variables: string) {
+  return Array.from(new Set([...textToVariables(variables), ...extractTemplateVariables(body)])).sort();
 }
 
 function toDraft(template: MessageTemplate): TemplateDraft {
@@ -112,7 +183,7 @@ export default function MessageTemplatesPage() {
         channel: draft.channel,
         module_key: draft.module_key || null,
         body: draft.body,
-        variables: textToVariables(draft.variables),
+        variables: mergedVariables(draft.body, draft.variables),
         is_active: draft.is_active,
       };
       const res = await apiFetch(editingId ? `/message-templates/${editingId}` : "/message-templates", {
@@ -166,6 +237,10 @@ export default function MessageTemplatesPage() {
   });
 
   const isSaving = saveMutation.isPending || updateMutation.isPending || deleteMutation.isPending;
+  const visibleVariables = mergedVariables(draft.body, draft.variables);
+  const suggestedVariables = Array.from(
+    new Set([...(VARIABLE_LIBRARY.common ?? []), ...(VARIABLE_LIBRARY[draft.module_key] ?? [])]),
+  );
 
   return (
     <div className="flex flex-col gap-5 text-neutral-200">
@@ -179,7 +254,7 @@ export default function MessageTemplatesPage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-neutral-100">{editingId ? "Edit Template" : "Add Template"}</h2>
-              <p className="mt-1 text-sm text-neutral-500">Use variables like {"{{contact_first_name}}"} in the body.</p>
+              <p className="mt-1 text-sm text-neutral-500">Start from a CRM preset or write a channel-specific template.</p>
             </div>
             {editingId ? (
               <Button type="button" variant="outline" size="sm" onClick={() => { setEditingId(null); setDraft(emptyDraft); }}>
@@ -189,6 +264,35 @@ export default function MessageTemplatesPage() {
           </div>
 
           <FieldGroup className="mt-4 grid gap-4">
+            <Field>
+              <FieldLabel>CRM presets</FieldLabel>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {CRM_TEMPLATE_PRESETS.map((preset) => (
+                  <Button
+                    key={preset.label}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="justify-start"
+                    onClick={() => {
+                      setEditingId(null);
+                      setDraft({
+                        name: preset.name,
+                        description: preset.description,
+                        channel: preset.channel,
+                        module_key: preset.module_key,
+                        body: preset.body,
+                        variables: extractTemplateVariables(preset.body).join(", "),
+                        is_active: true,
+                      });
+                    }}
+                  >
+                    <Sparkles className="h-4 w-4" />
+                    {preset.label}
+                  </Button>
+                ))}
+              </div>
+            </Field>
             <Field>
               <FieldLabel>Name</FieldLabel>
               <Input value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} placeholder="Quote follow-up" />
@@ -228,10 +332,42 @@ export default function MessageTemplatesPage() {
                 onChange={(event) => setDraft((current) => ({ ...current, body: event.target.value }))}
                 className="min-h-32 border-neutral-800 bg-neutral-950 text-neutral-100"
               />
+              <FieldDescription>
+                Variables wrapped in braces are saved automatically, for example {"{{first_name}}"}.
+              </FieldDescription>
             </Field>
             <Field>
               <FieldLabel>Variables</FieldLabel>
               <Input value={draft.variables} onChange={(event) => setDraft((current) => ({ ...current, variables: event.target.value }))} placeholder="contact_first_name, organization_name" />
+              {visibleVariables.length ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {visibleVariables.map((variable) => (
+                    <span key={variable} className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-300">
+                      {`{{${variable}}}`}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </Field>
+            <Field>
+              <FieldLabel>Suggested variables</FieldLabel>
+              <div className="flex flex-wrap gap-2">
+                {suggestedVariables.map((variable) => (
+                  <button
+                    key={variable}
+                    type="button"
+                    className="rounded-full border border-neutral-800 bg-neutral-950 px-2 py-1 text-xs text-neutral-400 transition-colors hover:border-neutral-700 hover:text-neutral-100"
+                    onClick={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        variables: mergedVariables(current.body, `${current.variables}, ${variable}`).join(", "),
+                      }))
+                    }
+                  >
+                    {`{{${variable}}}`}
+                  </button>
+                ))}
+              </div>
             </Field>
             <label className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-300">
               Active

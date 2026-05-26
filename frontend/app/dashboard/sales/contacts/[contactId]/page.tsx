@@ -11,6 +11,7 @@ import { apiFetch } from "@/lib/api";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import CommunicationActions from "@/components/recordActivity/CommunicationActions";
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
+import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -40,16 +41,6 @@ type RelatedQuote = {
   currency?: string | null;
   total_amount?: number | string | null;
   expiry_date?: string | null;
-};
-
-type RelatedInsertionOrder = {
-  id: number;
-  io_number: string;
-  customer_name?: string | null;
-  status?: string | null;
-  total_amount?: number | null;
-  currency?: string | null;
-  updated_at?: string | null;
 };
 
 type OrganizationCompact = {
@@ -82,11 +73,9 @@ type ContactSummary = {
   organization?: OrganizationCompact | null;
   related_opportunities: RelatedOpportunity[];
   related_quotes: RelatedQuote[];
-  related_insertion_orders: RelatedInsertionOrder[];
   inferred_services: string[];
   opportunity_count: number;
   quote_count: number;
-  insertion_order_count: number;
 };
 
 type MessageTemplate = {
@@ -295,9 +284,18 @@ export default function ContactDetailPage() {
         title={summary ? `${summary.contact.first_name || ""} ${summary.contact.last_name || ""}`.trim() || summary.contact.primary_email || "Contact" : "Contact"}
         description="Review the contact record, linked account, related deals, and inferred service history."
         primaryAction={(
-          <Button onClick={handleSave} disabled={saving || !form.primary_email.trim()}>
-            {saving ? "Saving..." : "Save Contact"}
-          </Button>
+          <>
+            <RecordDeleteButton
+              endpoint={`/sales/contacts/${params.contactId}`}
+              label="Contact"
+              recordName={summary ? `${summary.contact.first_name || ""} ${summary.contact.last_name || ""}`.trim() || summary.contact.primary_email : "this contact"}
+              redirectHref="/dashboard/sales/contacts"
+              queryKeys={["sales-contacts"]}
+            />
+            <Button onClick={handleSave} disabled={saving || !form.primary_email.trim()}>
+              {saving ? "Saving..." : "Save Contact"}
+            </Button>
+          </>
         )}
       />
 
@@ -427,10 +425,6 @@ export default function ContactDetailPage() {
                     <div className="text-xs uppercase tracking-wide text-neutral-500">Quotes</div>
                     <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.quote_count}</div>
                   </div>
-                  <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                    <div className="text-xs uppercase tracking-wide text-neutral-500">Insertion Orders</div>
-                    <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.insertion_order_count}</div>
-                  </div>
                 </div>
                 <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
                   <div className="text-xs uppercase tracking-wide text-neutral-500">Inferred Services</div>
@@ -524,7 +518,7 @@ export default function ContactDetailPage() {
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4 lg:grid-cols-2">
             <Card className="px-5 py-5">
               <h2 className="text-lg font-semibold text-neutral-100">Related Deals</h2>
               <div className="mt-4 space-y-3">
@@ -556,19 +550,6 @@ export default function ContactDetailPage() {
               </div>
             </Card>
 
-            <Card className="px-5 py-5">
-              <h2 className="text-lg font-semibold text-neutral-100">Related Insertion Orders</h2>
-              <FieldDescription className="mt-1">These are inferred from the linked organization because contacts are not directly attached to finance records yet.</FieldDescription>
-              <div className="mt-4 space-y-3">
-                {summary.related_insertion_orders.length ? summary.related_insertion_orders.map((order) => (
-                  <div key={order.id} className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                    <div className="text-sm font-semibold text-neutral-100">{order.io_number}</div>
-                    <div className="mt-1 text-sm text-neutral-500">{order.customer_name || "Unknown customer"} · {order.status || "Unknown status"}</div>
-                    <div className="mt-2 text-sm text-neutral-300">{formatMoney(order.total_amount, order.currency)}</div>
-                  </div>
-                )) : <div className="text-sm text-neutral-500">No related insertion orders yet.</div>}
-              </div>
-            </Card>
           </div>
 
           <div id="contact-record-tools" className="scroll-mt-6">

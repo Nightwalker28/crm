@@ -5,9 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import {
   BriefcaseBusiness,
-  HandCoins,
   LogOut,
-  Package,
   PanelLeftClose,
   PanelLeftOpen,
   Settings2,
@@ -39,15 +37,31 @@ type SidebarGroupConfig = {
   label: string;
   icon: ComponentType<{ className?: string }>;
   sortOrder: number;
-  items: Array<{ href: string; label: string }>;
+  items: Array<{ href: string; label: string; moduleName?: string }>;
 };
 
 const SYSTEM_GROUPS: Record<string, Omit<SidebarGroupConfig, "items">> = {
   sales: { key: "sales", label: "Sales", icon: BriefcaseBusiness, sortOrder: 10 },
-  finance: { key: "finance", label: "Finance", icon: HandCoins, sortOrder: 20 },
-  catalog: { key: "catalog", label: "Products & Services", icon: Package, sortOrder: 30 },
   other: { key: "other", label: "Other", icon: Wrench, sortOrder: 80 },
   settings: { key: "settings", label: "Settings", icon: Settings2, sortOrder: 90 },
+};
+
+const CRM_SIDEBAR_MODULES = new Set([
+  "sales_leads",
+  "sales_organizations",
+  "sales_contacts",
+  "sales_opportunities",
+  "sales_quotes",
+  "tasks",
+  "reports",
+]);
+
+const CRM_SALES_MODULE_ORDER: Record<string, number> = {
+  sales_leads: 10,
+  sales_organizations: 20,
+  sales_contacts: 30,
+  sales_opportunities: 40,
+  sales_quotes: 50,
 };
 
 function subscribeToSidebarCollapse(onStoreChange: () => void) {
@@ -85,11 +99,16 @@ function getCanonicalHref(module: AccessibleModule) {
   if (module.name === "sales_contacts") return DASHBOARD_ROUTES.contacts;
   if (module.name === "sales_opportunities") return DASHBOARD_ROUTES.deals;
   if (module.name === "sales_quotes") return DASHBOARD_ROUTES.quotes;
-  if (module.name === "finance_pos") return DASHBOARD_ROUTES.financePos;
-  if (module.name === "finance_io") return DASHBOARD_ROUTES.insertionOrders;
-  if (module.name === "catalog_products") return DASHBOARD_ROUTES.products;
-  if (module.name === "catalog_services") return DASHBOARD_ROUTES.services;
+  if (module.name === "reports") return DASHBOARD_ROUTES.reports;
+  if (module.name === "tasks") return "/dashboard/tasks";
   return module.base_route || "";
+}
+
+function sidebarItemSortValue(item: { label: string; moduleName?: string }) {
+  if (item.moduleName && item.moduleName in CRM_SALES_MODULE_ORDER) {
+    return CRM_SALES_MODULE_ORDER[item.moduleName];
+  }
+  return 1_000;
 }
 
 function buildOperationalGroups(modules: AccessibleModule[]) {
@@ -112,6 +131,7 @@ function buildOperationalGroups(modules: AccessibleModule[]) {
   }
 
   for (const crmModule of modules) {
+    if (!CRM_SIDEBAR_MODULES.has(crmModule.name)) continue;
     if (!crmModule.base_route) continue;
     if (crmModule.sidebar_tab_key === HIDDEN_SIDEBAR_TAB_KEY) continue;
     if (crmModule.base_route === DASHBOARD_ROUTES.home || crmModule.base_route.startsWith(SETTINGS_ROUTES.root)) continue;
@@ -119,7 +139,7 @@ function buildOperationalGroups(modules: AccessibleModule[]) {
     const href = getCanonicalHref(crmModule);
     if (!href) continue;
     const group = ensureGroup(crmModule);
-    group.items.push({ href, label: moduleLabel(crmModule) });
+    group.items.push({ href, label: moduleLabel(crmModule), moduleName: crmModule.name });
   }
 
   return Array.from(groupMap.values())
@@ -127,7 +147,7 @@ function buildOperationalGroups(modules: AccessibleModule[]) {
       ...group,
       items: group.items
         .filter((item, index, items) => items.findIndex((candidate) => candidate.href === item.href) === index)
-        .sort((a, b) => a.label.localeCompare(b.label)),
+        .sort((a, b) => sidebarItemSortValue(a) - sidebarItemSortValue(b) || a.label.localeCompare(b.label)),
     }))
     .filter((group) => group.items.length > 0)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
@@ -153,20 +173,6 @@ function settingsGroup(): SidebarGroupConfig {
   };
 }
 
-function addReportsGroup(groups: SidebarGroupConfig[]) {
-  const item = { href: DASHBOARD_ROUTES.reports, label: "Reports" };
-  const existing = groups.find((group) => group.key === "other");
-  if (existing) {
-    if (!existing.items.some((candidate) => candidate.href === item.href)) {
-      existing.items.push(item);
-      existing.items.sort((a, b) => a.label.localeCompare(b.label));
-    }
-    return groups;
-  }
-  groups.push({ ...SYSTEM_GROUPS.other, items: [item] });
-  return groups.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
-}
-
 function activeGroupKey(pathname: string, groups: SidebarGroupConfig[]) {
   const active = groups.find((group) =>
     group.items.some((item) => pathname === item.href || pathname.startsWith(item.href + "/")),
@@ -186,7 +192,6 @@ export default function Sidebar() {
 
   const groups = useMemo(() => {
     const next = buildOperationalGroups(modules);
-    if (modules.length) addReportsGroup(next);
     if (isAdmin) next.push(settingsGroup());
     return next;
   }, [isAdmin, modules]);

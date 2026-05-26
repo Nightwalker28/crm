@@ -10,6 +10,7 @@ import { apiFetch } from "@/lib/api";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import CommunicationActions from "@/components/recordActivity/CommunicationActions";
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
+import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -49,15 +50,6 @@ type RelatedQuote = {
   expiry_date?: string | null;
 };
 
-type RelatedInsertionOrder = {
-  id: number;
-  io_number: string;
-  customer_name?: string | null;
-  status?: string | null;
-  total_amount?: number | null;
-  currency?: string | null;
-};
-
 type OrganizationSummary = {
   organization: {
     org_id: number;
@@ -81,12 +73,10 @@ type OrganizationSummary = {
   related_contacts: RelatedContact[];
   related_opportunities: RelatedOpportunity[];
   related_quotes: RelatedQuote[];
-  related_insertion_orders: RelatedInsertionOrder[];
   inferred_services: string[];
   contact_count: number;
   opportunity_count: number;
   quote_count: number;
-  insertion_order_count: number;
 };
 
 type OrganizationForm = {
@@ -242,11 +232,20 @@ export default function OrganizationDetailPage() {
         backHref="/dashboard/sales/organizations"
         backLabel="Back to Accounts"
         title={summary?.organization.org_name || "Account"}
-        description="Review linked contacts, deals, insertion orders, and edit the organization record directly on the page."
+        description="Review linked contacts, deals, quotes, and edit the account record directly on the page."
         primaryAction={(
-          <Button onClick={handleSave} disabled={saving || !form.org_name.trim()}>
-            {saving ? "Saving..." : "Save Account"}
-          </Button>
+          <>
+            <RecordDeleteButton
+              endpoint={`/sales/organizations/${params.orgId}`}
+              label="Account"
+              recordName={summary?.organization.org_name || "this account"}
+              redirectHref="/dashboard/sales/organizations"
+              queryKeys={["sales-organizations"]}
+            />
+            <Button onClick={handleSave} disabled={saving || !form.org_name.trim()}>
+              {saving ? "Saving..." : "Save Account"}
+            </Button>
+          </>
         )}
       />
 
@@ -380,10 +379,6 @@ export default function OrganizationDetailPage() {
                     <div className="text-xs uppercase tracking-wide text-neutral-500">Quotes</div>
                     <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.quote_count}</div>
                   </div>
-                  <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                    <div className="text-xs uppercase tracking-wide text-neutral-500">Insertion Orders</div>
-                    <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.insertion_order_count}</div>
-                  </div>
                 </div>
                 <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
                   <div className="text-xs uppercase tracking-wide text-neutral-500">Inferred Services</div>
@@ -466,20 +461,6 @@ export default function OrganizationDetailPage() {
               </div>
             </Card>
           </div>
-
-          <Card className="px-5 py-5">
-            <h2 className="text-lg font-semibold text-neutral-100">Insertion Orders</h2>
-            <FieldDescription className="mt-1">Matched by organization name against the finance customer fields.</FieldDescription>
-            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                {summary.related_insertion_orders.length ? summary.related_insertion_orders.map((order) => (
-                  <div key={order.id} className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                    <div className="text-sm font-semibold text-neutral-100">{order.io_number}</div>
-                    <div className="mt-1 text-sm text-neutral-500">{order.status || "Unknown status"}</div>
-                    <div className="mt-2 text-sm text-neutral-300">{formatMoney(order.total_amount, order.currency)}</div>
-                  </div>
-                )) : <div className="text-sm text-neutral-500">No linked insertion orders.</div>}
-            </div>
-          </Card>
 
           <CrmRecordActivitySection
             moduleKey="sales_organizations"

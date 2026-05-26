@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
+import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -204,7 +205,18 @@ export default function QuoteDetailPage() {
         backLabel="Back to Quotes"
         title={summary ? summary.quote.quote_number || "Quote" : "Quote"}
         description="Review quote value, customer status, and record history."
-        primaryAction={<Button onClick={handleSave} disabled={saving || !form.customer_name.trim() || !form.quote_number.trim()}>{saving ? "Saving..." : "Save Quote"}</Button>}
+        primaryAction={(
+          <>
+            <RecordDeleteButton
+              endpoint={`/sales/quotes/${params.quoteId}`}
+              label="Quote"
+              recordName={summary?.quote.quote_number || "this quote"}
+              redirectHref="/dashboard/sales/quotes"
+              queryKeys={["sales-quotes"]}
+            />
+            <Button onClick={handleSave} disabled={saving || !form.customer_name.trim() || !form.quote_number.trim()}>{saving ? "Saving..." : "Save Quote"}</Button>
+          </>
+        )}
       />
 
       {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}

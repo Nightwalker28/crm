@@ -48,6 +48,15 @@ class CatalogModuleFoundationTests(unittest.TestCase):
 
         self.assertEqual(stale_modules, [])
 
+    def test_crm_administration_modules_are_seeded(self):
+        default_modules = _load_default_modules()
+        modules_by_name = {module["name"]: module for module in default_modules}
+
+        self.assertEqual(modules_by_name["reports"]["base_route"], "/dashboard/reports")
+        self.assertEqual(modules_by_name["message_templates"]["base_route"], "/dashboard/settings/message-templates")
+        self.assertIn("crm", modules_by_name["reports"]["description"].lower())
+        self.assertIn("templates", modules_by_name["message_templates"]["description"].lower())
+
 
 if __name__ == "__main__":
     unittest.main()

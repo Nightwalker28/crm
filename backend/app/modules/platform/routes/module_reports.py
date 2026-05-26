@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
+from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.schema import (
     ModuleReportModuleListResponse,
@@ -33,8 +34,21 @@ def _parse_report_filters(filter_logic: str, filters: str | None, filters_all: s
 def list_report_modules(
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_module=Depends(require_module_access("reports")),
+    require_permission=Depends(require_action_access("reports", "view")),
 ):
     return {"results": module_reports.list_report_modules(db, current_user)}
+
+
+@router.get("/crm-summary")
+def get_crm_dashboard_summary(
+    period_days: int = Query(default=30, ge=1, le=365),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("reports")),
+    require_permission=Depends(require_action_access("reports", "view")),
+):
+    return module_reports.generate_crm_dashboard_summary(db, current_user, period_days=period_days)
 
 
 @router.get("/saved", response_model=SavedModuleReportListResponse)
@@ -42,6 +56,8 @@ def list_saved_reports(
     module_key: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_module=Depends(require_module_access("reports")),
+    require_permission=Depends(require_action_access("reports", "view")),
 ):
     return {"results": module_reports.list_saved_reports(db, current_user, module_key=module_key)}
 
@@ -51,6 +67,8 @@ def create_saved_report(
     payload: SavedModuleReportCreateRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_module=Depends(require_module_access("reports")),
+    require_permission=Depends(require_action_access("reports", "create")),
 ):
     return module_reports.create_saved_report(
         db,
@@ -67,6 +85,8 @@ def update_saved_report(
     payload: SavedModuleReportUpdateRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_module=Depends(require_module_access("reports")),
+    require_permission=Depends(require_action_access("reports", "edit")),
 ):
     return module_reports.update_saved_report(
         db,
@@ -82,6 +102,8 @@ def delete_saved_report(
     report_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_module=Depends(require_module_access("reports")),
+    require_permission=Depends(require_action_access("reports", "delete")),
 ):
     module_reports.delete_saved_report(db, current_user, report_id=report_id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
@@ -101,6 +123,8 @@ def export_module_report_csv(
     limit: int = Query(default=50, ge=1, le=50),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_module=Depends(require_module_access("reports")),
+    require_permission=Depends(require_action_access("reports", "export")),
 ):
     all_conditions, any_conditions = _parse_report_filters(filter_logic, filters, filters_all, filters_any)
     report = module_reports.generate_module_report(
@@ -137,6 +161,8 @@ def generate_module_report(
     limit: int = Query(default=12, ge=1, le=50),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_module=Depends(require_module_access("reports")),
+    require_permission=Depends(require_action_access("reports", "view")),
 ):
     all_conditions, any_conditions = _parse_report_filters(filter_logic, filters, filters_all, filters_any)
     return module_reports.generate_module_report(

@@ -21,6 +21,7 @@ from app.modules.platform.services.custom_fields import (
 )
 from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization
 from app.modules.sales.repositories import leads_repository, organizations_repository
+from app.modules.sales.services.opportunities_services import OPPORTUNITY_STAGE_SET
 from app.modules.user_management.models import User
 
 
@@ -110,6 +111,13 @@ def _validate_status(value: str | None) -> str:
     normalized = (value or "new").strip().lower()
     if normalized not in LEAD_STATUSES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid lead status")
+    return normalized
+
+
+def _validate_conversion_deal_stage(value: str | None) -> str:
+    normalized = (_coerce_optional(value) or "qualified").strip().lower().replace(" ", "_")
+    if normalized not in OPPORTUNITY_STAGE_SET:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid deal stage")
     return normalized
 
 
@@ -360,6 +368,7 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
 
     assigned_to = payload.get("assigned_to") or lead.assigned_to or current_user.id
     _ensure_assigned_user(db, assigned_to, tenant_id=tenant_id)
+    deal_stage = _validate_conversion_deal_stage(payload.get("deal_stage")) if payload.get("create_deal") else None
 
     create_account = bool(payload.get("create_account", True))
     account_id = payload.get("account_id")
@@ -417,12 +426,11 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
         if contact is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A contact is required to create a deal")
         deal_name = _coerce_optional(payload.get("deal_name")) or f"{_display_lead_name(lead)} opportunity"
-        stage = _coerce_optional(payload.get("deal_stage")) or "qualified"
         opportunity = SalesOpportunity(
             tenant_id=tenant_id,
             opportunity_name=deal_name,
             client=" ".join(part for part in [contact.first_name, contact.last_name] if part).strip() or contact.primary_email,
-            sales_stage=stage,
+            sales_stage=deal_stage,
             contact_id=contact.contact_id,
             organization_id=organization.org_id if organization else contact.organization_id,
             assigned_to=assigned_to,

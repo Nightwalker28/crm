@@ -17,6 +17,7 @@ from app.core.security import get_current_user, require_admin, require_user
 from app.main import app
 from app.modules.sales.routes import contacts_routes, organizations_routes
 from app.modules.sales.schema import (
+    SalesLeadResponse,
     SalesContactResponse,
     SalesOpportunityResponse,
     SalesOrganizationResponse,
@@ -724,6 +725,88 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), fake_result)
         create_mock.assert_called_once()
+
+    def test_lead_conversion_route_checks_target_module_permissions(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+        lead = SalesLeadResponse(
+            lead_id=15,
+            first_name="Ada",
+            last_name="Lovelace",
+            company="Analytical Engines",
+            primary_email="ada@example.com",
+            status="qualified",
+            assigned_to=7,
+            created_time=datetime.utcnow(),
+        )
+        result = {
+            "lead": lead,
+            "account_id": 22,
+            "contact_id": 33,
+            "deal_id": 44,
+            "created_account": False,
+            "created_contact": False,
+            "created_deal": True,
+        }
+
+        with patch("app.core.permissions.require_department_module_access"), patch(
+            "app.core.permissions.require_role_module_action_access",
+        ), patch(
+            "app.modules.sales.routes.leads_routes.require_role_module_action_access",
+        ) as target_permission_mock, patch(
+            "app.modules.sales.routes.leads_routes.get_lead_or_404",
+            return_value=lead,
+        ), patch(
+            "app.modules.sales.routes.leads_routes.convert_sales_lead",
+            return_value=result,
+        ), patch(
+            "app.modules.sales.routes.leads_routes.log_activity",
+        ):
+            response = self.client.post(
+                "/api/v1/sales/leads/15/convert",
+                json={
+                    "create_account": True,
+                    "account_id": 22,
+                    "create_contact": False,
+                    "contact_id": 33,
+                    "create_deal": True,
+                    "deal_stage": "qualified",
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            [(call.kwargs["module_key"], call.kwargs["action"]) for call in target_permission_mock.call_args_list],
+            [
+                ("sales_organizations", "view"),
+                ("sales_contacts", "view"),
+                ("sales_opportunities", "create"),
+            ],
+        )
+
+    def test_crm_summary_report_route_calls_service(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+        fake_result = {
+            "period_days": 14,
+            "lead_status": [],
+            "deal_stages": [],
+            "quote_status": [],
+            "owner_performance": [],
+        }
+
+        with patch("app.core.permissions.require_department_module_access"), patch(
+            "app.core.permissions.require_role_module_action_access",
+        ), patch(
+            "app.modules.platform.routes.module_reports.module_reports.generate_crm_dashboard_summary",
+            return_value=fake_result,
+        ) as summary_mock:
+            response = self.client.get("/api/v1/reports/crm-summary?period_days=14")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), fake_result)
+        summary_mock.assert_called_once()
+        self.assertEqual(summary_mock.call_args.kwargs["period_days"], 14)
 
     def test_sales_opportunity_stage_route_logs_close_activity(self):
         app.dependency_overrides[require_user] = self._active_user

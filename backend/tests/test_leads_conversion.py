@@ -122,6 +122,40 @@ class LeadConversionTests(unittest.TestCase):
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "Lead is already converted")
 
+    def test_convert_lead_rejects_invalid_deal_stage_before_creating_records(self):
+        lead = SalesLead(
+            lead_id=103,
+            tenant_id=10,
+            first_name="Ada",
+            last_name="Lovelace",
+            company="Analytical Engines",
+            primary_email="ada-stage@example.com",
+            status="qualified",
+            assigned_to=1,
+        )
+        self.db.add(lead)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as exc:
+            convert_sales_lead(
+                self.db,
+                lead,
+                {
+                    "create_account": True,
+                    "create_contact": True,
+                    "create_deal": True,
+                    "deal_stage": "not-a-stage",
+                },
+                current_user=self.current_user,
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Invalid deal stage")
+        self.assertEqual(self.db.query(SalesOrganization).filter(SalesOrganization.tenant_id == 10).count(), 0)
+        self.assertEqual(self.db.query(SalesContact).filter(SalesContact.tenant_id == 10).count(), 0)
+        self.assertEqual(self.db.query(SalesOpportunity).filter(SalesOpportunity.tenant_id == 10).count(), 0)
+        self.assertEqual(self.db.get(SalesLead, lead.lead_id).status, "qualified")
+
 
 if __name__ == "__main__":
     unittest.main()

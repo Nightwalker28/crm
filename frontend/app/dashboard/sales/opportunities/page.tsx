@@ -112,7 +112,6 @@ export default function OpportunitiesPage() {
     createOpportunity,
     updateOpportunity,
     updateOpportunityStage,
-    createFinanceIo,
     isSaving,
     isDeleting,
   } = useOpportunities(visibleColumns, activeFilters);
@@ -157,7 +156,7 @@ export default function OpportunitiesPage() {
     <div className="flex flex-col gap-6">
       <PageHeader
         title="Deals"
-        description="Track pipeline, project value, and finance handoff."
+        description="Track pipeline, project value, and stage movement."
         actions={
           <>
             {/* 1. View selector */}
@@ -290,10 +289,6 @@ export default function OpportunitiesPage() {
           onEdit={(opportunity) => {
             router.push(`/dashboard/sales/opportunities/${opportunity.opportunity_id}`);
           }}
-          onCreateFinanceIo={async (opportunity) => {
-            await createFinanceIo(opportunity.opportunity_id);
-            toast.success("Finance insertion order created.");
-          }}
         />
       ) : (
         <OpportunitiesPipelineBoard
@@ -308,10 +303,6 @@ export default function OpportunitiesPage() {
             await updateOpportunityStage(opportunity.opportunity_id, salesStage);
             await pipelineSummaryQuery.refetch();
             toast.success("Deal stage updated.");
-          }}
-          onCreateFinanceIo={async (opportunity) => {
-            await createFinanceIo(opportunity.opportunity_id);
-            toast.success("Finance insertion order created.");
           }}
         />
       )}

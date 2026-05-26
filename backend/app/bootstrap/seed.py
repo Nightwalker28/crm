@@ -32,6 +32,8 @@ DEFAULT_MODULES = [
     {"name": "mail", "base_route": "/dashboard/mail", "description": "Mailbox integration and CRM communication history"},
     {"name": "calendar", "base_route": "/dashboard/calendar", "description": "Shared user calendar and scheduling"},
     {"name": "tasks", "base_route": "/dashboard/tasks", "description": "Collaborative task management and assignment"},
+    {"name": "reports", "base_route": "/dashboard/reports", "description": "CRM reports and saved report views"},
+    {"name": "message_templates", "base_route": "/dashboard/settings/message-templates", "description": "Reusable CRM message templates for communication channels"},
     {"name": "finance_io", "base_route": "/dashboard/finance/insertion-orders", "description": "Finance insertion orders"},
     {"name": "finance_pos", "base_route": "/dashboard/finance/pos", "description": "POS mode invoices and walk-in sales"},
     {"name": "sales_leads", "base_route": "/dashboard/sales/leads", "description": "Sales leads"},

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BarChart3, Download, FileDown, PieChart as PieChartIcon, Save, Table2, Trash2 } from "lucide-react";
@@ -67,6 +67,18 @@ type SavedReport = {
   updated_at: string;
 };
 
+type ReportPreset = {
+  key: string;
+  label: string;
+  description: string;
+  module_key: string;
+  dimension: string;
+  metric: "count" | "sum";
+  metric_field?: string;
+  filters?: SavedViewFilters;
+  view_mode: "table" | "bar" | "pie";
+};
+
 const DEFAULT_FILTERS: SavedViewFilters = {
   search: "",
   logic: "all",
@@ -75,7 +87,79 @@ const DEFAULT_FILTERS: SavedViewFilters = {
   any_conditions: [],
 };
 
+const CRM_REPORT_MODULE_KEYS = new Set(["sales_leads", "sales_contacts", "sales_organizations", "sales_opportunities", "sales_quotes", "tasks"]);
+const CRM_TASK_SOURCE_MODULE_KEYS = ["sales_leads", "sales_contacts", "sales_organizations", "sales_opportunities", "sales_quotes"];
 const CHART_COLORS = ["#8bdbc1", "#7aa7ff", "#f2c86b", "#e58fb1", "#9fd56e", "#c2a5ff", "#f09568", "#6ed4e8"];
+
+const CRM_REPORT_PRESETS: ReportPreset[] = [
+  {
+    key: "lead-funnel",
+    label: "Lead funnel",
+    description: "Leads grouped by lifecycle status.",
+    module_key: "sales_leads",
+    dimension: "status",
+    metric: "count",
+    view_mode: "bar",
+  },
+  {
+    key: "deal-pipeline",
+    label: "Deal pipeline",
+    description: "Deals grouped by pipeline stage.",
+    module_key: "sales_opportunities",
+    dimension: "sales_stage",
+    metric: "count",
+    view_mode: "bar",
+  },
+  {
+    key: "activity-follow-up",
+    label: "Activity and follow-up",
+    description: "Open CRM tasks grouped by status.",
+    module_key: "tasks",
+    dimension: "status",
+    metric: "count",
+    filters: {
+      ...DEFAULT_FILTERS,
+      logic: "all",
+      all_conditions: [{ id: "crm-open-tasks", field: "status", operator: "is_not", value: "completed" }],
+      any_conditions: CRM_TASK_SOURCE_MODULE_KEYS.map((moduleKey) => ({
+        id: `crm-task-source-${moduleKey}`,
+        field: "source_module_key",
+        operator: "is",
+        value: moduleKey,
+      })),
+    },
+    view_mode: "bar",
+  },
+  {
+    key: "quote-value",
+    label: "Quote report",
+    description: "Quote value grouped by status.",
+    module_key: "sales_quotes",
+    dimension: "status",
+    metric: "sum",
+    metric_field: "total_amount",
+    view_mode: "bar",
+  },
+  {
+    key: "owner-performance",
+    label: "Owner performance",
+    description: "Deals grouped by assigned owner.",
+    module_key: "sales_opportunities",
+    dimension: "assigned_to",
+    metric: "count",
+    view_mode: "bar",
+  },
+];
+
+function cloneFilters(filters: SavedViewFilters = DEFAULT_FILTERS): SavedViewFilters {
+  return {
+    ...DEFAULT_FILTERS,
+    ...filters,
+    conditions: Array.isArray(filters.conditions) ? [...filters.conditions] : [],
+    all_conditions: Array.isArray(filters.all_conditions) ? [...filters.all_conditions] : [],
+    any_conditions: Array.isArray(filters.any_conditions) ? [...filters.any_conditions] : [],
+  };
+}
 
 function toFilterField(field: ReportField): ModuleFilterField {
   return {
@@ -189,13 +273,13 @@ export default function ReportsPage() {
   const [actionError, setActionError] = useState("");
 
   const modulesQuery = useQuery({ queryKey: ["report-modules"], queryFn: fetchReportModules, staleTime: 5 * 60_000 });
-  const modules = modulesQuery.data?.results ?? [];
+  const modules = (modulesQuery.data?.results ?? []).filter((item) => CRM_REPORT_MODULE_KEYS.has(item.module_key));
   const selectedModule = modules.find((item) => item.module_key === moduleKey) ?? modules[0] ?? null;
   const activeModuleKey = selectedModule?.module_key ?? "";
   const activeDimension = dimension || selectedModule?.default_dimension || selectedModule?.dimensions[0]?.key || "";
   const activeMetricField = metricField || selectedModule?.metrics[0]?.key || "";
 
-  const filterFields = useMemo(() => (selectedModule?.filter_fields ?? []).map(toFilterField), [selectedModule]);
+  const filterFields = (selectedModule?.filter_fields ?? []).map(toFilterField);
   const reportQuery = useQuery({
     queryKey: ["module-report", activeModuleKey, activeDimension, metric, activeMetricField, filters],
     queryFn: () => fetchReport(activeModuleKey, activeDimension, metric, activeMetricField, filters),
@@ -257,7 +341,7 @@ export default function ReportsPage() {
     setDimension(nextModule?.default_dimension || nextModule?.dimensions[0]?.key || "");
     setMetric("count");
     setMetricField(nextModule?.metrics[0]?.key || "");
-    setFilters(DEFAULT_FILTERS);
+    setFilters(cloneFilters());
     setViewMode("bar");
     setSelectedSavedId("");
     setActionError("");
@@ -270,8 +354,27 @@ export default function ReportsPage() {
     setDimension(saved.config.dimension || "");
     setMetric(saved.config.metric || "count");
     setMetricField(saved.config.metric_field || "");
-    setFilters({ ...DEFAULT_FILTERS, ...(saved.config.filters ?? {}) });
+    setFilters(cloneFilters(saved.config.filters));
     setViewMode(saved.config.view_mode || "bar");
+    setActionError("");
+  }
+
+  function applyReportPreset(preset: ReportPreset) {
+    const nextModule = modules.find((item) => item.module_key === preset.module_key);
+    if (!nextModule) {
+      setActionError("This CRM report is not available with your current module permissions.");
+      return;
+    }
+    const hasDimension = nextModule.dimensions.some((item) => item.key === preset.dimension);
+    const hasMetricField = preset.metric_field ? nextModule.metrics.some((item) => item.key === preset.metric_field) : true;
+
+    setModuleKey(preset.module_key);
+    setDimension(hasDimension ? preset.dimension : nextModule.default_dimension || nextModule.dimensions[0]?.key || "");
+    setMetric(preset.metric === "sum" && hasMetricField ? "sum" : "count");
+    setMetricField(preset.metric === "sum" && hasMetricField ? preset.metric_field || "" : nextModule.metrics[0]?.key || "");
+    setFilters(cloneFilters(preset.filters));
+    setViewMode(preset.view_mode);
+    setSelectedSavedId("");
     setActionError("");
   }
 
@@ -317,7 +420,7 @@ export default function ReportsPage() {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col gap-4 border-b border-neutral-800/80 pb-5 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-xl font-semibold text-neutral-100">Reports</h1>
+          <h1 className="text-xl font-semibold text-neutral-100">CRM Reports</h1>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={exportCsv} disabled={!chartData.length}>
@@ -354,6 +457,28 @@ export default function ReportsPage() {
           </Button>
         </div>
       </div>
+
+      <Card className="px-4 py-4">
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-neutral-100">Report presets</h2>
+            <p className="mt-1 text-sm text-neutral-400">Start from the core CRM reports, then refine dates, owners, and filters.</p>
+          </div>
+        </div>
+        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+          {CRM_REPORT_PRESETS.map((preset) => (
+            <button
+              key={preset.key}
+              type="button"
+              onClick={() => applyReportPreset(preset)}
+              className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-3 text-left transition hover:border-brand-400/70 hover:bg-neutral-900 focus:outline-none focus:ring-2 focus:ring-brand-400/60"
+            >
+              <span className="block text-sm font-medium text-neutral-100">{preset.label}</span>
+              <span className="mt-1 block text-xs leading-5 text-neutral-400">{preset.description}</span>
+            </button>
+          ))}
+        </div>
+      </Card>
 
       <Card className="px-4 py-4">
         <div className="mb-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">

@@ -1,9 +1,6 @@
 "use client";
 
-import { HandCoins } from "lucide-react";
-
 import { Pill } from "@/components/ui/Pill";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
@@ -21,7 +18,6 @@ type Props = {
   isRefreshing?: boolean;
   onEdit: (opportunity: Opportunity) => void;
   onStageChange: (opportunity: Opportunity, salesStage: string) => void;
-  onCreateFinanceIo: (opportunity: Opportunity) => void;
 };
 
 function formatValue(value?: string | null) {
@@ -34,7 +30,6 @@ export default function OpportunitiesPipelineBoard({
   isRefreshing = false,
   onEdit,
   onStageChange,
-  onCreateFinanceIo,
 }: Props) {
   const grouped = new Map<string, Opportunity[]>();
 
@@ -64,7 +59,7 @@ export default function OpportunitiesPipelineBoard({
       <div className="border-b border-neutral-800 px-5 py-4">
         <h2 className="text-base font-semibold text-neutral-100">Pipeline View</h2>
         <p className="mt-1 text-sm text-neutral-400">
-          Review the currently loaded opportunity set in a stage-based board while keeping edit and finance handoff in the same flow.
+          Review the currently loaded deal set in a stage-based board while keeping edits in the same flow.
         </p>
       </div>
 
@@ -164,19 +159,6 @@ export default function OpportunitiesPipelineBoard({
                           <span className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">
                             {opportunity.currency_type || "USD"}
                           </span>
-                          <Button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              onCreateFinanceIo(opportunity);
-                            }}
-                            size="sm"
-                            variant="outline"
-                            className="h-7 gap-1 border-emerald-800/60 bg-emerald-950/20 px-2 text-[11px] text-emerald-300 hover:bg-emerald-950/40 hover:text-emerald-200"
-                          >
-                            <HandCoins className="h-3.5 w-3.5" />
-                            Finance
-                          </Button>
                         </div>
                       </div>
                     ))

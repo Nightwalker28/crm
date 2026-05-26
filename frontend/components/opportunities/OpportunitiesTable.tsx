@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
-import { HandCoins, BriefcaseBusiness } from "lucide-react";
+import { BriefcaseBusiness } from "lucide-react";
 
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
@@ -32,7 +32,6 @@ type Props = {
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
   onEdit: (opportunity: Opportunity) => void;
-  onCreateFinanceIo: (opportunity: Opportunity) => void;
   selectedIds?: number[];
   currentPageSelectionState?: boolean | "indeterminate";
   onToggleRow?: (opportunityId: number, checked: boolean) => void;
@@ -55,7 +54,6 @@ export default function OpportunitiesTable({
   visibleColumns = [],
   columnOptions = [],
   onEdit,
-  onCreateFinanceIo,
   selectedIds = [],
   currentPageSelectionState = false,
   onToggleRow,
@@ -185,7 +183,6 @@ export default function OpportunitiesTable({
                 {headers[column] ?? getReadableColumnLabel(column, columnOptions)}
               </TableHead>
             ))}
-            <TableHead className="text-right pr-5">Actions</TableHead>
           </TableHeaderRow>
         </TableHeader>
         <TableBody>
@@ -220,20 +217,6 @@ export default function OpportunitiesTable({
                 {visibleColumns.map((column) => (
                   <Fragment key={column}>{renderCell(opportunity, column)}</Fragment>
                 ))}
-                <TableCell
-                  className="text-right pr-4"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <div className="flex items-center justify-end gap-1">
-                    <button
-                      onClick={() => onCreateFinanceIo(opportunity)}
-                      className="p-1.5 rounded-md text-emerald-400 hover:text-emerald-300 hover:bg-emerald-950/40 transition-colors"
-                      title="Create finance IO"
-                    >
-                      <HandCoins size={14} />
-                    </button>
-                  </div>
-                </TableCell>
               </TableRow>
             ))
           )}

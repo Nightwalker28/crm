@@ -15,6 +15,7 @@ from app.core.module_csv import (
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
+from app.core.access_control import require_role_module_action_access
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
@@ -128,6 +129,33 @@ def _enabled_lead_list_fields(db: Session, tenant_id: int) -> set[str]:
 
 def _enabled_lead_import_fields(db: Session, tenant_id: int) -> list[str]:
     return enabled_module_field_sequence(db, tenant_id=tenant_id, module_key="sales_leads", field_keys=LEAD_IMPORT_TARGET_FIELDS)
+
+
+def _require_conversion_target_permissions(db: Session, current_user, payload: LeadConversionRequest) -> None:
+    required: list[tuple[str, str]] = []
+    if payload.account_id is not None:
+        required.append(("sales_organizations", "view"))
+    elif payload.create_account:
+        required.append(("sales_organizations", "create"))
+
+    if payload.contact_id is not None:
+        required.append(("sales_contacts", "view"))
+    elif payload.create_contact:
+        required.append(("sales_contacts", "create"))
+
+    if payload.create_deal:
+        required.append(("sales_opportunities", "create"))
+
+    for module_key, action in required:
+        try:
+            require_role_module_action_access(db, user=current_user, module_key=module_key, action=action)
+        except ValueError as exc:
+            detail = str(exc)
+            if detail in {"module not found", "unknown action"}:
+                raise HTTPException(status_code=500, detail=detail) from exc
+            raise
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 def _serialize_lead_list_item(lead, fields: set[str]) -> SalesLeadListItem:
@@ -415,6 +443,7 @@ def convert_lead(
     require_permission=Depends(require_action_access("sales_leads", "edit")),
 ):
     lead = get_lead_or_404(db, lead_id, tenant_id=current_user.tenant_id)
+    _require_conversion_target_permissions(db, current_user, payload)
     before_state = _serialize_lead(lead)
     result = convert_sales_lead(db, lead, payload.model_dump(), current_user=current_user)
     log_activity(

@@ -12,6 +12,7 @@ import { getOpportunityStageLabel, normalizeOpportunityStage, OPPORTUNITY_STAGE_
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import CommunicationActions from "@/components/recordActivity/CommunicationActions";
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
+import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -22,7 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
-import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { formatDateTime } from "@/lib/datetime";
 
 type ContactOption = {
   contact_id: number;
@@ -84,17 +85,7 @@ type OpportunitySummary = {
     total_amount?: number | string | null;
     expiry_date?: string | null;
   }>;
-  related_insertion_orders: Array<{
-    id: number;
-    io_number: string;
-    customer_name?: string | null;
-    status?: string | null;
-    total_amount?: number | null;
-    currency?: string | null;
-    updated_at?: string | null;
-  }>;
   inferred_services: string[];
-  insertion_order_count: number;
 };
 
 type OpportunityForm = {
@@ -323,11 +314,20 @@ export default function OpportunityDetailPage() {
         backHref="/dashboard/sales/opportunities"
         backLabel="Back to Deals"
         title={summary?.opportunity.opportunity_name || "Deal"}
-        description="Manage the opportunity record, linked customer context, and finance handoff from the record page."
+        description="Manage the deal record, linked customer context, quotes, and activity from the record page."
         primaryAction={(
-          <Button onClick={handleSave} disabled={saving || !form.opportunity_name.trim() || !form.contact_id}>
-            {saving ? "Saving..." : "Save Deal"}
-          </Button>
+          <>
+            <RecordDeleteButton
+              endpoint={`/sales/opportunities/${params.opportunityId}`}
+              label="Deal"
+              recordName={summary?.opportunity.opportunity_name || "this deal"}
+              redirectHref="/dashboard/sales/opportunities"
+              queryKeys={["sales-opportunities", "sales-opportunities-pipeline-summary"]}
+            />
+            <Button onClick={handleSave} disabled={saving || !form.opportunity_name.trim() || !form.contact_id}>
+              {saving ? "Saving..." : "Save Deal"}
+            </Button>
+          </>
         )}
       />
 
@@ -518,7 +518,7 @@ export default function OpportunityDetailPage() {
             <Card className="px-5 py-5">
               <div className="mb-4">
                 <h2 className="text-lg font-semibold text-neutral-100">Summary</h2>
-                <p className="mt-1 text-sm text-neutral-500">Linked record context and finance readiness.</p>
+                <p className="mt-1 text-sm text-neutral-500">Linked customer context and current pipeline state.</p>
               </div>
               <div className="grid gap-3">
                 <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
@@ -563,10 +563,6 @@ export default function OpportunityDetailPage() {
                   <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
                     <div className="text-xs uppercase tracking-wide text-neutral-500">Quotes</div>
                     <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.related_quotes.length}</div>
-                  </div>
-                  <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                    <div className="text-xs uppercase tracking-wide text-neutral-500">Insertion Orders</div>
-                    <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.insertion_order_count}</div>
                   </div>
                 </div>
 
@@ -619,7 +615,7 @@ export default function OpportunityDetailPage() {
             </Card>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
+          <div className="grid gap-4">
             <Card className="px-5 py-5">
               <h2 className="text-lg font-semibold text-neutral-100">Related Quotes</h2>
               <FieldDescription className="mt-1">
@@ -633,46 +629,6 @@ export default function OpportunityDetailPage() {
                     <div className="mt-2 text-sm text-neutral-300">{formatMoney(quote.total_amount, quote.currency)}</div>
                   </Link>
                 )) : <div className="text-sm text-neutral-500">No quotes are linked to this deal yet.</div>}
-              </div>
-            </Card>
-
-            <Card className="px-5 py-5">
-              <h2 className="text-lg font-semibold text-neutral-100">Finance Handoff</h2>
-              <p className="mt-1 text-sm text-neutral-500">
-                Current commercial values and dates that will shape insertion-order creation.
-              </p>
-              <div className="mt-4 grid gap-3 md:grid-cols-2">
-                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                  <div className="text-xs uppercase tracking-wide text-neutral-500">Expected Close</div>
-                  <div className="mt-2 text-sm text-neutral-100">
-                    {summary.opportunity.expected_close_date ? formatDateOnly(summary.opportunity.expected_close_date) : "Not set"}
-                  </div>
-                </div>
-                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                  <div className="text-xs uppercase tracking-wide text-neutral-500">Commercial Value</div>
-                  <div className="mt-2 text-sm text-neutral-100">
-                    {summary.opportunity.total_cost_of_project || "No value recorded"}{summary.opportunity.currency_type ? ` ${summary.opportunity.currency_type}` : ""}
-                  </div>
-                </div>
-              </div>
-            </Card>
-
-            <Card className="px-5 py-5">
-              <h2 className="text-lg font-semibold text-neutral-100">Related Insertion Orders</h2>
-              <FieldDescription className="mt-1">
-                Matched through the linked contact and organization so finance handoff context stays visible on the record.
-              </FieldDescription>
-              <div className="mt-4 space-y-3">
-                {summary.related_insertion_orders.length ? summary.related_insertion_orders.map((order) => (
-                  <div key={order.id} className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                    <div className="text-sm font-semibold text-neutral-100">{order.io_number}</div>
-                    <div className="mt-1 text-sm text-neutral-500">
-                      {order.customer_name || "Unknown customer"} · {order.status || "Unknown status"}
-                    </div>
-                    <div className="mt-2 text-sm text-neutral-300">{formatMoney(order.total_amount, order.currency)}</div>
-                    {order.updated_at ? <div className="mt-2 text-xs text-neutral-500">Updated {formatDateTime(order.updated_at)}</div> : null}
-                  </div>
-                )) : <div className="text-sm text-neutral-500">No related insertion orders yet.</div>}
               </div>
             </Card>
           </div>

@@ -10,6 +10,7 @@ import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import ConvertLeadDialog from "@/components/leads/ConvertLeadDialog";
 import CommunicationActions from "@/components/recordActivity/CommunicationActions";
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
+import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -176,7 +177,18 @@ export default function LeadDetailPage() {
         backLabel="Back to Leads"
         title={summary ? `${summary.lead.first_name || ""} ${summary.lead.last_name || ""}`.trim() || summary.lead.primary_email || "Lead" : "Lead"}
         description="Review the lead record, qualification status, and follow-up history."
-        primaryAction={<Button onClick={handleSave} disabled={saving || !form.primary_email.trim()}>{saving ? "Saving..." : "Save Lead"}</Button>}
+        primaryAction={(
+          <>
+            <RecordDeleteButton
+              endpoint={`/sales/leads/${params.leadId}`}
+              label="Lead"
+              recordName={summary ? `${summary.lead.first_name || ""} ${summary.lead.last_name || ""}`.trim() || summary.lead.primary_email : "this lead"}
+              redirectHref="/dashboard/sales/leads"
+              queryKeys={["sales-leads"]}
+            />
+            <Button onClick={handleSave} disabled={saving || !form.primary_email.trim()}>{saving ? "Saving..." : "Save Lead"}</Button>
+          </>
+        )}
       />
 
       {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}
