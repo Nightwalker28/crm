@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { FileText, StickyNote, CheckSquare } from "lucide-react";
+import { CheckSquare, ExternalLink, FileText, RefreshCw, Send, ShoppingCart, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
@@ -22,6 +22,43 @@ import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { apiUrl } from "@/lib/runtime-config";
+
+type QuoteProposal = {
+  id: number;
+  quote_id: number;
+  document_id?: number | null;
+  template_name: string;
+  status: string;
+  title: string;
+  content_text: string;
+  sent_to?: string | null;
+  generated_at: string;
+  sent_at?: string | null;
+  public_expires_at?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type QuoteProposalEvent = {
+  id: number;
+  quote_id: number;
+  quote_document_id: number;
+  event_type: string;
+  recipient_email?: string | null;
+  occurred_at: string;
+};
+
+type RelatedOrder = {
+  id: number;
+  order_number: string;
+  quote_id?: number | null;
+  status: string;
+  currency: string;
+  grand_total: string | number;
+  created_at: string;
+  updated_at: string;
+};
 
 type QuoteSummary = {
   quote: {
@@ -66,6 +103,9 @@ type QuoteSummary = {
     primary_email?: string | null;
     website?: string | null;
   } | null;
+  latest_proposal?: QuoteProposal | null;
+  proposal_events?: QuoteProposalEvent[];
+  related_order?: RelatedOrder | null;
 };
 
 type QuoteForm = {
@@ -138,6 +178,10 @@ export default function QuoteDetailPage() {
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [proposalSendingTo, setProposalSendingTo] = useState("");
+  const [proposalBusy, setProposalBusy] = useState<"generate" | "send" | null>(null);
+  const [proposalLinkPath, setProposalLinkPath] = useState<string | null>(null);
+  const [convertingOrder, setConvertingOrder] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const customFieldsQuery = useModuleCustomFields("sales_quotes", true);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_quotes");
@@ -174,6 +218,7 @@ export default function QuoteDetailPage() {
       setAccountSearch(data.organization?.org_name ?? (data.quote.organization_id ? `Account #${data.quote.organization_id}` : ""));
       setDealSearch(data.opportunity?.opportunity_name ?? (data.quote.opportunity_id ? `Deal #${data.quote.opportunity_id}` : ""));
       setCustomFieldValues(data.quote.custom_fields ?? {});
+      setProposalSendingTo(data.latest_proposal?.sent_to ?? data.contact?.primary_email ?? "");
     } catch (loadError) {
       if (!signal?.cancelled) setError(loadError instanceof Error ? loadError.message : "Failed to load quote");
     } finally {
@@ -229,6 +274,64 @@ export default function QuoteDetailPage() {
       setError(saveError instanceof Error ? saveError.message : "Failed to save quote");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleGenerateProposal() {
+    try {
+      setProposalBusy("generate");
+      setError(null);
+      const res = await apiFetch(`/sales/quotes/${params.quoteId}/proposal/generate`, { method: "POST" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      setProposalLinkPath(null);
+      await loadSummary();
+      toast.success("Proposal generated.");
+    } catch (proposalError) {
+      setError(proposalError instanceof Error ? proposalError.message : "Failed to generate proposal");
+    } finally {
+      setProposalBusy(null);
+    }
+  }
+
+  async function handleSendProposal() {
+    try {
+      setProposalBusy("send");
+      setError(null);
+      const res = await apiFetch(`/sales/quotes/${params.quoteId}/proposal/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sent_to: proposalSendingTo.trim() || null }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      setProposalLinkPath(body.public_url_path ?? null);
+      await loadSummary();
+      toast.success("Proposal marked sent.");
+    } catch (proposalError) {
+      setError(proposalError instanceof Error ? proposalError.message : "Failed to send proposal");
+    } finally {
+      setProposalBusy(null);
+    }
+  }
+
+  async function handleConvertToOrder() {
+    try {
+      setConvertingOrder(true);
+      setError(null);
+      const res = await apiFetch(`/sales/quotes/${params.quoteId}/convert-to-order`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ allow_duplicate: false }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      await loadSummary();
+      toast.success("Quote converted to order.");
+    } catch (convertError) {
+      setError(convertError instanceof Error ? convertError.message : "Failed to convert quote to order");
+    } finally {
+      setConvertingOrder(false);
     }
   }
 
@@ -429,6 +532,9 @@ export default function QuoteDetailPage() {
                 <SummaryTile label="Status" value={(summary.quote.status || "draft").replace(/_/g, " ")} />
                 <SummaryTile label="Total" value={formatMoney(summary.quote.total_amount, summary.quote.currency)} />
                 <SummaryTile label="Expires" value={summary.quote.expiry_date ? formatDateOnly(summary.quote.expiry_date) : "No expiry date"} />
+                {summary.related_order ? (
+                  <LinkedRecordTile label="Order" value={summary.related_order.order_number} href={`/dashboard/sales/orders/${summary.related_order.id}`} />
+                ) : null}
               </div>
             </Card>
 
@@ -441,6 +547,80 @@ export default function QuoteDetailPage() {
                   phone={summary.contact?.contact_telephone}
                   followUpTargetId="quote-record-tools"
                 />
+              </div>
+            </Card>
+
+            <Card className="px-5 py-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-neutral-100">Proposal</h2>
+                  <FieldDescription className="mt-1">Generate the quote proposal and track signed-link activity.</FieldDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={handleGenerateProposal} disabled={proposalBusy !== null}>
+                    {proposalBusy === "generate" ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                    {proposalBusy === "generate" ? "Generating..." : "Generate"}
+                  </Button>
+                  <Button type="button" size="sm" onClick={handleSendProposal} disabled={proposalBusy !== null || !proposalSendingTo.trim()}>
+                    {proposalBusy === "send" ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                    {proposalBusy === "send" ? "Sending..." : "Send"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3">
+                <Field>
+                  <FieldLabel>Recipient</FieldLabel>
+                  <Input type="email" value={proposalSendingTo} onChange={(event) => setProposalSendingTo(event.target.value)} placeholder="client@example.com" />
+                </Field>
+                <div className="grid gap-3 md:grid-cols-3">
+                  <SummaryTile label="Status" value={(summary.latest_proposal?.status ?? "not generated").replace(/_/g, " ")} />
+                  <SummaryTile label="Generated" value={summary.latest_proposal?.generated_at ? formatDateTime(summary.latest_proposal.generated_at) : "Not generated"} />
+                  <SummaryTile label="Sent" value={summary.latest_proposal?.sent_at ? formatDateTime(summary.latest_proposal.sent_at) : "Not sent"} />
+                </div>
+                {proposalLinkPath ? (
+                  <a className="inline-flex w-fit items-center gap-2 text-sm text-sky-300 hover:text-sky-200" href={apiUrl(proposalLinkPath)} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-4 w-4" />Open signed proposal link
+                  </a>
+                ) : null}
+                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Lifecycle</div>
+                  <div className="mt-3 grid gap-3">
+                    {(summary.proposal_events ?? []).length ? (summary.proposal_events ?? []).map((event) => (
+                      <div key={event.id} className="flex items-start justify-between gap-3 text-sm">
+                        <div>
+                          <div className="capitalize text-neutral-100">{event.event_type}</div>
+                          <div className="text-xs text-neutral-500">{event.recipient_email || "Signed link"}</div>
+                        </div>
+                        <div className="shrink-0 text-xs text-neutral-500">{formatDateTime(event.occurred_at)}</div>
+                      </div>
+                    )) : <div className="text-sm text-neutral-500">No proposal events yet.</div>}
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="px-5 py-5">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-lg font-semibold text-neutral-100">Order</h2>
+                  <FieldDescription className="mt-1">Accepted quotes can be converted once into a sales order.</FieldDescription>
+                </div>
+                {summary.related_order ? (
+                  <Button type="button" size="sm" variant="outline" asChild>
+                    <Link href={`/dashboard/sales/orders/${summary.related_order.id}`}><ShoppingCart className="h-4 w-4" />Open Order</Link>
+                  </Button>
+                ) : (
+                  <Button type="button" size="sm" onClick={handleConvertToOrder} disabled={convertingOrder || summary.quote.status !== "accepted"}>
+                    {convertingOrder ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
+                    {convertingOrder ? "Converting..." : "Convert"}
+                  </Button>
+                )}
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-3">
+                <SummaryTile label="Status" value={summary.related_order?.status ?? (summary.quote.status === "accepted" ? "Ready" : "Requires accepted quote")} />
+                <SummaryTile label="Order" value={summary.related_order?.order_number ?? "Not converted"} />
+                <SummaryTile label="Total" value={summary.related_order ? formatMoney(summary.related_order.grand_total, summary.related_order.currency) : formatMoney(summary.quote.total_amount, summary.quote.currency)} />
               </div>
             </Card>
           </div>

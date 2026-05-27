@@ -8,6 +8,7 @@ celery_app = Celery(
     broker=settings.CELERY_BROKER_URL,
     include=[
         "app.tasks.auth_tasks",
+        "app.tasks.automation_tasks",
         "app.tasks.calendar_tasks",
         "app.tasks.data_transfer_tasks",
         "app.tasks.task_reminder_tasks",

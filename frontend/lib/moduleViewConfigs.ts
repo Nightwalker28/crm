@@ -42,6 +42,7 @@ export const CUSTOM_FIELD_SUPPORTED_MODULES = new Set([
   "sales_organizations",
   "sales_opportunities",
   "sales_quotes",
+  "sales_orders",
   "finance_io",
 ]);
 
@@ -66,6 +67,8 @@ export const LEAD_COLUMNS: TableColumnOption[] = [
   { key: "first_name", label: "First Name" },
   { key: "last_name", label: "Last Name" },
   { key: "company", label: "Company" },
+  { key: "score", label: "Score" },
+  { key: "score_grade", label: "Grade" },
   { key: "primary_email", label: "Email" },
   { key: "phone", label: "Phone" },
   { key: "title", label: "Job Title" },
@@ -104,6 +107,19 @@ export const QUOTE_COLUMNS: TableColumnOption[] = [
   { key: "currency", label: "Currency" },
   { key: "issue_date", label: "Issue Date" },
   { key: "expiry_date", label: "Expiry Date" },
+  { key: "updated_at", label: "Updated" },
+];
+
+export const ORDER_COLUMNS: TableColumnOption[] = [
+  { key: "order_number", label: "Order Number" },
+  { key: "status", label: "Status" },
+  { key: "quote_id", label: "Quote ID" },
+  { key: "organization_id", label: "Account ID" },
+  { key: "contact_id", label: "Contact ID" },
+  { key: "opportunity_id", label: "Deal ID" },
+  { key: "currency", label: "Currency" },
+  { key: "grand_total", label: "Total" },
+  { key: "created_at", label: "Created" },
   { key: "updated_at", label: "Updated" },
 ];
 
@@ -164,7 +180,7 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
     sort: null,
   },
   sales_leads: {
-    visible_columns: ["first_name", "last_name", "company", "primary_email", "phone", "status"],
+    visible_columns: ["first_name", "last_name", "company", "score", "score_grade", "primary_email", "phone", "status"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },
@@ -185,6 +201,11 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
   },
   sales_quotes: {
     visible_columns: ["quote_number", "customer_name", "opportunity_id", "status", "total_amount", "expiry_date"],
+    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
+    sort: null,
+  },
+  sales_orders: {
+    visible_columns: ["order_number", "status", "quote_id", "grand_total", "created_at"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },
@@ -280,6 +301,18 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "phone", label: "Phone", type: "text", operators: TEXT_OPERATORS },
       { key: "title", label: "Job Title", type: "text", operators: TEXT_OPERATORS },
       { key: "source", label: "Source", type: "text", operators: TEXT_OPERATORS },
+      { key: "score", label: "Score", type: "number", operators: NUMBER_OPERATORS },
+      {
+        key: "score_grade",
+        label: "Score Grade",
+        type: "select",
+        operators: SELECT_OPERATORS,
+        options: [
+          { value: "hot", label: "Hot" },
+          { value: "warm", label: "Warm" },
+          { value: "cold", label: "Cold" },
+        ],
+      },
       {
         key: "status",
         label: "Status",
@@ -397,6 +430,36 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.sales_quotes,
+  },
+  sales_orders: {
+    key: "sales_orders",
+    label: "Orders",
+    route: "/dashboard/sales/orders",
+    columns: ORDER_COLUMNS,
+    filterFields: [
+      { key: "order_number", label: "Order Number", type: "text", operators: TEXT_OPERATORS },
+      { key: "quote_id", label: "Quote ID", type: "number", operators: NUMBER_OPERATORS },
+      { key: "organization_id", label: "Account ID", type: "number", operators: NUMBER_OPERATORS },
+      { key: "contact_id", label: "Contact ID", type: "number", operators: NUMBER_OPERATORS },
+      { key: "opportunity_id", label: "Deal ID", type: "number", operators: NUMBER_OPERATORS },
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        operators: SELECT_OPERATORS,
+        options: [
+          { value: "draft", label: "Draft" },
+          { value: "confirmed", label: "Confirmed" },
+          { value: "fulfilled", label: "Fulfilled" },
+          { value: "cancelled", label: "Cancelled" },
+        ],
+      },
+      { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
+      { key: "grand_total", label: "Total", type: "number", operators: NUMBER_OPERATORS },
+      { key: "created_at", label: "Created", type: "date", operators: DATE_OPERATORS },
+      { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
+    ],
+    defaultConfig: MODULE_VIEW_DEFAULTS.sales_orders,
   },
   finance_io: {
     key: "finance_io",

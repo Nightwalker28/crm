@@ -56,6 +56,7 @@ const MODULE_ITEM_ORDER: Record<string, number> = {
   sales_contacts: 30,
   sales_opportunities: 40,
   sales_quotes: 50,
+  sales_orders: 60,
   finance_io: 10,
   finance_insertion_orders: 10,
   finance_pos: 20,
@@ -99,6 +100,7 @@ function getCanonicalHref(module: AccessibleModule) {
   if (module.name === "sales_contacts") return DASHBOARD_ROUTES.contacts;
   if (module.name === "sales_opportunities") return DASHBOARD_ROUTES.deals;
   if (module.name === "sales_quotes") return DASHBOARD_ROUTES.quotes;
+  if (module.name === "sales_orders") return DASHBOARD_ROUTES.orders;
   if (module.name === "reports") return DASHBOARD_ROUTES.reports;
   if (module.name === "tasks") return "/dashboard/tasks";
   return module.base_route || "";
@@ -164,6 +166,7 @@ function settingsGroup(): SidebarGroupConfig {
       { href: SETTINGS_ROUTES.modules, label: "Module Settings" },
       { href: SETTINGS_ROUTES.moduleBuilder, label: "Module Builder" },
       { href: SETTINGS_ROUTES.fields, label: "Field Config" },
+      { href: SETTINGS_ROUTES.automation, label: "Automation" },
       { href: SETTINGS_ROUTES.integrations, label: "Integrations" },
       { href: SETTINGS_ROUTES.templates, label: "Templates" },
       { href: SETTINGS_ROUTES.activityLog, label: "Activity Log" },

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation
+import hashlib
+import secrets
 from typing import Sequence
 
 from fastapi import HTTPException, status
@@ -18,7 +20,7 @@ from app.modules.platform.services.custom_fields import (
     save_custom_field_values,
     validate_custom_field_payload,
 )
-from app.modules.sales.models import SalesQuote
+from app.modules.sales.models import SalesQuote, SalesQuoteDocument, SalesQuoteOpenEvent
 from app.modules.sales.repositories import quotes_repository
 from app.modules.user_management.models import User
 
@@ -45,6 +47,9 @@ EXPORT_COLUMNS = [
     "created_time",
     "updated_at",
 ]
+PROPOSAL_TOKEN_BYTES = 32
+PROPOSAL_LINK_TTL_DAYS = 30
+PROPOSAL_EVENT_TYPES = {"opened", "viewed", "downloaded"}
 
 
 def _coerce_optional(value) -> str | None:
@@ -150,6 +155,42 @@ def _generate_quote_number(db: Session, *, tenant_id: int) -> str:
         .count()
     )
     return f"{prefix}-{count + 1:04d}"
+
+
+def _hash_value(value: str | None) -> str | None:
+    if not value:
+        return None
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _build_proposal_content(quote: SalesQuote) -> str:
+    lines = [
+        f"Proposal for {quote.customer_name}",
+        f"Quote: {quote.quote_number}",
+    ]
+    if quote.title:
+        lines.append(f"Title: {quote.title}")
+    lines.extend(
+        [
+            f"Status: {quote.status}",
+            f"Total: {quote.currency or 'USD'} {quote.total_amount or Decimal('0')}",
+        ]
+    )
+    if quote.expiry_date:
+        lines.append(f"Valid until: {quote.expiry_date.isoformat()}")
+    if quote.notes:
+        lines.extend(["", quote.notes])
+    return "\n".join(lines)
+
+
+def _proposal_public_url_path(raw_token: str) -> str:
+    return f"/sales/quotes/proposal/public/{raw_token}"
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
 
 
 def _apply_quote_payload(quote: SalesQuote, payload: dict) -> None:
@@ -280,6 +321,109 @@ def restore_sales_quote(db: Session, quote: SalesQuote) -> SalesQuote:
     db.commit()
     db.refresh(quote)
     return hydrate_custom_field_record(db, tenant_id=quote.tenant_id, module_key="sales_quotes", record=quote, record_id=quote.quote_id)
+
+
+def get_latest_quote_proposal(db: Session, quote: SalesQuote) -> SalesQuoteDocument | None:
+    return (
+        db.query(SalesQuoteDocument)
+        .filter(SalesQuoteDocument.tenant_id == quote.tenant_id, SalesQuoteDocument.quote_id == quote.quote_id)
+        .order_by(SalesQuoteDocument.generated_at.desc(), SalesQuoteDocument.id.desc())
+        .first()
+    )
+
+
+def list_quote_proposal_events(db: Session, quote: SalesQuote, *, limit: int = 25) -> list[SalesQuoteOpenEvent]:
+    return (
+        db.query(SalesQuoteOpenEvent)
+        .filter(SalesQuoteOpenEvent.tenant_id == quote.tenant_id, SalesQuoteOpenEvent.quote_id == quote.quote_id)
+        .order_by(SalesQuoteOpenEvent.occurred_at.desc(), SalesQuoteOpenEvent.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def generate_quote_proposal(db: Session, quote: SalesQuote, current_user) -> SalesQuoteDocument:
+    proposal = SalesQuoteDocument(
+        tenant_id=quote.tenant_id,
+        quote_id=quote.quote_id,
+        template_name="default_quote_proposal",
+        status="generated",
+        title=f"Proposal {quote.quote_number}",
+        content_text=_build_proposal_content(quote),
+        created_by_id=current_user.id if current_user else None,
+    )
+    db.add(proposal)
+    db.commit()
+    db.refresh(proposal)
+    return proposal
+
+
+def send_quote_proposal(db: Session, quote: SalesQuote, *, sent_to: str | None, current_user) -> tuple[SalesQuoteDocument, str, datetime]:
+    proposal = get_latest_quote_proposal(db, quote) or generate_quote_proposal(db, quote, current_user)
+    raw_token = secrets.token_urlsafe(PROPOSAL_TOKEN_BYTES)
+    expires_at = datetime.now(timezone.utc) + timedelta(days=PROPOSAL_LINK_TTL_DAYS)
+    proposal.status = "sent"
+    proposal.sent_at = datetime.now(timezone.utc)
+    proposal.sent_to = sent_to
+    proposal.public_token_hash = _hash_value(raw_token)
+    proposal.public_expires_at = expires_at
+    event = SalesQuoteOpenEvent(
+        tenant_id=quote.tenant_id,
+        quote_id=quote.quote_id,
+        quote_document_id=proposal.id,
+        event_type="sent",
+        recipient_email=sent_to,
+    )
+    db.add_all([proposal, event])
+    db.commit()
+    db.refresh(proposal)
+    return proposal, _proposal_public_url_path(raw_token), expires_at
+
+
+def get_public_quote_proposal_or_404(db: Session, token: str) -> tuple[SalesQuoteDocument, SalesQuote]:
+    token_hash = _hash_value(token)
+    proposal = (
+        db.query(SalesQuoteDocument)
+        .join(SalesQuote, SalesQuote.quote_id == SalesQuoteDocument.quote_id)
+        .filter(
+            SalesQuoteDocument.public_token_hash == token_hash,
+            SalesQuoteDocument.status == "sent",
+            SalesQuote.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if not proposal or not proposal.public_expires_at or _as_utc(proposal.public_expires_at) < datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal link not found")
+    quote = proposal.quote
+    if not quote or quote.tenant_id != proposal.tenant_id:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal link not found")
+    return proposal, quote
+
+
+def record_quote_proposal_event(
+    db: Session,
+    *,
+    proposal: SalesQuoteDocument,
+    event_type: str,
+    recipient_email: str | None = None,
+    ip_address: str | None = None,
+    user_agent: str | None = None,
+) -> SalesQuoteOpenEvent:
+    if event_type not in PROPOSAL_EVENT_TYPES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid proposal event type")
+    event = SalesQuoteOpenEvent(
+        tenant_id=proposal.tenant_id,
+        quote_id=proposal.quote_id,
+        quote_document_id=proposal.id,
+        event_type=event_type,
+        recipient_email=recipient_email or proposal.sent_to,
+        ip_hash=_hash_value(ip_address),
+        user_agent_hash=_hash_value(user_agent),
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
 
 
 def import_quotes_from_csv(db: Session, file_bytes: bytes, *, tenant_id: int, default_assigned_to: int | None, duplicate_mode: str | None = None, default_duplicate_mode: str | None = None, replace_duplicates: bool = False, skip_duplicates: bool = False, create_new_records: bool = False) -> dict:

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -10,11 +10,46 @@ from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
 from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_export_job, enqueue_import_job, persist_job_upload, should_background_data_transfer_with_size
 from app.modules.platform.services.module_fields import enabled_module_fields, enabled_module_field_sequence, reject_disabled_field_writes, sanitize_data_transfer_export_payload, sanitize_disabled_field_payload, sanitize_disabled_filter_conditions
-from app.modules.sales.schema import FollowUpActionRequest, FollowUpActionResponse, QuoteSummaryResponse, SalesQuoteCreateRequest, SalesQuoteListItem, SalesQuoteListResponse, SalesQuoteResponse, SalesQuoteUpdateRequest
+from app.modules.sales.schema import (
+    FollowUpActionRequest,
+    FollowUpActionResponse,
+    QuoteSummaryResponse,
+    SalesQuoteCreateRequest,
+    SalesQuoteListItem,
+    SalesQuoteListResponse,
+    SalesQuoteProposalDocumentResponse,
+    SalesQuoteProposalEventsResponse,
+    SalesQuoteProposalPublicEventRequest,
+    SalesQuoteProposalPublicResponse,
+    SalesQuoteProposalSendRequest,
+    SalesQuoteProposalSendResponse,
+    SalesQuoteConvertToOrderRequest,
+    SalesOrderResponse,
+    SalesQuoteResponse,
+    SalesQuoteUpdateRequest,
+)
 from app.modules.sales.services.followups import log_quote_follow_up
-from app.modules.sales.services.quotes_services import EXPORT_COLUMNS, create_sales_quote, delete_sales_quote, get_quote_or_404, import_quotes_from_csv, list_deleted_sales_quotes, list_sales_quotes, list_sales_quotes_cursor, restore_sales_quote, update_sales_quote
+from app.modules.sales.services.orders_services import convert_quote_to_order
+from app.modules.sales.services.quotes_services import (
+    EXPORT_COLUMNS,
+    create_sales_quote,
+    delete_sales_quote,
+    generate_quote_proposal,
+    get_public_quote_proposal_or_404,
+    get_quote_or_404,
+    import_quotes_from_csv,
+    list_deleted_sales_quotes,
+    list_quote_proposal_events,
+    list_sales_quotes,
+    list_sales_quotes_cursor,
+    record_quote_proposal_event,
+    restore_sales_quote,
+    send_quote_proposal,
+    update_sales_quote,
+)
 from app.modules.sales.services.summary_services import build_quote_summary
 from app.modules.user_management.services import admin_modules
 
@@ -126,6 +161,23 @@ def create_quote(payload: SalesQuoteCreateRequest, replace_duplicates: bool = Fa
     sanitized_payload = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=payload.model_dump())
     created = create_sales_quote(db, sanitized_payload, current_user, replace_duplicates, skip_duplicates, create_new_records)
     log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=created.quote_id, action="create", description=f"Created quote {_display_quote_name(created)}", after_state=_serialize_quote(created))
+    safe_emit_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        event_type="quote.created",
+        entity_type="sales_quote",
+        entity_id=created.quote_id,
+        payload={
+            **actor_payload(current_user),
+            "quote_id": created.quote_id,
+            "quote_number": created.quote_number,
+            "customer_name": created.customer_name,
+            "status": created.status,
+            "total_amount": str(created.total_amount),
+            "href": f"/dashboard/sales/quotes/{created.quote_id}",
+        },
+    )
     return created
 
 
@@ -164,6 +216,41 @@ def export_quotes(payload: DataTransferExportRequest = Body(default=DataTransfer
     return DataTransferExecutionResponse(mode="background", message=f"Export queued in background as job #{job.id}.", job_id=job.id, job_status=job.status)
 
 
+@router.get("/proposal/public/{token}", response_model=SalesQuoteProposalPublicResponse)
+def view_public_quote_proposal(token: str, request: Request, db: Session = Depends(get_db)):
+    proposal, quote = get_public_quote_proposal_or_404(db, token)
+    record_quote_proposal_event(
+        db,
+        proposal=proposal,
+        event_type="viewed",
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return {
+        "quote_number": quote.quote_number,
+        "customer_name": quote.customer_name,
+        "title": proposal.title,
+        "content_text": proposal.content_text,
+        "currency": quote.currency,
+        "total_amount": quote.total_amount,
+        "expiry_date": quote.expiry_date,
+    }
+
+
+@router.post("/proposal/public/{token}/events", response_model=SalesQuoteProposalEventsResponse)
+def record_public_quote_proposal_event(token: str, payload: SalesQuoteProposalPublicEventRequest, request: Request, db: Session = Depends(get_db)):
+    proposal, _quote = get_public_quote_proposal_or_404(db, token)
+    event = record_quote_proposal_event(
+        db,
+        proposal=proposal,
+        event_type=payload.event_type,
+        recipient_email=payload.recipient_email,
+        ip_address=request.client.host if request.client else None,
+        user_agent=request.headers.get("user-agent"),
+    )
+    return {"results": [event]}
+
+
 @router.get("/{quote_id}", response_model=SalesQuoteResponse)
 def get_quote(quote_id: int, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "view"))):
     return get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id)
@@ -180,6 +267,46 @@ def log_quote_follow_up_route(quote_id: int, payload: FollowUpActionRequest, db:
     return log_quote_follow_up(db, quote=quote, payload=payload.model_dump(), current_user=current_user)
 
 
+@router.post("/{quote_id}/proposal/generate", response_model=SalesQuoteProposalDocumentResponse)
+def generate_quote_proposal_route(quote_id: int, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "edit"))):
+    quote = get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id)
+    proposal = generate_quote_proposal(db, quote, current_user)
+    log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=quote.quote_id, action="proposal_generate", description=f"Generated proposal for quote {_display_quote_name(quote)}")
+    return proposal
+
+
+@router.post("/{quote_id}/proposal/send", response_model=SalesQuoteProposalSendResponse)
+def send_quote_proposal_route(quote_id: int, payload: SalesQuoteProposalSendRequest = Body(default=SalesQuoteProposalSendRequest()), db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "edit"))):
+    quote = get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id)
+    proposal, public_url_path, expires_at = send_quote_proposal(db, quote, sent_to=str(payload.sent_to) if payload.sent_to else None, current_user=current_user)
+    log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=quote.quote_id, action="proposal_send", description=f"Marked proposal sent for quote {_display_quote_name(quote)}")
+    return {"proposal": proposal, "public_url_path": public_url_path, "expires_at": expires_at}
+
+
+@router.get("/{quote_id}/proposal/events", response_model=SalesQuoteProposalEventsResponse)
+def list_quote_proposal_events_route(quote_id: int, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "view"))):
+    quote = get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id)
+    return {"results": list_quote_proposal_events(db, quote)}
+
+
+@router.post("/{quote_id}/convert-to-order", response_model=SalesOrderResponse)
+def convert_quote_to_order_route(
+    quote_id: int,
+    payload: SalesQuoteConvertToOrderRequest = Body(default=SalesQuoteConvertToOrderRequest()),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_quote_module=Depends(require_module_access("sales_quotes")),
+    require_quote_permission=Depends(require_action_access("sales_quotes", "edit")),
+    require_order_module=Depends(require_module_access("sales_orders")),
+    require_order_permission=Depends(require_action_access("sales_orders", "create")),
+):
+    quote = get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id)
+    order = convert_quote_to_order(db, quote, current_user, allow_duplicate=payload.allow_duplicate)
+    log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=quote.quote_id, action="convert_to_order", description=f"Converted quote {_display_quote_name(quote)} to order {order.order_number}", after_state={"order_id": order.id, "order_number": order.order_number})
+    log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_orders", entity_type="sales_order", entity_id=order.id, action="create_from_quote", description=f"Created order {order.order_number} from quote {_display_quote_name(quote)}", after_state=SalesOrderResponse.model_validate(order).model_dump(mode="json"))
+    return order
+
+
 @router.put("/{quote_id}", response_model=SalesQuoteResponse)
 def update_quote(quote_id: int, payload: SalesQuoteUpdateRequest, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "edit"))):
     quote = get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id)
@@ -191,6 +318,25 @@ def update_quote(quote_id: int, payload: SalesQuoteUpdateRequest, db: Session = 
     before_state = _serialize_quote(quote)
     updated = update_sales_quote(db, quote, update_data)
     log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=updated.quote_id, action="update", description=f"Updated quote {_display_quote_name(updated)}", before_state=before_state, after_state=_serialize_quote(updated))
+    if "status" in update_data and before_state.get("status") != updated.status:
+        safe_emit_crm_event(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            event_type="quote.status_changed",
+            entity_type="sales_quote",
+            entity_id=updated.quote_id,
+            payload={
+                **actor_payload(current_user),
+                "quote_id": updated.quote_id,
+                "quote_number": updated.quote_number,
+                "customer_name": updated.customer_name,
+                "previous_status": before_state.get("status"),
+                "status": updated.status,
+                "total_amount": str(updated.total_amount),
+                "href": f"/dashboard/sales/quotes/{updated.quote_id}",
+            },
+        )
     return updated
 
 

@@ -5,7 +5,8 @@ from sqlalchemy.orm import Session
 
 from app.modules.platform.services.custom_fields import hydrate_custom_field_record, hydrate_custom_field_records
 from app.modules.finance.models import FinanceIO
-from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
+from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesOrder, SalesQuote
+from app.modules.sales.services.quotes_services import get_latest_quote_proposal, list_quote_proposal_events
 
 
 def _to_float(value: Decimal | None) -> float | None:
@@ -396,4 +397,7 @@ def build_quote_summary(db: Session, quote: SalesQuote) -> dict:
         "opportunity": opportunity,
         "contact": contact,
         "organization": organization,
+        "latest_proposal": get_latest_quote_proposal(db, quote),
+        "proposal_events": list_quote_proposal_events(db, quote, limit=10),
+        "related_order": db.query(SalesOrder).filter(SalesOrder.tenant_id == quote.tenant_id, SalesOrder.quote_id == quote.quote_id).first(),
     }

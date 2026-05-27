@@ -9,7 +9,7 @@ from app.core.module_filters import apply_filter_conditions
 from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination
 from app.modules.platform.services.custom_fields import build_custom_field_filter_map
-from app.modules.sales.models import SalesLead
+from app.modules.sales.models import SalesLead, SalesLeadScore
 from app.modules.user_management.models import User
 
 
@@ -20,6 +20,10 @@ def apply_search_filter(query, search: str | None):
         document=SalesLead.search_doc,
         default_order_column=SalesLead.created_time,
     )
+
+
+def _uses_score_filter(conditions: list[dict] | None) -> bool:
+    return any(condition.get("field") in {"score", "score_grade"} for condition in conditions or [])
 
 
 def build_leads_query(
@@ -34,6 +38,8 @@ def build_leads_query(
         SalesLead.tenant_id == tenant_id,
         SalesLead.deleted_at.is_(None),
     )
+    if _uses_score_filter(all_filter_conditions) or _uses_score_filter(any_filter_conditions):
+        query = query.outerjoin(SalesLeadScore, SalesLeadScore.lead_id == SalesLead.lead_id)
     filter_field_map = {
         "first_name": {"expression": SalesLead.first_name, "type": "text"},
         "last_name": {"expression": SalesLead.last_name, "type": "text"},
@@ -43,6 +49,8 @@ def build_leads_query(
         "title": {"expression": SalesLead.title, "type": "text"},
         "source": {"expression": SalesLead.source, "type": "text"},
         "status": {"expression": SalesLead.status, "type": "text"},
+        "score": {"expression": SalesLeadScore.score, "type": "number"},
+        "score_grade": {"expression": SalesLeadScore.grade, "type": "text"},
         "created_time": {"expression": SalesLead.created_time, "type": "date"},
         **build_custom_field_filter_map(
             db,

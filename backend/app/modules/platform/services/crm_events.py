@@ -429,6 +429,12 @@ def emit_crm_event(
 
     db.commit()
     db.refresh(event)
+    try:
+        from app.modules.platform.services.automation_rules import process_crm_event_automations
+
+        process_crm_event_automations(db, event_id=event.id)
+    except Exception:
+        db.rollback()
     return event
 
 

@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, Date, DateTime, ForeignKey, Index, Numeric, Text, func, TIMESTAMP, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, Text, func, TIMESTAMP, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import expression
 
@@ -207,6 +207,7 @@ class SalesLead(Base):
 
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
     last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="joined")
+    score_record = relationship("SalesLeadScore", back_populates="lead", uselist=False, lazy="selectin", cascade="all, delete-orphan")
 
     @property
     def custom_data(self) -> dict | None:
@@ -223,6 +224,44 @@ class SalesLead(Base):
     @custom_fields.setter
     def custom_fields(self, value: dict | None) -> None:
         self.custom_data = value
+
+    @property
+    def score(self) -> int | None:
+        return self.score_record.score if self.score_record else None
+
+    @property
+    def score_grade(self) -> str | None:
+        return self.score_record.grade if self.score_record else None
+
+    @property
+    def score_factors(self) -> list[dict] | None:
+        return self.score_record.factors_json if self.score_record else None
+
+    @property
+    def score_calculated_at(self):
+        return self.score_record.calculated_at if self.score_record else None
+
+
+class SalesLeadScore(Base):
+    __tablename__ = "sales_lead_scores"
+    __table_args__ = (
+        CheckConstraint("score >= 0 AND score <= 100", name="ck_sales_lead_scores_score_range"),
+        CheckConstraint("grade IN ('hot', 'warm', 'cold')", name="ck_sales_lead_scores_grade"),
+        Index("ix_sales_lead_scores_tenant_score", "tenant_id", "score"),
+        Index("ix_sales_lead_scores_tenant_grade", "tenant_id", "grade"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    lead_id = Column(BigInteger, ForeignKey("sales_leads.lead_id", ondelete="CASCADE"), nullable=False, unique=True, index=True)
+    score = Column(BigInteger, nullable=False, server_default="0")
+    grade = Column(Text, nullable=False, server_default="cold")
+    factors_json = Column(JSON, nullable=False, server_default="[]")
+    calculated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    lead = relationship("SalesLead", back_populates="score_record")
 
 
 class SalesQuote(Base):
@@ -275,6 +314,7 @@ class SalesQuote(Base):
     organization = relationship("SalesOrganization", lazy="joined")
     opportunity = relationship("SalesOpportunity", lazy="joined")
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
+    proposal_documents = relationship("SalesQuoteDocument", back_populates="quote", cascade="all, delete-orphan")
 
     @property
     def custom_data(self) -> dict | None:
@@ -291,6 +331,130 @@ class SalesQuote(Base):
     @custom_fields.setter
     def custom_fields(self, value: dict | None) -> None:
         self.custom_data = value
+
+
+class SalesQuoteDocument(Base):
+    __tablename__ = "sales_quote_documents"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('generated', 'sent', 'expired')",
+            name="ck_sales_quote_documents_status",
+        ),
+        Index("ix_sales_quote_documents_tenant_quote", "tenant_id", "quote_id"),
+        Index("ix_sales_quote_documents_tenant_status", "tenant_id", "status"),
+        Index("ix_sales_quote_documents_token_hash", "public_token_hash"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    quote_id = Column(BigInteger, ForeignKey("sales_quotes.quote_id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True)
+    template_name = Column(Text, nullable=False, server_default="default_quote_proposal")
+    status = Column(Text, nullable=False, server_default="generated")
+    title = Column(Text, nullable=False)
+    content_text = Column(Text, nullable=False)
+    public_token_hash = Column(Text, nullable=True, unique=True)
+    public_expires_at = Column(DateTime(timezone=True), nullable=True)
+    sent_to = Column(Text, nullable=True)
+    generated_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    quote = relationship("SalesQuote", back_populates="proposal_documents")
+
+
+class SalesQuoteOpenEvent(Base):
+    __tablename__ = "sales_quote_open_events"
+    __table_args__ = (
+        CheckConstraint(
+            "event_type IN ('sent', 'opened', 'viewed', 'downloaded')",
+            name="ck_sales_quote_open_events_type",
+        ),
+        Index("ix_sales_quote_open_events_tenant_quote", "tenant_id", "quote_id"),
+        Index("ix_sales_quote_open_events_document", "quote_document_id"),
+        Index("ix_sales_quote_open_events_occurred", "tenant_id", "occurred_at"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    quote_id = Column(BigInteger, ForeignKey("sales_quotes.quote_id", ondelete="CASCADE"), nullable=False, index=True)
+    quote_document_id = Column(Integer, ForeignKey("sales_quote_documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_type = Column(Text, nullable=False)
+    recipient_email = Column(Text, nullable=True)
+    ip_hash = Column(Text, nullable=True)
+    user_agent_hash = Column(Text, nullable=True)
+    occurred_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    quote = relationship("SalesQuote", lazy="joined")
+    document = relationship("SalesQuoteDocument", lazy="joined")
+
+
+class SalesOrder(Base):
+    __tablename__ = "sales_orders"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('draft', 'confirmed', 'fulfilled', 'cancelled')",
+            name="ck_sales_orders_status",
+        ),
+        Index("ix_sales_orders_tenant_status", "tenant_id", "status"),
+        Index("ix_sales_orders_tenant_quote", "tenant_id", "quote_id"),
+        Index("ix_sales_orders_tenant_created", "tenant_id", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    order_number = Column(Text, nullable=False, index=True)
+    quote_id = Column(BigInteger, ForeignKey("sales_quotes.quote_id", ondelete="SET NULL"), nullable=True, unique=True, index=True)
+    organization_id = Column(BigInteger, ForeignKey("sales_organizations.org_id", ondelete="SET NULL"), nullable=True, index=True)
+    contact_id = Column(BigInteger, ForeignKey("sales_contacts.contact_id", ondelete="SET NULL"), nullable=True, index=True)
+    opportunity_id = Column(BigInteger, ForeignKey("sales_opportunities.opportunity_id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(Text, nullable=False, server_default="confirmed")
+    currency = Column(Text, nullable=False, server_default="USD")
+    subtotal = Column(Numeric(18, 2), nullable=False, server_default="0")
+    tax_total = Column(Numeric(18, 2), nullable=False, server_default="0")
+    discount_total = Column(Numeric(18, 2), nullable=False, server_default="0")
+    grand_total = Column(Numeric(18, 2), nullable=False, server_default="0")
+    owner_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    search_doc = Column(
+        Text,
+        Computed(
+            "lower(coalesce(order_number, '') || ' ' || coalesce(status, '') || ' ' || coalesce(currency, ''))",
+            persisted=True,
+        ),
+        nullable=True,
+    )
+
+    quote = relationship("SalesQuote", lazy="joined")
+    organization = relationship("SalesOrganization", lazy="joined")
+    contact = relationship("SalesContact", lazy="joined")
+    opportunity = relationship("SalesOpportunity", lazy="joined")
+    items = relationship("SalesOrderItem", back_populates="order", cascade="all, delete-orphan", order_by="SalesOrderItem.sort_order")
+
+
+class SalesOrderItem(Base):
+    __tablename__ = "sales_order_items"
+    __table_args__ = (
+        Index("ix_sales_order_items_tenant_order", "tenant_id", "order_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    order_id = Column(Integer, ForeignKey("sales_orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    quantity = Column(Numeric(18, 4), nullable=False, server_default="1")
+    unit_price = Column(Numeric(18, 2), nullable=False, server_default="0")
+    discount_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    tax_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    line_total = Column(Numeric(18, 2), nullable=False, server_default="0")
+    sort_order = Column(Integer, nullable=False, server_default="0")
+
+    order = relationship("SalesOrder", back_populates="items")
 
 
 class SalesOpportunity(Base):

@@ -20,6 +20,7 @@ from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
 from app.modules.platform.services.data_transfer_jobs import (
     create_data_transfer_job,
     enqueue_export_job,
@@ -73,6 +74,8 @@ LEAD_LIST_FIELDS = {
     "title",
     "source",
     "status",
+    "score",
+    "score_grade",
     "assigned_to",
     "created_time",
     "last_contacted_at",
@@ -293,6 +296,27 @@ def create_lead(
         description=f"Created lead {_display_lead_name(created)}",
         after_state=_serialize_lead(created),
     )
+    safe_emit_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        event_type="lead.created",
+        entity_type="sales_lead",
+        entity_id=created.lead_id,
+        payload={
+            **actor_payload(current_user),
+            "lead_id": created.lead_id,
+            "lead_name": _display_lead_name(created),
+            "primary_email": created.primary_email,
+            "company": created.company,
+            "source": created.source,
+            "status": created.status,
+            "assigned_to": created.assigned_to,
+            "score": created.score,
+            "score_grade": created.score_grade,
+            "href": f"/dashboard/sales/leads/{created.lead_id}",
+        },
+    )
     return created
 
 
@@ -463,6 +487,26 @@ def convert_lead(
             "deal_id": result["deal_id"],
         },
     )
+    safe_emit_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        event_type="lead.converted",
+        entity_type="sales_lead",
+        entity_id=result["lead"].lead_id,
+        payload={
+            **actor_payload(current_user),
+            "lead_id": result["lead"].lead_id,
+            "lead_name": _display_lead_name(result["lead"]),
+            "primary_email": result["lead"].primary_email,
+            "company": result["lead"].company,
+            "status": result["lead"].status,
+            "account_id": result["account_id"],
+            "contact_id": result["contact_id"],
+            "deal_id": result["deal_id"],
+            "href": f"/dashboard/sales/leads/{result['lead'].lead_id}",
+        },
+    )
     return LeadConversionResponse.model_validate(result)
 
 
@@ -494,6 +538,29 @@ def update_lead(
         description=f"Updated lead {_display_lead_name(updated)}",
         before_state=before_state,
         after_state=_serialize_lead(updated),
+    )
+    safe_emit_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        event_type="lead.updated",
+        entity_type="sales_lead",
+        entity_id=updated.lead_id,
+        payload={
+            **actor_payload(current_user),
+            "lead_id": updated.lead_id,
+            "lead_name": _display_lead_name(updated),
+            "primary_email": updated.primary_email,
+            "company": updated.company,
+            "source": updated.source,
+            "status": updated.status,
+            "assigned_to": updated.assigned_to,
+            "score": updated.score,
+            "score_grade": updated.score_grade,
+            "changed_fields": sorted(update_data.keys()),
+            "before_status": before_state.get("status"),
+            "href": f"/dashboard/sales/leads/{updated.lead_id}",
+        },
     )
     return updated
 

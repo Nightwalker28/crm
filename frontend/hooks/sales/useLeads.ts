@@ -19,7 +19,18 @@ export type Lead = {
   created_time: string;
   last_contacted_at?: string | null;
   last_contacted_channel?: string | null;
+  score?: number | null;
+  score_grade?: string | null;
+  score_factors?: LeadScoreFactor[] | null;
+  score_calculated_at?: string | null;
   custom_fields?: Record<string, unknown> | null;
+};
+
+export type LeadScoreFactor = {
+  key: string;
+  label: string;
+  points: number;
+  reason: string;
 };
 
 export type LeadsResponse = {

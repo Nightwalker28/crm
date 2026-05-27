@@ -13,6 +13,7 @@ from app.modules.documents.routes.document_routes import router as documents_rou
 from app.modules.mail.routes.mail_routes import router as mail_router
 from app.modules.platform.routes.activity_logs import router as activity_log_router
 from app.modules.platform.routes.app_config import router as app_config_router
+from app.modules.platform.routes.automation_rules import router as automation_rules_router
 from app.modules.platform.routes.custom_fields import router as custom_fields_router, public_router as public_custom_fields_router
 from app.modules.platform.routes.custom_modules import builder_router as custom_module_builder_router, runtime_router as custom_module_runtime_router
 from app.modules.platform.routes.data_transfer_jobs import router as data_transfer_job_router
@@ -32,6 +33,7 @@ from app.modules.sales.routes.contacts_routes import router as sales_contacts_ro
 from app.modules.sales.routes.leads_routes import router as sales_leads_router
 from app.modules.sales.routes.organizations_routes import router as sales_organization_router
 from app.modules.sales.routes.opportunities_routes import router as sales_opportunities_router
+from app.modules.sales.routes.orders_routes import router as sales_orders_router
 from app.modules.sales.routes.quotes_routes import router as sales_quotes_router
 from app.modules.tasks.routes.tasks_routes import router as tasks_router
 from app.modules.whatsapp.routes.whatsapp_routes import router as whatsapp_router
@@ -48,6 +50,7 @@ router.include_router(app_config_router)
 router.include_router(profile_router, prefix="/users")
 router.include_router(admin_user_router)
 router.include_router(activity_log_router)
+router.include_router(automation_rules_router)
 router.include_router(custom_fields_router)
 router.include_router(custom_module_builder_router)
 router.include_router(custom_module_runtime_router)
@@ -77,6 +80,7 @@ router.include_router(sales_contacts_router, prefix="/sales")
 router.include_router(sales_organization_router, prefix="/sales")
 router.include_router(sales_opportunities_router, prefix="/sales")
 router.include_router(sales_quotes_router, prefix="/sales")
+router.include_router(sales_orders_router, prefix="/sales")
 router.include_router(tasks_router)
 router.include_router(whatsapp_router)
 router.include_router(website_integration_router)

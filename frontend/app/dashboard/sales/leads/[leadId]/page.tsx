@@ -22,6 +22,13 @@ import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs }
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 
+type LeadScoreFactor = {
+  key: string;
+  label: string;
+  points: number;
+  reason: string;
+};
+
 type LeadSummary = {
   lead: {
     lead_id: number;
@@ -36,6 +43,10 @@ type LeadSummary = {
     notes?: string | null;
     last_contacted_at?: string | null;
     last_contacted_channel?: string | null;
+    score?: number | null;
+    score_grade?: string | null;
+    score_factors?: LeadScoreFactor[] | null;
+    score_calculated_at?: string | null;
     custom_fields?: Record<string, unknown> | null;
   };
 };
@@ -71,6 +82,12 @@ const STATUSES = [
   { value: "unqualified", label: "Unqualified" },
   { value: "converted", label: "Converted" },
 ];
+
+const SCORE_GRADE_STYLES: Record<string, string> = {
+  hot: "border-emerald-700/40 bg-emerald-950/30 text-emerald-200",
+  warm: "border-amber-700/40 bg-amber-950/30 text-amber-200",
+  cold: "border-neutral-800 bg-neutral-950/60 text-neutral-300",
+};
 
 export default function LeadDetailPage() {
   const params = useParams<{ leadId: string }>();
@@ -262,6 +279,12 @@ export default function LeadDetailPage() {
             <Card className="px-5 py-5">
               <h2 className="text-lg font-semibold text-neutral-100">Summary</h2>
               <div className="mt-4 grid gap-3">
+                <ScoreTile
+                  score={summary.lead.score}
+                  grade={summary.lead.score_grade}
+                  factors={summary.lead.score_factors ?? []}
+                  calculatedAt={summary.lead.score_calculated_at}
+                />
                 <SummaryTile label="Company" value={summary.lead.company || "No company recorded"} />
                 <SummaryTile label="Source" value={summary.lead.source || "No source recorded"} />
                 <SummaryTile label="Status" value={(summary.lead.status || "new").replace(/_/g, " ")} />
@@ -295,6 +318,41 @@ export default function LeadDetailPage() {
           />
         </>
       )}
+    </div>
+  );
+}
+
+function ScoreTile({ score, grade, factors, calculatedAt }: { score?: number | null; grade?: string | null; factors: LeadScoreFactor[]; calculatedAt?: string | null }) {
+  const normalizedGrade = grade || "cold";
+  const gradeClassName = SCORE_GRADE_STYLES[normalizedGrade] ?? SCORE_GRADE_STYLES.cold;
+  return (
+    <div className={`rounded-md border px-4 py-4 ${gradeClassName}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs uppercase tracking-wide opacity-75">Lead Score</div>
+          <div className="mt-2 flex items-baseline gap-2">
+            <span className="text-3xl font-semibold leading-none">{score ?? 0}</span>
+            <span className="text-sm font-medium capitalize">{normalizedGrade}</span>
+          </div>
+        </div>
+        <div className="text-right text-[11px] opacity-70">
+          {calculatedAt ? formatDateTime(calculatedAt) : "Not calculated"}
+        </div>
+      </div>
+      <details className="mt-4">
+        <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide opacity-80">Factors</summary>
+        <div className="mt-3 grid gap-2">
+          {factors.length ? factors.map((factor) => (
+            <div key={factor.key} className="rounded border border-current/15 bg-black/10 px-3 py-2">
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium">{factor.label}</span>
+                <span>+{factor.points}</span>
+              </div>
+              <div className="mt-1 text-xs opacity-75">{factor.reason}</div>
+            </div>
+          )) : <div className="text-xs opacity-75">No scoring factors recorded.</div>}
+        </div>
+      </details>
     </div>
   );
 }

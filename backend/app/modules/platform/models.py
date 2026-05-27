@@ -157,7 +157,7 @@ class UserNotification(Base):
         Index("ix_user_notifications_user_created", "user_id", "created_at"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     category = Column(String(50), nullable=False, index=True)
@@ -176,7 +176,7 @@ class UserNotification(Base):
 class CrmEvent(Base):
     __tablename__ = "crm_events"
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     actor_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     event_type = Column(String(100), nullable=False, index=True)
@@ -221,6 +221,75 @@ class CrmEventDelivery(Base):
 
     event = relationship("CrmEvent")
     channel = relationship("NotificationChannel")
+
+
+class AutomationRule(Base):
+    __tablename__ = "automation_rules"
+    __table_args__ = (
+        Index("ix_automation_rules_tenant_trigger_enabled", "tenant_id", "trigger_event", "enabled"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(180), nullable=False)
+    description = Column(Text, nullable=True)
+    enabled = Column(Boolean, nullable=False, server_default="true", index=True)
+    trigger_event = Column(String(100), nullable=False, index=True)
+    conditions_json = Column(JSON, nullable=False, server_default="[]")
+    actions_json = Column(JSON, nullable=False, server_default="[]")
+    created_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    updated_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    created_by = relationship("User", foreign_keys=[created_by_id])
+    updated_by = relationship("User", foreign_keys=[updated_by_id])
+    runs = relationship("AutomationRuleRun", back_populates="rule", cascade="all, delete-orphan")
+
+
+class AutomationRuleRun(Base):
+    __tablename__ = "automation_rule_runs"
+    __table_args__ = (
+        Index("ix_automation_rule_runs_tenant_status", "tenant_id", "status"),
+        Index("ix_automation_rule_runs_rule_started", "rule_id", "started_at"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    rule_id = Column(BigInteger, ForeignKey("automation_rules.id", ondelete="CASCADE"), nullable=False, index=True)
+    event_id = Column(BigInteger, ForeignKey("crm_events.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(String(30), nullable=False, index=True)
+    input_json = Column(JSON, nullable=True)
+    result_json = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+
+    rule = relationship("AutomationRule", back_populates="runs")
+    event = relationship("CrmEvent")
+
+
+class AutomationRuleDeadLetter(Base):
+    __tablename__ = "automation_rule_dead_letters"
+    __table_args__ = (
+        Index("ix_automation_dead_letters_tenant_status", "tenant_id", "status"),
+        Index("ix_automation_dead_letters_rule_created", "rule_id", "created_at"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    rule_id = Column(BigInteger, ForeignKey("automation_rules.id", ondelete="CASCADE"), nullable=True, index=True)
+    run_id = Column(BigInteger, ForeignKey("automation_rule_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    event_id = Column(BigInteger, ForeignKey("crm_events.id", ondelete="SET NULL"), nullable=True, index=True)
+    status = Column(String(30), nullable=False, server_default="open", index=True)
+    payload_json = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+    rule = relationship("AutomationRule")
+    run = relationship("AutomationRuleRun")
+    event = relationship("CrmEvent")
 
 
 class RecordComment(Base):

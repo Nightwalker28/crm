@@ -185,6 +185,13 @@ class SalesLeadBase(BaseModel):
     custom_fields: dict[str, Any] | None = None
 
 
+class SalesLeadScoreFactor(BaseModel):
+    key: str
+    label: str
+    points: int
+    reason: str
+
+
 class SalesLeadCreateRequest(SalesLeadBase):
     primary_email: EmailStr
     assigned_to: int | None = None
@@ -212,6 +219,10 @@ class SalesLeadResponse(SalesLeadBase):
     last_contacted_at: datetime | None = None
     last_contacted_channel: str | None = None
     last_contacted_by_user_id: int | None = None
+    score: int | None = None
+    score_grade: str | None = None
+    score_factors: list[SalesLeadScoreFactor] | None = None
+    score_calculated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -231,6 +242,10 @@ class SalesLeadListItem(BaseModel):
     last_contacted_at: datetime | None = None
     last_contacted_channel: str | None = None
     last_contacted_by_user_id: int | None = None
+    score: int | None = None
+    score_grade: str | None = None
+    score_factors: list[SalesLeadScoreFactor] | None = None
+    score_calculated_at: datetime | None = None
     custom_fields: dict[str, Any] | None = None
 
 
@@ -352,6 +367,159 @@ class SalesQuoteListResponse(BaseModel):
     page: int
 
 
+class SalesQuoteProposalDocumentResponse(BaseModel):
+    id: int
+    quote_id: int
+    document_id: int | None = None
+    template_name: str
+    status: str
+    title: str
+    content_text: str
+    sent_to: str | None = None
+    generated_at: datetime
+    sent_at: datetime | None = None
+    public_expires_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SalesQuoteProposalSendRequest(BaseModel):
+    sent_to: EmailStr | None = None
+
+
+class SalesQuoteProposalSendResponse(BaseModel):
+    proposal: SalesQuoteProposalDocumentResponse
+    public_url_path: str
+    expires_at: datetime
+
+
+class SalesQuoteProposalEventResponse(BaseModel):
+    id: int
+    quote_id: int
+    quote_document_id: int
+    event_type: str
+    recipient_email: str | None = None
+    occurred_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SalesQuoteProposalEventsResponse(BaseModel):
+    results: list[SalesQuoteProposalEventResponse]
+
+
+class SalesQuoteProposalPublicEventRequest(BaseModel):
+    event_type: str = Field(pattern="^(opened|viewed|downloaded)$")
+    recipient_email: EmailStr | None = None
+
+
+class SalesQuoteProposalPublicResponse(BaseModel):
+    quote_number: str
+    customer_name: str
+    title: str
+    content_text: str
+    currency: str | None = None
+    total_amount: Decimal | None = None
+    expiry_date: date | None = None
+
+
+class SalesOrderItemBase(BaseModel):
+    name: str
+    description: str | None = None
+    quantity: Decimal = Decimal("1")
+    unit_price: Decimal = Decimal("0")
+    discount_amount: Decimal = Decimal("0")
+    tax_amount: Decimal = Decimal("0")
+    line_total: Decimal = Decimal("0")
+    sort_order: int = 0
+
+
+class SalesOrderItemCreate(SalesOrderItemBase):
+    pass
+
+
+class SalesOrderItemResponse(SalesOrderItemBase):
+    id: int
+    order_id: int
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SalesOrderCreateRequest(BaseModel):
+    order_number: str | None = None
+    quote_id: int | None = None
+    organization_id: int | None = None
+    contact_id: int | None = None
+    opportunity_id: int | None = None
+    status: str = "confirmed"
+    currency: str = "USD"
+    subtotal: Decimal = Decimal("0")
+    tax_total: Decimal = Decimal("0")
+    discount_total: Decimal = Decimal("0")
+    grand_total: Decimal = Decimal("0")
+    owner_id: int | None = None
+    items: list[SalesOrderItemCreate] = Field(default_factory=list)
+
+
+class SalesOrderUpdateRequest(BaseModel):
+    status: str | None = None
+    owner_id: int | None = None
+
+
+class SalesOrderResponse(BaseModel):
+    id: int
+    order_number: str
+    quote_id: int | None = None
+    organization_id: int | None = None
+    contact_id: int | None = None
+    opportunity_id: int | None = None
+    status: str
+    currency: str
+    subtotal: Decimal
+    tax_total: Decimal
+    discount_total: Decimal
+    grand_total: Decimal
+    owner_id: int | None = None
+    created_by_id: int | None = None
+    created_at: datetime
+    updated_at: datetime
+    items: list[SalesOrderItemResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SalesOrderListItem(BaseModel):
+    id: int
+    order_number: str
+    quote_id: int | None = None
+    organization_id: int | None = None
+    contact_id: int | None = None
+    opportunity_id: int | None = None
+    status: str
+    currency: str
+    grand_total: Decimal
+    owner_id: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SalesOrderListResponse(BaseModel):
+    results: list[SalesOrderListItem]
+    range_start: int
+    range_end: int
+    total_count: int
+    total_pages: int
+    page: int
+
+
+class SalesQuoteConvertToOrderRequest(BaseModel):
+    allow_duplicate: bool = False
+
+
 class RelatedOpportunitySummary(BaseModel):
     opportunity_id: int
     opportunity_name: str
@@ -368,6 +536,9 @@ class QuoteSummaryResponse(BaseModel):
     opportunity: RelatedOpportunitySummary | None = None
     contact: "ContactCompactSummary | None" = None
     organization: "OrganizationCompactSummary | None" = None
+    latest_proposal: SalesQuoteProposalDocumentResponse | None = None
+    proposal_events: list[SalesQuoteProposalEventResponse] = Field(default_factory=list)
+    related_order: SalesOrderListItem | None = None
 
 
 class RelatedInsertionOrderSummary(BaseModel):

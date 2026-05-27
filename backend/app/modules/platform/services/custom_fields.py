@@ -24,6 +24,7 @@ SUPPORTED_MODULE_KEYS = {
     "sales_organizations",
     "sales_opportunities",
     "sales_quotes",
+    "sales_orders",
 }
 
 SUPPORTED_FIELD_TYPES = {"text", "long_text", "number", "date", "boolean"}

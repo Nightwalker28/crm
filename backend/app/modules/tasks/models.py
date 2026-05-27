@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, CheckConstraint, Column, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func, text
+from sqlalchemy import BigInteger, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -18,7 +18,7 @@ class Task(Base):
         Index("ix_tasks_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(
         BigInteger,
         ForeignKey("tenants.id", ondelete="CASCADE"),
@@ -75,7 +75,7 @@ class TaskAssignee(Base):
         UniqueConstraint("tenant_id", "task_id", "assignee_key", name="uq_task_assignees_task_key"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(
         BigInteger,
         ForeignKey("tenants.id", ondelete="CASCADE"),

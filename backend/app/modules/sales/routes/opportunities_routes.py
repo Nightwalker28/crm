@@ -497,6 +497,24 @@ def update_sales_opportunity(
         before_state=before_state,
         after_state=_serialize_opportunity(updated),
     )
+    if "sales_stage" in update_data and before_state.get("sales_stage") != updated.sales_stage:
+        safe_emit_crm_event(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            event_type="opportunity.stage_changed",
+            entity_type="sales_opportunity",
+            entity_id=updated.opportunity_id,
+            payload={
+                **actor_payload(current_user),
+                "opportunity_id": updated.opportunity_id,
+                "deal_name": updated.opportunity_name,
+                "previous_stage": before_state.get("sales_stage"),
+                "stage": updated.sales_stage,
+                "assigned_to": updated.assigned_to,
+                "href": f"/dashboard/sales/opportunities/{updated.opportunity_id}",
+            },
+        )
     if "assigned_to" in update_data and before_state.get("assigned_to") != updated.assigned_to:
         _emit_deal_assigned_event(db, current_user=current_user, opportunity=updated)
     return SalesOpportunityResponse.model_validate(updated)
@@ -526,6 +544,23 @@ def update_sales_opportunity_stage(
         description=f"Moved opportunity {updated.opportunity_name} to {updated.sales_stage}",
         before_state=before_state,
         after_state=_serialize_opportunity(updated),
+    )
+    safe_emit_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        event_type="opportunity.stage_changed",
+        entity_type="sales_opportunity",
+        entity_id=updated.opportunity_id,
+        payload={
+            **actor_payload(current_user),
+            "opportunity_id": updated.opportunity_id,
+            "deal_name": updated.opportunity_name,
+            "previous_stage": before_state.get("sales_stage"),
+            "stage": updated.sales_stage,
+            "assigned_to": updated.assigned_to,
+            "href": f"/dashboard/sales/opportunities/{updated.opportunity_id}",
+        },
     )
     return SalesOpportunityResponse.model_validate(updated)
 

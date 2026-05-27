@@ -293,6 +293,66 @@ class CrmEventListResponse(BaseModel):
     page_size: int
 
 
+class AutomationRuleResponse(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    enabled: bool
+    trigger_event: str
+    conditions_json: list[dict[str, Any]]
+    actions_json: list[dict[str, Any]]
+    created_by_id: int | None = None
+    updated_by_id: int | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AutomationRuleCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    description: str | None = None
+    enabled: bool = True
+    trigger_event: str = Field(min_length=1, max_length=100)
+    conditions_json: list[dict[str, Any]] = Field(default_factory=list)
+    actions_json: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class AutomationRuleUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=180)
+    description: str | None = None
+    enabled: bool | None = None
+    trigger_event: str | None = Field(default=None, min_length=1, max_length=100)
+    conditions_json: list[dict[str, Any]] | None = None
+    actions_json: list[dict[str, Any]] | None = None
+
+
+class AutomationRuleListResponse(BaseModel):
+    results: list[AutomationRuleResponse]
+
+
+class AutomationRuleRunResponse(BaseModel):
+    id: int
+    rule_id: int
+    event_id: int | None = None
+    status: str
+    input_json: dict[str, Any] | None = None
+    result_json: dict[str, Any] | None = None
+    error_message: str | None = None
+    started_at: datetime
+    finished_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AutomationRuleRunListResponse(BaseModel):
+    results: list[AutomationRuleRunResponse]
+
+
+class AutomationRuleTriggerResponse(BaseModel):
+    results: list[str]
+
+
 class RecordCommentResponse(BaseModel):
     id: int
     actor_user_id: int | None = None

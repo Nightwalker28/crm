@@ -47,6 +47,12 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; 
   converted: { bg: "bg-amber-900/30", text: "text-amber-300", border: "border-amber-700/40", label: "Converted" },
 };
 
+const SCORE_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
+  hot: { bg: "bg-emerald-900/30", text: "text-emerald-300", border: "border-emerald-700/40", label: "Hot" },
+  warm: { bg: "bg-amber-900/30", text: "text-amber-300", border: "border-amber-700/40", label: "Warm" },
+  cold: { bg: "bg-neutral-800/40", text: "text-neutral-400", border: "border-neutral-700/40", label: "Cold" },
+};
+
 function initials(lead: Lead) {
   if (lead.first_name && lead.last_name) return `${lead.first_name[0]}${lead.last_name[0]}`.toUpperCase();
   if (lead.first_name) return lead.first_name[0].toUpperCase();
@@ -107,6 +113,18 @@ export default function LeadsTable({
         const style = STATUS_STYLES[lead.status ?? ""] ?? STATUS_STYLES.new;
         return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
       }
+      case "score": {
+        const style = SCORE_STYLES[lead.score_grade ?? "cold"] ?? SCORE_STYLES.cold;
+        return (
+          <TableCell>
+            <Pill bg={style.bg} text={style.text} border={style.border}>{lead.score ?? 0}</Pill>
+          </TableCell>
+        );
+      }
+      case "score_grade": {
+        const style = SCORE_STYLES[lead.score_grade ?? "cold"] ?? SCORE_STYLES.cold;
+        return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
+      }
       case "created_time":
         return <TableCell><span className="text-sm text-neutral-400">{lead.created_time ? formatDateTime(lead.created_time) : "-"}</span></TableCell>;
       default:
@@ -131,7 +149,7 @@ export default function LeadsTable({
             </TableHead>
             {visibleColumns.map((column) => {
               const label = getReadableColumnLabel(column, columnOptions);
-              const sortable = !isCustomFieldColumnKey(column) && ["first_name", "last_name", "company", "primary_email", "status"].includes(column);
+              const sortable = !isCustomFieldColumnKey(column) && ["first_name", "last_name", "company", "primary_email", "status", "score", "score_grade"].includes(column);
               return sortable ? (
                 <SortableHead
                   key={column}

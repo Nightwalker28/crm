@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
 from fastapi import HTTPException, status
@@ -19,13 +19,14 @@ from app.modules.platform.services.custom_fields import (
     save_custom_field_values,
     validate_custom_field_payload,
 )
-from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization
+from app.modules.sales.models import SalesContact, SalesLead, SalesLeadScore, SalesOpportunity, SalesOrganization
 from app.modules.sales.repositories import leads_repository, organizations_repository
 from app.modules.sales.services.opportunities_services import OPPORTUNITY_STAGE_SET
 from app.modules.user_management.models import User
 
 
 LEAD_STATUSES = {"new", "contacted", "qualified", "unqualified", "converted"}
+LEAD_SCORE_INACTIVE_STATUSES = {"unqualified", "converted"}
 EXPORT_COLUMNS = [
     "lead_id",
     "first_name",
@@ -119,6 +120,74 @@ def _validate_conversion_deal_stage(value: str | None) -> str:
     if normalized not in OPPORTUNITY_STAGE_SET:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid deal stage")
     return normalized
+
+
+def _score_grade(score: int) -> str:
+    if score >= 50:
+        return "hot"
+    if score >= 25:
+        return "warm"
+    return "cold"
+
+
+def calculate_lead_score(lead: SalesLead, *, now: datetime | None = None) -> tuple[int, str, list[dict]]:
+    status = (lead.status or "new").lower()
+    if status in LEAD_SCORE_INACTIVE_STATUSES:
+        return 0, "cold", [
+            {
+                "key": "inactive_status",
+                "label": "Inactive status",
+                "points": 0,
+                "reason": "Converted and unqualified leads do not rank as active hot leads.",
+            }
+        ]
+
+    factors: list[dict] = []
+    score = 0
+
+    def add_factor(key: str, label: str, points: int, reason: str, present: bool) -> None:
+        nonlocal score
+        if not present:
+            return
+        score += points
+        factors.append({"key": key, "label": label, "points": points, "reason": reason})
+
+    add_factor("has_email", "Has email", 10, "Lead has a reachable email address.", bool(_coerce_optional(lead.primary_email)))
+    add_factor("has_phone", "Has phone", 10, "Lead has a phone number for direct follow-up.", bool(_coerce_optional(lead.phone)))
+    add_factor("has_company", "Has company", 10, "Lead is attached to a company or account name.", bool(_coerce_optional(lead.company)))
+    add_factor("has_source", "Has source", 10, "Lead includes source attribution.", bool(_coerce_optional(lead.source)))
+    add_factor("contacted", "Contacted", 10, "Lead has already been contacted.", status in {"contacted", "qualified"})
+    add_factor("qualified", "Qualified", 20, "Lead has been qualified by sales.", status == "qualified")
+
+    if lead.last_contacted_at:
+        reference = now or datetime.now(timezone.utc)
+        contacted_at = lead.last_contacted_at
+        if contacted_at.tzinfo is None:
+            contacted_at = contacted_at.replace(tzinfo=timezone.utc)
+        add_factor(
+            "recent_follow_up",
+            "Recent follow-up",
+            10,
+            "Lead has follow-up activity in the last 30 days.",
+            contacted_at >= reference - timedelta(days=30),
+        )
+
+    normalized_score = max(0, min(score, 100))
+    return normalized_score, _score_grade(normalized_score), factors
+
+
+def recalculate_lead_score(db: Session, lead: SalesLead) -> SalesLeadScore:
+    score, grade, factors = calculate_lead_score(lead)
+    record = lead.score_record
+    if record is None:
+        record = SalesLeadScore(tenant_id=lead.tenant_id, lead_id=lead.lead_id)
+    record.score = score
+    record.grade = grade
+    record.factors_json = factors
+    record.calculated_at = datetime.now(timezone.utc)
+    db.add(record)
+    lead.score_record = record
+    return record
 
 
 def _apply_lead_payload(lead: SalesLead, payload: dict) -> None:
@@ -269,6 +338,7 @@ def create_sales_lead(
         if replace_duplicates:
             _apply_lead_payload(existing, data)
             db.add(existing)
+            recalculate_lead_score(db, existing)
             db.commit()
             db.refresh(existing)
             save_custom_field_values(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record_id=existing.lead_id, values=custom_data)
@@ -287,6 +357,8 @@ def create_sales_lead(
     lead = SalesLead(**data)
     db.add(lead)
     try:
+        db.flush()
+        recalculate_lead_score(db, lead)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -333,6 +405,7 @@ def update_sales_lead(db: Session, lead: SalesLead, data: dict) -> SalesLead:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Another lead already uses this email")
     _apply_lead_payload(lead, data)
     db.add(lead)
+    recalculate_lead_score(db, lead)
     db.commit()
     db.refresh(lead)
     if custom_data_to_save is not None:
@@ -443,6 +516,7 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
     if assigned_to and lead.assigned_to is None:
         lead.assigned_to = assigned_to
     db.add(lead)
+    recalculate_lead_score(db, lead)
     db.commit()
     db.refresh(lead)
     if organization is not None:
@@ -542,13 +616,16 @@ def import_leads_from_csv(
                 _merge_lead_payload(existing, payload)
                 merged_rows += 1
             db.add(existing)
+            recalculate_lead_score(db, existing)
             continue
 
         lead = SalesLead(tenant_id=tenant_id, **payload)
         db.add(lead)
+        db.flush()
         new_rows += 1
         if current_user:
             lead.assigned_to = lead.assigned_to or current_user.id
+        recalculate_lead_score(db, lead)
 
     db.commit()
     return build_import_summary(
