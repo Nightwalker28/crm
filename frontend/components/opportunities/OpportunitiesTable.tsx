@@ -65,6 +65,7 @@ export default function OpportunitiesTable({
     client: "Client",
     sales_stage: "Stage",
     expected_close_date: "Expected Close",
+    probability_percent: "Probability",
     total_cost_of_project: "Project Cost",
     currency_type: "Currency",
     created_time: "Created",
@@ -135,6 +136,18 @@ export default function OpportunitiesTable({
               </span>
             ) : (
               <span className="text-neutral-600 text-sm">—</span>
+            )}
+          </TableCell>
+        );
+      case "probability_percent":
+        return (
+          <TableCell>
+            {opportunity.probability_percent !== null && opportunity.probability_percent !== undefined && opportunity.probability_percent !== "" ? (
+              <span className="text-sm font-medium text-neutral-300 tabular-nums">
+                {Number(opportunity.probability_percent).toLocaleString(undefined, { maximumFractionDigits: 2 })}%
+              </span>
+            ) : (
+              <span className="text-neutral-600 text-sm">Stage default</span>
             )}
           </TableCell>
         );

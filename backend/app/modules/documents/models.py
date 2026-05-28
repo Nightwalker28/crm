@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, BigInteger, Column, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, func, text
+from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -13,12 +13,15 @@ class Document(Base):
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     uploaded_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    current_version_id = Column(BigInteger, ForeignKey("document_versions.id", ondelete="SET NULL"), nullable=True, index=True)
     title = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
     original_filename = Column(String(255), nullable=False)
     content_type = Column(String(120), nullable=False)
     extension = Column(String(20), nullable=False, index=True)
     file_size_bytes = Column(BigInteger, nullable=False)
+    is_template = Column(Boolean, nullable=False, default=False, server_default="false", index=True)
+    template_category = Column(String(120), nullable=True, index=True)
     storage_provider = Column(String(40), nullable=False, default="local", server_default="local", index=True)
     storage_path = Column(Text, nullable=False, unique=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
@@ -27,6 +30,37 @@ class Document(Base):
 
     uploaded_by = relationship("User")
     links = relationship("DocumentLink", back_populates="document", cascade="all, delete-orphan")
+    versions = relationship(
+        "DocumentVersion",
+        back_populates="document",
+        cascade="all, delete-orphan",
+        foreign_keys="DocumentVersion.document_id",
+        order_by="DocumentVersion.version_number.desc()",
+    )
+    current_version = relationship("DocumentVersion", foreign_keys=[current_version_id], post_update=True)
+
+
+class DocumentVersion(Base):
+    __tablename__ = "document_versions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "document_id", "version_number", name="uq_document_versions_document_number"),
+        Index("ix_document_versions_tenant_document", "tenant_id", "document_id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    version_number = Column(Integer, nullable=False)
+    storage_key = Column(Text, nullable=False, unique=True)
+    file_name = Column(String(255), nullable=False)
+    mime_type = Column(String(120), nullable=False)
+    size_bytes = Column(BigInteger, nullable=False)
+    checksum = Column(String(128), nullable=True)
+    uploaded_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+
+    document = relationship("Document", back_populates="versions", foreign_keys=[document_id])
+    uploaded_by = relationship("User")
 
 
 class DocumentStorageConnection(Base):

@@ -464,7 +464,12 @@ class SalesOpportunity(Base):
             "sales_stage IS NULL OR sales_stage IN ('lead', 'qualified', 'proposal', 'negotiation', 'closed_won', 'closed_lost')",
             name="ck_sales_opportunities_sales_stage",
         ),
+        CheckConstraint(
+            "probability_percent IS NULL OR (probability_percent >= 0 AND probability_percent <= 100)",
+            name="ck_sales_opportunities_probability_range",
+        ),
         Index("ix_sales_opportunities_tenant_stage_active", "tenant_id", "sales_stage", postgresql_where=text("deleted_at IS NULL")),
+        Index("ix_sales_opportunities_tenant_close_active", "tenant_id", "expected_close_date", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_sales_opportunities_tenant_contact", "tenant_id", "contact_id"),
         Index("ix_sales_opportunities_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
     )
@@ -493,6 +498,7 @@ class SalesOpportunity(Base):
 
     start_date = Column(Date, nullable=True)
     expected_close_date = Column(Date, nullable=True)
+    probability_percent = Column(Numeric(5, 2), nullable=True)
     campaign_type = Column(Text, nullable=True)
     total_leads = Column(Text, nullable=True)
     cpl = Column(Text, nullable=True)

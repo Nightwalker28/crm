@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship, validates
 
 from app.core.database import Base
@@ -119,6 +119,33 @@ class UserModuleReport(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     user = relationship("User")
+
+
+class ForecastSnapshot(Base):
+    __tablename__ = "forecast_snapshots"
+    __table_args__ = (
+        Index("ix_forecast_snapshots_tenant_period", "tenant_id", "period_start", "period_end"),
+        Index("ix_forecast_snapshots_tenant_created", "tenant_id", "created_at"),
+        Index("ix_forecast_snapshots_tenant_owner", "tenant_id", "owner_id"),
+        Index("ix_forecast_snapshots_tenant_team", "tenant_id", "team_id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    period_start = Column(Date, nullable=False)
+    period_end = Column(Date, nullable=False)
+    owner_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    team_id = Column(BigInteger, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True, index=True)
+    pipeline_key = Column(String(100), nullable=True, index=True)
+    gross_pipeline_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    weighted_pipeline_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    commit_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    best_case_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    snapshot_json = Column(JSON, nullable=False, server_default="{}")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    owner = relationship("User", foreign_keys=[owner_id])
+    team = relationship("Team", foreign_keys=[team_id])
 
 
 class DataTransferJob(Base):

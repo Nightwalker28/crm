@@ -13,7 +13,10 @@ from app.modules.documents.schema import (
     DocumentStorageConnectionResponse,
     DocumentStorageProviderResponse,
     DocumentStorageUsageResponse,
+    DocumentTemplateUpdateRequest,
     DocumentUploadLimitsResponse,
+    DocumentVersionListResponse,
+    DocumentVersionResponse,
 )
 from app.modules.documents.services.document_services import (
     create_document,
@@ -22,14 +25,20 @@ from app.modules.documents.services.document_services import (
     document_storage_providers,
     document_storage_usage,
     document_upload_limits,
+    get_document_version_or_404,
     get_document_or_404,
+    list_document_templates,
     list_document_storage_connections,
+    list_document_versions,
     list_documents,
     list_documents_cursor,
     log_document_download,
     require_document_link_access,
     resolve_document_download,
+    resolve_document_version_download,
     soft_delete_document,
+    update_document_template_status,
+    upload_document_version,
 )
 
 
@@ -110,6 +119,7 @@ def get_documents(
     search: str | None = Query(default=None, max_length=100),
     module_key: str | None = Query(default=None, max_length=100),
     entity_id: str | None = Query(default=None, max_length=100),
+    is_template: bool | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
@@ -122,6 +132,7 @@ def get_documents(
         search=search,
         module_key=module_key,
         entity_id=entity_id,
+        is_template=is_template,
         limit=limit,
         current_user=current_user,
     )
@@ -133,6 +144,7 @@ def get_documents_cursor(
     search: str | None = Query(default=None, max_length=100),
     module_key: str | None = Query(default=None, max_length=100),
     entity_id: str | None = Query(default=None, max_length=100),
+    is_template: bool | None = Query(default=None),
     pagination: CursorPagination = Depends(get_cursor_pagination),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
@@ -145,12 +157,32 @@ def get_documents_cursor(
         search=search,
         module_key=module_key,
         entity_id=entity_id,
+        is_template=is_template,
         limit=pagination.limit,
         cursor=pagination.cursor,
         current_user=current_user,
     )
     serialized = [DocumentResponse.model_validate(document) for document in documents]
     return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+
+
+@router.get("/templates", response_model=DocumentListResponse)
+def get_document_templates(
+    search: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=50, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("documents")),
+    require_permission=Depends(require_action_access("documents", "view")),
+):
+    documents, total = list_document_templates(
+        db,
+        tenant_id=current_user.tenant_id,
+        search=search,
+        limit=limit,
+        current_user=current_user,
+    )
+    return {"results": [DocumentResponse.model_validate(document) for document in documents], "total": total}
 
 
 @router.post("", response_model=DocumentResponse)
@@ -181,6 +213,66 @@ async def upload_document(
     return DocumentResponse.model_validate(document)
 
 
+@router.get("/{document_id}/versions", response_model=DocumentVersionListResponse)
+def get_document_versions(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("documents")),
+    require_permission=Depends(require_action_access("documents", "view")),
+):
+    document = get_document_or_404(db, tenant_id=current_user.tenant_id, document_id=document_id)
+    require_document_link_access(db, user=current_user, document=document, action="view")
+    return {"results": [DocumentVersionResponse.model_validate(version) for version in list_document_versions(db, document=document)]}
+
+
+@router.post("/{document_id}/versions", response_model=DocumentResponse)
+async def upload_new_document_version(
+    document_id: int,
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("documents")),
+    require_permission=Depends(require_action_access("documents", "edit")),
+):
+    document = await upload_document_version(
+        db,
+        tenant_id=current_user.tenant_id,
+        document_id=document_id,
+        file=file,
+        current_user=current_user,
+    )
+    return DocumentResponse.model_validate(document)
+
+
+@router.get("/{document_id}/versions/{version_id}/download")
+def download_document_version(
+    document_id: int,
+    version_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("documents")),
+    require_permission=Depends(require_action_access("documents", "view")),
+):
+    document = get_document_or_404(db, tenant_id=current_user.tenant_id, document_id=document_id)
+    require_document_link_access(db, user=current_user, document=document, action="view")
+    version = get_document_version_or_404(db, tenant_id=current_user.tenant_id, document_id=document_id, version_id=version_id)
+    download = resolve_document_version_download(db, document=document, version=version, current_user=current_user)
+    log_document_download(db, document=document, current_user=current_user)
+    if download["kind"] == "bytes":
+        return Response(
+            content=download["content"],
+            media_type=version.mime_type,
+            headers={"Content-Disposition": f'inline; filename="{version.file_name}"'},
+        )
+    return FileResponse(
+        download["path"],
+        media_type=version.mime_type,
+        filename=version.file_name,
+        content_disposition_type="inline",
+    )
+
+
 @router.get("/{document_id}/download")
 def download_document(
     document_id: int,
@@ -205,6 +297,26 @@ def download_document(
         filename=document.original_filename,
         content_disposition_type="inline",
     )
+
+
+@router.patch("/{document_id}/template", response_model=DocumentResponse)
+def update_document_template(
+    document_id: int,
+    payload: DocumentTemplateUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("documents")),
+    require_permission=Depends(require_action_access("documents", "edit")),
+):
+    document = update_document_template_status(
+        db,
+        tenant_id=current_user.tenant_id,
+        document_id=document_id,
+        is_template=payload.is_template,
+        template_category=payload.template_category,
+        current_user=current_user,
+    )
+    return DocumentResponse.model_validate(document)
 
 
 @router.delete("/{document_id}", response_model=DocumentResponse)

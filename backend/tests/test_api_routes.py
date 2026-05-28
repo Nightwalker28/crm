@@ -808,6 +808,39 @@ class APIRouteTests(unittest.TestCase):
         summary_mock.assert_called_once()
         self.assertEqual(summary_mock.call_args.kwargs["period_days"], 14)
 
+    def test_forecast_report_route_calls_service(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+        fake_result = {
+            "period_start": "2026-06-01",
+            "period_end": "2026-06-30",
+            "gross_pipeline_amount": "3000.00",
+            "weighted_pipeline_amount": "2100.00",
+            "commit_amount": "2000.00",
+            "best_case_amount": "3000.00",
+            "actual_revenue_amount": "500.00",
+            "open_opportunity_count": 2,
+            "won_opportunity_count": 1,
+            "by_stage": [],
+            "by_owner": [],
+            "by_team": [],
+            "generated_at": "2026-05-28T00:00:00Z",
+        }
+
+        with patch("app.core.permissions.require_department_module_access"), patch(
+            "app.core.permissions.require_role_module_action_access",
+        ), patch(
+            "app.modules.platform.routes.module_reports.module_reports.generate_forecast_summary",
+            return_value=fake_result,
+        ) as forecast_mock:
+            response = self.client.get("/api/v1/reports/forecast?period_start=2026-06-01&period_end=2026-06-30")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["weighted_pipeline_amount"], "2100.00")
+        forecast_mock.assert_called_once()
+        self.assertEqual(forecast_mock.call_args.kwargs["period_start"].isoformat(), "2026-06-01")
+        self.assertEqual(forecast_mock.call_args.kwargs["period_end"].isoformat(), "2026-06-30")
+
     def test_sales_opportunity_stage_route_logs_close_activity(self):
         app.dependency_overrides[require_user] = self._active_user
         app.dependency_overrides[get_db] = self._override_db
@@ -846,6 +879,137 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(update_mock.call_args.kwargs["sales_stage"], "closed_won")
         activity_mock.assert_called_once()
         self.assertEqual(activity_mock.call_args.kwargs["action"], "close")
+
+    def test_calendar_booking_type_route_calls_service(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+        fake_result = {
+            "id": 5,
+            "owner_id": 7,
+            "owner_name": "Owner",
+            "name": "Discovery",
+            "slug": "discovery",
+            "duration_minutes": 30,
+            "buffer_before_minutes": 0,
+            "buffer_after_minutes": 0,
+            "timezone": "UTC",
+            "enabled": True,
+            "availability": [{"id": 1, "weekday": 0, "start_time": "09:00:00", "end_time": "17:00:00", "sort_order": 0}],
+            "questions": [],
+            "created_at": "2026-05-28T00:00:00Z",
+            "updated_at": "2026-05-28T00:00:00Z",
+        }
+
+        with patch("app.core.permissions.require_department_module_access"), patch(
+            "app.core.permissions.require_role_module_action_access",
+        ), patch(
+            "app.modules.calendar.routes.booking_routes.booking_services.create_booking_type",
+            return_value=fake_result,
+        ) as create_mock, patch("app.modules.calendar.routes.booking_routes.log_activity"):
+            response = self.client.post(
+                "/api/v1/calendar/booking-types",
+                json={
+                    "name": "Discovery",
+                    "slug": "discovery",
+                    "duration_minutes": 30,
+                    "timezone": "UTC",
+                    "availability": [{"weekday": 0, "start_time": "09:00", "end_time": "17:00"}],
+                    "questions": [],
+                },
+            )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["slug"], "discovery")
+        create_mock.assert_called_once()
+
+    def test_public_booking_slots_route_does_not_require_user(self):
+        app.dependency_overrides[get_db] = self._override_db
+
+        with patch(
+            "app.modules.calendar.routes.booking_routes.booking_services.available_slots",
+            return_value=[
+                {
+                    "start_at": datetime(2026, 6, 1, 9, 0),
+                    "end_at": datetime(2026, 6, 1, 9, 30),
+                    "label": "Mon, Jun 1, 9:00 AM",
+                }
+            ],
+        ) as slots_mock:
+            response = self.client.get("/api/v1/booking-links/discovery/slots?start_date=2026-06-01&end_date=2026-06-01")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()["results"]), 1)
+        slots_mock.assert_called_once()
+
+    def test_document_templates_route_calls_service_before_dynamic_document_route(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+        fake_document = {
+            "id": 9,
+            "title": "Proposal Template",
+            "description": None,
+            "original_filename": "proposal.docx",
+            "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "extension": "docx",
+            "file_size_bytes": 1200,
+            "storage_provider": "local",
+            "is_template": True,
+            "template_category": "Proposals",
+            "current_version_id": 4,
+            "uploaded_by_user_id": 7,
+            "created_at": datetime(2026, 5, 28, 10, 0, 0),
+            "updated_at": datetime(2026, 5, 28, 10, 0, 0),
+            "links": [],
+        }
+
+        with patch("app.core.permissions.require_department_module_access"), patch(
+            "app.core.permissions.require_role_module_action_access",
+        ), patch(
+            "app.modules.documents.routes.document_routes.list_document_templates",
+            return_value=([fake_document], 1),
+        ) as templates_mock:
+            response = self.client.get("/api/v1/documents/templates")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["total"], 1)
+        self.assertEqual(response.json()["results"][0]["template_category"], "Proposals")
+        templates_mock.assert_called_once()
+
+    def test_document_template_update_route_calls_service(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+        fake_document = {
+            "id": 9,
+            "title": "Proposal Template",
+            "description": None,
+            "original_filename": "proposal.docx",
+            "content_type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            "extension": "docx",
+            "file_size_bytes": 1200,
+            "storage_provider": "local",
+            "is_template": True,
+            "template_category": "Proposals",
+            "current_version_id": 4,
+            "uploaded_by_user_id": 7,
+            "created_at": datetime(2026, 5, 28, 10, 0, 0),
+            "updated_at": datetime(2026, 5, 28, 10, 0, 0),
+            "links": [],
+        }
+
+        with patch("app.core.permissions.require_department_module_access"), patch(
+            "app.core.permissions.require_role_module_action_access",
+        ), patch(
+            "app.modules.documents.routes.document_routes.update_document_template_status",
+            return_value=fake_document,
+        ) as update_mock:
+            response = self.client.patch(
+                "/api/v1/documents/9/template",
+                json={"is_template": True, "template_category": "Proposals"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["is_template"])
+        update_mock.assert_called_once()
 
     def test_sales_contacts_list_route_returns_paged_payload(self):
         app.dependency_overrides[require_user] = self._active_user

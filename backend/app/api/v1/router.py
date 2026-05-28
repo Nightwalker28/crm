@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.modules.finance.routes.router import router as finance_router
+from app.modules.calendar.routes.booking_routes import public_router as calendar_booking_public_router, router as calendar_booking_router
 from app.modules.calendar.routes.calendar_routes import router as calendar_router
 from app.modules.client_portal.routes.client_portal_routes import (
     router as client_portal_router,
@@ -67,6 +68,8 @@ router.include_router(message_templates_router)
 router.include_router(notification_channels_router)
 router.include_router(recycle_bin_router)
 router.include_router(calendar_router)
+router.include_router(calendar_booking_router)
+router.include_router(calendar_booking_public_router)
 router.include_router(client_portal_router)
 router.include_router(client_auth_router)
 router.include_router(public_client_pages_router)

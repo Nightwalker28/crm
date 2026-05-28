@@ -13,6 +13,7 @@ def list_documents(
     search: str | None = None,
     module_key: str | None = None,
     entity_id: str | int | None = None,
+    is_template: bool | None = None,
     limit: int = 50,
 ) -> tuple[list[Document], int]:
     query = (
@@ -26,6 +27,8 @@ def list_documents(
             DocumentLink.module_key == module_key,
             DocumentLink.entity_id == str(entity_id),
         )
+    if is_template is not None:
+        query = query.filter(Document.is_template == is_template)
     if search and search.strip():
         pattern = f"%{search.strip()}%"
         query = query.filter(
@@ -47,6 +50,7 @@ def list_documents_cursor(
     search: str | None = None,
     module_key: str | None = None,
     entity_id: str | int | None = None,
+    is_template: bool | None = None,
     limit: int = 50,
     cursor: int | None = None,
 ) -> list[Document]:
@@ -61,6 +65,8 @@ def list_documents_cursor(
             DocumentLink.module_key == module_key,
             DocumentLink.entity_id == str(entity_id),
         )
+    if is_template is not None:
+        query = query.filter(Document.is_template == is_template)
     if search and search.strip():
         pattern = f"%{search.strip()}%"
         query = query.filter(

@@ -43,6 +43,7 @@ const emptyForm: FormState = {
   assigned_to: null,
   start_date: "",
   expected_close_date: "",
+  probability_percent: "",
   campaign_type: "",
   total_leads: "",
   cpl: "",
@@ -80,6 +81,7 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
             assigned_to: opportunity.assigned_to ?? null,
             start_date: opportunity.start_date ?? "",
             expected_close_date: opportunity.expected_close_date ?? "",
+            probability_percent: opportunity.probability_percent ?? "",
             campaign_type: opportunity.campaign_type ?? "",
             total_leads: opportunity.total_leads ?? "",
             cpl: opportunity.cpl ?? "",
@@ -102,7 +104,13 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
   async function handleSubmit() {
     try {
       setError(null);
-      await onSubmit(pickEnabledModulePayload(form, moduleFields, ["opportunity_name", "contact_id", "custom_fields"]) as OpportunityPayload);
+      const payload = {
+        ...form,
+        probability_percent: form.probability_percent !== null && form.probability_percent !== undefined && String(form.probability_percent).trim()
+          ? Number(form.probability_percent)
+          : null,
+      };
+      await onSubmit(pickEnabledModulePayload(payload, moduleFields, ["opportunity_name", "contact_id", "custom_fields"]) as OpportunityPayload);
       onClose();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Failed to save opportunity");
@@ -175,6 +183,19 @@ export default function OpportunityDialog({ open, opportunity, isSubmitting = fa
               <Field>
                 <FieldLabel>Expected Close Date</FieldLabel>
                 <Input type="date" value={form.expected_close_date ?? ""} onChange={(e) => setForm((c) => ({ ...c, expected_close_date: e.target.value }))} />
+              </Field>
+              ) : null}
+              {fieldEnabled("probability_percent") ? (
+              <Field>
+                <FieldLabel>Probability %</FieldLabel>
+                <Input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value={form.probability_percent ?? ""}
+                  onChange={(e) => setForm((c) => ({ ...c, probability_percent: e.target.value }))}
+                />
               </Field>
               ) : null}
               {fieldEnabled("total_cost_of_project") ? (

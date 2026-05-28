@@ -73,6 +73,7 @@ def build_opportunity_query(
         "client": {"expression": SalesOpportunity.client, "type": "text"},
         "sales_stage": {"expression": SalesOpportunity.sales_stage, "type": "text"},
         "expected_close_date": {"expression": SalesOpportunity.expected_close_date, "type": "date"},
+        "probability_percent": {"expression": SalesOpportunity.probability_percent, "type": "number"},
         "total_cost_of_project": {"expression": SalesOpportunity.total_cost_of_project, "type": "text"},
         "currency_type": {"expression": SalesOpportunity.currency_type, "type": "text"},
         "target_geography": {"expression": SalesOpportunity.target_geography, "type": "text"},

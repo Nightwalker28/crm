@@ -32,7 +32,12 @@ export default function DocumentsPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [storageProvider, setStorageProvider] = useState("local");
-  const documentsQuery = useDocuments({ search, limit: 100 });
+  const [documentFilter, setDocumentFilter] = useState<"all" | "templates" | "files">("all");
+  const documentsQuery = useDocuments({
+    search,
+    isTemplate: documentFilter === "all" ? undefined : documentFilter === "templates",
+    limit: 100,
+  });
   const storageUsageQuery = useDocumentStorageUsage();
   const storageConnectionsQuery = useDocumentStorageConnections();
   const {
@@ -207,12 +212,23 @@ export default function DocumentsPage() {
             <h2 className="text-lg font-semibold text-neutral-100">Document Library</h2>
             <FieldDescription className="mt-1">Standalone uploads and documents linked from CRM records.</FieldDescription>
           </div>
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search documents"
-            className="md:w-72"
-          />
+          <div className="grid gap-2 md:grid-cols-[180px_288px]">
+            <Select value={documentFilter} onValueChange={(value) => setDocumentFilter(value as "all" | "templates" | "files")}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All documents</SelectItem>
+                <SelectItem value="templates">Templates</SelectItem>
+                <SelectItem value="files">Non-templates</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search documents"
+            />
+          </div>
         </div>
         <div className="mt-4">
           {documentsQuery.isLoading ? (

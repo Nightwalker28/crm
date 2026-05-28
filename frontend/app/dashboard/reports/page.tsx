@@ -50,6 +50,32 @@ type ReportResponse = {
   rows: ReportRow[];
 };
 
+type ForecastBucket = {
+  key: string;
+  label: string;
+  count: number;
+  gross_pipeline_amount: number | string;
+  weighted_pipeline_amount: number | string;
+  commit_amount: number | string;
+  best_case_amount: number | string;
+  actual_revenue_amount: number | string;
+};
+
+type ForecastSummary = {
+  period_start: string;
+  period_end: string;
+  gross_pipeline_amount: number | string;
+  weighted_pipeline_amount: number | string;
+  commit_amount: number | string;
+  best_case_amount: number | string;
+  actual_revenue_amount: number | string;
+  open_opportunity_count: number;
+  won_opportunity_count: number;
+  by_stage: ForecastBucket[];
+  by_owner: ForecastBucket[];
+  by_team: ForecastBucket[];
+};
+
 type SavedReportConfig = {
   dimension: string;
   metric: "count" | "sum";
@@ -188,6 +214,16 @@ async function fetchReport(moduleKey: string, dimension: string, metric: string,
   return res.json() as Promise<ReportResponse>;
 }
 
+async function fetchForecast(periodStart: string, periodEnd: string) {
+  const params = new URLSearchParams({ period_start: periodStart, period_end: periodEnd });
+  const res = await apiFetch(`/reports/forecast?${params.toString()}`);
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  }
+  return res.json() as Promise<ForecastSummary>;
+}
+
 async function fetchSavedReports(moduleKey: string) {
   const params = new URLSearchParams();
   params.set("module_key", moduleKey);
@@ -247,6 +283,17 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
 }
 
+function formatCurrency(value: number | string | null | undefined) {
+  const amount = typeof value === "string" ? Number(value) : value;
+  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number.isFinite(amount ?? NaN) ? amount ?? 0 : 0);
+}
+
+function isoDateOffset(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
 function downloadBlob(blob: Blob, fileName: string) {
   const url = window.URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -271,6 +318,8 @@ export default function ReportsPage() {
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [actionError, setActionError] = useState("");
+  const [forecastStart, setForecastStart] = useState(() => isoDateOffset(0));
+  const [forecastEnd, setForecastEnd] = useState(() => isoDateOffset(90));
 
   const modulesQuery = useQuery({ queryKey: ["report-modules"], queryFn: fetchReportModules, staleTime: 5 * 60_000 });
   const modules = (modulesQuery.data?.results ?? []).filter((item) => CRM_REPORT_MODULE_KEYS.has(item.module_key));
@@ -294,6 +343,12 @@ export default function ReportsPage() {
     enabled: Boolean(activeModuleKey),
   });
   const savedReports = savedReportsQuery.data?.results ?? [];
+  const forecastQuery = useQuery({
+    queryKey: ["reports-forecast", forecastStart, forecastEnd],
+    queryFn: () => fetchForecast(forecastStart, forecastEnd),
+    enabled: Boolean(forecastStart && forecastEnd),
+  });
+  const forecast = forecastQuery.data;
   const selectedSavedReport = savedReports.find((item) => String(item.id) === selectedSavedId) ?? null;
   const currentConfig: SavedReportConfig = {
     dimension: activeDimension,
@@ -477,6 +532,42 @@ export default function ReportsPage() {
               <span className="mt-1 block text-xs leading-5 text-neutral-400">{preset.description}</span>
             </button>
           ))}
+        </div>
+      </Card>
+
+      <Card className="px-4 py-4">
+        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-sm font-semibold text-neutral-100">Weighted Forecast</h2>
+            <p className="mt-1 text-sm text-neutral-400">Open deal value weighted by explicit probability or stage default.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
+              Start
+              <Input type="date" value={forecastStart} onChange={(event) => setForecastStart(event.target.value)} className="border-neutral-700 bg-neutral-950 text-neutral-100" />
+            </label>
+            <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
+              End
+              <Input type="date" value={forecastEnd} onChange={(event) => setForecastEnd(event.target.value)} className="border-neutral-700 bg-neutral-950 text-neutral-100" />
+            </label>
+          </div>
+        </div>
+        {forecastQuery.error ? (
+          <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+            {forecastQuery.error instanceof Error ? forecastQuery.error.message : "Failed to load forecast."}
+          </div>
+        ) : (
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <MetricCard label="Weighted" value={formatCurrency(forecast?.weighted_pipeline_amount)} helper={`${forecast?.open_opportunity_count ?? 0} open deals`} />
+            <MetricCard label="Gross" value={formatCurrency(forecast?.gross_pipeline_amount)} helper="Open pipeline" />
+            <MetricCard label="Commit" value={formatCurrency(forecast?.commit_amount)} helper="Probability 75%+" />
+            <MetricCard label="Best Case" value={formatCurrency(forecast?.best_case_amount)} helper="Probability 50%+" />
+            <MetricCard label="Actual" value={formatCurrency(forecast?.actual_revenue_amount)} helper={`${forecast?.won_opportunity_count ?? 0} won deals`} />
+          </div>
+        )}
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <ForecastBucketList title="By stage" rows={forecast?.by_stage ?? []} />
+          <ForecastBucketList title="By owner" rows={forecast?.by_owner ?? []} />
         </div>
       </Card>
 
@@ -689,6 +780,35 @@ export default function ReportsPage() {
           </DialogPanel>
         </div>
       </Dialog>
+    </div>
+  );
+}
+
+function MetricCard({ label, value, helper }: { label: string; value: string; helper: string }) {
+  return (
+    <div className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-3">
+      <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</div>
+      <div className="mt-2 text-xl font-semibold text-neutral-100">{value}</div>
+      <div className="mt-1 text-xs text-neutral-500">{helper}</div>
+    </div>
+  );
+}
+
+function ForecastBucketList({ title, rows }: { title: string; rows: ForecastBucket[] }) {
+  return (
+    <div className="rounded-md border border-neutral-800 bg-neutral-950">
+      <div className="border-b border-neutral-800 px-3 py-2 text-xs font-medium uppercase tracking-wide text-neutral-500">{title}</div>
+      <div className="divide-y divide-neutral-800">
+        {rows.length ? rows.slice(0, 5).map((row) => (
+          <div key={row.key} className="flex items-center justify-between gap-3 px-3 py-3">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-neutral-100">{row.label}</div>
+              <div className="mt-1 text-xs text-neutral-500">{row.count} opportunities</div>
+            </div>
+            <div className="text-right text-sm font-semibold text-emerald-300">{formatCurrency(row.weighted_pipeline_amount)}</div>
+          </div>
+        )) : <div className="px-3 py-5 text-sm text-neutral-500">No forecast data in this period.</div>}
+      </div>
     </div>
   );
 }

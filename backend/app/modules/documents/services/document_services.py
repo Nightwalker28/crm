@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import hashlib
 import urllib.parse
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -14,7 +15,7 @@ from sqlalchemy.orm import Session, joinedload
 from app.core.config import settings
 from app.core.access_control import require_role_module_action_access
 from app.core.tenancy import get_frontend_origin_for_request, get_google_redirect_uri_for_request
-from app.modules.documents.models import Document, DocumentLink, DocumentStorageConnection
+from app.modules.documents.models import Document, DocumentLink, DocumentStorageConnection, DocumentVersion
 from app.modules.documents.repositories import documents_repository
 from app.modules.documents.schema import DocumentResponse
 from app.modules.documents.services.storage_backends import get_document_storage_backend, supported_storage_providers
@@ -349,12 +350,18 @@ def _zip_member_names(content: bytes) -> set[str]:
 
 
 def _tenant_storage_used(db: Session, *, tenant_id: int) -> int:
-    value = (
-        db.query(func.coalesce(func.sum(Document.file_size_bytes), 0))
-        .filter(Document.tenant_id == tenant_id, Document.deleted_at.is_(None))
+    version_bytes = (
+        db.query(func.coalesce(func.sum(DocumentVersion.size_bytes), 0))
+        .join(Document, Document.id == DocumentVersion.document_id)
+        .filter(DocumentVersion.tenant_id == tenant_id, Document.deleted_at.is_(None))
         .scalar()
     )
-    return int(value or 0)
+    legacy_bytes = (
+        db.query(func.coalesce(func.sum(Document.file_size_bytes), 0))
+        .filter(Document.tenant_id == tenant_id, Document.deleted_at.is_(None), Document.current_version_id.is_(None))
+        .scalar()
+    )
+    return int(version_bytes or 0) + int(legacy_bytes or 0)
 
 
 def _document_storage_connection(
@@ -465,19 +472,70 @@ def _serialize_document(document: Document) -> dict:
     return DocumentResponse.model_validate(document).model_dump(mode="json")
 
 
+def _serialize_version(version: DocumentVersion) -> dict:
+    return {
+        "id": version.id,
+        "document_id": version.document_id,
+        "version_number": version.version_number,
+        "file_name": version.file_name,
+        "mime_type": version.mime_type,
+        "size_bytes": version.size_bytes,
+        "checksum": version.checksum,
+        "uploaded_by_id": version.uploaded_by_id,
+        "created_at": version.created_at.isoformat() if version.created_at else None,
+    }
+
+
 def resolve_document_storage_path(document: Document):
     backend = get_document_storage_backend(document.storage_provider)
     return backend.resolve_path(document.storage_path)
 
 
-def resolve_document_download(db: Session, *, document: Document, current_user) -> dict:
+def _resolve_document_storage_key(db: Session, *, document: Document, storage_key: str, current_user) -> dict:
     if document.storage_provider == DOCUMENT_PROVIDER_LOCAL:
-        return {"kind": "path", "path": resolve_document_storage_path(document)}
+        backend = get_document_storage_backend(DOCUMENT_PROVIDER_LOCAL)
+        return {"kind": "path", "path": backend.resolve_path(storage_key)}
     if document.storage_provider == DOCUMENT_PROVIDER_GOOGLE_DRIVE:
         storage_user_id = document.uploaded_by_user_id or current_user.id
         backend = _google_drive_backend_for_user(db, tenant_id=document.tenant_id, user_id=storage_user_id)
-        return {"kind": "bytes", "content": backend.download(document.storage_path)}
+        return {"kind": "bytes", "content": backend.download(storage_key)}
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Document storage provider is not configured.")
+
+
+def resolve_document_download(db: Session, *, document: Document, current_user) -> dict:
+    return _resolve_document_storage_key(db, document=document, storage_key=document.storage_path, current_user=current_user)
+
+
+def resolve_document_version_download(db: Session, *, document: Document, version: DocumentVersion, current_user) -> dict:
+    return _resolve_document_storage_key(db, document=document, storage_key=version.storage_key, current_user=current_user)
+
+
+def _store_document_content(
+    db: Session,
+    *,
+    tenant_id: int,
+    content: bytes,
+    extension: str,
+    original_filename: str,
+    content_type: str,
+    storage_provider: str,
+    current_user=None,
+):
+    normalized_provider = (storage_provider or DOCUMENT_PROVIDER_LOCAL).strip().lower()
+    if normalized_provider == DOCUMENT_PROVIDER_LOCAL:
+        return get_document_storage_backend(DOCUMENT_PROVIDER_LOCAL).save(tenant_id=tenant_id, extension=extension, content=content)
+    if normalized_provider == DOCUMENT_PROVIDER_GOOGLE_DRIVE:
+        if current_user is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Drive uploads require a connected user.")
+        backend = _google_drive_backend_for_user(db, tenant_id=tenant_id, user_id=current_user.id)
+        return backend.save(
+            tenant_id=tenant_id,
+            extension=extension,
+            content=content,
+            filename=original_filename,
+            content_type=content_type,
+        )
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported document storage provider.")
 
 
 def list_documents(
@@ -487,6 +545,7 @@ def list_documents(
     search: str | None = None,
     module_key: str | None = None,
     entity_id: str | int | None = None,
+    is_template: bool | None = None,
     limit: int = 50,
     current_user=None,
 ) -> tuple[list[Document], int]:
@@ -504,6 +563,7 @@ def list_documents(
         search=search,
         module_key=module_key,
         entity_id=entity_id,
+        is_template=is_template,
         limit=limit,
     )
 
@@ -515,6 +575,7 @@ def list_documents_cursor(
     search: str | None = None,
     module_key: str | None = None,
     entity_id: str | int | None = None,
+    is_template: bool | None = None,
     limit: int = 50,
     cursor: int | None = None,
     current_user=None,
@@ -532,6 +593,7 @@ def list_documents_cursor(
         search=search,
         module_key=module_key,
         entity_id=entity_id,
+        is_template=is_template,
         limit=limit,
         cursor=cursor,
     )
@@ -548,6 +610,148 @@ def get_deleted_document_or_404(db: Session, *, tenant_id: int, document_id: int
     document = documents_repository.get_document(db, tenant_id=tenant_id, document_id=document_id, include_deleted=True)
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deleted document not found.")
+    return document
+
+
+def list_document_templates(
+    db: Session,
+    *,
+    tenant_id: int,
+    search: str | None = None,
+    limit: int = 50,
+    current_user=None,
+) -> tuple[list[Document], int]:
+    return list_documents(db, tenant_id=tenant_id, search=search, is_template=True, limit=limit, current_user=current_user)
+
+
+def list_document_versions(db: Session, *, document: Document) -> list[DocumentVersion]:
+    return (
+        db.query(DocumentVersion)
+        .filter(DocumentVersion.tenant_id == document.tenant_id, DocumentVersion.document_id == document.id)
+        .order_by(DocumentVersion.version_number.desc(), DocumentVersion.id.desc())
+        .all()
+    )
+
+
+def get_document_version_or_404(
+    db: Session,
+    *,
+    tenant_id: int,
+    document_id: int,
+    version_id: int,
+) -> DocumentVersion:
+    version = (
+        db.query(DocumentVersion)
+        .filter(
+            DocumentVersion.tenant_id == tenant_id,
+            DocumentVersion.document_id == document_id,
+            DocumentVersion.id == version_id,
+        )
+        .first()
+    )
+    if not version:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document version not found.")
+    return version
+
+
+async def upload_document_version(
+    db: Session,
+    *,
+    tenant_id: int,
+    document_id: int,
+    file: UploadFile,
+    current_user,
+) -> Document:
+    document = get_document_or_404(db, tenant_id=tenant_id, document_id=document_id)
+    require_document_link_access(db, user=current_user, document=document, action="edit")
+    content, extension, content_type, original_filename = await read_document_upload(file)
+    if _tenant_storage_used(db, tenant_id=tenant_id) + len(content) > settings.DOCUMENT_TENANT_STORAGE_LIMIT_BYTES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant document storage limit exceeded.")
+    stored = _store_document_content(
+        db,
+        tenant_id=tenant_id,
+        extension=extension,
+        content=content,
+        original_filename=original_filename,
+        content_type=content_type,
+        storage_provider=document.storage_provider,
+        current_user=current_user,
+    )
+    latest_version = (
+        db.query(func.coalesce(func.max(DocumentVersion.version_number), 0))
+        .filter(DocumentVersion.tenant_id == tenant_id, DocumentVersion.document_id == document.id)
+        .scalar()
+    )
+    before_state = _serialize_document(document)
+    version = DocumentVersion(
+        tenant_id=tenant_id,
+        document_id=document.id,
+        version_number=int(latest_version or 0) + 1,
+        storage_key=stored.storage_path,
+        file_name=original_filename[:255],
+        mime_type=content_type,
+        size_bytes=len(content),
+        checksum=hashlib.sha256(content).hexdigest(),
+        uploaded_by_id=getattr(current_user, "id", None),
+    )
+    db.add(version)
+    db.flush()
+    document.original_filename = original_filename[:255]
+    document.content_type = content_type
+    document.extension = extension
+    document.file_size_bytes = len(content)
+    document.storage_path = stored.storage_path
+    document.current_version_id = version.id
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+    document = get_document_or_404(db, tenant_id=tenant_id, document_id=document.id)
+    log_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=getattr(current_user, "id", None),
+        module_key="documents",
+        entity_type="document",
+        entity_id=document.id,
+        action="version.create",
+        description=f"Uploaded version {version.version_number} for document {document.title}",
+        before_state=before_state,
+        after_state=_serialize_document(document),
+    )
+    return document
+
+
+def update_document_template_status(
+    db: Session,
+    *,
+    tenant_id: int,
+    document_id: int,
+    is_template: bool,
+    template_category: str | None,
+    current_user=None,
+) -> Document:
+    document = get_document_or_404(db, tenant_id=tenant_id, document_id=document_id)
+    if current_user is not None:
+        require_document_link_access(db, user=current_user, document=document, action="edit")
+    before_state = _serialize_document(document)
+    document.is_template = bool(is_template)
+    category = (template_category or "").strip()
+    document.template_category = category[:120] if document.is_template and category else None
+    db.add(document)
+    db.commit()
+    db.refresh(document)
+    log_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=getattr(current_user, "id", None),
+        module_key="documents",
+        entity_type="document",
+        entity_id=document.id,
+        action="template.update",
+        description=f"Updated template status for document {document.title}",
+        before_state=before_state,
+        after_state=_serialize_document(document),
+    )
     return document
 
 
@@ -582,22 +786,16 @@ async def create_document(
     elif linked_module_key or linked_entity_id is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Both linked module and linked record are required.")
 
-    normalized_provider = (storage_provider or DOCUMENT_PROVIDER_LOCAL).strip().lower()
-    if normalized_provider == DOCUMENT_PROVIDER_LOCAL:
-        stored = get_document_storage_backend(DOCUMENT_PROVIDER_LOCAL).save(tenant_id=tenant_id, extension=extension, content=content)
-    elif normalized_provider == DOCUMENT_PROVIDER_GOOGLE_DRIVE:
-        if current_user is None:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Drive uploads require a connected user.")
-        backend = _google_drive_backend_for_user(db, tenant_id=tenant_id, user_id=current_user.id)
-        stored = backend.save(
-            tenant_id=tenant_id,
-            extension=extension,
-            content=content,
-            filename=original_filename,
-            content_type=content_type,
-        )
-    else:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported document storage provider.")
+    stored = _store_document_content(
+        db,
+        tenant_id=tenant_id,
+        extension=extension,
+        content=content,
+        original_filename=original_filename,
+        content_type=content_type,
+        storage_provider=storage_provider,
+        current_user=current_user,
+    )
     normalized_title = (title or original_filename).strip()
     if not normalized_title:
         normalized_title = f"Untitled.{extension}"
@@ -615,6 +813,21 @@ async def create_document(
     )
     db.add(document)
     db.flush()
+    version = DocumentVersion(
+        tenant_id=tenant_id,
+        document_id=document.id,
+        version_number=1,
+        storage_key=stored.storage_path,
+        file_name=original_filename[:255],
+        mime_type=content_type,
+        size_bytes=len(content),
+        checksum=hashlib.sha256(content).hexdigest(),
+        uploaded_by_id=user_id,
+    )
+    db.add(version)
+    db.flush()
+    document.current_version_id = version.id
+    db.add(document)
 
     if linked_module_key and linked_entity_id is not None:
         db.add(

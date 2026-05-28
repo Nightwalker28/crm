@@ -525,6 +525,7 @@ class RelatedOpportunitySummary(BaseModel):
     opportunity_name: str
     sales_stage: str | None = None
     expected_close_date: date | None = None
+    probability_percent: Decimal | None = None
     total_cost_of_project: str | None = None
     currency_type: str | None = None
 
@@ -643,6 +644,7 @@ class SalesOpportunityBase(BaseModel):
     assigned_to: int | None = None
     start_date: date | None = None
     expected_close_date: date | None = None
+    probability_percent: Decimal | None = Field(default=None, ge=0, le=100)
     campaign_type: str | None = None
     total_leads: str | None = None
     cpl: str | None = None
@@ -687,6 +689,7 @@ class SalesOpportunityUpdate(BaseModel):
     assigned_to: int | None = None
     start_date: date | None = None
     expected_close_date: date | None = None
+    probability_percent: Decimal | None = Field(default=None, ge=0, le=100)
     campaign_type: str | None = None
     total_leads: str | None = None
     cpl: str | None = None
@@ -721,6 +724,7 @@ class SalesOpportunityListItem(BaseModel):
     client: str | None = None
     sales_stage: str | None = None
     expected_close_date: date | None = None
+    probability_percent: Decimal | None = None
     total_cost_of_project: str | None = None
     currency_type: str | None = None
     created_time: datetime | None = None

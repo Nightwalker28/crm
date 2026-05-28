@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime, time
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -183,3 +183,139 @@ class CalendarSyncResponse(BaseModel):
     last_synced_at: datetime | None = None
     status: CalendarConnectionStatus
     last_error: str | None = None
+
+
+class MeetingBookingAvailabilityInput(BaseModel):
+    weekday: int = Field(ge=0, le=6)
+    start_time: time
+    end_time: time
+    sort_order: int = 0
+
+    @model_validator(mode="after")
+    def validate_window(self):
+        if self.end_time <= self.start_time:
+            raise ValueError("availability end_time must be after start_time")
+        return self
+
+
+class MeetingBookingQuestionInput(BaseModel):
+    label: str = Field(min_length=1, max_length=255)
+    field_type: str = Field(default="text", pattern="^(text|textarea)$")
+    required: bool = False
+    sort_order: int = 0
+
+
+class MeetingBookingTypeCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    slug: str = Field(min_length=3, max_length=120, pattern="^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+    owner_id: int | None = None
+    duration_minutes: int = Field(default=30, ge=15, le=240)
+    buffer_before_minutes: int = Field(default=0, ge=0, le=240)
+    buffer_after_minutes: int = Field(default=0, ge=0, le=240)
+    timezone: str = Field(default="UTC", min_length=1, max_length=100)
+    enabled: bool = True
+    availability: list[MeetingBookingAvailabilityInput] = Field(default_factory=list)
+    questions: list[MeetingBookingQuestionInput] = Field(default_factory=list)
+
+
+class MeetingBookingTypeUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=160)
+    slug: str | None = Field(default=None, min_length=3, max_length=120, pattern="^[a-z0-9][a-z0-9-]*[a-z0-9]$")
+    owner_id: int | None = None
+    duration_minutes: int | None = Field(default=None, ge=15, le=240)
+    buffer_before_minutes: int | None = Field(default=None, ge=0, le=240)
+    buffer_after_minutes: int | None = Field(default=None, ge=0, le=240)
+    timezone: str | None = Field(default=None, min_length=1, max_length=100)
+    enabled: bool | None = None
+    availability: list[MeetingBookingAvailabilityInput] | None = None
+    questions: list[MeetingBookingQuestionInput] | None = None
+
+
+class MeetingBookingAvailabilityResponse(BaseModel):
+    id: int | None = None
+    weekday: int
+    start_time: time
+    end_time: time
+    sort_order: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MeetingBookingQuestionResponse(BaseModel):
+    id: int | None = None
+    label: str
+    field_type: str
+    required: bool
+    sort_order: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MeetingBookingTypeResponse(BaseModel):
+    id: int
+    owner_id: int
+    owner_name: str | None = None
+    name: str
+    slug: str
+    duration_minutes: int
+    buffer_before_minutes: int
+    buffer_after_minutes: int
+    timezone: str
+    enabled: bool
+    availability: list[MeetingBookingAvailabilityResponse]
+    questions: list[MeetingBookingQuestionResponse]
+    created_at: datetime
+    updated_at: datetime
+
+
+class MeetingBookingTypeListResponse(BaseModel):
+    results: list[MeetingBookingTypeResponse]
+
+
+class PublicMeetingBookingTypeResponse(BaseModel):
+    name: str
+    slug: str
+    duration_minutes: int
+    timezone: str
+    owner_name: str | None = None
+    questions: list[MeetingBookingQuestionResponse]
+
+
+class PublicMeetingSlot(BaseModel):
+    start_at: datetime
+    end_at: datetime
+    label: str
+
+
+class PublicMeetingSlotListResponse(BaseModel):
+    results: list[PublicMeetingSlot]
+
+
+class PublicMeetingBookingSubmitRequest(BaseModel):
+    start_at: datetime
+    guest_name: str = Field(min_length=1, max_length=160)
+    guest_email: str = Field(min_length=3, max_length=255)
+    guest_note: str | None = Field(default=None, max_length=2000)
+    answers: dict[str, str] = Field(default_factory=dict)
+
+
+class MeetingBookingResponse(BaseModel):
+    id: int
+    booking_type_id: int
+    calendar_event_id: int | None = None
+    guest_name: str
+    guest_email: str
+    guest_note: str | None = None
+    answers_json: dict
+    start_at: datetime
+    end_at: datetime
+    timezone: str
+    status: str
+    booked_date: date
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MeetingBookingListResponse(BaseModel):
+    results: list[MeetingBookingResponse]

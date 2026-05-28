@@ -86,12 +86,33 @@ type CrmDashboardSummary = {
   new_leads: number;
   deal_stages: CrmBucket[];
   pipeline_value: number;
+  forecast_summary?: {
+    weighted_pipeline_amount: number | string;
+    gross_pipeline_amount: number | string;
+    commit_amount: number | string;
+    best_case_amount: number | string;
+    actual_revenue_amount: number | string;
+    open_opportunity_count: number;
+    won_opportunity_count: number;
+    by_stage: CrmForecastBucket[];
+  } | null;
   won_deals: number;
   lost_deals: number;
   quote_status: CrmBucket[];
   overdue_follow_ups: number;
   upcoming_tasks: number;
   owner_performance: OwnerPerformance[];
+};
+
+type CrmForecastBucket = {
+  key: string;
+  label: string;
+  count: number;
+  gross_pipeline_amount: number | string;
+  weighted_pipeline_amount: number | string;
+  commit_amount: number | string;
+  best_case_amount: number | string;
+  actual_revenue_amount: number | string;
 };
 
 type WidgetSize = "small" | "medium" | "large" | "wide";
@@ -109,6 +130,7 @@ type WidgetType =
   | "note"
   | "summary_table"
   | "pipeline_funnel"
+  | "weighted_forecast"
   | "report_chart";
 
 type DashboardWidget = {
@@ -184,6 +206,7 @@ const CHART_COLORS = ["#8bdbc1", "#7aa7ff", "#f2c86b", "#e58fb1", "#9fd56e", "#c
 
 const DEFAULT_WIDGETS: DashboardWidget[] = [
   { id: "default-crm-snapshot", type: "crm_snapshot", size: "wide" },
+  { id: "default-weighted-forecast", type: "weighted_forecast", size: "large" },
   { id: "default-pipeline-funnel", type: "pipeline_funnel", size: "large" },
   { id: "default-quick-actions", type: "quick_actions", size: "medium" },
   { id: "default-summary-table", type: "summary_table", size: "large" },
@@ -275,12 +298,13 @@ function getActionLabel(action: string) {
   return action.replace(/_/g, " ");
 }
 
-function formatCurrency(value: number) {
+function formatCurrency(value: number | string | null | undefined) {
+  const amount = typeof value === "string" ? Number(value) : value;
   return new Intl.NumberFormat(undefined, {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 0,
-  }).format(value || 0);
+  }).format(Number.isFinite(amount ?? NaN) ? amount ?? 0 : 0);
 }
 
 function totalCount(rows: CrmBucket[]) {
@@ -300,7 +324,7 @@ function nextWidgetId(type: WidgetType, moduleKey?: string) {
 }
 
 function isCrmWidget(type: WidgetType) {
-  return ["crm_snapshot", "lead_status", "deal_stages", "quote_status", "owner_performance", "pipeline_funnel", "summary_table"].includes(type);
+  return ["crm_snapshot", "lead_status", "deal_stages", "quote_status", "owner_performance", "pipeline_funnel", "weighted_forecast", "summary_table"].includes(type);
 }
 
 function widgetTitle(widget: DashboardWidget, modulesByName: Map<string, AccessibleModule>) {
@@ -316,6 +340,7 @@ function widgetTitle(widget: DashboardWidget, modulesByName: Map<string, Accessi
   if (widget.type === "note") return "Quick Note";
   if (widget.type === "summary_table") return "Summary Table";
   if (widget.type === "pipeline_funnel") return "Pipeline Funnel";
+  if (widget.type === "weighted_forecast") return "Weighted Forecast";
   if (widget.type === "report_chart") return "Saved Report Chart";
   const dashboardModule = widget.module_key ? modulesByName.get(widget.module_key) : null;
   return dashboardModule ? getModuleDisplayName(dashboardModule.name, dashboardModule.description ?? undefined) : "Module Summary";
@@ -491,6 +516,7 @@ export default function DashboardHomePage() {
     if (hasReportAccess) {
       items.unshift(
         { type: "crm_snapshot", title: "CRM Snapshot", description: "Pipeline, leads, closed deals, and follow-ups.", defaultSize: "wide" },
+        { type: "weighted_forecast", title: "Weighted Forecast", description: "Weighted pipeline forecast for the next reporting period.", defaultSize: "large" },
         { type: "pipeline_funnel", title: "Pipeline Funnel", description: "A funnel view of deal stages and pipeline value.", defaultSize: "large" },
         { type: "lead_status", title: "Leads By Status", description: "Lead distribution by current status.", defaultSize: "medium" },
         { type: "deal_stages", title: "Deals By Stage", description: "Opportunity counts and value by stage.", defaultSize: "medium" },
@@ -618,6 +644,9 @@ export default function DashboardHomePage() {
     if (widget.type === "pipeline_funnel") {
       return renderCrmGuard(summary ? <PipelineFunnel rows={summary.deal_stages} /> : null);
     }
+    if (widget.type === "weighted_forecast") {
+      return renderCrmGuard(summary ? <WeightedForecast forecast={summary.forecast_summary ?? null} /> : null);
+    }
     if (widget.type === "summary_table") {
       return <SummaryTable modules={modules} summary={summary} unreadCount={unreadCount} />;
     }
@@ -704,6 +733,7 @@ export default function DashboardHomePage() {
     if (type === "note") return <NotebookText className="h-4 w-4" />;
     if (type === "summary_table") return <Table2 className="h-4 w-4" />;
     if (type === "pipeline_funnel") return <Filter className="h-4 w-4" />;
+    if (type === "weighted_forecast") return <BarChart3 className="h-4 w-4" />;
     if (type === "report_chart") return <BarChart3 className="h-4 w-4" />;
     if (type === "notifications") return <Bell className="h-4 w-4" />;
     if (type === "recent_activity") return <ClipboardList className="h-4 w-4" />;
@@ -922,6 +952,41 @@ function PipelineFunnel({ rows }: { rows: CrmBucket[] }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function WeightedForecast({ forecast }: { forecast: CrmDashboardSummary["forecast_summary"] | null }) {
+  if (!forecast) return <EmptyMessage>No forecast data is available yet.</EmptyMessage>;
+  const rows = forecast.by_stage.slice(0, 5);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Metric label="Weighted" value={formatCurrency(forecast.weighted_pipeline_amount)} helper={`${forecast.open_opportunity_count} open deals`} />
+        <Metric label="Actual" value={formatCurrency(forecast.actual_revenue_amount)} helper={`${forecast.won_opportunity_count} won this period`} />
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-neutral-800 bg-black/20 px-4 py-4">
+          <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Commit</div>
+          <div className="mt-2 text-xl font-semibold text-neutral-100">{formatCurrency(forecast.commit_amount)}</div>
+        </div>
+        <div className="rounded-lg border border-neutral-800 bg-black/20 px-4 py-4">
+          <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">Best Case</div>
+          <div className="mt-2 text-xl font-semibold text-neutral-100">{formatCurrency(forecast.best_case_amount)}</div>
+        </div>
+      </div>
+      <div className="space-y-2">
+        {rows.length ? rows.map((row) => (
+          <div key={row.key} className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950/60 px-3 py-3">
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-neutral-100">{row.label}</div>
+              <div className="mt-1 text-xs text-neutral-500">{row.count} opportunities</div>
+            </div>
+            <div className="text-sm font-semibold text-emerald-300">{formatCurrency(row.weighted_pipeline_amount)}</div>
+          </div>
+        )) : <EmptyMessage>No open or won deals close in this period.</EmptyMessage>}
+      </div>
     </div>
   );
 }

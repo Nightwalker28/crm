@@ -8,6 +8,8 @@ from app.core.module_filters import normalize_filter_logic, parse_filter_conditi
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.schema import (
+    ForecastSnapshotResponse,
+    ForecastSummaryResponse,
     ModuleReportModuleListResponse,
     ModuleReportResponse,
     SavedModuleReportCreateRequest,
@@ -19,6 +21,13 @@ from app.modules.platform.services import module_reports
 
 
 router = APIRouter(prefix="/reports", tags=["Reports"])
+
+
+def _default_forecast_period() -> tuple:
+    from datetime import date, timedelta
+
+    start = date.today()
+    return start, start + timedelta(days=90)
 
 
 def _parse_report_filters(filter_logic: str, filters: str | None, filters_all: str | None, filters_any: str | None):
@@ -49,6 +58,72 @@ def get_crm_dashboard_summary(
     require_permission=Depends(require_action_access("reports", "view")),
 ):
     return module_reports.generate_crm_dashboard_summary(db, current_user, period_days=period_days)
+
+
+@router.get("/forecast", response_model=ForecastSummaryResponse)
+def get_forecast_summary(
+    period_start: str | None = Query(default=None),
+    period_end: str | None = Query(default=None),
+    owner_id: int | None = Query(default=None),
+    team_id: int | None = Query(default=None),
+    pipeline_key: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("reports")),
+    require_permission=Depends(require_action_access("reports", "view")),
+    require_deals_module=Depends(require_module_access("sales_opportunities")),
+    require_deals_permission=Depends(require_action_access("sales_opportunities", "view")),
+):
+    from datetime import date
+
+    default_start, default_end = _default_forecast_period()
+    try:
+        parsed_start = date.fromisoformat(period_start) if period_start else default_start
+        parsed_end = date.fromisoformat(period_end) if period_end else default_end
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Forecast period dates must use YYYY-MM-DD") from exc
+    return module_reports.generate_forecast_summary(
+        db,
+        current_user,
+        period_start=parsed_start,
+        period_end=parsed_end,
+        owner_id=owner_id,
+        team_id=team_id,
+        pipeline_key=pipeline_key,
+    )
+
+
+@router.post("/forecast/snapshots", response_model=ForecastSnapshotResponse, status_code=status.HTTP_201_CREATED)
+def create_forecast_snapshot(
+    period_start: str | None = Query(default=None),
+    period_end: str | None = Query(default=None),
+    owner_id: int | None = Query(default=None),
+    team_id: int | None = Query(default=None),
+    pipeline_key: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("reports")),
+    require_permission=Depends(require_action_access("reports", "create")),
+    require_deals_module=Depends(require_module_access("sales_opportunities")),
+    require_deals_permission=Depends(require_action_access("sales_opportunities", "view")),
+):
+    from datetime import date
+
+    default_start, default_end = _default_forecast_period()
+    try:
+        parsed_start = date.fromisoformat(period_start) if period_start else default_start
+        parsed_end = date.fromisoformat(period_end) if period_end else default_end
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Forecast period dates must use YYYY-MM-DD") from exc
+    return module_reports.create_forecast_snapshot(
+        db,
+        current_user,
+        period_start=parsed_start,
+        period_end=parsed_end,
+        owner_id=owner_id,
+        team_id=team_id,
+        pipeline_key=pipeline_key,
+    )
 
 
 @router.get("/saved", response_model=SavedModuleReportListResponse)

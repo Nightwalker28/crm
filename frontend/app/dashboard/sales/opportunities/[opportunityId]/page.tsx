@@ -37,6 +37,7 @@ type OpportunitySummary = {
     assigned_to?: number | null;
     start_date?: string | null;
     expected_close_date?: string | null;
+    probability_percent?: number | string | null;
     campaign_type?: string | null;
     total_leads?: string | null;
     cpl?: string | null;
@@ -89,6 +90,7 @@ type OpportunityForm = {
   assigned_to: number | null;
   start_date: string;
   expected_close_date: string;
+  probability_percent: string;
   campaign_type: string;
   total_leads: string;
   cpl: string;
@@ -112,6 +114,7 @@ const emptyForm: OpportunityForm = {
   assigned_to: null,
   start_date: "",
   expected_close_date: "",
+  probability_percent: "",
   campaign_type: "",
   total_leads: "",
   cpl: "",
@@ -169,6 +172,7 @@ export default function OpportunityDetailPage() {
         assigned_to: data.opportunity.assigned_to ?? null,
         start_date: data.opportunity.start_date ?? "",
         expected_close_date: data.opportunity.expected_close_date ?? "",
+        probability_percent: data.opportunity.probability_percent?.toString() ?? "",
         campaign_type: data.opportunity.campaign_type ?? "",
         total_leads: data.opportunity.total_leads ?? "",
         cpl: data.opportunity.cpl ?? "",
@@ -214,6 +218,7 @@ export default function OpportunityDetailPage() {
         assigned_to: form.assigned_to,
         start_date: form.start_date || null,
         expected_close_date: form.expected_close_date || null,
+        probability_percent: form.probability_percent.trim() ? Number(form.probability_percent) : null,
         campaign_type: form.campaign_type.trim() || null,
         total_leads: form.total_leads.trim() || null,
         cpl: form.cpl.trim() || null,
@@ -376,6 +381,19 @@ export default function OpportunityDetailPage() {
                 <Field>
                   <FieldLabel>Expected Close Date</FieldLabel>
                   <Input type="date" value={form.expected_close_date} onChange={(event) => setForm((current) => ({ ...current, expected_close_date: event.target.value }))} />
+                </Field>
+                ) : null}
+                {fieldEnabled("probability_percent") ? (
+                <Field>
+                  <FieldLabel>Probability %</FieldLabel>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={form.probability_percent}
+                    onChange={(event) => setForm((current) => ({ ...current, probability_percent: event.target.value }))}
+                  />
                 </Field>
                 ) : null}
                 {fieldEnabled("total_cost_of_project") ? (

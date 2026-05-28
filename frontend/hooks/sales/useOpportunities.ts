@@ -17,6 +17,7 @@ export type Opportunity = {
   assigned_to?: number | null;
   start_date?: string | null;
   expected_close_date?: string | null;
+  probability_percent?: number | string | null;
   campaign_type?: string | null;
   total_leads?: string | null;
   cpl?: string | null;

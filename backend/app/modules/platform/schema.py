@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime
+from decimal import Decimal
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -199,6 +200,53 @@ class SavedModuleReportResponse(BaseModel):
 
 class SavedModuleReportListResponse(BaseModel):
     results: list[SavedModuleReportResponse]
+
+
+class ForecastBucket(BaseModel):
+    key: str
+    label: str
+    count: int
+    gross_pipeline_amount: Decimal
+    weighted_pipeline_amount: Decimal
+    commit_amount: Decimal
+    best_case_amount: Decimal
+    actual_revenue_amount: Decimal
+
+
+class ForecastSummaryResponse(BaseModel):
+    period_start: date
+    period_end: date
+    owner_id: int | None = None
+    team_id: int | None = None
+    pipeline_key: str | None = None
+    gross_pipeline_amount: Decimal
+    weighted_pipeline_amount: Decimal
+    commit_amount: Decimal
+    best_case_amount: Decimal
+    actual_revenue_amount: Decimal
+    open_opportunity_count: int
+    won_opportunity_count: int
+    by_stage: list[ForecastBucket]
+    by_owner: list[ForecastBucket]
+    by_team: list[ForecastBucket]
+    generated_at: datetime
+
+
+class ForecastSnapshotResponse(BaseModel):
+    id: int
+    period_start: date
+    period_end: date
+    owner_id: int | None = None
+    team_id: int | None = None
+    pipeline_key: str | None = None
+    gross_pipeline_amount: Decimal
+    weighted_pipeline_amount: Decimal
+    commit_amount: Decimal
+    best_case_amount: Decimal
+    snapshot_json: dict[str, Any]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class UserNotificationResponse(BaseModel):

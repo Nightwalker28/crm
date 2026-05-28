@@ -21,6 +21,9 @@ class DocumentResponse(BaseModel):
     extension: str
     file_size_bytes: int
     storage_provider: str = "local"
+    is_template: bool = False
+    template_category: str | None = None
+    current_version_id: int | None = None
     uploaded_by_user_id: int | None = None
     created_at: datetime
     updated_at: datetime
@@ -29,9 +32,32 @@ class DocumentResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class DocumentVersionResponse(BaseModel):
+    id: int
+    document_id: int
+    version_number: int
+    file_name: str
+    mime_type: str
+    size_bytes: int
+    checksum: str | None = None
+    uploaded_by_id: int | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class DocumentListResponse(BaseModel):
     results: list[DocumentResponse]
     total: int
+
+
+class DocumentVersionListResponse(BaseModel):
+    results: list[DocumentVersionResponse]
+
+
+class DocumentTemplateUpdateRequest(BaseModel):
+    is_template: bool
+    template_category: str | None = None
 
 
 class DocumentUploadLimitsResponse(BaseModel):

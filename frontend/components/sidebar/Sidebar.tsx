@@ -167,6 +167,7 @@ function settingsGroup(): SidebarGroupConfig {
       { href: SETTINGS_ROUTES.moduleBuilder, label: "Module Builder" },
       { href: SETTINGS_ROUTES.fields, label: "Field Config" },
       { href: SETTINGS_ROUTES.automation, label: "Automation" },
+      { href: SETTINGS_ROUTES.calendarBooking, label: "Booking Links" },
       { href: SETTINGS_ROUTES.integrations, label: "Integrations" },
       { href: SETTINGS_ROUTES.templates, label: "Templates" },
       { href: SETTINGS_ROUTES.activityLog, label: "Activity Log" },
