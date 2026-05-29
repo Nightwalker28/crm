@@ -26,6 +26,7 @@ MODULE_PROTECTED_FIELD_KEYS = {
     "sales_quotes": {"quote_number", "customer_name"},
     "sales_orders": {"order_number"},
     "support_cases": {"case_number", "subject"},
+    "contracts": {"contract_number", "title"},
     "finance_io": {"io_number", "customer_name"},
 }
 

@@ -59,6 +59,7 @@ const MODULE_ITEM_ORDER: Record<string, number> = {
   sales_opportunities: 40,
   sales_quotes: 50,
   sales_orders: 60,
+  contracts: 70,
   support_cases: 10,
   finance_io: 10,
   finance_insertion_orders: 10,
@@ -104,6 +105,7 @@ function getCanonicalHref(module: AccessibleModule) {
   if (module.name === "sales_opportunities") return DASHBOARD_ROUTES.deals;
   if (module.name === "sales_quotes") return DASHBOARD_ROUTES.quotes;
   if (module.name === "sales_orders") return DASHBOARD_ROUTES.orders;
+  if (module.name === "contracts") return DASHBOARD_ROUTES.contracts;
   if (module.name === "support_cases") return DASHBOARD_ROUTES.supportCases;
   if (module.name === "reports") return DASHBOARD_ROUTES.reports;
   if (module.name === "tasks") return "/dashboard/tasks";

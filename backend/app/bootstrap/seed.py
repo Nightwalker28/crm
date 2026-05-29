@@ -31,6 +31,7 @@ DEFAULT_MODULES = [
     {"name": "documents", "base_route": "/dashboard/documents", "description": "Controlled document uploads and record-linked files"},
     {"name": "mail", "base_route": "/dashboard/mail", "description": "Mailbox integration and CRM communication history"},
     {"name": "calendar", "base_route": "/dashboard/calendar", "description": "Shared user calendar and scheduling"},
+    {"name": "contracts", "base_route": "/dashboard/contracts", "description": "Contract lifecycle and e-sign tracking"},
     {"name": "tasks", "base_route": "/dashboard/tasks", "description": "Collaborative task management and assignment"},
     {"name": "reports", "base_route": "/dashboard/reports", "description": "CRM reports and saved report views"},
     {"name": "message_templates", "base_route": "/dashboard/settings/message-templates", "description": "Reusable CRM message templates for communication channels"},
