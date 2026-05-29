@@ -124,6 +124,22 @@ export const ORDER_COLUMNS: TableColumnOption[] = [
   { key: "updated_at", label: "Updated" },
 ];
 
+export const SUPPORT_CASE_COLUMNS: TableColumnOption[] = [
+  { key: "case_number", label: "Case Number" },
+  { key: "subject", label: "Subject" },
+  { key: "status", label: "Status" },
+  { key: "priority", label: "Priority" },
+  { key: "source", label: "Source" },
+  { key: "contact_id", label: "Contact ID" },
+  { key: "organization_id", label: "Account ID" },
+  { key: "opportunity_id", label: "Deal ID" },
+  { key: "quote_id", label: "Quote ID" },
+  { key: "order_id", label: "Order ID" },
+  { key: "assigned_to_id", label: "Assignee ID" },
+  { key: "sla_due_at", label: "SLA Due" },
+  { key: "updated_at", label: "Updated" },
+];
+
 export const INSERTION_ORDER_COLUMNS: TableColumnOption[] = [
   { key: "io_number", label: "IO Number" },
   { key: "customer_name", label: "Customer" },
@@ -207,6 +223,11 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
   },
   sales_orders: {
     visible_columns: ["order_number", "status", "quote_id", "grand_total", "created_at"],
+    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
+    sort: null,
+  },
+  support_cases: {
+    visible_columns: ["case_number", "subject", "status", "priority", "assigned_to_id", "sla_due_at", "updated_at"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },
@@ -462,6 +483,47 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.sales_orders,
+  },
+  support_cases: {
+    key: "support_cases",
+    label: "Support Cases",
+    route: "/dashboard/support/cases",
+    columns: SUPPORT_CASE_COLUMNS,
+    filterFields: [
+      { key: "case_number", label: "Case Number", type: "text", operators: TEXT_OPERATORS },
+      { key: "subject", label: "Subject", type: "text", operators: TEXT_OPERATORS },
+      {
+        key: "status",
+        label: "Status",
+        type: "select",
+        operators: SELECT_OPERATORS,
+        options: [
+          { value: "new", label: "New" },
+          { value: "open", label: "Open" },
+          { value: "pending", label: "Pending" },
+          { value: "resolved", label: "Resolved" },
+          { value: "closed", label: "Closed" },
+        ],
+      },
+      {
+        key: "priority",
+        label: "Priority",
+        type: "select",
+        operators: SELECT_OPERATORS,
+        options: [
+          { value: "low", label: "Low" },
+          { value: "medium", label: "Medium" },
+          { value: "high", label: "High" },
+          { value: "urgent", label: "Urgent" },
+        ],
+      },
+      { key: "source", label: "Source", type: "text", operators: TEXT_OPERATORS },
+      { key: "assigned_to_id", label: "Assignee ID", type: "number", operators: NUMBER_OPERATORS },
+      { key: "sla_due_at", label: "SLA Due", type: "date", operators: DATE_OPERATORS },
+      { key: "created_at", label: "Created", type: "date", operators: DATE_OPERATORS },
+      { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
+    ],
+    defaultConfig: MODULE_VIEW_DEFAULTS.support_cases,
   },
   finance_io: {
     key: "finance_io",

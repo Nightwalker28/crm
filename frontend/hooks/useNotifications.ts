@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
+import { useRealtimeNotifications } from "@/hooks/useRealtimeNotifications";
 
 export type UserNotification = {
   id: number;
@@ -67,6 +68,7 @@ async function markAllNotificationsRead() {
 
 export function useNotifications() {
   const queryClient = useQueryClient();
+  const realtime = useRealtimeNotifications();
 
   const query = useQuery({
     queryKey: ["user-notifications"],
@@ -118,6 +120,7 @@ export function useNotifications() {
     unreadCount: query.data?.unreadCount ?? 0,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
+    realtimeStatus: realtime.status,
     markRead: markReadMutation.mutateAsync,
     markAllRead: markAllReadMutation.mutateAsync,
   };

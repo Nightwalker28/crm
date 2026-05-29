@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
+import { useRealtimeJobStatus } from "@/hooks/useRealtimeJobStatus";
 
 export type DataTransferJobResponse<TSummary = Record<string, unknown>> = {
   id: number;
@@ -41,6 +42,24 @@ export function useJobPoller<TSummary>(
     setStatus(nextStatus);
   }, []);
 
+  const applyJobUpdate = useCallback((body: DataTransferJobResponse<TSummary>) => {
+    updateStatus(body.status);
+    setProgress(body.progress_percent ?? 0);
+    setMessage(body.progress_message ?? null);
+    if (body.status === "completed") {
+      setError(null);
+      onCompleteRef.current(body);
+    } else if (body.status === "failed") {
+      setError(body.error_message || failureMessageRef.current);
+    }
+  }, [updateStatus]);
+
+  const realtime = useRealtimeJobStatus(
+    jobId,
+    applyJobUpdate,
+    Boolean(jobId && status && ["queued", "running"].includes(status)),
+  );
+
   useEffect(() => {
     if (!jobId) return;
     if (!statusRef.current || !["queued", "running"].includes(statusRef.current)) return;
@@ -54,15 +73,7 @@ export function useJobPoller<TSummary>(
         if (body.status === "completed" || body.status === "failed") {
           window.clearInterval(timer);
         }
-        updateStatus(body.status);
-        setProgress(body.progress_percent ?? 0);
-        setMessage(body.progress_message ?? null);
-        if (body.status === "completed") {
-          setError(null);
-          onCompleteRef.current(body);
-        } else if (body.status === "failed") {
-          setError(body.error_message || failureMessageRef.current);
-        }
+        applyJobUpdate(body);
       } catch {
         // Keep polling quietly; transient fetch retry is handled by apiFetch.
       }
@@ -72,7 +83,7 @@ export function useJobPoller<TSummary>(
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [jobId, updateStatus]);
+  }, [applyJobUpdate, jobId, updateStatus]);
 
   const start = useCallback((nextStatus = "queued", nextMessage: string | null = null) => {
     updateStatus(nextStatus);
@@ -97,6 +108,7 @@ export function useJobPoller<TSummary>(
     setProgress,
     message,
     setMessage,
+    realtimeStatus: realtime.status,
     start,
     reset,
   };

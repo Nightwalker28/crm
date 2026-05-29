@@ -43,6 +43,7 @@ const MODULE_ROUTE_PREFIXES = [
   DASHBOARD_ROUTES.contacts,
   DASHBOARD_ROUTES.accounts,
   DASHBOARD_ROUTES.deals,
+  DASHBOARD_ROUTES.supportCases,
 ];
 
 function isAdminOnlyPath(pathname: string) {

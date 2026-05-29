@@ -120,6 +120,7 @@ def mark_notification_read(db: Session, *, notification: UserNotification) -> Us
     if notification.status != "read":
         notification.status = "read"
         notification.read_at = func.now()
+        notification.updated_at = func.now()
         db.add(notification)
         db.commit()
         db.refresh(notification)
@@ -140,6 +141,7 @@ def mark_all_notifications_read(db: Session, *, tenant_id: int, user_id: int) ->
             {
                 UserNotification.status: "read",
                 UserNotification.read_at: func.now(),
+                UserNotification.updated_at: func.now(),
             },
             synchronize_session=False,
         )

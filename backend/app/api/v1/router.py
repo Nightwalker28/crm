@@ -24,6 +24,7 @@ from app.modules.platform.routes.crm_events import router as crm_events_router
 from app.modules.platform.routes.global_search import router as global_search_router
 from app.modules.platform.routes.notifications import router as notifications_router
 from app.modules.platform.routes.record_comments import router as record_comments_router
+from app.modules.platform.routes.realtime import router as realtime_router
 from app.modules.platform.routes.message_templates import router as message_templates_router
 from app.modules.platform.routes.notification_channels import router as notification_channels_router
 from app.modules.platform.routes.recycle_bin import router as recycle_bin_router
@@ -36,6 +37,7 @@ from app.modules.sales.routes.organizations_routes import router as sales_organi
 from app.modules.sales.routes.opportunities_routes import router as sales_opportunities_router
 from app.modules.sales.routes.orders_routes import router as sales_orders_router
 from app.modules.sales.routes.quotes_routes import router as sales_quotes_router
+from app.modules.support.routes.cases_routes import router as support_cases_router
 from app.modules.tasks.routes.tasks_routes import router as tasks_router
 from app.modules.whatsapp.routes.whatsapp_routes import router as whatsapp_router
 from app.modules.website_integrations.routes.website_integration_routes import (
@@ -64,6 +66,7 @@ router.include_router(crm_events_router)
 router.include_router(global_search_router)
 router.include_router(notifications_router)
 router.include_router(record_comments_router)
+router.include_router(realtime_router)
 router.include_router(message_templates_router)
 router.include_router(notification_channels_router)
 router.include_router(recycle_bin_router)
@@ -84,6 +87,7 @@ router.include_router(sales_organization_router, prefix="/sales")
 router.include_router(sales_opportunities_router, prefix="/sales")
 router.include_router(sales_quotes_router, prefix="/sales")
 router.include_router(sales_orders_router, prefix="/sales")
+router.include_router(support_cases_router)
 router.include_router(tasks_router)
 router.include_router(whatsapp_router)
 router.include_router(website_integration_router)

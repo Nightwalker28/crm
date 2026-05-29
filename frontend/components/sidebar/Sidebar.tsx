@@ -12,6 +12,7 @@ import {
   PanelLeftOpen,
   Settings2,
   Wrench,
+  LifeBuoy,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 
@@ -47,6 +48,7 @@ const SYSTEM_GROUPS: Record<string, Omit<SidebarGroupConfig, "items">> = {
   finance: { key: "finance", label: "Finance", icon: Landmark, sortOrder: 20 },
   catalog: { key: "catalog", label: "Products & Services", icon: Boxes, sortOrder: 30 },
   other: { key: "other", label: "Other", icon: Wrench, sortOrder: 100 },
+  support: { key: "support", label: "Support", icon: LifeBuoy, sortOrder: 40 },
   settings: { key: "settings", label: "Settings", icon: Settings2, sortOrder: 90 },
 };
 
@@ -57,6 +59,7 @@ const MODULE_ITEM_ORDER: Record<string, number> = {
   sales_opportunities: 40,
   sales_quotes: 50,
   sales_orders: 60,
+  support_cases: 10,
   finance_io: 10,
   finance_insertion_orders: 10,
   finance_pos: 20,
@@ -101,6 +104,7 @@ function getCanonicalHref(module: AccessibleModule) {
   if (module.name === "sales_opportunities") return DASHBOARD_ROUTES.deals;
   if (module.name === "sales_quotes") return DASHBOARD_ROUTES.quotes;
   if (module.name === "sales_orders") return DASHBOARD_ROUTES.orders;
+  if (module.name === "support_cases") return DASHBOARD_ROUTES.supportCases;
   if (module.name === "reports") return DASHBOARD_ROUTES.reports;
   if (module.name === "tasks") return "/dashboard/tasks";
   return module.base_route || "";
