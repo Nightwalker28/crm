@@ -9,7 +9,14 @@ import { Input } from "@/components/ui/input";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { apiFetch } from "@/lib/api";
 
-export type LinkedRecordType = "contact" | "organization" | "opportunity";
+export type LinkedRecordType = "contact" | "organization" | "opportunity" | "quote" | "order" | "document" | "user";
+
+export type LinkedRecordFilters = {
+  contactId?: number | null;
+  organizationId?: number | null;
+  opportunityId?: number | null;
+  quoteId?: number | null;
+};
 
 export type LinkedRecordOption = {
   id: number;
@@ -18,6 +25,8 @@ export type LinkedRecordOption = {
   contact_id?: number | null;
   organization_id?: number | null;
   organization_name?: string | null;
+  opportunity_id?: number | null;
+  quote_id?: number | null;
   raw?: unknown;
 };
 
@@ -32,18 +41,54 @@ type Props = {
   disabled?: boolean;
   queryKeyPrefix?: string;
   noResultsText?: string;
+  filters?: LinkedRecordFilters;
+  linkedModuleKey?: string;
+  linkedEntityId?: string | number | null;
+  sourceModuleKey?: string;
 };
 
-async function searchLinkedRecords(recordType: LinkedRecordType, search: string): Promise<LinkedRecordOption[]> {
+function appendRelationshipFilters(params: URLSearchParams, filters?: LinkedRecordFilters) {
+  const conditions = [
+    filters?.contactId ? { field: "contact_id", operator: "is", value: filters.contactId } : null,
+    filters?.organizationId ? { field: "organization_id", operator: "is", value: filters.organizationId } : null,
+    filters?.opportunityId ? { field: "opportunity_id", operator: "is", value: filters.opportunityId } : null,
+    filters?.quoteId ? { field: "quote_id", operator: "is", value: filters.quoteId } : null,
+  ].filter(Boolean);
+  if (conditions.length) params.set("filters_all", JSON.stringify(conditions));
+}
+
+async function searchLinkedRecords(
+  recordType: LinkedRecordType,
+  search: string,
+  filters?: LinkedRecordFilters,
+  linkedModuleKey?: string,
+  linkedEntityId?: string | number | null,
+  sourceModuleKey?: string,
+): Promise<LinkedRecordOption[]> {
   const params = new URLSearchParams({ page: "1", page_size: "10", query: search });
+  appendRelationshipFilters(params, filters);
   let endpoint = "";
 
   if (recordType === "contact") {
     endpoint = `/sales/contacts/search?${params.toString()}`;
   } else if (recordType === "organization") {
     endpoint = `/sales/organizations/search/${encodeURIComponent(search)}?page=1&page_size=10`;
-  } else {
+  } else if (recordType === "opportunity") {
     endpoint = `/sales/opportunities/search?${params.toString()}`;
+  } else if (recordType === "quote") {
+    endpoint = `/sales/quotes/search?${params.toString()}`;
+  } else if (recordType === "order") {
+    endpoint = `/sales/orders/search?${params.toString()}`;
+  } else if (recordType === "document") {
+    const documentParams = new URLSearchParams({ search, limit: "10" });
+    if (linkedModuleKey && linkedEntityId != null) {
+      documentParams.set("module_key", linkedModuleKey);
+      documentParams.set("entity_id", String(linkedEntityId));
+    }
+    endpoint = `/documents?${documentParams.toString()}`;
+  } else {
+    const userParams = new URLSearchParams({ query: search, module_key: sourceModuleKey ?? "" });
+    endpoint = `/linked-record-options/users?${userParams.toString()}`;
   }
 
   const res = await apiFetch(endpoint);
@@ -84,15 +129,60 @@ async function searchLinkedRecords(recordType: LinkedRecordType, search: string)
       };
     }
 
-    const name = typeof record.opportunity_name === "string" ? record.opportunity_name : "Unnamed deal";
-    const client = typeof record.client === "string" ? record.client : null;
-    const stage = typeof record.sales_stage === "string" ? record.sales_stage.replace(/_/g, " ") : null;
+    if (recordType === "opportunity") {
+      const name = typeof record.opportunity_name === "string" ? record.opportunity_name : "Unnamed deal";
+      const client = typeof record.client === "string" ? record.client : null;
+      const stage = typeof record.sales_stage === "string" ? record.sales_stage.replace(/_/g, " ") : null;
+      return {
+        id: Number(record.opportunity_id),
+        label: name,
+        description: [client, stage].filter(Boolean).join(" · ") || null,
+        contact_id: typeof record.contact_id === "number" ? record.contact_id : null,
+        organization_id: typeof record.organization_id === "number" ? record.organization_id : null,
+        opportunity_id: Number(record.opportunity_id),
+        raw: record,
+      };
+    }
+
+    if (recordType === "quote") {
+      return {
+        id: Number(record.quote_id),
+        label: typeof record.quote_number === "string" ? record.quote_number : "Unnamed quote",
+        description: typeof record.customer_name === "string" ? record.customer_name : null,
+        contact_id: typeof record.contact_id === "number" ? record.contact_id : null,
+        organization_id: typeof record.organization_id === "number" ? record.organization_id : null,
+        opportunity_id: typeof record.opportunity_id === "number" ? record.opportunity_id : null,
+        quote_id: Number(record.quote_id),
+        raw: record,
+      };
+    }
+
+    if (recordType === "order") {
+      return {
+        id: Number(record.id),
+        label: typeof record.order_number === "string" ? record.order_number : "Unnamed order",
+        description: typeof record.status === "string" ? record.status.replace(/_/g, " ") : null,
+        contact_id: typeof record.contact_id === "number" ? record.contact_id : null,
+        organization_id: typeof record.organization_id === "number" ? record.organization_id : null,
+        opportunity_id: typeof record.opportunity_id === "number" ? record.opportunity_id : null,
+        quote_id: typeof record.quote_id === "number" ? record.quote_id : null,
+        raw: record,
+      };
+    }
+
+    if (recordType === "document") {
+      return {
+        id: Number(record.id),
+        label: typeof record.title === "string" ? record.title : "Untitled document",
+        description: typeof record.original_filename === "string" ? record.original_filename : null,
+        raw: record,
+      };
+    }
+
     return {
-      id: Number(record.opportunity_id),
-      label: name,
-      description: [client, stage].filter(Boolean).join(" · ") || null,
-      contact_id: typeof record.contact_id === "number" ? record.contact_id : null,
-      organization_id: typeof record.organization_id === "number" ? record.organization_id : null,
+      id: Number(record.id),
+      label: typeof record.label === "string" ? record.label : "Unnamed user",
+      description: typeof record.email === "string" ? record.email : null,
       raw: record,
     };
   });
@@ -109,12 +199,16 @@ export default function LinkedRecordPicker({
   disabled = false,
   queryKeyPrefix = "linked-record-picker",
   noResultsText = "No records matched this search.",
+  filters,
+  linkedModuleKey,
+  linkedEntityId,
+  sourceModuleKey,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const debouncedSearch = useDebouncedValue(displayValue.trim(), 250);
   const query = useQuery({
-    queryKey: [queryKeyPrefix, recordType, debouncedSearch],
-    queryFn: () => searchLinkedRecords(recordType, debouncedSearch),
+    queryKey: [queryKeyPrefix, recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey],
+    queryFn: () => searchLinkedRecords(recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey),
     enabled: !disabled && isOpen && debouncedSearch.length > 0,
     staleTime: 30_000,
   });

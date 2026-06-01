@@ -438,6 +438,16 @@ class RecordMentionableUserListResponse(BaseModel):
     results: list[RecordMentionableUserResponse]
 
 
+class LinkedRecordUserResponse(BaseModel):
+    id: int
+    label: str
+    email: str
+
+
+class LinkedRecordUserListResponse(BaseModel):
+    results: list[LinkedRecordUserResponse]
+
+
 class GlobalSearchResultResponse(BaseModel):
     module_key: str
     module_label: str

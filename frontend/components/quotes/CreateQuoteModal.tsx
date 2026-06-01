@@ -160,7 +160,8 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
                     displayValue={contactSearch}
                     onDisplayValueChange={(value) => {
                       setContactSearch(value);
-                      setForm((current) => ({ ...current, contact_id: null }));
+                      setDealSearch("");
+                      setForm((current) => ({ ...current, contact_id: null, opportunity_id: "" }));
                     }}
                     onSelect={(option) => {
                       setContactSearch(option.label);
@@ -180,6 +181,7 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
                     }}
                     placeholder="Search contacts"
                     queryKeyPrefix="quote-create-contact"
+                    filters={{ organizationId: form.organization_id }}
                   />
                 </Field>
               ) : null}
@@ -191,19 +193,27 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
                     displayValue={accountSearch}
                     onDisplayValueChange={(value) => {
                       setAccountSearch(value);
-                      setForm((current) => ({ ...current, organization_id: null }));
+                      setContactSearch("");
+                      setDealSearch("");
+                      setForm((current) => ({ ...current, organization_id: null, contact_id: null, opportunity_id: "" }));
                     }}
                     onSelect={(option) => {
                       setAccountSearch(option.label);
                       setForm((current) => ({
                         ...current,
                         organization_id: option.id,
+                        contact_id: null,
+                        opportunity_id: "",
                         customer_name: current.customer_name.trim() ? current.customer_name : option.label,
                       }));
+                      setContactSearch("");
+                      setDealSearch("");
                     }}
                     onClear={() => {
                       setAccountSearch("");
-                      setForm((current) => ({ ...current, organization_id: null }));
+                      setContactSearch("");
+                      setDealSearch("");
+                      setForm((current) => ({ ...current, organization_id: null, contact_id: null, opportunity_id: "" }));
                     }}
                     placeholder="Search accounts"
                     queryKeyPrefix="quote-create-account"
@@ -242,6 +252,7 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
                     }}
                     placeholder="Search deals"
                     queryKeyPrefix="quote-create-deal"
+                    filters={{ contactId: form.contact_id, organizationId: form.organization_id }}
                   />
                 </Field>
               ) : null}

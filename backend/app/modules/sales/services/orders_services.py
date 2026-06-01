@@ -127,6 +127,7 @@ def build_orders_query(
         "organization_id": {"expression": SalesOrder.organization_id, "type": "number"},
         "contact_id": {"expression": SalesOrder.contact_id, "type": "number"},
         "opportunity_id": {"expression": SalesOrder.opportunity_id, "type": "number"},
+        "owner_id": {"expression": SalesOrder.owner_id, "type": "number"},
         "status": {"expression": SalesOrder.status, "type": "text"},
         "currency": {"expression": SalesOrder.currency, "type": "text"},
         "grand_total": {"expression": SalesOrder.grand_total, "type": "number"},

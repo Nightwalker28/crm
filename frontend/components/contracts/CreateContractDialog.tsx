@@ -69,12 +69,20 @@ export default function CreateContractDialog() {
   const [contactDisplay, setContactDisplay] = useState("");
   const [organizationDisplay, setOrganizationDisplay] = useState("");
   const [opportunityDisplay, setOpportunityDisplay] = useState("");
+  const [quoteDisplay, setQuoteDisplay] = useState("");
+  const [orderDisplay, setOrderDisplay] = useState("");
+  const [documentDisplay, setDocumentDisplay] = useState("");
+  const [ownerDisplay, setOwnerDisplay] = useState("");
 
   function reset() {
     setForm(INITIAL_FORM);
     setContactDisplay("");
     setOrganizationDisplay("");
     setOpportunityDisplay("");
+    setQuoteDisplay("");
+    setOrderDisplay("");
+    setDocumentDisplay("");
+    setOwnerDisplay("");
     setError(null);
   }
 
@@ -162,8 +170,8 @@ export default function CreateContractDialog() {
                   <Input type="number" min="0" step="0.01" value={form.value_amount} onChange={(event) => setForm((current) => ({ ...current, value_amount: event.target.value }))} />
                 </Field>
                 <Field>
-                  <FieldLabel>Owner ID</FieldLabel>
-                  <Input value={form.owner_id} onChange={(event) => setForm((current) => ({ ...current, owner_id: event.target.value }))} inputMode="numeric" />
+                  <FieldLabel>Owner</FieldLabel>
+                  <LinkedRecordPicker recordType="user" valueId={form.owner_id ? Number(form.owner_id) : null} displayValue={ownerDisplay} onDisplayValueChange={(value) => { setOwnerDisplay(value); setForm((current) => ({ ...current, owner_id: "" })); }} onSelect={(option) => { setOwnerDisplay(option.label); setForm((current) => ({ ...current, owner_id: String(option.id) })); }} onClear={() => { setOwnerDisplay(""); setForm((current) => ({ ...current, owner_id: "" })); }} placeholder="Search owners" queryKeyPrefix="contract-owner" sourceModuleKey="contracts" />
                 </Field>
                 <Field>
                   <FieldLabel>Effective Date</FieldLabel>
@@ -179,27 +187,27 @@ export default function CreateContractDialog() {
                 </Field>
                 <Field>
                   <FieldLabel>Contact</FieldLabel>
-                  <LinkedRecordPicker recordType="contact" valueId={form.contact_id} displayValue={contactDisplay} onDisplayValueChange={setContactDisplay} onSelect={(option) => selectLinked("contact", option)} onClear={() => { setForm((current) => ({ ...current, contact_id: null })); setContactDisplay(""); }} placeholder="Search contacts" queryKeyPrefix="contract-contact" />
+                  <LinkedRecordPicker recordType="contact" valueId={form.contact_id} displayValue={contactDisplay} onDisplayValueChange={(value) => { setContactDisplay(value); setForm((current) => ({ ...current, contact_id: null, opportunity_id: null, quote_id: "", order_id: "", document_id: "" })); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); setDocumentDisplay(""); }} onSelect={(option) => selectLinked("contact", option)} onClear={() => { setForm((current) => ({ ...current, contact_id: null, opportunity_id: null, quote_id: "", order_id: "", document_id: "" })); setContactDisplay(""); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); setDocumentDisplay(""); }} placeholder="Search contacts" queryKeyPrefix="contract-contact" filters={{ organizationId: form.organization_id }} />
                 </Field>
                 <Field>
                   <FieldLabel>Account</FieldLabel>
-                  <LinkedRecordPicker recordType="organization" valueId={form.organization_id} displayValue={organizationDisplay} onDisplayValueChange={setOrganizationDisplay} onSelect={(option) => selectLinked("organization", option)} onClear={() => { setForm((current) => ({ ...current, organization_id: null })); setOrganizationDisplay(""); }} placeholder="Search accounts" queryKeyPrefix="contract-account" />
+                  <LinkedRecordPicker recordType="organization" valueId={form.organization_id} displayValue={organizationDisplay} onDisplayValueChange={(value) => { setOrganizationDisplay(value); setForm((current) => ({ ...current, organization_id: null, contact_id: null, opportunity_id: null, quote_id: "", order_id: "", document_id: "" })); setContactDisplay(""); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); setDocumentDisplay(""); }} onSelect={(option) => { setContactDisplay(""); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); setDocumentDisplay(""); setForm((current) => ({ ...current, contact_id: null, opportunity_id: null, quote_id: "", order_id: "", document_id: "" })); selectLinked("organization", option); }} onClear={() => { setForm((current) => ({ ...current, organization_id: null, contact_id: null, opportunity_id: null, quote_id: "", order_id: "", document_id: "" })); setOrganizationDisplay(""); setContactDisplay(""); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); setDocumentDisplay(""); }} placeholder="Search accounts" queryKeyPrefix="contract-account" />
                 </Field>
                 <Field>
                   <FieldLabel>Deal</FieldLabel>
-                  <LinkedRecordPicker recordType="opportunity" valueId={form.opportunity_id} displayValue={opportunityDisplay} onDisplayValueChange={setOpportunityDisplay} onSelect={(option) => selectLinked("opportunity", option)} onClear={() => { setForm((current) => ({ ...current, opportunity_id: null })); setOpportunityDisplay(""); }} placeholder="Search deals" queryKeyPrefix="contract-deal" />
+                  <LinkedRecordPicker recordType="opportunity" valueId={form.opportunity_id} displayValue={opportunityDisplay} onDisplayValueChange={(value) => { setOpportunityDisplay(value); setForm((current) => ({ ...current, opportunity_id: null, quote_id: "", order_id: "" })); setQuoteDisplay(""); setOrderDisplay(""); }} onSelect={(option) => selectLinked("opportunity", option)} onClear={() => { setForm((current) => ({ ...current, opportunity_id: null, quote_id: "", order_id: "" })); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); }} placeholder="Search deals" queryKeyPrefix="contract-deal" filters={{ contactId: form.contact_id, organizationId: form.organization_id }} />
                 </Field>
                 <Field>
-                  <FieldLabel>Quote ID</FieldLabel>
-                  <Input value={form.quote_id} onChange={(event) => setForm((current) => ({ ...current, quote_id: event.target.value }))} inputMode="numeric" />
+                  <FieldLabel>Quote</FieldLabel>
+                  <LinkedRecordPicker recordType="quote" valueId={form.quote_id ? Number(form.quote_id) : null} displayValue={quoteDisplay} onDisplayValueChange={(value) => { setQuoteDisplay(value); setForm((current) => ({ ...current, quote_id: "", order_id: "" })); setOrderDisplay(""); }} onSelect={(option) => { setQuoteDisplay(option.label); setForm((current) => ({ ...current, quote_id: String(option.id), order_id: "" })); setOrderDisplay(""); }} onClear={() => { setQuoteDisplay(""); setOrderDisplay(""); setForm((current) => ({ ...current, quote_id: "", order_id: "" })); }} placeholder="Search quotes" queryKeyPrefix="contract-quote" filters={{ contactId: form.contact_id, organizationId: form.organization_id, opportunityId: form.opportunity_id }} />
                 </Field>
                 <Field>
-                  <FieldLabel>Order ID</FieldLabel>
-                  <Input value={form.order_id} onChange={(event) => setForm((current) => ({ ...current, order_id: event.target.value }))} inputMode="numeric" />
+                  <FieldLabel>Order</FieldLabel>
+                  <LinkedRecordPicker recordType="order" valueId={form.order_id ? Number(form.order_id) : null} displayValue={orderDisplay} onDisplayValueChange={(value) => { setOrderDisplay(value); setForm((current) => ({ ...current, order_id: "" })); }} onSelect={(option) => { setOrderDisplay(option.label); setForm((current) => ({ ...current, order_id: String(option.id) })); }} onClear={() => { setOrderDisplay(""); setForm((current) => ({ ...current, order_id: "" })); }} placeholder="Search orders" queryKeyPrefix="contract-order" filters={{ contactId: form.contact_id, organizationId: form.organization_id, opportunityId: form.opportunity_id, quoteId: form.quote_id ? Number(form.quote_id) : null }} />
                 </Field>
                 <Field>
-                  <FieldLabel>Document ID</FieldLabel>
-                  <Input value={form.document_id} onChange={(event) => setForm((current) => ({ ...current, document_id: event.target.value }))} inputMode="numeric" />
+                  <FieldLabel>Document</FieldLabel>
+                  <LinkedRecordPicker recordType="document" valueId={form.document_id ? Number(form.document_id) : null} displayValue={documentDisplay} onDisplayValueChange={(value) => { setDocumentDisplay(value); setForm((current) => ({ ...current, document_id: "" })); }} onSelect={(option) => { setDocumentDisplay(option.label); setForm((current) => ({ ...current, document_id: String(option.id) })); }} onClear={() => { setDocumentDisplay(""); setForm((current) => ({ ...current, document_id: "" })); }} placeholder="Search documents" queryKeyPrefix="contract-document" linkedModuleKey={form.contact_id ? "sales_contacts" : form.organization_id ? "sales_organizations" : undefined} linkedEntityId={form.contact_id ?? form.organization_id} />
                 </Field>
               </FieldGroup>
             </div>

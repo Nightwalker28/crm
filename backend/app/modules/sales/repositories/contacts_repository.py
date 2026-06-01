@@ -47,6 +47,8 @@ def build_contacts_query(
         "region": {"expression": SalesContact.region, "type": "text"},
         "country": {"expression": SalesContact.country, "type": "text"},
         "linkedin_url": {"expression": SalesContact.linkedin_url, "type": "text"},
+        "organization_id": {"expression": SalesContact.organization_id, "type": "number"},
+        "assigned_to": {"expression": SalesContact.assigned_to, "type": "number"},
         "organization_name": {"expression": SalesOrganization.org_name, "type": "text"},
         "created_time": {"expression": SalesContact.created_time, "type": "date"},
         **build_custom_field_filter_map(

@@ -24,6 +24,7 @@ from app.modules.platform.routes.module_reports import router as module_reports_
 from app.modules.platform.routes.crm_events import router as crm_events_router
 from app.modules.platform.routes.global_search import router as global_search_router
 from app.modules.platform.routes.integrations_registry import router as integrations_registry_router
+from app.modules.platform.routes.linked_record_options import router as linked_record_options_router
 from app.modules.platform.routes.notifications import router as notifications_router
 from app.modules.platform.routes.record_comments import router as record_comments_router
 from app.modules.platform.routes.realtime import router as realtime_router
@@ -67,6 +68,7 @@ router.include_router(data_transfer_job_router)
 router.include_router(crm_events_router)
 router.include_router(global_search_router)
 router.include_router(integrations_registry_router)
+router.include_router(linked_record_options_router)
 router.include_router(notifications_router)
 router.include_router(record_comments_router)
 router.include_router(realtime_router)

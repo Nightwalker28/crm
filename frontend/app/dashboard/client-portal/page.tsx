@@ -2,10 +2,11 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { Copy, ExternalLink, Link2, Plus, Search, Send } from "lucide-react";
+import { Copy, ExternalLink, Link2, Plus, Search, Send, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/ui/PageHeader";
+import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { FieldDescription } from "@/components/ui/field";
@@ -169,6 +170,59 @@ function CustomerSelector({
   );
 }
 
+function DocumentSelector({
+  value,
+  linkedType,
+  linkedId,
+  onChange,
+}: {
+  value: string;
+  linkedType: LinkedType;
+  linkedId: string;
+  onChange: (value: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [labels, setLabels] = useState<Record<number, string>>({});
+  const selectedIds = parseDocumentIds(value);
+
+  function update(ids: number[]) {
+    onChange(ids.join(","));
+  }
+
+  return (
+    <div className="space-y-2">
+      <LinkedRecordPicker
+        recordType="document"
+        valueId={null}
+        displayValue={search}
+        onDisplayValueChange={setSearch}
+        onSelect={(option) => {
+          setLabels((current) => ({ ...current, [option.id]: option.label }));
+          if (!selectedIds.includes(option.id)) update([...selectedIds, option.id]);
+          setSearch("");
+        }}
+        onClear={() => setSearch("")}
+        placeholder="Search documents"
+        queryKeyPrefix="client-page-document"
+        linkedModuleKey={linkedId ? (linkedType === "contact" ? "sales_contacts" : "sales_organizations") : undefined}
+        linkedEntityId={linkedId || null}
+      />
+      {selectedIds.length ? (
+        <div className="flex flex-wrap gap-2">
+          {selectedIds.map((id) => (
+            <span key={id} className="inline-flex items-center gap-2 rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-xs text-neutral-200">
+              {labels[id] ?? `Document #${id}`}
+              <button type="button" onClick={() => update(selectedIds.filter((selectedId) => selectedId !== id))} aria-label={`Remove document ${id}`}>
+                <X className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 export default function ClientPortalDashboardPage() {
   const pagesQuery = useClientPortalPages();
   const accountsQuery = useClientPortalAccounts();
@@ -285,8 +339,8 @@ export default function ClientPortalDashboardPage() {
               <CustomerSelector
                 linkedType={pageForm.linkedType}
                 linkedId={pageForm.linkedId}
-                onTypeChange={(linkedType) => setPageForm((current) => ({ ...current, linkedType }))}
-                onIdChange={(linkedId) => setPageForm((current) => ({ ...current, linkedId }))}
+                onTypeChange={(linkedType) => setPageForm((current) => ({ ...current, linkedType, documentIds: "" }))}
+                onIdChange={(linkedId) => setPageForm((current) => ({ ...current, linkedId, documentIds: "" }))}
               />
             </div>
             <Textarea value={pageForm.summary} onChange={(event) => setPageForm((current) => ({ ...current, summary: event.target.value }))} placeholder="Short proposal or pricing summary" />
@@ -298,7 +352,7 @@ export default function ClientPortalDashboardPage() {
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               <Input value={pageForm.itemDescription} onChange={(event) => setPageForm((current) => ({ ...current, itemDescription: event.target.value }))} placeholder="Item description" />
-              <Input value={pageForm.documentIds} onChange={(event) => setPageForm((current) => ({ ...current, documentIds: event.target.value }))} placeholder="Document IDs, comma separated" />
+              <DocumentSelector value={pageForm.documentIds} linkedType={pageForm.linkedType} linkedId={pageForm.linkedId} onChange={(documentIds) => setPageForm((current) => ({ ...current, documentIds }))} />
             </div>
             <div className="grid gap-3 md:grid-cols-[1fr_1fr_140px]">
               <Input value={pageForm.brandCompanyName} onChange={(event) => setPageForm((current) => ({ ...current, brandCompanyName: event.target.value }))} placeholder="Client page company name" />
