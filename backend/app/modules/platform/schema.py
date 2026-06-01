@@ -491,3 +491,64 @@ class MessageTemplateUpdateRequest(BaseModel):
 
 class MessageTemplateListResponse(BaseModel):
     results: list[MessageTemplateResponse]
+
+
+class IntegrationProviderResponse(BaseModel):
+    id: int
+    key: str
+    name: str
+    category: str
+    description: str | None = None
+    enabled: bool
+    metadata_json: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class IntegrationProviderListResponse(BaseModel):
+    results: list[IntegrationProviderResponse]
+
+
+class IntegrationConnectionResponse(BaseModel):
+    id: int | None = None
+    provider_key: str
+    status: str
+    connected_by_id: int | None = None
+    connected_at: datetime | None = None
+    last_sync_at: datetime | None = None
+    settings_json: dict[str, Any] = Field(default_factory=dict)
+    source: str = "registry"
+    connection_count: int = 0
+    last_error: str | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class IntegrationConnectionListResponse(BaseModel):
+    results: list[IntegrationConnectionResponse]
+
+
+class IntegrationHealthResponse(BaseModel):
+    provider: IntegrationProviderResponse
+    connection: IntegrationConnectionResponse
+
+
+class IntegrationHealthListResponse(BaseModel):
+    results: list[IntegrationHealthResponse]
+
+
+class IntegrationSyncRunResponse(BaseModel):
+    id: int
+    connection_id: int
+    provider_key: str
+    status: str
+    started_at: datetime
+    finished_at: datetime | None = None
+    result_json: dict[str, Any]
+    error_message: str | None = None
+
+
+class IntegrationSyncRunListResponse(BaseModel):
+    results: list[IntegrationSyncRunResponse]

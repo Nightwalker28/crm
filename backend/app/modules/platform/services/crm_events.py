@@ -13,6 +13,18 @@ from app.modules.platform.models import CrmEvent, CrmEventDelivery, Notification
 
 
 SUPPORTED_CHANNEL_PROVIDERS = {"slack", "teams"}
+CRM_EVENT_TYPES = {
+    "lead.created",
+    "lead.updated",
+    "lead.converted",
+    "opportunity.stage_changed",
+    "quote.created",
+    "quote.status_changed",
+    "order.created",
+    "case.created",
+    "case.status_changed",
+    "contract.status_changed",
+}
 SLACK_ALERT_EVENT_TYPES = {
     "lead.created",
     "deal.assigned",
@@ -444,6 +456,34 @@ def safe_emit_crm_event(db: Session, **kwargs: Any) -> CrmEvent | None:
     except Exception:
         db.rollback()
         return None
+
+
+def safe_publish_crm_event(
+    db: Session,
+    *,
+    tenant_id: int,
+    actor_user_id: int | None,
+    event_type: str,
+    entity_type: str,
+    entity_id: str | int,
+    payload: dict[str, Any] | None = None,
+) -> CrmEvent | None:
+    normalized_type = event_type.strip().lower()
+    if normalized_type not in CRM_EVENT_TYPES:
+        raise ValueError(f"Unsupported standard CRM event type: {normalized_type}")
+    return safe_emit_crm_event(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        event_type=normalized_type,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        payload={
+            "entity_type": entity_type,
+            "entity_id": str(entity_id),
+            **(payload or {}),
+        },
+    )
 
 
 def actor_payload(user) -> dict[str, Any]:

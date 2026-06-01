@@ -6,7 +6,8 @@ from app.core.module_filters import normalize_filter_logic, parse_filter_conditi
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
-from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.activity_logs import safe_log_activity
+from app.modules.platform.services.crm_events import safe_publish_crm_event
 from app.modules.platform.services.module_fields import (
     enabled_module_fields,
     reject_disabled_field_writes,
@@ -117,7 +118,7 @@ def create_case(
     reject_disabled_field_writes(db, tenant_id=current_user.tenant_id, module_key=SUPPORT_CASES_MODULE_KEY, field_keys=submitted_fields)
     sanitized_payload = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key=SUPPORT_CASES_MODULE_KEY, payload=payload.model_dump())
     created = create_support_case(db, sanitized_payload, current_user)
-    log_activity(
+    safe_log_activity(
         db,
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
@@ -127,6 +128,15 @@ def create_case(
         action="create",
         description=f"Created support case {created.case_number}",
         after_state=_serialize_case(created),
+    )
+    safe_publish_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        event_type="case.created",
+        entity_type="support_case",
+        entity_id=created.id,
+        payload={"case_number": created.case_number, "subject": created.subject, "status": created.status},
     )
     return created
 
@@ -151,7 +161,7 @@ def update_case(
     reject_disabled_field_writes(db, tenant_id=current_user.tenant_id, module_key=SUPPORT_CASES_MODULE_KEY, field_keys=set(update_data))
     update_data = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key=SUPPORT_CASES_MODULE_KEY, payload=update_data)
     updated = update_support_case(db, case, update_data, current_user)
-    log_activity(
+    safe_log_activity(
         db,
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
@@ -163,6 +173,16 @@ def update_case(
         before_state=before_state,
         after_state=_serialize_case(updated),
     )
+    if before_state["status"] != updated.status:
+        safe_publish_crm_event(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id,
+            event_type="case.status_changed",
+            entity_type="support_case",
+            entity_id=updated.id,
+            payload={"case_number": updated.case_number, "subject": updated.subject, "from": before_state["status"], "to": updated.status},
+        )
     return updated
 
 
@@ -177,7 +197,7 @@ def create_case_comment(
 ):
     case = get_case_or_404(db, tenant_id=current_user.tenant_id, case_id=case_id)
     comment = add_case_comment(db, case, payload.model_dump(), current_user)
-    log_activity(
+    safe_log_activity(
         db,
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,

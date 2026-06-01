@@ -19,7 +19,7 @@ from app.core.access_control import require_role_module_action_access
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
-from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.activity_logs import safe_log_activity as log_activity
 from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
 from app.modules.platform.services.data_transfer_jobs import (
     create_data_transfer_job,

@@ -27,7 +27,8 @@ from app.modules.contracts.services.contracts_services import (
     update_contract,
     update_contract_signer,
 )
-from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.activity_logs import safe_log_activity
+from app.modules.platform.services.crm_events import safe_publish_crm_event
 from app.modules.platform.services.module_fields import enabled_module_fields, reject_disabled_field_writes, sanitize_disabled_field_payload, sanitize_disabled_filter_conditions
 
 
@@ -102,7 +103,7 @@ def create_contract_record(payload: ContractCreateRequest, db: Session = Depends
     reject_disabled_field_writes(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, field_keys=submitted_fields)
     sanitized_payload = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, payload=payload.model_dump())
     created = create_contract(db, sanitized_payload, current_user)
-    log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key=CONTRACTS_MODULE_KEY, entity_type="contract", entity_id=created.id, action="create", description=f"Created contract {created.contract_number}", after_state=_serialize_contract(created))
+    safe_log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key=CONTRACTS_MODULE_KEY, entity_type="contract", entity_id=created.id, action="create", description=f"Created contract {created.contract_number}", after_state=_serialize_contract(created))
     return created
 
 
@@ -119,7 +120,17 @@ def update_contract_record(contract_id: int, payload: ContractUpdateRequest = Bo
     reject_disabled_field_writes(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, field_keys=set(data))
     data = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, payload=data)
     updated = update_contract(db, contract, data, current_user)
-    log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key=CONTRACTS_MODULE_KEY, entity_type="contract", entity_id=updated.id, action="update", description=f"Updated contract {updated.contract_number}", before_state=before_state, after_state=_serialize_contract(updated))
+    safe_log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key=CONTRACTS_MODULE_KEY, entity_type="contract", entity_id=updated.id, action="update", description=f"Updated contract {updated.contract_number}", before_state=before_state, after_state=_serialize_contract(updated))
+    if before_state["status"] != updated.status:
+        safe_publish_crm_event(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id,
+            event_type="contract.status_changed",
+            entity_type="contract",
+            entity_id=updated.id,
+            payload={"contract_number": updated.contract_number, "title": updated.title, "from": before_state["status"], "to": updated.status},
+        )
     return updated
 
 

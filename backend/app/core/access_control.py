@@ -7,6 +7,7 @@ from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.modules.user_management.models import (
+    Department,
     DepartmentModulePermission,
     Module,
     Role,
@@ -30,6 +31,41 @@ FINANCE_FULL_ACCESS_DEPARTMENT_ID = 2
 USER_MIN_ROLE_LEVEL = 10
 SUPERUSER_MIN_ROLE_LEVEL = 90
 ADMIN_MIN_ROLE_LEVEL = 100
+ACTION_PERMISSION_FIELDS = {
+    "view": "can_view",
+    "create": "can_create",
+    "edit": "can_edit",
+    "delete": "can_delete",
+    "restore": "can_restore",
+    "export": "can_export",
+    "configure": "can_configure",
+}
+
+
+class PermissionPolicy:
+    def __init__(self, db: Session, user: User):
+        self.db = db
+        self.user = user
+
+    def can_view_module(self, module_key: str) -> bool:
+        try:
+            require_department_module_access(self.db, user=self.user, module_key=module_key)
+        except (PermissionError, ValueError):
+            return False
+        return True
+
+    def can_perform_action(self, module_key: str, action: str) -> bool:
+        try:
+            require_role_module_action_access(self.db, user=self.user, module_key=module_key, action=action)
+        except (PermissionError, ValueError):
+            return False
+        return True
+
+    def require_module(self, module_key: str) -> None:
+        require_department_module_access(self.db, user=self.user, module_key=module_key)
+
+    def require_action(self, module_key: str, action: str) -> None:
+        require_role_module_action_access(self.db, user=self.user, module_key=module_key, action=action)
 
 
 def get_user_department_id(db: Session, user: User | None) -> int | None:
@@ -96,7 +132,9 @@ def user_has_module_assignment(
 
     role_permission = (
         db.query(RoleModulePermission)
+        .join(Role, Role.id == RoleModulePermission.role_id)
         .filter(
+            Role.tenant_id == user.tenant_id,
             RoleModulePermission.role_id == role_id,
             RoleModulePermission.module_id == module.id,
         )
@@ -127,7 +165,9 @@ def user_has_module_assignment(
     if department_id:
         department_permission = (
             db.query(DepartmentModulePermission)
+            .join(Department, Department.id == DepartmentModulePermission.department_id)
             .filter(
+                Department.tenant_id == user.tenant_id,
                 DepartmentModulePermission.department_id == department_id,
                 DepartmentModulePermission.module_id == module.id,
             )
@@ -174,7 +214,9 @@ def require_role_module_action_access(
 
     permission = (
         db.query(RoleModulePermission)
+        .join(Role, Role.id == RoleModulePermission.role_id)
         .filter(
+            Role.tenant_id == user.tenant_id,
             RoleModulePermission.role_id == user.role_id,
             RoleModulePermission.module_id == module.id,
         )
@@ -183,16 +225,7 @@ def require_role_module_action_access(
     if not permission:
         raise PermissionError("Action is not allowed for this role")
 
-    field_map = {
-        "view": "can_view",
-        "create": "can_create",
-        "edit": "can_edit",
-        "delete": "can_delete",
-        "restore": "can_restore",
-        "export": "can_export",
-        "configure": "can_configure",
-    }
-    attr = field_map.get(action)
+    attr = ACTION_PERMISSION_FIELDS.get(action)
     if not attr:
         raise ValueError("unknown action")
 

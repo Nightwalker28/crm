@@ -64,6 +64,30 @@ type EventFilters = {
   delivery_status: string;
 };
 
+type IntegrationRegistryHealth = {
+  provider: {
+    id: number;
+    key: string;
+    name: string;
+    category: string;
+    description: string | null;
+    enabled: boolean;
+    metadata_json: {
+      config_href?: string;
+      source?: string;
+    };
+  };
+  connection: {
+    id: number | null;
+    provider_key: string;
+    status: string;
+    last_sync_at: string | null;
+    source: string;
+    connection_count: number;
+    last_error: string | null;
+  };
+};
+
 type IntegrationApiKey = {
   id: number;
   name: string;
@@ -172,6 +196,19 @@ function deliveryStatusPill(status: string) {
   return { bg: "bg-amber-950/60", text: "text-amber-200", border: "border-amber-800/70" };
 }
 
+function connectionStatusPill(status: string) {
+  if (status === "connected") {
+    return { bg: "bg-emerald-950/60", text: "text-emerald-200", border: "border-emerald-800/70" };
+  }
+  if (status === "error") {
+    return { bg: "bg-red-950/60", text: "text-red-200", border: "border-red-800/70" };
+  }
+  if (status === "pending") {
+    return { bg: "bg-amber-950/60", text: "text-amber-200", border: "border-amber-800/70" };
+  }
+  return { bg: "bg-neutral-900", text: "text-neutral-400", border: "border-neutral-800" };
+}
+
 function money(value: string | number | null | undefined, currency: string) {
   const amount = Number(value);
   return `${currency} ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
@@ -223,6 +260,13 @@ async function fetchCrmEvents(filters: EventFilters) {
   return Array.isArray(body?.results) ? body.results as CrmEvent[] : [];
 }
 
+async function fetchRegistryHealth() {
+  const res = await apiFetch("/admin/integrations-registry/health");
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return Array.isArray(body?.results) ? body.results as IntegrationRegistryHealth[] : [];
+}
+
 export default function IntegrationsPage() {
   const queryClient = useQueryClient();
   const [apiKeyDraft, setApiKeyDraft] = useState<ApiKeyDraft>(emptyApiKeyDraft);
@@ -235,6 +279,10 @@ export default function IntegrationsPage() {
   const websiteQuery = useQuery({
     queryKey: ["integrations", "website"],
     queryFn: fetchWebsiteIntegrations,
+  });
+  const registryQuery = useQuery({
+    queryKey: ["integrations", "registry-health"],
+    queryFn: fetchRegistryHealth,
   });
   const channelsQuery = useQuery({
     queryKey: ["integrations", "notification-channels"],
@@ -249,9 +297,16 @@ export default function IntegrationsPage() {
   const websiteOrders = websiteQuery.data?.websiteOrders ?? [];
   const channels = channelsQuery.data ?? [];
   const events = eventsQuery.data ?? [];
+  const registryHealth = registryQuery.data ?? [];
   const websiteLoading = websiteQuery.isLoading || websiteQuery.isFetching;
   const loading = channelsQuery.isLoading || channelsQuery.isFetching;
   const eventsLoading = eventsQuery.isLoading || eventsQuery.isFetching;
+
+  useEffect(() => {
+    if (registryQuery.error) {
+      toast.error(registryQuery.error instanceof Error ? registryQuery.error.message : "Failed to load integration health.");
+    }
+  }, [registryQuery.error]);
 
   useEffect(() => {
     if (websiteQuery.error) {
@@ -423,10 +478,61 @@ export default function IntegrationsPage() {
     <div className="flex flex-col gap-5 text-neutral-200">
       <PageHeader
         title="Integrations"
-        description="Manage website API keys, public catalog data, website order writebacks, and external alert webhooks."
+        description="Review provider health, manage website API access, and configure external alert webhooks."
       />
 
       <section className="flex flex-col gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-semibold text-neutral-100">Provider Registry</h2>
+            <p className="text-sm text-neutral-500">Connection state from mail, calendar, documents, website APIs, and webhook providers for this tenant.</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" disabled={registryQuery.isFetching} onClick={() => void registryQuery.refetch()}>
+            <RefreshCw size={14} />
+            Refresh
+          </Button>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {registryQuery.isLoading ? (
+            <Card className="px-5 py-5 text-sm text-neutral-500 md:col-span-2 xl:col-span-3">Loading provider health...</Card>
+          ) : registryHealth.length ? (
+            registryHealth.map(({ provider, connection }) => {
+              const tone = connectionStatusPill(connection.status);
+              return (
+                <Card key={provider.key} className="px-5 py-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-950">
+                        <PlugZap size={17} className="text-neutral-300" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-xs uppercase text-neutral-500">{provider.category}</div>
+                        <h3 className="mt-1 text-base font-semibold text-neutral-100">{provider.name}</h3>
+                      </div>
+                    </div>
+                    <Pill bg={tone.bg} text={tone.text} border={tone.border}>{connection.status}</Pill>
+                  </div>
+                  <p className="mt-3 text-sm leading-5 text-neutral-500">{provider.description}</p>
+                  <div className="mt-4 grid gap-1 text-xs text-neutral-500">
+                    <div>{connection.connection_count} active connection{connection.connection_count === 1 ? "" : "s"}</div>
+                    <div>{connection.last_sync_at ? `Last activity ${formatDateTime(connection.last_sync_at)}` : "No sync activity recorded"}</div>
+                    {connection.last_error ? <div className="truncate text-red-300">{connection.last_error}</div> : null}
+                  </div>
+                  {provider.metadata_json.config_href ? (
+                    <Button type="button" variant="outline" size="sm" className="mt-4" asChild>
+                      <Link href={provider.metadata_json.config_href}>Configure</Link>
+                    </Button>
+                  ) : null}
+                </Card>
+              );
+            })
+          ) : (
+            <Card className="px-5 py-5 text-sm text-neutral-500 md:col-span-2 xl:col-span-3">No integration providers registered.</Card>
+          )}
+        </div>
+      </section>
+
+      <section id="website-apis" className="flex scroll-mt-5 flex-col gap-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="flex flex-col gap-1">
             <h2 className="text-lg font-semibold text-neutral-100">Website APIs</h2>
@@ -666,7 +772,7 @@ export default function IntegrationsPage() {
         </ModuleTableShell>
       </section>
 
-      <div className="grid gap-5 lg:grid-cols-[380px_1fr]">
+      <div id="webhooks" className="grid scroll-mt-5 gap-5 lg:grid-cols-[380px_1fr]">
         <Card className="px-5 py-5">
           <div className="flex items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-950">

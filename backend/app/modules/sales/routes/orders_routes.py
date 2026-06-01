@@ -6,7 +6,8 @@ from app.core.module_filters import normalize_filter_logic, parse_filter_conditi
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
-from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.activity_logs import safe_log_activity
+from app.modules.platform.services.crm_events import safe_publish_crm_event
 from app.modules.sales.schema import SalesOrderCreateRequest, SalesOrderListItem, SalesOrderListResponse, SalesOrderResponse, SalesOrderUpdateRequest
 from app.modules.sales.services.orders_services import create_sales_order, get_order_or_404, list_sales_orders, update_sales_order
 
@@ -76,7 +77,7 @@ def create_order(
     require_permission=Depends(require_action_access("sales_orders", "create")),
 ):
     created = create_sales_order(db, payload.model_dump(), current_user)
-    log_activity(
+    safe_log_activity(
         db,
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
@@ -86,6 +87,15 @@ def create_order(
         action="create",
         description=f"Created order {created.order_number}",
         after_state=_serialize_order(created),
+    )
+    safe_publish_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        event_type="order.created",
+        entity_type="sales_order",
+        entity_id=created.id,
+        payload={"order_number": created.order_number, "status": created.status, "quote_id": created.quote_id},
     )
     return created
 
@@ -113,7 +123,7 @@ def update_order(
     order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
     before_state = _serialize_order(order)
     updated = update_sales_order(db, order, payload.model_dump(exclude_unset=True))
-    log_activity(
+    safe_log_activity(
         db,
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,

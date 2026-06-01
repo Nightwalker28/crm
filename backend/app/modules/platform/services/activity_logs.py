@@ -1,3 +1,4 @@
+import logging
 from typing import Any
 
 from fastapi.encoders import jsonable_encoder
@@ -5,6 +6,8 @@ from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination
 from app.modules.platform.models import ActivityLog
+
+logger = logging.getLogger(__name__)
 
 
 def log_activity(
@@ -35,6 +38,19 @@ def log_activity(
     db.commit()
     db.refresh(entry)
     return entry
+
+
+def safe_log_activity(db: Session, **kwargs: Any) -> ActivityLog | None:
+    try:
+        return log_activity(db, **kwargs)
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Activity log write failed for %s %s",
+            kwargs.get("entity_type"),
+            kwargs.get("entity_id"),
+        )
+        return None
 
 
 def list_activity_logs(

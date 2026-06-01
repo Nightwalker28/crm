@@ -58,6 +58,9 @@ class RouteTestQuery:
             return 100
         return None
 
+    def all(self):
+        return []
+
 
 class RouteTestSession:
     def query(self, *entities):
@@ -490,7 +493,7 @@ class APIRouteTests(unittest.TestCase):
 
     def test_organization_search_route_passes_tenant_and_name_by_keyword(self):
         pagination = Pagination(page=1, page_size=10, offset=0, limit=10)
-        db = object()
+        db = RouteTestSession()
         user = SimpleNamespace(id=7, tenant_id=42)
 
         with patch.object(

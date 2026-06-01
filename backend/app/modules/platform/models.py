@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship, validates
 
 from app.core.database import Base
@@ -473,3 +473,61 @@ class CustomModuleRecordValue(Base):
 
     record = relationship("CustomModuleRecord", back_populates="values")
     field = relationship("CustomModuleFieldDefinition", back_populates="values")
+
+
+class IntegrationProvider(Base):
+    __tablename__ = "integration_providers"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    key = Column(String(100), nullable=False, unique=True, index=True)
+    name = Column(String(150), nullable=False)
+    category = Column(String(80), nullable=False, index=True)
+    description = Column(Text, nullable=True)
+    enabled = Column(Boolean, nullable=False, server_default="true", index=True)
+    metadata_json = Column(JSON, nullable=False, server_default="{}")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class IntegrationConnection(Base):
+    __tablename__ = "integration_connections"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "provider_key", name="uq_integration_connections_tenant_provider"),
+        CheckConstraint("status IN ('connected', 'disconnected', 'error', 'pending')", name="ck_integration_connections_status"),
+        Index("ix_integration_connections_tenant_status", "tenant_id", "status"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider_key = Column(String(100), ForeignKey("integration_providers.key", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(String(30), nullable=False, server_default="disconnected", index=True)
+    connected_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    connected_at = Column(DateTime(timezone=True), nullable=True)
+    last_sync_at = Column(DateTime(timezone=True), nullable=True)
+    settings_json = Column(JSON, nullable=False, server_default="{}")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    provider = relationship("IntegrationProvider")
+    connected_by = relationship("User")
+    sync_runs = relationship("IntegrationSyncRun", back_populates="connection", cascade="all, delete-orphan")
+
+
+class IntegrationSyncRun(Base):
+    __tablename__ = "integration_sync_runs"
+    __table_args__ = (
+        CheckConstraint("status IN ('queued', 'running', 'completed', 'failed')", name="ck_integration_sync_runs_status"),
+        Index("ix_integration_sync_runs_tenant_started", "tenant_id", "started_at"),
+        Index("ix_integration_sync_runs_connection_started", "connection_id", "started_at"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    connection_id = Column(BigInteger, ForeignKey("integration_connections.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(String(30), nullable=False, server_default="queued", index=True)
+    started_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    finished_at = Column(DateTime(timezone=True), nullable=True)
+    result_json = Column(JSON, nullable=False, server_default="{}")
+    error_message = Column(Text, nullable=True)
+
+    connection = relationship("IntegrationConnection", back_populates="sync_runs")
