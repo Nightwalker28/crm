@@ -147,6 +147,23 @@ def google_connection_for_user(
     return query.order_by(UserCalendarConnection.id.asc()).first()
 
 
+def microsoft_connection_for_user(
+    db: Session,
+    *,
+    tenant_id: int,
+    user_id: int,
+    include_non_connected: bool = False,
+) -> UserCalendarConnection | None:
+    query = db.query(UserCalendarConnection).filter(
+        UserCalendarConnection.tenant_id == tenant_id,
+        UserCalendarConnection.user_id == user_id,
+        UserCalendarConnection.provider == CalendarProvider.microsoft.value,
+    )
+    if not include_non_connected:
+        query = query.filter(UserCalendarConnection.status == "connected")
+    return query.order_by(UserCalendarConnection.id.asc()).first()
+
+
 def get_event_for_external_sync(db: Session, *, event_id: int) -> CalendarEvent | None:
     return db.query(CalendarEvent).options(*event_load_options()).filter(CalendarEvent.id == event_id, CalendarEvent.deleted_at.is_(None)).first()
 

@@ -42,14 +42,14 @@ export default function CalendarSyncBridge() {
   );
   const { start: startSyncJob, status: syncJobStatus } = syncJob;
   const isBootstrapSyncJobActive = syncJobStatus === "queued" || syncJobStatus === "running";
-  const activeConnection = contextQuery.data?.connections.find((connection) => connection.sync_enabled_for_current_session && connection.provider === "google");
+  const activeConnection = contextQuery.data?.connections.find((connection) => connection.sync_enabled_for_current_session);
   const needsBootstrapSync = Boolean(
     activeConnection &&
       (!activeConnection.provider_calendar_id || !activeConnection.last_synced_at || Boolean(activeConnection.last_error)),
   );
   const bootstrapSyncKey = activeConnection
     ? [
-        "google",
+        activeConnection.provider,
         activeConnection.account_email || "current-user",
         activeConnection.provider_calendar_id || "missing-calendar",
         activeConnection.last_error ? "last-error" : "bootstrap",

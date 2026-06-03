@@ -156,6 +156,20 @@ export async function disconnectGoogleDriveStorage(): Promise<DocumentStorageCon
   return body as DocumentStorageConnection;
 }
 
+export async function connectMicrosoftOneDriveStorage(): Promise<{ provider: string; auth_url: string }> {
+  const res = await apiFetch("/documents/storage/connect/microsoft-onedrive", { method: "POST" });
+  const body = await readJsonSafely(res);
+  if (!res.ok) throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to connect Microsoft OneDrive.");
+  return body as { provider: string; auth_url: string };
+}
+
+export async function disconnectMicrosoftOneDriveStorage(): Promise<DocumentStorageConnection> {
+  const res = await apiFetch("/documents/storage/connect/microsoft-onedrive", { method: "DELETE" });
+  const body = await readJsonSafely(res);
+  if (!res.ok) throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to disconnect Microsoft OneDrive.");
+  return body as DocumentStorageConnection;
+}
+
 export async function uploadDocument(payload: DocumentUploadPayload): Promise<DocumentItem> {
   const form = new FormData();
   form.append("file", payload.file);
@@ -287,6 +301,8 @@ export function useDocumentActions(scope?: { moduleKey?: string; entityId?: stri
     mutationFn: disconnectGoogleDriveStorage,
     onSuccess: invalidate,
   });
+  const connectOneDriveMutation = useMutation({ mutationFn: connectMicrosoftOneDriveStorage });
+  const disconnectOneDriveMutation = useMutation({ mutationFn: disconnectMicrosoftOneDriveStorage, onSuccess: invalidate });
 
   return {
     uploadDocument: uploadMutation.mutateAsync,
@@ -295,11 +311,15 @@ export function useDocumentActions(scope?: { moduleKey?: string; entityId?: stri
     deleteDocument: deleteMutation.mutateAsync,
     connectGoogleDriveStorage: connectDriveMutation.mutateAsync,
     disconnectGoogleDriveStorage: disconnectDriveMutation.mutateAsync,
+    connectMicrosoftOneDriveStorage: connectOneDriveMutation.mutateAsync,
+    disconnectMicrosoftOneDriveStorage: disconnectOneDriveMutation.mutateAsync,
     isUploadingDocument: uploadMutation.isPending,
     isUploadingDocumentVersion: uploadVersionMutation.isPending,
     isUpdatingDocumentTemplate: templateMutation.isPending,
     isDeletingDocument: deleteMutation.isPending,
     isConnectingGoogleDrive: connectDriveMutation.isPending,
     isDisconnectingGoogleDrive: disconnectDriveMutation.isPending,
+    isConnectingMicrosoftOneDrive: connectOneDriveMutation.isPending,
+    isDisconnectingMicrosoftOneDrive: disconnectOneDriveMutation.isPending,
   };
 }

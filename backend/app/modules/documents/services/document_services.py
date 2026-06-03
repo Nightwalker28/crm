@@ -13,8 +13,9 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
+from app.core.microsoft_oauth import MICROSOFT_DRIVE_SCOPE, MICROSOFT_GRAPH_BASE, microsoft_auth_url, microsoft_scope_string, microsoft_token_url
 from app.core.access_control import require_role_module_action_access
-from app.core.tenancy import get_frontend_origin_for_request, get_google_redirect_uri_for_request
+from app.core.tenancy import get_frontend_origin_for_request, get_google_redirect_uri_for_request, get_microsoft_redirect_uri_for_request
 from app.modules.documents.models import Document, DocumentLink, DocumentStorageConnection, DocumentVersion
 from app.modules.documents.repositories import documents_repository
 from app.modules.documents.schema import DocumentResponse
@@ -52,8 +53,10 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 GOOGLE_DRIVE_FILE_SCOPE = "https://www.googleapis.com/auth/drive.file"
 GOOGLE_DRIVE_CONNECT_STATE_TYPE = "google_drive_document_storage_state"
+MICROSOFT_ONEDRIVE_CONNECT_STATE_TYPE = "microsoft_onedrive_document_storage_state"
 DOCUMENT_PROVIDER_LOCAL = "local"
 DOCUMENT_PROVIDER_GOOGLE_DRIVE = "google_drive"
+DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE = "microsoft_onedrive"
 
 
 def _utcnow() -> datetime:
@@ -93,11 +96,11 @@ def list_document_storage_connections(db: Session, *, tenant_id: int, user_id: i
     )
 
 
-def _create_drive_oauth_state(*, tenant: Tenant, user, frontend_origin: str) -> str:
+def _create_drive_oauth_state(*, tenant: Tenant, user, frontend_origin: str, provider: str = DOCUMENT_PROVIDER_GOOGLE_DRIVE) -> str:
     now = _utcnow()
     payload = {
-        "type": GOOGLE_DRIVE_CONNECT_STATE_TYPE,
-        "provider": DOCUMENT_PROVIDER_GOOGLE_DRIVE,
+        "type": GOOGLE_DRIVE_CONNECT_STATE_TYPE if provider == DOCUMENT_PROVIDER_GOOGLE_DRIVE else MICROSOFT_ONEDRIVE_CONNECT_STATE_TYPE,
+        "provider": provider,
         "tenant_id": tenant.id,
         "user_id": user.id,
         "frontend_origin": frontend_origin.rstrip("/"),
@@ -114,9 +117,9 @@ def decode_drive_oauth_state(state_token: str | None) -> dict | None:
         payload = jwt.decode(state_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
     except JWTError:
         return None
-    if payload.get("type") != GOOGLE_DRIVE_CONNECT_STATE_TYPE:
+    if payload.get("type") not in {GOOGLE_DRIVE_CONNECT_STATE_TYPE, MICROSOFT_ONEDRIVE_CONNECT_STATE_TYPE}:
         return None
-    if payload.get("provider") != DOCUMENT_PROVIDER_GOOGLE_DRIVE:
+    if payload.get("provider") not in {DOCUMENT_PROVIDER_GOOGLE_DRIVE, DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE}:
         return None
     return payload
 
@@ -136,6 +139,25 @@ def get_google_drive_connect_url(*, request: Request, tenant: Tenant, user) -> s
         ),
     }
     return GOOGLE_AUTH_URL + "?" + urllib.parse.urlencode(params)
+
+
+def get_microsoft_onedrive_connect_url(*, request: Request, tenant: Tenant, user) -> str:
+    if not settings.MICROSOFT_CLIENT_ID or not settings.MICROSOFT_CLIENT_SECRET:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Microsoft OneDrive is not configured.")
+    params = {
+        "client_id": settings.MICROSOFT_CLIENT_ID,
+        "redirect_uri": get_microsoft_redirect_uri_for_request(request),
+        "response_type": "code",
+        "response_mode": "query",
+        "scope": microsoft_scope_string(MICROSOFT_DRIVE_SCOPE),
+        "state": _create_drive_oauth_state(
+            tenant=tenant,
+            user=user,
+            frontend_origin=get_frontend_origin_for_request(request),
+            provider=DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE,
+        ),
+    }
+    return microsoft_auth_url() + "?" + urllib.parse.urlencode(params)
 
 
 def _token_expiry(token_json: dict) -> datetime | None:
@@ -230,6 +252,81 @@ def handle_google_drive_callback(code: str, db: Session, *, tenant: Tenant, requ
     return {"provider": connection.provider, "status": connection.status}
 
 
+def handle_microsoft_onedrive_callback(code: str, db: Session, *, tenant: Tenant, request: Request, state_payload: dict) -> dict:
+    user = db.query(User).filter(User.tenant_id == tenant.id, User.id == int(state_payload["user_id"])).first()
+    if not user or user.is_active != UserStatus.active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Document storage user is not active")
+    token_res = requests.post(
+        microsoft_token_url(),
+        data={
+            "code": code,
+            "client_id": settings.MICROSOFT_CLIENT_ID,
+            "client_secret": settings.MICROSOFT_CLIENT_SECRET,
+            "redirect_uri": get_microsoft_redirect_uri_for_request(request),
+            "grant_type": "authorization_code",
+            "scope": microsoft_scope_string(MICROSOFT_DRIVE_SCOPE),
+        },
+        timeout=20,
+    )
+    token_json = token_res.json()
+    if not token_res.ok or "access_token" not in token_json:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to connect Microsoft OneDrive")
+    if MICROSOFT_DRIVE_SCOPE not in set(token_json.get("scope", "").split()):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Microsoft OneDrive file scope was not granted")
+    profile_res = requests.get(f"{MICROSOFT_GRAPH_BASE}/me", headers={"Authorization": f"Bearer {token_json['access_token']}"}, timeout=20)
+    profile = profile_res.json() if profile_res.ok else {}
+    drive_res = requests.get(f"{MICROSOFT_GRAPH_BASE}/me/drive/special/approot", headers={"Authorization": f"Bearer {token_json['access_token']}"}, timeout=20)
+    drive = drive_res.json() if drive_res.ok else {}
+    connection = _upsert_document_storage_connection(
+        db,
+        tenant_id=tenant.id,
+        user=user,
+        provider=DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE,
+        token_json=token_json,
+        account_email=profile.get("mail") or profile.get("userPrincipalName") or user.email,
+        provider_root_id=drive.get("id") or "drive",
+        provider_root_name=drive.get("name") or "Microsoft OneDrive App Folder",
+    )
+    return {"provider": connection.provider, "status": connection.status}
+
+
+def _upsert_document_storage_connection(
+    db: Session,
+    *,
+    tenant_id: int,
+    user: User,
+    provider: str,
+    token_json: dict,
+    account_email: str,
+    provider_root_id: str,
+    provider_root_name: str,
+) -> DocumentStorageConnection:
+    connection = (
+        db.query(DocumentStorageConnection)
+        .filter(
+            DocumentStorageConnection.tenant_id == tenant_id,
+            DocumentStorageConnection.user_id == user.id,
+            DocumentStorageConnection.provider == provider,
+        )
+        .first()
+    )
+    if not connection:
+        connection = DocumentStorageConnection(tenant_id=tenant_id, user_id=user.id, provider=provider)
+    connection.status = "connected"
+    connection.account_email = account_email
+    connection.scopes = token_json.get("scope", "").split()
+    connection.access_token = token_json.get("access_token") or connection.access_token
+    connection.refresh_token = token_json.get("refresh_token") or connection.refresh_token
+    connection.token_expires_at = _token_expiry(token_json)
+    connection.provider_root_id = provider_root_id
+    connection.provider_root_name = provider_root_name
+    connection.last_error = None
+    db.add(connection)
+    db.commit()
+    db.refresh(connection)
+    return connection
+
+
 def disconnect_document_storage_connection(
     db: Session,
     *,
@@ -237,7 +334,7 @@ def disconnect_document_storage_connection(
     user_id: int,
     provider: str,
 ) -> DocumentStorageConnection:
-    if provider != DOCUMENT_PROVIDER_GOOGLE_DRIVE:
+    if provider not in {DOCUMENT_PROVIDER_GOOGLE_DRIVE, DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported document storage provider.")
     connection = _document_storage_connection(db, tenant_id=tenant_id, user_id=user_id, provider=provider, connected_only=False)
     connection.status = "disconnected"
@@ -381,7 +478,7 @@ def _document_storage_connection(
         query = query.filter(DocumentStorageConnection.status == "connected")
     connection = query.first()
     if not connection:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Drive is not connected.")
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{provider.replace('_', ' ').title()} is not connected.")
     return connection
 
 
@@ -431,6 +528,40 @@ def _google_drive_backend_for_user(db: Session, *, tenant_id: int, user_id: int)
     )
     token = _refresh_google_drive_access_token(db, connection)
     return get_document_storage_backend(DOCUMENT_PROVIDER_GOOGLE_DRIVE, access_token=token)
+
+
+def _microsoft_onedrive_backend_for_user(db: Session, *, tenant_id: int, user_id: int):
+    connection = _document_storage_connection(db, tenant_id=tenant_id, user_id=user_id, provider=DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE)
+    token = _refresh_microsoft_onedrive_access_token(db, connection)
+    return get_document_storage_backend(DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE, access_token=token)
+
+
+def _refresh_microsoft_onedrive_access_token(db: Session, connection: DocumentStorageConnection) -> str:
+    expires_at = _as_utc(connection.token_expires_at)
+    if connection.access_token and expires_at and expires_at > _utcnow() + timedelta(minutes=1):
+        return connection.access_token
+    if not connection.refresh_token:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reconnect Microsoft OneDrive to restore document storage access.")
+    token_res = requests.post(
+        microsoft_token_url(),
+        data={
+            "client_id": settings.MICROSOFT_CLIENT_ID,
+            "client_secret": settings.MICROSOFT_CLIENT_SECRET,
+            "refresh_token": connection.refresh_token,
+            "grant_type": "refresh_token",
+            "scope": microsoft_scope_string(MICROSOFT_DRIVE_SCOPE),
+        },
+        timeout=20,
+    )
+    token_json = token_res.json()
+    if not token_res.ok or not token_json.get("access_token"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to refresh Microsoft OneDrive access.")
+    connection.access_token = token_json["access_token"]
+    connection.refresh_token = token_json.get("refresh_token") or connection.refresh_token
+    connection.token_expires_at = _token_expiry(token_json)
+    db.add(connection)
+    db.commit()
+    return connection.access_token
 
 
 def _require_linked_record_access(db: Session, *, user, module_key: str, entity_id: str | int, action: str) -> None:
@@ -499,6 +630,10 @@ def _resolve_document_storage_key(db: Session, *, document: Document, storage_ke
         storage_user_id = document.uploaded_by_user_id or current_user.id
         backend = _google_drive_backend_for_user(db, tenant_id=document.tenant_id, user_id=storage_user_id)
         return {"kind": "bytes", "content": backend.download(storage_key)}
+    if document.storage_provider == DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE:
+        storage_user_id = document.uploaded_by_user_id or current_user.id
+        backend = _microsoft_onedrive_backend_for_user(db, tenant_id=document.tenant_id, user_id=storage_user_id)
+        return {"kind": "bytes", "content": backend.download(storage_key)}
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Document storage provider is not configured.")
 
 
@@ -535,6 +670,11 @@ def _store_document_content(
             filename=original_filename,
             content_type=content_type,
         )
+    if normalized_provider == DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE:
+        if current_user is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Microsoft OneDrive uploads require a connected user.")
+        backend = _microsoft_onedrive_backend_for_user(db, tenant_id=tenant_id, user_id=current_user.id)
+        return backend.save(tenant_id=tenant_id, extension=extension, content=content, filename=original_filename, content_type=content_type)
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported document storage provider.")
 
 

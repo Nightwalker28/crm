@@ -13,6 +13,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.microsoft_oauth import MICROSOFT_GRAPH_BASE, microsoft_auth_url, microsoft_scope_string, microsoft_token_url
 from app.core.passwords import (
     hash_password,
     password_hash_needs_upgrade,
@@ -22,6 +23,7 @@ from app.core.passwords import (
 from app.core.tenancy import (
     get_frontend_origin_for_request,
     get_google_redirect_uri_for_request,
+    get_microsoft_redirect_uri_for_request,
     is_auth_tenant_resolution_enabled,
     is_cloud_mode_enabled,
 )
@@ -94,6 +96,29 @@ def decode_oauth_state(state_token: str | None) -> dict | None:
     return payload
 
 
+def _create_microsoft_oauth_state(*, tenant: Tenant | None, frontend_origin: str) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "type": "microsoft_oauth_state",
+        "frontend_origin": frontend_origin.rstrip("/"),
+        "iat": now,
+        "exp": now + timedelta(minutes=settings.GOOGLE_OAUTH_STATE_EXPIRE_MINUTES),
+    }
+    if tenant:
+        payload["tenant_id"] = tenant.id
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def decode_microsoft_oauth_state(state_token: str | None) -> dict | None:
+    if not state_token:
+        return None
+    try:
+        payload = jwt.decode(state_token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    except JWTError:
+        return None
+    return payload if payload.get("type") == "microsoft_oauth_state" else None
+
+
 def _profile_from_google_id_token(id_token: str | None) -> dict | None:
     if not id_token:
         return None
@@ -123,6 +148,23 @@ def get_google_auth_url(*, request: Request, tenant: Tenant | None) -> str:
         ),
     }
     return GOOGLE_AUTH_URL + "?" + urllib.parse.urlencode(params)
+
+
+def get_microsoft_auth_url(*, request: Request, tenant: Tenant | None) -> str:
+    if not settings.MICROSOFT_CLIENT_ID or not settings.MICROSOFT_CLIENT_SECRET:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Microsoft sign-in is not configured.")
+    params = {
+        "client_id": settings.MICROSOFT_CLIENT_ID,
+        "redirect_uri": get_microsoft_redirect_uri_for_request(request),
+        "response_type": "code",
+        "response_mode": "query",
+        "scope": microsoft_scope_string(include_configured=True),
+        "state": _create_microsoft_oauth_state(
+            tenant=tenant,
+            frontend_origin=get_frontend_origin_for_request(request),
+        ),
+    }
+    return microsoft_auth_url() + "?" + urllib.parse.urlencode(params)
 
 
 def _hash_setup_token(token: str) -> str:
@@ -260,6 +302,15 @@ def _find_google_login_user(db: Session, *, tenant: Tenant | None, email: str) -
     return users[0] if users else None
 
 
+def _find_microsoft_login_user(db: Session, *, tenant: Tenant | None, email: str) -> User | None:
+    try:
+        return _find_google_login_user(db, tenant=tenant, email=email)
+    except HTTPException as exc:
+        if exc.detail == "This Google account matches multiple tenants":
+            raise HTTPException(status_code=exc.status_code, detail="This Microsoft account matches multiple tenants") from exc
+        raise
+
+
 def handle_google_callback(
     code: str,
     db: Session,
@@ -393,6 +444,80 @@ def handle_google_callback(
         "status": "active",
         "user": user,
     }
+
+
+def handle_microsoft_callback(
+    code: str,
+    db: Session,
+    *,
+    tenant: Tenant | None,
+    request: Request,
+):
+    if not settings.MICROSOFT_CLIENT_ID or not settings.MICROSOFT_CLIENT_SECRET:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Microsoft sign-in is not configured.")
+    try:
+        token_res = requests.post(
+            microsoft_token_url(),
+            data={
+                "code": code,
+                "client_id": settings.MICROSOFT_CLIENT_ID,
+                "client_secret": settings.MICROSOFT_CLIENT_SECRET,
+                "redirect_uri": get_microsoft_redirect_uri_for_request(request),
+                "grant_type": "authorization_code",
+                "scope": microsoft_scope_string(include_configured=True),
+            },
+            timeout=GOOGLE_AUTH_REQUEST_TIMEOUT_SECONDS,
+        )
+        token_json = token_res.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("Microsoft OAuth token exchange failed: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to authenticate with Microsoft") from exc
+    if not token_res.ok or "access_token" not in token_json:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to authenticate with Microsoft")
+
+    try:
+        profile_res = requests.get(
+            f"{MICROSOFT_GRAPH_BASE}/me",
+            headers={"Authorization": f"Bearer {token_json['access_token']}"},
+            timeout=GOOGLE_AUTH_REQUEST_TIMEOUT_SECONDS,
+        )
+        profile = profile_res.json()
+    except (requests.RequestException, ValueError) as exc:
+        logger.warning("Microsoft Graph profile request failed: %s", exc)
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to authenticate with Microsoft") from exc
+    if not profile_res.ok:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to authenticate with Microsoft")
+
+    email = profile.get("mail") or profile.get("userPrincipalName")
+    if not email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Microsoft account has no email")
+    domain = email.split("@")[-1].lower()
+    if settings.ALLOWED_DOMAINS and domain not in settings.ALLOWED_DOMAINS:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email domain not allowed")
+
+    user = _find_microsoft_login_user(db, tenant=tenant, email=email)
+    if not user:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="This Microsoft account has not been provisioned")
+    if user.is_active == UserStatus.inactive:
+        return {"status": "inactive"}
+    if user.auth_mode == UserAuthMode.manual_only:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Microsoft sign-in is not enabled for this account")
+
+    user.last_login_provider = "microsoft"
+    db.add(user)
+    db.commit()
+    scopes = set(token_json.get("scope", "").split())
+    if "Calendars.ReadWrite" in scopes:
+        from app.modules.calendar.services.calendar_services import upsert_microsoft_calendar_connection
+
+        upsert_microsoft_calendar_connection(
+            db,
+            tenant_id=user.tenant_id,
+            user=user,
+            token_json=token_json,
+            account_email=email,
+        )
+    return {"status": "active", "user": user}
 
 
 def create_user_setup_link(

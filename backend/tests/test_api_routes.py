@@ -28,7 +28,9 @@ from app.modules.user_management.schema import UserProfile
 from app.modules.user_management.services.auth import (
     _profile_from_google_id_token,
     decode_oauth_state,
+    decode_microsoft_oauth_state,
     get_google_auth_url,
+    get_microsoft_auth_url,
     handle_google_callback,
 )
 
@@ -235,6 +237,20 @@ class APIRouteTests(unittest.TestCase):
         self.assertIsNotNone(state)
         self.assertNotIn("tenant_id", state)
         self.assertEqual(state["frontend_origin"], "https://crm.example.com")
+
+    def test_microsoft_login_url_uses_configured_calendar_scopes(self):
+        with patch("app.modules.user_management.services.auth.settings.MICROSOFT_CLIENT_ID", "client-id"), \
+             patch("app.modules.user_management.services.auth.settings.MICROSOFT_CLIENT_SECRET", "client-secret"), \
+             patch("app.modules.user_management.services.auth.settings.MICROSOFT_SCOPES", ["openid", "profile", "offline_access", "User.Read", "Calendars.ReadWrite"]), \
+             patch("app.modules.user_management.services.auth.get_microsoft_redirect_uri_for_request", return_value="https://crm.example.com/api/v1/auth/microsoft/callback"), \
+             patch("app.modules.user_management.services.auth.get_frontend_origin_for_request", return_value="https://crm.example.com"), \
+             patch("app.modules.user_management.services.auth.settings.JWT_SECRET", "test-secret"):
+            auth_url = get_microsoft_auth_url(request=SimpleNamespace(headers={}), tenant=SimpleNamespace(id=1))
+            params = urllib.parse.parse_qs(urllib.parse.urlparse(auth_url).query)
+            state = decode_microsoft_oauth_state(params["state"][0])
+
+        self.assertTrue({"openid", "profile", "offline_access", "User.Read", "Calendars.ReadWrite"}.issubset(set(params["scope"][0].split())))
+        self.assertEqual(state["tenant_id"], 1)
 
     def test_google_callback_resolves_user_by_email_in_auth_tenant_mode(self):
         id_token = jose_jwt.encode(

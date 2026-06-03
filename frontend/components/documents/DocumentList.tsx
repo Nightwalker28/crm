@@ -23,6 +23,7 @@ function formatBytes(value: number) {
 
 function providerLabel(provider: string) {
   if (provider === "google_drive") return "Google Drive";
+  if (provider === "microsoft_onedrive") return "Microsoft OneDrive";
   return "Local backend";
 }
 

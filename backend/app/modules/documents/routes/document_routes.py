@@ -22,6 +22,7 @@ from app.modules.documents.services.document_services import (
     create_document,
     disconnect_document_storage_connection,
     get_google_drive_connect_url,
+    get_microsoft_onedrive_connect_url,
     document_storage_providers,
     document_storage_usage,
     document_upload_limits,
@@ -111,6 +112,37 @@ def disconnect_google_drive_storage(
         tenant_id=current_user.tenant_id,
         user_id=current_user.id,
         provider="google_drive",
+    )
+
+
+@router.post("/storage/connect/microsoft-onedrive", response_model=DocumentStorageConnectResponse)
+def connect_microsoft_onedrive_storage(
+    request: Request,
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("documents")),
+    require_permission=Depends(require_action_access("documents", "create")),
+):
+    tenant = getattr(request.state, "tenant", None)
+    if not tenant:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
+    return {
+        "provider": "microsoft_onedrive",
+        "auth_url": get_microsoft_onedrive_connect_url(request=request, tenant=tenant, user=current_user),
+    }
+
+
+@router.delete("/storage/connect/microsoft-onedrive", response_model=DocumentStorageConnectionResponse)
+def disconnect_microsoft_onedrive_storage(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("documents")),
+    require_permission=Depends(require_action_access("documents", "create")),
+):
+    return disconnect_document_storage_connection(
+        db,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        provider="microsoft_onedrive",
     )
 
 

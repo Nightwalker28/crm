@@ -29,6 +29,10 @@ def _env_str_list(name: str) -> list[str]:
     return [item.strip() for item in os.getenv(name, "").split(",") if item.strip()]
 
 
+def _env_scope_list(name: str) -> list[str]:
+    return [item.strip() for item in os.getenv(name, "").replace(",", " ").split() if item.strip()]
+
+
 def _loopback_origin_alias(origin: str) -> str | None:
     parsed = urlparse(origin)
     if parsed.scheme not in {"http", "https"} or parsed.hostname not in {"localhost", "127.0.0.1"}:
@@ -77,6 +81,9 @@ class Settings:
     MICROSOFT_CLIENT_ID: str | None = os.getenv("MICROSOFT_CLIENT_ID")
     MICROSOFT_CLIENT_SECRET: str | None = os.getenv("MICROSOFT_CLIENT_SECRET")
     MICROSOFT_REDIRECT_URI: str | None = os.getenv("MICROSOFT_REDIRECT_URI")
+    MICROSOFT_AUTHORITY: str | None = os.getenv("MICROSOFT_AUTHORITY")
+    MICROSOFT_TENANT_ID: str | None = os.getenv("MICROSOFT_TENANT_ID")
+    MICROSOFT_SCOPES: list[str] = _env_scope_list("MICROSOFT_SCOPES")
     GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED: bool = os.getenv("GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED", "false").lower() == "true"
     MAIL_CREDENTIAL_SECRET: str = os.getenv("MAIL_CREDENTIAL_SECRET", "").strip()
 

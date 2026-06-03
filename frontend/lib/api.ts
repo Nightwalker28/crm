@@ -3,6 +3,7 @@ import { apiUrl } from "./runtime-config";
 const REFRESH_PATH = "/auth/refresh";
 const AUTH_PUBLIC_PATHS = new Set([
   "/auth/google",
+  "/auth/microsoft",
   "/auth/login",
   "/auth/password-policy",
   "/auth/setup-password",

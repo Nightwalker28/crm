@@ -656,7 +656,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
         operators: SELECT_OPERATORS,
         options: [
           { value: "manual_only", label: "Manual only" },
-          { value: "manual_or_google", label: "Manual + Google" },
+          { value: "manual_or_google", label: "Manual + SSO" },
         ],
       },
       {

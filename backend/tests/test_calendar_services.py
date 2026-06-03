@@ -73,6 +73,24 @@ class CalendarGoogleSyncTests(unittest.TestCase):
         token_mock.assert_not_called()
         post_mock.assert_not_called()
 
+    def test_microsoft_event_payload_uses_graph_shape(self):
+        event = SimpleNamespace(
+            title="Planning",
+            description="Roadmap",
+            meeting_url="https://teams.microsoft.com/l/meetup-join/example",
+            location="Remote",
+            start_at=calendar_services._utcnow(),
+            end_at=calendar_services._utcnow(),
+            is_all_day=False,
+        )
+
+        payload = calendar_services._microsoft_event_payload(event)
+
+        self.assertEqual(payload["subject"], "Planning")
+        self.assertEqual(payload["location"]["displayName"], "Remote")
+        self.assertEqual(payload["start"]["timeZone"], "UTC")
+        self.assertIn("teams.microsoft.com", payload["body"]["content"])
+
     def test_task_event_dedupe_reuses_canonical_without_requery(self):
         db = FakeDB()
         canonical = SimpleNamespace(id=10)
@@ -137,7 +155,15 @@ class CalendarGoogleSyncTests(unittest.TestCase):
     def test_calendar_invite_response_updates_current_user_participant(self):
         db = FakeDB()
         current_user = SimpleNamespace(id=1, tenant_id=10)
-        participant = SimpleNamespace(participant_type="user", user_id=1, is_owner=False, response_status="pending", responded_at=None)
+        participant = SimpleNamespace(
+            participant_type="user",
+            user_id=1,
+            user=SimpleNamespace(last_login_provider="google"),
+            is_owner=False,
+            response_status="pending",
+            responded_at=None,
+            external_provider=None,
+        )
         event = SimpleNamespace(id=12, owner_user_id=2, participants=[participant])
 
         with patch.object(calendar_services, "_sync_google_participant_event") as sync_mock, \
@@ -156,6 +182,24 @@ class CalendarGoogleSyncTests(unittest.TestCase):
         self.assertEqual(db.commits, 1)
         sync_mock.assert_called_once_with(db, event=event, participant=participant)
         get_mock.assert_not_called()
+
+    def test_calendar_provider_switch_removes_previous_external_event_before_sync(self):
+        db = FakeDB()
+        participant = SimpleNamespace(
+            user=SimpleNamespace(last_login_provider="microsoft"),
+            external_provider="google",
+            external_event_id="google-event",
+        )
+        event = SimpleNamespace(id=12)
+
+        with patch.object(calendar_services, "_delete_participant_event") as delete_mock, \
+             patch.object(calendar_services, "_sync_microsoft_participant_event") as microsoft_sync_mock:
+            calendar_services._sync_participant_event(db, event=event, participant=participant)
+
+        delete_mock.assert_called_once_with(db, participant)
+        self.assertIsNone(participant.external_provider)
+        self.assertIsNone(participant.external_event_id)
+        microsoft_sync_mock.assert_called_once_with(db, event=event, participant=participant)
 
     def test_calendar_participant_notification_failure_is_non_fatal(self):
         db = FakeDB()

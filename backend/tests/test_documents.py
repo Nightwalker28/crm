@@ -15,7 +15,7 @@ from starlette.datastructures import Headers
 from app.core.database import Base
 from app.modules.documents.models import Document, DocumentLink, DocumentVersion
 from app.modules.documents.services import storage_backends
-from app.modules.documents.services.storage_backends import LocalDocumentStorage
+from app.modules.documents.services.storage_backends import LocalDocumentStorage, MicrosoftOneDriveDocumentStorage
 from app.modules.documents.services.document_services import (
     list_document_templates,
     list_document_versions,
@@ -44,6 +44,7 @@ class DocumentUploadValidationTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(extension, "pdf")
         self.assertEqual(content_type, "application/pdf")
         self.assertEqual(filename, "proposal.PDF")
+
 
     async def test_read_document_upload_accepts_docx_with_valid_signature(self):
         content = io.BytesIO()
@@ -342,6 +343,26 @@ class DocumentServiceTests(unittest.TestCase):
         self.assertEqual([version.version_number for version in versions], [2, 1])
         self.assertEqual(document.current_version_id, versions[0].id)
         self.assertEqual(versions[1].storage_key, "tenant-10/contract-v1.pdf")
+
+
+class MicrosoftOneDriveStorageTests(unittest.TestCase):
+    def test_upload_uses_graph_drive_content_endpoint(self):
+        backend = MicrosoftOneDriveDocumentStorage(access_token="token")
+        response = SimpleNamespace(ok=True, content=b"{}", json=lambda: {"id": "drive-item-id"})
+
+        with patch.object(storage_backends.requests, "put", return_value=response) as put_mock:
+            stored = backend.save(
+                tenant_id=10,
+                extension="pdf",
+                content=b"%PDF-1.7\n%%EOF",
+                filename="proposal.pdf",
+                content_type="application/pdf",
+            )
+
+        self.assertEqual(stored.provider, "microsoft_onedrive")
+        self.assertEqual(stored.storage_path, "drive-item-id")
+        self.assertIn("/me/drive/special/approot:/", put_mock.call_args.args[0])
+        self.assertTrue(put_mock.call_args.args[0].endswith(":/content"))
 
 
 if __name__ == "__main__":

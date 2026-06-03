@@ -8,6 +8,7 @@ from uuid import uuid4
 import requests
 from fastapi import HTTPException, status
 
+from app.core.microsoft_oauth import MICROSOFT_GRAPH_BASE
 from app.core.uploads import UPLOADS_DIR
 
 
@@ -82,6 +83,36 @@ class GoogleDriveDocumentStorage:
         return response.content
 
 
+class MicrosoftOneDriveDocumentStorage:
+    provider = "microsoft_onedrive"
+
+    def __init__(self, *, access_token: str):
+        self.access_token = access_token
+
+    def save(self, *, tenant_id: int, extension: str, content: bytes, filename: str, content_type: str) -> StoredDocument:
+        remote_name = f"{uuid4().hex}.{extension}"
+        response = requests.put(
+            f"{MICROSOFT_GRAPH_BASE}/me/drive/special/approot:/{remote_name}:/content",
+            headers={"Authorization": f"Bearer {self.access_token}", "Content-Type": content_type},
+            data=content,
+            timeout=60,
+        )
+        body = response.json() if response.content else {}
+        if not response.ok or not body.get("id"):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to upload document to Microsoft OneDrive.")
+        return StoredDocument(provider=self.provider, storage_path=body["id"])
+
+    def download(self, storage_path: str) -> bytes:
+        response = requests.get(
+            f"{MICROSOFT_GRAPH_BASE}/me/drive/items/{storage_path}/content",
+            headers={"Authorization": f"Bearer {self.access_token}"},
+            timeout=60,
+        )
+        if not response.ok:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document file not found in Microsoft OneDrive.")
+        return response.content
+
+
 def get_document_storage_backend(provider: str = "local", *, access_token: str | None = None):
     normalized = (provider or "local").strip().lower()
     if normalized == "local":
@@ -90,6 +121,10 @@ def get_document_storage_backend(provider: str = "local", *, access_token: str |
         if not access_token:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Drive is not connected.")
         return GoogleDriveDocumentStorage(access_token=access_token)
+    if normalized == "microsoft_onedrive":
+        if not access_token:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Microsoft OneDrive is not connected.")
+        return MicrosoftOneDriveDocumentStorage(access_token=access_token)
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Document storage provider is not configured.")
 
 
@@ -116,7 +151,7 @@ def supported_storage_providers() -> list[dict]:
         {
             "provider": "microsoft_onedrive",
             "label": "Microsoft OneDrive",
-            "status": "planned",
+            "status": "available",
             "requires_oauth": True,
         },
     ]

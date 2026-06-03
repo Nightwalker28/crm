@@ -194,7 +194,7 @@ export default function EditUserDialog({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="manual_only">Manual only</SelectItem>
-                    <SelectItem value="manual_or_google">Manual + Google</SelectItem>
+                    <SelectItem value="manual_or_google">Manual + SSO</SelectItem>
                   </SelectContent>
                 </Select>
 

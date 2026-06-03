@@ -11,6 +11,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.microsoft_oauth import MICROSOFT_CALENDAR_SCOPE, MICROSOFT_GRAPH_BASE, microsoft_scope_string, microsoft_token_url
 from app.modules.calendar.models import CalendarEvent, CalendarEventParticipant, UserCalendarConnection
 from app.modules.calendar.repositories import calendar_repository
 from app.modules.calendar.schema import CalendarProvider
@@ -322,6 +323,29 @@ def _google_connection_for_user(
     )
 
 
+def _microsoft_connection_for_user(
+    db: Session,
+    *,
+    tenant_id: int,
+    user_id: int,
+    include_non_connected: bool = False,
+) -> UserCalendarConnection | None:
+    return calendar_repository.microsoft_connection_for_user(
+        db,
+        tenant_id=tenant_id,
+        user_id=user_id,
+        include_non_connected=include_non_connected,
+    )
+
+
+def _calendar_connection_for_user(db: Session, *, tenant_id: int, user_id: int, provider: str) -> UserCalendarConnection | None:
+    if provider == CalendarProvider.google.value:
+        return _google_connection_for_user(db, tenant_id=tenant_id, user_id=user_id)
+    if provider == CalendarProvider.microsoft.value:
+        return _microsoft_connection_for_user(db, tenant_id=tenant_id, user_id=user_id)
+    return None
+
+
 def upsert_google_calendar_connection(
     db: Session,
     *,
@@ -356,6 +380,31 @@ def upsert_google_calendar_connection(
         if expires_in is not None
         else connection.token_expires_at
     )
+    connection.last_error = None
+    db.add(connection)
+    db.commit()
+    db.refresh(connection)
+    return connection
+
+
+def upsert_microsoft_calendar_connection(
+    db: Session,
+    *,
+    tenant_id: int,
+    user: User,
+    token_json: dict,
+    account_email: str | None,
+) -> UserCalendarConnection:
+    connection = _microsoft_connection_for_user(db, tenant_id=tenant_id, user_id=user.id, include_non_connected=True)
+    if not connection:
+        connection = UserCalendarConnection(tenant_id=tenant_id, user_id=user.id, provider=CalendarProvider.microsoft.value)
+    scopes = token_json.get("scope", "").split()
+    connection.status = "connected"
+    connection.account_email = account_email
+    connection.scopes = scopes
+    connection.access_token = token_json.get("access_token") or connection.access_token
+    connection.refresh_token = token_json.get("refresh_token") or connection.refresh_token
+    connection.token_expires_at = _utcnow() + timedelta(seconds=int(token_json.get("expires_in") or 3600))
     connection.last_error = None
     db.add(connection)
     db.commit()
@@ -403,6 +452,40 @@ def _refresh_google_access_token(db: Session, connection: UserCalendarConnection
 def _ensure_google_access_token(db: Session, connection: UserCalendarConnection) -> str | None:
     if connection.token_expires_at and connection.token_expires_at <= _utcnow() + timedelta(minutes=1):
         connection = _refresh_google_access_token(db, connection)
+    return connection.access_token
+
+
+def _ensure_microsoft_access_token(db: Session, connection: UserCalendarConnection) -> str | None:
+    if connection.token_expires_at and connection.token_expires_at <= _utcnow() + timedelta(minutes=1):
+        if not connection.refresh_token:
+            connection.status = "error"
+            connection.last_error = "Missing Microsoft refresh token for calendar sync."
+            db.add(connection)
+            db.commit()
+            return None
+        response = requests.post(
+            microsoft_token_url(),
+            data={
+                "client_id": settings.MICROSOFT_CLIENT_ID,
+                "client_secret": settings.MICROSOFT_CLIENT_SECRET,
+                "refresh_token": connection.refresh_token,
+                "grant_type": "refresh_token",
+                "scope": microsoft_scope_string(MICROSOFT_CALENDAR_SCOPE),
+            },
+            timeout=20,
+        )
+        body = response.json() if response.content else {}
+        if not response.ok or not body.get("access_token"):
+            connection.status = "error"
+            connection.last_error = "Failed to refresh Microsoft calendar token."
+            db.add(connection)
+            db.commit()
+            return None
+        connection.access_token = body["access_token"]
+        connection.refresh_token = body.get("refresh_token") or connection.refresh_token
+        connection.token_expires_at = _utcnow() + timedelta(seconds=int(body.get("expires_in") or 3600))
+        db.add(connection)
+        db.commit()
     return connection.access_token
 
 
@@ -520,7 +603,7 @@ def _sync_google_participant_event(
     payload = _build_google_event_payload(event)
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
 
-    if participant.external_event_id:
+    if participant.external_provider == CalendarProvider.google.value and participant.external_event_id:
         response = requests.patch(
             f"{_google_calendar_events_url(calendar_id)}/{participant.external_event_id}",
             json=payload,
@@ -575,13 +658,121 @@ def _delete_google_participant_event(db: Session, participant: CalendarEventPart
     )
 
 
+def _ensure_microsoft_default_calendar(db: Session, connection: UserCalendarConnection) -> str | None:
+    if connection.provider_calendar_id:
+        return connection.provider_calendar_id
+    access_token = _ensure_microsoft_access_token(db, connection)
+    if not access_token:
+        return None
+    response = requests.get(f"{MICROSOFT_GRAPH_BASE}/me/calendar", headers={"Authorization": f"Bearer {access_token}"}, timeout=20)
+    body = response.json() if response.content else {}
+    if not response.ok or not body.get("id"):
+        connection.status = "error"
+        connection.last_error = "Failed to load the default Microsoft calendar."
+        db.add(connection)
+        db.commit()
+        return None
+    connection.provider_calendar_id = body["id"]
+    connection.provider_calendar_name = body.get("name") or "Microsoft Calendar"
+    db.add(connection)
+    db.commit()
+    return connection.provider_calendar_id
+
+
+def _microsoft_event_payload(event: CalendarEvent) -> dict:
+    def date_time(value: datetime) -> dict:
+        utc_value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+        return {"dateTime": utc_value.replace(tzinfo=None).isoformat(), "timeZone": "UTC"}
+
+    description_parts = [part for part in [event.description, event.meeting_url] if part]
+    return {
+        "subject": event.title,
+        "body": {"contentType": "text", "content": "\n\n".join(description_parts)},
+        "location": {"displayName": event.location or ""},
+        "start": date_time(event.start_at),
+        "end": date_time(event.end_at),
+        "isAllDay": bool(event.is_all_day),
+    }
+
+
+def _sync_microsoft_participant_event(db: Session, *, event: CalendarEvent, participant: CalendarEventParticipant) -> None:
+    participant_user = getattr(participant, "user", None)
+    if not participant.user_id or not participant_user or participant_user.last_login_provider != CalendarProvider.microsoft.value:
+        return
+    connection = _microsoft_connection_for_user(db, tenant_id=event.tenant_id, user_id=participant.user_id)
+    if not connection:
+        return
+    calendar_id = _ensure_microsoft_default_calendar(db, connection)
+    access_token = _ensure_microsoft_access_token(db, connection)
+    if not calendar_id or not access_token:
+        participant.last_sync_error = connection.last_error
+        db.add(participant)
+        db.commit()
+        return
+    events_url = f"{MICROSOFT_GRAPH_BASE}/me/calendars/{quote(calendar_id, safe='')}/events"
+    headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+    response = (
+        requests.patch(f"{events_url}/{quote(participant.external_event_id, safe='')}", json=_microsoft_event_payload(event), headers=headers, timeout=20)
+        if participant.external_provider == CalendarProvider.microsoft.value and participant.external_event_id
+        else requests.post(events_url, json=_microsoft_event_payload(event), headers=headers, timeout=20)
+    )
+    if response.ok:
+        body = response.json() if response.content else {}
+        participant.external_provider = CalendarProvider.microsoft.value
+        participant.external_event_id = body.get("id") or participant.external_event_id
+        participant.external_synced_at = _utcnow()
+        participant.last_sync_error = None
+        connection.last_synced_at = participant.external_synced_at
+        connection.last_error = None
+    else:
+        participant.last_sync_error = "Failed to sync event to Microsoft Calendar."
+        connection.last_error = participant.last_sync_error
+    db.add(participant)
+    db.add(connection)
+    db.commit()
+
+
+def _delete_microsoft_participant_event(db: Session, participant: CalendarEventParticipant) -> None:
+    if participant.external_provider != CalendarProvider.microsoft.value or not participant.external_event_id or not participant.user_id:
+        return
+    connection = _microsoft_connection_for_user(db, tenant_id=participant.tenant_id, user_id=participant.user_id)
+    if not connection:
+        return
+    calendar_id = connection.provider_calendar_id or _ensure_microsoft_default_calendar(db, connection)
+    access_token = _ensure_microsoft_access_token(db, connection)
+    if calendar_id and access_token:
+        requests.delete(
+            f"{MICROSOFT_GRAPH_BASE}/me/calendars/{quote(calendar_id, safe='')}/events/{quote(participant.external_event_id, safe='')}",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=20,
+        )
+
+
+def _sync_participant_event(db: Session, *, event: CalendarEvent, participant: CalendarEventParticipant) -> None:
+    participant_user = getattr(participant, "user", None)
+    provider = getattr(participant_user, "last_login_provider", None)
+    if participant.external_provider and participant.external_provider != provider:
+        _delete_participant_event(db, participant)
+        participant.external_provider = None
+        participant.external_event_id = None
+    if provider == CalendarProvider.google.value:
+        _sync_google_participant_event(db, event=event, participant=participant)
+    elif provider == CalendarProvider.microsoft.value:
+        _sync_microsoft_participant_event(db, event=event, participant=participant)
+
+
+def _delete_participant_event(db: Session, participant: CalendarEventParticipant) -> None:
+    _delete_google_participant_event(db, participant)
+    _delete_microsoft_participant_event(db, participant)
+
+
 def _sync_external_events_for_event(db: Session, event: CalendarEvent) -> None:
     for participant in event.participants:
         if participant.participant_type != "user":
             continue
         if participant.response_status != "accepted":
             continue
-        _sync_google_participant_event(db, event=event, participant=participant)
+        _sync_participant_event(db, event=event, participant=participant)
 
 
 def sync_external_events_for_event_id(db: Session, *, event_id: int) -> int:
@@ -715,7 +906,7 @@ def update_calendar_event(db: Session, *, event: CalendarEvent, payload: dict, c
     db.refresh(event)
 
     for participant in removed:
-        _delete_google_participant_event(db, participant)
+        _delete_participant_event(db, participant)
     _notify_new_participants(db, event=event, actor_name=_display_user_name(current_user), participants=added)
     _enqueue_external_events_for_event(db, event)
     return event, added
@@ -750,9 +941,9 @@ def respond_to_calendar_invite(
     db.refresh(event)
 
     if response_status == "accepted":
-        _sync_google_participant_event(db, event=event, participant=participant)
+        _sync_participant_event(db, event=event, participant=participant)
     elif response_status == "declined":
-        _delete_google_participant_event(db, participant)
+        _delete_participant_event(db, participant)
 
     return event
 
@@ -763,7 +954,7 @@ def delete_calendar_event(db: Session, *, event: CalendarEvent) -> CalendarEvent
     db.commit()
     db.refresh(event)
     for participant in event.participants:
-        _delete_google_participant_event(db, participant)
+        _delete_participant_event(db, participant)
     return event
 
 
@@ -862,11 +1053,12 @@ def delete_calendar_event_from_task(db: Session, *, task_id: int, current_user) 
 
 
 def enqueue_current_user_calendar_sync(db: Session, *, current_user):
-    connection = _google_connection_for_user(db, tenant_id=current_user.tenant_id, user_id=current_user.id)
-    if not connection or current_user.last_login_provider != CalendarProvider.google.value:
+    provider = current_user.last_login_provider
+    connection = _calendar_connection_for_user(db, tenant_id=current_user.tenant_id, user_id=current_user.id, provider=provider)
+    if not connection:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google Calendar sync is only available for users currently signed in with Google.",
+            detail="Calendar sync is only available for users currently signed in with a connected calendar provider.",
         )
     if connection.status != "connected":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect Google Calendar before syncing.")
@@ -879,7 +1071,7 @@ def enqueue_current_user_calendar_sync(db: Session, *, current_user):
         actor_user_id=current_user.id,
         module_key="calendar",
         operation_type="sync",
-        payload={"provider": CalendarProvider.google.value},
+        payload={"provider": provider},
     )
     try:
         from app.tasks.calendar_tasks import process_calendar_full_sync_job_task
@@ -902,16 +1094,17 @@ def sync_current_user_calendar(
     current_user,
     progress_callback: Callable[[int, int, str], None] | None = None,
 ) -> dict:
-    connection = _google_connection_for_user(db, tenant_id=current_user.tenant_id, user_id=current_user.id)
-    if not connection or current_user.last_login_provider != CalendarProvider.google.value:
+    provider = current_user.last_login_provider
+    connection = _calendar_connection_for_user(db, tenant_id=current_user.tenant_id, user_id=current_user.id, provider=provider)
+    if not connection:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Google Calendar sync is only available for users currently signed in with Google.",
+            detail="Calendar sync is only available for users currently signed in with a connected calendar provider.",
         )
     if connection.status != "connected":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Connect Google Calendar before syncing.")
 
-    calendar_id = _ensure_google_app_calendar(db, connection)
+    calendar_id = _ensure_google_app_calendar(db, connection) if provider == CalendarProvider.google.value else _ensure_microsoft_default_calendar(db, connection)
     if not calendar_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error or "Calendar sync failed.")
 
@@ -939,7 +1132,7 @@ def sync_current_user_calendar(
                 continue
             if participant.response_status not in {"accepted", "shared"}:
                 continue
-            _sync_google_participant_event(db, event=event, participant=participant)
+            _sync_participant_event(db, event=event, participant=participant)
             participant = next((item for item in event.participants if item.user_id == current_user.id), participant)
             if not participant.last_sync_error:
                 synced_count += 1
@@ -948,7 +1141,7 @@ def sync_current_user_calendar(
 
     db.refresh(connection)
     return {
-        "provider": CalendarProvider.google.value,
+        "provider": provider,
         "synced_event_count": synced_count,
         "provider_calendar_id": connection.provider_calendar_id,
         "provider_calendar_name": connection.provider_calendar_name,

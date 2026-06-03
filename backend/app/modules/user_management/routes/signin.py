@@ -24,6 +24,7 @@ from app.modules.mail.services.mail_services import (
 from app.modules.documents.services.document_services import (
     decode_drive_oauth_state,
     handle_google_drive_callback,
+    handle_microsoft_onedrive_callback,
 )
 from app.modules.user_management.schema import ManualLoginRequest, SetupPasswordRequest
 from app.modules.user_management.services.auth import (
@@ -31,9 +32,12 @@ from app.modules.user_management.services.auth import (
     create_access_token,
     create_refresh_token,
     decode_oauth_state,
+    decode_microsoft_oauth_state,
     decode_token,
     get_google_auth_url,
+    get_microsoft_auth_url,
     handle_google_callback,
+    handle_microsoft_callback,
     rotate_refresh_token,
     set_initial_password,
 )
@@ -318,32 +322,58 @@ def microsoft_callback(
     db: Session = Depends(get_db),
 ):
     mail_state_payload = decode_mail_oauth_state(state)
+    drive_state_payload = decode_drive_oauth_state(state)
+    login_state_payload = decode_microsoft_oauth_state(state)
     frontend_origin = (
-        (mail_state_payload or {}).get("frontend_origin")
+        (mail_state_payload or drive_state_payload or login_state_payload or {}).get("frontend_origin")
         or get_frontend_origin_for_request(request)
     )
-    if not mail_state_payload or mail_state_payload.get("provider") != "microsoft":
-        query = urllib.parse.urlencode({"mailConnect": "error"})
-        return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
-
     tenant = getattr(request.state, "tenant", None)
-    if not tenant or mail_state_payload.get("tenant_id") != tenant.id or not code:
-        query = urllib.parse.urlencode({"mailConnect": "error"})
-        return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
+    if mail_state_payload and mail_state_payload.get("provider") == "microsoft":
+        if not tenant or mail_state_payload.get("tenant_id") != tenant.id or not code:
+            return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?mailConnect=error")
+        try:
+            handle_microsoft_mail_callback(code, db, tenant=tenant, request=request, state_payload=mail_state_payload)
+        except HTTPException:
+            return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?mailConnect=error")
+        return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?mailConnect=connected")
 
+    if drive_state_payload and drive_state_payload.get("provider") == "microsoft_onedrive":
+        if not tenant or drive_state_payload.get("tenant_id") != tenant.id or not code:
+            return RedirectResponse(url=f"{frontend_origin}/dashboard/documents?driveConnect=error&provider=microsoft_onedrive")
+        try:
+            handle_microsoft_onedrive_callback(code, db, tenant=tenant, request=request, state_payload=drive_state_payload)
+        except HTTPException:
+            return RedirectResponse(url=f"{frontend_origin}/dashboard/documents?driveConnect=error&provider=microsoft_onedrive")
+        return RedirectResponse(url=f"{frontend_origin}/dashboard/documents?driveConnect=connected&provider=microsoft_onedrive")
+
+    if not login_state_payload:
+        return RedirectResponse(url=f"{frontend_origin}/auth/callback?status=error")
+    if tenant and login_state_payload.get("tenant_id") != tenant.id:
+        return RedirectResponse(url=f"{frontend_origin}/auth/callback?status=error")
+    if not code:
+        return RedirectResponse(url=f"{frontend_origin}/auth/callback?status=error")
     try:
-        handle_microsoft_mail_callback(
-            code,
-            db,
-            tenant=tenant,
-            request=request,
-            state_payload=mail_state_payload,
-        )
-    except HTTPException:
-        query = urllib.parse.urlencode({"mailConnect": "error"})
-        return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
-    query = urllib.parse.urlencode({"mailConnect": "connected"})
-    return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?{query}")
+        if not tenant and not (is_cloud_mode_enabled() and is_auth_tenant_resolution_enabled()):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
+        result = handle_microsoft_callback(code, db, tenant=tenant, request=request)
+    except HTTPException as exc:
+        status_value = "forbidden" if exc.status_code == 403 else "error"
+        return RedirectResponse(url=f"{frontend_origin}/auth/callback?status={status_value}")
+    if result.get("status") != "active":
+        return RedirectResponse(url=f"{frontend_origin}/auth/callback?status={result.get('status', 'error')}")
+    user = result["user"]
+    response = RedirectResponse(url=f"{frontend_origin}/auth/callback?status=active")
+    _set_session_cookies(response, access_token=create_access_token(user), refresh_token=create_refresh_token(user, db))
+    return response
+
+
+@router.get("/microsoft")
+def microsoft_login(request: Request):
+    tenant = getattr(request.state, "tenant", None)
+    if not tenant and not (is_cloud_mode_enabled() and is_auth_tenant_resolution_enabled()):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
+    return {"auth_url": get_microsoft_auth_url(request=request, tenant=tenant)}
 
 
 @router.post("/logout")

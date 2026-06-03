@@ -416,7 +416,7 @@ export function UserManagementTable({
       case "auth_mode":
         return (
           <TableCell>
-            {u.auth_mode === "manual_only" ? "Manual only" : "Manual + Google"}
+            {u.auth_mode === "manual_only" ? "Manual only" : "Manual + SSO"}
           </TableCell>
         );
       case "is_active":

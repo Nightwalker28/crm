@@ -45,25 +45,37 @@ export default function DocumentsPage() {
     deleteDocument,
     connectGoogleDriveStorage,
     disconnectGoogleDriveStorage,
+    connectMicrosoftOneDriveStorage,
+    disconnectMicrosoftOneDriveStorage,
     isUploadingDocument,
     isDeletingDocument,
     isConnectingGoogleDrive,
     isDisconnectingGoogleDrive,
+    isConnectingMicrosoftOneDrive,
+    isDisconnectingMicrosoftOneDrive,
   } = useDocumentActions();
   const storageUsage = storageUsageQuery.data;
   const googleDriveConnection = storageConnectionsQuery.data?.find((connection) => connection.provider === "google_drive");
   const googleDriveConnected = googleDriveConnection?.status === "connected";
+  const oneDriveConnection = storageConnectionsQuery.data?.find((connection) => connection.provider === "microsoft_onedrive");
+  const oneDriveConnected = oneDriveConnection?.status === "connected";
 
   useEffect(() => {
     const driveConnect = searchParams.get("driveConnect");
-    if (driveConnect === "connected") toast.success("Google Drive connected.");
-    if (driveConnect === "error") toast.error("Failed to connect Google Drive.");
+    const provider = searchParams.get("provider");
+    const label = provider === "microsoft_onedrive" ? "Microsoft OneDrive" : "Google Drive";
+    if (driveConnect === "connected") toast.success(`${label} connected.`);
+    if (driveConnect === "error") toast.error(`Failed to connect ${label}.`);
   }, [searchParams]);
 
   async function handleSelectedFile(file: File | undefined) {
     if (!file) return;
     if (storageProvider === "google_drive" && !googleDriveConnected) {
       toast.error("Connect Google Drive before uploading to Drive.");
+      return;
+    }
+    if (storageProvider === "microsoft_onedrive" && !oneDriveConnected) {
+      toast.error("Connect Microsoft OneDrive before uploading to OneDrive.");
       return;
     }
     try {
@@ -107,6 +119,25 @@ export default function DocumentsPage() {
       toast.success("Google Drive disconnected.");
     } catch (error) {
       toast.error(errorMessage(error, "Failed to disconnect Google Drive."));
+    }
+  }
+
+  async function handleConnectOneDrive() {
+    try {
+      const result = await connectMicrosoftOneDriveStorage();
+      window.location.href = result.auth_url;
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to connect Microsoft OneDrive."));
+    }
+  }
+
+  async function handleDisconnectOneDrive() {
+    try {
+      await disconnectMicrosoftOneDriveStorage();
+      if (storageProvider === "microsoft_onedrive") setStorageProvider("local");
+      toast.success("Microsoft OneDrive disconnected.");
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to disconnect Microsoft OneDrive."));
     }
   }
 
@@ -163,6 +194,28 @@ export default function DocumentsPage() {
             </Button>
           )}
         </div>
+        <div className="mb-5 flex flex-col gap-3 rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-4 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-start gap-3">
+            <HardDrive className="mt-0.5 h-5 w-5 text-neutral-400" />
+            <div>
+              <div className="text-sm font-semibold text-neutral-100">Microsoft OneDrive storage</div>
+              <FieldDescription className="mt-1">
+                {oneDriveConnected
+                  ? `Connected${oneDriveConnection?.account_email ? ` as ${oneDriveConnection.account_email}` : ""}.`
+                  : "Connect OneDrive to store selected document uploads in your own Microsoft drive."}
+              </FieldDescription>
+            </div>
+          </div>
+          {oneDriveConnected ? (
+            <Button type="button" variant="outline" onClick={() => void handleDisconnectOneDrive()} disabled={isDisconnectingMicrosoftOneDrive}>
+              Disconnect
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" onClick={() => void handleConnectOneDrive()} disabled={isConnectingMicrosoftOneDrive}>
+              Connect OneDrive
+            </Button>
+          )}
+        </div>
 
         <div className="grid gap-3 md:grid-cols-[1fr_1fr_220px_auto] md:items-end">
           <div>
@@ -183,6 +236,9 @@ export default function DocumentsPage() {
                 <SelectItem value="local">Local backend</SelectItem>
                 <SelectItem value="google_drive" disabled={!googleDriveConnected}>
                   Google Drive
+                </SelectItem>
+                <SelectItem value="microsoft_onedrive" disabled={!oneDriveConnected}>
+                  Microsoft OneDrive
                 </SelectItem>
               </SelectContent>
             </Select>

@@ -22,6 +22,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.microsoft_oauth import MICROSOFT_GRAPH_BASE, MICROSOFT_MAIL_SCOPES, microsoft_auth_url, microsoft_scope_string, microsoft_token_url
 from app.core.access_control import require_role_module_action_access
 from app.core.secrets import decrypt_secret_with_rotation, encrypt_secret
 from app.core.tenancy import (
@@ -52,10 +53,6 @@ GMAIL_MESSAGE_DETAIL_FIELDS = (
     "id,threadId,snippet,"
     "payload(headers(name,value),mimeType,body(data),parts(mimeType,body(data),parts(mimeType,body(data))))"
 )
-MICROSOFT_AUTH_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
-MICROSOFT_TOKEN_URL = "https://login.microsoftonline.com/common/oauth2/v2.0/token"
-MICROSOFT_GRAPH_BASE = "https://graph.microsoft.com/v1.0"
-MICROSOFT_MAIL_SCOPES = "offline_access User.Read Mail.Read Mail.Send"
 IMAP_FULL_SYNC_SEARCH = "ALL"
 SMTP_SENT_FOLDER_CANDIDATES = ("Sent", "Sent Mail", "[Gmail]/Sent Mail", "INBOX.Sent")
 MAIL_CONNECT_STATE_TYPES = {
@@ -329,7 +326,7 @@ def get_microsoft_mail_connect_url(*, request: Request, tenant: Tenant, user: Us
         "client_id": settings.MICROSOFT_CLIENT_ID,
         "redirect_uri": get_microsoft_redirect_uri_for_request(request),
         "response_type": "code",
-        "scope": MICROSOFT_MAIL_SCOPES,
+        "scope": microsoft_scope_string(*MICROSOFT_MAIL_SCOPES),
         "response_mode": "query",
         "state": _create_mail_oauth_state(
             tenant=tenant,
@@ -338,7 +335,7 @@ def get_microsoft_mail_connect_url(*, request: Request, tenant: Tenant, user: Us
             frontend_origin=get_frontend_origin_for_request(request),
         ),
     }
-    return MICROSOFT_AUTH_URL + "?" + urllib.parse.urlencode(params)
+    return microsoft_auth_url() + "?" + urllib.parse.urlencode(params)
 
 
 def _token_expiry(token_json: dict) -> datetime | None:
@@ -671,13 +668,13 @@ def _refresh_microsoft_mail_token(db: Session, connection: UserMailConnection) -
     return _refresh_oauth_mail_token(
         db,
         connection,
-        token_url=MICROSOFT_TOKEN_URL,
+        token_url=microsoft_token_url(),
         token_data={
             "client_id": settings.MICROSOFT_CLIENT_ID,
             "client_secret": settings.MICROSOFT_CLIENT_SECRET,
             "refresh_token": connection.refresh_token,
             "grant_type": "refresh_token",
-            "scope": MICROSOFT_MAIL_SCOPES,
+            "scope": microsoft_scope_string(*MICROSOFT_MAIL_SCOPES),
         },
         missing_refresh_detail="Reconnect Microsoft to refresh mailbox access.",
         failed_refresh_detail="Failed to refresh Microsoft mailbox access.",
@@ -1685,14 +1682,14 @@ def handle_microsoft_mail_callback(
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Mailbox user is not active")
 
     token_res = requests.post(
-        MICROSOFT_TOKEN_URL,
+        microsoft_token_url(),
         data={
             "client_id": settings.MICROSOFT_CLIENT_ID,
             "client_secret": settings.MICROSOFT_CLIENT_SECRET,
             "code": code,
             "redirect_uri": get_microsoft_redirect_uri_for_request(request),
             "grant_type": "authorization_code",
-            "scope": MICROSOFT_MAIL_SCOPES,
+            "scope": microsoft_scope_string(*MICROSOFT_MAIL_SCOPES),
         },
         timeout=20,
     )
