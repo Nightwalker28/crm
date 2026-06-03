@@ -3,7 +3,7 @@
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 
 export type OrderItem = {
   id: number;
@@ -47,8 +47,20 @@ export type OrdersResponse = {
   page: number;
 };
 
-async function fetchOrders(page: number, pageSize: number, _visibleColumns: string[], filters: SavedViewFilters): Promise<OrdersResponse> {
+export type OrderSortState = PagedListSort;
+
+async function fetchOrders(
+  page: number,
+  pageSize: number,
+  _visibleColumns: string[],
+  filters: SavedViewFilters,
+  sort: OrderSortState,
+): Promise<OrdersResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  if (sort) {
+    params.set("sort_by", sort.key);
+    params.set("sort_direction", sort.direction);
+  }
   appendSavedViewFilterParams(params, filters);
   const searchTerm = typeof filters.search === "string" ? filters.search.trim() : "";
   const path = searchTerm ? `/sales/orders/search?${params.toString()}` : `/sales/orders?${params.toString()}`;
@@ -57,12 +69,19 @@ async function fetchOrders(page: number, pageSize: number, _visibleColumns: stri
   return res.json();
 }
 
-export function useOrders(visibleColumns: string[], viewFilters: SavedViewFilters, initialPage = 1, initialPageSize = 10) {
+export function useOrders(
+  visibleColumns: string[],
+  viewFilters: SavedViewFilters,
+  sort: OrderSortState = null,
+  initialPage = 1,
+  initialPageSize = 10,
+) {
   const paged = usePagedList<Order, OrdersResponse>({
     queryKey: ["sales-orders"],
-    fetcher: (page, pageSize, filters, columns) => fetchOrders(page, pageSize, columns, filters),
+    fetcher: (page, pageSize, filters, columns, sortState) => fetchOrders(page, pageSize, columns, filters, sortState),
     visibleColumns,
     filters: viewFilters,
+    sort,
     initialPage,
     initialPageSize,
     errorMessage: () => "Failed to load orders",

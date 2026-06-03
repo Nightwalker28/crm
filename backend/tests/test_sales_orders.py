@@ -7,9 +7,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.core.pagination import create_pagination
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
-from app.modules.sales.services.orders_services import convert_quote_to_order, create_sales_order, get_order_by_quote
+from app.modules.sales.services.orders_services import convert_quote_to_order, create_sales_order, get_order_by_quote, list_sales_orders
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
 
@@ -121,6 +122,51 @@ class SalesOrderTests(unittest.TestCase):
             )
 
         self.assertEqual(exc.exception.status_code, 404)
+
+    def test_order_list_sorts_before_pagination(self):
+        self.db.add_all(
+            [
+                SalesOrder(
+                    id=61,
+                    tenant_id=10,
+                    order_number="SO-103",
+                    status="confirmed",
+                    currency="USD",
+                    grand_total=Decimal("300.00"),
+                    owner_id=1,
+                ),
+                SalesOrder(
+                    id=62,
+                    tenant_id=10,
+                    order_number="SO-101",
+                    status="confirmed",
+                    currency="USD",
+                    grand_total=Decimal("100.00"),
+                    owner_id=1,
+                ),
+                SalesOrder(
+                    id=63,
+                    tenant_id=10,
+                    order_number="SO-102",
+                    status="confirmed",
+                    currency="USD",
+                    grand_total=Decimal("200.00"),
+                    owner_id=1,
+                ),
+            ]
+        )
+        self.db.commit()
+
+        orders, total_count = list_sales_orders(
+            self.db,
+            tenant_id=10,
+            pagination=create_pagination(1, 2),
+            sort_by="order_number",
+            sort_direction="asc",
+        )
+
+        self.assertEqual(total_count, 3)
+        self.assertEqual([order.order_number for order in orders], ["SO-101", "SO-102"])
 
 
 if __name__ == "__main__":

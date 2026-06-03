@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { ShoppingCart } from "lucide-react";
 
@@ -22,6 +22,8 @@ type OrdersTableProps = {
   isRefreshing?: boolean;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
+  sort?: SortState;
+  onSortChange?: (sort: SortState) => void;
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -37,21 +39,39 @@ function formatMoney(value: string | number | null | undefined, currency: string
   return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "USD" }).format(amount);
 }
 
-export default function OrdersTable({ orders, isLoading, isRefreshing = false, visibleColumns, columnOptions = [] }: OrdersTableProps) {
+const SORTABLE_COLUMNS = new Set([
+  "order_number",
+  "quote_id",
+  "organization_id",
+  "contact_id",
+  "opportunity_id",
+  "owner_id",
+  "status",
+  "currency",
+  "subtotal",
+  "tax_total",
+  "discount_total",
+  "grand_total",
+  "created_at",
+  "updated_at",
+]);
+
+export default function OrdersTable({
+  orders,
+  isLoading,
+  isRefreshing = false,
+  visibleColumns,
+  columnOptions = [],
+  sort = null,
+  onSortChange,
+}: OrdersTableProps) {
   const router = useRouter();
-  const [sort, setSort] = useState<SortState>(null);
-  const sortedOrders = useMemo(() => {
-    if (!sort) return orders;
-    return [...orders].sort((left, right) => {
-      const leftValue = String(left[sort.column as keyof Order] ?? "").toLowerCase();
-      const rightValue = String(right[sort.column as keyof Order] ?? "").toLowerCase();
-      const result = leftValue.localeCompare(rightValue, undefined, { numeric: true });
-      return sort.direction === "asc" ? result : -result;
-    });
-  }, [orders, sort]);
 
   function toggleSort(column: string) {
-    setSort((current) => current?.column !== column ? { column, direction: "asc" } : { column, direction: current.direction === "asc" ? "desc" : "asc" });
+    const nextSort: SortState = sort?.column === column
+      ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
+      : { column, direction: "asc" };
+    onSortChange?.(nextSort);
   }
 
   function renderCell(order: Order, column: string) {
@@ -79,7 +99,7 @@ export default function OrdersTable({ orders, isLoading, isRefreshing = false, v
           <TableHeaderRow>
             {visibleColumns.map((column) => {
               const label = getReadableColumnLabel(column, columnOptions);
-              const sortable = ["order_number", "status", "grand_total", "created_at", "updated_at"].includes(column);
+              const sortable = SORTABLE_COLUMNS.has(column);
               return sortable ? (
                 <SortableHead key={column} sorted={sort?.column === column} direction={sort?.column === column ? sort.direction : "asc"} onClick={() => toggleSort(column)}>
                   {label}
@@ -98,7 +118,7 @@ export default function OrdersTable({ orders, isLoading, isRefreshing = false, v
               </TableCell>
             </TableRow>
           ) : (
-            sortedOrders.map((order) => (
+            orders.map((order) => (
               <TableRow key={order.id} className="group cursor-pointer" onClick={() => router.push(`/dashboard/sales/orders/${order.id}`)}>
                 {visibleColumns.map((column) => <Fragment key={column}>{renderCell(order, column)}</Fragment>)}
               </TableRow>

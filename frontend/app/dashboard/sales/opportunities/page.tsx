@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -21,8 +21,12 @@ import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
-import { useOpportunities, type Opportunity, type OpportunityPayload } from "@/hooks/sales/useOpportunities";
-import { useMemo } from "react";
+import {
+  useOpportunities,
+  type Opportunity,
+  type OpportunityPayload,
+  type OpportunitySortState,
+} from "@/hooks/sales/useOpportunities";
 import { Columns3, Plus, Table2 } from "lucide-react";
 
 type OpportunityPipelineSummaryResponse = {
@@ -91,6 +95,11 @@ export default function OpportunitiesPage() {
   );
   const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
   const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
+  const activeSort = useMemo<OpportunitySortState>(() => {
+    const sort = draftConfig.sort;
+    if (!sort || typeof sort.key !== "string") return null;
+    return { key: sort.key, direction: sort.direction === "desc" ? "desc" : "asc" };
+  }, [draftConfig.sort]);
   const pipelineSummaryQuery = useQuery({
     queryKey: ["sales-opportunities-pipeline-summary", activeFilters],
     queryFn: () => fetchPipelineSummary(activeFilters),
@@ -114,7 +123,7 @@ export default function OpportunitiesPage() {
     updateOpportunityStage,
     isSaving,
     isDeleting,
-  } = useOpportunities(visibleColumns, activeFilters);
+  } = useOpportunities(visibleColumns, activeFilters, activeSort);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const currentPageIds = useMemo(() => opportunities.map((opportunity) => opportunity.opportunity_id), [opportunities]);
   const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
@@ -286,6 +295,13 @@ export default function OpportunitiesPage() {
           currentPageSelectionState={currentPageSelectionState}
           onToggleRow={toggleRow}
           onToggleCurrentPage={toggleCurrentPage}
+          sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
+          onSortChange={(nextSort) =>
+            setDraftConfig((current) => ({
+              ...current,
+              sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null,
+            }))
+          }
           onEdit={(opportunity) => {
             router.push(`/dashboard/sales/opportunities/${opportunity.opportunity_id}`);
           }}

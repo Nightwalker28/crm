@@ -9,7 +9,7 @@ import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
-import { useLeads } from "@/hooks/sales/useLeads";
+import { useLeads, type LeadSortState } from "@/hooks/sales/useLeads";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
@@ -23,6 +23,14 @@ export default function LeadsPage() {
   const { views, selectedViewId, setSelectedViewId, draftConfig, setDraftConfig } = useSavedViews("sales_leads", defaultConfig);
   const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
   const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
+  const activeSort = useMemo<LeadSortState>(() => {
+    const sort = draftConfig.sort;
+    if (!sort || typeof sort.key !== "string") return null;
+    return {
+      key: sort.key,
+      direction: sort.direction === "desc" ? "desc" : "asc",
+    };
+  }, [draftConfig.sort]);
   const {
     leads,
     page,
@@ -37,7 +45,7 @@ export default function LeadsPage() {
     error,
     goToPage,
     refresh,
-  } = useLeads(visibleColumns, activeFilters);
+  } = useLeads(visibleColumns, activeFilters, activeSort);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
@@ -97,6 +105,13 @@ export default function LeadsPage() {
         currentPageSelectionState={currentPageSelectionState}
         onToggleRow={toggleRow}
         onToggleCurrentPage={toggleCurrentPage}
+        sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
+        onSortChange={(nextSort) =>
+          setDraftConfig((current) => ({
+            ...current,
+            sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null,
+          }))
+        }
       />
       <Pagination
         page={page}

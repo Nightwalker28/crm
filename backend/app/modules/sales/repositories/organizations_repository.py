@@ -7,6 +7,19 @@ from app.core.module_search import apply_ranked_search
 from app.modules.platform.services.custom_fields import build_custom_field_filter_map
 from app.modules.sales.models import SalesOrganization
 
+ORGANIZATION_SORT_FIELDS = {
+    "org_name": SalesOrganization.org_name,
+    "primary_email": SalesOrganization.primary_email,
+    "website": SalesOrganization.website,
+    "industry": SalesOrganization.industry,
+    "annual_revenue": SalesOrganization.annual_revenue,
+    "primary_phone": SalesOrganization.primary_phone,
+    "billing_country": SalesOrganization.billing_country,
+    "assigned_to": SalesOrganization.assigned_to,
+    "customer_group_id": SalesOrganization.customer_group_id,
+    "created_time": SalesOrganization.created_time,
+}
+
 
 def build_organization_query(
     db: Session,
@@ -59,6 +72,19 @@ def find_active_by_name(db: Session, *, tenant_id: int, org_name: str) -> SalesO
     )
 
 
+def apply_organization_sort(query, *, sort_by: str | None = None, sort_direction: str | None = None):
+    sort_column = ORGANIZATION_SORT_FIELDS.get((sort_by or "").strip())
+    if sort_column is None:
+        return query.order_by(None).order_by(
+            SalesOrganization.created_time.desc(),
+            SalesOrganization.org_id.desc(),
+        )
+
+    direction = (sort_direction or "asc").strip().lower()
+    ordered = sort_column.desc() if direction == "desc" else sort_column.asc()
+    return query.order_by(None).order_by(ordered.nullslast(), SalesOrganization.org_id.desc())
+
+
 def list_paginated(
     db: Session,
     *,
@@ -68,6 +94,8 @@ def list_paginated(
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[list[SalesOrganization], int]:
     query = build_organization_query(
         db,
@@ -77,7 +105,12 @@ def list_paginated(
         any_filter_conditions=any_filter_conditions,
     )
     total = query.count()
-    items = query.order_by(SalesOrganization.created_time.desc()).offset(offset).limit(limit).all()
+    items = (
+        apply_organization_sort(query, sort_by=sort_by, sort_direction=sort_direction)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return items, total
 
 

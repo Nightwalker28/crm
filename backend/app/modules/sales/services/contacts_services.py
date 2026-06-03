@@ -137,6 +137,8 @@ def list_sales_contacts(
     *,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[Sequence[SalesContact], int]:
     contacts, total_count = contacts_repository.list_contacts(
         db,
@@ -145,6 +147,8 @@ def list_sales_contacts(
         search=search,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     contacts = hydrate_custom_field_records(
         db,

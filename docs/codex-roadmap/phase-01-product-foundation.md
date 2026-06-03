@@ -112,11 +112,18 @@ Each tier-1 list page should support, where applicable:
 2. Opportunities.
 3. Quotes.
 4. Sales orders.
-5. Documents.
-6. Support tickets.
-7. Products/services.
-8. Client portal records/pages.
-9. all other modules
+5. contacts
+6. organizations
+7. insertion orders
+8. POS
+9. custom modules
+10. reports
+11. Documents.
+12. Support tickets.
+13. Products/services.
+14. Client portal records/pages.
+15. settings pages
+16. all other modules
 
 ### Acceptance criteria
 

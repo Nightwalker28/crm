@@ -125,9 +125,9 @@ def _parse_filters(db: Session, tenant_id: int, filter_logic: str, filters: str 
 
 
 @router.get("", response_model=SalesQuoteListResponse)
-def list_quotes(fields: str | None = Query(default=None), filter_logic: str = Query(default="all"), filters: str | None = Query(default=None), filters_all: str | None = Query(default=None), filters_any: str | None = Query(default=None), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "view"))):
+def list_quotes(fields: str | None = Query(default=None), sort_by: str | None = Query(default=None), sort_direction: str | None = Query(default=None), filter_logic: str = Query(default="all"), filters: str | None = Query(default=None), filters_all: str | None = Query(default=None), filters_any: str | None = Query(default=None), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "view"))):
     all_conditions, any_conditions = _parse_filters(db, current_user.tenant_id, filter_logic, filters, filters_all, filters_any)
-    quotes, total_count = list_sales_quotes(db, current_user.tenant_id, pagination, all_filter_conditions=all_conditions, any_filter_conditions=any_conditions)
+    quotes, total_count = list_sales_quotes(db, current_user.tenant_id, pagination, all_filter_conditions=all_conditions, any_filter_conditions=any_conditions, sort_by=sort_by, sort_direction=sort_direction)
     selected_fields = _parse_list_fields(fields, _enabled_quote_list_fields(db, current_user.tenant_id))
     return build_paged_response([_serialize_quote_list_item(quote, selected_fields) for quote in quotes], total_count, pagination)
 
@@ -141,9 +141,9 @@ def list_quotes_cursor(fields: str | None = Query(default=None), filter_logic: s
 
 
 @router.get("/search", response_model=SalesQuoteListResponse)
-def search_quotes(query: str = Query(..., min_length=1), fields: str | None = Query(default=None), filter_logic: str = Query(default="all"), filters: str | None = Query(default=None), filters_all: str | None = Query(default=None), filters_any: str | None = Query(default=None), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "view"))):
+def search_quotes(query: str = Query(..., min_length=1), fields: str | None = Query(default=None), sort_by: str | None = Query(default=None), sort_direction: str | None = Query(default=None), filter_logic: str = Query(default="all"), filters: str | None = Query(default=None), filters_all: str | None = Query(default=None), filters_any: str | None = Query(default=None), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "view"))):
     all_conditions, any_conditions = _parse_filters(db, current_user.tenant_id, filter_logic, filters, filters_all, filters_any)
-    quotes, total_count = list_sales_quotes(db, current_user.tenant_id, pagination, search=query, all_filter_conditions=all_conditions, any_filter_conditions=any_conditions)
+    quotes, total_count = list_sales_quotes(db, current_user.tenant_id, pagination, search=query, all_filter_conditions=all_conditions, any_filter_conditions=any_conditions, sort_by=sort_by, sort_direction=sort_direction)
     selected_fields = _parse_list_fields(fields, _enabled_quote_list_fields(db, current_user.tenant_id))
     return build_paged_response([_serialize_quote_list_item(quote, selected_fields) for quote in quotes], total_count, pagination)
 

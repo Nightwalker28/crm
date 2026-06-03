@@ -219,6 +219,8 @@ def list_organizations_paginated(
     *,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[list[SalesOrganization], int]:
     """Return a page of organizations and the total count."""
     items, total = organizations_repository.list_paginated(
@@ -228,6 +230,8 @@ def list_organizations_paginated(
         limit=limit,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     items = hydrate_custom_field_records(
         db,
@@ -247,6 +251,8 @@ def search_organizations_paginated(
     *,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[list[SalesOrganization], int]:
     """Return a page of organizations matching the name and the total count."""
     items, total = organizations_repository.list_paginated(
@@ -257,6 +263,8 @@ def search_organizations_paginated(
         limit=limit,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     items = hydrate_custom_field_records(
         db,

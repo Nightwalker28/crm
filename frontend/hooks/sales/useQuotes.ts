@@ -3,7 +3,7 @@
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 
 export type Quote = {
   quote_id: number;
@@ -36,10 +36,22 @@ export type QuotesResponse = {
   page: number;
 };
 
-async function fetchQuotes(page: number, pageSize: number, visibleColumns: string[], filters: SavedViewFilters): Promise<QuotesResponse> {
+export type QuoteSortState = PagedListSort;
+
+async function fetchQuotes(
+  page: number,
+  pageSize: number,
+  visibleColumns: string[],
+  filters: SavedViewFilters,
+  sort: QuoteSortState,
+): Promise<QuotesResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
   if (baseVisibleColumns.length) params.append("fields", baseVisibleColumns.join(","));
+  if (sort) {
+    params.set("sort_by", sort.key);
+    params.set("sort_direction", sort.direction);
+  }
   appendSavedViewFilterParams(params, filters);
   const searchTerm = typeof filters.search === "string" ? filters.search.trim() : "";
   const path = searchTerm ? `/sales/quotes/search?${params.toString()}` : `/sales/quotes?${params.toString()}`;
@@ -48,12 +60,19 @@ async function fetchQuotes(page: number, pageSize: number, visibleColumns: strin
   return res.json();
 }
 
-export function useQuotes(visibleColumns: string[], viewFilters: SavedViewFilters, initialPage = 1, initialPageSize = 10) {
+export function useQuotes(
+  visibleColumns: string[],
+  viewFilters: SavedViewFilters,
+  sort: QuoteSortState = null,
+  initialPage = 1,
+  initialPageSize = 10,
+) {
   const paged = usePagedList<Quote, QuotesResponse>({
     queryKey: ["sales-quotes"],
-    fetcher: (page, pageSize, filters, columns) => fetchQuotes(page, pageSize, columns, filters),
+    fetcher: (page, pageSize, filters, columns, sortState) => fetchQuotes(page, pageSize, columns, filters, sortState),
     visibleColumns,
     filters: viewFilters,
+    sort,
     initialPage,
     initialPageSize,
     errorMessage: () => "Failed to load quotes",

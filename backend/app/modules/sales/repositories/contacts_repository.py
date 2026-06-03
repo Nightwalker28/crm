@@ -12,6 +12,21 @@ from app.modules.platform.services.custom_fields import build_custom_field_filte
 from app.modules.sales.models import SalesContact, SalesOrganization
 from app.modules.user_management.models import User
 
+CONTACT_SORT_FIELDS = {
+    "first_name": SalesContact.first_name,
+    "last_name": SalesContact.last_name,
+    "primary_email": SalesContact.primary_email,
+    "contact_telephone": SalesContact.contact_telephone,
+    "current_title": SalesContact.current_title,
+    "region": SalesContact.region,
+    "country": SalesContact.country,
+    "linkedin_url": SalesContact.linkedin_url,
+    "organization_id": SalesContact.organization_id,
+    "assigned_to": SalesContact.assigned_to,
+    "organization_name": SalesOrganization.org_name,
+    "created_time": SalesContact.created_time,
+}
+
 
 def apply_search_filter(query, search: str | None):
     return apply_ranked_search(
@@ -73,6 +88,19 @@ def build_contacts_query(
     return apply_search_filter(query, search)
 
 
+def apply_contact_sort(query, *, sort_by: str | None = None, sort_direction: str | None = None):
+    sort_column = CONTACT_SORT_FIELDS.get((sort_by or "").strip())
+    if sort_column is None:
+        return query.order_by(None).order_by(
+            SalesContact.created_time.desc(),
+            SalesContact.contact_id.desc(),
+        )
+
+    direction = (sort_direction or "asc").strip().lower()
+    ordered = sort_column.desc() if direction == "desc" else sort_column.asc()
+    return query.order_by(None).order_by(ordered.nullslast(), SalesContact.contact_id.desc())
+
+
 def list_contacts(
     db: Session,
     *,
@@ -81,6 +109,8 @@ def list_contacts(
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[Sequence[SalesContact], int]:
     query = build_contacts_query(
         db,
@@ -90,7 +120,12 @@ def list_contacts(
         any_filter_conditions=any_filter_conditions,
     )
     total_count = query.count()
-    contacts = query.offset(pagination.offset).limit(pagination.limit).all()
+    contacts = (
+        apply_contact_sort(query, sort_by=sort_by, sort_direction=sort_direction)
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+        .all()
+    )
     return contacts, total_count
 
 

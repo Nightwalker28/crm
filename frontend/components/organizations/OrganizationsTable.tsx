@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Building2 } from "lucide-react";
 
 import {
+  SortableHead,
   Table,
   TableBody,
   TableCell,
@@ -23,6 +24,8 @@ import type { Organization } from "@/hooks/sales/useOrganizations";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 
+type SortState = { column: string; direction: "asc" | "desc" } | null;
+
 type Props = {
   organizations: Organization[];
   isLoading: boolean;
@@ -33,6 +36,8 @@ type Props = {
   currentPageSelectionState?: boolean | "indeterminate";
   onToggleRow?: (orgId: number, checked: boolean) => void;
   onToggleCurrentPage?: (checked: boolean) => void;
+  sort?: SortState;
+  onSortChange?: (sort: SortState) => void;
 };
 
 const INDUSTRY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
@@ -69,6 +74,8 @@ export default function OrganizationsTable({
   currentPageSelectionState = false,
   onToggleRow,
   onToggleCurrentPage,
+  sort = null,
+  onSortChange,
 }: Props) {
   const router = useRouter();
   const headers: Record<string, string> = {
@@ -80,6 +87,25 @@ export default function OrganizationsTable({
     primary_phone: "Phone",
     billing_country: "Country",
   };
+  const sortableColumns = new Set([
+    "org_name",
+    "primary_email",
+    "website",
+    "industry",
+    "annual_revenue",
+    "primary_phone",
+    "billing_country",
+    "assigned_to",
+    "customer_group_id",
+    "created_time",
+  ]);
+
+  function toggleSort(column: string) {
+    const nextSort: SortState = sort?.column === column
+      ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
+      : { column, direction: "asc" };
+    onSortChange?.(nextSort);
+  }
 
   const renderCell = (org: Organization, column: string) => {
     if (isCustomFieldColumnKey(column)) {
@@ -186,11 +212,23 @@ export default function OrganizationsTable({
                 <CheckboxIndicator className="h-3 w-3" />
               </Checkbox>
             </TableHead>
-            {visibleColumns.map((column) => (
-              <TableHead key={column}>
-                {headers[column] ?? getReadableColumnLabel(column, columnOptions)}
-              </TableHead>
-            ))}
+            {visibleColumns.map((column) => {
+              const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
+              if (isCustomFieldColumnKey(column) || !sortableColumns.has(column)) {
+                return <TableHead key={column}>{label}</TableHead>;
+              }
+              const isSorted = sort?.column === column;
+              return (
+                <SortableHead
+                  key={column}
+                  sorted={isSorted}
+                  direction={isSorted ? sort.direction : "asc"}
+                  onClick={() => toggleSort(column)}
+                >
+                  {label}
+                </SortableHead>
+              );
+            })}
           </TableHeaderRow>
         </TableHeader>
 

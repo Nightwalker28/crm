@@ -10,6 +10,7 @@ import { Pill } from "@/components/ui/Pill";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import {
+  SortableHead,
   Table,
   TableBody,
   TableCell,
@@ -25,6 +26,8 @@ import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { getOpportunityStageLabel } from "@/components/opportunities/opportunityStages";
 import { getOpportunityStageStyle } from "@/lib/statusStyles";
 
+type SortState = { column: string; direction: "asc" | "desc" } | null;
+
 type Props = {
   opportunities: Opportunity[];
   isLoading: boolean;
@@ -36,6 +39,8 @@ type Props = {
   currentPageSelectionState?: boolean | "indeterminate";
   onToggleRow?: (opportunityId: number, checked: boolean) => void;
   onToggleCurrentPage?: (checked: boolean) => void;
+  sort?: SortState;
+  onSortChange?: (sort: SortState) => void;
 };
 
 function isOverdue(dateStr?: string | null): boolean {
@@ -58,6 +63,8 @@ export default function OpportunitiesTable({
   currentPageSelectionState = false,
   onToggleRow,
   onToggleCurrentPage,
+  sort = null,
+  onSortChange,
 }: Props) {
   const columnCount = visibleColumns.length + 1;
   const headers: Record<string, string> = {
@@ -70,6 +77,23 @@ export default function OpportunitiesTable({
     currency_type: "Currency",
     created_time: "Created",
   };
+  const sortableColumns = new Set([
+    "opportunity_name",
+    "client",
+    "sales_stage",
+    "expected_close_date",
+    "probability_percent",
+    "total_cost_of_project",
+    "currency_type",
+    "created_time",
+  ]);
+
+  function toggleSort(column: string) {
+    const nextSort: SortState = sort?.column === column
+      ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
+      : { column, direction: "asc" };
+    onSortChange?.(nextSort);
+  }
 
   const renderCell = (opportunity: Opportunity, column: string) => {
     if (isCustomFieldColumnKey(column)) {
@@ -191,11 +215,23 @@ export default function OpportunitiesTable({
                 <CheckboxIndicator className="h-3 w-3" />
               </Checkbox>
             </TableHead>
-            {visibleColumns.map((column) => (
-              <TableHead key={column}>
-                {headers[column] ?? getReadableColumnLabel(column, columnOptions)}
-              </TableHead>
-            ))}
+            {visibleColumns.map((column) => {
+              const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
+              if (!sortableColumns.has(column)) {
+                return <TableHead key={column}>{label}</TableHead>;
+              }
+              const isSorted = sort?.column === column;
+              return (
+                <SortableHead
+                  key={column}
+                  sorted={isSorted}
+                  direction={isSorted ? sort.direction : "asc"}
+                  onClick={() => toggleSort(column)}
+                >
+                  {label}
+                </SortableHead>
+              );
+            })}
           </TableHeaderRow>
         </TableHeader>
         <TableBody>

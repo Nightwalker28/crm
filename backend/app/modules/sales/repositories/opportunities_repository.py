@@ -9,6 +9,17 @@ from app.modules.platform.services.custom_fields import build_custom_field_filte
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization
 from app.modules.user_management.models import User
 
+OPPORTUNITY_SORT_FIELDS = {
+    "opportunity_name": SalesOpportunity.opportunity_name,
+    "client": SalesOpportunity.client,
+    "sales_stage": SalesOpportunity.sales_stage,
+    "expected_close_date": SalesOpportunity.expected_close_date,
+    "probability_percent": SalesOpportunity.probability_percent,
+    "total_cost_of_project": SalesOpportunity.total_cost_of_project,
+    "currency_type": SalesOpportunity.currency_type,
+    "created_time": SalesOpportunity.created_time,
+}
+
 
 def user_exists(db: Session, *, tenant_id: int, user_id: int) -> bool:
     return bool(db.query(User.id).filter(User.id == user_id, User.tenant_id == tenant_id).first())
@@ -93,6 +104,19 @@ def build_opportunity_query(
     return apply_search_filter(query, search)
 
 
+def apply_opportunity_sort(query, *, sort_by: str | None = None, sort_direction: str | None = None):
+    sort_column = OPPORTUNITY_SORT_FIELDS.get((sort_by or "").strip())
+    if sort_column is None:
+        return query.order_by(None).order_by(
+            SalesOpportunity.created_time.desc(),
+            SalesOpportunity.opportunity_id.desc(),
+        )
+
+    direction = (sort_direction or "asc").strip().lower()
+    ordered = sort_column.desc() if direction == "desc" else sort_column.asc()
+    return query.order_by(None).order_by(ordered.nullslast(), SalesOpportunity.opportunity_id.desc())
+
+
 def list_all(
     db: Session,
     *,
@@ -122,6 +146,8 @@ def list_paginated(
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[list[SalesOpportunity], int]:
     query = build_opportunity_query(
         db,
@@ -131,7 +157,12 @@ def list_paginated(
         any_filter_conditions=any_filter_conditions,
     )
     total_count = query.count()
-    items = query.offset(pagination.offset).limit(pagination.limit).all()
+    items = (
+        apply_opportunity_sort(query, sort_by=sort_by, sort_direction=sort_direction)
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+        .all()
+    )
     return items, total_count
 
 

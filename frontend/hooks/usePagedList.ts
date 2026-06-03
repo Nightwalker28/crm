@@ -5,6 +5,8 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 
+export type PagedListSort = { key: string; direction: "asc" | "desc" } | null;
+
 export type PagedListResponse<T> = {
   results: T[];
   range_start: number;
@@ -16,9 +18,10 @@ export type PagedListResponse<T> = {
 
 type UsePagedListOptions<T, Response extends PagedListResponse<T>> = {
   queryKey: readonly unknown[];
-  fetcher: (page: number, pageSize: number, filters: SavedViewFilters, visibleColumns: string[]) => Promise<Response>;
+  fetcher: (page: number, pageSize: number, filters: SavedViewFilters, visibleColumns: string[], sort: PagedListSort) => Promise<Response>;
   visibleColumns: string[];
   filters: SavedViewFilters;
+  sort?: PagedListSort;
   initialPage?: number;
   initialPageSize?: number;
   refetchOnWindowFocus?: boolean;
@@ -31,6 +34,7 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
   fetcher,
   visibleColumns,
   filters,
+  sort = null,
   initialPage = 1,
   initialPageSize = 10,
   refetchOnWindowFocus,
@@ -39,13 +43,14 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
 }: UsePagedListOptions<T, Response>) {
   const [pageSize, setPageSize] = useState(initialPageSize);
   const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
-  const [pageState, setPageState] = useState({ page: initialPage, filtersKey });
-  const page = pageState.filtersKey === filtersKey ? pageState.page : 1;
+  const sortKey = useMemo(() => JSON.stringify(sort), [sort]);
+  const [pageState, setPageState] = useState({ page: initialPage, filtersKey, sortKey });
+  const page = pageState.filtersKey === filtersKey && pageState.sortKey === sortKey ? pageState.page : 1;
   const visibleColumnsKey = useMemo(() => [...visibleColumns].sort().join(","), [visibleColumns]);
 
   const query = useQuery<Response>({
-    queryKey: [...queryKey, page, pageSize, filters, visibleColumnsKey],
-    queryFn: () => fetcher(page, pageSize, filters, visibleColumns),
+    queryKey: [...queryKey, page, pageSize, filters, visibleColumnsKey, sortKey],
+    queryFn: () => fetcher(page, pageSize, filters, visibleColumns, sort),
     placeholderData: keepPreviousData,
     refetchOnWindowFocus,
   });
@@ -53,13 +58,13 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
   const data = query.data;
   const { refetch } = query;
   const goToPage = useCallback(
-    (nextPage: number) => setPageState({ page: Math.max(1, nextPage), filtersKey }),
-    [filtersKey],
+    (nextPage: number) => setPageState({ page: Math.max(1, nextPage), filtersKey, sortKey }),
+    [filtersKey, sortKey],
   );
   const onPageSizeChange = useCallback((nextPageSize: number) => {
-    setPageState({ page: 1, filtersKey });
+    setPageState({ page: 1, filtersKey, sortKey });
     setPageSize(Math.max(1, nextPageSize));
-  }, [filtersKey]);
+  }, [filtersKey, sortKey]);
   const refresh = useCallback(() => refetch(), [refetch]);
 
   return {

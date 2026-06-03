@@ -3,7 +3,7 @@
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 
 export type Lead = {
   lead_id: number;
@@ -42,16 +42,23 @@ export type LeadsResponse = {
   page: number;
 };
 
+export type LeadSortState = PagedListSort;
+
 async function fetchLeads(
   page: number,
   pageSize: number,
   visibleColumns: string[],
   filters: SavedViewFilters,
+  sort: LeadSortState,
 ): Promise<LeadsResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
   if (baseVisibleColumns.length) {
     params.append("fields", baseVisibleColumns.join(","));
+  }
+  if (sort) {
+    params.set("sort_by", sort.key);
+    params.set("sort_direction", sort.direction);
   }
   appendSavedViewFilterParams(params, filters);
   const searchTerm = typeof filters.search === "string" ? filters.search.trim() : "";
@@ -64,14 +71,16 @@ async function fetchLeads(
 export function useLeads(
   visibleColumns: string[],
   viewFilters: SavedViewFilters,
+  sort: LeadSortState = null,
   initialPage = 1,
   initialPageSize = 10,
 ) {
   const paged = usePagedList<Lead, LeadsResponse>({
     queryKey: ["sales-leads"],
-    fetcher: (page, pageSize, filters, columns) => fetchLeads(page, pageSize, columns, filters),
+    fetcher: (page, pageSize, filters, columns, sortState) => fetchLeads(page, pageSize, columns, filters, sortState),
     visibleColumns,
     filters: viewFilters,
+    sort,
     initialPage,
     initialPageSize,
     errorMessage: () => "Failed to load leads",

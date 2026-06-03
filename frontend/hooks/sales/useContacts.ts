@@ -3,7 +3,7 @@
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 
 export type Contact = {
   contact_id: number;
@@ -30,16 +30,23 @@ export type ContactsResponse = {
   page: number;
 };
 
+export type ContactSortState = PagedListSort;
+
 async function fetchContacts(
   page: number,
   pageSize: number,
   visibleColumns: string[],
   filters: SavedViewFilters,
+  sort: ContactSortState,
 ): Promise<ContactsResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
   if (baseVisibleColumns.length) {
     params.append("fields", baseVisibleColumns.join(","));
+  }
+  if (sort) {
+    params.set("sort_by", sort.key);
+    params.set("sort_direction", sort.direction);
   }
   appendSavedViewFilterParams(params, filters);
   const searchTerm = typeof filters.search === "string" ? filters.search.trim() : "";
@@ -52,14 +59,16 @@ async function fetchContacts(
 export function useContacts(
   visibleColumns: string[],
   viewFilters: SavedViewFilters,
+  sort: ContactSortState = null,
   initialPage = 1,
   initialPageSize = 10,
 ) {
   const paged = usePagedList<Contact, ContactsResponse>({
     queryKey: ["sales-contacts"],
-    fetcher: (page, pageSize, filters, columns) => fetchContacts(page, pageSize, columns, filters),
+    fetcher: (page, pageSize, filters, columns, sortState) => fetchContacts(page, pageSize, columns, filters, sortState),
     visibleColumns,
     filters: viewFilters,
+    sort,
     initialPage,
     initialPageSize,
     errorMessage: () => "Failed to load contacts",

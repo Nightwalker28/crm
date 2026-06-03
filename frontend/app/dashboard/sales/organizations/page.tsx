@@ -6,7 +6,7 @@ import OrganizationsHeader from "@/components/organizations/organizationHeader";
 import SearchBar from "@/components/ui/SearchBar";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import Pagination from "@/components/ui/Pagination";
-import { useOrganizations } from "@/hooks/sales/useOrganizations";
+import { useOrganizations, type OrganizationSortState } from "@/hooks/sales/useOrganizations";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
@@ -34,6 +34,14 @@ export default function OrganizationsPage() {
   );
   const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
   const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
+  const activeSort = useMemo<OrganizationSortState>(() => {
+    const sort = draftConfig.sort;
+    if (!sort || typeof sort.key !== "string") return null;
+    return {
+      key: sort.key,
+      direction: sort.direction === "desc" ? "desc" : "asc",
+    };
+  }, [draftConfig.sort]);
   const {
     organizations,
     page,
@@ -52,7 +60,7 @@ export default function OrganizationsPage() {
     isCreating,
     setCreateOpen,
     createOrganization,
-  } = useOrganizations(visibleColumns, activeFilters);
+  } = useOrganizations(visibleColumns, activeFilters, activeSort);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const currentPageIds = useMemo(
     () => organizations.map((org) => org.org_id).filter((id): id is number => typeof id === "number"),
@@ -140,6 +148,13 @@ export default function OrganizationsPage() {
         currentPageSelectionState={currentPageSelectionState}
         onToggleRow={toggleRow}
         onToggleCurrentPage={toggleCurrentPage}
+        sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
+        onSortChange={(nextSort) =>
+          setDraftConfig((current) => ({
+            ...current,
+            sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null,
+          }))
+        }
       />
 
       <Pagination

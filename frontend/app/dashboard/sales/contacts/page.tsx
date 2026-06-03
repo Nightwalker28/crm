@@ -3,8 +3,8 @@
 import ContactsHeader from "@/components/contacts/contactHeader";
 import Pagination from "@/components/ui/Pagination";
 import ContactList from "@/components/contacts/contactList";
-import { useContacts } from "@/hooks/sales/useContacts";
-import { useState } from "react";
+import { useContacts, type ContactSortState } from "@/hooks/sales/useContacts";
+import { useMemo, useState } from "react";
 import CreateContactModal from "@/components/contacts/createContactModal";
 import SearchBar from "@/components/ui/SearchBar";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
@@ -13,7 +13,6 @@ import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
-import { useMemo } from "react";
 
 export default function ContactsPage() {
   const { data: customFields = [] } = useModuleCustomFields("sales_contacts");
@@ -35,6 +34,14 @@ export default function ContactsPage() {
   );
   const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
   const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
+  const activeSort = useMemo<ContactSortState>(() => {
+    const sort = draftConfig.sort;
+    if (!sort || typeof sort.key !== "string") return null;
+    return {
+      key: sort.key,
+      direction: sort.direction === "desc" ? "desc" : "asc",
+    };
+  }, [draftConfig.sort]);
 
   const {
     contacts,
@@ -50,7 +57,7 @@ export default function ContactsPage() {
     error,
     goToPage,
     refresh,
-  } = useContacts(visibleColumns, activeFilters);
+  } = useContacts(visibleColumns, activeFilters, activeSort);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -151,6 +158,13 @@ export default function ContactsPage() {
         currentPageSelectionState={currentPageSelectionState}
         onToggleRow={toggleRow}
         onToggleCurrentPage={toggleCurrentPage}
+        sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
+        onSortChange={(nextSort) =>
+          setDraftConfig((current) => ({
+            ...current,
+            sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null,
+          }))
+        }
       />
 
       <Pagination

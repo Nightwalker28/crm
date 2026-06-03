@@ -263,6 +263,8 @@ def list_opportunities(
     *,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[list[SalesOpportunity], int]:
     items, total_count = opportunities_repository.list_paginated(
         db,
@@ -271,6 +273,8 @@ def list_opportunities(
         search=search,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     items = hydrate_custom_field_records(
         db,

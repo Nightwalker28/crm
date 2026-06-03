@@ -4,11 +4,18 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
+from sqlalchemy import create_engine
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import sessionmaker
 
+from app.core.database import Base
+from app.core.pagination import create_pagination
+from app.modules.client_portal import models as client_portal_models  # noqa: F401
+from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesContact
 from app.modules.sales.services import contacts_services
-from app.modules.user_management.models import User
+from app.modules.user_management import models as user_management_models  # noqa: F401
+from app.modules.user_management.models import Tenant, User, UserStatus
 
 
 class FakeQuery:
@@ -193,6 +200,70 @@ class ExportContactsTests(unittest.TestCase):
         self.assertIsInstance(captured_rows[0], list)
         self.assertEqual(captured_rows[0][0]["contact_id"], 12)
         self.assertEqual(captured_rows[0][0]["created_time"], "2026-01-02T03:04:05")
+
+
+class ListSalesContactsTests(unittest.TestCase):
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        self.SessionLocal = sessionmaker(bind=engine)
+        self.db = self.SessionLocal()
+        self.db.add_all(
+            [
+                Tenant(id=10, slug="default", name="Default"),
+                User(
+                    id=1,
+                    tenant_id=10,
+                    email="owner@example.com",
+                    first_name="Owner",
+                    last_name="User",
+                    is_active=UserStatus.active,
+                ),
+            ]
+        )
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_contact_list_sorts_before_pagination(self):
+        self.db.add_all(
+            [
+                SalesContact(
+                    contact_id=103,
+                    tenant_id=10,
+                    first_name="Zoe",
+                    primary_email="zoe@example.com",
+                    assigned_to=1,
+                ),
+                SalesContact(
+                    contact_id=104,
+                    tenant_id=10,
+                    first_name="Ada",
+                    primary_email="ada@example.com",
+                    assigned_to=1,
+                ),
+                SalesContact(
+                    contact_id=105,
+                    tenant_id=10,
+                    first_name="Mia",
+                    primary_email="mia@example.com",
+                    assigned_to=1,
+                ),
+            ]
+        )
+        self.db.commit()
+
+        contacts, total_count = contacts_services.list_sales_contacts(
+            self.db,
+            tenant_id=10,
+            pagination=create_pagination(1, 2),
+            sort_by="first_name",
+            sort_direction="asc",
+        )
+
+        self.assertEqual(total_count, 3)
+        self.assertEqual([contact.first_name for contact in contacts], ["Ada", "Mia"])
 
 
 if __name__ == "__main__":

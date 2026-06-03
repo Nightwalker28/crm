@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 import { useNotifications } from "@/hooks/useNotifications";
+import { canonicalizeDashboardHref } from "@/lib/routes";
 
 const SEEN_KEY = "lynk:browser-notification-seen";
 const MAX_SEEN_IDS = 200;
@@ -56,7 +57,7 @@ export default function BrowserNotificationsBridge() {
 
         browserNotification.onclick = () => {
           window.focus();
-          router.push(notification.link_url || "/dashboard/tasks");
+          router.push(canonicalizeDashboardHref(notification.link_url || "/dashboard/tasks"));
           browserNotification.close();
         };
       });

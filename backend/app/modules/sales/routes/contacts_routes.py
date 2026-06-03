@@ -158,6 +158,8 @@ def _serialize_contact_list_item(contact, fields: set[str]) -> SalesContactListI
 @router.get("", response_model=SalesContactListResponse)
 def list_contacts(
     fields: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
@@ -182,6 +184,8 @@ def list_contacts(
         search=None,
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     selected_fields = _parse_list_fields(fields, _enabled_contact_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_contact_list_item(contact, selected_fields) for contact in contacts]
@@ -229,6 +233,8 @@ def search_contacts(
         description="Search by name, email, title, region, country, or LinkedIn URL",
     ),
     fields: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
@@ -253,6 +259,8 @@ def search_contacts(
         search=query,
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     selected_fields = _parse_list_fields(fields, _enabled_contact_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_contact_list_item(contact, selected_fields) for contact in contacts]

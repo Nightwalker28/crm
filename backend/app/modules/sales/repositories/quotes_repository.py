@@ -12,6 +12,26 @@ from app.modules.platform.services.custom_fields import build_custom_field_filte
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
 from app.modules.user_management.models import User
 
+QUOTE_SORT_FIELDS = {
+    "quote_number": SalesQuote.quote_number,
+    "title": SalesQuote.title,
+    "customer_name": SalesQuote.customer_name,
+    "contact_id": SalesQuote.contact_id,
+    "organization_id": SalesQuote.organization_id,
+    "opportunity_id": SalesQuote.opportunity_id,
+    "assigned_to": SalesQuote.assigned_to,
+    "status": SalesQuote.status,
+    "issue_date": SalesQuote.issue_date,
+    "expiry_date": SalesQuote.expiry_date,
+    "currency": SalesQuote.currency,
+    "subtotal_amount": SalesQuote.subtotal_amount,
+    "discount_amount": SalesQuote.discount_amount,
+    "tax_amount": SalesQuote.tax_amount,
+    "total_amount": SalesQuote.total_amount,
+    "created_time": SalesQuote.created_time,
+    "updated_at": SalesQuote.updated_at,
+}
+
 
 def user_exists(db: Session, *, tenant_id: int, user_id: int) -> bool:
     return bool(db.query(User.id).filter(User.id == user_id, User.tenant_id == tenant_id).first())
@@ -115,6 +135,16 @@ def build_quotes_query(
     return apply_search_filter(query, search)
 
 
+def apply_quote_sort(query, *, sort_by: str | None = None, sort_direction: str | None = None):
+    sort_column = QUOTE_SORT_FIELDS.get((sort_by or "").strip())
+    if sort_column is None:
+        return query.order_by(None).order_by(SalesQuote.created_time.desc(), SalesQuote.quote_id.desc())
+
+    direction = (sort_direction or "asc").strip().lower()
+    ordered = sort_column.desc() if direction == "desc" else sort_column.asc()
+    return query.order_by(None).order_by(ordered.nullslast(), SalesQuote.quote_id.desc())
+
+
 def list_quotes(
     db: Session,
     *,
@@ -123,6 +153,8 @@ def list_quotes(
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[Sequence[SalesQuote], int]:
     query = build_quotes_query(
         db,
@@ -132,7 +164,12 @@ def list_quotes(
         any_filter_conditions=any_filter_conditions,
     )
     total_count = query.count()
-    quotes = query.order_by(SalesQuote.created_time.desc(), SalesQuote.quote_id.desc()).offset(pagination.offset).limit(pagination.limit).all()
+    quotes = (
+        apply_quote_sort(query, sort_by=sort_by, sort_direction=sort_direction)
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+        .all()
+    )
     return quotes, total_count
 
 

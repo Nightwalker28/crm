@@ -8,7 +8,7 @@ import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
-import { useOrders } from "@/hooks/sales/useOrders";
+import { useOrders, type OrderSortState } from "@/hooks/sales/useOrders";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
@@ -22,7 +22,15 @@ export default function OrdersPage() {
   const { views, selectedViewId, setSelectedViewId, draftConfig, setDraftConfig } = useSavedViews("sales_orders", defaultConfig);
   const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
   const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
-  const { orders, page, totalPages, totalCount, rangeStart, rangeEnd, pageSize, onPageSizeChange, isLoading, isFetching, error, goToPage, refresh } = useOrders(visibleColumns, activeFilters);
+  const activeSort = useMemo<OrderSortState>(() => {
+    const sort = draftConfig.sort;
+    if (!sort || typeof sort.key !== "string") return null;
+    return {
+      key: sort.key,
+      direction: sort.direction === "desc" ? "desc" : "asc",
+    };
+  }, [draftConfig.sort]);
+  const { orders, page, totalPages, totalCount, rangeStart, rangeEnd, pageSize, onPageSizeChange, isLoading, isFetching, error, goToPage, refresh } = useOrders(visibleColumns, activeFilters, activeSort);
 
   return (
     <div className="flex flex-col gap-6">
@@ -35,7 +43,20 @@ export default function OrdersPage() {
           <button onClick={refresh} className="underline underline-offset-2">Retry</button>
         </div>
       ) : null}
-      <OrdersTable orders={orders} isLoading={isLoading} isRefreshing={isFetching && !isLoading} visibleColumns={visibleColumns} columnOptions={definition?.columns ?? []} />
+      <OrdersTable
+        orders={orders}
+        isLoading={isLoading}
+        isRefreshing={isFetching && !isLoading}
+        visibleColumns={visibleColumns}
+        columnOptions={definition?.columns ?? []}
+        sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
+        onSortChange={(nextSort) =>
+          setDraftConfig((current) => ({
+            ...current,
+            sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null,
+          }))
+        }
+      />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
     </div>
   );

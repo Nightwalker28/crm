@@ -183,6 +183,8 @@ def _parse_filters(db: Session, tenant_id: int, filter_logic: str, filters: str 
 @router.get("", response_model=SalesLeadListResponse)
 def list_leads(
     fields: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
@@ -200,6 +202,8 @@ def list_leads(
         pagination,
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     selected_fields = _parse_list_fields(fields, _enabled_lead_list_fields(db, current_user.tenant_id))
     return build_paged_response([_serialize_lead_list_item(lead, selected_fields) for lead in leads], total_count, pagination)
@@ -235,6 +239,8 @@ def list_leads_cursor(
 def search_leads(
     query: str = Query(..., min_length=1),
     fields: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
@@ -253,6 +259,8 @@ def search_leads(
         search=query,
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     selected_fields = _parse_list_fields(fields, _enabled_lead_list_fields(db, current_user.tenant_id))
     return build_paged_response([_serialize_lead_list_item(lead, selected_fields) for lead in leads], total_count, pagination)

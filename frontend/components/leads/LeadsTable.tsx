@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { UserRoundPlus } from "lucide-react";
 
@@ -37,6 +37,8 @@ type LeadsTableProps = {
   currentPageSelectionState?: boolean | "indeterminate";
   onToggleRow?: (leadId: number, checked: boolean) => void;
   onToggleCurrentPage?: (checked: boolean) => void;
+  sort?: SortState;
+  onSortChange?: (sort: SortState) => void;
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -70,25 +72,16 @@ export default function LeadsTable({
   currentPageSelectionState = false,
   onToggleRow,
   onToggleCurrentPage,
+  sort = null,
+  onSortChange,
 }: LeadsTableProps) {
   const router = useRouter();
-  const [sort, setSort] = useState<SortState>(null);
-
-  const sortedLeads = useMemo(() => {
-    if (!sort) return leads;
-    return [...leads].sort((left, right) => {
-      const leftValue = String(left[sort.column as keyof Lead] ?? "").toLowerCase();
-      const rightValue = String(right[sort.column as keyof Lead] ?? "").toLowerCase();
-      const result = leftValue.localeCompare(rightValue, undefined, { numeric: true });
-      return sort.direction === "asc" ? result : -result;
-    });
-  }, [leads, sort]);
 
   function toggleSort(column: string) {
-    setSort((current) => {
-      if (current?.column !== column) return { column, direction: "asc" };
-      return { column, direction: current.direction === "asc" ? "desc" : "asc" };
-    });
+    const nextSort: SortState = sort?.column === column
+      ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
+      : { column, direction: "asc" };
+    onSortChange?.(nextSort);
   }
 
   function renderCell(lead: Lead, column: string) {
@@ -149,7 +142,7 @@ export default function LeadsTable({
             </TableHead>
             {visibleColumns.map((column) => {
               const label = getReadableColumnLabel(column, columnOptions);
-              const sortable = !isCustomFieldColumnKey(column) && ["first_name", "last_name", "company", "primary_email", "status", "score", "score_grade"].includes(column);
+              const sortable = !isCustomFieldColumnKey(column) && ["first_name", "last_name", "company", "primary_email", "status", "score", "score_grade", "created_time"].includes(column);
               return sortable ? (
                 <SortableHead
                   key={column}
@@ -175,7 +168,7 @@ export default function LeadsTable({
               </TableCell>
             </TableRow>
           ) : (
-            sortedLeads.map((lead) => (
+            leads.map((lead) => (
               <TableRow key={lead.lead_id} className="group cursor-pointer" onClick={() => router.push(`/dashboard/sales/leads/${lead.lead_id}`)}>
                 <TableCell className="w-12 pr-0" onClick={(event) => event.stopPropagation()}>
                   <Checkbox

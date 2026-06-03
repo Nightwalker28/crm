@@ -32,7 +32,7 @@ import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getModuleRoute } from "@/lib/module-registry";
-import { SETTINGS_ROUTES } from "@/lib/routes";
+import { DASHBOARD_ROUTES, SETTINGS_ROUTES, canonicalizeDashboardHref } from "@/lib/routes";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -454,11 +454,11 @@ export default function DashboardHomePage() {
   const widgets = layoutQuery.data?.has_layout ? layoutQuery.data.widgets : DEFAULT_WIDGETS;
 
   const accessibleRoutes = useMemo(
-    () => new Set(modules.map((module) => module.base_route).filter(Boolean)),
+    () => new Set(modules.map((module) => getModuleRoute(module.name, module.base_route)).filter(Boolean)),
     [modules],
   );
   const modulesByName = useMemo(() => new Map(modules.map((module) => [module.name, module])), [modules]);
-  const hasReportAccess = accessibleRoutes.has("/dashboard/reports");
+  const hasReportAccess = accessibleRoutes.has(DASHBOARD_ROUTES.reports);
   const hasCrmWidgets = widgets.some((widget) => (
     isCrmWidget(widget.type) ||
     (widget.type === "module_summary" && ["sales_leads", "sales_opportunities", "sales_quotes", "tasks"].includes(widget.module_key || ""))
@@ -493,14 +493,14 @@ export default function DashboardHomePage() {
 
   const quickActions = useMemo(() => {
     const actions = [
-      { href: "/dashboard/tasks", label: "Tasks", helper: "Open assigned and team work queues" },
-      { href: "/dashboard/calendar", label: "Calendar", helper: "Schedule internal events and review invites" },
-      { href: "/dashboard/mail", label: "Mail", helper: "Open connected mailbox and CRM communication history" },
-      { href: "/dashboard/documents", label: "Documents", helper: "Review uploaded and record-linked documents" },
-      { href: "/dashboard/sales/contacts", label: "Contacts", helper: "Open the CRM contact list" },
-      { href: "/dashboard/sales/organizations", label: "Accounts", helper: "Open account records" },
-      { href: "/dashboard/sales/opportunities", label: "Deals", helper: "Review and update pipeline" },
-      { href: "/dashboard/sales/quotes", label: "Quotes", helper: "Review CRM quote status and follow-up" },
+      { href: DASHBOARD_ROUTES.tasks, label: "Tasks", helper: "Open assigned and team work queues" },
+      { href: DASHBOARD_ROUTES.calendar, label: "Calendar", helper: "Schedule internal events and review invites" },
+      { href: DASHBOARD_ROUTES.mail, label: "Mail", helper: "Open connected mailbox and CRM communication history" },
+      { href: DASHBOARD_ROUTES.documents, label: "Documents", helper: "Review uploaded and record-linked documents" },
+      { href: DASHBOARD_ROUTES.contacts, label: "Contacts", helper: "Open the CRM contact list" },
+      { href: DASHBOARD_ROUTES.accounts, label: "Accounts", helper: "Open account records" },
+      { href: DASHBOARD_ROUTES.deals, label: "Deals", helper: "Review and update pipeline" },
+      { href: DASHBOARD_ROUTES.quotes, label: "Quotes", helper: "Review CRM quote status and follow-up" },
     ];
     return actions.filter((action) => accessibleRoutes.has(action.href));
   }, [accessibleRoutes]);
@@ -708,7 +708,7 @@ export default function DashboardHomePage() {
       return notifications.length ? (
         <div className="divide-y divide-neutral-800 rounded-lg border border-neutral-800">
           {notifications.slice(0, 6).map((notification) => (
-            <Link key={notification.id} href={notification.link_url || SETTINGS_ROUTES.activityLog} className="block px-4 py-4 transition-colors hover:bg-neutral-900/50">
+            <Link key={notification.id} href={canonicalizeDashboardHref(notification.link_url || SETTINGS_ROUTES.activityLog)} className="block px-4 py-4 transition-colors hover:bg-neutral-900/50">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-neutral-100">{notification.title}</div>
@@ -764,17 +764,17 @@ export default function DashboardHomePage() {
                 Activity Log
               </Link>
             </Button>
-            {accessibleRoutes.has("/dashboard/tasks") ? (
+            {accessibleRoutes.has(DASHBOARD_ROUTES.tasks) ? (
               <Button asChild>
-                <Link href="/dashboard/tasks">
+                <Link href={DASHBOARD_ROUTES.tasks}>
                   <Plus className="h-4 w-4" />
                   New Work
                 </Link>
               </Button>
             ) : null}
-            {accessibleRoutes.has("/dashboard/calendar") ? <HeaderLink href="/dashboard/calendar" icon={<CalendarDays className="h-4 w-4" />} label="Calendar" /> : null}
-            {accessibleRoutes.has("/dashboard/mail") ? <HeaderLink href="/dashboard/mail" icon={<Mail className="h-4 w-4" />} label="Mail" /> : null}
-            {accessibleRoutes.has("/dashboard/documents") ? <HeaderLink href="/dashboard/documents" icon={<FileText className="h-4 w-4" />} label="Documents" /> : null}
+            {accessibleRoutes.has(DASHBOARD_ROUTES.calendar) ? <HeaderLink href={DASHBOARD_ROUTES.calendar} icon={<CalendarDays className="h-4 w-4" />} label="Calendar" /> : null}
+            {accessibleRoutes.has(DASHBOARD_ROUTES.mail) ? <HeaderLink href={DASHBOARD_ROUTES.mail} icon={<Mail className="h-4 w-4" />} label="Mail" /> : null}
+            {accessibleRoutes.has(DASHBOARD_ROUTES.documents) ? <HeaderLink href={DASHBOARD_ROUTES.documents} icon={<FileText className="h-4 w-4" />} label="Documents" /> : null}
           </>
         }
       />
@@ -842,7 +842,7 @@ export default function DashboardHomePage() {
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-neutral-800 bg-black/20 px-4 py-3 text-sm text-neutral-400">
                 <span>{savedReportsQuery.isLoading ? "Loading saved reports..." : savedReports.length ? "Saved reports can be added as dashboard charts." : "Create saved reports to add them here as charts."}</span>
                 <Button asChild variant="outline" size="sm">
-                  <Link href="/dashboard/reports">Open Reports</Link>
+                  <Link href={DASHBOARD_ROUTES.reports}>Open Reports</Link>
                 </Button>
               </div>
             ) : null}
@@ -901,7 +901,7 @@ function SummaryTable({ modules, summary, unreadCount }: { modules: AccessibleMo
                 <td className="px-3 py-3 text-neutral-100">{getModuleDisplayName(item.name, item.description ?? undefined)}</td>
                 <td className="px-3 py-3 text-neutral-400">{moduleSummaryText(item, summary, unreadCount)}</td>
                 <td className="px-3 py-3">
-                  <Link href={item.base_route || "/dashboard/profile"} className="inline-flex items-center gap-1 text-neutral-200 hover:text-white">
+                  <Link href={getModuleRoute(item.name, item.base_route) || "/dashboard/profile"} className="inline-flex items-center gap-1 text-neutral-200 hover:text-white">
                     View
                     <ArrowRight className="h-3.5 w-3.5" />
                   </Link>
@@ -1007,7 +1007,7 @@ function ReportChartWidget({ widget, savedReports, hasReportAccess }: { widget: 
     return (
       <div className="space-y-3">
         <EmptyMessage>This saved report is no longer available.</EmptyMessage>
-        <Button asChild variant="outline" size="sm"><Link href="/dashboard/reports">Open Reports</Link></Button>
+        <Button asChild variant="outline" size="sm"><Link href={DASHBOARD_ROUTES.reports}>Open Reports</Link></Button>
       </div>
     );
   }

@@ -212,6 +212,8 @@ def list_sales_quotes(
     *,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[Sequence[SalesQuote], int]:
     quotes, total_count = quotes_repository.list_quotes(
         db,
@@ -220,6 +222,8 @@ def list_sales_quotes(
         search=search,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     quotes = hydrate_custom_field_records(db, tenant_id=tenant_id, module_key="sales_quotes", records=quotes, record_id_attr="quote_id")
     return quotes, total_count

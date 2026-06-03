@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.core.pagination import create_pagination
+from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesLead, SalesLeadScore
 from app.modules.sales.services.leads_services import calculate_lead_score, list_sales_leads, update_sales_lead
 from app.modules.user_management import models as user_management_models  # noqa: F401
@@ -118,6 +119,27 @@ class LeadScoringTests(unittest.TestCase):
 
         self.assertEqual(total_count, 1)
         self.assertEqual([lead.lead_id for lead in leads], [hot.lead_id])
+
+    def test_lead_list_sorts_before_pagination(self):
+        self.db.add_all(
+            [
+                SalesLead(lead_id=103, tenant_id=10, first_name="Zoe", primary_email="zoe@example.com", status="new", assigned_to=1),
+                SalesLead(lead_id=104, tenant_id=10, first_name="Ada", primary_email="ada@example.com", status="new", assigned_to=1),
+                SalesLead(lead_id=105, tenant_id=10, first_name="Mia", primary_email="mia@example.com", status="new", assigned_to=1),
+            ]
+        )
+        self.db.commit()
+
+        leads, total_count = list_sales_leads(
+            self.db,
+            tenant_id=10,
+            pagination=create_pagination(1, 2),
+            sort_by="first_name",
+            sort_direction="asc",
+        )
+
+        self.assertEqual(total_count, 3)
+        self.assertEqual([lead.first_name for lead in leads], ["Ada", "Mia"])
 
 
 if __name__ == "__main__":

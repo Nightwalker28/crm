@@ -39,6 +39,42 @@ export const SETTINGS_ROUTES = {
   activityLog: "/dashboard/settings/activity-log",
 } as const;
 
+const LEGACY_DASHBOARD_ROUTE_REDIRECTS: Record<string, string> = {
+  "/dashboard/admin": SETTINGS_ROUTES.general,
+  "/dashboard/admin/users": SETTINGS_ROUTES.users,
+  "/dashboard/admin/teams": SETTINGS_ROUTES.teams,
+  "/dashboard/admin/roles-permissions": SETTINGS_ROUTES.permissions,
+  "/dashboard/admin/modules": SETTINGS_ROUTES.modules,
+  "/dashboard/admin/custom-fields": SETTINGS_ROUTES.fields,
+  "/dashboard/admin/integrations": SETTINGS_ROUTES.integrations,
+  "/dashboard/admin/message-templates": SETTINGS_ROUTES.templates,
+  "/dashboard/settings/company": SETTINGS_ROUTES.general,
+  "/dashboard/settings/roles-permissions": SETTINGS_ROUTES.permissions,
+  "/dashboard/settings/custom-fields": SETTINGS_ROUTES.fields,
+  "/dashboard/recycle-bin": SETTINGS_ROUTES.recycleBin,
+  "/dashboard/activity-log": SETTINGS_ROUTES.activityLog,
+  "/dashboard/finance/invoices": DASHBOARD_ROUTES.insertionOrders,
+};
+
+const LEGACY_DASHBOARD_ROUTE_PREFIX_REDIRECTS: Array<{ from: string; to: string }> = [
+  { from: "/dashboard/admin/modules", to: SETTINGS_ROUTES.modules },
+];
+
+export function canonicalizeDashboardHref(href: string): string {
+  const match = href.match(/^([^?#]*)([?#].*)?$/);
+  const path = match?.[1] ?? href;
+  const suffix = match?.[2] ?? "";
+  const exact = LEGACY_DASHBOARD_ROUTE_REDIRECTS[path];
+  if (exact) {
+    return `${exact}${suffix}`;
+  }
+  const prefix = LEGACY_DASHBOARD_ROUTE_PREFIX_REDIRECTS.find((item) => path.startsWith(`${item.from}/`));
+  if (prefix) {
+    return `${prefix.to}${path.slice(prefix.from.length)}${suffix}`;
+  }
+  return href;
+}
+
 const FRIENDLY_ROUTE_LABELS: Record<string, string> = {
   leads: "Leads",
   organizations: "Accounts",

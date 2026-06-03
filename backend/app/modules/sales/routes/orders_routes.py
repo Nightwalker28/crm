@@ -35,6 +35,8 @@ def _serialize_order(order) -> dict:
 
 @router.get("", response_model=SalesOrderListResponse)
 def list_orders(
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
@@ -46,13 +48,23 @@ def list_orders(
     require_permission=Depends(require_action_access("sales_orders", "view")),
 ):
     all_conditions, any_conditions = _parse_filters(filter_logic, filters, filters_all, filters_any)
-    orders, total_count = list_sales_orders(db, tenant_id=current_user.tenant_id, pagination=pagination, all_filter_conditions=all_conditions, any_filter_conditions=any_conditions)
+    orders, total_count = list_sales_orders(
+        db,
+        tenant_id=current_user.tenant_id,
+        pagination=pagination,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+    )
     return build_paged_response([SalesOrderListItem.model_validate(order) for order in orders], total_count, pagination)
 
 
 @router.get("/search", response_model=SalesOrderListResponse)
 def search_orders(
     query: str = Query(..., min_length=1),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
@@ -64,7 +76,16 @@ def search_orders(
     require_permission=Depends(require_action_access("sales_orders", "view")),
 ):
     all_conditions, any_conditions = _parse_filters(filter_logic, filters, filters_all, filters_any)
-    orders, total_count = list_sales_orders(db, tenant_id=current_user.tenant_id, pagination=pagination, search=query, all_filter_conditions=all_conditions, any_filter_conditions=any_conditions)
+    orders, total_count = list_sales_orders(
+        db,
+        tenant_id=current_user.tenant_id,
+        pagination=pagination,
+        search=query,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+    )
     return build_paged_response([SalesOrderListItem.model_validate(order) for order in orders], total_count, pagination)
 
 

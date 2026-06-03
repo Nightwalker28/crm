@@ -12,6 +12,17 @@ from app.modules.platform.services.custom_fields import build_custom_field_filte
 from app.modules.sales.models import SalesLead, SalesLeadScore
 from app.modules.user_management.models import User
 
+LEAD_SORT_FIELDS = {
+    "first_name": SalesLead.first_name,
+    "last_name": SalesLead.last_name,
+    "company": SalesLead.company,
+    "primary_email": SalesLead.primary_email,
+    "status": SalesLead.status,
+    "score": SalesLeadScore.score,
+    "score_grade": SalesLeadScore.grade,
+    "created_time": SalesLead.created_time,
+}
+
 
 def apply_search_filter(query, search: str | None):
     return apply_ranked_search(
@@ -26,6 +37,20 @@ def _uses_score_filter(conditions: list[dict] | None) -> bool:
     return any(condition.get("field") in {"score", "score_grade"} for condition in conditions or [])
 
 
+def _uses_score_data(conditions: list[dict] | None, sort_by: str | None = None) -> bool:
+    return _uses_score_filter(conditions) or (sort_by or "").strip() in {"score", "score_grade"}
+
+
+def apply_lead_sort(query, *, sort_by: str | None = None, sort_direction: str | None = None):
+    sort_column = LEAD_SORT_FIELDS.get((sort_by or "").strip())
+    if sort_column is None:
+        return query.order_by(None).order_by(SalesLead.created_time.desc(), SalesLead.lead_id.desc())
+
+    direction = (sort_direction or "asc").strip().lower()
+    ordered = sort_column.desc() if direction == "desc" else sort_column.asc()
+    return query.order_by(None).order_by(ordered.nullslast(), SalesLead.lead_id.desc())
+
+
 def build_leads_query(
     db: Session,
     *,
@@ -33,12 +58,13 @@ def build_leads_query(
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
 ):
     query = db.query(SalesLead).filter(
         SalesLead.tenant_id == tenant_id,
         SalesLead.deleted_at.is_(None),
     )
-    if _uses_score_filter(all_filter_conditions) or _uses_score_filter(any_filter_conditions):
+    if _uses_score_data(all_filter_conditions, sort_by) or _uses_score_data(any_filter_conditions, sort_by):
         query = query.outerjoin(SalesLeadScore, SalesLeadScore.lead_id == SalesLead.lead_id)
     filter_field_map = {
         "first_name": {"expression": SalesLead.first_name, "type": "text"},
@@ -82,6 +108,8 @@ def list_leads(
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[Sequence[SalesLead], int]:
     query = build_leads_query(
         db,
@@ -89,9 +117,10 @@ def list_leads(
         search=search,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
+        sort_by=sort_by,
     )
     total_count = query.count()
-    leads = query.offset(pagination.offset).limit(pagination.limit).all()
+    leads = apply_lead_sort(query, sort_by=sort_by, sort_direction=sort_direction).offset(pagination.offset).limit(pagination.limit).all()
     return leads, total_count
 
 

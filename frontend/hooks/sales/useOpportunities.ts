@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 
 export type Opportunity = {
   opportunity_id: number;
@@ -44,12 +44,24 @@ type OpportunitiesResponse = {
   page: number;
 };
 
-async function fetchOpportunities(page: number, pageSize: number, filters: SavedViewFilters, visibleColumns: string[]) {
+export type OpportunitySortState = PagedListSort;
+
+async function fetchOpportunities(
+  page: number,
+  pageSize: number,
+  filters: SavedViewFilters,
+  visibleColumns: string[],
+  sort: OpportunitySortState,
+) {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   appendSavedViewFilterParams(params, filters);
   const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
   if (baseVisibleColumns.length) {
     params.set("fields", baseVisibleColumns.join(","));
+  }
+  if (sort) {
+    params.set("sort_by", sort.key);
+    params.set("sort_direction", sort.direction);
   }
   const search = typeof filters.search === "string" ? filters.search.trim() : "";
   const path = search.trim() ? `/sales/opportunities/search?${params.toString()}` : `/sales/opportunities?${params.toString()}`;
@@ -111,6 +123,7 @@ async function createFinanceIo(opportunityId: number) {
 export function useOpportunities(
   visibleColumns: string[],
   viewFilters: SavedViewFilters,
+  sort: OpportunitySortState = null,
   initialPage = 1,
   initialPageSize = 10,
 ) {
@@ -120,6 +133,7 @@ export function useOpportunities(
     fetcher: fetchOpportunities,
     visibleColumns,
     filters: viewFilters,
+    sort,
     initialPage,
     initialPageSize,
   });

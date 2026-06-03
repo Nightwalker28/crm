@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { Users } from "lucide-react";
 
@@ -37,6 +37,8 @@ interface ContactListProps {
   currentPageSelectionState?: boolean | "indeterminate";
   onToggleRow?: (contactId: number, checked: boolean) => void;
   onToggleCurrentPage?: (checked: boolean) => void;
+  sort?: SortState;
+  onSortChange?: (sort: SortState) => void;
 }
 
 function getInitials(firstName?: string | null, lastName?: string | null, email?: string | null): string {
@@ -66,9 +68,10 @@ export default function ContactList({
   currentPageSelectionState = false,
   onToggleRow,
   onToggleCurrentPage,
+  sort = null,
+  onSortChange,
 }: ContactListProps) {
   const router = useRouter();
-  const [sort, setSort] = useState<SortState>(null);
   const headers: Record<string, string> = {
     first_name: "First Name",
     last_name: "Last Name",
@@ -80,6 +83,20 @@ export default function ContactList({
     country: "Country",
     linkedin_url: "LinkedIn",
   };
+  const sortableColumns = new Set([
+    "first_name",
+    "last_name",
+    "primary_email",
+    "contact_telephone",
+    "current_title",
+    "organization_name",
+    "region",
+    "country",
+    "linkedin_url",
+    "organization_id",
+    "assigned_to",
+    "created_time",
+  ]);
 
   const renderCell = (contact: Contact, column: string) => {
     if (isCustomFieldColumnKey(column)) {
@@ -188,21 +205,11 @@ export default function ContactList({
     }
   };
 
-  const sortedContacts = useMemo(() => {
-    if (!sort) return contacts;
-    return [...contacts].sort((left, right) => {
-      const leftValue = String(left[sort.column as keyof Contact] ?? "").toLowerCase();
-      const rightValue = String(right[sort.column as keyof Contact] ?? "").toLowerCase();
-      const result = leftValue.localeCompare(rightValue, undefined, { numeric: true });
-      return sort.direction === "asc" ? result : -result;
-    });
-  }, [contacts, sort]);
-
   function toggleSort(column: string) {
-    setSort((current) => {
-      if (current?.column !== column) return { column, direction: "asc" };
-      return { column, direction: current.direction === "asc" ? "desc" : "asc" };
-    });
+    const nextSort: SortState = sort?.column === column
+      ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
+      : { column, direction: "asc" };
+    onSortChange?.(nextSort);
   }
 
   return (
@@ -222,7 +229,7 @@ export default function ContactList({
             </TableHead>
             {visibleColumns.map((column) => {
               const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
-              const sortable = !isCustomFieldColumnKey(column) && ["first_name", "last_name", "primary_email", "organization_name", "region", "country"].includes(column);
+              const sortable = !isCustomFieldColumnKey(column) && sortableColumns.has(column);
               return sortable ? (
                 <SortableHead
                   key={column}
@@ -249,7 +256,7 @@ export default function ContactList({
               </TableCell>
             </TableRow>
           ) : (
-            sortedContacts.map((contact) => (
+            contacts.map((contact) => (
               <TableRow
                 key={contact.contact_id}
                 className="group cursor-pointer"

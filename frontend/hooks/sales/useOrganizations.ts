@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 
 export type Organization = {
   org_id?: number;
@@ -19,6 +19,9 @@ export type Organization = {
   industry?: string;
   annual_revenue?: string;
   billing_country?: string;
+  assigned_to?: number | null;
+  customer_group_id?: number | null;
+  created_time?: string | null;
   custom_fields?: Record<string, unknown> | null;
 };
 
@@ -31,11 +34,14 @@ export type OrganizationsResponse = {
   page: number;
 };
 
+export type OrganizationSortState = PagedListSort;
+
 async function fetchOrganizations(
   page: number,
   pageSize: number,
   filters: SavedViewFilters,
   visibleColumns: string[],
+  sort: OrganizationSortState,
 ): Promise<OrganizationsResponse> {
   const params = new URLSearchParams({
     page: String(page),
@@ -43,6 +49,10 @@ async function fetchOrganizations(
   });
 
   appendSavedViewFilterParams(params, filters);
+  if (sort) {
+    params.set("sort_by", sort.key);
+    params.set("sort_direction", sort.direction);
+  }
   const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
   if (baseVisibleColumns.length) {
     params.append("fields", baseVisibleColumns.join(","));
@@ -64,6 +74,7 @@ function getErrorMessage(error: unknown) {
 export function useOrganizations(
   visibleColumns: string[],
   viewFilters: SavedViewFilters,
+  sort: OrganizationSortState = null,
   initialPage = 1,
   initialPageSize = 10,
 ) {
@@ -74,6 +85,7 @@ export function useOrganizations(
     fetcher: fetchOrganizations,
     visibleColumns,
     filters: viewFilters,
+    sort,
     initialPage,
     initialPageSize,
     errorMessage: getErrorMessage,

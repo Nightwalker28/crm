@@ -9,7 +9,7 @@ import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
-import { useQuotes } from "@/hooks/sales/useQuotes";
+import { useQuotes, type QuoteSortState } from "@/hooks/sales/useQuotes";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
@@ -23,7 +23,15 @@ export default function QuotesPage() {
   const { views, selectedViewId, setSelectedViewId, draftConfig, setDraftConfig } = useSavedViews("sales_quotes", defaultConfig);
   const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
   const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
-  const { quotes, page, totalPages, totalCount, rangeStart, rangeEnd, pageSize, onPageSizeChange, isLoading, isFetching, error, goToPage, refresh } = useQuotes(visibleColumns, activeFilters);
+  const activeSort = useMemo<QuoteSortState>(() => {
+    const sort = draftConfig.sort;
+    if (!sort || typeof sort.key !== "string") return null;
+    return {
+      key: sort.key,
+      direction: sort.direction === "desc" ? "desc" : "asc",
+    };
+  }, [draftConfig.sort]);
+  const { quotes, page, totalPages, totalCount, rangeStart, rangeEnd, pageSize, onPageSizeChange, isLoading, isFetching, error, goToPage, refresh } = useQuotes(visibleColumns, activeFilters, activeSort);
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
@@ -72,6 +80,13 @@ export default function QuotesPage() {
         currentPageSelectionState={currentPageSelectionState}
         onToggleRow={toggleRow}
         onToggleCurrentPage={toggleCurrentPage}
+        sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
+        onSortChange={(nextSort) =>
+          setDraftConfig((current) => ({
+            ...current,
+            sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null,
+          }))
+        }
       />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
       <CreateQuoteModal isOpen={createOpen} onClose={() => setCreateOpen(false)} onSuccess={refresh} />

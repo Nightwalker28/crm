@@ -11,7 +11,7 @@ import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getModuleRoute, isModuleVisibleInNavigation } from "@/lib/module-registry";
-import { SETTINGS_ROUTES } from "@/lib/routes";
+import { canonicalizeDashboardHref } from "@/lib/routes";
 
 type SearchResult = {
   module_key: string;
@@ -39,20 +39,6 @@ async function fetchGlobalSearch(query: string): Promise<SearchResponse> {
     throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to search records.");
   }
   return body as SearchResponse;
-}
-
-function canonicalizeSearchHref(href: string) {
-  if (href === "/dashboard/admin" || href === "/dashboard/settings/company") return SETTINGS_ROUTES.general;
-  if (href === "/dashboard/admin/users") return SETTINGS_ROUTES.users;
-  if (href === "/dashboard/admin/teams") return SETTINGS_ROUTES.teams;
-  if (href === "/dashboard/admin/roles-permissions" || href === "/dashboard/settings/roles-permissions") return SETTINGS_ROUTES.permissions;
-  if (href === "/dashboard/admin/modules") return SETTINGS_ROUTES.modules;
-  if (href === "/dashboard/admin/custom-fields" || href === "/dashboard/settings/custom-fields") return SETTINGS_ROUTES.fields;
-  if (href === "/dashboard/admin/integrations") return SETTINGS_ROUTES.integrations;
-  if (href === "/dashboard/admin/message-templates") return SETTINGS_ROUTES.templates;
-  if (href === "/dashboard/recycle-bin") return SETTINGS_ROUTES.recycleBin;
-  if (href === "/dashboard/activity-log") return SETTINGS_ROUTES.activityLog;
-  return href;
 }
 
 export default function GlobalCommandPalette() {
@@ -119,7 +105,7 @@ export default function GlobalCommandPalette() {
     for (const item of searchQuery.data?.results ?? []) {
       const label = getModuleDisplayName(item.module_key) || item.module_label;
       const current = groups.get(label) ?? [];
-      current.push({ ...item, href: canonicalizeSearchHref(item.href) });
+      current.push({ ...item, href: canonicalizeDashboardHref(item.href) });
       groups.set(label, current);
     }
     return Array.from(groups.entries());
@@ -128,7 +114,7 @@ export default function GlobalCommandPalette() {
   function handleNavigate(href: string) {
     setQuery("");
     setOpen(false);
-    router.push(canonicalizeSearchHref(href));
+    router.push(canonicalizeDashboardHref(href));
   }
 
   const canSearch = deferredQuery.length >= 2;

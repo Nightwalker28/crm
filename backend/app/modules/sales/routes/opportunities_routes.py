@@ -208,6 +208,8 @@ def _serialize_opportunity_list_item(opportunity, fields: set[str]) -> SalesOppo
 @router.get("", response_model=SalesOpportunityListResponse)
 def list_sales_opportunities(
     fields: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
@@ -231,6 +233,8 @@ def list_sales_opportunities(
         pagination,
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     selected_fields = _parse_list_fields(fields, _enabled_opportunity_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_opportunity_list_item(item, selected_fields) for item in items]
@@ -276,6 +280,8 @@ def list_sales_opportunities_cursor(
 def search_sales_opportunities(
     query: str = Query(..., min_length=1, description="Search by opportunity fields"),
     fields: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
@@ -300,6 +306,8 @@ def search_sales_opportunities(
         search=query,
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     selected_fields = _parse_list_fields(fields, _enabled_opportunity_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_opportunity_list_item(item, selected_fields) for item in items]

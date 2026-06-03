@@ -12,7 +12,7 @@ import GlobalCommandPalette from "@/components/search/GlobalCommandPalette";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { getGuardedModuleRoutePrefixes, getModuleRoute, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
-import { DASHBOARD_ROUTES, SETTINGS_ROUTES, getFriendlyRouteLabel } from "@/lib/routes";
+import { DASHBOARD_ROUTES, SETTINGS_ROUTES, canonicalizeDashboardHref, getFriendlyRouteLabel } from "@/lib/routes";
 
 const ADMIN_ONLY_PREFIXES = [
   SETTINGS_ROUTES.root,
@@ -99,16 +99,22 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const isCheckingModuleAccess = Boolean((moduleRoute || isCustomModulePath) && modulesLoading);
   const isCheckingAccess = isCheckingAdminAccess || isCheckingModuleAccess;
   const isBlocked = requiresAdmin && !isLoading && !isAdmin;
+  const canonicalPathname = canonicalizeDashboardHref(pathname);
+  const hasLegacyPathname = canonicalPathname !== pathname;
   const isModuleBlocked = Boolean(
     (moduleRoute && !modulesLoading && !allowedModuleRoutes.has(moduleRoute)) ||
       (isCustomModulePath && !modulesLoading && !customModuleRoute),
   );
 
   useEffect(() => {
+    if (hasLegacyPathname) {
+      router.replace(canonicalPathname);
+      return;
+    }
     if (isBlocked || isModuleBlocked) {
       router.replace("/dashboard");
     }
-  }, [isBlocked, isModuleBlocked, router]);
+  }, [canonicalPathname, hasLegacyPathname, isBlocked, isModuleBlocked, router]);
 
   return (
     <div className="relative flex h-screen w-full overflow-hidden bg-neutral-950 text-neutral-200 font-sans">

@@ -8,7 +8,9 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.core.pagination import create_pagination
 from app.modules.catalog import models as catalog_models  # noqa: F401
+from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
 from app.modules.sales.services import quotes_services
 from app.modules.user_management import models as user_management_models  # noqa: F401
@@ -114,6 +116,54 @@ class QuoteOpportunityLinkTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "Quote contact must match the linked opportunity")
+
+    def test_quote_list_sorts_before_pagination(self):
+        self.db.add_all(
+            [
+                SalesQuote(
+                    quote_id=61,
+                    tenant_id=10,
+                    quote_number="Q-103",
+                    customer_name="Zeta",
+                    status="draft",
+                    currency="USD",
+                    total_amount=Decimal("300.00"),
+                    assigned_to=1,
+                ),
+                SalesQuote(
+                    quote_id=62,
+                    tenant_id=10,
+                    quote_number="Q-101",
+                    customer_name="Ada",
+                    status="draft",
+                    currency="USD",
+                    total_amount=Decimal("100.00"),
+                    assigned_to=1,
+                ),
+                SalesQuote(
+                    quote_id=63,
+                    tenant_id=10,
+                    quote_number="Q-102",
+                    customer_name="Mia",
+                    status="draft",
+                    currency="USD",
+                    total_amount=Decimal("200.00"),
+                    assigned_to=1,
+                ),
+            ]
+        )
+        self.db.commit()
+
+        quotes, total_count = quotes_services.list_sales_quotes(
+            self.db,
+            tenant_id=10,
+            pagination=create_pagination(1, 2),
+            sort_by="quote_number",
+            sort_direction="asc",
+        )
+
+        self.assertEqual(total_count, 3)
+        self.assertEqual([quote.quote_number for quote in quotes], ["Q-101", "Q-102"])
 
 
 if __name__ == "__main__":

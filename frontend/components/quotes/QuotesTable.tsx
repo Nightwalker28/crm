@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { FileText } from "lucide-react";
 
@@ -28,6 +28,8 @@ type QuotesTableProps = {
   currentPageSelectionState?: boolean | "indeterminate";
   onToggleRow?: (quoteId: number, checked: boolean) => void;
   onToggleCurrentPage?: (checked: boolean) => void;
+  sort?: SortState;
+  onSortChange?: (sort: SortState) => void;
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -44,21 +46,46 @@ function formatMoney(value: string | number | null | undefined, currency: string
   return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "USD" }).format(amount);
 }
 
-export default function QuotesTable({ quotes, isLoading, isRefreshing = false, visibleColumns, columnOptions = [], selectedIds = [], currentPageSelectionState = false, onToggleRow, onToggleCurrentPage }: QuotesTableProps) {
+const SORTABLE_COLUMNS = new Set([
+  "quote_number",
+  "title",
+  "customer_name",
+  "contact_id",
+  "organization_id",
+  "opportunity_id",
+  "assigned_to",
+  "status",
+  "issue_date",
+  "expiry_date",
+  "currency",
+  "subtotal_amount",
+  "discount_amount",
+  "tax_amount",
+  "total_amount",
+  "created_time",
+  "updated_at",
+]);
+
+export default function QuotesTable({
+  quotes,
+  isLoading,
+  isRefreshing = false,
+  visibleColumns,
+  columnOptions = [],
+  selectedIds = [],
+  currentPageSelectionState = false,
+  onToggleRow,
+  onToggleCurrentPage,
+  sort = null,
+  onSortChange,
+}: QuotesTableProps) {
   const router = useRouter();
-  const [sort, setSort] = useState<SortState>(null);
-  const sortedQuotes = useMemo(() => {
-    if (!sort) return quotes;
-    return [...quotes].sort((left, right) => {
-      const leftValue = String(left[sort.column as keyof Quote] ?? "").toLowerCase();
-      const rightValue = String(right[sort.column as keyof Quote] ?? "").toLowerCase();
-      const result = leftValue.localeCompare(rightValue, undefined, { numeric: true });
-      return sort.direction === "asc" ? result : -result;
-    });
-  }, [quotes, sort]);
 
   function toggleSort(column: string) {
-    setSort((current) => current?.column !== column ? { column, direction: "asc" } : { column, direction: current.direction === "asc" ? "desc" : "asc" });
+    const nextSort: SortState = sort?.column === column
+      ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
+      : { column, direction: "asc" };
+    onSortChange?.(nextSort);
   }
 
   function renderCell(quote: Quote, column: string) {
@@ -95,7 +122,7 @@ export default function QuotesTable({ quotes, isLoading, isRefreshing = false, v
             </TableHead>
             {visibleColumns.map((column) => {
               const label = getReadableColumnLabel(column, columnOptions);
-              const sortable = !isCustomFieldColumnKey(column) && ["quote_number", "customer_name", "status", "total_amount", "expiry_date"].includes(column);
+              const sortable = !isCustomFieldColumnKey(column) && SORTABLE_COLUMNS.has(column);
               return sortable ? (
                 <SortableHead key={column} sorted={sort?.column === column} direction={sort?.column === column ? sort.direction : "asc"} onClick={() => toggleSort(column)}>
                   {label}
@@ -114,7 +141,7 @@ export default function QuotesTable({ quotes, isLoading, isRefreshing = false, v
               </TableCell>
             </TableRow>
           ) : (
-            sortedQuotes.map((quote) => (
+            quotes.map((quote) => (
               <TableRow key={quote.quote_id} className="group cursor-pointer" onClick={() => router.push(`/dashboard/sales/quotes/${quote.quote_id}`)}>
                 <TableCell className="w-12 pr-0" onClick={(event) => event.stopPropagation()}>
                   <Checkbox checked={selectedIds.includes(quote.quote_id)} onCheckedChange={(checked) => onToggleRow?.(quote.quote_id, checked === true)} className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900" aria-label={`Select quote ${quote.quote_number}`}>

@@ -2,9 +2,18 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from app.core.database import Base
+from app.core.pagination import create_pagination
+from app.modules.client_portal import models as client_portal_models  # noqa: F401
+from app.modules.documents import models as document_models  # noqa: F401
+from app.modules.sales.models import SalesOrganization
 from app.modules.sales.schema import SalesOrganizationCreate
 from app.modules.sales.services import organizations_services
-from app.modules.user_management.models import User  # noqa: F401
+from app.modules.user_management import models as user_management_models  # noqa: F401
+from app.modules.user_management.models import Tenant, User, UserStatus
 
 
 class FakeQuery:
@@ -82,6 +91,72 @@ class OrganizationQueryBuildTests(unittest.TestCase):
             organizations_services._build_organization_query(db, tenant_id=3, search="acme")
 
         self.assertEqual(calls, [None, "acme"])
+
+
+class ListOrganizationsTests(unittest.TestCase):
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        self.SessionLocal = sessionmaker(bind=engine)
+        self.db = self.SessionLocal()
+        self.db.add_all(
+            [
+                Tenant(id=10, slug="default", name="Default"),
+                User(
+                    id=1,
+                    tenant_id=10,
+                    email="owner@example.com",
+                    first_name="Owner",
+                    last_name="User",
+                    is_active=UserStatus.active,
+                ),
+            ]
+        )
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_organization_list_sorts_before_pagination(self):
+        self.db.add_all(
+            [
+                SalesOrganization(
+                    org_id=103,
+                    tenant_id=10,
+                    org_name="Zeta Co",
+                    primary_email="zeta@example.com",
+                    assigned_to=1,
+                ),
+                SalesOrganization(
+                    org_id=104,
+                    tenant_id=10,
+                    org_name="Ada Co",
+                    primary_email="ada@example.com",
+                    assigned_to=1,
+                ),
+                SalesOrganization(
+                    org_id=105,
+                    tenant_id=10,
+                    org_name="Mia Co",
+                    primary_email="mia@example.com",
+                    assigned_to=1,
+                ),
+            ]
+        )
+        self.db.commit()
+        pagination = create_pagination(1, 2)
+
+        organizations, total_count = organizations_services.list_organizations_paginated(
+            self.db,
+            tenant_id=10,
+            offset=pagination.offset,
+            limit=pagination.limit,
+            sort_by="org_name",
+            sort_direction="asc",
+        )
+
+        self.assertEqual(total_count, 3)
+        self.assertEqual([organization.org_name for organization in organizations], ["Ada Co", "Mia Co"])
 
 
 if __name__ == "__main__":

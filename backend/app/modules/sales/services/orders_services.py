@@ -17,6 +17,23 @@ from app.modules.sales.services.quotes_services import get_quote_or_404
 
 ORDER_STATUSES = {"draft", "confirmed", "fulfilled", "cancelled"}
 
+ORDER_SORT_FIELDS = {
+    "order_number": SalesOrder.order_number,
+    "quote_id": SalesOrder.quote_id,
+    "organization_id": SalesOrder.organization_id,
+    "contact_id": SalesOrder.contact_id,
+    "opportunity_id": SalesOrder.opportunity_id,
+    "owner_id": SalesOrder.owner_id,
+    "status": SalesOrder.status,
+    "currency": SalesOrder.currency,
+    "subtotal": SalesOrder.subtotal,
+    "tax_total": SalesOrder.tax_total,
+    "discount_total": SalesOrder.discount_total,
+    "grand_total": SalesOrder.grand_total,
+    "created_at": SalesOrder.created_at,
+    "updated_at": SalesOrder.updated_at,
+}
+
 
 def _coerce_optional(value) -> str | None:
     if value is None:
@@ -149,7 +166,27 @@ def build_orders_query(
     return query
 
 
-def list_sales_orders(db: Session, *, tenant_id: int, pagination, search: str | None = None, all_filter_conditions: list[dict] | None = None, any_filter_conditions: list[dict] | None = None) -> tuple[Sequence[SalesOrder], int]:
+def apply_order_sort(query, *, sort_by: str | None = None, sort_direction: str | None = None):
+    sort_column = ORDER_SORT_FIELDS.get((sort_by or "").strip())
+    if sort_column is None:
+        return query.order_by(None).order_by(SalesOrder.created_at.desc(), SalesOrder.id.desc())
+
+    direction = (sort_direction or "asc").strip().lower()
+    ordered = sort_column.desc() if direction == "desc" else sort_column.asc()
+    return query.order_by(None).order_by(ordered.nullslast(), SalesOrder.id.desc())
+
+
+def list_sales_orders(
+    db: Session,
+    *,
+    tenant_id: int,
+    pagination,
+    search: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+) -> tuple[Sequence[SalesOrder], int]:
     query = build_orders_query(
         db,
         tenant_id=tenant_id,
@@ -158,7 +195,12 @@ def list_sales_orders(db: Session, *, tenant_id: int, pagination, search: str | 
         any_filter_conditions=any_filter_conditions,
     )
     total_count = query.count()
-    orders = query.order_by(SalesOrder.created_at.desc(), SalesOrder.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
+    orders = (
+        apply_order_sort(query, sort_by=sort_by, sort_direction=sort_direction)
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+        .all()
+    )
     return orders, total_count
 
 

@@ -236,7 +236,10 @@ Allow tenant backups to upload to customer-owned storage.
 
 ### Objective
 
-Start restore functionality with selected module restore/import, not full-tenant restore first.
+Start restoreage status
+- detail page status
+- permissions status
+- activity timeline status functionality with selected module restore/import, not full-tenant restore first.
 
 ### Restore modes
 

@@ -192,6 +192,8 @@ def create_sales_organization(
 def get_sales_organizations(
     search: str | None = Query(default=None, min_length=1),
     fields: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
@@ -218,6 +220,8 @@ def get_sales_organizations(
             limit=pagination.limit,
             all_filter_conditions=all_conditions,
             any_filter_conditions=any_conditions,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
         )
     else:
         items, total = list_organizations_paginated(
@@ -227,6 +231,8 @@ def get_sales_organizations(
             limit=pagination.limit,
             all_filter_conditions=all_conditions,
             any_filter_conditions=any_conditions,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
         )
     selected_fields = _parse_list_fields(fields, _enabled_organization_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_organization_list_item(item, selected_fields) for item in items]
@@ -290,6 +296,8 @@ def get_deleted_sales_organizations(
 def search_sales_organizations(
     name: str,
     fields: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
@@ -315,6 +323,8 @@ def search_sales_organizations(
         limit=pagination.limit,
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     selected_fields = _parse_list_fields(fields, _enabled_organization_list_fields(db, current_user.tenant_id))
     serialized = [_serialize_organization_list_item(item, selected_fields) for item in items]

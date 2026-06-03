@@ -8,7 +8,7 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatDateTime } from "@/lib/datetime";
-import { SETTINGS_ROUTES } from "@/lib/routes";
+import { SETTINGS_ROUTES, canonicalizeDashboardHref } from "@/lib/routes";
 
 export default function NotificationCenter() {
   const { notifications, unreadCount, isLoading, isFetching, markRead, markAllRead } =
@@ -130,7 +130,7 @@ export default function NotificationCenter() {
                   return (
                     <Link
                       key={notification.id}
-                      href={notification.link_url}
+                      href={canonicalizeDashboardHref(notification.link_url)}
                       onClick={() => void handleNotificationClick(notification.id)}
                       className="block"
                     >
