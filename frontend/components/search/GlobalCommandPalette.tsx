@@ -10,6 +10,7 @@ import { Dialog, DialogBackdrop, DialogPanel } from "@/components/ui/dialog";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
+import { getModuleRoute, isModuleVisibleInNavigation } from "@/lib/module-registry";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
 type SearchResult = {
@@ -97,10 +98,11 @@ export default function GlobalCommandPalette() {
       { label: "Dashboard", subtitle: "Go to the home dashboard", href: "/dashboard", group: "Quick Links" },
       ...modules
         .filter((module) => module.base_route)
+        .filter((module) => module.name.startsWith("custom_") || isModuleVisibleInNavigation(module.name))
         .map((module) => ({
           label: getModuleDisplayName(module.name, module.description ?? undefined),
-          subtitle: module.base_route ?? "",
-          href: module.base_route as string,
+          subtitle: getModuleRoute(module.name, module.base_route),
+          href: getModuleRoute(module.name, module.base_route),
           group: "Modules",
         })),
     ];

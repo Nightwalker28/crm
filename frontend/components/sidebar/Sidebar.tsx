@@ -13,6 +13,8 @@ import {
   Settings2,
   Wrench,
   LifeBuoy,
+  CalendarDays,
+  BarChart3,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 
@@ -20,6 +22,7 @@ import NotificationCenter from "@/components/notifications/NotificationCenter";
 import { useAccessibleModules, type AccessibleModule } from "@/hooks/useAccessibleModules";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { getModuleDisplayName } from "@/lib/module-display";
+import { getModuleDefinition, getModuleRoute, isModuleVisibleInNavigation, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
 import { DASHBOARD_ROUTES, SETTINGS_ROUTES } from "@/lib/routes";
 import { resolveMediaUrl } from "@/lib/media";
 
@@ -44,29 +47,14 @@ type SidebarGroupConfig = {
 };
 
 const SYSTEM_GROUPS: Record<string, Omit<SidebarGroupConfig, "items">> = {
+  workspace: { key: "workspace", label: "Workspace", icon: CalendarDays, sortOrder: 5 },
   sales: { key: "sales", label: "Sales", icon: BriefcaseBusiness, sortOrder: 10 },
   finance: { key: "finance", label: "Finance", icon: Landmark, sortOrder: 20 },
   catalog: { key: "catalog", label: "Products & Services", icon: Boxes, sortOrder: 30 },
-  other: { key: "other", label: "Other", icon: Wrench, sortOrder: 100 },
   support: { key: "support", label: "Support", icon: LifeBuoy, sortOrder: 40 },
+  reports: { key: "reports", label: "Reports", icon: BarChart3, sortOrder: 80 },
   settings: { key: "settings", label: "Settings", icon: Settings2, sortOrder: 90 },
-};
-
-const MODULE_ITEM_ORDER: Record<string, number> = {
-  sales_leads: 10,
-  sales_organizations: 20,
-  sales_contacts: 30,
-  sales_opportunities: 40,
-  sales_quotes: 50,
-  sales_orders: 60,
-  contracts: 70,
-  support_cases: 10,
-  finance_io: 10,
-  finance_insertion_orders: 10,
-  finance_pos: 20,
-  catalog_products: 10,
-  catalog_services: 20,
-  reports: 90,
+  other: { key: "other", label: "Other", icon: Wrench, sortOrder: 100 },
 };
 
 function subscribeToSidebarCollapse(onStoreChange: () => void) {
@@ -99,22 +87,12 @@ function moduleLabel(module: AccessibleModule) {
 }
 
 function getCanonicalHref(module: AccessibleModule) {
-  if (module.name === "sales_leads") return DASHBOARD_ROUTES.leads;
-  if (module.name === "sales_organizations") return DASHBOARD_ROUTES.accounts;
-  if (module.name === "sales_contacts") return DASHBOARD_ROUTES.contacts;
-  if (module.name === "sales_opportunities") return DASHBOARD_ROUTES.deals;
-  if (module.name === "sales_quotes") return DASHBOARD_ROUTES.quotes;
-  if (module.name === "sales_orders") return DASHBOARD_ROUTES.orders;
-  if (module.name === "contracts") return DASHBOARD_ROUTES.contracts;
-  if (module.name === "support_cases") return DASHBOARD_ROUTES.supportCases;
-  if (module.name === "reports") return DASHBOARD_ROUTES.reports;
-  if (module.name === "tasks") return "/dashboard/tasks";
-  return module.base_route || "";
+  return getModuleRoute(module.name, module.base_route);
 }
 
 function sidebarItemSortValue(item: { label: string; moduleName?: string }) {
-  if (item.moduleName && item.moduleName in MODULE_ITEM_ORDER) {
-    return MODULE_ITEM_ORDER[item.moduleName];
+  if (item.moduleName) {
+    return getModuleDefinition(item.moduleName)?.sortOrder ?? 1_000;
   }
   return 1_000;
 }
@@ -123,7 +101,7 @@ function buildOperationalGroups(modules: AccessibleModule[]) {
   const groupMap = new Map<string, SidebarGroupConfig>();
 
   function ensureGroup(module: AccessibleModule) {
-    const key = module.sidebar_tab_key || "other";
+    const key = module.sidebar_tab_key || getModuleDefinition(module.name)?.group || "other";
     const system = SYSTEM_GROUPS[key];
     const current = groupMap.get(key);
     if (current) return current;
@@ -142,6 +120,7 @@ function buildOperationalGroups(modules: AccessibleModule[]) {
     if (!crmModule.base_route) continue;
     if (crmModule.sidebar_tab_key === HIDDEN_SIDEBAR_TAB_KEY) continue;
     if (crmModule.base_route === DASHBOARD_ROUTES.home || crmModule.base_route.startsWith(SETTINGS_ROUTES.root)) continue;
+    if (!crmModule.name.startsWith("custom_") && !isModuleVisibleInNavigation(crmModule.name)) continue;
 
     const href = getCanonicalHref(crmModule);
     if (!href) continue;
@@ -163,22 +142,7 @@ function buildOperationalGroups(modules: AccessibleModule[]) {
 function settingsGroup(): SidebarGroupConfig {
   return {
     ...SYSTEM_GROUPS.settings,
-    items: [
-      { href: SETTINGS_ROUTES.general, label: "General" },
-      { href: SETTINGS_ROUTES.users, label: "User Management" },
-      { href: SETTINGS_ROUTES.teams, label: "Teams" },
-      { href: SETTINGS_ROUTES.customerGroups, label: "Customer Groups" },
-      { href: SETTINGS_ROUTES.permissions, label: "Permissions" },
-      { href: SETTINGS_ROUTES.modules, label: "Module Settings" },
-      { href: SETTINGS_ROUTES.moduleBuilder, label: "Module Builder" },
-      { href: SETTINGS_ROUTES.fields, label: "Field Config" },
-      { href: SETTINGS_ROUTES.automation, label: "Automation" },
-      { href: SETTINGS_ROUTES.calendarBooking, label: "Booking Links" },
-      { href: SETTINGS_ROUTES.integrations, label: "Integrations" },
-      { href: SETTINGS_ROUTES.templates, label: "Templates" },
-      { href: SETTINGS_ROUTES.activityLog, label: "Activity Log" },
-      { href: SETTINGS_ROUTES.recycleBin, label: "Recycle Bin" },
-    ],
+    items: SETTINGS_NAV_ITEMS.map((item) => ({ href: item.href, label: item.label })),
   };
 }
 

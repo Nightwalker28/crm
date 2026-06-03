@@ -116,6 +116,7 @@ Each tier-1 list page should support, where applicable:
 6. Support tickets.
 7. Products/services.
 8. Client portal records/pages.
+9. all other modules
 
 ### Acceptance criteria
 

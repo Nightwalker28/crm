@@ -2,6 +2,8 @@ import ast
 import unittest
 from pathlib import Path
 
+from app.modules.user_management.services.admin_modules import default_sidebar_tab_key
+
 
 def _load_default_modules() -> list[dict]:
     seed_path = Path(__file__).resolve().parents[1] / "app" / "bootstrap" / "seed.py"
@@ -52,10 +54,19 @@ class CatalogModuleFoundationTests(unittest.TestCase):
         default_modules = _load_default_modules()
         modules_by_name = {module["name"]: module for module in default_modules}
 
+        self.assertEqual(modules_by_name["client_portal"]["base_route"], "/dashboard/client-portal")
         self.assertEqual(modules_by_name["reports"]["base_route"], "/dashboard/reports")
         self.assertEqual(modules_by_name["message_templates"]["base_route"], "/dashboard/settings/message-templates")
+        self.assertIn("client", modules_by_name["client_portal"]["description"].lower())
         self.assertIn("crm", modules_by_name["reports"]["description"].lower())
         self.assertIn("templates", modules_by_name["message_templates"]["description"].lower())
+
+    def test_default_sidebar_groups_keep_tier_one_modules_visible(self):
+        self.assertEqual(default_sidebar_tab_key("documents"), "workspace")
+        self.assertEqual(default_sidebar_tab_key("calendar"), "workspace")
+        self.assertEqual(default_sidebar_tab_key("mail"), "workspace")
+        self.assertEqual(default_sidebar_tab_key("support_cases"), "support")
+        self.assertEqual(default_sidebar_tab_key("client_portal"), "support")
 
 
 if __name__ == "__main__":

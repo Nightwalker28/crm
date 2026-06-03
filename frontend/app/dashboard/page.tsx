@@ -31,6 +31,7 @@ import { useNotifications } from "@/hooks/useNotifications";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { getModuleDisplayName } from "@/lib/module-display";
+import { getModuleRoute } from "@/lib/module-registry";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
@@ -1078,8 +1079,9 @@ function EmptyMessage({ children }: { children: ReactNode }) {
 }
 
 function ModuleLink({ module }: { module: AccessibleModule }) {
+  const href = getModuleRoute(module.name, module.base_route) || "/dashboard/profile";
   return (
-    <Link href={module.base_route || "/dashboard/profile"} className="group rounded-lg border border-neutral-800 bg-black/20 px-4 py-4 transition-colors hover:border-neutral-700 hover:bg-neutral-900/60">
+    <Link href={href} className="group rounded-lg border border-neutral-800 bg-black/20 px-4 py-4 transition-colors hover:border-neutral-700 hover:bg-neutral-900/60">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="text-sm font-semibold text-neutral-100">{getModuleDisplayName(module.name, module.description ?? undefined)}</div>
@@ -1093,6 +1095,7 @@ function ModuleLink({ module }: { module: AccessibleModule }) {
 
 function ModuleSummary({ module, summary, unreadCount }: { module: AccessibleModule; summary?: CrmDashboardSummary; unreadCount: number }) {
   const moduleName = getModuleDisplayName(module.name, module.description ?? undefined);
+  const href = getModuleRoute(module.name, module.base_route) || "/dashboard/profile";
   let value: string | number = "Open";
   let helper = module.description || "Module quick view";
 
@@ -1114,7 +1117,7 @@ function ModuleSummary({ module, summary, unreadCount }: { module: AccessibleMod
   }
 
   return (
-    <Link href={module.base_route || "/dashboard/profile"} className="block rounded-lg border border-neutral-800 bg-black/20 px-4 py-4 transition-colors hover:border-neutral-700 hover:bg-neutral-900/60">
+    <Link href={href} className="block rounded-lg border border-neutral-800 bg-black/20 px-4 py-4 transition-colors hover:border-neutral-700 hover:bg-neutral-900/60">
       <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">{moduleName}</div>
       <div className="mt-3 text-3xl font-semibold text-neutral-100">{value}</div>
       <div className="mt-2 text-sm leading-6 text-neutral-400">{helper}</div>

@@ -11,41 +11,16 @@ import BrowserNotificationsBridge from "@/components/notifications/BrowserNotifi
 import GlobalCommandPalette from "@/components/search/GlobalCommandPalette";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { getGuardedModuleRoutePrefixes, getModuleRoute, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
 import { DASHBOARD_ROUTES, SETTINGS_ROUTES, getFriendlyRouteLabel } from "@/lib/routes";
 
 const ADMIN_ONLY_PREFIXES = [
   SETTINGS_ROUTES.root,
-  SETTINGS_ROUTES.general,
-  SETTINGS_ROUTES.users,
-  SETTINGS_ROUTES.teams,
-  SETTINGS_ROUTES.customerGroups,
-  SETTINGS_ROUTES.permissions,
-  SETTINGS_ROUTES.modules,
-  SETTINGS_ROUTES.moduleBuilder,
-  SETTINGS_ROUTES.fields,
-  SETTINGS_ROUTES.integrations,
-  SETTINGS_ROUTES.templates,
-  SETTINGS_ROUTES.recycleBin,
-  SETTINGS_ROUTES.activityLog,
+  ...SETTINGS_NAV_ITEMS.map((item) => item.href),
   "/dashboard/views/admin_users",
 ];
 
-const MODULE_ROUTE_PREFIXES = [
-  "/dashboard/mail",
-  "/dashboard/calendar",
-  "/dashboard/tasks",
-  DASHBOARD_ROUTES.clientPortal,
-  DASHBOARD_ROUTES.financePos,
-  DASHBOARD_ROUTES.insertionOrders,
-  DASHBOARD_ROUTES.products,
-  DASHBOARD_ROUTES.services,
-  DASHBOARD_ROUTES.leads,
-  DASHBOARD_ROUTES.contacts,
-  DASHBOARD_ROUTES.accounts,
-  DASHBOARD_ROUTES.deals,
-  DASHBOARD_ROUTES.contracts,
-  DASHBOARD_ROUTES.supportCases,
-];
+const MODULE_ROUTE_PREFIXES = getGuardedModuleRoutePrefixes();
 
 function isAdminOnlyPath(pathname: string) {
   return ADMIN_ONLY_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(prefix + "/"));
@@ -114,7 +89,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const requiresAdmin = isAdminOnlyPath(pathname);
   const moduleRoute = matchedModuleRoute(pathname);
-  const allowedModuleRoutes = new Set(modules.map((module) => module.base_route).filter(Boolean));
+  const allowedModuleRoutes = new Set(modules.map((module) => getModuleRoute(module.name, module.base_route)).filter(Boolean));
   const customModuleRoute = modules
     .map((module) => module.base_route)
     .filter((route): route is string => Boolean(route?.startsWith("/dashboard/custom/")))

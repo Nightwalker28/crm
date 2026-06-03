@@ -1,53 +1,24 @@
+import { getModuleDefinition, getModuleRegistryLabel, type ModuleGroupKey } from "@/lib/module-registry";
+
 export type ModuleCategory =
   | "Workspace"
   | "Sales"
   | "Products & Services"
   | "Finance"
+  | "Reports"
+  | "Support"
   | "Platform"
   | "Other";
 
-const MODULE_DISPLAY_NAMES: Record<string, string> = {
-  tasks: "Tasks",
-  calendar: "Calendar",
-  mail: "Mail",
-  whatsapp: "WhatsApp",
-  documents: "Documents",
-  message_templates: "Templates",
-  sales_leads: "Leads",
-  sales_contacts: "Contacts",
-  sales_organizations: "Accounts",
-  sales_opportunities: "Deals",
-  sales_quotes: "Quotes",
-  sales_orders: "Orders",
-  contracts: "Contracts",
-  support_cases: "Support Cases",
-  catalog_products: "Products",
-  catalog_services: "Services",
-  finance_io: "Insertion Orders",
-  finance_insertion_orders: "Insertion Orders",
-  finance_pos: "POS",
-};
-
-const MODULE_CATEGORIES: Record<string, ModuleCategory> = {
-  tasks: "Workspace",
-  calendar: "Workspace",
-  mail: "Workspace",
-  whatsapp: "Workspace",
-  documents: "Workspace",
-  sales_leads: "Sales",
-  sales_contacts: "Sales",
-  sales_organizations: "Sales",
-  sales_opportunities: "Sales",
-  sales_quotes: "Sales",
-  sales_orders: "Sales",
-  contracts: "Other",
-  support_cases: "Other",
-  catalog_products: "Products & Services",
-  catalog_services: "Products & Services",
-  finance_io: "Finance",
-  finance_insertion_orders: "Finance",
-  finance_pos: "Finance",
-  message_templates: "Platform",
+const GROUP_CATEGORIES: Record<ModuleGroupKey, ModuleCategory> = {
+  workspace: "Workspace",
+  sales: "Sales",
+  catalog: "Products & Services",
+  support: "Support",
+  finance: "Finance",
+  reports: "Reports",
+  settings: "Platform",
+  other: "Other",
 };
 
 export function formatSnakeCaseLabel(value: string): string {
@@ -60,7 +31,7 @@ export function formatSnakeCaseLabel(value: string): string {
 }
 
 export function getModuleDisplayName(moduleName: string, fallbackDescription?: string): string {
-  const mappedName = MODULE_DISPLAY_NAMES[moduleName];
+  const mappedName = getModuleRegistryLabel(moduleName);
   if (mappedName) {
     return mappedName;
   }
@@ -78,5 +49,6 @@ export function getModuleCategory(moduleName: string): ModuleCategory {
     return "Other";
   }
 
-  return MODULE_CATEGORIES[moduleName] ?? "Other";
+  const definition = getModuleDefinition(moduleName);
+  return definition ? GROUP_CATEGORIES[definition.group] : "Other";
 }

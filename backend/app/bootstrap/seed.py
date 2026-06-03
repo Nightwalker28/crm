@@ -34,6 +34,7 @@ DEFAULT_MODULES = [
     {"name": "contracts", "base_route": "/dashboard/contracts", "description": "Contract lifecycle and e-sign tracking"},
     {"name": "tasks", "base_route": "/dashboard/tasks", "description": "Collaborative task management and assignment"},
     {"name": "reports", "base_route": "/dashboard/reports", "description": "CRM reports and saved report views"},
+    {"name": "client_portal", "base_route": "/dashboard/client-portal", "description": "Client-facing portal records and settings"},
     {"name": "message_templates", "base_route": "/dashboard/settings/message-templates", "description": "Reusable CRM message templates for communication channels"},
     {"name": "finance_io", "base_route": "/dashboard/finance/insertion-orders", "description": "Finance insertion orders"},
     {"name": "finance_pos", "base_route": "/dashboard/finance/pos", "description": "POS mode invoices and walk-in sales"},

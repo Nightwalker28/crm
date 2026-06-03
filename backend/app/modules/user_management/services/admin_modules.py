@@ -29,15 +29,17 @@ from app.modules.user_management.schema import (
 TAB_KEY_RE = re.compile(r"[^a-z0-9_]+")
 
 SYSTEM_SIDEBAR_TABS: tuple[dict[str, object], ...] = (
+    {"key": "workspace", "label": "Workspace", "sort_order": 5},
     {"key": "sales", "label": "Sales", "sort_order": 10},
     {"key": "finance", "label": "Finance", "sort_order": 20},
     {"key": "catalog", "label": "Products & Services", "sort_order": 30},
+    {"key": "support", "label": "Support", "sort_order": 40},
+    {"key": "reports", "label": "Reports", "sort_order": 80},
     {"key": "settings", "label": "Settings", "sort_order": 90},
     {"key": "other", "label": "Other", "sort_order": 100},
 )
 SYSTEM_TAB_LABELS = {str(tab["key"]): str(tab["label"]) for tab in SYSTEM_SIDEBAR_TABS}
 HIDDEN_SIDEBAR_TAB_KEY = "none"
-DEFAULT_HIDDEN_SIDEBAR_MODULES = {"mail", "tasks", "documents"}
 
 
 def normalize_sidebar_tab_key(value: str | None, *, fallback: str = "other") -> str:
@@ -47,14 +49,20 @@ def normalize_sidebar_tab_key(value: str | None, *, fallback: str = "other") -> 
 
 
 def default_sidebar_tab_key(module_name: str) -> str:
-    if module_name in DEFAULT_HIDDEN_SIDEBAR_MODULES:
-        return HIDDEN_SIDEBAR_TAB_KEY
+    if module_name in {"documents", "calendar", "mail", "tasks"}:
+        return "workspace"
     if module_name.startswith("sales_"):
         return "sales"
     if module_name.startswith("finance_"):
         return "finance"
     if module_name.startswith("catalog_"):
         return "catalog"
+    if module_name in {"support_cases", "client_portal"}:
+        return "support"
+    if module_name == "reports":
+        return "reports"
+    if module_name == "message_templates":
+        return "settings"
     if module_name.startswith("custom_"):
         return "other"
     return "other"
