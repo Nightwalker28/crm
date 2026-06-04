@@ -5,6 +5,7 @@ import Image from "next/image";
 import { ImageIcon, Package, Wrench } from "lucide-react";
 
 import {
+  SortableHead,
   Table,
   TableBody,
   TableCell,
@@ -30,9 +31,38 @@ type Props = {
   isRefreshing?: boolean;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
+  sort?: SortState;
+  onSortChange?: (sort: SortState) => void;
   onRowClick: (record: CatalogRecord) => void;
   onToggleActive?: (record: CatalogRecord, active: boolean) => void;
 };
+
+type SortState = { column: string; direction: "asc" | "desc" } | null;
+
+const PRODUCT_SORTABLE_COLUMNS = new Set([
+  "name",
+  "slug",
+  "sku",
+  "currency",
+  "public_unit_price",
+  "stock_status",
+  "stock_quantity",
+  "is_public",
+  "is_active",
+  "created_at",
+  "updated_at",
+]);
+
+const SERVICE_SORTABLE_COLUMNS = new Set([
+  "name",
+  "slug",
+  "currency",
+  "public_unit_price",
+  "is_public",
+  "is_active",
+  "created_at",
+  "updated_at",
+]);
 
 function formatAmount(value: number | string | null | undefined, currency: string): string {
   if (value == null || value === "") return "";
@@ -71,6 +101,8 @@ export default function CatalogRecordsTable({
   isRefreshing = false,
   visibleColumns,
   columnOptions = [],
+  sort = null,
+  onSortChange,
   onRowClick,
   onToggleActive,
 }: Props) {
@@ -78,6 +110,15 @@ export default function CatalogRecordsTable({
   const effectiveVisibleColumns = visibleColumns.length ? visibleColumns : ["name"];
   const columnCount = effectiveVisibleColumns.length;
   const EmptyIcon = isProduct ? Package : Wrench;
+  const sortableColumns = isProduct ? PRODUCT_SORTABLE_COLUMNS : SERVICE_SORTABLE_COLUMNS;
+
+  function toggleSort(column: string) {
+    const nextSort: SortState = sort?.column === column
+      ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
+      : { column, direction: "asc" };
+    onSortChange?.(nextSort);
+  }
+
   const renderCell = (record: CatalogRecord, column: string) => {
     switch (column) {
       case "name":
@@ -196,9 +237,14 @@ export default function CatalogRecordsTable({
       <Table className={isProduct ? "min-w-[1040px]" : "min-w-[840px]"}>
         <TableHeader>
           <TableHeaderRow>
-            {effectiveVisibleColumns.map((column) => (
-              <TableHead key={column}>{getReadableColumnLabel(column, columnOptions)}</TableHead>
-            ))}
+            {effectiveVisibleColumns.map((column) => {
+              const label = getReadableColumnLabel(column, columnOptions);
+              return sortableColumns.has(column) && onSortChange ? (
+                <SortableHead key={column} sorted={sort?.column === column} direction={sort?.column === column ? sort.direction : "asc"} onClick={() => toggleSort(column)}>
+                  {label}
+                </SortableHead>
+              ) : <TableHead key={column}>{label}</TableHead>;
+            })}
           </TableHeaderRow>
         </TableHeader>
         <TableBody>

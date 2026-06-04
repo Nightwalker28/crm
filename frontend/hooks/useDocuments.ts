@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { apiUrl } from "@/lib/runtime-config";
 
+export type DocumentSortState = { key: string; direction: "asc" | "desc" } | null;
+
 export type DocumentLink = {
   id: number;
   module_key: string;
@@ -95,12 +97,17 @@ export async function fetchDocuments(params: {
   entityId?: string | number;
   isTemplate?: boolean;
   limit?: number;
+  sort?: DocumentSortState;
 } = {}): Promise<DocumentList> {
   const query = new URLSearchParams();
   if (params.search?.trim()) query.set("search", params.search.trim());
   if (params.moduleKey) query.set("module_key", params.moduleKey);
   if (params.entityId !== undefined && params.entityId !== null) query.set("entity_id", String(params.entityId));
   if (params.isTemplate !== undefined) query.set("is_template", String(params.isTemplate));
+  if (params.sort) {
+    query.set("sort_by", params.sort.key);
+    query.set("sort_direction", params.sort.direction);
+  }
   query.set("limit", String(params.limit ?? 50));
   const suffix = query.toString();
   const res = await apiFetch(`/documents${suffix ? `?${suffix}` : ""}`);
@@ -224,7 +231,7 @@ export async function deleteDocument(documentId: number): Promise<DocumentItem> 
   return body as DocumentItem;
 }
 
-export function useDocuments(params: { search?: string; moduleKey?: string; entityId?: string | number; isTemplate?: boolean; limit?: number } = {}) {
+export function useDocuments(params: { search?: string; moduleKey?: string; entityId?: string | number; isTemplate?: boolean; limit?: number; sort?: DocumentSortState } = {}) {
   return useQuery({
     queryKey: [
       "documents",
@@ -233,6 +240,8 @@ export function useDocuments(params: { search?: string; moduleKey?: string; enti
       params.isTemplate === undefined ? "all" : String(params.isTemplate),
       params.search ?? "",
       params.limit ?? 50,
+      params.sort?.key ?? "",
+      params.sort?.direction ?? "",
     ],
     queryFn: () => fetchDocuments(params),
     staleTime: 30_000,

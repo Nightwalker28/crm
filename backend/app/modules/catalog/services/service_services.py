@@ -66,6 +66,8 @@ def list_services(
     include_inactive: bool = True,
     offset: int = 0,
     limit: int = 50,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[list[CatalogService], int]:
     return service_repository.list_services(
         db,
@@ -74,6 +76,8 @@ def list_services(
         include_inactive=include_inactive,
         offset=offset,
         limit=limit,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
 
 

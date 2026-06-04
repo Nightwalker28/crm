@@ -102,6 +102,37 @@ class CatalogServiceServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(exc.exception.status_code, 404)
 
+    def test_list_services_sorts_before_limit(self):
+        services.create_service(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Basic Setup", "public_unit_price": "25.00"},
+        )
+        services.create_service(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Enterprise Setup", "public_unit_price": "250.00"},
+        )
+        services.create_service(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Standard Setup", "public_unit_price": "125.00"},
+        )
+
+        listed, total = services.list_services(
+            self.db,
+            tenant_id=10,
+            limit=1,
+            sort_by="public_unit_price",
+            sort_direction="desc",
+        )
+
+        self.assertEqual(total, 3)
+        self.assertEqual([service.name for service in listed], ["Enterprise Setup"])
+
     async def test_service_media_uses_upload_helper_and_serializes_media_url(self):
         service = services.create_service(
             self.db,

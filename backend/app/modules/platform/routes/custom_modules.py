@@ -122,11 +122,21 @@ def get_runtime_schema(
 def list_custom_module_records(
     module_key: str,
     search: str | None = Query(None),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
 ):
-    return custom_modules.list_records(db, module_key=module_key, current_user=current_user, pagination=pagination, search=search)
+    return custom_modules.list_records(
+        db,
+        module_key=module_key,
+        current_user=current_user,
+        pagination=pagination,
+        search=search,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+    )
 
 
 @runtime_router.get("/{module_key}/records/cursor")

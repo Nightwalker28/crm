@@ -22,6 +22,8 @@ def list_pos_invoices(
     pagination: Pagination = Depends(get_pagination),
     search: str | None = Query(default=None),
     status_filter: str | None = Query(default=None, alias="status"),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
     require_permission=Depends(require_action_access("finance_pos", "view")),
@@ -32,6 +34,8 @@ def list_pos_invoices(
         pagination=pagination,
         search=search,
         status_filter=status_filter,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
 
 

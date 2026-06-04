@@ -19,9 +19,17 @@ INSERTION_ORDER_SORT_FIELDS = {
     "io_number": FinanceIO.io_number,
     "customer_name": FinanceIO.customer_name,
     "status": FinanceIO.status,
+    "currency": FinanceIO.currency,
+    "subtotal_amount": FinanceIO.subtotal_amount,
+    "tax_amount": FinanceIO.tax_amount,
     "total_amount": FinanceIO.total_amount,
     "issue_date": FinanceIO.issue_date,
+    "effective_date": FinanceIO.effective_date,
     "due_date": FinanceIO.due_date,
+    "start_date": FinanceIO.start_date,
+    "end_date": FinanceIO.end_date,
+    "external_reference": FinanceIO.external_reference,
+    "counterparty_reference": FinanceIO.counterparty_reference,
     "updated_at": FinanceIO.updated_at,
 }
 

@@ -13,9 +13,11 @@ import { Dialog, DialogBackdrop, DialogFooter, DialogHeader, DialogPanel, Dialog
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { apiFetch } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
+import { getModuleDisplayName } from "@/lib/module-display";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { ModuleFilterField } from "@/lib/moduleViewConfigs";
 
@@ -92,6 +94,9 @@ type SavedReport = {
   created_at: string;
   updated_at: string;
 };
+
+type SavedReportSortState = { key: string; direction: "asc" | "desc" } | null;
+type SavedReportSortableColumn = "name" | "module_key" | "created_at" | "updated_at";
 
 type ReportPreset = {
   key: string;
@@ -224,9 +229,13 @@ async function fetchForecast(periodStart: string, periodEnd: string) {
   return res.json() as Promise<ForecastSummary>;
 }
 
-async function fetchSavedReports(moduleKey: string) {
+async function fetchSavedReports(moduleKey: string, sort: SavedReportSortState) {
   const params = new URLSearchParams();
   params.set("module_key", moduleKey);
+  if (sort) {
+    params.set("sort_by", sort.key);
+    params.set("sort_direction", sort.direction);
+  }
   const res = await apiFetch(`/reports/saved?${params.toString()}`);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -315,6 +324,7 @@ export default function ReportsPage() {
   const [filters, setFilters] = useState<SavedViewFilters>(DEFAULT_FILTERS);
   const [viewMode, setViewMode] = useState<"table" | "bar" | "pie">("bar");
   const [selectedSavedId, setSelectedSavedId] = useState("");
+  const [savedReportSort, setSavedReportSort] = useState<SavedReportSortState>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
   const [actionError, setActionError] = useState("");
@@ -338,8 +348,8 @@ export default function ReportsPage() {
   const chartData = report?.rows ?? [];
   const valueLabel = metric === "sum" ? report?.metric_field?.label ?? "Value" : "Records";
   const savedReportsQuery = useQuery({
-    queryKey: ["saved-module-reports", activeModuleKey],
-    queryFn: () => fetchSavedReports(activeModuleKey),
+    queryKey: ["saved-module-reports", activeModuleKey, savedReportSort],
+    queryFn: () => fetchSavedReports(activeModuleKey, savedReportSort),
     enabled: Boolean(activeModuleKey),
   });
   const savedReports = savedReportsQuery.data?.results ?? [];
@@ -412,6 +422,26 @@ export default function ReportsPage() {
     setFilters(cloneFilters(saved.config.filters));
     setViewMode(saved.config.view_mode || "bar");
     setActionError("");
+  }
+
+  function toggleSavedReportSort(column: SavedReportSortableColumn) {
+    setSavedReportSort((current) =>
+      current?.key === column
+        ? { key: column, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { key: column, direction: column === "updated_at" || column === "created_at" ? "desc" : "asc" },
+    );
+  }
+
+  function renderSavedReportHead(column: SavedReportSortableColumn, label: string) {
+    return (
+      <SortableHead
+        sorted={savedReportSort?.key === column}
+        direction={savedReportSort?.key === column ? savedReportSort.direction : column === "updated_at" || column === "created_at" ? "desc" : "asc"}
+        onClick={() => toggleSavedReportSort(column)}
+      >
+        {label}
+      </SortableHead>
+    );
   }
 
   function applyReportPreset(preset: ReportPreset) {
@@ -592,6 +622,49 @@ export default function ReportsPage() {
             </Button>
           </div>
         </div>
+
+        <ModuleTableShell className="mb-4 max-h-72" isRefreshing={savedReportsQuery.isFetching && !savedReportsQuery.isLoading}>
+          <Table className="min-w-[720px]">
+            <TableHeader>
+              <TableHeaderRow>
+                {renderSavedReportHead("name", "Name")}
+                {renderSavedReportHead("module_key", "Module")}
+                {renderSavedReportHead("updated_at", "Updated")}
+                {renderSavedReportHead("created_at", "Created")}
+                <TableHead className="text-right">Actions</TableHead>
+              </TableHeaderRow>
+            </TableHeader>
+            <TableBody>
+              {savedReportsQuery.isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-8 text-center text-sm text-neutral-500">Loading saved reports...</TableCell>
+                </TableRow>
+              ) : savedReports.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-8 text-center text-sm text-neutral-500">No saved reports for this module.</TableCell>
+                </TableRow>
+              ) : (
+                savedReports.map((item) => (
+                  <TableRow
+                    key={item.id}
+                    className="cursor-pointer"
+                    onClick={() => applySavedReport(String(item.id))}
+                  >
+                    <TableCell className="font-medium text-neutral-100">{item.name}</TableCell>
+                    <TableCell className="text-neutral-400">{getModuleDisplayName(item.module_key)}</TableCell>
+                    <TableCell className="text-neutral-400">{formatDateTime(item.updated_at, { hour: "numeric", minute: "2-digit" })}</TableCell>
+                    <TableCell className="text-neutral-400">{formatDateTime(item.created_at, { hour: "numeric", minute: "2-digit" })}</TableCell>
+                    <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => applySavedReport(String(item.id))}>
+                        Open
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </ModuleTableShell>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <label className="flex flex-col gap-2 text-xs font-medium uppercase tracking-wide text-neutral-500">

@@ -37,6 +37,8 @@ def _response(product) -> CatalogProductResponse:
 def get_products(
     search: str | None = Query(default=None, max_length=100),
     include_inactive: bool = Query(default=True),
+    sort_by: str | None = Query(default=None, max_length=80),
+    sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
@@ -50,6 +52,8 @@ def get_products(
         include_inactive=include_inactive,
         offset=pagination.offset,
         limit=pagination.limit,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     return build_paged_response([_response(product) for product in products], total_count=total, pagination=pagination)
 

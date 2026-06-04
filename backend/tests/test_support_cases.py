@@ -9,7 +9,7 @@ from app.core.database import Base
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.support.models import SupportCase
-from app.modules.support.services.cases_services import add_case_comment, create_support_case, get_case_or_404, update_support_case
+from app.modules.support.services.cases_services import add_case_comment, create_support_case, get_case_or_404, list_support_cases, update_support_case
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
 
@@ -104,6 +104,22 @@ class SupportCaseTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 404)
         self.assertEqual(self.db.query(SupportCase).filter(SupportCase.tenant_id == 10).count(), 1)
+
+    def test_list_cases_sorts_before_pagination(self):
+        create_support_case(self.db, {"subject": "Small issue", "priority": "low"}, self.user)
+        create_support_case(self.db, {"subject": "Major issue", "priority": "urgent"}, self.user)
+        create_support_case(self.db, {"subject": "Regular issue", "priority": "medium"}, self.user)
+
+        cases, total_count = list_support_cases(
+            self.db,
+            tenant_id=10,
+            pagination=SimpleNamespace(offset=0, limit=1),
+            sort_by="subject",
+            sort_direction="asc",
+        )
+
+        self.assertEqual(total_count, 3)
+        self.assertEqual([case.subject for case in cases], ["Major issue"])
 
 
 if __name__ == "__main__":

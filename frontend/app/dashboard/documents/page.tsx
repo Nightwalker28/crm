@@ -12,7 +12,7 @@ import { Card } from "@/components/ui/Card";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useDocumentActions, useDocuments, useDocumentStorageConnections, useDocumentStorageUsage } from "@/hooks/useDocuments";
+import { useDocumentActions, useDocuments, useDocumentStorageConnections, useDocumentStorageUsage, type DocumentSortState } from "@/hooks/useDocuments";
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
@@ -33,10 +33,12 @@ export default function DocumentsPage() {
   const [description, setDescription] = useState("");
   const [storageProvider, setStorageProvider] = useState("local");
   const [documentFilter, setDocumentFilter] = useState<"all" | "templates" | "files">("all");
+  const [sort, setSort] = useState<DocumentSortState>(null);
   const documentsQuery = useDocuments({
     search,
     isTemplate: documentFilter === "all" ? undefined : documentFilter === "templates",
     limit: 100,
+    sort,
   });
   const storageUsageQuery = useDocumentStorageUsage();
   const storageConnectionsQuery = useDocumentStorageConnections();
@@ -299,6 +301,9 @@ export default function DocumentsPage() {
               emptyText="No documents have been uploaded yet."
               onDelete={(documentId) => void handleDelete(documentId)}
               isDeleting={isDeletingDocument}
+              sort={sort}
+              onSortChange={setSort}
+              isRefreshing={documentsQuery.isFetching && !documentsQuery.isLoading}
             />
           )}
         </div>

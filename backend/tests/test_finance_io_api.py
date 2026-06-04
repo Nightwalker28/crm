@@ -7,6 +7,7 @@ from unittest.mock import patch
 from fastapi import HTTPException
 
 from app.modules.finance.services import io_search_api
+from app.modules.finance.repositories import io_repository
 
 
 class FakeFinanceQuery:
@@ -35,6 +36,31 @@ class FakeFinanceDB:
 
     def query(self, *_args, **_kwargs):
         return FakeFinanceQuery(self.record, self.duplicate_campaigns)
+
+
+class FakeInsertionOrderQuery:
+    def __init__(self):
+        self.operations = []
+
+    def count(self):
+        self.operations.append("count")
+        return 3
+
+    def order_by(self, *args):
+        self.operations.append("order_by_reset" if len(args) == 1 and args[0] is None else "order_by")
+        return self
+
+    def offset(self, value):
+        self.operations.append(f"offset:{value}")
+        return self
+
+    def limit(self, value):
+        self.operations.append(f"limit:{value}")
+        return self
+
+    def all(self):
+        self.operations.append("all")
+        return [SimpleNamespace(id=2, io_number="IO-002")]
 
 
 class FinanceDownloadTests(unittest.TestCase):
@@ -117,6 +143,31 @@ class FinanceDownloadTests(unittest.TestCase):
 
         self.assertEqual(file_path.name, "order.docx")
         self.assertEqual(file_name, "order.docx")
+
+
+class FinanceInsertionOrderListTests(unittest.TestCase):
+    def test_list_insertion_orders_sorts_before_pagination(self):
+        query = FakeInsertionOrderQuery()
+        pagination = SimpleNamespace(offset=10, limit=5)
+
+        with patch.object(io_repository, "build_insertion_orders_query", return_value=query), \
+             patch.object(io_repository, "hydrate_custom_field_records", side_effect=lambda _db, **kwargs: kwargs["records"]):
+            records, total_count = io_repository.list_insertion_orders(
+                object(),
+                tenant_id=42,
+                module_id=3,
+                user_id=None,
+                pagination=pagination,
+                sort_by="io_number",
+                sort_direction="asc",
+            )
+
+        self.assertEqual(total_count, 3)
+        self.assertEqual([record.io_number for record in records], ["IO-002"])
+        self.assertEqual(
+            query.operations,
+            ["count", "order_by_reset", "order_by", "offset:10", "limit:5", "all"],
+        )
 
 
 if __name__ == "__main__":

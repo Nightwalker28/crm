@@ -11,7 +11,7 @@ import Pagination from "@/components/ui/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import SearchBar from "@/components/ui/SearchBar";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
-import type { CatalogKind, CatalogRecord, CatalogRecordPayload } from "@/hooks/catalog/useCatalogRecords";
+import type { CatalogKind, CatalogRecord, CatalogRecordPayload, CatalogSortState } from "@/hooks/catalog/useCatalogRecords";
 import { useCatalogRecords } from "@/hooks/catalog/useCatalogRecords";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
@@ -42,6 +42,14 @@ export default function CatalogRecordsPage({ kind }: Props) {
   const defaultVisibleColumns = useMemo(() => JSON.parse(defaultVisibleColumnsKey) as string[], [defaultVisibleColumnsKey]);
   const visibleColumns = resolveVisibleColumns(definition, draftConfig, { ...defaultConfig, visible_columns: defaultVisibleColumns });
   const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
+  const activeSort = useMemo<CatalogSortState>(() => {
+    const sort = draftConfig.sort;
+    if (!sort || typeof sort.key !== "string") return null;
+    return {
+      key: sort.key,
+      direction: sort.direction === "desc" ? "desc" : "asc",
+    };
+  }, [draftConfig.sort]);
 
   const {
     records,
@@ -61,7 +69,7 @@ export default function CatalogRecordsPage({ kind }: Props) {
     updateRecord,
     uploadMedia,
     isSaving,
-  } = useCatalogRecords(kind, visibleColumns, activeFilters);
+  } = useCatalogRecords(kind, visibleColumns, activeFilters, activeSort);
 
   const searchValue = useMemo(() => (typeof activeFilters.search === "string" ? activeFilters.search : ""), [activeFilters.search]);
 
@@ -147,6 +155,13 @@ export default function CatalogRecordsPage({ kind }: Props) {
         isRefreshing={isFetching && !isLoading}
         visibleColumns={visibleColumns}
         columnOptions={definition?.columns ?? []}
+        sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
+        onSortChange={(nextSort) =>
+          setDraftConfig((current) => ({
+            ...current,
+            sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null,
+          }))
+        }
         onRowClick={handleRowClick}
         onToggleActive={handleToggleActive}
       />

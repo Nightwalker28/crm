@@ -14,16 +14,34 @@ import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
-import { useCustomModuleRecords, useCustomModuleSchema } from "@/hooks/useModuleBuilder";
+import { useCustomModuleRecords, useCustomModuleSchema, type CustomModuleRecord, type CustomModuleRecordSortState } from "@/hooks/useModuleBuilder";
 import { useSavedViews } from "@/hooks/useSavedViews";
+import { formatDateTime } from "@/lib/datetime";
 import { buildCustomModuleViewDefinition, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 
 function renderValue(value: unknown) {
   if (Array.isArray(value)) return value.join(", ");
   if (typeof value === "boolean") return value ? "Yes" : "No";
   return value == null || value === "" ? "-" : String(value);
+}
+
+type CustomModuleTableSortState = { column: string; direction: "asc" | "desc" } | null;
+
+const SORTABLE_RECORD_COLUMNS = new Set(["title", "created_at", "updated_at"]);
+
+function renderRecordColumn(record: CustomModuleRecord, column: string) {
+  if (column === "title") {
+    return record.title;
+  }
+  if (column === "created_at") {
+    return record.created_at ? formatDateTime(record.created_at, { hour: "numeric", minute: "2-digit" }) : "-";
+  }
+  if (column === "updated_at") {
+    return record.updated_at ? formatDateTime(record.updated_at, { hour: "numeric", minute: "2-digit" }) : "-";
+  }
+  return renderValue(record.values[column]);
 }
 
 export default function CustomModulePage() {
@@ -54,11 +72,47 @@ export default function CustomModulePage() {
   const { views, selectedViewId, setSelectedViewId, draftConfig, setDraftConfig } = useSavedViews(moduleKey, defaultViewConfig, Boolean(viewDefinition));
   const visibleColumns = resolveVisibleColumns(viewDefinition, draftConfig, defaultViewConfig);
   const search = typeof draftConfig.filters.search === "string" ? draftConfig.filters.search : "";
-  const records = useCustomModuleRecords(moduleKey, page, search);
+  const sort = useMemo<CustomModuleRecordSortState>(() => {
+    const rawSort = draftConfig.sort;
+    if (!rawSort) {
+      return null;
+    }
+    const key =
+      typeof rawSort.key === "string"
+        ? rawSort.key
+        : typeof rawSort.column === "string"
+          ? rawSort.column
+          : null;
+    if (!key || !SORTABLE_RECORD_COLUMNS.has(key)) {
+      return null;
+    }
+    return { key, direction: rawSort.direction === "desc" ? "desc" : "asc" };
+  }, [draftConfig.sort]);
+  const records = useCustomModuleRecords(moduleKey, page, search, sort);
   const fieldsByKey = useMemo(() => new Map(fields.map((field) => [field.key, field])), [fields]);
   const tableColumns = visibleColumns
-    .map((column) => (column === "title" ? { key: "title", label: "Title", field: null } : { key: column, label: fieldsByKey.get(column)?.label ?? column, field: fieldsByKey.get(column) ?? null }))
-    .filter((column) => column.key === "title" || column.field);
+    .map((column) => (
+      SORTABLE_RECORD_COLUMNS.has(column)
+        ? { key: column, label: column === "title" ? "Title" : column === "created_at" ? "Created" : "Updated", field: null }
+        : { key: column, label: fieldsByKey.get(column)?.label ?? column, field: fieldsByKey.get(column) ?? null }
+    ))
+    .filter((column) => SORTABLE_RECORD_COLUMNS.has(column.key) || column.field);
+
+  function handleSortChange(nextSort: CustomModuleTableSortState) {
+    setDraftConfig((current) => ({
+      ...current,
+      sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null,
+    }));
+    setPage(1);
+  }
+
+  function toggleSort(column: string) {
+    const nextSort: CustomModuleTableSortState =
+      sort?.key === column
+        ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
+        : { column, direction: "asc" };
+    handleSortChange(nextSort);
+  }
 
   async function createRecord(payload: { title?: string; values: Record<string, unknown> }) {
     setError(null);
@@ -138,7 +192,20 @@ export default function CustomModulePage() {
         <Table className="min-w-[900px]">
           <TableHeader>
             <TableHeaderRow>
-              {tableColumns.map((column) => <TableHead key={column.key}>{column.label}</TableHead>)}
+              {tableColumns.map((column) => (
+                SORTABLE_RECORD_COLUMNS.has(column.key) ? (
+                  <SortableHead
+                    key={column.key}
+                    sorted={sort?.key === column.key}
+                    direction={sort?.key === column.key ? sort.direction : "asc"}
+                    onClick={() => toggleSort(column.key)}
+                  >
+                    {column.label}
+                  </SortableHead>
+                ) : (
+                  <TableHead key={column.key}>{column.label}</TableHead>
+                )
+              ))}
               <TableHead className="text-right">Actions</TableHead>
             </TableHeaderRow>
           </TableHeader>
@@ -171,7 +238,7 @@ export default function CustomModulePage() {
                         </Link>
                       ) : (
                         <Link href={`/dashboard/custom/${moduleKey}/${record.id}`} className="block text-neutral-400">
-                          {renderValue(record.values[column.key])}
+                          {renderRecordColumn(record, column.key)}
                         </Link>
                       )}
                     </TableCell>

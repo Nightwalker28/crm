@@ -3,7 +3,9 @@
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
+
+export type SupportCaseSortState = PagedListSort;
 
 export type SupportCaseComment = {
   id: number;
@@ -58,8 +60,12 @@ export type SupportCasesResponse = {
   page: number;
 };
 
-async function fetchCases(page: number, pageSize: number, _visibleColumns: string[], filters: SavedViewFilters): Promise<SupportCasesResponse> {
+async function fetchCases(page: number, pageSize: number, _visibleColumns: string[], filters: SavedViewFilters, sort: SupportCaseSortState): Promise<SupportCasesResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+  if (sort) {
+    params.set("sort_by", sort.key);
+    params.set("sort_direction", sort.direction);
+  }
   appendSavedViewFilterParams(params, filters);
   const searchTerm = typeof filters.search === "string" ? filters.search.trim() : "";
   const path = searchTerm ? `/support/cases/search?${params.toString()}` : `/support/cases?${params.toString()}`;
@@ -68,12 +74,13 @@ async function fetchCases(page: number, pageSize: number, _visibleColumns: strin
   return res.json();
 }
 
-export function useSupportCases(visibleColumns: string[], viewFilters: SavedViewFilters, initialPage = 1, initialPageSize = 10) {
+export function useSupportCases(visibleColumns: string[], viewFilters: SavedViewFilters, sort: SupportCaseSortState = null, initialPage = 1, initialPageSize = 10) {
   const paged = usePagedList<SupportCase, SupportCasesResponse>({
     queryKey: ["support-cases"],
-    fetcher: (page, pageSize, filters, columns) => fetchCases(page, pageSize, columns, filters),
+    fetcher: (page, pageSize, filters, columns, sortState) => fetchCases(page, pageSize, columns, filters, sortState),
     visibleColumns,
     filters: viewFilters,
+    sort,
     initialPage,
     initialPageSize,
     errorMessage: () => "Failed to load support cases",

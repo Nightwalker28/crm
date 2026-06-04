@@ -5,10 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 
-export type InsertionOrderSortDirection = "asc" | "desc";
-export type InsertionOrderSortState = { column: string; direction: InsertionOrderSortDirection } | null;
+export type InsertionOrderSortState = PagedListSort;
 export type InsertionOrderStatus = "draft" | "issued" | "active" | "completed" | "cancelled" | "imported";
 
 export type InsertionOrder = {
@@ -104,7 +103,7 @@ async function fetchInsertionOrders(
     params.set("fields", baseVisibleColumns.join(","));
   }
   if (sort) {
-    params.set("sort_by", sort.column);
+    params.set("sort_by", sort.key);
     params.set("sort_direction", sort.direction);
   }
 
@@ -180,10 +179,11 @@ export function useInsertionOrders(
 ) {
   const queryClient = useQueryClient();
   const paged = usePagedList<InsertionOrder, InsertionOrdersResponse>({
-    queryKey: ["insertion-orders", sort],
-    fetcher: (page, pageSize, filters, columns) => fetchInsertionOrders(page, pageSize, filters, columns, sort),
+    queryKey: ["insertion-orders"],
+    fetcher: (page, pageSize, filters, columns, sortState) => fetchInsertionOrders(page, pageSize, filters, columns, sortState),
     visibleColumns,
     filters: viewFilters,
+    sort,
     initialPage: 1,
     initialPageSize: 10,
     refetchOnWindowFocus: false,

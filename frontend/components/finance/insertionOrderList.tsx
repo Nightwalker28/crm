@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 import Image from "next/image";
 import { FileSpreadsheet } from "lucide-react";
-import type { InsertionOrder, InsertionOrderSortState } from "@/hooks/finance/useInsertionOrders";
+import type { InsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import {
   Table,
   TableBody,
@@ -24,6 +24,8 @@ import { resolveMediaUrl } from "@/lib/media";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { getInsertionOrderStatusStyle } from "@/lib/statusStyles";
 
+type InsertionOrderTableSortState = { column: string; direction: "asc" | "desc" } | null;
+
 type InsertionOrdersListProps = {
   orders: InsertionOrder[];
   isLoading: boolean;
@@ -35,9 +37,27 @@ type InsertionOrdersListProps = {
   currentPageSelectionState?: boolean | "indeterminate";
   onToggleRow?: (orderId: number, checked: boolean) => void;
   onToggleCurrentPage?: (checked: boolean) => void;
-  sort: InsertionOrderSortState;
-  onSortChange: (sort: InsertionOrderSortState) => void;
+  sort: InsertionOrderTableSortState;
+  onSortChange: (sort: InsertionOrderTableSortState) => void;
 };
+
+const SORTABLE_COLUMNS = new Set([
+  "io_number",
+  "customer_name",
+  "status",
+  "currency",
+  "subtotal_amount",
+  "tax_amount",
+  "total_amount",
+  "issue_date",
+  "effective_date",
+  "due_date",
+  "start_date",
+  "end_date",
+  "external_reference",
+  "counterparty_reference",
+  "updated_at",
+]);
 
 function formatAmount(amount?: number | null, currency?: string): string {
   if (amount == null) return "";
@@ -73,6 +93,16 @@ function statusBorderClass(status?: string | null) {
   }
 }
 
+function getNumericValue(order: InsertionOrder, column: keyof InsertionOrder) {
+  const value = order[column];
+  return typeof value === "number" ? value : null;
+}
+
+function getStringValue(order: InsertionOrder, column: keyof InsertionOrder) {
+  const value = order[column];
+  return typeof value === "string" ? value : null;
+}
+
 export default function InsertionOrdersList({
   orders,
   isLoading,
@@ -93,10 +123,16 @@ export default function InsertionOrdersList({
     customer_name: "Customer",
     status: "Status",
     currency: "Currency",
+    subtotal_amount: "Subtotal",
+    tax_amount: "Tax",
     total_amount: "Total",
     issue_date: "Issue Date",
+    effective_date: "Effective",
     due_date: "Due Date",
+    start_date: "Start Date",
+    end_date: "End Date",
     external_reference: "Reference",
+    counterparty_reference: "Counterparty Ref",
     user_name: "Owner",
     updated_at: "Updated",
   };
@@ -157,25 +193,34 @@ export default function InsertionOrdersList({
           </TableCell>
         );
       case "total_amount":
+      case "subtotal_amount":
+      case "tax_amount": {
+        const amount = getNumericValue(order, column);
         return (
           <TableCell>
-            {order.total_amount != null ? (
+            {amount != null ? (
               <span className="text-sm font-semibold text-emerald-300 tabular-nums">
-                {formatAmount(order.total_amount, order.currency)}
+                {formatAmount(amount, order.currency)}
               </span>
             ) : (
               <span className="text-neutral-600 text-sm">—</span>
             )}
           </TableCell>
         );
+      }
       case "issue_date":
+      case "effective_date":
+      case "start_date":
+      case "end_date": {
+        const dateValue = getStringValue(order, column);
         return (
           <TableCell>
             <span className="text-sm text-neutral-400 tabular-nums">
-              {order.issue_date ? formatDateOnly(order.issue_date) : <span className="text-neutral-600">—</span>}
+              {dateValue ? formatDateOnly(dateValue) : <span className="text-neutral-600">—</span>}
             </span>
           </TableCell>
         );
+      }
       case "due_date":
         return (
           <TableCell>
@@ -193,13 +238,16 @@ export default function InsertionOrdersList({
           </TableCell>
         );
       case "external_reference":
+      case "counterparty_reference": {
+        const textValue = getStringValue(order, column);
         return (
           <TableCell>
             <span className="text-sm text-neutral-400 font-mono tracking-tight truncate block max-w-[140px]">
-              {order.external_reference || <span className="text-neutral-600">—</span>}
+              {textValue || <span className="text-neutral-600">—</span>}
             </span>
           </TableCell>
         );
+      }
       case "user_name":
         return (
           <TableCell>
@@ -208,21 +256,23 @@ export default function InsertionOrdersList({
             </span>
           </TableCell>
         );
-      case "updated_at":
+      case "updated_at": {
+        const dateTimeValue = getStringValue(order, column);
         return (
           <TableCell>
             <span className="text-sm text-neutral-500 tabular-nums">
-              {order.updated_at ? formatDateTime(order.updated_at, { hour: "numeric", minute: "2-digit" }) : <span className="text-neutral-600">—</span>}
+              {dateTimeValue ? formatDateTime(dateTimeValue, { hour: "numeric", minute: "2-digit" }) : <span className="text-neutral-600">—</span>}
             </span>
           </TableCell>
         );
+      }
       default:
         return null;
     }
   };
 
   function toggleSort(column: string) {
-    const nextSort: InsertionOrderSortState =
+    const nextSort: InsertionOrderTableSortState =
       sort?.column === column
         ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
         : { column, direction: "asc" };
@@ -246,7 +296,7 @@ export default function InsertionOrdersList({
             </TableHead>
             {visibleColumns.map((column) => {
               const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
-              const sortable = !isCustomFieldColumnKey(column) && ["io_number", "customer_name", "status", "total_amount", "issue_date", "due_date", "updated_at"].includes(column);
+              const sortable = !isCustomFieldColumnKey(column) && SORTABLE_COLUMNS.has(column);
               return sortable ? (
                 <SortableHead
                   key={column}

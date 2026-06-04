@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { invalidateModuleCache } from "@/hooks/useAccessibleModules";
+import type { PagedListSort } from "@/hooks/usePagedList";
 import { apiFetch } from "@/lib/api";
 
 export type CustomFieldType =
@@ -69,6 +70,8 @@ export type CustomModuleRecordList = {
   page: number;
   page_size: number;
 };
+
+export type CustomModuleRecordSortState = PagedListSort;
 
 export type CustomModuleFieldPayload = {
   label: string;
@@ -255,14 +258,23 @@ export function useCustomModuleRecord(moduleKey: string, recordId: string | numb
   };
 }
 
-export function useCustomModuleRecords(moduleKey: string, page: number, search: string) {
+export function useCustomModuleRecords(moduleKey: string, page: number, search: string, sort: CustomModuleRecordSortState = null) {
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: ["custom-module-records", moduleKey, page, search],
-    queryFn: async () =>
-      parseJson<CustomModuleRecordList>(
-        await apiFetch(`/custom-modules/${moduleKey}/records?page=${page}&page_size=25${search ? `&search=${encodeURIComponent(search)}` : ""}`),
-      ),
+    queryKey: ["custom-module-records", moduleKey, page, search, sort],
+    queryFn: async () => {
+      const params = new URLSearchParams({ page: String(page), page_size: "25" });
+      if (search.trim()) {
+        params.set("search", search.trim());
+      }
+      if (sort) {
+        params.set("sort_by", sort.key);
+        params.set("sort_direction", sort.direction);
+      }
+      return parseJson<CustomModuleRecordList>(
+        await apiFetch(`/custom-modules/${moduleKey}/records?${params.toString()}`),
+      );
+    },
     enabled: Boolean(moduleKey),
     refetchOnWindowFocus: false,
   });

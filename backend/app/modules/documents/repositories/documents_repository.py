@@ -6,6 +6,29 @@ from sqlalchemy.orm import Session, joinedload
 from app.modules.documents.models import Document, DocumentLink
 
 
+DOCUMENT_SORT_FIELDS = {
+    "title": Document.title,
+    "original_filename": Document.original_filename,
+    "extension": Document.extension,
+    "file_size_bytes": Document.file_size_bytes,
+    "storage_provider": Document.storage_provider,
+    "is_template": Document.is_template,
+    "template_category": Document.template_category,
+    "created_at": Document.created_at,
+    "updated_at": Document.updated_at,
+}
+
+
+def apply_document_sort(query, sort_by: str | None = None, sort_direction: str | None = None):
+    column = DOCUMENT_SORT_FIELDS.get((sort_by or "").strip())
+    if column is None:
+        return query.order_by(Document.created_at.desc(), Document.id.desc())
+    direction = (sort_direction or "asc").lower()
+    primary = column.desc() if direction == "desc" else column.asc()
+    secondary = Document.id.desc() if direction == "desc" else Document.id.asc()
+    return query.order_by(primary, secondary)
+
+
 def list_documents(
     db: Session,
     *,
@@ -15,6 +38,8 @@ def list_documents(
     entity_id: str | int | None = None,
     is_template: bool | None = None,
     limit: int = 50,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[list[Document], int]:
     query = (
         db.query(Document)
@@ -39,7 +64,7 @@ def list_documents(
             )
         )
     total = query.count()
-    documents = query.order_by(Document.created_at.desc(), Document.id.desc()).limit(limit).all()
+    documents = apply_document_sort(query, sort_by=sort_by, sort_direction=sort_direction).limit(limit).all()
     return documents, total
 
 

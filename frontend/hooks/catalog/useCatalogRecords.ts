@@ -3,10 +3,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 
 export type CatalogKind = "products" | "services";
+export type CatalogSortState = PagedListSort;
 
 export type CatalogRecord = {
   id: number;
@@ -86,6 +87,7 @@ async function fetchCatalogRecords(
   page: number,
   pageSize: number,
   filters: SavedViewFilters,
+  sort: CatalogSortState,
 ): Promise<CatalogRecordsResponse> {
   const params = new URLSearchParams({
     page: String(page),
@@ -96,6 +98,10 @@ async function fetchCatalogRecords(
   const search = typeof filters.search === "string" ? filters.search.trim() : "";
   if (search) {
     params.set("search", search);
+  }
+  if (sort) {
+    params.set("sort_by", sort.key);
+    params.set("sort_direction", sort.direction);
   }
 
   const res = await apiFetch(`${pathFor(kind)}?${params.toString()}`);
@@ -147,6 +153,7 @@ export function useCatalogRecords(
   kind: CatalogKind,
   visibleColumns: string[],
   filters: SavedViewFilters,
+  sort: CatalogSortState = null,
   initialPage = 1,
   initialPageSize = 10,
 ) {
@@ -154,9 +161,10 @@ export function useCatalogRecords(
   const queryKey = ["catalog", kind];
   const paged = usePagedList<CatalogRecord, CatalogRecordsResponse>({
     queryKey,
-    fetcher: (page, pageSize, viewFilters) => fetchCatalogRecords(kind, page, pageSize, viewFilters),
+    fetcher: (page, pageSize, viewFilters, _columns, sortState) => fetchCatalogRecords(kind, page, pageSize, viewFilters, sortState),
     visibleColumns,
     filters,
+    sort,
     initialPage,
     initialPageSize,
     refetchOnWindowFocus: false,

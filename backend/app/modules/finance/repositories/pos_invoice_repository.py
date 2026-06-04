@@ -9,6 +9,29 @@ from app.core.postgres_search import searchable_text
 from app.modules.finance.models import FinancePosInvoice
 
 
+POS_INVOICE_SORT_FIELDS = {
+    "invoice_number": FinancePosInvoice.invoice_number,
+    "customer_name": FinancePosInvoice.customer_name,
+    "status": FinancePosInvoice.status,
+    "payment_status": FinancePosInvoice.payment_status,
+    "total_amount": FinancePosInvoice.total_amount,
+    "amount_paid": FinancePosInvoice.amount_paid,
+    "issue_date": FinancePosInvoice.issue_date,
+    "due_date": FinancePosInvoice.due_date,
+    "template_id": FinancePosInvoice.template_id,
+    "updated_at": FinancePosInvoice.updated_at,
+}
+
+
+def apply_invoice_sort(query, *, sort_by: str | None = None, sort_direction: str | None = None):
+    sort_column = POS_INVOICE_SORT_FIELDS.get((sort_by or "").strip())
+    if sort_column is None:
+        return query
+    direction = (sort_direction or "asc").strip().lower()
+    ordered = sort_column.desc() if direction == "desc" else sort_column.asc()
+    return query.order_by(None).order_by(ordered.nullslast(), FinancePosInvoice.id.desc())
+
+
 def build_invoice_query(db: Session, current_user, *, search: str | None = None, status_filter: str | None = None):
     scope = get_finance_user_scope(db, current_user)
     query = db.query(FinancePosInvoice).filter(
@@ -35,10 +58,24 @@ def build_invoice_query(db: Session, current_user, *, search: str | None = None,
     )
 
 
-def list_invoices(db: Session, current_user, *, pagination, search: str | None = None, status_filter: str | None = None):
+def list_invoices(
+    db: Session,
+    current_user,
+    *,
+    pagination,
+    search: str | None = None,
+    status_filter: str | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+):
     query = build_invoice_query(db, current_user, search=search, status_filter=status_filter)
     total_count = query.count()
-    records = query.offset(pagination.offset).limit(pagination.limit).all()
+    records = (
+        apply_invoice_sort(query, sort_by=sort_by, sort_direction=sort_direction)
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+        .all()
+    )
     return records, total_count
 
 

@@ -646,7 +646,17 @@ def serialize_record(record: CustomModuleRecord) -> CustomModuleRecordResponse:
     )
 
 
-def list_records(db: Session, *, module_key: str, current_user: User, pagination: Pagination, search: str | None = None, include_deleted: bool = False):
+def list_records(
+    db: Session,
+    *,
+    module_key: str,
+    current_user: User,
+    pagination: Pagination,
+    search: str | None = None,
+    include_deleted: bool = False,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+):
     definition = _get_module_definition(db, tenant_id=current_user.tenant_id, key=module_key)
     _require_module_action(db, user=current_user, definition=definition, action="view")
     records, total = custom_modules_repository.list_records(
@@ -656,6 +666,8 @@ def list_records(db: Session, *, module_key: str, current_user: User, pagination
         limit=pagination.limit,
         search=search,
         include_deleted=include_deleted,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     return build_paged_response([serialize_record(record) for record in records], total, pagination)
 

@@ -305,13 +305,24 @@ def _query_invoices(db: Session, current_user, *, search: str | None = None, sta
     return query
 
 
-def list_invoices(db: Session, current_user, *, pagination: Pagination, search: str | None = None, status_filter: str | None = None):
+def list_invoices(
+    db: Session,
+    current_user,
+    *,
+    pagination: Pagination,
+    search: str | None = None,
+    status_filter: str | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+):
     records, total_count = pos_invoice_repository.list_invoices(
         db,
         current_user,
         pagination=pagination,
         search=search,
         status_filter=status_filter,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     return build_paged_response(
         [serialize_invoice(record, current_user=current_user, include_lines=False) for record in records],

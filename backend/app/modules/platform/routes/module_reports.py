@@ -129,12 +129,22 @@ def create_forecast_snapshot(
 @router.get("/saved", response_model=SavedModuleReportListResponse)
 def list_saved_reports(
     module_key: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("reports")),
     require_permission=Depends(require_action_access("reports", "view")),
 ):
-    return {"results": module_reports.list_saved_reports(db, current_user, module_key=module_key)}
+    return {
+        "results": module_reports.list_saved_reports(
+            db,
+            current_user,
+            module_key=module_key,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+        )
+    }
 
 
 @router.post("/saved", response_model=SavedModuleReportResponse, status_code=status.HTTP_201_CREATED)

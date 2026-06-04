@@ -30,6 +30,12 @@ from app.modules.user_management.models import Team, User
 
 MAX_REPORT_BUCKETS = 50
 SAVED_REPORT_VIEW_MODES = {"table", "bar", "pie"}
+SAVED_REPORT_SORT_FIELDS = {
+    "name": UserModuleReport.name,
+    "module_key": UserModuleReport.module_key,
+    "created_at": UserModuleReport.created_at,
+    "updated_at": UserModuleReport.updated_at,
+}
 CRM_MODULE_KEYS = {"sales_leads", "sales_contacts", "sales_organizations", "sales_opportunities", "sales_quotes", "tasks"}
 FORECAST_STAGE_PROBABILITIES = {
     "lead": Decimal("10"),
@@ -550,7 +556,25 @@ def _serialize_saved_report(report: UserModuleReport) -> dict[str, Any]:
     }
 
 
-def list_saved_reports(db: Session, current_user, *, module_key: str | None = None) -> list[dict[str, Any]]:
+def apply_saved_report_sort(query, *, sort_by: str | None = None, sort_direction: str | None = None):
+    sort_column = SAVED_REPORT_SORT_FIELDS.get((sort_by or "").strip())
+    default_direction = "asc"
+    if sort_column is None:
+        sort_column = UserModuleReport.updated_at
+        default_direction = "desc"
+    direction = (sort_direction or default_direction).strip().lower()
+    ordered = sort_column.desc() if direction == "desc" else sort_column.asc()
+    return query.order_by(None).order_by(ordered.nullslast(), UserModuleReport.id.desc())
+
+
+def list_saved_reports(
+    db: Session,
+    current_user,
+    *,
+    module_key: str | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+) -> list[dict[str, Any]]:
     query = db.query(UserModuleReport).filter(
         UserModuleReport.tenant_id == current_user.tenant_id,
         UserModuleReport.user_id == current_user.id,
@@ -558,7 +582,7 @@ def list_saved_reports(db: Session, current_user, *, module_key: str | None = No
     if module_key:
         _get_report_fields_for_module(db, current_user, module_key)
         query = query.filter(UserModuleReport.module_key == module_key)
-    reports = query.order_by(UserModuleReport.updated_at.desc(), UserModuleReport.id.desc()).all()
+    reports = apply_saved_report_sort(query, sort_by=sort_by, sort_direction=sort_direction).all()
     return [_serialize_saved_report(report) for report in reports]
 
 

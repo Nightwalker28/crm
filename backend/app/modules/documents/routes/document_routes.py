@@ -153,6 +153,8 @@ def get_documents(
     entity_id: str | None = Query(default=None, max_length=100),
     is_template: bool | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
+    sort_by: str | None = Query(default=None, max_length=80),
+    sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("documents")),
@@ -166,6 +168,8 @@ def get_documents(
         entity_id=entity_id,
         is_template=is_template,
         limit=limit,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
         current_user=current_user,
     )
     return {"results": [DocumentResponse.model_validate(document) for document in documents], "total": total}

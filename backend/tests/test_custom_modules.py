@@ -13,6 +13,7 @@ from app.modules.platform.models import (
     CustomModuleRecord,
     CustomModuleRecordValue,
 )
+from app.modules.platform.repositories import custom_modules_repository
 from app.modules.platform.services import custom_modules
 from app.modules.platform.services import module_fields
 from app.modules.user_management.models import (
@@ -59,6 +60,31 @@ class EmptyQuery:
 
     def first(self):
         return None
+
+
+class FakeCustomModuleRecordQuery:
+    def __init__(self):
+        self.operations = []
+
+    def count(self):
+        self.operations.append("count")
+        return 3
+
+    def order_by(self, *args):
+        self.operations.append("order_by_reset" if len(args) == 1 and args[0] is None else "order_by")
+        return self
+
+    def offset(self, value):
+        self.operations.append(f"offset:{value}")
+        return self
+
+    def limit(self, value):
+        self.operations.append(f"limit:{value}")
+        return self
+
+    def all(self):
+        self.operations.append("all")
+        return [SimpleNamespace(id=2, title="Asset B")]
 
 
 class ReservedModuleDB(FakeDB):
@@ -122,6 +148,27 @@ class SeedAccessDB:
 
 
 class CustomModuleFieldTests(unittest.TestCase):
+    def test_list_records_sorts_before_pagination(self):
+        query = FakeCustomModuleRecordQuery()
+        definition = SimpleNamespace(id=1, tenant_id=7)
+
+        with patch.object(custom_modules_repository, "build_records_query", return_value=query):
+            records, total_count = custom_modules_repository.list_records(
+                object(),
+                definition=definition,
+                offset=10,
+                limit=5,
+                sort_by="title",
+                sort_direction="asc",
+            )
+
+        self.assertEqual(total_count, 3)
+        self.assertEqual([record.title for record in records], ["Asset B"])
+        self.assertEqual(
+            query.operations,
+            ["count", "order_by_reset", "order_by", "offset:10", "limit:5", "all"],
+        )
+
     def test_add_field_normalizes_key_from_label(self):
         definition = CustomModuleDefinition(id=1, tenant_id=7, key="assets", name="Assets")
         db = FakeDB()

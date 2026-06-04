@@ -69,6 +69,8 @@ def list_products(
     include_inactive: bool = True,
     offset: int = 0,
     limit: int = 50,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[list[CatalogProduct], int]:
     return product_repository.list_products(
         db,
@@ -77,6 +79,8 @@ def list_products(
         include_inactive=include_inactive,
         offset=offset,
         limit=limit,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
 
 

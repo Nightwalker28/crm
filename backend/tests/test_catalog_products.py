@@ -92,6 +92,37 @@ class CatalogProductServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(exc.exception.status_code, 409)
 
+    def test_list_products_sorts_before_limit(self):
+        services.create_product(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Basic Camera", "public_unit_price": "25.00", "stock_status": "untracked"},
+        )
+        services.create_product(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Pro Camera", "public_unit_price": "250.00", "stock_status": "untracked"},
+        )
+        services.create_product(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Mid Camera", "public_unit_price": "125.00", "stock_status": "untracked"},
+        )
+
+        products, total = services.list_products(
+            self.db,
+            tenant_id=10,
+            limit=1,
+            sort_by="public_unit_price",
+            sort_direction="desc",
+        )
+
+        self.assertEqual(total, 3)
+        self.assertEqual([product.name for product in products], ["Pro Camera"])
+
     async def test_product_media_uses_upload_helper_and_serializes_media_url(self):
         product = services.create_product(
             self.db,

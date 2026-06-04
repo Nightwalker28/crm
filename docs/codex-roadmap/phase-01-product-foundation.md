@@ -154,7 +154,7 @@ Each detail page should include, where applicable:
 
 ### Acceptance criteria
 
-- Leads, opportunities, quotes, orders, contacts, organizations, support tickets, and documents have consistent detail layout patterns.
+- Leads, opportunities, quotes, orders, contacts, organizations, insertion orders, POS, support tickets, and documents have consistent detail layout patterns.
 - Actions are permission-aware.
 - Related records are easy to access.
 - Important state changes create activity/audit events.

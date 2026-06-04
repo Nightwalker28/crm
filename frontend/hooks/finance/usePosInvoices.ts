@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 export type PosInvoiceStatus = "draft" | "issued" | "paid" | "void";
 export type PosPaymentStatus = "unpaid" | "partial" | "paid" | "refunded";
 export type PosTemplateId = "modern" | "classic" | "compact";
+export type PosInvoiceSortState = { key: string; direction: "asc" | "desc" } | null;
 
 export type PosInvoiceLine = {
   id?: number;
@@ -86,10 +87,20 @@ function errorMessage(body: unknown, fallback: string) {
   return fallback;
 }
 
-async function fetchInvoices(page: number, pageSize: number, search: string, status: string): Promise<PosInvoicesResponse> {
+async function fetchInvoices(
+  page: number,
+  pageSize: number,
+  search: string,
+  status: string,
+  sort: PosInvoiceSortState,
+): Promise<PosInvoicesResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   if (search.trim()) params.set("search", search.trim());
   if (status !== "all") params.set("status", status);
+  if (sort) {
+    params.set("sort_by", sort.key);
+    params.set("sort_direction", sort.direction);
+  }
   const res = await apiFetch(`/finance/pos-invoices?${params.toString()}`);
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error(errorMessage(body, `Failed with ${res.status}`));
@@ -133,11 +144,17 @@ async function deleteInvoice(id: number): Promise<void> {
   }
 }
 
-export function usePosInvoices(page: number, pageSize: number, search: string, status: string) {
+export function usePosInvoices(
+  page: number,
+  pageSize: number,
+  search: string,
+  status: string,
+  sort: PosInvoiceSortState = null,
+) {
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: ["pos-invoices", page, pageSize, search, status],
-    queryFn: () => fetchInvoices(page, pageSize, search, status),
+    queryKey: ["pos-invoices", page, pageSize, search, status, sort],
+    queryFn: () => fetchInvoices(page, pageSize, search, status, sort),
     placeholderData: (previous) => previous,
   });
   const createMutation = useMutation({

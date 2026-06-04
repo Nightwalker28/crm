@@ -3,6 +3,7 @@ import asyncio
 import tempfile
 import unittest
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -187,6 +188,52 @@ class DocumentServiceTests(unittest.TestCase):
         self.assertEqual(total, 1)
         self.assertEqual([document.title for document in documents], ["Proposal"])
         self.assertEqual(documents[0].links[0].module_key, "sales_contacts")
+
+    def test_list_documents_sorts_before_limit(self):
+        self.db.add_all(
+            [
+                Document(
+                    id=3,
+                    tenant_id=10,
+                    uploaded_by_user_id=1,
+                    title="Alpha",
+                    original_filename="alpha.pdf",
+                    content_type="application/pdf",
+                    extension="pdf",
+                    file_size_bytes=2_000,
+                    storage_provider="local",
+                    storage_path="documents/tenant-10/alpha.pdf",
+                    created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                    updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+                ),
+                Document(
+                    id=4,
+                    tenant_id=10,
+                    uploaded_by_user_id=1,
+                    title="Zulu",
+                    original_filename="zulu.pdf",
+                    content_type="application/pdf",
+                    extension="pdf",
+                    file_size_bytes=500,
+                    storage_provider="local",
+                    storage_path="documents/tenant-10/zulu.pdf",
+                    created_at=datetime(2024, 1, 2, tzinfo=timezone.utc),
+                    updated_at=datetime(2024, 1, 2, tzinfo=timezone.utc),
+                ),
+            ]
+        )
+        self.db.commit()
+
+        documents, total = list_documents(
+            self.db,
+            tenant_id=10,
+            limit=1,
+            sort_by="file_size_bytes",
+            sort_direction="desc",
+        )
+
+        self.assertEqual(total, 3)
+        self.assertEqual([document.title for document in documents], ["Alpha"])
 
     def test_resolve_document_storage_path_stays_under_documents_root(self):
         with tempfile.TemporaryDirectory() as tmpdir:

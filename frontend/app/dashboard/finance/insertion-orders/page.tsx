@@ -19,6 +19,8 @@ import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 
+type InsertionOrderTableSortState = { column: string; direction: "asc" | "desc" } | null;
+
 export default function InsertionOrdersPage() {
   const router = useRouter();
   const { data: customFields = [] } = useModuleCustomFields("finance_io");
@@ -44,14 +46,20 @@ export default function InsertionOrdersPage() {
   const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
   const statusFilter = typeof activeFilters?.status === "string" ? activeFilters.status : "all";
   const sort = useMemo<InsertionOrderSortState>(() => {
-    if (
-      draftConfig.sort &&
-      typeof draftConfig.sort.column === "string" &&
-      (draftConfig.sort.direction === "asc" || draftConfig.sort.direction === "desc")
-    ) {
-      return { column: draftConfig.sort.column, direction: draftConfig.sort.direction };
+    const rawSort = draftConfig.sort;
+    if (!rawSort) {
+      return null;
     }
-    return null;
+    const key =
+      typeof rawSort.key === "string"
+        ? rawSort.key
+        : typeof rawSort.column === "string"
+          ? rawSort.column
+          : null;
+    if (!key) {
+      return null;
+    }
+    return { key, direction: rawSort.direction === "desc" ? "desc" : "asc" };
   }, [draftConfig.sort]);
   const {
     orders,
@@ -97,10 +105,10 @@ export default function InsertionOrdersPage() {
     });
   }
 
-  function handleSortChange(nextSort: InsertionOrderSortState) {
+  function handleSortChange(nextSort: InsertionOrderTableSortState) {
     setDraftConfig((current) => ({
       ...current,
-      sort: nextSort,
+      sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null,
     }));
   }
 
@@ -211,7 +219,7 @@ export default function InsertionOrdersPage() {
           currentPageSelectionState={currentPageSelectionState}
           onToggleRow={toggleRow}
           onToggleCurrentPage={toggleCurrentPage}
-          sort={sort}
+          sort={sort ? { column: sort.key, direction: sort.direction } : null}
           onSortChange={handleSortChange}
         />
 

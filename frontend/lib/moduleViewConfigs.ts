@@ -164,10 +164,16 @@ export const INSERTION_ORDER_COLUMNS: TableColumnOption[] = [
   { key: "customer_name", label: "Customer" },
   { key: "status", label: "Status" },
   { key: "currency", label: "Currency" },
+  { key: "subtotal_amount", label: "Subtotal" },
+  { key: "tax_amount", label: "Tax" },
   { key: "total_amount", label: "Total" },
   { key: "issue_date", label: "Issue Date" },
+  { key: "effective_date", label: "Effective" },
   { key: "due_date", label: "Due Date" },
+  { key: "start_date", label: "Start Date" },
+  { key: "end_date", label: "End Date" },
   { key: "external_reference", label: "Reference" },
+  { key: "counterparty_reference", label: "Counterparty Ref" },
   { key: "user_name", label: "Owner" },
   { key: "updated_at", label: "Updated" },
 ];
@@ -853,6 +859,8 @@ export function buildCustomModuleViewDefinition(module: CustomModuleDefinition, 
   const columns: TableColumnOption[] = [
     { key: "title", label: "Title" },
     ...activeFields.map((field) => ({ key: field.key, label: field.label })),
+    { key: "created_at", label: "Created" },
+    { key: "updated_at", label: "Updated" },
   ];
   const defaultColumns = [
     "title",
@@ -866,6 +874,8 @@ export function buildCustomModuleViewDefinition(module: CustomModuleDefinition, 
     columns,
     filterFields: [
       { key: "title", label: "Title", type: "text", operators: TEXT_OPERATORS },
+      { key: "created_at", label: "Created", type: "date", operators: DATE_OPERATORS },
+      { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
       ...activeFields.map((field) => ({
         key: field.key,
         label: field.label,

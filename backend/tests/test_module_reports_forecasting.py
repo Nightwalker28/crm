@@ -17,6 +17,55 @@ from app.modules.user_management import models as user_management_models  # noqa
 from app.modules.user_management.models import Team, Tenant, User, UserStatus
 
 
+class FakeSavedReportQuery:
+    def __init__(self):
+        self.operations = []
+
+    def filter(self, *args):
+        self.operations.append("filter")
+        return self
+
+    def order_by(self, *args):
+        self.operations.append("order_by_reset" if len(args) == 1 and args[0] is None else "order_by")
+        return self
+
+    def all(self):
+        self.operations.append("all")
+        return [
+            SimpleNamespace(
+                id=2,
+                module_key="sales_leads",
+                name="Lead Report",
+                config={},
+                created_at=datetime(2026, 1, 1),
+                updated_at=datetime(2026, 1, 2),
+            )
+        ]
+
+
+class FakeSavedReportDB:
+    def __init__(self, query):
+        self.query_obj = query
+
+    def query(self, *_args):
+        return self.query_obj
+
+
+class SavedReportListTests(unittest.TestCase):
+    def test_saved_reports_apply_sort_before_fetching(self):
+        query = FakeSavedReportQuery()
+
+        results = module_reports.list_saved_reports(
+            FakeSavedReportDB(query),
+            SimpleNamespace(id=1, tenant_id=10),
+            sort_by="name",
+            sort_direction="asc",
+        )
+
+        self.assertEqual(results[0]["name"], "Lead Report")
+        self.assertEqual(query.operations, ["filter", "order_by_reset", "order_by", "all"])
+
+
 class ForecastReportTests(unittest.TestCase):
     def setUp(self):
         engine = create_engine("sqlite:///:memory:")

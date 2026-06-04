@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { LifeBuoy } from "lucide-react";
 
@@ -22,6 +22,8 @@ type SupportCasesTableProps = {
   isRefreshing?: boolean;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
+  sort?: SortState;
+  onSortChange?: (sort: SortState) => void;
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -39,21 +41,34 @@ const PRIORITY_STYLES: Record<string, { bg: string; text: string; border: string
   urgent: { bg: "bg-red-900/30", text: "text-red-300", border: "border-red-700/40", label: "Urgent" },
 };
 
-export default function SupportCasesTable({ cases, isLoading, isRefreshing = false, visibleColumns, columnOptions = [] }: SupportCasesTableProps) {
+const SORTABLE_COLUMNS = new Set([
+  "case_number",
+  "subject",
+  "status",
+  "priority",
+  "source",
+  "contact_id",
+  "organization_id",
+  "opportunity_id",
+  "quote_id",
+  "order_id",
+  "assigned_to_id",
+  "sla_due_at",
+  "first_response_at",
+  "resolved_at",
+  "closed_at",
+  "created_at",
+  "updated_at",
+]);
+
+export default function SupportCasesTable({ cases, isLoading, isRefreshing = false, visibleColumns, columnOptions = [], sort = null, onSortChange }: SupportCasesTableProps) {
   const router = useRouter();
-  const [sort, setSort] = useState<SortState>(null);
-  const sortedCases = useMemo(() => {
-    if (!sort) return cases;
-    return [...cases].sort((left, right) => {
-      const leftValue = String(left[sort.column as keyof SupportCase] ?? "").toLowerCase();
-      const rightValue = String(right[sort.column as keyof SupportCase] ?? "").toLowerCase();
-      const result = leftValue.localeCompare(rightValue, undefined, { numeric: true });
-      return sort.direction === "asc" ? result : -result;
-    });
-  }, [cases, sort]);
 
   function toggleSort(column: string) {
-    setSort((current) => current?.column !== column ? { column, direction: "asc" } : { column, direction: current.direction === "asc" ? "desc" : "asc" });
+    const nextSort: SortState = sort?.column !== column
+      ? { column, direction: "asc" }
+      : { column, direction: sort.direction === "asc" ? "desc" : "asc" };
+    onSortChange?.(nextSort);
   }
 
   function renderCell(item: SupportCase, column: string) {
@@ -89,8 +104,8 @@ export default function SupportCasesTable({ cases, isLoading, isRefreshing = fal
           <TableHeaderRow>
             {visibleColumns.map((column) => {
               const label = getReadableColumnLabel(column, columnOptions);
-              const sortable = ["case_number", "subject", "status", "priority", "sla_due_at", "created_at", "updated_at"].includes(column);
-              return sortable ? (
+              const sortable = SORTABLE_COLUMNS.has(column);
+              return sortable && onSortChange ? (
                 <SortableHead key={column} sorted={sort?.column === column} direction={sort?.column === column ? sort.direction : "asc"} onClick={() => toggleSort(column)}>
                   {label}
                 </SortableHead>
@@ -108,7 +123,7 @@ export default function SupportCasesTable({ cases, isLoading, isRefreshing = fal
               </TableCell>
             </TableRow>
           ) : (
-            sortedCases.map((item) => (
+            cases.map((item) => (
               <TableRow key={item.id} className="group cursor-pointer" onClick={() => router.push(`/dashboard/support/cases/${item.id}`)}>
                 {visibleColumns.map((column) => <Fragment key={column}>{renderCell(item, column)}</Fragment>)}
               </TableRow>

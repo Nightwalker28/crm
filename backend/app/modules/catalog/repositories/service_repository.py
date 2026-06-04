@@ -6,6 +6,28 @@ from sqlalchemy.orm import Session
 from app.modules.catalog.models import CatalogProduct, CatalogService
 
 
+SERVICE_SORT_FIELDS = {
+    "name": CatalogService.name,
+    "slug": CatalogService.slug,
+    "currency": CatalogService.currency,
+    "public_unit_price": CatalogService.public_unit_price,
+    "is_public": CatalogService.is_public,
+    "is_active": CatalogService.is_active,
+    "created_at": CatalogService.created_at,
+    "updated_at": CatalogService.updated_at,
+}
+
+
+def apply_service_sort(query, sort_by: str | None = None, sort_direction: str | None = None):
+    column = SERVICE_SORT_FIELDS.get((sort_by or "").strip())
+    if column is None:
+        return query.order_by(CatalogService.updated_at.desc(), CatalogService.id.desc())
+    direction = (sort_direction or "asc").lower()
+    primary = column.desc() if direction == "desc" else column.asc()
+    secondary = CatalogService.id.desc() if direction == "desc" else CatalogService.id.asc()
+    return query.order_by(primary, secondary)
+
+
 def slug_exists(
     db: Session,
     *,
@@ -29,6 +51,8 @@ def list_services(
     include_inactive: bool = True,
     offset: int = 0,
     limit: int = 50,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[list[CatalogService], int]:
     query = db.query(CatalogService).filter(
         CatalogService.tenant_id == tenant_id,
@@ -40,7 +64,7 @@ def list_services(
         pattern = f"%{search.strip()}%"
         query = query.filter(or_(CatalogService.name.ilike(pattern), CatalogService.description.ilike(pattern)))
     total = query.count()
-    services = query.order_by(CatalogService.updated_at.desc(), CatalogService.id.desc()).offset(offset).limit(limit).all()
+    services = apply_service_sort(query, sort_by=sort_by, sort_direction=sort_direction).offset(offset).limit(limit).all()
     return services, total
 
 

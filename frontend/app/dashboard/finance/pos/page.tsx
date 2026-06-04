@@ -14,9 +14,9 @@ import { Pill } from "@/components/ui/Pill";
 import SearchBar from "@/components/ui/SearchBar";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { fetchPosInvoice, usePosInvoices, type PosInvoice, type PosInvoicePayload } from "@/hooks/finance/usePosInvoices";
+import { fetchPosInvoice, usePosInvoices, type PosInvoice, type PosInvoicePayload, type PosInvoiceSortState } from "@/hooks/finance/usePosInvoices";
 
 function money(amount: number, currency: string) {
   try {
@@ -33,11 +33,22 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; border: string }
   void: { bg: "bg-red-950/50", text: "text-red-300", border: "border-red-800/70" },
 };
 
+type PosInvoiceSortableColumn =
+  | "invoice_number"
+  | "customer_name"
+  | "status"
+  | "payment_status"
+  | "total_amount"
+  | "issue_date"
+  | "template_id"
+  | "updated_at";
+
 export default function PosInvoicesPage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
+  const [sort, setSort] = useState<PosInvoiceSortState>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<PosInvoice | null>(null);
   const {
@@ -53,7 +64,7 @@ export default function PosInvoicesPage() {
     createInvoice,
     updateInvoice,
     isSaving,
-  } = usePosInvoices(page, pageSize, search, status);
+  } = usePosInvoices(page, pageSize, search, status, sort);
 
   const metrics = useMemo(() => {
     return invoices.reduce(
@@ -114,6 +125,27 @@ export default function PosInvoicesPage() {
     } catch (markError) {
       toast.error(markError instanceof Error ? markError.message : "Failed to mark invoice as paid.");
     }
+  }
+
+  function toggleSort(column: PosInvoiceSortableColumn) {
+    setPage(1);
+    setSort((current) =>
+      current?.key === column
+        ? { key: column, direction: current.direction === "asc" ? "desc" : "asc" }
+        : { key: column, direction: "asc" },
+    );
+  }
+
+  function renderSortableHead(column: PosInvoiceSortableColumn, label: string) {
+    return (
+      <SortableHead
+        sorted={sort?.key === column}
+        direction={sort?.key === column ? sort.direction : "asc"}
+        onClick={() => toggleSort(column)}
+      >
+        {label}
+      </SortableHead>
+    );
   }
 
   return (
@@ -180,15 +212,15 @@ export default function PosInvoicesPage() {
         <Table className="min-w-[1040px]">
           <TableHeader>
             <TableHeaderRow>
-              <TableHead>Invoice</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Payment</TableHead>
-              <TableHead>Total</TableHead>
+              {renderSortableHead("invoice_number", "Invoice")}
+              {renderSortableHead("customer_name", "Customer")}
+              {renderSortableHead("status", "Status")}
+              {renderSortableHead("payment_status", "Payment")}
+              {renderSortableHead("total_amount", "Total")}
               <TableHead>Balance</TableHead>
-              <TableHead>Issue Date</TableHead>
-              <TableHead>Template</TableHead>
-              <TableHead>Updated</TableHead>
+              {renderSortableHead("issue_date", "Issue Date")}
+              {renderSortableHead("template_id", "Template")}
+              {renderSortableHead("updated_at", "Updated")}
               <TableHead className="text-right">Actions</TableHead>
             </TableHeaderRow>
           </TableHeader>

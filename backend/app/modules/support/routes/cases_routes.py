@@ -73,6 +73,8 @@ def list_cases(
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
     filters_any: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None, max_length=80),
+    sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
@@ -82,7 +84,15 @@ def list_cases(
     all_conditions, any_conditions = _parse_filters(filter_logic, filters, filters_all, filters_any)
     all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=SUPPORT_CASES_MODULE_KEY, conditions=all_conditions)
     any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=SUPPORT_CASES_MODULE_KEY, conditions=any_conditions)
-    cases, total_count = list_support_cases(db, tenant_id=current_user.tenant_id, pagination=pagination, all_filter_conditions=all_conditions, any_filter_conditions=any_conditions)
+    cases, total_count = list_support_cases(
+        db,
+        tenant_id=current_user.tenant_id,
+        pagination=pagination,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+    )
     return build_paged_response([SupportCaseListItem.model_validate(case) for case in cases], total_count, pagination)
 
 
@@ -93,6 +103,8 @@ def search_cases(
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
     filters_any: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None, max_length=80),
+    sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
@@ -102,7 +114,16 @@ def search_cases(
     all_conditions, any_conditions = _parse_filters(filter_logic, filters, filters_all, filters_any)
     all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=SUPPORT_CASES_MODULE_KEY, conditions=all_conditions)
     any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=SUPPORT_CASES_MODULE_KEY, conditions=any_conditions)
-    cases, total_count = list_support_cases(db, tenant_id=current_user.tenant_id, pagination=pagination, search=query, all_filter_conditions=all_conditions, any_filter_conditions=any_conditions)
+    cases, total_count = list_support_cases(
+        db,
+        tenant_id=current_user.tenant_id,
+        pagination=pagination,
+        search=query,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+    )
     return build_paged_response([SupportCaseListItem.model_validate(case) for case in cases], total_count, pagination)
 
 

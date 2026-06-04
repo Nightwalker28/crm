@@ -17,6 +17,25 @@ from app.modules.user_management.models import User
 CASE_STATUSES = {"new", "open", "pending", "resolved", "closed"}
 CASE_PRIORITIES = {"low", "medium", "high", "urgent"}
 CLOSED_STATUSES = {"resolved", "closed"}
+SUPPORT_CASE_SORT_FIELDS = {
+    "case_number": SupportCase.case_number,
+    "subject": SupportCase.subject,
+    "status": SupportCase.status,
+    "priority": SupportCase.priority,
+    "source": SupportCase.source,
+    "contact_id": SupportCase.contact_id,
+    "organization_id": SupportCase.organization_id,
+    "opportunity_id": SupportCase.opportunity_id,
+    "quote_id": SupportCase.quote_id,
+    "order_id": SupportCase.order_id,
+    "assigned_to_id": SupportCase.assigned_to_id,
+    "sla_due_at": SupportCase.sla_due_at,
+    "first_response_at": SupportCase.first_response_at,
+    "resolved_at": SupportCase.resolved_at,
+    "closed_at": SupportCase.closed_at,
+    "created_at": SupportCase.created_at,
+    "updated_at": SupportCase.updated_at,
+}
 
 
 def _clean_text(value) -> str | None:
@@ -156,7 +175,27 @@ def build_cases_query(
     return query
 
 
-def list_support_cases(db: Session, *, tenant_id: int, pagination, search: str | None = None, all_filter_conditions: list[dict] | None = None, any_filter_conditions: list[dict] | None = None) -> tuple[Sequence[SupportCase], int]:
+def apply_support_case_sort(query, sort_by: str | None = None, sort_direction: str | None = None):
+    column = SUPPORT_CASE_SORT_FIELDS.get((sort_by or "").strip())
+    if column is None:
+        return query.order_by(SupportCase.updated_at.desc(), SupportCase.id.desc())
+    direction = (sort_direction or "asc").lower()
+    primary = column.desc() if direction == "desc" else column.asc()
+    secondary = SupportCase.id.desc() if direction == "desc" else SupportCase.id.asc()
+    return query.order_by(primary, secondary)
+
+
+def list_support_cases(
+    db: Session,
+    *,
+    tenant_id: int,
+    pagination,
+    search: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+) -> tuple[Sequence[SupportCase], int]:
     query = build_cases_query(
         db,
         tenant_id=tenant_id,
@@ -165,7 +204,7 @@ def list_support_cases(db: Session, *, tenant_id: int, pagination, search: str |
         any_filter_conditions=any_filter_conditions,
     )
     total_count = query.count()
-    cases = query.order_by(SupportCase.updated_at.desc(), SupportCase.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
+    cases = apply_support_case_sort(query, sort_by=sort_by, sort_direction=sort_direction).offset(pagination.offset).limit(pagination.limit).all()
     return cases, total_count
 
 
