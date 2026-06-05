@@ -8,6 +8,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 
 import CatalogRecordDialog from "@/components/catalog/CatalogRecordDialog";
+import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
@@ -43,6 +44,7 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const isProduct = kind === "products";
   const noun = isProduct ? "Product" : "Service";
+  const moduleKey = isProduct ? "catalog_products" : "catalog_services";
   const listHref = `/dashboard/catalog/${kind}`;
   const recordQuery = useCatalogRecord(kind, recordId);
   const {
@@ -207,6 +209,14 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
               </div>
             )}
           </aside>
+
+          <CrmRecordActivitySection
+            className="xl:col-span-2"
+            moduleKey={moduleKey}
+            entityId={record.id}
+            recordLabel={noun}
+            taskSourceLabel={record.name}
+          />
         </div>
       ) : null}
 

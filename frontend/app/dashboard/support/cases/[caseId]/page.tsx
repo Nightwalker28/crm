@@ -6,6 +6,7 @@ import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -193,6 +194,14 @@ export default function SupportCaseDetailPage() {
               )) : <div className="text-sm text-neutral-500">No events yet.</div>}
             </div>
           </Card>
+
+          <CrmRecordActivitySection
+            className="lg:col-span-2"
+            moduleKey="support_cases"
+            entityId={item.id}
+            recordLabel="Support case"
+            taskSourceLabel={item.case_number}
+          />
         </div>
       )}
     </div>

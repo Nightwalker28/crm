@@ -6,11 +6,12 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, require_role_module_action_access
 from app.core.pagination import Pagination
-from app.modules.catalog.models import CatalogProduct
+from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.platform.models import RecordComment
 from app.modules.platform.services.notifications import create_notification
 from app.modules.finance.models import FinanceIO, FinancePosInvoice
-from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization, SalesQuote
+from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization, SalesOrder, SalesQuote
+from app.modules.support.models import SupportCase
 from app.modules.user_management.models import (
     DepartmentModulePermission,
     Module,
@@ -57,6 +58,20 @@ RECORD_COMMENT_MODULES = {
         "label_field": "quote_number",
         "record_path": "/dashboard/sales/quotes/{entity_id}",
     },
+    "sales_orders": {
+        "model": SalesOrder,
+        "id_field": "id",
+        "entity_type": "sales_order",
+        "label_field": "order_number",
+        "record_path": "/dashboard/sales/orders/{entity_id}",
+    },
+    "support_cases": {
+        "model": SupportCase,
+        "id_field": "id",
+        "entity_type": "support_case",
+        "label_field": "case_number",
+        "record_path": "/dashboard/support/cases/{entity_id}",
+    },
     "finance_io": {
         "model": FinanceIO,
         "id_field": "id",
@@ -77,6 +92,13 @@ RECORD_COMMENT_MODULES = {
         "entity_type": "catalog_product",
         "label_field": "name",
         "record_path": "/dashboard/catalog/products/{entity_id}",
+    },
+    "catalog_services": {
+        "model": CatalogService,
+        "id_field": "id",
+        "entity_type": "catalog_service",
+        "label_field": "name",
+        "record_path": "/dashboard/catalog/services/{entity_id}",
     },
 }
 INVALID_MENTION_DETAIL = "One or more mentioned users are invalid."
@@ -103,13 +125,16 @@ def get_record_reference(
         normalized_entity_id = int(entity_id)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid record identifier.") from exc
+    filters = [
+        model.tenant_id == tenant_id,
+        id_field == normalized_entity_id,
+    ]
+    deleted_at = getattr(model, "deleted_at", None)
+    if deleted_at is not None:
+        filters.append(deleted_at.is_(None))
     record = (
         db.query(model)
-        .filter(
-            model.tenant_id == tenant_id,
-            id_field == normalized_entity_id,
-            model.deleted_at.is_(None),
-        )
+        .filter(*filters)
         .first()
     )
     if not record:

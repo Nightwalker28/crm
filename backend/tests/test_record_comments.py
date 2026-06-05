@@ -8,12 +8,15 @@ from app.core.database import Base
 from app.modules.platform.services.record_comments import (
     INVALID_MENTION_DETAIL,
     create_record_mention_notifications,
+    get_record_reference,
     list_mentionable_record_users,
     validate_record_mentions,
 )
-from app.modules.sales.models import SalesContact
+from app.modules.sales.models import SalesContact, SalesOrder
+from app.modules.support.models import SupportCase
 from app.modules.user_management.models import Module, Role, User, UserStatus
 from app.modules.user_management import models as user_management_models  # noqa: F401
+from app.modules.documents import models as document_models  # noqa: F401
 
 
 class RecordCommentMentionTests(unittest.TestCase):
@@ -25,6 +28,8 @@ class RecordCommentMentionTests(unittest.TestCase):
         self.db.add_all(
             [
                 Module(id=1, name="sales_contacts", base_route="sales_contacts", is_enabled=1),
+                Module(id=2, name="sales_orders", base_route="sales_orders", is_enabled=1),
+                Module(id=3, name="support_cases", base_route="support_cases", is_enabled=1),
                 Role(id=1, tenant_id=10, name="Admin", level=100),
                 Role(id=2, tenant_id=10, name="User", level=10),
                 User(
@@ -59,6 +64,21 @@ class RecordCommentMentionTests(unittest.TestCase):
                     tenant_id=10,
                     primary_email="lead@example.com",
                     assigned_to=1,
+                ),
+                SalesOrder(
+                    id=8,
+                    tenant_id=10,
+                    order_number="SO-0008",
+                    status="confirmed",
+                    currency="USD",
+                ),
+                SupportCase(
+                    id=9,
+                    tenant_id=10,
+                    case_number="CASE-0009",
+                    subject="Delivery issue",
+                    status="open",
+                    priority="medium",
                 ),
             ]
         )
@@ -130,6 +150,23 @@ class RecordCommentMentionTests(unittest.TestCase):
         self.assertEqual(call_kwargs["category"], "record_mention")
         self.assertEqual(call_kwargs["link_url"], "/dashboard/sales/contacts/7")
         self.assertEqual(call_kwargs["metadata"]["comment_id"], 55)
+
+    def test_get_record_reference_supports_models_without_deleted_at(self):
+        cases = [
+            ("sales_orders", 8),
+            ("support_cases", 9),
+        ]
+
+        for module_key, entity_id in cases:
+            with self.subTest(module_key=module_key):
+                record = get_record_reference(
+                    self.db,
+                    tenant_id=10,
+                    module_key=module_key,
+                    entity_id=entity_id,
+                )
+
+                self.assertEqual(record.id, entity_id)
 
 
 if __name__ == "__main__":

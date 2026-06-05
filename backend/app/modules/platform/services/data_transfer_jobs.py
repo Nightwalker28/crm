@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.access_control import require_department_module_access, require_role_module_action_access
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.pagination import Pagination
@@ -39,6 +40,45 @@ MODULE_LINKS = {
     "sales_quotes": "/dashboard/sales/quotes",
     "finance_io": "/dashboard/finance/insertion-orders",
 }
+DOWNLOAD_ACTION_BY_OPERATION = {
+    "export": "export",
+    "import": "create",
+}
+
+
+def require_data_transfer_module_access(
+    db: Session,
+    *,
+    current_user: User,
+    module_key: str,
+    action: str,
+) -> None:
+    try:
+        require_department_module_access(db, user=current_user, module_key=module_key)
+        require_role_module_action_access(db, user=current_user, module_key=module_key, action=action)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
+
+
+def require_data_transfer_job_access(
+    db: Session,
+    *,
+    current_user: User,
+    job: DataTransferJob,
+    action: str = "view",
+) -> None:
+    require_data_transfer_module_access(
+        db,
+        current_user=current_user,
+        module_key=job.module_key,
+        action=action,
+    )
+
+
+def data_transfer_download_action(job: DataTransferJob) -> str:
+    return DOWNLOAD_ACTION_BY_OPERATION.get(job.operation_type, "view")
 
 
 def _notify_job_state(

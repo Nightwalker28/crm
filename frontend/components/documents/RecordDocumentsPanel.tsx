@@ -10,9 +10,10 @@ import { Card } from "@/components/ui/Card";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useDocumentActions, useDocuments } from "@/hooks/useDocuments";
+import type { RecordModuleKey } from "@/types/record-activity";
 
 type Props = {
-  moduleKey: "sales_leads" | "sales_contacts" | "sales_organizations" | "sales_opportunities" | "sales_quotes";
+  moduleKey: RecordModuleKey;
   entityId: string | number;
 };
 

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { toast } from "sonner";
 
+import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -158,6 +159,14 @@ export default function OrderDetailPage() {
               </table>
             </div>
           </Card>
+
+          <CrmRecordActivitySection
+            className="lg:col-span-2"
+            moduleKey="sales_orders"
+            entityId={order.id}
+            recordLabel="Order"
+            taskSourceLabel={order.order_number}
+          />
         </div>
       )}
     </div>

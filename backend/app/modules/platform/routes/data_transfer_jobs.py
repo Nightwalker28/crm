@@ -8,10 +8,13 @@ from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.security import require_user
 from app.modules.platform.schema import DataTransferJobListResponse, DataTransferJobResponse
 from app.modules.platform.services.data_transfer_jobs import (
+    data_transfer_download_action,
     get_data_transfer_job_or_404,
     get_job_result_path,
     list_data_transfer_jobs,
     list_data_transfer_jobs_cursor,
+    require_data_transfer_job_access,
+    require_data_transfer_module_access,
 )
 
 router = APIRouter(prefix="/jobs/data-transfer", tags=["Data Transfer Jobs"])
@@ -25,6 +28,8 @@ def get_data_transfer_jobs(
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
 ):
+    if module_key:
+        require_data_transfer_module_access(db, current_user=current_user, module_key=module_key, action="view")
     items, total = list_data_transfer_jobs(
         db,
         tenant_id=current_user.tenant_id,
@@ -45,6 +50,8 @@ def get_data_transfer_jobs_cursor(
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
 ):
+    if module_key:
+        require_data_transfer_module_access(db, current_user=current_user, module_key=module_key, action="view")
     items = list_data_transfer_jobs_cursor(
         db,
         tenant_id=current_user.tenant_id,
@@ -70,6 +77,7 @@ def get_data_transfer_job(
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
     )
+    require_data_transfer_job_access(db, current_user=current_user, job=job, action="view")
     return DataTransferJobResponse.model_validate(job)
 
 
@@ -84,6 +92,12 @@ def download_data_transfer_job_result(
         job_id=job_id,
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id if current_user else None,
+    )
+    require_data_transfer_job_access(
+        db,
+        current_user=current_user,
+        job=job,
+        action=data_transfer_download_action(job),
     )
     path = get_job_result_path(job)
     return FileResponse(
