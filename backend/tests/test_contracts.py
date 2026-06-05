@@ -1,6 +1,7 @@
 import unittest
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -8,11 +9,37 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.modules.contracts.models import Contract
+from app.modules.contracts.services import contracts_services
 from app.modules.contracts.services.contracts_services import add_contract_party, add_contract_signer, create_contract, get_contract_or_404, update_contract, update_contract_signer
 from app.modules.documents.models import Document
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
+
+
+class FakeContractQuery:
+    def __init__(self):
+        self.operations = []
+
+    def count(self):
+        self.operations.append("count")
+        return 0
+
+    def order_by(self, *args):
+        self.operations.append("order_by_reset" if len(args) == 1 and args[0] is None else "order_by")
+        return self
+
+    def offset(self, value):
+        self.operations.append(("offset", value))
+        return self
+
+    def limit(self, value):
+        self.operations.append(("limit", value))
+        return self
+
+    def all(self):
+        self.operations.append("all")
+        return []
 
 
 class ContractTests(unittest.TestCase):
@@ -82,6 +109,23 @@ class ContractTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 404)
         self.assertEqual(self.db.query(Contract).filter(Contract.tenant_id == 10).count(), 1)
+
+    def test_list_contracts_applies_explicit_sort_before_pagination(self):
+        query = FakeContractQuery()
+        pagination = SimpleNamespace(offset=10, limit=5)
+
+        with patch.object(contracts_services, "build_contracts_query", return_value=query):
+            items, total_count = contracts_services.list_contracts(
+                self.db,
+                tenant_id=10,
+                pagination=pagination,
+                sort_by="title",
+                sort_direction="asc",
+            )
+
+        self.assertEqual(items, [])
+        self.assertEqual(total_count, 0)
+        self.assertEqual(query.operations, ["count", "order_by_reset", "order_by", ("offset", 10), ("limit", 5), "all"])
 
 
 if __name__ == "__main__":

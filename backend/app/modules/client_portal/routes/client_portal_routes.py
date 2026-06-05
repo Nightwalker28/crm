@@ -1,7 +1,7 @@
 import ipaddress
 from types import SimpleNamespace
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
@@ -268,12 +268,14 @@ def assign_organization_group_route(
 
 @router.get("/accounts", response_model=list[ClientAccountResponse])
 def get_client_accounts(
+    sort_by: str | None = Query(default=None, max_length=80),
+    sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("sales_contacts")),
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
-    accounts = list_client_accounts(db, tenant_id=current_user.tenant_id)
+    accounts = list_client_accounts(db, tenant_id=current_user.tenant_id, sort_by=sort_by, sort_direction=sort_direction)
     return [ClientAccountResponse.model_validate(serialize_client_account(account)) for account in accounts]
 
 
@@ -364,12 +366,14 @@ def update_client_account_status_route(
 
 @router.get("/pages", response_model=list[ClientPageResponse])
 def get_client_pages(
+    sort_by: str | None = Query(default=None, max_length=80),
+    sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("sales_contacts")),
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
-    pages = list_client_pages(db, tenant_id=current_user.tenant_id)
+    pages = list_client_pages(db, tenant_id=current_user.tenant_id, sort_by=sort_by, sort_direction=sort_direction)
     return [ClientPageResponse.model_validate(serialize_client_page(page, db=db)) for page in pages]
 
 

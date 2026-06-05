@@ -15,7 +15,7 @@ import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import SearchBar from "@/components/ui/SearchBar";
 import { Button } from "@/components/ui/button";
 import { fetchTaskCalendarEvent, useCalendarActions } from "@/hooks/useCalendar";
-import { fetchTask, useTasks, type Task, type TaskPayload } from "@/hooks/useTasks";
+import { fetchTask, useTasks, type Task, type TaskPayload, type TaskSortState } from "@/hooks/useTasks";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
@@ -27,6 +27,7 @@ export default function TasksPage() {
   const taskId = taskIdParam && /^\d+$/.test(taskIdParam) ? Number(taskIdParam) : null;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [sort, setSort] = useState<TaskSortState>(null);
   const { fields: moduleFields } = useModuleFieldConfigs("tasks");
   const definition = useMemo(() => buildModuleViewDefinition("tasks", [], moduleFields), [moduleFields]);
   const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.tasks;
@@ -58,7 +59,7 @@ export default function TasksPage() {
     deleteTask,
     isSaving,
     isDeleting,
-  } = useTasks(activeFilters);
+  } = useTasks(activeFilters, sort);
   const {
     createEventFromTask,
     deleteTaskCalendarEvent,
@@ -213,6 +214,8 @@ export default function TasksPage() {
         isRefreshing={isFetching && !isLoading}
         visibleColumns={visibleColumns}
         onEdit={openEditDialog}
+        sort={sort}
+        onSortChange={setSort}
       />
 
       <Pagination

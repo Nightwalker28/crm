@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment } from "react";
 import { useRouter } from "next/navigation";
 import { FileSignature } from "lucide-react";
 
@@ -9,12 +9,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
-import type { Contract } from "@/hooks/contracts/useContracts";
+import type { Contract, ContractSortState } from "@/hooks/contracts/useContracts";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { formatDateTime } from "@/lib/datetime";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
-
-type SortState = { column: string; direction: "asc" | "desc" } | null;
 
 type ContractsTableProps = {
   contracts: Contract[];
@@ -22,6 +20,8 @@ type ContractsTableProps = {
   isRefreshing?: boolean;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
+  sort?: ContractSortState;
+  onSortChange?: (sort: ContractSortState) => void;
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -42,22 +42,14 @@ function formatMoney(value: Contract["value_amount"], currency: string | null) {
   return `${currency || "USD"} ${numeric.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-export default function ContractsTable({ contracts, isLoading, isRefreshing = false, visibleColumns, columnOptions = [] }: ContractsTableProps) {
-  const router = useRouter();
-  const [sort, setSort] = useState<SortState>(null);
-  const sortedContracts = useMemo(() => {
-    if (!sort) return contracts;
-    return [...contracts].sort((left, right) => {
-      const leftValue = String(left[sort.column as keyof Contract] ?? "").toLowerCase();
-      const rightValue = String(right[sort.column as keyof Contract] ?? "").toLowerCase();
-      const result = leftValue.localeCompare(rightValue, undefined, { numeric: true });
-      return sort.direction === "asc" ? result : -result;
-    });
-  }, [contracts, sort]);
+function nextSort(current: ContractSortState, column: string): ContractSortState {
+  return current?.key === column
+    ? { key: column, direction: current.direction === "asc" ? "desc" : "asc" }
+    : { key: column, direction: "asc" };
+}
 
-  function toggleSort(column: string) {
-    setSort((current) => current?.column !== column ? { column, direction: "asc" } : { column, direction: current.direction === "asc" ? "desc" : "asc" });
-  }
+export default function ContractsTable({ contracts, isLoading, isRefreshing = false, visibleColumns, columnOptions = [], sort = null, onSortChange }: ContractsTableProps) {
+  const router = useRouter();
 
   function renderCell(item: Contract, column: string) {
     switch (column) {
@@ -91,8 +83,8 @@ export default function ContractsTable({ contracts, isLoading, isRefreshing = fa
             {visibleColumns.map((column) => {
               const label = getReadableColumnLabel(column, columnOptions);
               const sortable = ["contract_number", "title", "status", "value_amount", "effective_date", "expiration_date", "renewal_date", "created_at", "updated_at"].includes(column);
-              return sortable ? (
-                <SortableHead key={column} sorted={sort?.column === column} direction={sort?.column === column ? sort.direction : "asc"} onClick={() => toggleSort(column)}>
+              return sortable && onSortChange ? (
+                <SortableHead key={column} sorted={sort?.key === column} direction={sort?.key === column ? sort.direction : "asc"} onClick={() => onSortChange(nextSort(sort, column))}>
                   {label}
                 </SortableHead>
               ) : <TableHead key={column}>{label}</TableHead>;
@@ -109,7 +101,7 @@ export default function ContractsTable({ contracts, isLoading, isRefreshing = fa
               </TableCell>
             </TableRow>
           ) : (
-            sortedContracts.map((item) => (
+            contracts.map((item) => (
               <TableRow key={item.id} className="group cursor-pointer" onClick={() => router.push(`/dashboard/contracts/${item.id}`)}>
                 {visibleColumns.map((column) => <Fragment key={column}>{renderCell(item, column)}</Fragment>)}
               </TableRow>

@@ -64,6 +64,8 @@ def list_contract_records(
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
     filters_any: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None, max_length=80),
+    sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
@@ -73,7 +75,15 @@ def list_contract_records(
     all_conditions, any_conditions = _parse_filters(filter_logic, filters, filters_all, filters_any)
     all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, conditions=all_conditions)
     any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, conditions=any_conditions)
-    items, total_count = list_contracts(db, tenant_id=current_user.tenant_id, pagination=pagination, all_filter_conditions=all_conditions, any_filter_conditions=any_conditions)
+    items, total_count = list_contracts(
+        db,
+        tenant_id=current_user.tenant_id,
+        pagination=pagination,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+    )
     return build_paged_response([ContractListItem.model_validate(item) for item in items], total_count, pagination)
 
 
@@ -84,6 +94,8 @@ def search_contract_records(
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
     filters_any: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None, max_length=80),
+    sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
@@ -93,7 +105,16 @@ def search_contract_records(
     all_conditions, any_conditions = _parse_filters(filter_logic, filters, filters_all, filters_any)
     all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, conditions=all_conditions)
     any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, conditions=any_conditions)
-    items, total_count = list_contracts(db, tenant_id=current_user.tenant_id, pagination=pagination, search=query, all_filter_conditions=all_conditions, any_filter_conditions=any_conditions)
+    items, total_count = list_contracts(
+        db,
+        tenant_id=current_user.tenant_id,
+        pagination=pagination,
+        search=query,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+    )
     return build_paged_response([ContractListItem.model_validate(item) for item in items], total_count, pagination)
 
 

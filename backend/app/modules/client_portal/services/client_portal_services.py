@@ -700,8 +700,8 @@ def create_client_account(db: Session, *, tenant_id: int, actor_user_id: int | N
     return account, setup_token
 
 
-def list_client_accounts(db: Session, *, tenant_id: int) -> list[ClientAccount]:
-    return client_portal_repository.list_client_accounts(db, tenant_id=tenant_id)
+def list_client_accounts(db: Session, *, tenant_id: int, sort_by: str | None = None, sort_direction: str | None = None) -> list[ClientAccount]:
+    return client_portal_repository.list_client_accounts(db, tenant_id=tenant_id, sort_by=sort_by, sort_direction=sort_direction)
 
 
 def list_client_accounts_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[ClientAccount]:
@@ -770,8 +770,8 @@ def update_client_account_status(db: Session, *, account: ClientAccount, status_
     return account
 
 
-def list_client_pages(db: Session, *, tenant_id: int) -> list[ClientPage]:
-    pages = client_portal_repository.list_client_pages(db, tenant_id=tenant_id)
+def list_client_pages(db: Session, *, tenant_id: int, sort_by: str | None = None, sort_direction: str | None = None) -> list[ClientPage]:
+    pages = client_portal_repository.list_client_pages(db, tenant_id=tenant_id, sort_by=sort_by, sort_direction=sort_direction)
     action_summaries = _client_page_action_summaries(db, pages)
     for page in pages:
         page._action_summary = action_summaries.get(page.id, {"action_count": 0, "latest_action": None, "recent_actions": []})

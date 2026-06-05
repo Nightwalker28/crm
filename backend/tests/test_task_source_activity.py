@@ -1,4 +1,5 @@
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
@@ -6,11 +7,38 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesContact
 from app.modules.tasks.models import Task
+from app.modules.tasks.repositories import tasks_repository
 from app.modules.tasks.routes import tasks_routes
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Module, Role, User, UserStatus
+
+
+class FakeTaskQuery:
+    def __init__(self):
+        self.operations = []
+
+    def count(self):
+        self.operations.append("count")
+        return 0
+
+    def order_by(self, *args):
+        self.operations.append("order_by_reset" if len(args) == 1 and args[0] is None else "order_by")
+        return self
+
+    def offset(self, value):
+        self.operations.append(("offset", value))
+        return self
+
+    def limit(self, value):
+        self.operations.append(("limit", value))
+        return self
+
+    def all(self):
+        self.operations.append("all")
+        return []
 
 
 class TaskSourceActivityTests(unittest.TestCase):
@@ -108,6 +136,24 @@ class TaskSourceActivityTests(unittest.TestCase):
         self.assertEqual(call_kwargs["entity_type"], "sales_contact")
         self.assertEqual(call_kwargs["entity_id"], "7")
         self.assertEqual(call_kwargs["action"], "task.update")
+
+    def test_list_tasks_applies_explicit_sort_before_pagination(self):
+        query = FakeTaskQuery()
+        pagination = SimpleNamespace(offset=20, limit=10)
+
+        with patch.object(tasks_repository, "build_task_query", return_value=query):
+            tasks, total_count = tasks_repository.list_tasks(
+                self.db,
+                tenant_id=10,
+                current_user=self.current_user,
+                pagination=pagination,
+                sort_by="title",
+                sort_direction="asc",
+            )
+
+        self.assertEqual(tasks, [])
+        self.assertEqual(total_count, 0)
+        self.assertEqual(query.operations, ["count", "order_by_reset", "order_by", ("offset", 20), ("limit", 10), "all"])
 
 
 if __name__ == "__main__":

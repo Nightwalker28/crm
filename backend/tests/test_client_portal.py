@@ -137,6 +137,60 @@ class ClientPortalServiceTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 401)
 
+    def test_client_accounts_sort_by_email(self):
+        client_portal_services.create_client_account(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={"email": "zeta@example.com", "contact_id": 7},
+        )
+        client_portal_services.create_client_account(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={"email": "alpha@example.com", "organization_id": 3},
+        )
+
+        accounts = client_portal_services.list_client_accounts(
+            self.db,
+            tenant_id=10,
+            sort_by="email",
+            sort_direction="asc",
+        )
+
+        self.assertEqual([account.email for account in accounts], ["alpha@example.com", "zeta@example.com"])
+
+    def test_client_pages_sort_by_title(self):
+        client_portal_services.create_client_page(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "title": "Zeta Proposal",
+                "contact_id": 7,
+                "pricing_items": [{"name": "Implementation", "quantity": 1, "currency": "USD", "public_unit_price": 100}],
+            },
+        )
+        client_portal_services.create_client_page(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "title": "Alpha Proposal",
+                "organization_id": 3,
+                "pricing_items": [{"name": "Support", "quantity": 1, "currency": "USD", "public_unit_price": 50}],
+            },
+        )
+
+        pages = client_portal_services.list_client_pages(
+            self.db,
+            tenant_id=10,
+            sort_by="title",
+            sort_direction="asc",
+        )
+
+        self.assertEqual([page.title for page in pages], ["Alpha Proposal", "Zeta Proposal"])
+
     def test_client_password_setup_enforces_main_password_policy(self):
         _account, setup_token = client_portal_services.create_client_account(
             self.db,

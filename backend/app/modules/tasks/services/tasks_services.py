@@ -128,6 +128,8 @@ def list_tasks(
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ) -> tuple[Sequence[Task], int]:
     tasks, total_count = tasks_repository.list_tasks(
         db,
@@ -137,6 +139,8 @@ def list_tasks(
         search=search,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
     )
     return tasks, total_count
 

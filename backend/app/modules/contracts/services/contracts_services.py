@@ -19,6 +19,26 @@ from app.modules.user_management.models import User
 CONTRACT_STATUSES = {"draft", "review", "sent", "partially_signed", "signed", "active", "expired", "cancelled"}
 SIGNER_STATUSES = {"pending", "sent", "viewed", "signed", "declined", "voided"}
 
+CONTRACT_SORT_FIELDS = {
+    "contract_number": Contract.contract_number,
+    "title": Contract.title,
+    "status": Contract.status,
+    "organization_id": Contract.organization_id,
+    "contact_id": Contract.contact_id,
+    "opportunity_id": Contract.opportunity_id,
+    "quote_id": Contract.quote_id,
+    "order_id": Contract.order_id,
+    "document_id": Contract.document_id,
+    "effective_date": Contract.effective_date,
+    "expiration_date": Contract.expiration_date,
+    "renewal_date": Contract.renewal_date,
+    "value_amount": Contract.value_amount,
+    "currency": Contract.currency,
+    "owner_id": Contract.owner_id,
+    "created_at": Contract.created_at,
+    "updated_at": Contract.updated_at,
+}
+
 
 def _clean_text(value) -> str | None:
     if value is None:
@@ -156,10 +176,30 @@ def build_contracts_query(db: Session, *, tenant_id: int, search: str | None = N
     return query
 
 
-def list_contracts(db: Session, *, tenant_id: int, pagination, search: str | None = None, all_filter_conditions: list[dict] | None = None, any_filter_conditions: list[dict] | None = None) -> tuple[Sequence[Contract], int]:
+def apply_contract_sort(query, *, sort_by: str | None = None, sort_direction: str | None = None):
+    column = CONTRACT_SORT_FIELDS.get((sort_by or "").strip())
+    if column is None:
+        return query.order_by(Contract.updated_at.desc(), Contract.id.desc())
+    direction = (sort_direction or "asc").strip().lower()
+    primary = column.desc() if direction == "desc" else column.asc()
+    secondary = Contract.id.desc() if direction == "desc" else Contract.id.asc()
+    return query.order_by(None).order_by(primary.nullslast(), secondary)
+
+
+def list_contracts(
+    db: Session,
+    *,
+    tenant_id: int,
+    pagination,
+    search: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+) -> tuple[Sequence[Contract], int]:
     query = build_contracts_query(db, tenant_id=tenant_id, search=search, all_filter_conditions=all_filter_conditions, any_filter_conditions=any_filter_conditions)
     total_count = query.count()
-    items = query.order_by(Contract.updated_at.desc(), Contract.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
+    items = apply_contract_sort(query, sort_by=sort_by, sort_direction=sort_direction).offset(pagination.offset).limit(pagination.limit).all()
     return items, total_count
 
 

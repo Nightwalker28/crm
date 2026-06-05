@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Edit3, Plus, Power, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -13,7 +13,7 @@ import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
@@ -40,6 +40,8 @@ type TemplateDraft = {
   variables: string;
   is_active: boolean;
 };
+
+type TemplateSortState = { key: "name" | "channel" | "module_key" | "is_active"; direction: "asc" | "desc" };
 
 const CHANNEL_OPTIONS = [
   { value: "whatsapp", label: "WhatsApp" },
@@ -159,6 +161,12 @@ function toDraft(template: MessageTemplate): TemplateDraft {
   };
 }
 
+function nextTemplateSort(current: TemplateSortState, key: TemplateSortState["key"]): TemplateSortState {
+  return current.key === key
+    ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+    : { key, direction: "asc" };
+}
+
 async function fetchTemplates(): Promise<MessageTemplate[]> {
   const res = await apiFetch("/message-templates?include_inactive=true");
   const body = await res.json().catch(() => null);
@@ -169,6 +177,10 @@ async function fetchTemplates(): Promise<MessageTemplate[]> {
 export default function MessageTemplatesPage() {
   const [draft, setDraft] = useState<TemplateDraft>(emptyDraft);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [search, setSearch] = useState("");
+  const [channelFilter, setChannelFilter] = useState("all");
+  const [moduleFilter, setModuleFilter] = useState("all");
+  const [sort, setSort] = useState<TemplateSortState>({ key: "name", direction: "asc" });
 
   const query = useQuery({
     queryKey: ["message-templates", "all"],
@@ -241,6 +253,32 @@ export default function MessageTemplatesPage() {
   const suggestedVariables = Array.from(
     new Set([...(VARIABLE_LIBRARY.common ?? []), ...(VARIABLE_LIBRARY[draft.module_key] ?? [])]),
   );
+  const templates = query.data ?? [];
+  const visibleTemplates = useMemo(() => {
+    const searchText = search.trim().toLowerCase();
+    return [...(query.data ?? [])]
+      .filter((template) => {
+        if (channelFilter !== "all" && template.channel !== channelFilter) return false;
+        if (moduleFilter !== "all" && (template.module_key ?? "") !== moduleFilter) return false;
+        if (!searchText) return true;
+        return [
+          template.name,
+          template.template_key,
+          template.description ?? "",
+          template.channel,
+          template.module_key ? getModuleDisplayName(template.module_key) : "",
+          variablesToText(template.variables),
+        ].some((value) => value.toLowerCase().includes(searchText));
+      })
+      .sort((left, right) => {
+        const leftValue = left[sort.key];
+        const rightValue = right[sort.key];
+        const result = typeof leftValue === "boolean" || typeof rightValue === "boolean"
+          ? Number(leftValue) - Number(rightValue)
+          : String(leftValue ?? "").localeCompare(String(rightValue ?? ""));
+        return sort.direction === "asc" ? result : -result;
+      });
+  }, [channelFilter, moduleFilter, query.data, search, sort]);
 
   return (
     <div className="flex flex-col gap-5 text-neutral-200">
@@ -385,68 +423,104 @@ export default function MessageTemplatesPage() {
           </FieldGroup>
         </Card>
 
-        <ModuleTableShell>
-          <Table className="min-w-[950px]">
-            <TableHeader>
-              <TableHeaderRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Channel</TableHead>
-                <TableHead>Module</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Variables</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableHeaderRow>
-            </TableHeader>
-            <TableBody>
-              {query.isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center text-neutral-500">Loading templates...</TableCell>
-                </TableRow>
-              ) : query.data?.length ? (
-                query.data.map((template) => (
-                  <TableRow key={template.id}>
-                    <TableCell>
-                      <div className="font-medium text-neutral-100">{template.name}</div>
-                      <div className="mt-1 max-w-md truncate text-xs text-neutral-500">{template.description || template.template_key}</div>
-                    </TableCell>
-                    <TableCell className="capitalize text-neutral-300">{template.channel}</TableCell>
-                    <TableCell className="text-neutral-400">
-                      {template.module_key ? getModuleDisplayName(template.module_key) : "-"}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Pill bg={template.is_active ? "bg-emerald-950/60" : "bg-red-950/60"} text={template.is_active ? "text-emerald-200" : "text-red-200"} border={template.is_active ? "border-emerald-800/70" : "border-red-800/70"}>
-                          {template.is_active ? "Active" : "Inactive"}
-                        </Pill>
-                        {template.is_system ? (
-                          <Pill bg="bg-neutral-900" text="text-neutral-300" border="border-neutral-700">System</Pill>
-                        ) : null}
-                      </div>
-                    </TableCell>
-                    <TableCell className="max-w-xs truncate text-neutral-500">{variablesToText(template.variables) || "-"}</TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" variant="outline" size="icon-sm" aria-label={`Edit ${template.name}`} onClick={() => { setEditingId(template.id); setDraft(toDraft(template)); }}>
-                          <Edit3 size={14} />
-                        </Button>
-                        <Button type="button" variant="outline" size="icon-sm" aria-label={`${template.is_active ? "Disable" : "Enable"} ${template.name}`} disabled={isSaving} onClick={() => updateMutation.mutate({ template, payload: { is_active: !template.is_active } })}>
-                          <Power size={14} />
-                        </Button>
-                        <Button type="button" variant="outline" size="icon-sm" aria-label={`Delete ${template.name}`} disabled={isSaving} onClick={() => deleteMutation.mutate(template)}>
-                          <Trash2 size={14} />
-                        </Button>
-                      </div>
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-3 rounded-md border border-neutral-800 bg-neutral-950/80 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search templates"
+              className="lg:max-w-sm"
+            />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Select value={channelFilter} onValueChange={setChannelFilter}>
+                <SelectTrigger className="sm:w-40"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All channels</SelectItem>
+                  {CHANNEL_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={moduleFilter} onValueChange={setModuleFilter}>
+                <SelectTrigger className="sm:w-48"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All modules</SelectItem>
+                  {MODULE_OPTIONS.map((moduleName) => (
+                    <SelectItem key={moduleName} value={moduleName}>{getModuleDisplayName(moduleName)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <ModuleTableShell>
+            <Table className="min-w-[950px]">
+              <TableHeader>
+                <TableHeaderRow>
+                  <SortableHead sorted={sort.key === "name"} direction={sort.direction} onClick={() => setSort((current) => nextTemplateSort(current, "name"))}>Name</SortableHead>
+                  <SortableHead sorted={sort.key === "channel"} direction={sort.direction} onClick={() => setSort((current) => nextTemplateSort(current, "channel"))}>Channel</SortableHead>
+                  <SortableHead sorted={sort.key === "module_key"} direction={sort.direction} onClick={() => setSort((current) => nextTemplateSort(current, "module_key"))}>Module</SortableHead>
+                  <SortableHead sorted={sort.key === "is_active"} direction={sort.direction} onClick={() => setSort((current) => nextTemplateSort(current, "is_active"))}>Status</SortableHead>
+                  <TableHead>Variables</TableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableHeaderRow>
+              </TableHeader>
+              <TableBody>
+                {query.isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-10 text-center text-neutral-500">Loading templates...</TableCell>
+                  </TableRow>
+                ) : query.error ? (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-10 text-center text-red-300">{query.error instanceof Error ? query.error.message : "Failed to load templates."}</TableCell>
+                  </TableRow>
+                ) : visibleTemplates.length ? (
+                  visibleTemplates.map((template) => (
+                    <TableRow key={template.id}>
+                      <TableCell>
+                        <div className="font-medium text-neutral-100">{template.name}</div>
+                        <div className="mt-1 max-w-md truncate text-xs text-neutral-500">{template.description || template.template_key}</div>
+                      </TableCell>
+                      <TableCell className="capitalize text-neutral-300">{template.channel}</TableCell>
+                      <TableCell className="text-neutral-400">
+                        {template.module_key ? getModuleDisplayName(template.module_key) : "-"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <Pill bg={template.is_active ? "bg-emerald-950/60" : "bg-red-950/60"} text={template.is_active ? "text-emerald-200" : "text-red-200"} border={template.is_active ? "border-emerald-800/70" : "border-red-800/70"}>
+                            {template.is_active ? "Active" : "Inactive"}
+                          </Pill>
+                          {template.is_system ? (
+                            <Pill bg="bg-neutral-900" text="text-neutral-300" border="border-neutral-700">System</Pill>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-xs truncate text-neutral-500">{variablesToText(template.variables) || "-"}</TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          <Button type="button" variant="outline" size="icon-sm" aria-label={`Edit ${template.name}`} onClick={() => { setEditingId(template.id); setDraft(toDraft(template)); }}>
+                            <Edit3 size={14} />
+                          </Button>
+                          <Button type="button" variant="outline" size="icon-sm" aria-label={`${template.is_active ? "Disable" : "Enable"} ${template.name}`} disabled={isSaving} onClick={() => updateMutation.mutate({ template, payload: { is_active: !template.is_active } })}>
+                            <Power size={14} />
+                          </Button>
+                          <Button type="button" variant="outline" size="icon-sm" aria-label={`Delete ${template.name}`} disabled={isSaving} onClick={() => deleteMutation.mutate(template)}>
+                            <Trash2 size={14} />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={6} className="py-10 text-center text-neutral-500">
+                      {templates.length ? "No templates match the current search or filters." : "No templates found."}
                     </TableCell>
                   </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={6} className="py-10 text-center text-neutral-500">No templates found.</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </ModuleTableShell>
+                )}
+              </TableBody>
+            </Table>
+          </ModuleTableShell>
+        </div>
       </div>
     </div>
   );

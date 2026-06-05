@@ -8,6 +8,7 @@ import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
 import {
+  SortableHead,
   Table,
   TableBody,
   TableCell,
@@ -16,7 +17,7 @@ import {
   TableHeaderRow,
   TableRow,
 } from "@/components/ui/Table";
-import type { Task } from "@/hooks/useTasks";
+import type { Task, TaskSortState } from "@/hooks/useTasks";
 import { formatDateTime } from "@/lib/datetime";
 import { getTaskPriorityStyle, getTaskStatusStyle } from "@/lib/statusStyles";
 
@@ -26,7 +27,33 @@ type Props = {
   isRefreshing?: boolean;
   visibleColumns: string[];
   onEdit: (task: Task) => void;
+  sort?: TaskSortState;
+  onSortChange?: (sort: TaskSortState) => void;
 };
+
+const SORTABLE_COLUMNS = new Set(["title", "priority", "status", "assigned_at", "due_at", "start_at", "updated_at"]);
+
+function columnLabel(column: string) {
+  return column === "due_at"
+    ? "Due"
+    : column === "start_at"
+      ? "Start"
+      : column === "assigned_by_name"
+        ? "Assigned By"
+        : column === "assigned_at"
+          ? "Assigned"
+          : column === "updated_at"
+            ? "Updated"
+            : column === "assignees"
+              ? "Assignees"
+              : column.replace(/_/g, " ").replace(/\b\w/g, (value) => value.toUpperCase());
+}
+
+function nextSort(current: TaskSortState, column: string): TaskSortState {
+  return current?.key === column
+    ? { key: column, direction: current.direction === "asc" ? "desc" : "asc" }
+    : { key: column, direction: "asc" };
+}
 
 export default function TasksTable({
   tasks,
@@ -34,6 +61,8 @@ export default function TasksTable({
   isRefreshing = false,
   visibleColumns,
   onEdit,
+  sort = null,
+  onSortChange,
 }: Props) {
   const columnCount = visibleColumns.length;
 
@@ -144,23 +173,22 @@ export default function TasksTable({
       <Table className="min-w-[920px]">
         <TableHeader>
           <TableHeaderRow>
-            {visibleColumns.map((column) => (
-              <TableHead key={column}>
-                {column === "due_at"
-                  ? "Due"
-                  : column === "start_at"
-                    ? "Start"
-                    : column === "assigned_by_name"
-                      ? "Assigned By"
-                      : column === "assigned_at"
-                        ? "Assigned"
-                    : column === "updated_at"
-                      ? "Updated"
-                      : column === "assignees"
-                        ? "Assignees"
-                        : column.replace(/_/g, " ").replace(/\b\w/g, (value) => value.toUpperCase())}
-              </TableHead>
-            ))}
+            {visibleColumns.map((column) => {
+              const label = columnLabel(column);
+              if (SORTABLE_COLUMNS.has(column) && onSortChange) {
+                return (
+                  <SortableHead
+                    key={column}
+                    sorted={sort?.key === column}
+                    direction={sort?.key === column ? sort.direction : "asc"}
+                    onClick={() => onSortChange(nextSort(sort, column))}
+                  >
+                    {label}
+                  </SortableHead>
+                );
+              }
+              return <TableHead key={column}>{label}</TableHead>;
+            })}
           </TableHeaderRow>
         </TableHeader>
         <TableBody>

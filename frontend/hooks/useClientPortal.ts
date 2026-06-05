@@ -7,6 +7,8 @@ import { apiUrl } from "@/lib/runtime-config";
 
 export const CLIENT_TOKEN_STORAGE_KEY = "lynk:client-access-token";
 
+export type ClientPortalSortState = { key: string; direction: "asc" | "desc" } | null;
+
 export type CustomerGroup = {
   id: number;
   group_key: string;
@@ -144,6 +146,12 @@ export type CustomerOption = {
   detail?: string | null;
 };
 
+function appendSortParams(params: URLSearchParams, sort: ClientPortalSortState | undefined) {
+  if (!sort) return;
+  params.set("sort_by", sort.key);
+  params.set("sort_direction", sort.direction);
+}
+
 async function readJsonSafely(res: Response) {
   try {
     return await res.json();
@@ -209,18 +217,28 @@ async function publicBlob(path: string, init: RequestInit = {}, fallback = "Requ
   return res.blob();
 }
 
-export function useClientPortalPages() {
+export function useClientPortalPages(sort: ClientPortalSortState = null) {
   return useQuery({
-    queryKey: ["client-portal", "pages"],
-    queryFn: () => crmJson<ClientPage[]>("/client-portal/pages", {}, "Failed to load client pages."),
+    queryKey: ["client-portal", "pages", sort?.key ?? "", sort?.direction ?? ""],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      appendSortParams(params, sort);
+      const suffix = params.toString();
+      return crmJson<ClientPage[]>(`/client-portal/pages${suffix ? `?${suffix}` : ""}`, {}, "Failed to load client pages.");
+    },
     staleTime: 30_000,
   });
 }
 
-export function useClientPortalAccounts() {
+export function useClientPortalAccounts(sort: ClientPortalSortState = null) {
   return useQuery({
-    queryKey: ["client-portal", "accounts"],
-    queryFn: () => crmJson<ClientAccount[]>("/client-portal/accounts", {}, "Failed to load client accounts."),
+    queryKey: ["client-portal", "accounts", sort?.key ?? "", sort?.direction ?? ""],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      appendSortParams(params, sort);
+      const suffix = params.toString();
+      return crmJson<ClientAccount[]>(`/client-portal/accounts${suffix ? `?${suffix}` : ""}`, {}, "Failed to load client accounts.");
+    },
     staleTime: 30_000,
   });
 }

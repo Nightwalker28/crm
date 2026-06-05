@@ -8,6 +8,51 @@ from app.modules.documents.models import Document
 from app.modules.sales.models import SalesContact, SalesOrganization
 
 
+CLIENT_ACCOUNT_SORT_FIELDS = {
+    "email": ClientAccount.email,
+    "status": ClientAccount.status,
+    "contact_id": ClientAccount.contact_id,
+    "organization_id": ClientAccount.organization_id,
+    "setup_token_expires_at": ClientAccount.setup_token_expires_at,
+    "last_login_at": ClientAccount.last_login_at,
+    "created_at": ClientAccount.created_at,
+    "updated_at": ClientAccount.updated_at,
+}
+
+CLIENT_PAGE_SORT_FIELDS = {
+    "title": ClientPage.title,
+    "status": ClientPage.status,
+    "contact_id": ClientPage.contact_id,
+    "organization_id": ClientPage.organization_id,
+    "source_module_key": ClientPage.source_module_key,
+    "source_entity_id": ClientPage.source_entity_id,
+    "public_token_expires_at": ClientPage.public_token_expires_at,
+    "published_at": ClientPage.published_at,
+    "created_at": ClientPage.created_at,
+    "updated_at": ClientPage.updated_at,
+}
+
+
+def apply_client_account_sort(query, sort_by: str | None = None, sort_direction: str | None = None):
+    column = CLIENT_ACCOUNT_SORT_FIELDS.get((sort_by or "").strip())
+    if column is None:
+        return query.order_by(ClientAccount.created_at.desc(), ClientAccount.id.desc())
+    direction = (sort_direction or "asc").lower()
+    primary = column.desc() if direction == "desc" else column.asc()
+    secondary = ClientAccount.id.desc() if direction == "desc" else ClientAccount.id.asc()
+    return query.order_by(primary, secondary)
+
+
+def apply_client_page_sort(query, sort_by: str | None = None, sort_direction: str | None = None):
+    column = CLIENT_PAGE_SORT_FIELDS.get((sort_by or "").strip())
+    if column is None:
+        return query.order_by(ClientPage.created_at.desc(), ClientPage.id.desc())
+    direction = (sort_direction or "asc").lower()
+    primary = column.desc() if direction == "desc" else column.asc()
+    secondary = ClientPage.id.desc() if direction == "desc" else ClientPage.id.asc()
+    return query.order_by(primary, secondary)
+
+
 def list_page_documents(db: Session, *, tenant_id: int, document_ids: list[int]) -> list[Document]:
     if not document_ids:
         return []
@@ -146,14 +191,13 @@ def client_email_exists(db: Session, *, tenant_id: int, email: str) -> bool:
     return bool(db.query(ClientAccount.id).filter(ClientAccount.tenant_id == tenant_id, ClientAccount.email == email).first())
 
 
-def list_client_accounts(db: Session, *, tenant_id: int) -> list[ClientAccount]:
-    return (
+def list_client_accounts(db: Session, *, tenant_id: int, sort_by: str | None = None, sort_direction: str | None = None) -> list[ClientAccount]:
+    query = (
         db.query(ClientAccount)
         .options(joinedload(ClientAccount.contact), joinedload(ClientAccount.organization))
         .filter(ClientAccount.tenant_id == tenant_id)
-        .order_by(ClientAccount.created_at.desc(), ClientAccount.id.desc())
-        .all()
     )
+    return apply_client_account_sort(query, sort_by=sort_by, sort_direction=sort_direction).all()
 
 
 def list_client_accounts_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[ClientAccount]:
@@ -176,14 +220,13 @@ def get_client_account(db: Session, *, tenant_id: int, account_id: int) -> Clien
     )
 
 
-def list_client_pages(db: Session, *, tenant_id: int) -> list[ClientPage]:
-    return (
+def list_client_pages(db: Session, *, tenant_id: int, sort_by: str | None = None, sort_direction: str | None = None) -> list[ClientPage]:
+    query = (
         db.query(ClientPage)
         .options(joinedload(ClientPage.contact), joinedload(ClientPage.organization))
         .filter(ClientPage.tenant_id == tenant_id)
-        .order_by(ClientPage.created_at.desc(), ClientPage.id.desc())
-        .all()
     )
+    return apply_client_page_sort(query, sort_by=sort_by, sort_direction=sort_direction).all()
 
 
 def list_client_pages_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[ClientPage]:

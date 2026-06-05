@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 
 import ContractsHeader from "@/components/contracts/ContractsHeader";
 import ContractsTable from "@/components/contracts/ContractsTable";
@@ -9,7 +9,7 @@ import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
-import { useContracts } from "@/hooks/contracts/useContracts";
+import { useContracts, type ContractSortState } from "@/hooks/contracts/useContracts";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
@@ -21,7 +21,8 @@ export default function ContractsPage() {
   const { views, selectedViewId, setSelectedViewId, draftConfig, setDraftConfig } = useSavedViews("contracts", defaultConfig);
   const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
   const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
-  const { contracts, page, totalPages, totalCount, rangeStart, rangeEnd, pageSize, onPageSizeChange, isLoading, isFetching, error, goToPage, refresh } = useContracts(visibleColumns, activeFilters);
+  const [sort, setSort] = useState<ContractSortState>(null);
+  const { contracts, page, totalPages, totalCount, rangeStart, rangeEnd, pageSize, onPageSizeChange, isLoading, isFetching, error, goToPage, refresh } = useContracts(visibleColumns, activeFilters, sort);
 
   return (
     <div className="flex flex-col gap-6">
@@ -37,7 +38,7 @@ export default function ContractsPage() {
           <button onClick={refresh} className="underline underline-offset-2">Retry</button>
         </div>
       ) : null}
-      <ContractsTable contracts={contracts} isLoading={isLoading} isRefreshing={isFetching && !isLoading} visibleColumns={visibleColumns} columnOptions={definition?.columns ?? []} />
+      <ContractsTable contracts={contracts} isLoading={isLoading} isRefreshing={isFetching && !isLoading} visibleColumns={visibleColumns} columnOptions={definition?.columns ?? []} sort={sort} onSortChange={setSort} />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
     </div>
   );

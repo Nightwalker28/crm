@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { BadgePercent } from "lucide-react";
 import { toast } from "sonner";
 
@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
 import { useCustomerGroupActions, useCustomerGroups, type CustomerGroup } from "@/hooks/useClientPortal";
 
@@ -22,10 +22,20 @@ function formatDiscount(type: string, value?: string | number | null) {
   return `${type}: ${value}`;
 }
 
+type SortState = { key: "name" | "group_key" | "discount_type" | "is_active" | "is_default"; direction: "asc" | "desc" };
+
+function nextSort(current: SortState, key: SortState["key"]): SortState {
+  return current.key === key
+    ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
+    : { key, direction: "asc" };
+}
+
 export default function CustomerGroupsSettingsPage() {
   const groups = useCustomerGroups();
   const { createGroup, updateGroup, isSaving } = useCustomerGroupActions();
   const [editingGroup, setEditingGroup] = useState<CustomerGroup | null>(null);
+  const [search, setSearch] = useState("");
+  const [sort, setSort] = useState<SortState>({ key: "name", direction: "asc" });
   const [draft, setDraft] = useState({
     group_key: "",
     name: "",
@@ -97,6 +107,24 @@ export default function CustomerGroupsSettingsPage() {
     }
   }
 
+  const visibleGroups = useMemo(() => {
+    const searchText = search.trim().toLowerCase();
+    return [...(groups.data ?? [])]
+      .filter((group) => {
+        if (!searchText) return true;
+        return [group.name, group.group_key, group.description ?? "", group.discount_type]
+          .some((value) => value.toLowerCase().includes(searchText));
+      })
+      .sort((left, right) => {
+        const leftValue = left[sort.key];
+        const rightValue = right[sort.key];
+        const result = typeof leftValue === "boolean" || typeof rightValue === "boolean"
+          ? Number(leftValue) - Number(rightValue)
+          : String(leftValue ?? "").localeCompare(String(rightValue ?? ""));
+        return sort.direction === "asc" ? result : -result;
+      });
+  }, [groups.data, search, sort]);
+
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
@@ -162,14 +190,25 @@ export default function CustomerGroupsSettingsPage() {
       </Card>
 
       <div className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-950/70">
+        <div className="flex flex-col gap-3 border-b border-neutral-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+          <Input
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Search customer groups"
+            className="sm:max-w-sm"
+          />
+          <div className="text-sm text-neutral-500">
+            {groups.isLoading ? "Loading..." : `${visibleGroups.length} of ${groups.data?.length ?? 0} groups`}
+          </div>
+        </div>
         <Table>
           <TableHeader>
             <TableHeaderRow>
-              <TableHead>Group</TableHead>
-              <TableHead>Key</TableHead>
-              <TableHead>Discount</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Default</TableHead>
+              <SortableHead sorted={sort.key === "name"} direction={sort.direction} onClick={() => setSort((current) => nextSort(current, "name"))}>Group</SortableHead>
+              <SortableHead sorted={sort.key === "group_key"} direction={sort.direction} onClick={() => setSort((current) => nextSort(current, "group_key"))}>Key</SortableHead>
+              <SortableHead sorted={sort.key === "discount_type"} direction={sort.direction} onClick={() => setSort((current) => nextSort(current, "discount_type"))}>Discount</SortableHead>
+              <SortableHead sorted={sort.key === "is_active"} direction={sort.direction} onClick={() => setSort((current) => nextSort(current, "is_active"))}>Status</SortableHead>
+              <SortableHead sorted={sort.key === "is_default"} direction={sort.direction} onClick={() => setSort((current) => nextSort(current, "is_default"))}>Default</SortableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableHeaderRow>
           </TableHeader>
@@ -180,8 +219,14 @@ export default function CustomerGroupsSettingsPage() {
                   Loading customer groups...
                 </TableCell>
               </TableRow>
-            ) : groups.data?.length ? (
-              groups.data.map((group) => (
+            ) : groups.error ? (
+              <TableRow>
+                <TableCell colSpan={6} className="py-10 text-center text-sm text-red-300">
+                  {groups.error instanceof Error ? groups.error.message : "Failed to load customer groups."}
+                </TableCell>
+              </TableRow>
+            ) : visibleGroups.length ? (
+              visibleGroups.map((group) => (
                 <TableRow key={group.id}>
                   <TableCell>
                     <div className="font-medium text-neutral-100">{group.name}</div>
@@ -207,8 +252,8 @@ export default function CustomerGroupsSettingsPage() {
                 <TableCell colSpan={6}>
                   <EmptyState
                     icon={BadgePercent}
-                    title="No customer groups"
-                    description="Customer groups will appear here once the backend provides them."
+                    title={groups.data?.length ? "No matching groups" : "No customer groups"}
+                    description={groups.data?.length ? "Adjust the search to find another customer group." : "Customer groups will appear here once the backend provides them."}
                   />
                 </TableCell>
               </TableRow>

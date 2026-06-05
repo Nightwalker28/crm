@@ -10,6 +10,31 @@ from app.core.postgres_search import searchable_text
 from app.modules.tasks.models import Task, TaskAssignee
 
 
+TASK_SORT_FIELDS = {
+    "title": Task.title,
+    "status": Task.status,
+    "priority": Task.priority,
+    "source_label": Task.source_label,
+    "source_module_key": Task.source_module_key,
+    "source_entity_id": Task.source_entity_id,
+    "start_at": Task.start_at,
+    "due_at": Task.due_at,
+    "assigned_at": Task.assigned_at,
+    "created_at": Task.created_at,
+    "updated_at": Task.updated_at,
+}
+
+
+def apply_task_sort(query, *, sort_by: str | None = None, sort_direction: str | None = None):
+    column = TASK_SORT_FIELDS.get((sort_by or "").strip())
+    if column is None:
+        return query.order_by(Task.due_at.is_(None), Task.due_at.asc(), Task.created_at.desc())
+    direction = (sort_direction or "asc").strip().lower()
+    primary = column.desc() if direction == "desc" else column.asc()
+    secondary = Task.id.desc() if direction == "desc" else Task.id.asc()
+    return query.order_by(None).order_by(primary.nullslast(), secondary)
+
+
 def build_task_query(
     db: Session,
     *,
@@ -76,6 +101,8 @@ def list_tasks(
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
 ):
     query = build_task_query(
         db,
@@ -87,7 +114,7 @@ def list_tasks(
     )
     total_count = query.count()
     tasks = (
-        query.order_by(Task.due_at.is_(None), Task.due_at.asc(), Task.created_at.desc())
+        apply_task_sort(query, sort_by=sort_by, sort_direction=sort_direction)
         .offset(pagination.offset)
         .limit(pagination.limit)
         .all()

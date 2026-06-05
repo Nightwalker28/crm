@@ -11,8 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
-import { useClientPortalActions, useClientPortalAccounts, useClientPortalPages, useCustomerOptions, type PricingItemPayload } from "@/hooks/useClientPortal";
+import { useClientPortalActions, useClientPortalAccounts, useClientPortalPages, useCustomerOptions, type ClientPortalSortState, type PricingItemPayload } from "@/hooks/useClientPortal";
+import { formatDateTime } from "@/lib/datetime";
 
 type LinkedType = "contact" | "organization";
 
@@ -98,6 +100,12 @@ function proposalSectionsFromForm(form: PageForm) {
 
 function actionLabel(action: string) {
   return action === "request_changes" ? "Requested changes" : action === "accept" ? "Accepted" : action;
+}
+
+function nextSort(current: ClientPortalSortState, column: string): ClientPortalSortState {
+  return current?.key === column
+    ? { key: column, direction: current.direction === "asc" ? "desc" : "asc" }
+    : { key: column, direction: "asc" };
 }
 
 function CustomerSelector({
@@ -224,8 +232,10 @@ function DocumentSelector({
 }
 
 export default function ClientPortalDashboardPage() {
-  const pagesQuery = useClientPortalPages();
-  const accountsQuery = useClientPortalAccounts();
+  const [pageSort, setPageSort] = useState<ClientPortalSortState>(null);
+  const [accountSort, setAccountSort] = useState<ClientPortalSortState>(null);
+  const pagesQuery = useClientPortalPages(pageSort);
+  const accountsQuery = useClientPortalAccounts(accountSort);
   const { createPage, publishPage, createAccount, isCreatingPage, isPublishingPage, isCreatingAccount } = useClientPortalActions();
   const [pageForm, setPageForm] = useState<PageForm>(emptyPageForm);
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccountForm);
@@ -419,31 +429,38 @@ export default function ClientPortalDashboardPage() {
           <div className="rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-8 text-center text-sm text-neutral-500">No client pages yet.</div>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[980px] text-left text-sm">
-              <thead className="border-b border-neutral-800 text-xs uppercase text-neutral-500">
-                <tr>
-                  <th className="py-3 pr-4 font-medium">Page</th>
-                  <th className="py-3 pr-4 font-medium">Customer</th>
-                  <th className="py-3 pr-4 font-medium">Pricing</th>
-                  <th className="py-3 pr-4 font-medium">Activity</th>
-                  <th className="py-3 pr-4 font-medium">Status</th>
-                  <th className="py-3 pr-4 text-right font-medium">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-neutral-800">
+            <Table className="min-w-[1080px]">
+              <TableHeader>
+                <TableHeaderRow>
+                  <SortableHead sorted={pageSort?.key === "title"} direction={pageSort?.key === "title" ? pageSort.direction : "asc"} onClick={() => setPageSort((current) => nextSort(current, "title"))}>
+                    Page
+                  </SortableHead>
+                  <TableHead>Customer</TableHead>
+                  <TableHead>Pricing</TableHead>
+                  <TableHead>Activity</TableHead>
+                  <SortableHead sorted={pageSort?.key === "status"} direction={pageSort?.key === "status" ? pageSort.direction : "asc"} onClick={() => setPageSort((current) => nextSort(current, "status"))}>
+                    Status
+                  </SortableHead>
+                  <SortableHead sorted={pageSort?.key === "updated_at"} direction={pageSort?.key === "updated_at" ? pageSort.direction : "asc"} onClick={() => setPageSort((current) => nextSort(current, "updated_at"))}>
+                    Updated
+                  </SortableHead>
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableHeaderRow>
+              </TableHeader>
+              <TableBody>
                 {pages.map((page) => (
-                  <tr key={page.id}>
-                    <td className="py-3 pr-4">
+                  <TableRow key={page.id}>
+                    <TableCell>
                       <div className="font-medium text-neutral-100">{page.title}</div>
                       <div className="text-xs text-neutral-500">{page.summary || "No summary"}</div>
-                    </td>
-                    <td className="py-3 pr-4 text-neutral-300">
+                    </TableCell>
+                    <TableCell className="text-neutral-300">
                       {customerLabel(page)}
-                    </td>
-                    <td className="py-3 pr-4 text-neutral-300">
+                    </TableCell>
+                    <TableCell className="text-neutral-300">
                       {page.pricing_items[0] ? formatMoney(page.pricing_items[0].public_unit_price, page.pricing_items[0].currency) : "No items"}
-                    </td>
-                    <td className="py-3 pr-4 text-neutral-300">
+                    </TableCell>
+                    <TableCell className="text-neutral-300">
                       {page.latest_action ? (
                         <div>
                           <div className="text-neutral-200">{actionLabel(page.latest_action.action)}</div>
@@ -452,9 +469,10 @@ export default function ClientPortalDashboardPage() {
                       ) : (
                         <span className="text-neutral-500">No responses</span>
                       )}
-                    </td>
-                    <td className="py-3 pr-4 capitalize text-neutral-300">{page.status}</td>
-                    <td className="py-3 pr-0">
+                    </TableCell>
+                    <TableCell className="capitalize text-neutral-300">{page.status}</TableCell>
+                    <TableCell className="text-neutral-400">{formatDateTime(page.updated_at)}</TableCell>
+                    <TableCell>
                       <div className="flex justify-end gap-2">
                         {page.public_link ? (
                           <Button type="button" variant="outline" size="sm" onClick={() => void copyText(page.public_link, "Client link")}>
@@ -475,11 +493,11 @@ export default function ClientPortalDashboardPage() {
                           Publish
                         </Button>
                       </div>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         )}
       </Card>
@@ -488,15 +506,46 @@ export default function ClientPortalDashboardPage() {
         <h2 className="mb-4 text-base font-semibold text-neutral-100">Client Accounts</h2>
         {accountsQuery.isLoading ? (
           <div className="rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-6 text-sm text-neutral-500">Loading accounts...</div>
+        ) : accountsQuery.error ? (
+          <div className="rounded-md border border-red-900/50 bg-red-950/20 px-4 py-4 text-sm text-red-300">{errorMessage(accountsQuery.error, "Failed to load client accounts.")}</div>
+        ) : accounts.length === 0 ? (
+          <div className="rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-8 text-center text-sm text-neutral-500">No client accounts yet.</div>
         ) : (
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-            {accounts.map((account) => (
-              <div key={account.id} className="rounded-md border border-neutral-800 bg-neutral-950/50 p-3">
-                <div className="font-medium text-neutral-100">{account.email}</div>
-                <div className="mt-1 text-xs capitalize text-neutral-500">{account.status} · {customerLabel(account)}</div>
-              </div>
-            ))}
-            {!accounts.length ? <div className="text-sm text-neutral-500">No client accounts yet.</div> : null}
+          <div className="overflow-x-auto">
+            <Table className="min-w-[940px]">
+              <TableHeader>
+                <TableHeaderRow>
+                  <SortableHead sorted={accountSort?.key === "email"} direction={accountSort?.key === "email" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "email"))}>
+                    Email
+                  </SortableHead>
+                  <TableHead>Customer</TableHead>
+                  <SortableHead sorted={accountSort?.key === "status"} direction={accountSort?.key === "status" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "status"))}>
+                    Status
+                  </SortableHead>
+                  <SortableHead sorted={accountSort?.key === "last_login_at"} direction={accountSort?.key === "last_login_at" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "last_login_at"))}>
+                    Last Login
+                  </SortableHead>
+                  <SortableHead sorted={accountSort?.key === "setup_token_expires_at"} direction={accountSort?.key === "setup_token_expires_at" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "setup_token_expires_at"))}>
+                    Setup Expires
+                  </SortableHead>
+                  <SortableHead sorted={accountSort?.key === "updated_at"} direction={accountSort?.key === "updated_at" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "updated_at"))}>
+                    Updated
+                  </SortableHead>
+                </TableHeaderRow>
+              </TableHeader>
+              <TableBody>
+                {accounts.map((account) => (
+                  <TableRow key={account.id}>
+                    <TableCell><span className="font-medium text-neutral-100">{account.email}</span></TableCell>
+                    <TableCell className="text-neutral-300">{customerLabel(account)}</TableCell>
+                    <TableCell className="capitalize text-neutral-300">{account.status}</TableCell>
+                    <TableCell className="text-neutral-400">{account.last_login_at ? formatDateTime(account.last_login_at) : "-"}</TableCell>
+                    <TableCell className="text-neutral-400">{account.setup_token_expires_at ? formatDateTime(account.setup_token_expires_at) : "-"}</TableCell>
+                    <TableCell className="text-neutral-400">{formatDateTime(account.updated_at)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </div>
         )}
       </Card>

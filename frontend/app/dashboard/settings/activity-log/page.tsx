@@ -5,10 +5,10 @@ import { useQuery } from "@tanstack/react-query";
 import { ClipboardList } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
-import { Card } from "@/components/ui/Card";
 import Pagination from "@/components/ui/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { formatDateTime } from "@/lib/datetime";
 import { getModuleDisplayName } from "@/lib/module-display";
 
@@ -82,34 +82,60 @@ export default function ActivityLogPage() {
         }
       />
 
-      <Card className="overflow-hidden px-0 py-0">
-        {query.isLoading ? (
-          <div className="px-5 py-5 text-sm text-neutral-500">Loading activity…</div>
-        ) : !data?.results?.length ? (
-          <div className="px-5 py-8">
-            <div className="flex flex-col items-center justify-center gap-2 text-center text-neutral-500">
-              <ClipboardList className="h-8 w-8 text-neutral-700" />
-              <div className="text-sm">No activity matched the current filter.</div>
-            </div>
-          </div>
-        ) : (
-          <div className="divide-y divide-neutral-800">
-            {data.results.map((item) => (
-              <div key={item.id} className="px-5 py-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs uppercase tracking-wide text-neutral-300">
-                    {item.action}
-                  </span>
-                  <span className="text-sm font-medium text-neutral-100">{getModuleDisplayName(item.module_key)}</span>
-                  <span className="text-xs text-neutral-500">#{item.entity_id}</span>
-                </div>
-                <div className="mt-2 text-sm text-neutral-300">{item.description || `${item.entity_type} ${item.entity_id}`}</div>
-                <div className="mt-1 text-xs text-neutral-500">{formatDateTime(item.created_at)}</div>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
+      <div className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-950/80">
+        <Table className="min-w-[980px]">
+          <TableHeader>
+            <TableHeaderRow>
+              <TableHead>Action</TableHead>
+              <TableHead>Module</TableHead>
+              <TableHead>Record</TableHead>
+              <TableHead>Description</TableHead>
+              <TableHead>Created</TableHead>
+            </TableHeaderRow>
+          </TableHeader>
+          <TableBody>
+            {query.isLoading ? (
+              <TableRow>
+                <TableCell colSpan={5} className="py-10 text-center text-sm text-neutral-500">Loading activity...</TableCell>
+              </TableRow>
+            ) : query.error ? (
+              <TableRow>
+                <TableCell colSpan={5} className="py-10 text-center text-sm text-red-300">
+                  {query.error instanceof Error ? query.error.message : "Failed to load activity."}
+                </TableCell>
+              </TableRow>
+            ) : data?.results?.length ? (
+              data.results.map((item) => (
+                <TableRow key={item.id}>
+                  <TableCell>
+                    <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs uppercase tracking-wide text-neutral-300">
+                      {item.action}
+                    </span>
+                  </TableCell>
+                  <TableCell className="font-medium text-neutral-100">{getModuleDisplayName(item.module_key)}</TableCell>
+                  <TableCell>
+                    <div className="text-neutral-300">{item.entity_type}</div>
+                    <div className="text-xs text-neutral-500">#{item.entity_id}</div>
+                  </TableCell>
+                  <TableCell className="max-w-[420px] truncate text-neutral-300">
+                    {item.description || `${item.entity_type} ${item.entity_id}`}
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-neutral-400">{formatDateTime(item.created_at)}</TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} className="py-10">
+                  <div className="flex flex-col items-center justify-center gap-2 text-center text-neutral-500">
+                    <ClipboardList className="h-8 w-8 text-neutral-700" />
+                    <div className="text-sm">No activity matched the current filter.</div>
+                  </div>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       <Pagination
         page={data?.page ?? page}

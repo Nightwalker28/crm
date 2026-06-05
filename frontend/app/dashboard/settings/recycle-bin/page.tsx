@@ -7,10 +7,10 @@ import { Trash2 } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { formatDateTime } from "@/lib/datetime";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { useModuleBuilder } from "@/hooks/useModuleBuilder";
@@ -134,47 +134,74 @@ export default function RecycleBinPage() {
         }
       />
 
-      <Card className="overflow-hidden px-0 py-0">
+      <div className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-950/80">
         <div className="border-b border-neutral-800 px-5 py-4">
           <h2 className="text-lg font-semibold text-neutral-100">{label}</h2>
           <p className="mt-1 text-sm text-neutral-500">Restore records without leaving the audit trail.</p>
         </div>
 
-        {query.isLoading ? (
-          <div className="px-5 py-5 text-sm text-neutral-500">Loading recycle items…</div>
-        ) : !data?.results?.length ? (
-          <div className="px-5 py-8">
-            <div className="flex flex-col items-center justify-center gap-2 text-center text-neutral-500">
-              <Trash2 className="h-8 w-8 text-neutral-700" />
-              <div className="text-sm">No recycled records for this module.</div>
-            </div>
-          </div>
-        ) : (
-          <div className="divide-y divide-neutral-800">
-            {data.results.map((item) => (
-              <div key={`${item.module_key}-${item.record_id}`} className="flex items-center justify-between gap-4 px-5 py-4">
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-neutral-100">{item.title}</div>
-                  <div className="mt-1 truncate text-sm text-neutral-500">
-                    {item.subtitle || "No secondary label"}{item.deleted_at ? ` · deleted ${formatDateTime(item.deleted_at)}` : ""}
+        <Table className="min-w-[900px]">
+          <TableHeader>
+            <TableHeaderRow>
+              <TableHead>Record</TableHead>
+              <TableHead>Module</TableHead>
+              <TableHead>Deleted</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableHeaderRow>
+          </TableHeader>
+          <TableBody>
+            {query.isLoading ? (
+              <TableRow>
+                <TableCell colSpan={4} className="py-10 text-center text-sm text-neutral-500">Loading recycle items...</TableCell>
+              </TableRow>
+            ) : query.error ? (
+              <TableRow>
+                <TableCell colSpan={4} className="py-10 text-center text-sm text-red-300">
+                  {query.error instanceof Error ? query.error.message : "Failed to load recycled records."}
+                </TableCell>
+              </TableRow>
+            ) : data?.results?.length ? (
+              data.results.map((item) => (
+                <TableRow key={`${item.module_key}-${item.record_id}`}>
+                  <TableCell>
+                    <div className="font-medium text-neutral-100">{item.title}</div>
+                    <div className="mt-1 text-xs text-neutral-500">{item.subtitle || "No secondary label"}</div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-neutral-300">{getModuleDisplayName(item.module_key)}</div>
+                    <div className="text-xs text-neutral-500">#{item.record_id}</div>
+                  </TableCell>
+                  <TableCell className="whitespace-nowrap text-neutral-400">{item.deleted_at ? formatDateTime(item.deleted_at) : "-"}</TableCell>
+                  <TableCell>
+                    <div className="flex justify-end">
+                      <Button
+                        onClick={async () => {
+                          try {
+                            await restoreItem(item);
+                          } catch (error) {
+                            toast.error(error instanceof Error ? error.message : "Failed to restore item");
+                          }
+                        }}
+                      >
+                        Restore
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={4} className="py-10">
+                  <div className="flex flex-col items-center justify-center gap-2 text-center text-neutral-500">
+                    <Trash2 className="h-8 w-8 text-neutral-700" />
+                    <div className="text-sm">No recycled records for this module.</div>
                   </div>
-                </div>
-                <Button
-                  onClick={async () => {
-                    try {
-                      await restoreItem(item);
-                    } catch (error) {
-                      toast.error(error instanceof Error ? error.message : "Failed to restore item");
-                    }
-                  }}
-                >
-                  Restore
-                </Button>
-              </div>
-            ))}
-          </div>
-        )}
-      </Card>
+                </TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       <Pagination
         page={data?.page ?? page}

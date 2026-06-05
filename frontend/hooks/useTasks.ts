@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
@@ -91,7 +91,9 @@ type TaskListResponse = {
   page_size: number;
 };
 
-function buildTaskListParams(page: number, pageSize: number, filters?: SavedViewFilters) {
+export type TaskSortState = { key: string; direction: "asc" | "desc" } | null;
+
+function buildTaskListParams(page: number, pageSize: number, filters?: SavedViewFilters, sort?: TaskSortState) {
   const params = new URLSearchParams({
     page: String(page),
     page_size: String(pageSize),
@@ -106,12 +108,16 @@ function buildTaskListParams(page: number, pageSize: number, filters?: SavedView
   if (Array.isArray(filters?.any_conditions) && filters.any_conditions.length) {
     params.set("filters_any", JSON.stringify(filters.any_conditions));
   }
+  if (sort) {
+    params.set("sort_by", sort.key);
+    params.set("sort_direction", sort.direction);
+  }
 
   return params;
 }
 
-async function fetchTasks(page: number, pageSize: number, filters?: SavedViewFilters) {
-  const res = await apiFetch(`/tasks?${buildTaskListParams(page, pageSize, filters).toString()}`);
+async function fetchTasks(page: number, pageSize: number, filters?: SavedViewFilters, sort?: TaskSortState) {
+  const res = await apiFetch(`/tasks?${buildTaskListParams(page, pageSize, filters, sort).toString()}`);
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load tasks.");
@@ -193,14 +199,17 @@ export async function fetchRecordTasks(moduleKey: string, entityId: string | num
   return body as TaskListResponse;
 }
 
-export function useTasks(filters?: SavedViewFilters) {
+export function useTasks(filters?: SavedViewFilters, sort: TaskSortState = null) {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const sortKey = useMemo(() => JSON.stringify(sort), [sort]);
+  const [pageState, setPageState] = useState({ page: 1, filtersKey, sortKey });
+  const page = pageState.filtersKey === filtersKey && pageState.sortKey === sortKey ? pageState.page : 1;
 
   const query = useQuery({
-    queryKey: ["tasks", page, pageSize, filters],
-    queryFn: () => fetchTasks(page, pageSize, filters),
+    queryKey: ["tasks", page, pageSize, filters, sort],
+    queryFn: () => fetchTasks(page, pageSize, filters, sort),
     staleTime: 30_000,
   });
 
@@ -243,10 +252,10 @@ export function useTasks(filters?: SavedViewFilters) {
     isLoading: query.isLoading,
     isFetching: query.isFetching,
     error: query.error instanceof Error ? query.error.message : null,
-    goToPage: setPage,
+    goToPage: (nextPage: number) => setPageState({ page: Math.max(1, nextPage), filtersKey, sortKey }),
     onPageSizeChange: (nextPageSize: number) => {
       setPageSize(nextPageSize);
-      setPage(1);
+      setPageState({ page: 1, filtersKey, sortKey });
     },
     refresh: async () => {
       await queryClient.invalidateQueries({ queryKey: ["tasks"] });

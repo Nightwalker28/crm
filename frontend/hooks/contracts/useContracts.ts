@@ -3,7 +3,7 @@
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
-import { usePagedList } from "@/hooks/usePagedList";
+import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 
 export type ContractParty = {
   id: number;
@@ -70,9 +70,15 @@ export type ContractsResponse = {
   page: number;
 };
 
-async function fetchContracts(page: number, pageSize: number, _visibleColumns: string[], filters: SavedViewFilters): Promise<ContractsResponse> {
+export type ContractSortState = PagedListSort;
+
+async function fetchContracts(page: number, pageSize: number, _visibleColumns: string[], filters: SavedViewFilters, sort: ContractSortState): Promise<ContractsResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   appendSavedViewFilterParams(params, filters);
+  if (sort) {
+    params.set("sort_by", sort.key);
+    params.set("sort_direction", sort.direction);
+  }
   const searchTerm = typeof filters.search === "string" ? filters.search.trim() : "";
   const path = searchTerm ? `/contracts/search?query=${encodeURIComponent(searchTerm)}&${params.toString()}` : `/contracts?${params.toString()}`;
   const res = await apiFetch(path);
@@ -80,12 +86,13 @@ async function fetchContracts(page: number, pageSize: number, _visibleColumns: s
   return res.json();
 }
 
-export function useContracts(visibleColumns: string[], viewFilters: SavedViewFilters, initialPage = 1, initialPageSize = 10) {
+export function useContracts(visibleColumns: string[], viewFilters: SavedViewFilters, sort: ContractSortState = null, initialPage = 1, initialPageSize = 10) {
   const paged = usePagedList<Contract, ContractsResponse>({
     queryKey: ["contracts"],
-    fetcher: (page, pageSize, filters, columns) => fetchContracts(page, pageSize, columns, filters),
+    fetcher: (page, pageSize, filters, columns, sortState) => fetchContracts(page, pageSize, columns, filters, sortState),
     visibleColumns,
     filters: viewFilters,
+    sort,
     initialPage,
     initialPageSize,
     errorMessage: () => "Failed to load contracts",
