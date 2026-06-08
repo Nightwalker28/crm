@@ -177,6 +177,105 @@ class DataTransferJob(Base):
     actor = relationship("User")
 
 
+class TenantBackupSettings(Base):
+    __tablename__ = "tenant_backup_settings"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_tenant_backup_settings_tenant"),
+        CheckConstraint("frequency IN ('manual', 'daily', 'weekly', 'monthly')", name="ck_tenant_backup_settings_frequency"),
+        CheckConstraint("scope IN ('full_tenant', 'selected_modules')", name="ck_tenant_backup_settings_scope"),
+        CheckConstraint("destination IN ('local_download', 'google_drive', 'onedrive')", name="ck_tenant_backup_settings_destination"),
+        CheckConstraint("retention_count IN (3, 7, 14, 30)", name="ck_tenant_backup_settings_retention"),
+        Index("ix_tenant_backup_settings_tenant_updated", "tenant_id", "updated_at"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, server_default="false")
+    frequency = Column(String(20), nullable=False, server_default="manual")
+    scope = Column(String(30), nullable=False, server_default="full_tenant")
+    selected_modules = Column(JSON, nullable=False, server_default="[]")
+    retention_count = Column(Integer, nullable=False, server_default="3")
+    destination = Column(String(30), nullable=False, server_default="local_download")
+    include_documents = Column(Boolean, nullable=False, server_default="true")
+    created_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    updated_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    last_run_at = Column(DateTime(timezone=True), nullable=True)
+    next_run_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    creator = relationship("User", foreign_keys=[created_by_id])
+    updated_by = relationship("User", foreign_keys=[updated_by_id])
+
+
+class TenantBackupRun(Base):
+    __tablename__ = "tenant_backup_runs"
+    __table_args__ = (
+        CheckConstraint("backup_type = 'tenant'", name="ck_tenant_backup_runs_type"),
+        CheckConstraint("scope IN ('full_tenant', 'selected_modules')", name="ck_tenant_backup_runs_scope"),
+        CheckConstraint("status IN ('pending', 'running', 'completed', 'failed', 'cancelled')", name="ck_tenant_backup_runs_status"),
+        CheckConstraint("destination IN ('local_download', 'google_drive', 'onedrive')", name="ck_tenant_backup_runs_destination"),
+        CheckConstraint("destination_upload_status IN ('not_applicable', 'pending', 'uploaded', 'failed', 'expired')", name="ck_tenant_backup_runs_upload_status"),
+        Index("ix_tenant_backup_runs_tenant_status", "tenant_id", "status"),
+        Index("ix_tenant_backup_runs_tenant_created", "tenant_id", "created_at"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    requested_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    settings_id = Column(BigInteger, ForeignKey("tenant_backup_settings.id", ondelete="SET NULL"), nullable=True, index=True)
+    backup_type = Column(String(20), nullable=False, server_default="tenant")
+    scope = Column(String(30), nullable=False)
+    modules_included = Column(JSON, nullable=False, server_default="[]")
+    status = Column(String(20), nullable=False, server_default="pending", index=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    file_path = Column(Text, nullable=True)
+    storage_ref = Column(Text, nullable=True)
+    size_bytes = Column(BigInteger, nullable=True)
+    error_message = Column(Text, nullable=True)
+    destination = Column(String(30), nullable=False, server_default="local_download")
+    destination_upload_status = Column(String(30), nullable=False, server_default="not_applicable")
+    metadata_json = Column(JSON, nullable=False, server_default="{}")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    requester = relationship("User", foreign_keys=[requested_by_user_id])
+    settings = relationship("TenantBackupSettings")
+
+
+class TenantRestoreRun(Base):
+    __tablename__ = "tenant_restore_runs"
+    __table_args__ = (
+        CheckConstraint("restore_type IN ('tenant_module', 'tenant_whole')", name="ck_tenant_restore_runs_type"),
+        CheckConstraint(
+            "mode IN ('preview_only', 'create_missing', 'update_existing', 'skip_duplicates', 'replace_module_data', 'replace_tenant_data')",
+            name="ck_tenant_restore_runs_mode",
+        ),
+        CheckConstraint("status IN ('previewed', 'running', 'completed', 'failed')", name="ck_tenant_restore_runs_status"),
+        Index("ix_tenant_restore_runs_tenant_status", "tenant_id", "status"),
+        Index("ix_tenant_restore_runs_tenant_created", "tenant_id", "created_at"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_backup_run_id = Column(BigInteger, ForeignKey("tenant_backup_runs.id", ondelete="SET NULL"), nullable=True, index=True)
+    restore_type = Column(String(30), nullable=False, server_default="tenant_module")
+    module_key = Column(String(100), nullable=False, index=True)
+    mode = Column(String(30), nullable=False)
+    status = Column(String(20), nullable=False, index=True)
+    summary = Column(JSON, nullable=False, server_default="{}")
+    error_message = Column(Text, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    actor = relationship("User", foreign_keys=[actor_user_id])
+    source_backup_run = relationship("TenantBackupRun")
+
+
 class UserNotification(Base):
     __tablename__ = "user_notifications"
     __table_args__ = (

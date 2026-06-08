@@ -125,6 +125,11 @@ metadata = {
     "started_at": os.environ["STARTED_AT"],
     "completed_at": os.environ["COMPLETED_AT"] or None,
     "status": os.environ["STATUS"],
+    "event_name": {
+        "running": "platform_restore.started",
+        "completed": "platform_restore.completed",
+        "failed": "platform_restore.failed",
+    }.get(os.environ["STATUS"]),
     "safety_backup_id": os.environ["SAFETY_BACKUP_ID"] or None,
     "operator": "service_provider",
     "error_message": os.environ["ERROR_MESSAGE"] or None,

@@ -90,3 +90,5 @@ checksums.txt
 ```
 
 Restore metadata is written under `platform/restores/`. Backup and restore history stays in the private backup directory, not in tenant-facing activity logs.
+
+Operator metadata includes private event names such as `platform_backup.run.completed`, `platform_backup.deleted`, and `platform_restore.completed`. These are for operator logs only and must not be surfaced through tenant backup or restore screens.

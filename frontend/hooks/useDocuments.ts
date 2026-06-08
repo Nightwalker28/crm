@@ -145,8 +145,9 @@ export async function fetchDocumentStorageConnections(): Promise<DocumentStorage
   return body as DocumentStorageConnection[];
 }
 
-export async function connectGoogleDriveStorage(): Promise<{ provider: string; auth_url: string }> {
-  const res = await apiFetch("/documents/storage/connect/google-drive", { method: "POST" });
+export async function connectGoogleDriveStorage(returnPath?: string): Promise<{ provider: string; auth_url: string }> {
+  const query = returnPath ? `?return_path=${encodeURIComponent(returnPath)}` : "";
+  const res = await apiFetch(`/documents/storage/connect/google-drive${query}`, { method: "POST" });
   const body = await readJsonSafely(res);
   if (!res.ok) {
     throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to connect Google Drive.");
@@ -163,8 +164,9 @@ export async function disconnectGoogleDriveStorage(): Promise<DocumentStorageCon
   return body as DocumentStorageConnection;
 }
 
-export async function connectMicrosoftOneDriveStorage(): Promise<{ provider: string; auth_url: string }> {
-  const res = await apiFetch("/documents/storage/connect/microsoft-onedrive", { method: "POST" });
+export async function connectMicrosoftOneDriveStorage(returnPath?: string): Promise<{ provider: string; auth_url: string }> {
+  const query = returnPath ? `?return_path=${encodeURIComponent(returnPath)}` : "";
+  const res = await apiFetch(`/documents/storage/connect/microsoft-onedrive${query}`, { method: "POST" });
   const body = await readJsonSafely(res);
   if (!res.ok) throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to connect Microsoft OneDrive.");
   return body as { provider: string; auth_url: string };
@@ -304,13 +306,13 @@ export function useDocumentActions(scope?: { moduleKey?: string; entityId?: stri
     onSuccess: invalidate,
   });
   const connectDriveMutation = useMutation({
-    mutationFn: connectGoogleDriveStorage,
+    mutationFn: () => connectGoogleDriveStorage(),
   });
   const disconnectDriveMutation = useMutation({
     mutationFn: disconnectGoogleDriveStorage,
     onSuccess: invalidate,
   });
-  const connectOneDriveMutation = useMutation({ mutationFn: connectMicrosoftOneDriveStorage });
+  const connectOneDriveMutation = useMutation({ mutationFn: () => connectMicrosoftOneDriveStorage() });
   const disconnectOneDriveMutation = useMutation({ mutationFn: disconnectMicrosoftOneDriveStorage, onSuccess: invalidate });
 
   return {

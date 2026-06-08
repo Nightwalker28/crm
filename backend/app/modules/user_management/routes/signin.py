@@ -247,13 +247,14 @@ def google_callback(
     drive_state_payload = decode_drive_oauth_state(state)
     if drive_state_payload and drive_state_payload.get("provider") == "google_drive":
         tenant = getattr(request.state, "tenant", None)
+        return_path = drive_state_payload.get("return_path") or "/dashboard/documents"
         frontend_origin = (
             drive_state_payload.get("frontend_origin")
             or get_frontend_origin_for_request(request)
         )
         if not tenant or drive_state_payload.get("tenant_id") != tenant.id or not code:
             query = urllib.parse.urlencode({"driveConnect": "error"})
-            return RedirectResponse(url=f"{frontend_origin}/dashboard/documents?{query}")
+            return RedirectResponse(url=f"{frontend_origin}{return_path}?{query}")
         try:
             handle_google_drive_callback(
                 code,
@@ -264,9 +265,9 @@ def google_callback(
             )
         except HTTPException:
             query = urllib.parse.urlencode({"driveConnect": "error"})
-            return RedirectResponse(url=f"{frontend_origin}/dashboard/documents?{query}")
+            return RedirectResponse(url=f"{frontend_origin}{return_path}?{query}")
         query = urllib.parse.urlencode({"driveConnect": "connected"})
-        return RedirectResponse(url=f"{frontend_origin}/dashboard/documents?{query}")
+        return RedirectResponse(url=f"{frontend_origin}{return_path}?{query}")
 
     state_payload = decode_oauth_state(state)
     tenant = getattr(request.state, "tenant", None)
@@ -339,13 +340,14 @@ def microsoft_callback(
         return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?mailConnect=connected")
 
     if drive_state_payload and drive_state_payload.get("provider") == "microsoft_onedrive":
+        return_path = drive_state_payload.get("return_path") or "/dashboard/documents"
         if not tenant or drive_state_payload.get("tenant_id") != tenant.id or not code:
-            return RedirectResponse(url=f"{frontend_origin}/dashboard/documents?driveConnect=error&provider=microsoft_onedrive")
+            return RedirectResponse(url=f"{frontend_origin}{return_path}?driveConnect=error&provider=microsoft_onedrive")
         try:
             handle_microsoft_onedrive_callback(code, db, tenant=tenant, request=request, state_payload=drive_state_payload)
         except HTTPException:
-            return RedirectResponse(url=f"{frontend_origin}/dashboard/documents?driveConnect=error&provider=microsoft_onedrive")
-        return RedirectResponse(url=f"{frontend_origin}/dashboard/documents?driveConnect=connected&provider=microsoft_onedrive")
+            return RedirectResponse(url=f"{frontend_origin}{return_path}?driveConnect=error&provider=microsoft_onedrive")
+        return RedirectResponse(url=f"{frontend_origin}{return_path}?driveConnect=connected&provider=microsoft_onedrive")
 
     if not login_state_payload:
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?status=error")

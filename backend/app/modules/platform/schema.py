@@ -141,6 +141,143 @@ class DataTransferExportRequest(BaseModel):
     filters_any: list[dict[str, Any]] | None = None
 
 
+class TenantBackupSettingsResponse(BaseModel):
+    id: int
+    tenant_id: int
+    enabled: bool
+    frequency: str
+    scope: str
+    selected_modules: list[str]
+    retention_count: int
+    destination: str
+    include_documents: bool
+    created_by_id: int | None = None
+    updated_by_id: int | None = None
+    last_run_at: datetime | None = None
+    next_run_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class TenantBackupSettingsUpdateRequest(BaseModel):
+    enabled: bool | None = None
+    frequency: str | None = Field(default=None, max_length=20)
+    scope: str | None = Field(default=None, max_length=30)
+    selected_modules: list[str] | None = None
+    retention_count: int | None = None
+    destination: str | None = Field(default=None, max_length=30)
+    include_documents: bool | None = None
+
+
+class TenantBackupDestinationConnectionResponse(BaseModel):
+    destination: str
+    provider: str
+    status: str
+    account_email: str | None = None
+    provider_root_name: str | None = None
+    last_error: str | None = None
+    updated_at: datetime
+
+
+class TenantBackupDestinationConnectResponse(BaseModel):
+    destination: str
+    provider: str
+    auth_url: str
+
+
+class TenantBackupRunResponse(BaseModel):
+    id: int
+    tenant_id: int
+    requested_by_user_id: int | None = None
+    settings_id: int | None = None
+    backup_type: str
+    scope: str
+    modules_included: list[str]
+    status: str
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    storage_ref: str | None = None
+    size_bytes: int | None = None
+    error_message: str | None = None
+    destination: str
+    destination_upload_status: str
+    metadata_json: dict[str, Any]
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TenantBackupRunListResponse(BaseModel):
+    results: list[TenantBackupRunResponse]
+    range_start: int
+    range_end: int
+    total_count: int
+    total_pages: int
+    page: int
+
+
+class TenantBackupRunCreateResponse(BaseModel):
+    run: TenantBackupRunResponse
+    message: str
+
+
+class TenantBackupRunDeleteResponse(BaseModel):
+    run: TenantBackupRunResponse
+    message: str
+
+
+class TenantRestorePreviewRequest(BaseModel):
+    source_backup_run_id: int
+    module_key: str = Field(min_length=1, max_length=100)
+
+
+class TenantRestoreExecuteRequest(BaseModel):
+    source_backup_run_id: int
+    module_key: str = Field(min_length=1, max_length=100)
+    mode: str = Field(max_length=30)
+    confirmation: str | None = Field(default=None, max_length=200)
+
+
+class TenantWholeRestorePreviewRequest(BaseModel):
+    source_backup_run_id: int
+
+
+class TenantWholeRestoreExecuteRequest(BaseModel):
+    source_backup_run_id: int
+    confirmation: str | None = Field(default=None, max_length=200)
+
+
+class TenantRestoreRunResponse(BaseModel):
+    id: int
+    tenant_id: int
+    actor_user_id: int | None = None
+    source_backup_run_id: int | None = None
+    restore_type: str
+    module_key: str
+    mode: str
+    status: str
+    summary: dict[str, Any]
+    error_message: str | None = None
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class TenantRestorePreviewResponse(BaseModel):
+    run: TenantRestoreRunResponse
+    metadata: dict[str, Any]
+    summary: dict[str, Any]
+
+
+class TenantRestoreExecuteResponse(BaseModel):
+    run: TenantRestoreRunResponse
+    message: str
+
+
 class ModuleReportField(BaseModel):
     key: str
     label: str

@@ -87,6 +87,7 @@ def get_document_storage_connections(
 @router.post("/storage/connect/google-drive", response_model=DocumentStorageConnectResponse)
 def connect_google_drive_storage(
     request: Request,
+    return_path: str | None = Query(default=None, max_length=300),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("documents")),
     require_permission=Depends(require_action_access("documents", "create")),
@@ -96,7 +97,7 @@ def connect_google_drive_storage(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
     return {
         "provider": "google_drive",
-        "auth_url": get_google_drive_connect_url(request=request, tenant=tenant, user=current_user),
+        "auth_url": get_google_drive_connect_url(request=request, tenant=tenant, user=current_user, return_path=return_path),
     }
 
 
@@ -118,6 +119,7 @@ def disconnect_google_drive_storage(
 @router.post("/storage/connect/microsoft-onedrive", response_model=DocumentStorageConnectResponse)
 def connect_microsoft_onedrive_storage(
     request: Request,
+    return_path: str | None = Query(default=None, max_length=300),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("documents")),
     require_permission=Depends(require_action_access("documents", "create")),
@@ -127,7 +129,7 @@ def connect_microsoft_onedrive_storage(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
     return {
         "provider": "microsoft_onedrive",
-        "auth_url": get_microsoft_onedrive_connect_url(request=request, tenant=tenant, user=current_user),
+        "auth_url": get_microsoft_onedrive_connect_url(request=request, tenant=tenant, user=current_user, return_path=return_path),
     }
 
 

@@ -151,6 +151,11 @@ metadata = {
     "checksum": os.environ["DB_CHECKSUM"] or None,
     "size_bytes": int(os.environ["SIZE_BYTES"] or "0"),
     "error_message": os.environ["ERROR_MESSAGE"] or None,
+    "event_name": {
+        "running": "platform_backup.run.started",
+        "completed": "platform_backup.run.completed",
+        "failed": "platform_backup.run.failed",
+    }.get(os.environ["STATUS"]),
     "backup_path": str(backup_path),
     "restore_notes": "Platform-level restore only. Not tenant-scoped.",
 }
@@ -363,6 +368,7 @@ metadata.update(
         "tenant_scope": "none",
         "owner": "service_provider",
         "status": "deleted",
+        "event_name": "platform_backup.deleted",
         "deleted_at": os.environ["DELETED_AT"],
         "backup_path": os.environ["BACKUP_PATH"],
     }
