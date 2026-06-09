@@ -2,7 +2,7 @@
 
 import type { SyntheticEvent } from "react";
 import Link from "next/link";
-import { Power } from "lucide-react";
+import { Power, Repeat2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
@@ -58,13 +58,14 @@ export default function ModulesPage() {
               <TableHead>Sidebar Label</TableHead>
               <TableHead>Sidebar Group</TableHead>
               <TableHead>Duplicate Handling</TableHead>
+              <TableHead>Automation</TableHead>
               <TableHead>Enable / Disable</TableHead>
             </TableHeaderRow>
           </TableHeader>
           <TableBody>
             {isLoading ? (
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-neutral-500">Loading modules...</TableCell>
+                <TableCell colSpan={6} className="py-10 text-center text-neutral-500">Loading modules...</TableCell>
               </TableRow>
             ) : (
               modules.map((module) => (
@@ -123,6 +124,17 @@ export default function ModulesPage() {
                         </SelectContent>
                       </Select>
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <Link
+                      href={`${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(module.name)}`}
+                      onClick={stopRowNavigation}
+                      onKeyDown={stopRowNavigation}
+                      className="inline-flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800"
+                    >
+                      <Repeat2 size={15} />
+                      Open
+                    </Link>
                   </TableCell>
                   <TableCell>
                     <div onClick={stopRowNavigation} onKeyDown={stopRowNavigation}>

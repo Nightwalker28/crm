@@ -6,8 +6,10 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from fastapi.encoders import jsonable_encoder
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.pagination import Pagination
 from app.modules.platform.models import (
     ActivityLog,
@@ -18,28 +20,31 @@ from app.modules.platform.models import (
     RecordComment,
     UserNotification,
 )
+from app.modules.platform.services.automation_registry import (
+    SUPPORTED_AUTOMATION_ACTIONS,
+    SUPPORTED_AUTOMATION_TRIGGERS,
+    actions_for_trigger,
+    condition_fields_for_trigger,
+    get_action_or_none,
+    get_trigger_or_none,
+    module_key_for_trigger,
+)
 from app.modules.sales.models import SalesLead
 from app.modules.sales.services.leads_services import recalculate_lead_score
 from app.modules.tasks.models import Task, TaskAssignee
 from app.modules.user_management.models import Team, User
 
 
-SUPPORTED_AUTOMATION_TRIGGERS = {
-    "lead.created",
-    "lead.updated",
-    "lead.converted",
-    "opportunity.stage_changed",
-    "quote.created",
-    "quote.status_changed",
-    "task.overdue",
+CONDITION_OPERATOR_ALIASES = {
+    "is": "equals",
+    "is_not": "not_equals",
+    "not_contains": "not_contains",
+    "is_empty": "is_empty",
+    "is_not_empty": "is_not_empty",
+    "in": "in",
+    "not_in": "not_in",
 }
-SUPPORTED_ACTION_TYPES = {
-    "create_task",
-    "send_notification",
-    "recalculate_lead_score",
-    "add_record_note",
-}
-SUPPORTED_CONDITION_OPERATORS = {"equals", "not_equals", "contains", "exists", "gt", "gte", "lt", "lte"}
+AUTOMATION_CONTEXT_KEY = "_automation"
 
 
 def _utcnow() -> datetime:
@@ -53,37 +58,110 @@ def _normalize_trigger(value: str) -> str:
     return trigger
 
 
-def _normalize_conditions(value: Any) -> list[dict[str, Any]]:
+def _normalize_module_key(value: Any, *, trigger_event: str) -> str | None:
+    module_key = str(value or "").strip() or None
+    trigger = get_trigger_or_none(trigger_event)
+    if module_key and trigger and module_key != trigger.module_key:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Automation rule module does not match trigger")
+    return module_key or module_key_for_trigger(trigger_event)
+
+
+def _normalize_condition_mode(value: Any) -> str:
+    mode = str(value or "all").strip().lower()
+    if mode not in {"all", "any"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported automation condition mode")
+    return mode
+
+
+def _normalize_condition_field(value: Any) -> str:
+    field = str(value or "").strip()
+    if not field:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Condition field is required")
+    return field if field.startswith("payload.") else f"payload.{field}"
+
+
+def _condition_payload_key(field: str) -> str:
+    return field.removeprefix("payload.")
+
+
+def _normalize_condition_operator(value: Any) -> str:
+    operator = str(value or "equals").strip()
+    operator = CONDITION_OPERATOR_ALIASES.get(operator, operator)
+    return "is_not_empty" if operator == "exists" else operator
+
+
+def _normalize_condition_values(item: dict[str, Any], *, operator: str) -> tuple[Any, list[Any] | None]:
+    if operator in {"in", "not_in"}:
+        raw_values = item.get("values", item.get("value"))
+        if isinstance(raw_values, str):
+            values = [part.strip() for part in raw_values.split(",") if part.strip()]
+        elif isinstance(raw_values, list):
+            values = [part for part in raw_values if part not in {None, ""}]
+        else:
+            values = []
+        return None, values
+    return item.get("value"), None
+
+
+def _normalize_conditions(value: Any, *, trigger_event: str) -> list[dict[str, Any]]:
     if value is None or value == "":
         return []
     if not isinstance(value, list):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="conditions_json must be a list")
+    condition_fields = {
+        f"payload.{field.key}": set(field.operators)
+        for field in condition_fields_for_trigger(trigger_event)
+    }
     normalized: list[dict[str, Any]] = []
     for item in value:
         if not isinstance(item, dict):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Each condition must be an object")
-        field = str(item.get("field") or "").strip()
-        operator = str(item.get("operator") or "equals").strip()
-        if not field:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Condition field is required")
-        if operator not in SUPPORTED_CONDITION_OPERATORS:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported condition operator")
-        normalized.append({"field": field, "operator": operator, "value": item.get("value")})
+        field = _normalize_condition_field(item.get("field"))
+        operator = _normalize_condition_operator(item.get("operator"))
+        allowed_operators = condition_fields.get(field)
+        if allowed_operators is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Unsupported condition field: {_condition_payload_key(field)}")
+        if operator not in allowed_operators:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported condition operator for field")
+        value, values = _normalize_condition_values(item, operator=operator)
+        entry = {"field": field, "operator": operator, "value": value}
+        if values is not None:
+            entry["values"] = values
+        normalized.append(entry)
     return normalized
 
 
-def _normalize_actions(value: Any) -> list[dict[str, Any]]:
+def _normalize_actions(value: Any, *, trigger_event: str, require_complete: bool = True) -> list[dict[str, Any]]:
     if value is None or value == "":
-        return []
-    if not isinstance(value, list) or not value:
+        if not require_complete:
+            return []
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="actions_json must include at least one action")
+    if not isinstance(value, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="actions_json must be a list")
+    if not value:
+        if not require_complete:
+            return []
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="actions_json must include at least one action")
+    if not require_complete:
+        value = [item for item in value if isinstance(item, dict) and str(item.get("type") or "").strip()]
+    if not value:
+        return []
+    available_actions = {action.key for action in actions_for_trigger(trigger_event)}
     normalized: list[dict[str, Any]] = []
     for item in value:
         if not isinstance(item, dict):
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Each action must be an object")
         action_type = str(item.get("type") or "").strip()
-        if action_type not in SUPPORTED_ACTION_TYPES:
+        if not action_type:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Action type is required")
+        if action_type not in SUPPORTED_AUTOMATION_ACTIONS:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported automation action")
+        if action_type not in available_actions:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Automation action is not available for this trigger")
+        action = get_action_or_none(action_type)
+        for field in action.fields if action else ():
+            if require_complete and field.required and item.get(field.key) in {None, ""}:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Action field is required: {field.key}")
         normalized.append(dict(item, type=action_type))
     return normalized
 
@@ -93,8 +171,10 @@ def _serialize_rule(rule: AutomationRule) -> dict[str, Any]:
         "id": rule.id,
         "name": rule.name,
         "description": rule.description,
+        "module_key": rule.module_key,
         "enabled": bool(rule.enabled),
         "trigger_event": rule.trigger_event,
+        "condition_mode": rule.condition_mode or "all",
         "conditions_json": rule.conditions_json or [],
         "actions_json": rule.actions_json or [],
         "created_by_id": rule.created_by_id,
@@ -138,15 +218,40 @@ def _coerce_number(value: Any) -> float | None:
 def _condition_matches(data: dict[str, Any], condition: dict[str, Any]) -> bool:
     actual = _lookup_path(data, condition["field"])
     expected = condition.get("value")
+    expected_values = condition.get("values")
     operator = condition.get("operator", "equals")
-    if operator == "exists":
+    if operator in {"exists", "is_not_empty"}:
         return actual not in {None, ""}
+    if operator == "is_empty":
+        return actual in {None, ""}
     if operator == "equals":
         return str(actual) == str(expected)
     if operator == "not_equals":
         return str(actual) != str(expected)
     if operator == "contains":
         return str(expected).lower() in str(actual or "").lower()
+    if operator == "not_contains":
+        return str(expected).lower() not in str(actual or "").lower()
+    if operator in {"in", "not_in"}:
+        values = expected_values if isinstance(expected_values, list) else []
+        matched = str(actual) in {str(value) for value in values}
+        return matched if operator == "in" else not matched
+    if operator in {"changed", "changed_to", "changed_from"}:
+        payload_key = _condition_payload_key(condition["field"])
+        changes = _lookup_path(data, "payload.field_changes")
+        changed_fields = _lookup_path(data, "payload.changed_fields")
+        change_record = changes.get(payload_key) if isinstance(changes, dict) else None
+        did_change = (
+            isinstance(change_record, dict)
+            or (isinstance(changed_fields, list) and payload_key in {str(field) for field in changed_fields})
+        )
+        if operator == "changed":
+            return did_change
+        if not isinstance(change_record, dict):
+            return False
+        if operator == "changed_to":
+            return str(change_record.get("to")) == str(expected)
+        return str(change_record.get("from")) == str(expected)
     if operator in {"gt", "gte", "lt", "lte"}:
         left = _coerce_number(actual)
         right = _coerce_number(expected)
@@ -164,16 +269,74 @@ def _condition_matches(data: dict[str, Any], condition: dict[str, Any]) -> bool:
 
 def _conditions_match(rule: AutomationRule, event: CrmEvent) -> bool:
     data = _event_input(event)
-    return all(_condition_matches(data, condition) for condition in (rule.conditions_json or []))
+    conditions = rule.conditions_json or []
+    if not conditions:
+        return True
+    if (rule.condition_mode or "all") == "any":
+        return any(_condition_matches(data, condition) for condition in conditions)
+    return all(_condition_matches(data, condition) for condition in conditions)
 
 
-def list_automation_rules(db: Session, *, tenant_id: int) -> list[AutomationRule]:
+def _automation_depth(event: CrmEvent) -> int:
+    payload = event.payload or {}
+    context = payload.get(AUTOMATION_CONTEXT_KEY)
+    if not isinstance(context, dict):
+        return 0
+    try:
+        return int(context.get("depth") or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _existing_run_for_rule_event(db: Session, *, rule_id: int, event_id: int | None) -> AutomationRuleRun | None:
+    if event_id is None:
+        return None
     return (
-        db.query(AutomationRule)
-        .filter(AutomationRule.tenant_id == tenant_id)
-        .order_by(AutomationRule.enabled.desc(), AutomationRule.trigger_event.asc(), AutomationRule.name.asc(), AutomationRule.id.asc())
-        .all()
+        db.query(AutomationRuleRun)
+        .filter(AutomationRuleRun.rule_id == rule_id, AutomationRuleRun.event_id == event_id)
+        .order_by(AutomationRuleRun.id.asc())
+        .first()
     )
+
+
+def _record_skipped_run(db: Session, *, rule: AutomationRule, event: CrmEvent, reason: str) -> AutomationRuleRun:
+    existing = _existing_run_for_rule_event(db, rule_id=rule.id, event_id=event.id)
+    if existing is not None:
+        return existing
+    data = _event_input(event)
+    run = AutomationRuleRun(
+        tenant_id=event.tenant_id,
+        rule_id=rule.id,
+        event_id=event.id,
+        trigger_event_key=event.event_type,
+        source_module_key=event.entity_type,
+        source_record_id=str(event.entity_id),
+        status="skipped",
+        input_json=jsonable_encoder(data),
+        error_message=reason,
+        started_at=_utcnow(),
+        finished_at=_utcnow(),
+        completed_at=_utcnow(),
+        step_results_json=[],
+    )
+    db.add(run)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        existing = _existing_run_for_rule_event(db, rule_id=rule.id, event_id=event.id)
+        if existing is not None:
+            return existing
+        raise
+    db.refresh(run)
+    return run
+
+
+def list_automation_rules(db: Session, *, tenant_id: int, module_key: str | None = None) -> list[AutomationRule]:
+    query = db.query(AutomationRule).filter(AutomationRule.tenant_id == tenant_id)
+    if module_key:
+        query = query.filter(AutomationRule.module_key == module_key)
+    return query.order_by(AutomationRule.enabled.desc(), AutomationRule.trigger_event.asc(), AutomationRule.name.asc(), AutomationRule.id.asc()).all()
 
 
 def get_automation_rule_or_404(db: Session, *, tenant_id: int, rule_id: int) -> AutomationRule:
@@ -184,14 +347,18 @@ def get_automation_rule_or_404(db: Session, *, tenant_id: int, rule_id: int) -> 
 
 
 def create_automation_rule(db: Session, *, tenant_id: int, actor_user_id: int | None, payload: dict[str, Any]) -> AutomationRule:
+    trigger_event = _normalize_trigger(payload.get("trigger_event"))
+    enabled = bool(payload.get("enabled", True))
     rule = AutomationRule(
         tenant_id=tenant_id,
         name=payload["name"].strip(),
         description=(payload.get("description") or "").strip() or None,
-        enabled=bool(payload.get("enabled", True)),
-        trigger_event=_normalize_trigger(payload.get("trigger_event")),
-        conditions_json=_normalize_conditions(payload.get("conditions_json")),
-        actions_json=_normalize_actions(payload.get("actions_json")),
+        module_key=_normalize_module_key(payload.get("module_key"), trigger_event=trigger_event),
+        enabled=enabled,
+        trigger_event=trigger_event,
+        condition_mode=_normalize_condition_mode(payload.get("condition_mode")),
+        conditions_json=_normalize_conditions(payload.get("conditions_json"), trigger_event=trigger_event),
+        actions_json=_normalize_actions(payload.get("actions_json"), trigger_event=trigger_event, require_complete=enabled),
         created_by_id=actor_user_id,
         updated_by_id=actor_user_id,
     )
@@ -202,6 +369,7 @@ def create_automation_rule(db: Session, *, tenant_id: int, actor_user_id: int | 
 
 
 def update_automation_rule(db: Session, *, rule: AutomationRule, actor_user_id: int | None, payload: dict[str, Any]) -> AutomationRule:
+    next_enabled = bool(payload["enabled"]) if "enabled" in payload and payload["enabled"] is not None else bool(rule.enabled)
     if "name" in payload and payload["name"] is not None:
         rule.name = payload["name"].strip()
     if "description" in payload:
@@ -210,10 +378,20 @@ def update_automation_rule(db: Session, *, rule: AutomationRule, actor_user_id: 
         rule.enabled = bool(payload["enabled"])
     if "trigger_event" in payload and payload["trigger_event"] is not None:
         rule.trigger_event = _normalize_trigger(payload["trigger_event"])
+        if "module_key" not in payload:
+            rule.module_key = module_key_for_trigger(rule.trigger_event)
+    if "module_key" in payload:
+        rule.module_key = _normalize_module_key(payload.get("module_key"), trigger_event=rule.trigger_event)
+    if "condition_mode" in payload and payload["condition_mode"] is not None:
+        rule.condition_mode = _normalize_condition_mode(payload["condition_mode"])
     if "conditions_json" in payload and payload["conditions_json"] is not None:
-        rule.conditions_json = _normalize_conditions(payload["conditions_json"])
+        rule.conditions_json = _normalize_conditions(payload["conditions_json"], trigger_event=rule.trigger_event)
+    elif "trigger_event" in payload and payload["trigger_event"] is not None:
+        rule.conditions_json = _normalize_conditions(rule.conditions_json or [], trigger_event=rule.trigger_event)
     if "actions_json" in payload and payload["actions_json"] is not None:
-        rule.actions_json = _normalize_actions(payload["actions_json"])
+        rule.actions_json = _normalize_actions(payload["actions_json"], trigger_event=rule.trigger_event, require_complete=next_enabled)
+    elif ("trigger_event" in payload and payload["trigger_event"] is not None) or next_enabled:
+        rule.actions_json = _normalize_actions(rule.actions_json or [], trigger_event=rule.trigger_event, require_complete=next_enabled)
     rule.updated_by_id = actor_user_id
     db.add(rule)
     db.commit()
@@ -226,10 +404,58 @@ def delete_automation_rule(db: Session, *, rule: AutomationRule) -> None:
     db.commit()
 
 
-def list_automation_rule_runs(db: Session, *, tenant_id: int, rule_id: int | None = None, pagination: Pagination | None = None) -> list[AutomationRuleRun]:
+def preview_automation_rule(payload: dict[str, Any]) -> dict[str, Any]:
+    name = str(payload.get("name") or "").strip()
+    if not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Rule name is required")
+    trigger_event = _normalize_trigger(payload.get("trigger_event"))
+    enabled = bool(payload.get("enabled", True))
+    module_key = _normalize_module_key(payload.get("module_key"), trigger_event=trigger_event)
+    condition_mode = _normalize_condition_mode(payload.get("condition_mode"))
+    conditions = _normalize_conditions(payload.get("conditions_json"), trigger_event=trigger_event)
+    actions = _normalize_actions(payload.get("actions_json"), trigger_event=trigger_event, require_complete=enabled)
+    warnings: list[str] = []
+    if not enabled and not actions:
+        warnings.append("Draft is disabled and has no actions yet.")
+    if not conditions:
+        warnings.append("No conditions are set; this rule will run for every matching trigger.")
+    preview_actions = []
+    for index, action in enumerate(actions):
+        definition = get_action_or_none(str(action.get("type") or ""))
+        preview_actions.append(
+            {
+                "index": index,
+                "type": action["type"],
+                "label": definition.label if definition else action["type"],
+                "config": jsonable_encoder(action),
+            }
+        )
+    return {
+        "valid": True,
+        "can_enable": bool(actions),
+        "module_key": module_key,
+        "trigger_event": trigger_event,
+        "condition_mode": condition_mode,
+        "condition_count": len(conditions),
+        "action_count": len(actions),
+        "warnings": warnings,
+        "actions": preview_actions,
+    }
+
+
+def list_automation_rule_runs(
+    db: Session,
+    *,
+    tenant_id: int,
+    rule_id: int | None = None,
+    module_key: str | None = None,
+    pagination: Pagination | None = None,
+) -> list[AutomationRuleRun]:
     query = db.query(AutomationRuleRun).filter(AutomationRuleRun.tenant_id == tenant_id)
     if rule_id is not None:
         query = query.filter(AutomationRuleRun.rule_id == rule_id)
+    if module_key:
+        query = query.join(AutomationRule).filter(AutomationRule.module_key == module_key)
     query = query.order_by(AutomationRuleRun.started_at.desc(), AutomationRuleRun.id.desc())
     if pagination:
         query = query.offset(pagination.offset).limit(pagination.limit)
@@ -388,6 +614,9 @@ def _execute_action(db: Session, *, tenant_id: int, actor_user_id: int | None, a
 def execute_rule_for_event(db: Session, *, rule: AutomationRule, event: CrmEvent) -> AutomationRuleRun | None:
     if not rule.enabled or rule.tenant_id != event.tenant_id or rule.trigger_event != event.event_type:
         return None
+    existing = _existing_run_for_rule_event(db, rule_id=rule.id, event_id=event.id)
+    if existing is not None:
+        return existing
     if not _conditions_match(rule, event):
         return None
 
@@ -396,21 +625,29 @@ def execute_rule_for_event(db: Session, *, rule: AutomationRule, event: CrmEvent
         tenant_id=event.tenant_id,
         rule_id=rule.id,
         event_id=event.id,
+        trigger_event_key=event.event_type,
+        source_module_key=event.entity_type,
+        source_record_id=str(event.entity_id),
         status="running",
         input_json=jsonable_encoder(data),
         started_at=_utcnow(),
     )
     db.add(run)
-    db.flush()
     try:
-        action_results = [
-            _execute_action(db, tenant_id=event.tenant_id, actor_user_id=event.actor_user_id, action=action, data=data)
-            for action in (rule.actions_json or [])
-        ]
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        return _existing_run_for_rule_event(db, rule_id=rule.id, event_id=event.id)
+    try:
+        action_results = []
+        for index, action in enumerate(rule.actions_json or []):
+            result = _execute_action(db, tenant_id=event.tenant_id, actor_user_id=event.actor_user_id, action=action, data=data)
+            action_results.append({"index": index, "status": "success", "result": result})
     except Exception as exc:
         run.status = "failed"
         run.error_message = str(exc)[:1000]
         run.finished_at = _utcnow()
+        run.completed_at = run.finished_at
         db.add(run)
         db.flush()
         db.add(
@@ -427,8 +664,10 @@ def execute_rule_for_event(db: Session, *, rule: AutomationRule, event: CrmEvent
         return run
 
     run.status = "succeeded"
-    run.result_json = {"actions": jsonable_encoder(action_results)}
+    run.result_json = {"actions": jsonable_encoder([item["result"] for item in action_results])}
+    run.step_results_json = jsonable_encoder(action_results)
     run.finished_at = _utcnow()
+    run.completed_at = run.finished_at
     db.add(run)
     db.commit()
     db.refresh(run)
@@ -449,6 +688,16 @@ def process_crm_event_automations(db: Session, *, event_id: int) -> list[Automat
         .order_by(AutomationRule.id.asc())
         .all()
     )
+    if _automation_depth(event) >= settings.AUTOMATION_MAX_EVENT_DEPTH:
+        return [
+            _record_skipped_run(
+                db,
+                rule=rule,
+                event=event,
+                reason="Automation skipped because max automation depth was reached",
+            )
+            for rule in rules
+        ]
     runs: list[AutomationRuleRun] = []
     for rule in rules:
         run = execute_rule_for_event(db, rule=rule, event=event)

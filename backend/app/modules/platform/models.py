@@ -359,8 +359,10 @@ class AutomationRule(Base):
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(180), nullable=False)
     description = Column(Text, nullable=True)
+    module_key = Column(String(100), nullable=True, index=True)
     enabled = Column(Boolean, nullable=False, server_default="true", index=True)
     trigger_event = Column(String(100), nullable=False, index=True)
+    condition_mode = Column(String(10), nullable=False, server_default="all")
     conditions_json = Column(JSON, nullable=False, server_default="[]")
     actions_json = Column(JSON, nullable=False, server_default="[]")
     created_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -376,6 +378,7 @@ class AutomationRule(Base):
 class AutomationRuleRun(Base):
     __tablename__ = "automation_rule_runs"
     __table_args__ = (
+        UniqueConstraint("rule_id", "event_id", name="uq_automation_rule_runs_rule_event"),
         Index("ix_automation_rule_runs_tenant_status", "tenant_id", "status"),
         Index("ix_automation_rule_runs_rule_started", "rule_id", "started_at"),
     )
@@ -384,12 +387,17 @@ class AutomationRuleRun(Base):
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     rule_id = Column(BigInteger, ForeignKey("automation_rules.id", ondelete="CASCADE"), nullable=False, index=True)
     event_id = Column(BigInteger, ForeignKey("crm_events.id", ondelete="SET NULL"), nullable=True, index=True)
+    trigger_event_key = Column(String(100), nullable=True, index=True)
+    source_module_key = Column(String(100), nullable=True, index=True)
+    source_record_id = Column(String(100), nullable=True, index=True)
     status = Column(String(30), nullable=False, index=True)
     input_json = Column(JSON, nullable=True)
     result_json = Column(JSON, nullable=True)
+    step_results_json = Column(JSON, nullable=True)
     error_message = Column(Text, nullable=True)
     started_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     finished_at = Column(DateTime(timezone=True), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
     rule = relationship("AutomationRule", back_populates="runs")
     event = relationship("CrmEvent")

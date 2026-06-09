@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Repeat2, Save } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
@@ -78,6 +78,13 @@ function ModuleAccessEditor({
             >
               <ArrowLeft size={15} />
               Module Settings
+            </Link>
+            <Link
+              href={`${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(access.module.name)}`}
+              className="inline-flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800"
+            >
+              <Repeat2 size={15} />
+              Automation
             </Link>
             <Button onClick={handleSave} disabled={!hasChanges || isSaving}>
               <Save />

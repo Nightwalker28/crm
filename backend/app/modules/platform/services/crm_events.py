@@ -442,12 +442,17 @@ def emit_crm_event(
     db.commit()
     db.refresh(event)
     try:
-        from app.modules.platform.services.automation_rules import process_crm_event_automations
-
-        process_crm_event_automations(db, event_id=event.id)
+        enqueue_crm_event_automation(event.id)
     except Exception:
-        db.rollback()
+        # Automation dispatch must not break the originating CRM write.
+        pass
     return event
+
+
+def enqueue_crm_event_automation(event_id: int) -> None:
+    from app.tasks.automation_tasks import process_crm_event
+
+    process_crm_event.delay(event_id)
 
 
 def safe_emit_crm_event(db: Session, **kwargs: Any) -> CrmEvent | None:

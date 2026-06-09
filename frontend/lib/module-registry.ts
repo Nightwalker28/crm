@@ -58,10 +58,11 @@ export const SETTINGS_NAV_ITEMS = [
   { href: SETTINGS_ROUTES.fields, label: "Field Config", sortOrder: 80 },
   { href: SETTINGS_ROUTES.automation, label: "Automation", sortOrder: 90 },
   { href: SETTINGS_ROUTES.calendarBooking, label: "Booking Links", sortOrder: 100 },
-  { href: SETTINGS_ROUTES.integrations, label: "Integrations", sortOrder: 110 },
-  { href: SETTINGS_ROUTES.templates, label: "Templates", sortOrder: 120 },
-  { href: SETTINGS_ROUTES.activityLog, label: "Activity Log", sortOrder: 130 },
-  { href: SETTINGS_ROUTES.recycleBin, label: "Recycle Bin", sortOrder: 140 },
+  { href: SETTINGS_ROUTES.backups, label: "Backups", sortOrder: 110 },
+  { href: SETTINGS_ROUTES.integrations, label: "Integrations", sortOrder: 120 },
+  { href: SETTINGS_ROUTES.templates, label: "Templates", sortOrder: 130 },
+  { href: SETTINGS_ROUTES.activityLog, label: "Activity Log", sortOrder: 140 },
+  { href: SETTINGS_ROUTES.recycleBin, label: "Recycle Bin", sortOrder: 150 },
 ] as const;
 
 const MODULES_BY_KEY = new Map<string, ModuleRegistryEntry>(MODULE_REGISTRY.map((module) => [module.key, module]));

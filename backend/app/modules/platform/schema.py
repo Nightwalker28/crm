@@ -482,8 +482,10 @@ class AutomationRuleResponse(BaseModel):
     id: int
     name: str
     description: str | None = None
+    module_key: str | None = None
     enabled: bool
     trigger_event: str
+    condition_mode: str = "all"
     conditions_json: list[dict[str, Any]]
     actions_json: list[dict[str, Any]]
     created_by_id: int | None = None
@@ -497,8 +499,10 @@ class AutomationRuleResponse(BaseModel):
 class AutomationRuleCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=180)
     description: str | None = None
+    module_key: str | None = Field(default=None, max_length=100)
     enabled: bool = True
     trigger_event: str = Field(min_length=1, max_length=100)
+    condition_mode: str = Field(default="all", pattern="^(all|any)$")
     conditions_json: list[dict[str, Any]] = Field(default_factory=list)
     actions_json: list[dict[str, Any]] = Field(default_factory=list)
 
@@ -506,8 +510,10 @@ class AutomationRuleCreateRequest(BaseModel):
 class AutomationRuleUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=180)
     description: str | None = None
+    module_key: str | None = Field(default=None, max_length=100)
     enabled: bool | None = None
     trigger_event: str | None = Field(default=None, min_length=1, max_length=100)
+    condition_mode: str | None = Field(default=None, pattern="^(all|any)$")
     conditions_json: list[dict[str, Any]] | None = None
     actions_json: list[dict[str, Any]] | None = None
 
@@ -516,16 +522,51 @@ class AutomationRuleListResponse(BaseModel):
     results: list[AutomationRuleResponse]
 
 
+class AutomationRulePreviewRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=180)
+    description: str | None = None
+    module_key: str | None = Field(default=None, max_length=100)
+    enabled: bool = True
+    trigger_event: str = Field(min_length=1, max_length=100)
+    condition_mode: str = Field(default="all", pattern="^(all|any)$")
+    conditions_json: list[dict[str, Any]] = Field(default_factory=list)
+    actions_json: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class AutomationRulePreviewActionResponse(BaseModel):
+    index: int
+    type: str
+    label: str
+    config: dict[str, Any]
+
+
+class AutomationRulePreviewResponse(BaseModel):
+    valid: bool
+    can_enable: bool
+    module_key: str | None = None
+    trigger_event: str
+    condition_mode: str
+    condition_count: int
+    action_count: int
+    warnings: list[str]
+    actions: list[AutomationRulePreviewActionResponse]
+
+
 class AutomationRuleRunResponse(BaseModel):
     id: int
     rule_id: int
     event_id: int | None = None
+    trigger_event_key: str | None = None
+    source_module_key: str | None = None
+    source_record_id: str | None = None
     status: str
     input_json: dict[str, Any] | None = None
     result_json: dict[str, Any] | None = None
+    step_results_json: list[dict[str, Any]] | None = None
     error_message: str | None = None
     started_at: datetime
     finished_at: datetime | None = None
+    completed_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -536,6 +577,63 @@ class AutomationRuleRunListResponse(BaseModel):
 
 class AutomationRuleTriggerResponse(BaseModel):
     results: list[str]
+
+
+class AutomationTriggerResponse(BaseModel):
+    key: str
+    module_key: str
+    label: str
+    description: str
+
+
+class AutomationTriggerGroupResponse(BaseModel):
+    module_key: str
+    triggers: list[AutomationTriggerResponse]
+
+
+class AutomationTriggerRegistryResponse(BaseModel):
+    results: list[AutomationTriggerGroupResponse]
+
+
+class AutomationConditionFieldOptionResponse(BaseModel):
+    value: str
+    label: str
+
+
+class AutomationConditionFieldResponse(BaseModel):
+    key: str
+    payload_key: str
+    module_key: str
+    label: str
+    field_type: str
+    operators: list[str]
+    options: list[AutomationConditionFieldOptionResponse]
+
+
+class AutomationConditionFieldListResponse(BaseModel):
+    results: list[AutomationConditionFieldResponse]
+
+
+class AutomationActionFieldResponse(BaseModel):
+    key: str
+    label: str
+    field_type: str
+    required: bool
+    placeholder: str | None = None
+    options: list[AutomationConditionFieldOptionResponse]
+
+
+class AutomationActionResponse(BaseModel):
+    key: str
+    category: str
+    label: str
+    description: str
+    module_keys: list[str]
+    fields: list[AutomationActionFieldResponse]
+
+
+class AutomationActionRegistryResponse(BaseModel):
+    results: list[AutomationActionResponse]
 
 
 class RecordCommentResponse(BaseModel):
