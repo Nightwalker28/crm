@@ -13,6 +13,7 @@ celery_app = Celery(
         "app.tasks.data_transfer_tasks",
         "app.tasks.task_reminder_tasks",
         "app.tasks.recycle_purge_tasks",
+        "app.tasks.tenant_backup_tasks",
     ],
 )
 
@@ -44,6 +45,10 @@ celery_app.conf.update(
         "purge-expired-recycle-bin-records": {
             "task": "app.tasks.recycle_bin.purge_expired_records",
             "schedule": settings.RECYCLE_BIN_PURGE_INTERVAL_SECONDS,
+        },
+        "scan-due-tenant-backups": {
+            "task": "app.tasks.tenant_backups.scan_due_backup_schedules",
+            "schedule": settings.TENANT_BACKUP_SCHEDULE_SCAN_INTERVAL_SECONDS,
         },
     },
 )

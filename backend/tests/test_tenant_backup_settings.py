@@ -2,6 +2,7 @@ import unittest
 import json
 import tempfile
 import zipfile
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -12,7 +13,11 @@ from app.core.database import Base
 from app.modules.documents.models import DocumentStorageConnection
 from app.modules.platform.models import ActivityLog, TenantBackupRun, TenantBackupSettings, TenantRestoreRun
 from app.modules.platform.services import tenant_backup_runs as tenant_backup_runs_service
-from app.modules.platform.services.tenant_backup_runs import create_manual_tenant_backup_run, delete_tenant_backup_artifact
+from app.modules.platform.services.tenant_backup_runs import (
+    create_manual_tenant_backup_run,
+    delete_tenant_backup_artifact,
+    run_due_tenant_backup_schedules,
+)
 from app.modules.platform.services.tenant_restore_runs import (
     execute_tenant_module_restore,
     execute_whole_tenant_restore,
@@ -431,6 +436,58 @@ class TenantBackupSettingsTests(unittest.TestCase):
         activity = self.db.query(ActivityLog).filter(ActivityLog.action == "backup.deleted").one()
         self.assertEqual(activity.tenant_id, 10)
         self.assertNotIn("file_path", json.dumps(activity.after_state))
+
+    def test_due_tenant_backup_schedule_runs_enabled_non_manual_settings(self):
+        self.db.add(SalesContact(contact_id=1, tenant_id=10, first_name="A", last_name="B", primary_email="scheduled@example.com", assigned_to=1))
+        self.db.commit()
+        settings = update_tenant_backup_settings(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "enabled": True,
+                "frequency": "daily",
+                "scope": "selected_modules",
+                "selected_modules": ["sales_contacts"],
+                "retention_count": 3,
+                "include_documents": False,
+            },
+        )
+        due_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        settings.next_run_at = due_at
+        self.db.commit()
+
+        result = run_due_tenant_backup_schedules(self.db, now=datetime.now(timezone.utc))
+
+        self.assertEqual(result["scanned"], 1)
+        self.assertEqual(result["started"], 1)
+        self.assertEqual(result["completed"], 1)
+        run = self.db.query(TenantBackupRun).filter(TenantBackupRun.tenant_id == 10).one()
+        self.assertEqual(run.status, "completed")
+        refreshed = self.db.query(TenantBackupSettings).filter(TenantBackupSettings.tenant_id == 10).one()
+        self.assertIsNotNone(refreshed.next_run_at)
+        self.assertGreater(refreshed.next_run_at.replace(tzinfo=timezone.utc), due_at)
+
+    def test_due_tenant_backup_schedule_ignores_manual_frequency(self):
+        settings = update_tenant_backup_settings(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "enabled": True,
+                "frequency": "manual",
+                "scope": "selected_modules",
+                "selected_modules": ["sales_contacts"],
+                "include_documents": False,
+            },
+        )
+        settings.next_run_at = datetime.now(timezone.utc) - timedelta(minutes=5)
+        self.db.commit()
+
+        result = run_due_tenant_backup_schedules(self.db, now=datetime.now(timezone.utc))
+
+        self.assertEqual(result["scanned"], 0)
+        self.assertEqual(self.db.query(TenantBackupRun).count(), 0)
 
     def test_restore_preview_validates_tenant_backup_and_counts_conflicts(self):
         self.db.add(SalesContact(contact_id=1, tenant_id=10, first_name="Tenant", last_name="Contact", primary_email="tenant@example.com", assigned_to=1))

@@ -492,3 +492,53 @@ def create_safety_tenant_backup_run(db: Session, *, tenant_id: int, actor_user_i
         destination_override="local_download",
         skip_retention_cleanup=True,
     )
+
+
+def run_due_tenant_backup_schedules(db: Session, *, now: datetime | None = None, limit: int = 25) -> dict[str, int]:
+    current = now or _utc_now()
+    due_settings = (
+        db.query(TenantBackupSettings)
+        .filter(
+            TenantBackupSettings.enabled.is_(True),
+            TenantBackupSettings.frequency != "manual",
+            TenantBackupSettings.next_run_at.isnot(None),
+            TenantBackupSettings.next_run_at <= current,
+        )
+        .order_by(TenantBackupSettings.next_run_at.asc(), TenantBackupSettings.id.asc())
+        .limit(max(int(limit), 1))
+        .all()
+    )
+    result = {
+        "scanned": len(due_settings),
+        "started": 0,
+        "completed": 0,
+        "failed": 0,
+        "skipped": 0,
+    }
+    for settings in due_settings:
+        actor_user_id = settings.updated_by_id or settings.created_by_id
+        if not actor_user_id:
+            settings.next_run_at = _next_run_at(enabled=True, frequency=settings.frequency, now=current)
+            db.add(settings)
+            db.commit()
+            result["skipped"] += 1
+            continue
+        result["started"] += 1
+        try:
+            run = create_manual_tenant_backup_run(db, tenant_id=settings.tenant_id, actor_user_id=actor_user_id)
+            if run.status == "completed":
+                result["completed"] += 1
+            else:
+                result["failed"] += 1
+                settings = get_or_create_tenant_backup_settings(db, tenant_id=settings.tenant_id, actor_user_id=actor_user_id)
+                settings.next_run_at = _next_run_at(enabled=bool(settings.enabled), frequency=settings.frequency, now=current)
+                db.add(settings)
+                db.commit()
+        except Exception:
+            db.rollback()
+            settings = get_or_create_tenant_backup_settings(db, tenant_id=settings.tenant_id, actor_user_id=actor_user_id)
+            settings.next_run_at = _next_run_at(enabled=bool(settings.enabled), frequency=settings.frequency, now=current)
+            db.add(settings)
+            db.commit()
+            result["failed"] += 1
+    return result
