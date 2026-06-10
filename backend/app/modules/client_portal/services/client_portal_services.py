@@ -6,6 +6,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
+from fastapi.encoders import jsonable_encoder
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
 from sqlalchemy.orm import Session
@@ -13,11 +14,14 @@ from sqlalchemy.orm import Session
 from app.core.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.config import settings
 from app.core.passwords import hash_password, password_hash_needs_upgrade, verify_password
+from app.core.uploads import build_media_url
 from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPageAction, CustomerGroup
 from app.modules.client_portal.repositories import client_portal_repository
+from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.documents.models import Document
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.models import SalesContact, SalesOrganization
+from app.modules.website_integrations.models import WebsiteIntegrationOrder, WebsiteIntegrationOrderLine
 
 
 CLIENT_ACCOUNT_STATUSES = {"pending", "active", "inactive"}
@@ -295,6 +299,65 @@ def _serialize_pricing_items(items: list[dict], group: CustomerGroup | None = No
             }
         )
     return serialized
+
+
+def _catalog_item_kind(item: CatalogProduct | CatalogService) -> str:
+    return "product" if isinstance(item, CatalogProduct) else "service"
+
+
+def _catalog_availability_status(item: CatalogProduct | CatalogService) -> str:
+    if isinstance(item, CatalogProduct):
+        return item.stock_status
+    return "available"
+
+
+def serialize_client_catalog_item(item: CatalogProduct | CatalogService, *, group: CustomerGroup | None = None) -> dict:
+    public_unit_price = _money(item.public_unit_price)
+    resolved_unit_price, discount_type, discount_value = _resolved_unit_price(public_unit_price, group)
+    return {
+        "kind": _catalog_item_kind(item),
+        "id": item.id,
+        "name": item.name,
+        "slug": item.slug,
+        "description": item.description,
+        "sku": item.sku if isinstance(item, CatalogProduct) else None,
+        "currency": item.currency,
+        "public_unit_price": public_unit_price,
+        "resolved_unit_price": resolved_unit_price,
+        "discount_type": discount_type,
+        "discount_value": discount_value,
+        "availability_status": _catalog_availability_status(item),
+        "stock_quantity": item.stock_quantity if isinstance(item, CatalogProduct) else None,
+        "media_url": build_media_url(item.media_path) if item.media_path else None,
+    }
+
+
+def serialize_client_order(order: WebsiteIntegrationOrder) -> dict:
+    return {
+        "id": order.id,
+        "external_reference": order.external_reference,
+        "status": order.status,
+        "currency": order.currency,
+        "subtotal_amount": order.subtotal_amount,
+        "metadata": order.metadata_json,
+        "created_at": order.created_at,
+        "line_items": [
+            {
+                "id": line.id,
+                "catalog_product_id": line.catalog_product_id,
+                "catalog_service_id": line.catalog_service_id,
+                "item_type": line.item_type,
+                "slug": line.slug,
+                "sku": line.sku,
+                "name": line.name,
+                "quantity": line.quantity,
+                "currency": line.currency,
+                "unit_price_snapshot": line.unit_price_snapshot,
+                "line_total": line.line_total,
+            }
+            for line in getattr(order, "line_items", []) or []
+        ],
+    }
 
 
 def _list_client_page_documents(db: Session | None, page: ClientPage) -> list[dict]:
@@ -711,6 +774,194 @@ def list_client_accounts_cursor(db: Session, *, tenant_id: int, limit: int, curs
         limit=limit,
         cursor=cursor,
     )
+
+
+def list_client_catalog_items(
+    db: Session,
+    *,
+    account: ClientAccount,
+    kind: str | None = None,
+    search: str | None = None,
+    limit: int = 100,
+) -> list[CatalogProduct | CatalogService]:
+    normalized_kind = (kind or "all").strip().lower()
+    if normalized_kind not in {"all", "product", "service"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported catalog item type")
+    return client_portal_repository.list_client_catalog_items(
+        db,
+        tenant_id=account.tenant_id,
+        kind=normalized_kind,
+        search=search,
+        limit=limit,
+    )
+
+
+def get_client_catalog_item_or_404(
+    db: Session,
+    *,
+    account: ClientAccount,
+    kind: str,
+    item_id: int,
+) -> CatalogProduct | CatalogService:
+    normalized_kind = kind.strip().lower()
+    if normalized_kind not in {"product", "service"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog item not found")
+    item = client_portal_repository.get_client_catalog_item(
+        db,
+        tenant_id=account.tenant_id,
+        kind=normalized_kind,
+        item_id=item_id,
+    )
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog item not found")
+    return item
+
+
+def record_client_catalog_request(
+    db: Session,
+    *,
+    account: ClientAccount,
+    item: CatalogProduct | CatalogService,
+    payload: dict,
+) -> int:
+    quantity = _money(payload.get("quantity") or "1")
+    group = resolve_client_customer_group(db, account=account)
+    serialized_item = serialize_client_catalog_item(item, group=group)
+    request_details = (payload.get("details") or "").strip() or None
+    entry = log_activity(
+        db,
+        tenant_id=account.tenant_id,
+        actor_user_id=None,
+        module_key="client_portal",
+        entity_type="client_catalog_request",
+        entity_id=f"{serialized_item['kind']}:{serialized_item['id']}",
+        action="portal.catalog.requested",
+        description=f"Client requested {serialized_item['name']} from the portal",
+        after_state={
+            "source": "client_portal",
+            "client_account_id": account.id,
+            "contact_id": account.contact_id,
+            "organization_id": account.organization_id,
+            "item": serialized_item,
+            "quantity": quantity,
+            "details": request_details,
+        },
+    )
+    return int(entry.id)
+
+
+def _client_customer_name(db: Session, account: ClientAccount) -> str | None:
+    if account.contact_id:
+        loaded_contact = account.__dict__.get("contact")
+        contact = loaded_contact or client_portal_repository.get_active_contact(db, tenant_id=account.tenant_id, contact_id=account.contact_id)
+        return _contact_display_name(contact) if contact else None
+    if account.organization_id:
+        loaded_organization = account.__dict__.get("organization")
+        organization = loaded_organization or client_portal_repository.get_active_organization(
+            db,
+            tenant_id=account.tenant_id,
+            organization_id=account.organization_id,
+        )
+        return _organization_display_name(organization) if organization else None
+    return None
+
+
+def create_client_catalog_order(
+    db: Session,
+    *,
+    account: ClientAccount,
+    item: CatalogProduct | CatalogService,
+    payload: dict,
+) -> WebsiteIntegrationOrder:
+    quantity = Decimal(str(payload.get("quantity") or "1"))
+    if quantity <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quantity must be greater than zero")
+    group = resolve_client_customer_group(db, account=account)
+    serialized_item = serialize_client_catalog_item(item, group=group)
+    unit_price = Decimal(str(serialized_item["resolved_unit_price"]))
+    line_total = _money(unit_price * quantity)
+    details = (payload.get("details") or "").strip() or None
+    reference = f"portal-{account.id}-{secrets.token_urlsafe(8)}"
+    raw_payload = {
+        "source": "client_portal",
+        "client_account_id": account.id,
+        "item": serialized_item,
+        "quantity": quantity,
+        "details": details,
+    }
+    order = WebsiteIntegrationOrder(
+        tenant_id=account.tenant_id,
+        api_key_id=None,
+        external_reference=reference,
+        source_platform="client_portal",
+        status="submitted",
+        request_hash=_hash_token(f"{reference}:{serialized_item['kind']}:{serialized_item['id']}:{quantity}:{details or ''}"),
+        customer_name=_client_customer_name(db, account),
+        customer_email=account.email.strip().lower(),
+        currency=serialized_item["currency"],
+        subtotal_amount=line_total,
+        metadata_json=jsonable_encoder({
+            "source": "client_portal",
+            "client_account_id": account.id,
+            "contact_id": account.contact_id,
+            "organization_id": account.organization_id,
+            "details": details,
+        }),
+        raw_payload=jsonable_encoder(raw_payload),
+    )
+    order.line_items = [
+        WebsiteIntegrationOrderLine(
+            tenant_id=account.tenant_id,
+            catalog_product_id=item.id if isinstance(item, CatalogProduct) else None,
+            catalog_service_id=item.id if isinstance(item, CatalogService) else None,
+            item_type=serialized_item["kind"],
+            slug=serialized_item["slug"],
+            sku=serialized_item["sku"],
+            name=serialized_item["name"],
+            quantity=quantity,
+            currency=serialized_item["currency"],
+            unit_price_snapshot=unit_price,
+            line_total=line_total,
+            stock_quantity_before=None,
+            stock_quantity_after=None,
+        )
+    ]
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    order = get_client_order_or_404(db, account=account, order_id=order.id)
+    log_activity(
+        db,
+        tenant_id=account.tenant_id,
+        actor_user_id=None,
+        module_key="client_portal",
+        entity_type="client_order",
+        entity_id=order.id,
+        action="portal.order.submitted",
+        description=f"Client submitted order {order.external_reference}",
+        after_state=serialize_client_order(order),
+    )
+    return order
+
+
+def list_client_orders(db: Session, *, account: ClientAccount) -> list[WebsiteIntegrationOrder]:
+    return client_portal_repository.list_client_orders(
+        db,
+        tenant_id=account.tenant_id,
+        client_email=account.email,
+    )
+
+
+def get_client_order_or_404(db: Session, *, account: ClientAccount, order_id: int) -> WebsiteIntegrationOrder:
+    order = client_portal_repository.get_client_order(
+        db,
+        tenant_id=account.tenant_id,
+        client_email=account.email,
+        order_id=order_id,
+    )
+    if not order:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
+    return order
 
 
 def get_client_account_or_404(db: Session, *, tenant_id: int, account_id: int) -> ClientAccount:

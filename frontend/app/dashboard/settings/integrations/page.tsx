@@ -165,6 +165,16 @@ const deliveryStatusOptions = [
   { value: "pending", label: "Pending" },
 ];
 
+const orderStatusOptions = [
+  { value: "submitted", label: "Submitted" },
+  { value: "under_review", label: "Under Review" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "in_progress", label: "In Progress" },
+  { value: "completed", label: "Completed" },
+  { value: "cancelled", label: "Cancelled" },
+  { value: "rejected", label: "Rejected" },
+];
+
 function humanizeEventType(value: string) {
   return value
     .split(".")
@@ -419,6 +429,25 @@ export default function IntegrationsPage() {
       toast.success(body?.already_existing ? "POS invoice already exists." : "POS invoice created from website order.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to create POS invoice.");
+    } finally {
+      setWebsiteSaving(false);
+    }
+  }
+
+  async function updateOrderStatus(order: WebsiteOrder, nextStatus: string) {
+    if (order.status === nextStatus) return;
+    try {
+      setWebsiteSaving(true);
+      const res = await apiFetch(`/integrations/orders/${order.id}/status`, {
+        method: "PUT",
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const body = await readJson(res);
+      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
+      toast.success("Order status updated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update order status.");
     } finally {
       setWebsiteSaving(false);
     }
@@ -719,7 +748,19 @@ export default function IntegrationsPage() {
                         <ShoppingCart size={14} className="text-neutral-500" />
                         {order.external_reference}
                       </div>
-                      <div className="mt-1 text-xs text-neutral-500">{order.source_platform || "external site"} · {order.status}</div>
+                      <div className="mt-1 text-xs text-neutral-500">{order.source_platform || "external site"}</div>
+                      <div className="mt-2 max-w-[180px]">
+                        <Select value={order.status} onValueChange={(value) => void updateOrderStatus(order, value)} disabled={websiteSaving}>
+                          <SelectTrigger className="h-8 bg-neutral-950 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {orderStatusOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <div className="text-neutral-300">{order.customer_name || "-"}</div>

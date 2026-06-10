@@ -15,6 +15,9 @@ from app.modules.client_portal.schema import (
     ClientAccountCreateRequest,
     ClientAccountResponse,
     ClientAccountStatusRequest,
+    ClientCatalogItemResponse,
+    ClientCatalogListResponse,
+    ClientCatalogRequestCreate,
     ClientPageActionRequest,
     ClientPageActionResponse,
     ClientPageCreateRequest,
@@ -22,6 +25,8 @@ from app.modules.client_portal.schema import (
     ClientPagePublishRequest,
     ClientPageResponse,
     ClientPageUpdateRequest,
+    ClientPortalOrderListResponse,
+    ClientPortalOrderResponse,
     ClientLoginRequest,
     ClientLoginResponse,
     ClientMeResponse,
@@ -40,15 +45,20 @@ from app.modules.client_portal.services.client_portal_services import (
     client_account_from_token,
     clear_failed_client_login_attempts,
     create_client_account,
+    create_client_catalog_order,
     create_client_page,
     create_customer_group,
     get_client_account_or_404,
+    get_client_catalog_item_or_404,
+    get_client_order_or_404,
     get_client_page_document_or_404,
     get_client_page_or_404,
     get_customer_group_or_404,
     get_public_client_page,
     list_client_accounts,
     list_client_accounts_cursor,
+    list_client_catalog_items,
+    list_client_orders,
     list_client_pages,
     list_client_pages_cursor,
     list_customer_groups,
@@ -60,6 +70,8 @@ from app.modules.client_portal.services.client_portal_services import (
     require_client_account_matches_page,
     resolve_client_customer_group,
     serialize_client_account,
+    serialize_client_catalog_item,
+    serialize_client_order,
     serialize_client_page,
     serialize_customer_group,
     serialize_public_client_page,
@@ -75,6 +87,8 @@ from app.modules.user_management.models import Tenant
 router = APIRouter(prefix="/client-portal", tags=["Client Portal"])
 client_auth_router = APIRouter(prefix="/client-auth", tags=["Client Auth"])
 public_client_pages_router = APIRouter(prefix="/client-pages", tags=["Client Pages"])
+client_catalog_router = APIRouter(prefix="/client-catalog", tags=["Client Catalog"])
+client_orders_router = APIRouter(prefix="/client-orders", tags=["Client Orders"])
 client_bearer = HTTPBearer(auto_error=False)
 
 
@@ -152,6 +166,20 @@ def _optional_client_account(db: Session, credentials: HTTPAuthorizationCredenti
         if exc.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
             return None
         raise
+
+
+def _require_client_account(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None,
+    db: Session,
+):
+    if not credentials:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing client token")
+    account = client_account_from_token(db, token=credentials.credentials)
+    tenant = _optional_tenant_from_request(request)
+    if tenant and account.tenant_id != tenant.id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Client token tenant mismatch")
+    return account
 
 
 def _request_metadata(request: Request) -> dict:
@@ -528,21 +556,91 @@ def get_client_me(
     credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
     db: Session = Depends(get_db),
 ):
-    if not credentials:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing client token")
-    account = client_account_from_token(db, token=credentials.credentials)
-    tenant = _optional_tenant_from_request(request)
-    if tenant and account.tenant_id != tenant.id:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Client token tenant mismatch")
+    account = _require_client_account(request, credentials, db)
     group = resolve_client_customer_group(db, account=account)
+    serialized_account = serialize_client_account(account)
     return {
         "id": account.id,
         "email": account.email,
         "tenant_id": account.tenant_id,
         "contact_id": account.contact_id,
         "organization_id": account.organization_id,
+        "contact_name": serialized_account["contact_name"],
+        "organization_name": serialized_account["organization_name"],
         "customer_group": serialize_customer_group(group),
     }
+
+
+@client_catalog_router.get("", response_model=ClientCatalogListResponse)
+def list_client_catalog_route(
+    request: Request,
+    kind: str | None = Query(default=None, pattern="^(product|service|all)$"),
+    search: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=100, ge=1, le=100),
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    group = resolve_client_customer_group(db, account=account)
+    items = list_client_catalog_items(db, account=account, kind=kind, search=search, limit=limit)
+    return {
+        "results": [
+            ClientCatalogItemResponse.model_validate(serialize_client_catalog_item(item, group=group))
+            for item in items
+        ]
+    }
+
+
+@client_catalog_router.get("/{kind}/{item_id}", response_model=ClientCatalogItemResponse)
+def get_client_catalog_item_route(
+    kind: str,
+    item_id: int,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    group = resolve_client_customer_group(db, account=account)
+    item = get_client_catalog_item_or_404(db, account=account, kind=kind, item_id=item_id)
+    return ClientCatalogItemResponse.model_validate(serialize_client_catalog_item(item, group=group))
+
+
+@client_catalog_router.post("/{kind}/{item_id}/request", response_model=ClientPortalOrderResponse, status_code=status.HTTP_201_CREATED)
+def request_client_catalog_item_route(
+    kind: str,
+    item_id: int,
+    payload: ClientCatalogRequestCreate,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    item = get_client_catalog_item_or_404(db, account=account, kind=kind, item_id=item_id)
+    order = create_client_catalog_order(db, account=account, item=item, payload=payload.model_dump())
+    return ClientPortalOrderResponse.model_validate(serialize_client_order(order))
+
+
+@client_orders_router.get("", response_model=ClientPortalOrderListResponse)
+def list_client_orders_route(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    orders = list_client_orders(db, account=account)
+    return {"results": [ClientPortalOrderResponse.model_validate(serialize_client_order(order)) for order in orders]}
+
+
+@client_orders_router.get("/{order_id}", response_model=ClientPortalOrderResponse)
+def get_client_order_route(
+    order_id: int,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    order = get_client_order_or_404(db, account=account, order_id=order_id)
+    return ClientPortalOrderResponse.model_validate(serialize_client_order(order))
 
 
 @public_client_pages_router.get("/{token}", response_model=ClientPagePublicResponse)

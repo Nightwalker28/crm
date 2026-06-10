@@ -30,6 +30,7 @@ from app.modules.website_integrations.models import (
 INTEGRATION_KEY_PREFIX = "lynk_live_"
 DEFAULT_CATALOG_READ_SCOPE = "catalog:read"
 ORDER_WRITE_SCOPE = "orders:write"
+ORDER_STATUSES = {"submitted", "under_review", "confirmed", "in_progress", "completed", "cancelled", "rejected"}
 
 
 @dataclass(frozen=True)
@@ -399,6 +400,33 @@ def get_order_or_404(db: Session, *, tenant_id: int, order_id: int) -> WebsiteIn
     order = website_integration_repository.get_order(db, tenant_id=tenant_id, order_id=order_id)
     if not order:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Website order not found")
+    return order
+
+
+def update_order_status(db: Session, *, current_user, order_id: int, status_value: str) -> WebsiteIntegrationOrder:
+    normalized_status = status_value.strip().lower()
+    if normalized_status not in ORDER_STATUSES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported order status")
+    order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
+    before_state = _order_state(order)
+    if order.status == normalized_status:
+        return order
+    order.status = normalized_status
+    db.add(order)
+    db.commit()
+    db.refresh(order)
+    log_activity(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="website_integrations",
+        entity_type="website_order",
+        entity_id=order.id,
+        action="website_order.status_updated",
+        description=f"Updated order {order.external_reference} status to {normalized_status.replace('_', ' ')}",
+        before_state=before_state,
+        after_state=_order_state(order),
+    )
     return order
 
 

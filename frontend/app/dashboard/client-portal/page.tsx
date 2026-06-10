@@ -2,7 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { Copy, ExternalLink, Link2, Plus, Search, Send, X } from "lucide-react";
+import { Copy, ExternalLink, KeyRound, Link2, Plus, Search, Send, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -11,9 +11,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
-import { useClientPortalActions, useClientPortalAccounts, useClientPortalPages, useCustomerOptions, type ClientPortalSortState, type PricingItemPayload } from "@/hooks/useClientPortal";
+import { useClientPortalActions, useClientPortalAccounts, useClientPortalPages, useCustomerOptions, type ClientAccountStatus, type ClientPortalSortState, type PricingItemPayload } from "@/hooks/useClientPortal";
 import { formatDateTime } from "@/lib/datetime";
 
 type LinkedType = "contact" | "organization";
@@ -236,7 +237,18 @@ export default function ClientPortalDashboardPage() {
   const [accountSort, setAccountSort] = useState<ClientPortalSortState>(null);
   const pagesQuery = useClientPortalPages(pageSort);
   const accountsQuery = useClientPortalAccounts(accountSort);
-  const { createPage, publishPage, createAccount, isCreatingPage, isPublishingPage, isCreatingAccount } = useClientPortalActions();
+  const {
+    createPage,
+    publishPage,
+    createAccount,
+    updateAccountStatus,
+    regenerateAccountSetupLink,
+    isCreatingPage,
+    isPublishingPage,
+    isCreatingAccount,
+    isUpdatingAccountStatus,
+    isRegeneratingSetupLink,
+  } = useClientPortalActions();
   const [pageForm, setPageForm] = useState<PageForm>(emptyPageForm);
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccountForm);
   const [lastSetupLink, setLastSetupLink] = useState<string | null>(null);
@@ -308,6 +320,26 @@ export default function ClientPortalDashboardPage() {
       toast.success("Client account created.");
     } catch (error) {
       toast.error(errorMessage(error, "Failed to create client account."));
+    }
+  }
+
+  async function handleUpdateAccountStatus(accountId: number, status: ClientAccountStatus) {
+    try {
+      const account = await updateAccountStatus({ accountId, status });
+      toast.success(`Client access set to ${account.status}.`);
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to update client access."));
+    }
+  }
+
+  async function handleRegenerateSetupLink(accountId: number) {
+    try {
+      const account = await regenerateAccountSetupLink(accountId);
+      setLastSetupLink(account.setup_link ?? null);
+      if (account.setup_link) await copyText(account.setup_link, "Setup link");
+      toast.success("Setup link regenerated.");
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to regenerate setup link."));
     }
   }
 
@@ -512,7 +544,7 @@ export default function ClientPortalDashboardPage() {
           <div className="rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-8 text-center text-sm text-neutral-500">No client accounts yet.</div>
         ) : (
           <div className="overflow-x-auto">
-            <Table className="min-w-[940px]">
+            <Table className="min-w-[1100px]">
               <TableHeader>
                 <TableHeaderRow>
                   <SortableHead sorted={accountSort?.key === "email"} direction={accountSort?.key === "email" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "email"))}>
@@ -531,6 +563,7 @@ export default function ClientPortalDashboardPage() {
                   <SortableHead sorted={accountSort?.key === "updated_at"} direction={accountSort?.key === "updated_at" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "updated_at"))}>
                     Updated
                   </SortableHead>
+                  <TableHead className="text-right">Actions</TableHead>
                 </TableHeaderRow>
               </TableHeader>
               <TableBody>
@@ -538,10 +571,35 @@ export default function ClientPortalDashboardPage() {
                   <TableRow key={account.id}>
                     <TableCell><span className="font-medium text-neutral-100">{account.email}</span></TableCell>
                     <TableCell className="text-neutral-300">{customerLabel(account)}</TableCell>
-                    <TableCell className="capitalize text-neutral-300">{account.status}</TableCell>
+                    <TableCell className="text-neutral-300">
+                      <Select value={account.status} onValueChange={(value) => void handleUpdateAccountStatus(account.id, value as ClientAccountStatus)} disabled={isUpdatingAccountStatus}>
+                        <SelectTrigger size="sm" className="w-[132px] border-neutral-700 bg-neutral-950 capitalize">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="inactive">Inactive</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </TableCell>
                     <TableCell className="text-neutral-400">{account.last_login_at ? formatDateTime(account.last_login_at) : "-"}</TableCell>
                     <TableCell className="text-neutral-400">{account.setup_token_expires_at ? formatDateTime(account.setup_token_expires_at) : "-"}</TableCell>
                     <TableCell className="text-neutral-400">{formatDateTime(account.updated_at)}</TableCell>
+                    <TableCell>
+                      <div className="flex justify-end">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void handleRegenerateSetupLink(account.id)}
+                          disabled={isRegeneratingSetupLink || account.status === "inactive"}
+                        >
+                          <KeyRound className="h-4 w-4" />
+                          Setup Link
+                        </Button>
+                      </div>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>

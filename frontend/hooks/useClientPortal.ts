@@ -8,6 +8,8 @@ import { apiUrl } from "@/lib/runtime-config";
 export const CLIENT_TOKEN_STORAGE_KEY = "lynk:client-access-token";
 
 export type ClientPortalSortState = { key: string; direction: "asc" | "desc" } | null;
+export type ClientAccountStatus = "pending" | "active" | "inactive";
+export type ClientCatalogKind = "product" | "service";
 
 export type CustomerGroup = {
   id: number;
@@ -25,7 +27,7 @@ export type CustomerGroup = {
 export type ClientAccount = {
   id: number;
   email: string;
-  status: string;
+  status: ClientAccountStatus;
   contact_id?: number | null;
   organization_id?: number | null;
   contact_name?: string | null;
@@ -36,6 +38,59 @@ export type ClientAccount = {
   last_login_at?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ClientMe = {
+  id: number;
+  email: string;
+  tenant_id: number;
+  contact_id?: number | null;
+  organization_id?: number | null;
+  contact_name?: string | null;
+  organization_name?: string | null;
+  customer_group?: CustomerGroup | null;
+};
+
+export type ClientCatalogItem = {
+  kind: ClientCatalogKind;
+  id: number;
+  name: string;
+  slug?: string | null;
+  description?: string | null;
+  sku?: string | null;
+  currency: string;
+  public_unit_price: string | number;
+  resolved_unit_price: string | number;
+  discount_type: string;
+  discount_value?: string | number | null;
+  availability_status: string;
+  stock_quantity?: string | number | null;
+  media_url?: string | null;
+};
+
+export type ClientPortalOrderLine = {
+  id: number;
+  catalog_product_id?: number | null;
+  catalog_service_id?: number | null;
+  item_type: string;
+  slug?: string | null;
+  sku?: string | null;
+  name: string;
+  quantity: string | number;
+  currency: string;
+  unit_price_snapshot: string | number;
+  line_total: string | number;
+};
+
+export type ClientPortalOrder = {
+  id: number;
+  external_reference: string;
+  status: string;
+  currency: string;
+  subtotal_amount: string | number;
+  metadata?: Record<string, unknown> | null;
+  created_at: string;
+  line_items: ClientPortalOrderLine[];
 };
 
 export type PricingItemPayload = {
@@ -152,6 +207,16 @@ function appendSortParams(params: URLSearchParams, sort: ClientPortalSortState |
   params.set("sort_direction", sort.direction);
 }
 
+function storedClientToken() {
+  return typeof window !== "undefined" ? window.localStorage.getItem(CLIENT_TOKEN_STORAGE_KEY) : null;
+}
+
+export function clearClientToken() {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(CLIENT_TOKEN_STORAGE_KEY);
+  }
+}
+
 async function readJsonSafely(res: Response) {
   try {
     return await res.json();
@@ -188,7 +253,7 @@ async function publicJson<T>(path: string, init: RequestInit = {}, fallback = "R
   const headers = new Headers(init.headers);
   headers.set("Accept", "application/json");
   if (init.body && !headers.has("Content-Type")) headers.set("Content-Type", "application/json");
-  const token = typeof window !== "undefined" ? window.localStorage.getItem(CLIENT_TOKEN_STORAGE_KEY) : null;
+  const token = storedClientToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const res = await fetch(apiUrl(path), {
     ...init,
@@ -196,14 +261,17 @@ async function publicJson<T>(path: string, init: RequestInit = {}, fallback = "R
     headers,
   });
   const body = await readJsonSafely(res);
-  if (!res.ok) throw new Error(detailMessage(body, fallback));
+  if (!res.ok) {
+    if (res.status === 401) clearClientToken();
+    throw new Error(detailMessage(body, fallback));
+  }
   return body as T;
 }
 
 async function publicBlob(path: string, init: RequestInit = {}, fallback = "Request failed."): Promise<Blob> {
   const headers = new Headers(init.headers);
   headers.set("Accept", "*/*");
-  const token = typeof window !== "undefined" ? window.localStorage.getItem(CLIENT_TOKEN_STORAGE_KEY) : null;
+  const token = storedClientToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
   const res = await fetch(apiUrl(path), {
     ...init,
@@ -212,6 +280,7 @@ async function publicBlob(path: string, init: RequestInit = {}, fallback = "Requ
   });
   if (!res.ok) {
     const body = await readJsonSafely(res);
+    if (res.status === 401) clearClientToken();
     throw new Error(detailMessage(body, fallback));
   }
   return res.blob();
@@ -327,6 +396,74 @@ export function useCustomerOptions(type: "contact" | "organization", search: str
   });
 }
 
+export function useClientMe() {
+  return useQuery({
+    queryKey: ["client-auth", "me"],
+    queryFn: () => publicJson<ClientMe>("/client-auth/me", {}, "Sign in to open your portal."),
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
+export function useClientCatalog(search: string = "", kind: ClientCatalogKind | "all" = "all") {
+  return useQuery({
+    queryKey: ["client-catalog", kind, search],
+    queryFn: () => {
+      const params = new URLSearchParams({ kind, limit: "100" });
+      const value = search.trim();
+      if (value) params.set("search", value);
+      return publicJson<{ results: ClientCatalogItem[] }>(`/client-catalog?${params.toString()}`, {}, "Failed to load catalog.");
+    },
+    staleTime: 30_000,
+  });
+}
+
+export function useClientCatalogItem(kind: string, itemId: string | number) {
+  return useQuery({
+    queryKey: ["client-catalog", kind, String(itemId)],
+    queryFn: () => publicJson<ClientCatalogItem>(`/client-catalog/${kind}/${itemId}`, {}, "Catalog item not found."),
+    enabled: kind === "product" || kind === "service",
+    staleTime: 30_000,
+  });
+}
+
+export function useClientOrders() {
+  return useQuery({
+    queryKey: ["client-orders"],
+    queryFn: () => publicJson<{ results: ClientPortalOrder[] }>("/client-orders", {}, "Failed to load orders."),
+    staleTime: 30_000,
+  });
+}
+
+export function useClientOrder(orderId: string | number) {
+  return useQuery({
+    queryKey: ["client-orders", String(orderId)],
+    queryFn: () => publicJson<ClientPortalOrder>(`/client-orders/${orderId}`, {}, "Order not found."),
+    enabled: Boolean(orderId),
+    staleTime: 30_000,
+  });
+}
+
+export function useClientCatalogRequestActions() {
+  const queryClient = useQueryClient();
+  const requestItem = useMutation({
+    mutationFn: ({ kind, itemId, quantity, details }: { kind: ClientCatalogKind; itemId: number; quantity: number | string; details?: string | null }) =>
+      publicJson<ClientPortalOrder>(
+        `/client-catalog/${kind}/${itemId}/request`,
+        { method: "POST", body: JSON.stringify({ quantity, details: details || null }) },
+        "Failed to submit request.",
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["client-catalog"] });
+      await queryClient.invalidateQueries({ queryKey: ["client-orders"] });
+    },
+  });
+  return {
+    requestItem: requestItem.mutateAsync,
+    isRequestingItem: requestItem.isPending,
+  };
+}
+
 export function useClientPortalActions() {
   const queryClient = useQueryClient();
   const invalidate = async () => {
@@ -347,6 +484,24 @@ export function useClientPortalActions() {
   const createAccount = useMutation({
     mutationFn: (payload: { email: string; contact_id?: number | null; organization_id?: number | null; status?: string }) =>
       crmJson<ClientAccount>("/client-portal/accounts", { method: "POST", body: JSON.stringify(payload) }, "Failed to create client account."),
+    onSuccess: invalidate,
+  });
+  const updateAccountStatus = useMutation({
+    mutationFn: ({ accountId, status }: { accountId: number; status: ClientAccountStatus }) =>
+      crmJson<ClientAccount>(
+        `/client-portal/accounts/${accountId}/status`,
+        { method: "PUT", body: JSON.stringify({ status }) },
+        "Failed to update client account access.",
+      ),
+    onSuccess: invalidate,
+  });
+  const regenerateAccountSetupLink = useMutation({
+    mutationFn: (accountId: number) =>
+      crmJson<ClientAccount>(
+        `/client-portal/accounts/${accountId}/setup-link`,
+        { method: "POST" },
+        "Failed to regenerate setup link.",
+      ),
     onSuccess: invalidate,
   });
   const assignContactGroup = useMutation({
@@ -372,11 +527,15 @@ export function useClientPortalActions() {
     createPage: createPage.mutateAsync,
     publishPage: publishPage.mutateAsync,
     createAccount: createAccount.mutateAsync,
+    updateAccountStatus: updateAccountStatus.mutateAsync,
+    regenerateAccountSetupLink: regenerateAccountSetupLink.mutateAsync,
     assignContactGroup: assignContactGroup.mutateAsync,
     assignOrganizationGroup: assignOrganizationGroup.mutateAsync,
     isCreatingPage: createPage.isPending,
     isPublishingPage: publishPage.isPending,
     isCreatingAccount: createAccount.isPending,
+    isUpdatingAccountStatus: updateAccountStatus.isPending,
+    isRegeneratingSetupLink: regenerateAccountSetupLink.isPending,
     isAssigningCustomerGroup: assignContactGroup.isPending || assignOrganizationGroup.isPending,
   };
 }

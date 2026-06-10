@@ -207,6 +207,57 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
         self.assertEqual(str(invoice.total_amount), "50.00")
         self.assertEqual(invoice.customer_email, "buyer@example.com")
 
+    def test_update_order_status_persists_and_logs_activity(self):
+        key, _raw_key = services.create_api_key(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Portal", "scopes": ["orders:write"], "allowed_origins": []},
+        )
+        product_services.create_product(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={
+                "slug": "review-item",
+                "name": "Review Item",
+                "currency": "USD",
+                "public_unit_price": "20.00",
+                "stock_status": "in_stock",
+                "stock_quantity": "5",
+                "is_public": True,
+                "is_active": True,
+            },
+        )
+        order, _replayed = services.create_public_order(
+            self.db,
+            tenant_id=10,
+            api_key_id=key.id,
+            payload={
+                "external_reference": "portal-order-200",
+                "source_platform": "client_portal",
+                "customer_email": "buyer@example.com",
+                "line_items": [{"slug": "review-item", "quantity": "1"}],
+            },
+        )
+        order.status = "submitted"
+        self.db.add(order)
+        self.db.commit()
+        current_user = type("UserCtx", (), {"id": 7, "tenant_id": 10, "role_id": None, "team_id": None})()
+
+        updated = services.update_order_status(self.db, current_user=current_user, order_id=order.id, status_value="under_review")
+
+        self.assertEqual(updated.status, "under_review")
+        activity = (
+            self.db.query(platform_models.ActivityLog)
+            .filter(platform_models.ActivityLog.action == "website_order.status_updated")
+            .one()
+        )
+        self.assertEqual(activity.tenant_id, 10)
+        self.assertEqual(activity.actor_user_id, 7)
+        self.assertEqual(activity.before_state["status"], "submitted")
+        self.assertEqual(activity.after_state["status"], "under_review")
+
     def test_public_order_rejects_duplicate_reference_with_different_payload(self):
         key, _raw_key = services.create_api_key(
             self.db,

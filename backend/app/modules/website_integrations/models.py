@@ -98,7 +98,10 @@ class WebsiteIntegrationOrder(Base):
     __tablename__ = "website_integration_orders"
     __table_args__ = (
         UniqueConstraint("tenant_id", "external_reference", name="uq_website_orders_tenant_external_ref"),
-        CheckConstraint("status IN ('confirmed', 'rejected')", name="ck_website_orders_status"),
+        CheckConstraint(
+            "status IN ('submitted', 'under_review', 'confirmed', 'in_progress', 'completed', 'cancelled', 'rejected')",
+            name="ck_website_orders_status",
+        ),
         Index("ix_website_orders_tenant_status", "tenant_id", "status"),
     )
 

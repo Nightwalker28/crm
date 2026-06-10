@@ -11,6 +11,7 @@ from app.modules.website_integrations.schema import (
     PublicWebsiteOrderCreateRequest,
     WebsiteIntegrationApiKeyCreateRequest,
     WebsiteIntegrationApiKeyResponse,
+    WebsiteOrderStatusUpdateRequest,
     WebsiteOrderResponse,
 )
 from app.modules.website_integrations.services.website_integration_services import (
@@ -30,6 +31,7 @@ from app.modules.website_integrations.services.website_integration_services impo
     serialize_api_key,
     serialize_catalog_item,
     serialize_order,
+    update_order_status,
 )
 
 
@@ -145,6 +147,22 @@ def get_website_orders_cursor(
         limit=pagination.limit,
         id_attr="id",
     )
+
+
+@router.put("/orders/{order_id}/status", response_model=WebsiteOrderResponse)
+def update_website_order_status(
+    order_id: int,
+    payload: WebsiteOrderStatusUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    order = update_order_status(
+        db,
+        current_user=current_user,
+        order_id=order_id,
+        status_value=payload.status,
+    )
+    return WebsiteOrderResponse.model_validate(serialize_order(order))
 
 
 @router.post("/orders/{order_id}/create-pos-invoice")

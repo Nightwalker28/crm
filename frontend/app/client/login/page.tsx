@@ -13,8 +13,9 @@ function getError(error: unknown) {
 }
 
 function safeClientRedirect(value: string | null) {
-  if (!value || !value.startsWith("/client/") || value.startsWith("//")) return "/client/login";
-  return value;
+  if (!value || value.startsWith("//")) return "/client";
+  if (value === "/client" || value.startsWith("/client/")) return value;
+  return "/client";
 }
 
 function pageTokenFromRedirect(redirect: string) {

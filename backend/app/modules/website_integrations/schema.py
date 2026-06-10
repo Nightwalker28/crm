@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -260,6 +260,21 @@ class PublicWebsiteOrderCreateRequest(BaseModel):
         if len(normalized) != 3:
             raise ValueError("currency must be a 3-letter code")
         return normalized
+
+
+WebsiteOrderStatus = Literal[
+    "submitted",
+    "under_review",
+    "confirmed",
+    "in_progress",
+    "completed",
+    "cancelled",
+    "rejected",
+]
+
+
+class WebsiteOrderStatusUpdateRequest(BaseModel):
+    status: WebsiteOrderStatus
 
 
 class WebsiteOrderLineResponse(BaseModel):

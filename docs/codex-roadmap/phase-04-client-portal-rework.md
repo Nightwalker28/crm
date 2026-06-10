@@ -66,11 +66,6 @@ Ensure client users can only access their own records.
 
 - Separate client portal auth from internal CRM user auth.
 - Client user belongs to a tenant/customer account/contact.
-- Client users can have roles if needed:
-  - owner/admin
-  - buyer/requester
-  - support-only
-  - document-viewer
 - Portal access can be enabled/disabled per client.
 - Invite/setup flow is clear.
 

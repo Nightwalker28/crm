@@ -1,11 +1,13 @@
 from __future__ import annotations
 
-from sqlalchemy import func
-from sqlalchemy.orm import Session, joinedload, object_session
+from sqlalchemy import func, or_
+from sqlalchemy.orm import Session, joinedload, object_session, selectinload
 
 from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPageAction, CustomerGroup
+from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.documents.models import Document
 from app.modules.sales.models import SalesContact, SalesOrganization
+from app.modules.website_integrations.models import WebsiteIntegrationOrder
 
 
 CLIENT_ACCOUNT_SORT_FIELDS = {
@@ -265,6 +267,105 @@ def get_page_document(db: Session, *, tenant_id: int, document_id: int) -> Docum
     )
 
 
+def _apply_catalog_search(query, model, search: str | None):
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.filter(or_(model.name.ilike(pattern), model.description.ilike(pattern)))
+    return query
+
+
+def _catalog_sort_kind(item: CatalogProduct | CatalogService) -> str:
+    return "product" if isinstance(item, CatalogProduct) else "service"
+
+
+def list_client_catalog_items(
+    db: Session,
+    *,
+    tenant_id: int,
+    kind: str,
+    search: str | None = None,
+    limit: int = 100,
+) -> list[CatalogProduct | CatalogService]:
+    clamped_limit = max(1, min(limit, 100))
+    items: list[CatalogProduct | CatalogService] = []
+    if kind in {"all", "product"}:
+        product_query = db.query(CatalogProduct).filter(
+            CatalogProduct.tenant_id == tenant_id,
+            CatalogProduct.deleted_at.is_(None),
+            CatalogProduct.is_active == 1,
+            CatalogProduct.is_public == 1,
+        )
+        items.extend(
+            _apply_catalog_search(product_query, CatalogProduct, search)
+            .order_by(CatalogProduct.name.asc(), CatalogProduct.id.asc())
+            .limit(clamped_limit)
+            .all()
+        )
+    if kind in {"all", "service"}:
+        service_query = db.query(CatalogService).filter(
+            CatalogService.tenant_id == tenant_id,
+            CatalogService.deleted_at.is_(None),
+            CatalogService.is_active == 1,
+            CatalogService.is_public == 1,
+        )
+        items.extend(
+            _apply_catalog_search(service_query, CatalogService, search)
+            .order_by(CatalogService.name.asc(), CatalogService.id.asc())
+            .limit(clamped_limit)
+            .all()
+        )
+    return sorted(items, key=lambda item: (item.name.lower(), _catalog_sort_kind(item), int(item.id)))[:clamped_limit]
+
+
+def get_client_catalog_item(
+    db: Session,
+    *,
+    tenant_id: int,
+    kind: str,
+    item_id: int,
+) -> CatalogProduct | CatalogService | None:
+    model = CatalogProduct if kind == "product" else CatalogService
+    return (
+        db.query(model)
+        .filter(
+            model.tenant_id == tenant_id,
+            model.id == item_id,
+            model.deleted_at.is_(None),
+            model.is_active == 1,
+            model.is_public == 1,
+        )
+        .first()
+    )
+
+
+def list_client_orders(db: Session, *, tenant_id: int, client_email: str) -> list[WebsiteIntegrationOrder]:
+    return (
+        db.query(WebsiteIntegrationOrder)
+        .options(selectinload(WebsiteIntegrationOrder.line_items))
+        .filter(
+            WebsiteIntegrationOrder.tenant_id == tenant_id,
+            WebsiteIntegrationOrder.source_platform == "client_portal",
+            WebsiteIntegrationOrder.customer_email == client_email.strip().lower(),
+        )
+        .order_by(WebsiteIntegrationOrder.created_at.desc(), WebsiteIntegrationOrder.id.desc())
+        .all()
+    )
+
+
+def get_client_order(db: Session, *, tenant_id: int, client_email: str, order_id: int) -> WebsiteIntegrationOrder | None:
+    return (
+        db.query(WebsiteIntegrationOrder)
+        .options(selectinload(WebsiteIntegrationOrder.line_items))
+        .filter(
+            WebsiteIntegrationOrder.tenant_id == tenant_id,
+            WebsiteIntegrationOrder.id == order_id,
+            WebsiteIntegrationOrder.source_platform == "client_portal",
+            WebsiteIntegrationOrder.customer_email == client_email.strip().lower(),
+        )
+        .first()
+    )
+
+
 def get_client_account_by_setup_hash(db: Session, *, token_hash: str) -> ClientAccount | None:
     return db.query(ClientAccount).filter(ClientAccount.setup_token_hash == token_hash).first()
 
@@ -274,7 +375,12 @@ def get_client_account_by_email(db: Session, *, tenant_id: int, email: str) -> C
 
 
 def get_client_account_by_token_payload(db: Session, *, tenant_id: int, account_id: int) -> ClientAccount | None:
-    return db.query(ClientAccount).filter(ClientAccount.id == account_id, ClientAccount.tenant_id == tenant_id).first()
+    return (
+        db.query(ClientAccount)
+        .options(joinedload(ClientAccount.contact), joinedload(ClientAccount.organization))
+        .filter(ClientAccount.id == account_id, ClientAccount.tenant_id == tenant_id)
+        .first()
+    )
 
 
 def get_object_session(obj) -> Session | None:

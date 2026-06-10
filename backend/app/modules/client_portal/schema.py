@@ -1,5 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
@@ -100,7 +101,69 @@ class ClientMeResponse(BaseModel):
     tenant_id: int
     contact_id: int | None = None
     organization_id: int | None = None
+    contact_name: str | None = None
+    organization_name: str | None = None
     customer_group: CustomerGroupResponse | None = None
+
+
+class ClientCatalogItemResponse(BaseModel):
+    kind: Literal["product", "service"]
+    id: int
+    name: str
+    slug: str | None = None
+    description: str | None = None
+    sku: str | None = None
+    currency: str
+    public_unit_price: Decimal
+    resolved_unit_price: Decimal
+    discount_type: str = "none"
+    discount_value: Decimal | None = None
+    availability_status: str
+    stock_quantity: Decimal | None = None
+    media_url: str | None = None
+
+
+class ClientCatalogListResponse(BaseModel):
+    results: list[ClientCatalogItemResponse]
+
+
+class ClientCatalogRequestCreate(BaseModel):
+    quantity: Decimal = Field(default=Decimal("1"), gt=0)
+    details: str | None = Field(default=None, max_length=4000)
+
+
+class ClientCatalogRequestResponse(BaseModel):
+    request_id: int
+    message: str
+
+
+class ClientPortalOrderLineResponse(BaseModel):
+    id: int
+    catalog_product_id: int | None = None
+    catalog_service_id: int | None = None
+    item_type: str
+    slug: str | None = None
+    sku: str | None = None
+    name: str
+    quantity: Decimal
+    currency: str
+    unit_price_snapshot: Decimal
+    line_total: Decimal
+
+
+class ClientPortalOrderResponse(BaseModel):
+    id: int
+    external_reference: str
+    status: str
+    currency: str
+    subtotal_amount: Decimal
+    metadata: dict | None = None
+    created_at: datetime
+    line_items: list[ClientPortalOrderLineResponse] = Field(default_factory=list)
+
+
+class ClientPortalOrderListResponse(BaseModel):
+    results: list[ClientPortalOrderResponse]
 
 
 class ClientPagePricingItemRequest(BaseModel):

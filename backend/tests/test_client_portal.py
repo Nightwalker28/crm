@@ -8,6 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPageAction, CustomerGroup
 from app.modules.client_portal.routes.client_portal_routes import (
     _optional_client_account,
@@ -20,6 +21,7 @@ from app.modules.platform.models import ActivityLog
 from app.modules.sales.models import SalesContact, SalesOrganization
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
+from app.modules.website_integrations.models import WebsiteIntegrationOrder
 
 
 class ClientPortalServiceTests(unittest.TestCase):
@@ -354,7 +356,7 @@ class ClientPortalServiceTests(unittest.TestCase):
         self.assertIn("tenant mismatch", exc.exception.detail)
 
     def test_client_me_accepts_valid_client_token_without_request_tenant(self):
-        _account, setup_token = client_portal_services.create_client_account(
+        account, setup_token = client_portal_services.create_client_account(
             self.db,
             tenant_id=10,
             actor_user_id=1,
@@ -379,6 +381,19 @@ class ClientPortalServiceTests(unittest.TestCase):
 
         self.assertEqual(response["tenant_id"], 10)
         self.assertEqual(response["email"], "buyer@example.com")
+        self.assertEqual(response["contact_name"], "Buyer Contact")
+
+        client_portal_services.update_client_account_status(
+            self.db,
+            account=account,
+            status_value="inactive",
+            actor_user_id=1,
+        )
+
+        with self.assertRaises(HTTPException) as exc:
+            get_client_me(request=request, credentials=credentials, db=self.db)
+
+        self.assertEqual(exc.exception.status_code, 401)
 
     def test_client_auth_tenant_resolves_from_public_page_token(self):
         page = client_portal_services.create_client_page(
@@ -510,6 +525,172 @@ class ClientPortalServiceTests(unittest.TestCase):
             )
 
         self.assertEqual(exc.exception.status_code, 403)
+
+    def test_client_catalog_lists_only_public_active_items_with_resolved_price(self):
+        group = client_portal_services.create_customer_group(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "group_key": "portal_vip",
+                "name": "Portal VIP",
+                "discount_type": "percent",
+                "discount_value": "10",
+                "is_default": False,
+                "is_active": True,
+            },
+        )
+        contact = self.db.query(SalesContact).filter(SalesContact.contact_id == 7).one()
+        contact.customer_group_id = group.id
+        self.db.add_all(
+            [
+                contact,
+                CatalogProduct(
+                    id=100,
+                    tenant_id=10,
+                    name="Published Product",
+                    currency="USD",
+                    public_unit_price="100",
+                    stock_status="in_stock",
+                    is_public=1,
+                    is_active=1,
+                ),
+                CatalogProduct(
+                    id=101,
+                    tenant_id=10,
+                    name="Private Product",
+                    currency="USD",
+                    public_unit_price="100",
+                    stock_status="in_stock",
+                    is_public=0,
+                    is_active=1,
+                ),
+                CatalogService(
+                    id=200,
+                    tenant_id=10,
+                    name="Published Service",
+                    currency="USD",
+                    public_unit_price="50",
+                    is_public=1,
+                    is_active=1,
+                ),
+                CatalogService(
+                    id=201,
+                    tenant_id=10,
+                    name="Inactive Service",
+                    currency="USD",
+                    public_unit_price="50",
+                    is_public=1,
+                    is_active=0,
+                ),
+            ]
+        )
+        self.db.commit()
+        account = ClientAccount(id=30, tenant_id=10, contact_id=7, email="buyer@example.com", status="active")
+
+        items = client_portal_services.list_client_catalog_items(self.db, account=account)
+        payloads = [
+            client_portal_services.serialize_client_catalog_item(
+                item,
+                group=client_portal_services.resolve_client_customer_group(self.db, account=account),
+            )
+            for item in items
+        ]
+
+        self.assertEqual({item["name"] for item in payloads}, {"Published Product", "Published Service"})
+        product_payload = next(item for item in payloads if item["kind"] == "product")
+        self.assertEqual(str(product_payload["resolved_unit_price"]), "90.00")
+        self.assertEqual(product_payload["availability_status"], "in_stock")
+
+    def test_client_catalog_request_is_activity_logged(self):
+        product = CatalogProduct(
+            id=110,
+            tenant_id=10,
+            name="Portal Product",
+            currency="USD",
+            public_unit_price="25",
+            stock_status="preorder",
+            is_public=1,
+            is_active=1,
+        )
+        account = ClientAccount(id=31, tenant_id=10, contact_id=7, email="buyer@example.com", status="active")
+        self.db.add_all([product, account])
+        self.db.commit()
+
+        request_id = client_portal_services.record_client_catalog_request(
+            self.db,
+            account=account,
+            item=product,
+            payload={"quantity": "2", "details": "Need delivery next month."},
+        )
+
+        entry = self.db.get(ActivityLog, request_id)
+        self.assertEqual(entry.action, "portal.catalog.requested")
+        self.assertEqual(entry.module_key, "client_portal")
+        self.assertEqual(entry.after_state["source"], "client_portal")
+        self.assertEqual(entry.after_state["client_account_id"], 31)
+        self.assertEqual(entry.after_state["item"]["kind"], "product")
+
+    def test_client_catalog_order_persists_order_and_activity(self):
+        product = CatalogProduct(
+            id=120,
+            tenant_id=10,
+            name="Portal Order Product",
+            currency="USD",
+            public_unit_price="40",
+            stock_status="in_stock",
+            stock_quantity="5",
+            is_public=1,
+            is_active=1,
+        )
+        account = ClientAccount(id=32, tenant_id=10, contact_id=7, email="buyer@example.com", status="active")
+        self.db.add_all([product, account])
+        self.db.commit()
+
+        order = client_portal_services.create_client_catalog_order(
+            self.db,
+            account=account,
+            item=product,
+            payload={"quantity": "2", "details": "Ship after approval."},
+        )
+
+        self.assertEqual(order.status, "submitted")
+        self.assertEqual(order.source_platform, "client_portal")
+        self.assertEqual(order.customer_email, "buyer@example.com")
+        self.assertEqual(str(order.subtotal_amount), "80.0000")
+        self.assertEqual(order.metadata_json["client_account_id"], 32)
+        self.assertEqual(str(product.stock_quantity), "5.0000")
+        self.assertEqual(len(order.line_items), 1)
+        self.assertEqual(order.line_items[0].catalog_product_id, 120)
+        self.assertEqual(
+            self.db.query(ActivityLog).filter(ActivityLog.action == "portal.order.submitted", ActivityLog.entity_id == str(order.id)).count(),
+            1,
+        )
+
+        orders = client_portal_services.list_client_orders(self.db, account=account)
+        self.assertEqual([item.id for item in orders], [order.id])
+
+    def test_client_order_lookup_rejects_other_client_order(self):
+        first = ClientAccount(id=33, tenant_id=10, contact_id=7, email="buyer@example.com", status="active")
+        second = ClientAccount(id=34, tenant_id=10, organization_id=3, email="org@example.com", status="active")
+        order = WebsiteIntegrationOrder(
+            id=50,
+            tenant_id=10,
+            external_reference="portal-33-manual",
+            source_platform="client_portal",
+            status="submitted",
+            request_hash="hash",
+            customer_email="buyer@example.com",
+            currency="USD",
+            subtotal_amount="10",
+        )
+        self.db.add_all([first, second, order])
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as exc:
+            client_portal_services.get_client_order_or_404(self.db, account=second, order_id=50)
+
+        self.assertEqual(exc.exception.status_code, 404)
 
     def test_client_portal_writes_are_activity_logged(self):
         group = client_portal_services.create_customer_group(
