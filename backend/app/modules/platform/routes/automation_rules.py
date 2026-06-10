@@ -35,6 +35,7 @@ from app.modules.platform.services.automation_rules import (
     list_automation_rule_runs,
     list_automation_rules,
     preview_automation_rule,
+    serialize_automation_rule_run,
     serialize_automation_rule,
     update_automation_rule,
 )
@@ -126,4 +127,4 @@ def get_automation_runs(
     admin=Depends(require_admin),
 ):
     runs = list_automation_rule_runs(db, tenant_id=admin.tenant_id, rule_id=rule_id, module_key=module_key, pagination=pagination)
-    return {"results": [AutomationRuleRunResponse.model_validate(run) for run in runs]}
+    return {"results": [AutomationRuleRunResponse.model_validate(serialize_automation_rule_run(run)) for run in runs]}

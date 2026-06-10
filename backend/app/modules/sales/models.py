@@ -22,7 +22,7 @@ class SalesOrganization(Base):
         Index("ix_sales_organizations_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
     )
     
-    org_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    org_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     org_name = Column(Text, nullable=False)
     website = Column(Text, nullable=True)
@@ -94,7 +94,7 @@ class SalesContact(Base):
         Index("ix_sales_contacts_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
     )
 
-    contact_id = Column(BigInteger, primary_key=True, index=True)
+    contact_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     first_name = Column(Text, nullable=True)
     last_name = Column(Text, nullable=True)
@@ -176,7 +176,7 @@ class SalesLead(Base):
         Index("ix_sales_leads_tenant_status_active", "tenant_id", "status", postgresql_where=text("deleted_at IS NULL")),
     )
 
-    lead_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    lead_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     first_name = Column(Text, nullable=True)
     last_name = Column(Text, nullable=True)
@@ -278,7 +278,7 @@ class SalesQuote(Base):
         Index("ix_sales_quotes_tenant_opportunity", "tenant_id", "opportunity_id"),
     )
 
-    quote_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    quote_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     quote_number = Column(Text, nullable=False, index=True)
     title = Column(Text, nullable=True)
@@ -474,7 +474,7 @@ class SalesOpportunity(Base):
         Index("ix_sales_opportunities_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
     )
 
-    opportunity_id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    opportunity_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     opportunity_name = Column(Text, nullable=False)
     client = Column(Text, nullable=False)

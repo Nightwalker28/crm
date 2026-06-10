@@ -7,10 +7,12 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.modules.documents import models as documents_models  # noqa: F401
-from app.modules.platform.models import AutomationRuleDeadLetter, AutomationRuleRun, CrmEvent
+from app.modules.platform.models import ActivityLog, AutomationRuleDeadLetter, AutomationRuleRun, CrmEvent, UserNotification
 from app.modules.platform.services.automation_registry import actions_for_trigger, grouped_trigger_registry
-from app.modules.platform.services.automation_rules import create_automation_rule, list_automation_rule_runs, preview_automation_rule, process_crm_event_automations, update_automation_rule
+from app.modules.platform.services.automation_rules import create_automation_rule, list_automation_rule_runs, preview_automation_rule, process_crm_event_automations, serialize_automation_rule_run, update_automation_rule
 from app.modules.platform.services.crm_events import emit_crm_event
+from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
+from app.modules.support.models import SupportCase, SupportCaseEvent
 from app.modules.tasks.models import Task
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
@@ -151,6 +153,8 @@ class AutomationRuleTests(unittest.TestCase):
         self.assertEqual(event.event_type, "lead.created")
         self.assertEqual(run.status, "failed")
         self.assertIn("Notification user not found", run.error_message)
+        self.assertEqual(run.step_results_json[0]["status"], "failed")
+        self.assertEqual(run.step_results_json[0]["type"], "send_notification")
         self.assertEqual(dead_letter.run_id, run.id)
 
     def test_rule_module_key_defaults_from_trigger(self):
@@ -459,6 +463,171 @@ class AutomationRuleTests(unittest.TestCase):
         self.assertEqual(first_runs[0].id, second_runs[0].id)
         self.assertEqual(self.db.query(AutomationRuleRun).count(), 1)
         self.assertEqual(self.db.query(Task).count(), 1)
+
+    def test_run_history_serializer_includes_debug_summary_and_redacts_sensitive_values(self):
+        create_automation_rule(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "name": "Lead task",
+                "trigger_event": "lead.created",
+                "actions_json": [{"type": "create_task", "title": "Lead task"}],
+            },
+        )
+        event = self._emit_and_process(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            event_type="lead.created",
+            entity_type="sales_lead",
+            entity_id=123,
+            payload={"lead_name": "Ada", "api_token": "secret-token"},
+        )
+        run = list_automation_rule_runs(self.db, tenant_id=10, rule_id=1)[0]
+
+        serialized = serialize_automation_rule_run(run)
+
+        self.assertEqual(serialized["rule_name"], "Lead task")
+        self.assertEqual(serialized["trigger_event_key"], "lead.created")
+        self.assertEqual(serialized["source_label"], "sales_lead #123")
+        self.assertEqual(serialized["action_attempt_count"], 1)
+        self.assertEqual(serialized["action_success_count"], 1)
+        self.assertEqual(serialized["action_failed_count"], 0)
+        self.assertEqual(serialized["input_json"]["payload"]["api_token"], "[redacted]")
+        self.assertEqual(serialized["event_id"], event.id)
+
+    def test_cross_module_action_converts_lead_with_account_contact_and_opportunity(self):
+        self.db.add_all(
+            [
+                SalesOrganization(org_id=701, tenant_id=10, org_name="Analytical Engines", primary_email="hello@example.test", assigned_to=1),
+                SalesContact(contact_id=702, tenant_id=10, first_name="Ada", primary_email="ada@example.test", assigned_to=1, organization_id=701),
+                SalesLead(
+                    lead_id=700,
+                    tenant_id=10,
+                    first_name="Ada",
+                    last_name="Lovelace",
+                    company="Analytical Engines",
+                    primary_email="ada@example.test",
+                    phone="555-0100",
+                    status="qualified",
+                    assigned_to=1,
+                ),
+            ]
+        )
+        self.db.commit()
+        create_automation_rule(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "name": "Convert qualified lead",
+                "trigger_event": "lead.status_changed",
+                "actions_json": [{"type": "convert_lead_to_opportunity", "deal_stage": "qualified"}],
+            },
+        )
+
+        self._emit_and_process(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            event_type="lead.status_changed",
+            entity_type="sales_lead",
+            entity_id=700,
+            payload={"first_name": "Ada", "last_name": "Lovelace", "status": "qualified"},
+        )
+
+        run = self.db.query(AutomationRuleRun).one()
+        self.assertEqual(run.status, "succeeded")
+        self.assertEqual(self.db.query(SalesLead).filter(SalesLead.lead_id == 700).one().status, "converted")
+        self.assertEqual(self.db.query(SalesOrganization).filter(SalesOrganization.tenant_id == 10).one().org_id, 701)
+        self.assertEqual(self.db.query(SalesContact).filter(SalesContact.tenant_id == 10).one().organization_id, 701)
+        self.assertEqual(self.db.query(SalesOpportunity).filter(SalesOpportunity.tenant_id == 10).count(), 1)
+        self.assertEqual(self.db.query(ActivityLog).filter(ActivityLog.action == "automation.convert_lead").count(), 1)
+        self.assertEqual(run.step_results_json[0]["result"]["type"], "convert_lead_to_opportunity")
+
+    def test_cross_module_action_converts_accepted_quote_to_order(self):
+        self.db.add_all(
+            [
+                SalesOrganization(org_id=801, tenant_id=10, org_name="Acme"),
+                SalesContact(contact_id=802, tenant_id=10, first_name="Ada", primary_email="ada@acme.test", assigned_to=1, organization_id=801),
+                SalesOpportunity(opportunity_id=803, tenant_id=10, opportunity_name="Acme Pilot", client="Ada", contact_id=802, organization_id=801),
+                SalesQuote(
+                    quote_id=804,
+                    tenant_id=10,
+                    quote_number="Q-804",
+                    title="Pilot package",
+                    customer_name="Acme",
+                    contact_id=802,
+                    organization_id=801,
+                    opportunity_id=803,
+                    status="accepted",
+                    currency="USD",
+                    total_amount="1000",
+                    assigned_to=1,
+                ),
+            ]
+        )
+        self.db.commit()
+        create_automation_rule(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "name": "Accepted quote order",
+                "trigger_event": "quote.accepted",
+                "actions_json": [{"type": "convert_quote_to_order"}],
+            },
+        )
+
+        self._emit_and_process(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            event_type="quote.accepted",
+            entity_type="sales_quote",
+            entity_id=804,
+            payload={"quote_id": 804, "status": "accepted"},
+        )
+
+        run = self.db.query(AutomationRuleRun).one()
+        order = self.db.query(SalesOrder).filter(SalesOrder.quote_id == 804).one()
+        self.assertEqual(run.status, "succeeded")
+        self.assertEqual(order.status, "confirmed")
+        self.assertEqual(self.db.query(ActivityLog).filter(ActivityLog.action == "automation.convert_quote_to_order").count(), 1)
+        self.assertEqual(run.step_results_json[0]["result"]["order_id"], order.id)
+
+    def test_cross_module_action_assigns_support_case_and_notifies_user(self):
+        self.db.add(SupportCase(id=901, tenant_id=10, case_number="CASE-901", subject="Broken login", status="new", priority="high"))
+        self.db.commit()
+        create_automation_rule(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "name": "Assign support case",
+                "trigger_event": "case.created",
+                "actions_json": [{"type": "assign_support_case", "assignee_user_id": 1}],
+            },
+        )
+
+        self._emit_and_process(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            event_type="case.created",
+            entity_type="support_case",
+            entity_id=901,
+            payload={"case_id": 901, "subject": "Broken login"},
+        )
+
+        run = self.db.query(AutomationRuleRun).one()
+        case = self.db.query(SupportCase).filter(SupportCase.id == 901).one()
+        self.assertEqual(run.status, "succeeded")
+        self.assertEqual(case.assigned_to_id, 1)
+        self.assertEqual(self.db.query(UserNotification).filter(UserNotification.user_id == 1).count(), 1)
+        self.assertEqual(self.db.query(SupportCaseEvent).filter(SupportCaseEvent.event_type == "automation.assigned").count(), 1)
+        self.assertEqual(self.db.query(ActivityLog).filter(ActivityLog.action == "automation.assign_case").count(), 1)
 
     def test_loop_depth_guard_records_skipped_run(self):
         create_automation_rule(

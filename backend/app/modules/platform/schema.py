@@ -555,14 +555,19 @@ class AutomationRulePreviewResponse(BaseModel):
 class AutomationRuleRunResponse(BaseModel):
     id: int
     rule_id: int
+    rule_name: str | None = None
     event_id: int | None = None
     trigger_event_key: str | None = None
     source_module_key: str | None = None
     source_record_id: str | None = None
+    source_label: str | None = None
     status: str
     input_json: dict[str, Any] | None = None
     result_json: dict[str, Any] | None = None
     step_results_json: list[dict[str, Any]] | None = None
+    action_attempt_count: int = 0
+    action_success_count: int = 0
+    action_failed_count: int = 0
     error_message: str | None = None
     started_at: datetime
     finished_at: datetime | None = None

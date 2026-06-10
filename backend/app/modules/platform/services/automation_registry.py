@@ -258,6 +258,39 @@ AUTOMATION_ACTIONS: tuple[AutomationAction, ...] = (
             AutomationActionField("lead_id", "Lead ID", "payload_or_number", False, "Uses triggering lead when blank"),
         ),
     ),
+    AutomationAction(
+        "convert_lead_to_opportunity",
+        "workflow",
+        "Convert lead",
+        "Convert the triggering lead into an account, contact, and opportunity.",
+        ("sales_leads",),
+        (
+            AutomationActionField("deal_stage", "Deal stage", "select", False, options=(("qualified", "Qualified"), ("proposal", "Proposal"), ("negotiation", "Negotiation"))),
+            AutomationActionField("deal_name", "Deal name", "text", False, "{{payload.first_name}} {{payload.last_name}} opportunity"),
+        ),
+    ),
+    AutomationAction(
+        "convert_quote_to_order",
+        "workflow",
+        "Create order from quote",
+        "Create a sales order from the triggering accepted quote.",
+        ("sales_quotes",),
+        (
+            AutomationActionField("quote_id", "Quote ID", "payload_or_number", False, "Uses triggering quote when blank"),
+        ),
+    ),
+    AutomationAction(
+        "assign_support_case",
+        "workflow",
+        "Assign support case",
+        "Assign the triggering support case and notify the assignee.",
+        ("support_cases",),
+        (
+            AutomationActionField("assignee_user_id", "Assignee", "actor_or_user_id", True, "actor"),
+            AutomationActionField("notification_title", "Notification title", "text", False, "Support case assigned"),
+            AutomationActionField("notification_message", "Notification message", "textarea", False, "{{payload.subject}} needs attention."),
+        ),
+    ),
 )
 
 AUTOMATION_ACTIONS_BY_KEY = {action.key: action for action in AUTOMATION_ACTIONS}

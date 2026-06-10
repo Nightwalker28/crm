@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, ListChecks, Plus, Save, Trash2 } from "lucide-react";
+import { ArrowLeft, Eye, ListChecks, Plus, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -48,11 +48,23 @@ type AutomationTriggerGroup = {
 type AutomationRun = {
   id: number;
   rule_id: number;
+  rule_name: string | null;
   event_id: number | null;
+  trigger_event_key: string | null;
+  source_module_key: string | null;
+  source_record_id: string | null;
+  source_label: string | null;
   status: string;
+  input_json: Record<string, unknown> | null;
+  result_json: Record<string, unknown> | null;
+  step_results_json: Record<string, unknown>[] | null;
+  action_attempt_count: number;
+  action_success_count: number;
+  action_failed_count: number;
   error_message: string | null;
   started_at: string;
   finished_at: string | null;
+  completed_at: string | null;
 };
 
 type AutomationCondition = {
@@ -271,10 +283,29 @@ function formatModuleLabel(moduleKey: string) {
     .join(" ");
 }
 
+function formatRunStatusClass(status: string) {
+  if (status === "succeeded") return "text-emerald-300";
+  if (status === "failed") return "text-red-300";
+  if (status === "skipped") return "text-amber-300";
+  return "text-neutral-300";
+}
+
+function formatRunSource(run: AutomationRun) {
+  if (run.source_label) return run.source_label;
+  if (run.source_module_key && run.source_record_id) return `${run.source_module_key} #${run.source_record_id}`;
+  if (run.event_id) return `Event #${run.event_id}`;
+  return "-";
+}
+
+function formatJson(value: unknown) {
+  return JSON.stringify(value ?? {}, null, 2);
+}
+
 export default function AutomationSettingsPage() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<RuleDraft>(EMPTY_DRAFT);
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
   const selectedModuleKey = searchParams.get("module_key")?.trim() || null;
   const selectedModuleLabel = selectedModuleKey ? (getModuleRegistryLabel(selectedModuleKey) ?? formatModuleLabel(selectedModuleKey)) : null;
   const selectedRuleId = draft.id;
@@ -299,6 +330,7 @@ export default function AutomationSettingsPage() {
   const runsQuery = useQuery({ queryKey: ["automation-rule-runs", selectedModuleKey ?? "all", selectedRuleId ?? "all"], queryFn: () => fetchRuns(selectedRuleId, selectedModuleKey) });
 
   const selectedRule = useMemo(() => rulesQuery.data?.find((rule) => rule.id === selectedRuleId), [rulesQuery.data, selectedRuleId]);
+  const selectedRun = useMemo(() => (runsQuery.data ?? []).find((run) => run.id === selectedRunId) ?? null, [runsQuery.data, selectedRunId]);
   const draftMatchesScope = draft.trigger_event === effectiveTriggerEvent;
   const scopedConditions = useMemo(() => (draftMatchesScope ? draft.conditions : EMPTY_CONDITIONS), [draft.conditions, draftMatchesScope]);
   const scopedActions = useMemo(() => (draftMatchesScope ? draft.actions : EMPTY_ACTIONS), [draft.actions, draftMatchesScope]);
@@ -860,28 +892,104 @@ export default function AutomationSettingsPage() {
             <TableHeaderRow>
               <TableHead>Run</TableHead>
               <TableHead>Rule</TableHead>
+              <TableHead>Trigger</TableHead>
+              <TableHead>Source</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Event</TableHead>
+              <TableHead>Actions</TableHead>
               <TableHead>Started</TableHead>
-              <TableHead>Error</TableHead>
+              <TableHead>Completed</TableHead>
+              <TableHead>Debug</TableHead>
             </TableHeaderRow>
           </TableHeader>
           <TableBody>
             {(runsQuery.data ?? []).map((run) => (
               <TableRow key={run.id}>
                 <TableCell>#{run.id}</TableCell>
-                <TableCell>{run.rule_id}</TableCell>
-                <TableCell><span className={run.status === "succeeded" ? "text-emerald-300" : run.status === "failed" ? "text-red-300" : "text-neutral-300"}>{run.status}</span></TableCell>
-                <TableCell>{run.event_id ? `#${run.event_id}` : "-"}</TableCell>
+                <TableCell>
+                  <div className="font-medium text-neutral-100">{run.rule_name ?? `Rule #${run.rule_id}`}</div>
+                  <div className="mt-1 text-xs text-neutral-600">Rule #{run.rule_id}</div>
+                </TableCell>
+                <TableCell>{run.trigger_event_key ?? "-"}</TableCell>
+                <TableCell>{formatRunSource(run)}</TableCell>
+                <TableCell><span className={formatRunStatusClass(run.status)}>{run.status}</span></TableCell>
+                <TableCell>
+                  <div className="text-sm text-neutral-300">{run.action_success_count}/{run.action_attempt_count} succeeded</div>
+                  {run.action_failed_count ? <div className="mt-1 text-xs text-red-300">{run.action_failed_count} failed</div> : null}
+                </TableCell>
                 <TableCell>{formatDateTime(run.started_at)}</TableCell>
-                <TableCell className="max-w-md truncate">{run.error_message || "-"}</TableCell>
+                <TableCell>{run.completed_at ? formatDateTime(run.completed_at) : run.finished_at ? formatDateTime(run.finished_at) : "-"}</TableCell>
+                <TableCell>
+                  <Button type="button" variant="outline" size="sm" onClick={() => setSelectedRunId((current) => (current === run.id ? null : run.id))}>
+                    <Eye className="h-4 w-4" />
+                    {selectedRunId === run.id ? "Hide" : "View"}
+                  </Button>
+                </TableCell>
               </TableRow>
             ))}
             {!runsQuery.isLoading && !(runsQuery.data ?? []).length ? (
-              <TableRow><TableCell colSpan={6} className="py-10 text-center text-neutral-500">No automation runs yet.</TableCell></TableRow>
+              <TableRow><TableCell colSpan={9} className="py-10 text-center text-neutral-500">No automation runs yet.</TableCell></TableRow>
             ) : null}
           </TableBody>
         </Table>
+        {selectedRun ? (
+          <div className="mt-5 rounded-md border border-neutral-800 bg-neutral-950/60 p-4">
+            <div className="grid gap-3 md:grid-cols-4">
+              <div>
+                <div className="text-xs uppercase text-neutral-500">Run</div>
+                <div className="mt-1 text-sm text-neutral-100">#{selectedRun.id}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase text-neutral-500">Event</div>
+                <div className="mt-1 text-sm text-neutral-100">{selectedRun.event_id ? `#${selectedRun.event_id}` : "-"}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase text-neutral-500">Source</div>
+                <div className="mt-1 text-sm text-neutral-100">{formatRunSource(selectedRun)}</div>
+              </div>
+              <div>
+                <div className="text-xs uppercase text-neutral-500">Status</div>
+                <div className={`mt-1 text-sm ${formatRunStatusClass(selectedRun.status)}`}>{selectedRun.status}</div>
+              </div>
+            </div>
+            {selectedRun.error_message ? (
+              <div className="mt-4 rounded-md border border-red-900/70 bg-red-950/30 px-3 py-3 text-sm text-red-200">
+                {selectedRun.error_message}
+              </div>
+            ) : null}
+            <div className="mt-4">
+              <h3 className="text-sm font-semibold text-neutral-100">Actions</h3>
+              <div className="mt-2 grid gap-2">
+                {(selectedRun.step_results_json ?? []).length ? (
+                  (selectedRun.step_results_json ?? []).map((step, index) => (
+                    <div key={`${selectedRun.id}-${index}`} className="rounded-md border border-neutral-800 px-3 py-2 text-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="font-medium text-neutral-200">
+                          {typeof step.type === "string" ? step.type : `Action ${index + 1}`}
+                        </span>
+                        <span className={step.status === "success" ? "text-emerald-300" : step.status === "failed" ? "text-red-300" : "text-neutral-400"}>
+                          {typeof step.status === "string" ? step.status : "unknown"}
+                        </span>
+                      </div>
+                      {typeof step.error === "string" ? <div className="mt-2 text-red-300">{step.error}</div> : null}
+                    </div>
+                  ))
+                ) : (
+                  <div className="rounded-md border border-dashed border-neutral-800 px-3 py-4 text-sm text-neutral-500">No action step details recorded.</div>
+                )}
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-100">Input</h3>
+                <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-neutral-800 bg-neutral-950 p-3 text-xs text-neutral-300">{formatJson(selectedRun.input_json)}</pre>
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-neutral-100">Result</h3>
+                <pre className="mt-2 max-h-72 overflow-auto rounded-md border border-neutral-800 bg-neutral-950 p-3 text-xs text-neutral-300">{formatJson(selectedRun.result_json)}</pre>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </Card>
     </div>
   );

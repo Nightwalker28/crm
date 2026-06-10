@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import HTTPException, status
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
 from app.core.pagination import Pagination
@@ -29,8 +29,10 @@ from app.modules.platform.services.automation_registry import (
     get_trigger_or_none,
     module_key_for_trigger,
 )
-from app.modules.sales.models import SalesLead
-from app.modules.sales.services.leads_services import recalculate_lead_score
+from app.modules.sales.models import SalesLead, SalesQuote
+from app.modules.sales.services.leads_services import convert_sales_lead, recalculate_lead_score
+from app.modules.sales.services.orders_services import convert_quote_to_order
+from app.modules.support.models import SupportCase, SupportCaseEvent
 from app.modules.tasks.models import Task, TaskAssignee
 from app.modules.user_management.models import Team, User
 
@@ -45,6 +47,7 @@ CONDITION_OPERATOR_ALIASES = {
     "not_in": "not_in",
 }
 AUTOMATION_CONTEXT_KEY = "_automation"
+SENSITIVE_DEBUG_KEYS = ("authorization", "cookie", "password", "secret", "token", "api_key", "webhook", "credential")
 
 
 def _utcnow() -> datetime:
@@ -332,6 +335,33 @@ def _record_skipped_run(db: Session, *, rule: AutomationRule, event: CrmEvent, r
     return run
 
 
+def _redact_debug_value(value: Any) -> Any:
+    if isinstance(value, dict):
+        redacted: dict[str, Any] = {}
+        for key, item in value.items():
+            lowered_key = str(key).lower()
+            if any(marker in lowered_key for marker in SENSITIVE_DEBUG_KEYS):
+                redacted[key] = "[redacted]"
+            else:
+                redacted[key] = _redact_debug_value(item)
+        return redacted
+    if isinstance(value, list):
+        return [_redact_debug_value(item) for item in value]
+    return value
+
+
+def _action_counts(step_results: Any, result_json: Any) -> tuple[int, int, int]:
+    if isinstance(step_results, list):
+        attempted = len(step_results)
+        succeeded = sum(1 for item in step_results if isinstance(item, dict) and item.get("status") == "success")
+        failed = sum(1 for item in step_results if isinstance(item, dict) and item.get("status") == "failed")
+        return attempted, succeeded, failed
+    actions = result_json.get("actions") if isinstance(result_json, dict) else None
+    if isinstance(actions, list):
+        return len(actions), len(actions), 0
+    return 0, 0, 0
+
+
 def list_automation_rules(db: Session, *, tenant_id: int, module_key: str | None = None) -> list[AutomationRule]:
     query = db.query(AutomationRule).filter(AutomationRule.tenant_id == tenant_id)
     if module_key:
@@ -451,7 +481,7 @@ def list_automation_rule_runs(
     module_key: str | None = None,
     pagination: Pagination | None = None,
 ) -> list[AutomationRuleRun]:
-    query = db.query(AutomationRuleRun).filter(AutomationRuleRun.tenant_id == tenant_id)
+    query = db.query(AutomationRuleRun).options(joinedload(AutomationRuleRun.rule)).filter(AutomationRuleRun.tenant_id == tenant_id)
     if rule_id is not None:
         query = query.filter(AutomationRuleRun.rule_id == rule_id)
     if module_key:
@@ -464,6 +494,36 @@ def list_automation_rule_runs(
 
 def serialize_automation_rule(rule: AutomationRule) -> dict[str, Any]:
     return _serialize_rule(rule)
+
+
+def serialize_automation_rule_run(run: AutomationRuleRun) -> dict[str, Any]:
+    step_results = _redact_debug_value(run.step_results_json or [])
+    result_json = _redact_debug_value(run.result_json or {})
+    input_json = _redact_debug_value(run.input_json or {})
+    attempted, succeeded, failed = _action_counts(step_results, result_json)
+    source_module = run.source_module_key or (input_json.get("entity_type") if isinstance(input_json, dict) else None)
+    source_record_id = run.source_record_id or (input_json.get("entity_id") if isinstance(input_json, dict) else None)
+    return {
+        "id": run.id,
+        "rule_id": run.rule_id,
+        "rule_name": run.rule.name if run.rule else None,
+        "event_id": run.event_id,
+        "trigger_event_key": run.trigger_event_key,
+        "source_module_key": source_module,
+        "source_record_id": str(source_record_id) if source_record_id is not None else None,
+        "source_label": f"{source_module} #{source_record_id}" if source_module and source_record_id is not None else None,
+        "status": run.status,
+        "input_json": input_json,
+        "result_json": result_json,
+        "step_results_json": step_results if isinstance(step_results, list) else [],
+        "action_attempt_count": attempted,
+        "action_success_count": succeeded,
+        "action_failed_count": failed,
+        "error_message": run.error_message,
+        "started_at": run.started_at,
+        "finished_at": run.finished_at,
+        "completed_at": run.completed_at,
+    }
 
 
 def _template(value: Any, data: dict[str, Any]) -> Any:
@@ -491,10 +551,48 @@ def _resolve_user_id(action: dict[str, Any], data: dict[str, Any]) -> int | None
         return None
 
 
+def _resolve_action_user_id(action: dict[str, Any], data: dict[str, Any], field_key: str) -> int | None:
+    return _resolve_user_id({"user_id": action.get(field_key)}, data)
+
+
 def _ensure_user(db: Session, *, tenant_id: int, user_id: int | None) -> User | None:
     if user_id is None:
         return None
     return db.query(User).filter(User.tenant_id == tenant_id, User.id == user_id).first()
+
+
+def _add_automation_activity(
+    db: Session,
+    *,
+    tenant_id: int,
+    actor_user_id: int | None,
+    module_key: str,
+    entity_type: str,
+    entity_id: str | int,
+    action: str,
+    description: str,
+    after_state: dict[str, Any] | None = None,
+) -> None:
+    db.add(
+        ActivityLog(
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            module_key=module_key,
+            entity_type=entity_type,
+            entity_id=str(entity_id),
+            action=action,
+            description=description,
+            after_state=jsonable_encoder(after_state or {}),
+        )
+    )
+
+
+def _resolve_record_id(action: dict[str, Any], data: dict[str, Any], field_key: str) -> int | None:
+    raw_value = action.get(field_key) or data.get("entity_id") or _lookup_path(data, f"payload.{field_key}")
+    try:
+        return int(raw_value) if raw_value not in {None, ""} else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _create_task_action(db: Session, *, tenant_id: int, actor_user_id: int | None, action: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
@@ -598,6 +696,123 @@ def _add_record_note_action(db: Session, *, tenant_id: int, actor_user_id: int |
     return {"type": "add_record_note", "comment_id": comment.id}
 
 
+def _convert_lead_to_opportunity_action(db: Session, *, tenant_id: int, actor_user_id: int | None, action: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    lead_id = _resolve_record_id(action, data, "lead_id")
+    if lead_id is None:
+        raise RuntimeError("Lead id is required")
+    lead = db.query(SalesLead).filter(SalesLead.tenant_id == tenant_id, SalesLead.lead_id == lead_id, SalesLead.deleted_at.is_(None)).first()
+    if not lead:
+        raise RuntimeError("Lead not found")
+    actor = automation_actor(actor_user_id or lead.assigned_to, tenant_id)
+    result = convert_sales_lead(
+        db,
+        lead,
+        {
+            "create_account": True,
+            "create_contact": True,
+            "create_deal": True,
+            "deal_stage": action.get("deal_stage") or "qualified",
+            "deal_name": _template(action.get("deal_name") or "{{payload.first_name}} {{payload.last_name}} opportunity", data),
+            "assigned_to": lead.assigned_to or actor.id,
+        },
+        current_user=actor,
+    )
+    _add_automation_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        module_key="sales_leads",
+        entity_type="sales_lead",
+        entity_id=lead_id,
+        action="automation.convert_lead",
+        description="Converted lead through automation",
+        after_state={
+            "account_id": result.get("account_id"),
+            "contact_id": result.get("contact_id"),
+            "opportunity_id": result.get("deal_id"),
+        },
+    )
+    db.flush()
+    return {
+        "type": "convert_lead_to_opportunity",
+        "lead_id": lead_id,
+        "account_id": result.get("account_id"),
+        "contact_id": result.get("contact_id"),
+        "opportunity_id": result.get("deal_id"),
+    }
+
+
+def _convert_quote_to_order_action(db: Session, *, tenant_id: int, actor_user_id: int | None, action: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    quote_id = _resolve_record_id(action, data, "quote_id")
+    if quote_id is None:
+        raise RuntimeError("Quote id is required")
+    quote = db.query(SalesQuote).filter(SalesQuote.tenant_id == tenant_id, SalesQuote.quote_id == quote_id, SalesQuote.deleted_at.is_(None)).first()
+    if not quote:
+        raise RuntimeError("Quote not found")
+    order = convert_quote_to_order(db, quote, automation_actor(actor_user_id or quote.assigned_to, tenant_id))
+    _add_automation_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        module_key="sales_quotes",
+        entity_type="sales_quote",
+        entity_id=quote_id,
+        action="automation.convert_quote_to_order",
+        description="Created sales order from quote through automation",
+        after_state={"order_id": order.id, "order_number": order.order_number},
+    )
+    db.flush()
+    return {"type": "convert_quote_to_order", "quote_id": quote_id, "order_id": order.id, "order_number": order.order_number}
+
+
+def _assign_support_case_action(db: Session, *, tenant_id: int, actor_user_id: int | None, action: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
+    case_id = _resolve_record_id(action, data, "case_id")
+    if case_id is None:
+        raise RuntimeError("Support case id is required")
+    assignee_user_id = _resolve_action_user_id(action, data, "assignee_user_id")
+    assignee = _ensure_user(db, tenant_id=tenant_id, user_id=assignee_user_id)
+    if not assignee:
+        raise RuntimeError("Support case assignee not found")
+    case = db.query(SupportCase).filter(SupportCase.tenant_id == tenant_id, SupportCase.id == case_id).first()
+    if not case:
+        raise RuntimeError("Support case not found")
+    previous_assignee_id = case.assigned_to_id
+    case.assigned_to_id = assignee.id
+    db.add(case)
+    db.add(
+        SupportCaseEvent(
+            tenant_id=tenant_id,
+            case_id=case.id,
+            event_type="automation.assigned",
+            payload_json={"from_user_id": previous_assignee_id, "to_user_id": assignee.id},
+            created_by_id=actor_user_id,
+        )
+    )
+    notification = UserNotification(
+        tenant_id=tenant_id,
+        user_id=assignee.id,
+        category="automation",
+        title=str(_template(action.get("notification_title") or "Support case assigned", data)).strip()[:255],
+        message=str(_template(action.get("notification_message") or "{{payload.subject}} needs attention.", data)).strip(),
+        link_url=f"/dashboard/support/cases/{case.id}",
+        payload={"automation": True, "case_id": case.id},
+    )
+    db.add(notification)
+    _add_automation_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        module_key="support_cases",
+        entity_type="support_case",
+        entity_id=case.id,
+        action="automation.assign_case",
+        description="Assigned support case through automation",
+        after_state={"from_user_id": previous_assignee_id, "to_user_id": assignee.id},
+    )
+    db.flush()
+    return {"type": "assign_support_case", "case_id": case.id, "assignee_user_id": assignee.id, "notification_id": notification.id}
+
+
 def _execute_action(db: Session, *, tenant_id: int, actor_user_id: int | None, action: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
     action_type = action.get("type")
     if action_type == "create_task":
@@ -608,6 +823,12 @@ def _execute_action(db: Session, *, tenant_id: int, actor_user_id: int | None, a
         return _recalculate_lead_score_action(db, tenant_id=tenant_id, action=action, data=data)
     if action_type == "add_record_note":
         return _add_record_note_action(db, tenant_id=tenant_id, actor_user_id=actor_user_id, action=action, data=data)
+    if action_type == "convert_lead_to_opportunity":
+        return _convert_lead_to_opportunity_action(db, tenant_id=tenant_id, actor_user_id=actor_user_id, action=action, data=data)
+    if action_type == "convert_quote_to_order":
+        return _convert_quote_to_order_action(db, tenant_id=tenant_id, actor_user_id=actor_user_id, action=action, data=data)
+    if action_type == "assign_support_case":
+        return _assign_support_case_action(db, tenant_id=tenant_id, actor_user_id=actor_user_id, action=action, data=data)
     raise RuntimeError(f"Unsupported action {action_type}")
 
 
@@ -638,14 +859,26 @@ def execute_rule_for_event(db: Session, *, rule: AutomationRule, event: CrmEvent
     except IntegrityError:
         db.rollback()
         return _existing_run_for_rule_event(db, rule_id=rule.id, event_id=event.id)
+    action_results = []
     try:
-        action_results = []
         for index, action in enumerate(rule.actions_json or []):
-            result = _execute_action(db, tenant_id=event.tenant_id, actor_user_id=event.actor_user_id, action=action, data=data)
-            action_results.append({"index": index, "status": "success", "result": result})
+            try:
+                result = _execute_action(db, tenant_id=event.tenant_id, actor_user_id=event.actor_user_id, action=action, data=data)
+            except Exception as action_exc:
+                action_results.append(
+                    {
+                        "index": index,
+                        "type": action.get("type"),
+                        "status": "failed",
+                        "error": str(action_exc)[:1000],
+                    }
+                )
+                raise
+            action_results.append({"index": index, "type": action.get("type"), "status": "success", "result": result})
     except Exception as exc:
         run.status = "failed"
         run.error_message = str(exc)[:1000]
+        run.step_results_json = jsonable_encoder(action_results)
         run.finished_at = _utcnow()
         run.completed_at = run.finished_at
         db.add(run)
