@@ -93,6 +93,29 @@ export type ClientPortalOrder = {
   line_items: ClientPortalOrderLine[];
 };
 
+export type ClientSupportCaseComment = {
+  id: number;
+  case_id: number;
+  body: string;
+  is_internal: boolean;
+  author_type: "client" | "team";
+  created_at: string;
+};
+
+export type ClientSupportCase = {
+  id: number;
+  case_number: string;
+  subject: string;
+  description?: string | null;
+  category?: string | null;
+  status: string;
+  priority: string;
+  created_at: string;
+  updated_at: string;
+  closed_at?: string | null;
+  comments: ClientSupportCaseComment[];
+};
+
 export type PricingItemPayload = {
   sku?: string | null;
   name: string;
@@ -442,6 +465,66 @@ export function useClientOrder(orderId: string | number) {
     enabled: Boolean(orderId),
     staleTime: 30_000,
   });
+}
+
+export function useClientSupportCases() {
+  return useQuery({
+    queryKey: ["client-support", "cases"],
+    queryFn: () => publicJson<{ results: ClientSupportCase[] }>("/client-support/cases", {}, "Failed to load support tickets."),
+    staleTime: 30_000,
+  });
+}
+
+export function useClientSupportCase(caseId: string | number) {
+  return useQuery({
+    queryKey: ["client-support", "cases", String(caseId)],
+    queryFn: () => publicJson<ClientSupportCase>(`/client-support/cases/${caseId}`, {}, "Support ticket not found."),
+    enabled: Boolean(caseId),
+    staleTime: 30_000,
+  });
+}
+
+export function useClientSupportActions() {
+  const queryClient = useQueryClient();
+  const invalidate = async (caseId?: string | number) => {
+    await queryClient.invalidateQueries({ queryKey: ["client-support", "cases"] });
+    if (caseId) await queryClient.invalidateQueries({ queryKey: ["client-support", "cases", String(caseId)] });
+  };
+  const createCase = useMutation({
+    mutationFn: (payload: { subject: string; category?: string | null; priority: string; description?: string | null }) =>
+      publicJson<ClientSupportCase>(
+        "/client-support/cases",
+        { method: "POST", body: JSON.stringify(payload) },
+        "Failed to create support ticket.",
+      ),
+    onSuccess: (created) => invalidate(created.id),
+  });
+  const addComment = useMutation({
+    mutationFn: ({ caseId, body }: { caseId: number | string; body: string }) =>
+      publicJson<ClientSupportCaseComment>(
+        `/client-support/cases/${caseId}/comments`,
+        { method: "POST", body: JSON.stringify({ body }) },
+        "Failed to reply to support ticket.",
+      ),
+    onSuccess: (_comment, variables) => invalidate(variables.caseId),
+  });
+  const updateStatus = useMutation({
+    mutationFn: ({ caseId, action }: { caseId: number | string; action: "close" | "reopen" }) =>
+      publicJson<ClientSupportCase>(
+        `/client-support/cases/${caseId}/${action}`,
+        { method: "POST" },
+        "Failed to update support ticket.",
+      ),
+    onSuccess: (updated) => invalidate(updated.id),
+  });
+  return {
+    createCase: createCase.mutateAsync,
+    addComment: addComment.mutateAsync,
+    updateStatus: updateStatus.mutateAsync,
+    isCreatingCase: createCase.isPending,
+    isAddingComment: addComment.isPending,
+    isUpdatingStatus: updateStatus.isPending,
+  };
 }
 
 export function useClientCatalogRequestActions() {

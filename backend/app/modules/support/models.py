@@ -20,6 +20,7 @@ class SupportCase(Base):
     case_number = Column(Text, nullable=False, index=True)
     subject = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
+    category = Column(Text, nullable=True)
     status = Column(Text, nullable=False, server_default="new")
     priority = Column(Text, nullable=False, server_default="medium")
     source = Column(Text, nullable=True)

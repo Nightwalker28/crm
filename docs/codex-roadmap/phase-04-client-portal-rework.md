@@ -176,27 +176,7 @@ Internal side:
 - Ticket thread is visible to both sides with correct scoping.
 - Ticket activity timeline is updated.
 
-## Task 4.6 — Client portal quick questions/messages
-
-### Objective
-
-Provide a lightweight way for clients to ask non-ticket questions.
-
-### Start simple
-
-- Client submits question/message.
-- Internal CRM creates message record or support ticket based on configuration.
-- Internal user can reply.
-- Client sees response.
-
-### Acceptance criteria
-
-- Client can ask quick question.
-- Internal user can respond.
-- Message is linked to client account/contact.
-- Optional setting can auto-convert question to support ticket.
-
-## Task 4.7 — Client portal documents
+## Task 4.6 — Client portal documents
 
 ### Objective
 
@@ -217,16 +197,14 @@ Let clients access shared documents safely.
 - Document downloads are audited.
 - Internal user can revoke portal access to a document.
 
-## Task 4.8 — Client portal quotes and contracts
+## Task 4.7 — Client portal quotes
 
 ### Objective
 
-Allow clients to view and eventually approve/reject quotes/contracts.
-
+Allow clients to view and eventually approve/reject quotes
 ### Requirements
 
 - View quote details.
-- View contract details.
 - Download PDF/document if available.
 - Approve/reject quote if enabled.
 - Add comment/reason on reject.
@@ -234,12 +212,12 @@ Allow clients to view and eventually approve/reject quotes/contracts.
 
 ### Acceptance criteria
 
-- Client can view assigned quotes/contracts.
-- Client cannot view unrelated quotes/contracts.
+- Client can view assigned quotes.
+- Client cannot view unrelated quotes.
 - Approval/rejection updates internal CRM state.
 - Internal users can see portal approval activity.
 
-## Task 4.9 — Client portal bookings/appointments
+## Task 4.8 — Client portal bookings/appointments
 
 ### Objective
 
@@ -258,7 +236,7 @@ Show client-relevant bookings and appointments.
 - Timezones are displayed clearly.
 - Cancellation/reschedule actions are permission/config controlled.
 
-## Task 4.10 — Client portal audit and activity
+## Task 4.9 — Client portal audit and activity
 
 ### Objective
 

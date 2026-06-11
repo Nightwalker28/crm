@@ -20,6 +20,7 @@ CLOSED_STATUSES = {"resolved", "closed"}
 SUPPORT_CASE_SORT_FIELDS = {
     "case_number": SupportCase.case_number,
     "subject": SupportCase.subject,
+    "category": SupportCase.category,
     "status": SupportCase.status,
     "priority": SupportCase.priority,
     "source": SupportCase.source,
@@ -95,7 +96,7 @@ def _normalize_payload(db: Session, payload: dict, *, tenant_id: int, current_us
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subject is required")
     elif not partial:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subject is required")
-    for field in {"description", "source"}:
+    for field in {"description", "category", "source"}:
         if field in data:
             data[field] = _clean_text(data[field])
     if "status" in data:
@@ -147,6 +148,7 @@ def build_cases_query(
     field_map = {
         "case_number": {"expression": SupportCase.case_number, "type": "text"},
         "subject": {"expression": SupportCase.subject, "type": "text"},
+        "category": {"expression": SupportCase.category, "type": "text"},
         "status": {"expression": SupportCase.status, "type": "text"},
         "priority": {"expression": SupportCase.priority, "type": "text"},
         "source": {"expression": SupportCase.source, "type": "text"},
@@ -169,6 +171,7 @@ def build_cases_query(
                 func.lower(SupportCase.case_number).like(pattern),
                 func.lower(SupportCase.subject).like(pattern),
                 func.lower(func.coalesce(SupportCase.description, "")).like(pattern),
+                func.lower(func.coalesce(SupportCase.category, "")).like(pattern),
                 func.lower(func.coalesce(SupportCase.source, "")).like(pattern),
             )
         )
@@ -218,6 +221,189 @@ def get_case_or_404(db: Session, *, tenant_id: int, case_id: int) -> SupportCase
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support case not found")
     return item
+
+
+def _client_scope_filter(query, *, tenant_id: int, contact_id: int | None, organization_id: int | None):
+    query = query.filter(SupportCase.tenant_id == tenant_id, SupportCase.source == "client_portal")
+    conditions = []
+    if contact_id:
+        conditions.append(SupportCase.contact_id == contact_id)
+    if organization_id:
+        conditions.append(SupportCase.organization_id == organization_id)
+    if not conditions:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client account is not linked to a support profile")
+    return query.filter(or_(*conditions))
+
+
+def _client_case_or_404(
+    db: Session,
+    *,
+    tenant_id: int,
+    contact_id: int | None,
+    organization_id: int | None,
+    case_id: int,
+) -> SupportCase:
+    item = (
+        _client_scope_filter(
+            db.query(SupportCase).options(selectinload(SupportCase.comments), selectinload(SupportCase.events)),
+            tenant_id=tenant_id,
+            contact_id=contact_id,
+            organization_id=organization_id,
+        )
+        .filter(SupportCase.id == case_id)
+        .first()
+    )
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support case not found")
+    return item
+
+
+def list_client_support_cases(
+    db: Session,
+    *,
+    tenant_id: int,
+    contact_id: int | None,
+    organization_id: int | None,
+) -> list[SupportCase]:
+    return (
+        _client_scope_filter(
+            db.query(SupportCase),
+            tenant_id=tenant_id,
+            contact_id=contact_id,
+            organization_id=organization_id,
+        )
+        .order_by(SupportCase.updated_at.desc(), SupportCase.id.desc())
+        .all()
+    )
+
+
+def get_client_support_case_or_404(
+    db: Session,
+    *,
+    tenant_id: int,
+    contact_id: int | None,
+    organization_id: int | None,
+    case_id: int,
+) -> SupportCase:
+    return _client_case_or_404(
+        db,
+        tenant_id=tenant_id,
+        contact_id=contact_id,
+        organization_id=organization_id,
+        case_id=case_id,
+    )
+
+
+def create_client_support_case(
+    db: Session,
+    *,
+    tenant_id: int,
+    contact_id: int | None,
+    organization_id: int | None,
+    payload: dict,
+) -> SupportCase:
+    if not contact_id and not organization_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client account is not linked to a support profile")
+    data = {
+        "subject": _clean_text(payload.get("subject")),
+        "description": _clean_text(payload.get("description")),
+        "category": _clean_text(payload.get("category")),
+        "priority": _validate_choice(payload.get("priority"), CASE_PRIORITIES, default="medium", detail="Invalid case priority"),
+        "status": "new",
+        "source": "client_portal",
+        "contact_id": contact_id,
+        "organization_id": organization_id,
+        "case_number": _generate_case_number(db, tenant_id=tenant_id),
+        "created_by_id": None,
+    }
+    if not data["subject"]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subject is required")
+    item = SupportCase(tenant_id=tenant_id, **data)
+    db.add(item)
+    db.flush()
+    _record_event(db, item, event_type="client_created", current_user=None, payload={"category": data["category"]})
+    case_id = item.id
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Support case could not be created") from exc
+    return get_case_or_404(db, tenant_id=tenant_id, case_id=case_id)
+
+
+def add_client_support_case_comment(
+    db: Session,
+    *,
+    case: SupportCase,
+    payload: dict,
+) -> SupportCaseComment:
+    body = _clean_text(payload.get("body"))
+    if not body:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Comment body is required")
+    comment = SupportCaseComment(
+        tenant_id=case.tenant_id,
+        case_id=case.id,
+        author_id=None,
+        body=body,
+        is_internal=False,
+    )
+    db.add(comment)
+    _record_event(db, case, event_type="client_replied", current_user=None)
+    db.commit()
+    db.refresh(comment)
+    return comment
+
+
+def update_client_support_case_status(db: Session, *, case: SupportCase, action: str) -> SupportCase:
+    normalized_action = action.strip().lower()
+    if normalized_action == "close":
+        next_status = "closed"
+    elif normalized_action == "reopen":
+        next_status = "open"
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported case action")
+    before_status = case.status
+    if before_status == next_status:
+        return case
+    now = datetime.now(timezone.utc)
+    case.status = next_status
+    if next_status == "closed":
+        case.closed_at = now
+        if case.resolved_at is None:
+            case.resolved_at = now
+    else:
+        case.closed_at = None
+        case.resolved_at = None
+    _record_event(db, case, event_type="client_status_changed", current_user=None, payload={"from": before_status, "to": next_status})
+    db.commit()
+    return get_case_or_404(db, tenant_id=case.tenant_id, case_id=case.id)
+
+
+def serialize_client_support_case(case: SupportCase) -> dict:
+    return {
+        "id": case.id,
+        "case_number": case.case_number,
+        "subject": case.subject,
+        "description": case.description,
+        "category": case.category,
+        "status": case.status,
+        "priority": case.priority,
+        "created_at": case.created_at,
+        "updated_at": case.updated_at,
+        "closed_at": case.closed_at,
+        "comments": [
+            {
+                "id": comment.id,
+                "case_id": comment.case_id,
+                "body": comment.body,
+                "is_internal": comment.is_internal,
+                "author_type": "team" if comment.author_id else "client",
+                "created_at": comment.created_at,
+            }
+            for comment in getattr(case, "comments", []) or []
+            if not comment.is_internal
+        ],
+    }
 
 
 def create_support_case(db: Session, payload: dict, current_user) -> SupportCase:

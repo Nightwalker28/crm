@@ -31,6 +31,7 @@ export type SupportCase = {
   case_number: string;
   subject: string;
   description: string | null;
+  category: string | null;
   status: string;
   priority: string;
   source: string | null;

@@ -9,7 +9,19 @@ from app.core.database import Base
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.support.models import SupportCase
-from app.modules.support.services.cases_services import add_case_comment, create_support_case, get_case_or_404, list_support_cases, update_support_case
+from app.modules.support.services.cases_services import (
+    add_case_comment,
+    add_client_support_case_comment,
+    create_client_support_case,
+    create_support_case,
+    get_case_or_404,
+    get_client_support_case_or_404,
+    list_client_support_cases,
+    list_support_cases,
+    serialize_client_support_case,
+    update_client_support_case_status,
+    update_support_case,
+)
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
 
@@ -31,6 +43,7 @@ class SupportCaseTests(unittest.TestCase):
                 SalesOrganization(org_id=20, tenant_id=10, org_name="Acme", primary_email="hello@acme.test"),
                 SalesOrganization(org_id=99, tenant_id=99, org_name="Other", primary_email="hello@other.test"),
                 SalesContact(contact_id=30, tenant_id=10, first_name="Ada", primary_email="ada@acme.test", assigned_to=1, organization_id=20),
+                SalesContact(contact_id=31, tenant_id=10, first_name="Babbage", primary_email="bab@example.test", assigned_to=1),
                 SalesOpportunity(opportunity_id=40, tenant_id=10, opportunity_name="Acme Pilot", client="Ada", contact_id=30, organization_id=20),
                 SalesQuote(quote_id=50, tenant_id=10, quote_number="Q-500", customer_name="Acme", status="accepted", currency="USD"),
                 SalesOrder(id=60, tenant_id=10, order_number="SO-60", status="confirmed", currency="USD"),
@@ -47,6 +60,7 @@ class SupportCaseTests(unittest.TestCase):
             {
                 "subject": "Customer needs help",
                 "description": "Cannot access order",
+                "category": "technical",
                 "priority": "high",
                 "contact_id": 30,
                 "organization_id": 20,
@@ -61,6 +75,7 @@ class SupportCaseTests(unittest.TestCase):
         self.assertEqual(item.tenant_id, 10)
         self.assertTrue(item.case_number.startswith("CASE-"))
         self.assertEqual(item.status, "new")
+        self.assertEqual(item.category, "technical")
         self.assertEqual(item.priority, "high")
         self.assertEqual(item.contact_id, 30)
         self.assertEqual(len(item.events), 1)
@@ -120,6 +135,52 @@ class SupportCaseTests(unittest.TestCase):
 
         self.assertEqual(total_count, 3)
         self.assertEqual([case.subject for case in cases], ["Major issue"])
+
+    def test_client_support_case_is_scoped_and_hides_internal_comments(self):
+        first = create_client_support_case(
+            self.db,
+            tenant_id=10,
+            contact_id=30,
+            organization_id=20,
+            payload={"subject": "Portal help", "description": "Need help", "category": "technical", "priority": "high"},
+        )
+        second = create_client_support_case(
+            self.db,
+            tenant_id=10,
+            contact_id=31,
+            organization_id=None,
+            payload={"subject": "Other portal help", "category": "billing", "priority": "low"},
+        )
+        add_client_support_case_comment(self.db, case=first, payload={"body": "Client reply"})
+        add_case_comment(self.db, first, {"body": "Public team reply", "is_internal": False}, self.user)
+        add_case_comment(self.db, first, {"body": "Internal note", "is_internal": True}, self.user)
+
+        cases = list_client_support_cases(self.db, tenant_id=10, contact_id=30, organization_id=20)
+        serialized = serialize_client_support_case(get_client_support_case_or_404(self.db, tenant_id=10, contact_id=30, organization_id=20, case_id=first.id))
+
+        self.assertEqual([case.id for case in cases], [first.id])
+        self.assertEqual(serialized["category"], "technical")
+        self.assertEqual([comment["body"] for comment in serialized["comments"]], ["Client reply", "Public team reply"])
+        with self.assertRaises(HTTPException) as exc:
+            get_client_support_case_or_404(self.db, tenant_id=10, contact_id=30, organization_id=20, case_id=second.id)
+        self.assertEqual(exc.exception.status_code, 404)
+
+    def test_client_can_close_and_reopen_own_case(self):
+        item = create_client_support_case(
+            self.db,
+            tenant_id=10,
+            contact_id=30,
+            organization_id=20,
+            payload={"subject": "Close me", "category": "general"},
+        )
+
+        closed = update_client_support_case_status(self.db, case=item, action="close")
+        self.assertEqual(closed.status, "closed")
+        self.assertIsNotNone(closed.closed_at)
+
+        reopened = update_client_support_case_status(self.db, case=closed, action="reopen")
+        self.assertEqual(reopened.status, "open")
+        self.assertIsNone(reopened.closed_at)
 
 
 if __name__ == "__main__":

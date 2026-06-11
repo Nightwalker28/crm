@@ -32,12 +32,21 @@ const PRIORITIES = [
   { value: "urgent", label: "Urgent" },
 ];
 
+const CATEGORIES = [
+  { value: "general", label: "General" },
+  { value: "billing", label: "Billing" },
+  { value: "technical", label: "Technical" },
+  { value: "order", label: "Order" },
+  { value: "account", label: "Account" },
+];
+
 export default function SupportCaseDetailPage() {
   const params = useParams<{ caseId: string }>();
   const queryClient = useQueryClient();
   const [item, setItem] = useState<SupportCase | null>(null);
   const [status, setStatus] = useState("new");
   const [priority, setPriority] = useState("medium");
+  const [category, setCategory] = useState("general");
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -55,6 +64,7 @@ export default function SupportCaseDetailPage() {
       setItem(body);
       setStatus(body.status ?? "new");
       setPriority(body.priority ?? "medium");
+      setCategory(body.category ?? "general");
     } catch (loadError) {
       if (!signal?.cancelled) setError(loadError instanceof Error ? loadError.message : "Failed to load support case");
     } finally {
@@ -78,7 +88,7 @@ export default function SupportCaseDetailPage() {
       const res = await apiFetch(`/support/cases/${params.caseId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, priority }),
+        body: JSON.stringify({ status, priority, category }),
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
@@ -146,6 +156,13 @@ export default function SupportCaseDetailPage() {
                 <Select value={priority} onValueChange={setPriority}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>{PRIORITIES.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel>Category</FieldLabel>
+                <Select value={category} onValueChange={setCategory}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{CATEGORIES.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
                 </Select>
               </Field>
               <SummaryTile label="Source" value={item.source || "-"} />

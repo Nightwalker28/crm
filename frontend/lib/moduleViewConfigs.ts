@@ -146,6 +146,7 @@ export const CONTRACT_COLUMNS: TableColumnOption[] = [
 export const SUPPORT_CASE_COLUMNS: TableColumnOption[] = [
   { key: "case_number", label: "Case Number" },
   { key: "subject", label: "Subject" },
+  { key: "category", label: "Category" },
   { key: "status", label: "Status" },
   { key: "priority", label: "Priority" },
   { key: "source", label: "Source" },
@@ -257,7 +258,7 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
     sort: null,
   },
   support_cases: {
-    visible_columns: ["case_number", "subject", "status", "priority", "assigned_to_id", "sla_due_at", "updated_at"],
+    visible_columns: ["case_number", "subject", "category", "status", "priority", "assigned_to_id", "sla_due_at", "updated_at"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },
@@ -563,6 +564,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     filterFields: [
       { key: "case_number", label: "Case Number", type: "text", operators: TEXT_OPERATORS },
       { key: "subject", label: "Subject", type: "text", operators: TEXT_OPERATORS },
+      { key: "category", label: "Category", type: "text", operators: TEXT_OPERATORS },
       {
         key: "status",
         label: "Status",

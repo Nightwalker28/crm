@@ -23,6 +23,14 @@ const PRIORITIES = [
   { value: "urgent", label: "Urgent" },
 ];
 
+const CATEGORIES = [
+  { value: "general", label: "General" },
+  { value: "billing", label: "Billing" },
+  { value: "technical", label: "Technical" },
+  { value: "order", label: "Order" },
+  { value: "account", label: "Account" },
+];
+
 export default function CreateSupportCaseDialog() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -31,6 +39,7 @@ export default function CreateSupportCaseDialog() {
   const [form, setForm] = useState({
     subject: "",
     description: "",
+    category: "general",
     priority: "medium",
     source: "",
     contact_id: null as number | null,
@@ -49,7 +58,7 @@ export default function CreateSupportCaseDialog() {
   const [assigneeDisplay, setAssigneeDisplay] = useState("");
 
   function reset() {
-    setForm({ subject: "", description: "", priority: "medium", source: "", contact_id: null, organization_id: null, opportunity_id: null, quote_id: "", order_id: "", assigned_to_id: "", sla_due_at: "" });
+    setForm({ subject: "", description: "", category: "general", priority: "medium", source: "", contact_id: null, organization_id: null, opportunity_id: null, quote_id: "", order_id: "", assigned_to_id: "", sla_due_at: "" });
     setContactDisplay("");
     setOrganizationDisplay("");
     setOpportunityDisplay("");
@@ -81,6 +90,7 @@ export default function CreateSupportCaseDialog() {
       const payload = {
         subject: form.subject.trim(),
         description: form.description.trim() || null,
+        category: form.category,
         priority: form.priority,
         source: form.source.trim() || null,
         contact_id: form.contact_id,
@@ -129,6 +139,13 @@ export default function CreateSupportCaseDialog() {
               <Select value={form.priority} onValueChange={(value) => setForm((current) => ({ ...current, priority: value }))}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>{PRIORITIES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Category</FieldLabel>
+              <Select value={form.category} onValueChange={(value) => setForm((current) => ({ ...current, category: value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>{CATEGORIES.map((item) => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectContent>
               </Select>
             </Field>
             <Field>

@@ -92,7 +92,7 @@ export default function ClientPortalHomePage() {
             <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {sections.map((section) => {
                 const Icon = section.icon;
-                const enabled = section.href === "/client" || section.href === "/client/catalog" || section.href === "/client/orders";
+                const enabled = section.href === "/client" || section.href === "/client/catalog" || section.href === "/client/orders" || section.href === "/client/support";
                 const className =
                   "group rounded-md border border-neutral-800 bg-neutral-900 p-4 transition-colors " +
                   (enabled ? "hover:border-neutral-600 hover:bg-neutral-800/70" : "cursor-default opacity-70");

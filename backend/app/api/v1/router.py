@@ -8,6 +8,7 @@ from app.modules.client_portal.routes.client_portal_routes import (
     client_auth_router,
     client_catalog_router,
     client_orders_router,
+    client_support_router,
     public_client_pages_router,
 )
 from app.modules.catalog.routes.product_routes import router as catalog_products_router
@@ -90,6 +91,7 @@ router.include_router(client_portal_router)
 router.include_router(client_auth_router)
 router.include_router(client_catalog_router)
 router.include_router(client_orders_router)
+router.include_router(client_support_router)
 router.include_router(public_client_pages_router)
 router.include_router(catalog_products_router)
 router.include_router(catalog_services_router)

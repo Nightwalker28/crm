@@ -166,6 +166,44 @@ class ClientPortalOrderListResponse(BaseModel):
     results: list[ClientPortalOrderResponse]
 
 
+class ClientSupportCaseCreate(BaseModel):
+    subject: str = Field(min_length=1, max_length=240)
+    category: str | None = Field(default=None, max_length=80)
+    priority: Literal["low", "medium", "high", "urgent"] = "medium"
+    description: str | None = Field(default=None, max_length=8000)
+
+
+class ClientSupportCaseCommentCreate(BaseModel):
+    body: str = Field(min_length=1, max_length=8000)
+
+
+class ClientSupportCaseCommentResponse(BaseModel):
+    id: int
+    case_id: int
+    body: str
+    is_internal: bool
+    author_type: Literal["client", "team"]
+    created_at: datetime
+
+
+class ClientSupportCaseResponse(BaseModel):
+    id: int
+    case_number: str
+    subject: str
+    description: str | None = None
+    category: str | None = None
+    status: str
+    priority: str
+    created_at: datetime
+    updated_at: datetime
+    closed_at: datetime | None = None
+    comments: list[ClientSupportCaseCommentResponse] = Field(default_factory=list)
+
+
+class ClientSupportCaseListResponse(BaseModel):
+    results: list[ClientSupportCaseResponse]
+
+
 class ClientPagePricingItemRequest(BaseModel):
     sku: str | None = Field(default=None, max_length=80)
     name: str = Field(min_length=1, max_length=180)

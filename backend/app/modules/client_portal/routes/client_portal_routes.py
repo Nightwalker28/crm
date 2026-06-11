@@ -18,6 +18,11 @@ from app.modules.client_portal.schema import (
     ClientCatalogItemResponse,
     ClientCatalogListResponse,
     ClientCatalogRequestCreate,
+    ClientSupportCaseCommentCreate,
+    ClientSupportCaseCommentResponse,
+    ClientSupportCaseCreate,
+    ClientSupportCaseListResponse,
+    ClientSupportCaseResponse,
     ClientPageActionRequest,
     ClientPageActionResponse,
     ClientPageCreateRequest,
@@ -81,6 +86,15 @@ from app.modules.client_portal.services.client_portal_services import (
     update_customer_group,
 )
 from app.modules.documents.services.document_services import resolve_document_download
+from app.modules.platform.services.activity_logs import safe_log_activity
+from app.modules.support.services.cases_services import (
+    add_client_support_case_comment,
+    create_client_support_case,
+    get_client_support_case_or_404,
+    list_client_support_cases,
+    serialize_client_support_case,
+    update_client_support_case_status,
+)
 from app.modules.user_management.models import Tenant
 
 
@@ -89,6 +103,7 @@ client_auth_router = APIRouter(prefix="/client-auth", tags=["Client Auth"])
 public_client_pages_router = APIRouter(prefix="/client-pages", tags=["Client Pages"])
 client_catalog_router = APIRouter(prefix="/client-catalog", tags=["Client Catalog"])
 client_orders_router = APIRouter(prefix="/client-orders", tags=["Client Orders"])
+client_support_router = APIRouter(prefix="/client-support", tags=["Client Support"])
 client_bearer = HTTPBearer(auto_error=False)
 
 
@@ -641,6 +656,139 @@ def get_client_order_route(
     account = _require_client_account(request, credentials, db)
     order = get_client_order_or_404(db, account=account, order_id=order_id)
     return ClientPortalOrderResponse.model_validate(serialize_client_order(order))
+
+
+@client_support_router.get("/cases", response_model=ClientSupportCaseListResponse)
+def list_client_support_cases_route(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    cases = list_client_support_cases(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+    )
+    return {"results": [ClientSupportCaseResponse.model_validate(serialize_client_support_case(case)) for case in cases]}
+
+
+@client_support_router.post("/cases", response_model=ClientSupportCaseResponse, status_code=status.HTTP_201_CREATED)
+def create_client_support_case_route(
+    payload: ClientSupportCaseCreate,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    case = create_client_support_case(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        payload=payload.model_dump(),
+    )
+    safe_log_activity(
+        db,
+        tenant_id=account.tenant_id,
+        actor_user_id=None,
+        module_key="support_cases",
+        entity_type="support_case",
+        entity_id=case.id,
+        action="client_create",
+        description=f"Client created support case {case.case_number}",
+        after_state=serialize_client_support_case(case),
+    )
+    return ClientSupportCaseResponse.model_validate(serialize_client_support_case(case))
+
+
+@client_support_router.get("/cases/{case_id}", response_model=ClientSupportCaseResponse)
+def get_client_support_case_route(
+    case_id: int,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    case = get_client_support_case_or_404(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        case_id=case_id,
+    )
+    return ClientSupportCaseResponse.model_validate(serialize_client_support_case(case))
+
+
+@client_support_router.post("/cases/{case_id}/comments", response_model=ClientSupportCaseCommentResponse, status_code=status.HTTP_201_CREATED)
+def create_client_support_case_comment_route(
+    case_id: int,
+    payload: ClientSupportCaseCommentCreate,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    case = get_client_support_case_or_404(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        case_id=case_id,
+    )
+    comment = add_client_support_case_comment(db, case=case, payload=payload.model_dump())
+    safe_log_activity(
+        db,
+        tenant_id=account.tenant_id,
+        actor_user_id=None,
+        module_key="support_cases",
+        entity_type="support_case",
+        entity_id=case.id,
+        action="client_comment",
+        description=f"Client replied to support case {case.case_number}",
+    )
+    return ClientSupportCaseCommentResponse.model_validate(
+        {
+            "id": comment.id,
+            "case_id": comment.case_id,
+            "body": comment.body,
+            "is_internal": comment.is_internal,
+            "author_type": "client",
+            "created_at": comment.created_at,
+        }
+    )
+
+
+@client_support_router.post("/cases/{case_id}/{action}", response_model=ClientSupportCaseResponse)
+def update_client_support_case_status_route(
+    case_id: int,
+    action: str,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    case = get_client_support_case_or_404(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        case_id=case_id,
+    )
+    updated = update_client_support_case_status(db, case=case, action=action)
+    safe_log_activity(
+        db,
+        tenant_id=account.tenant_id,
+        actor_user_id=None,
+        module_key="support_cases",
+        entity_type="support_case",
+        entity_id=case.id,
+        action=f"client_{action}",
+        description=f"Client updated support case {case.case_number}",
+        after_state=serialize_client_support_case(updated),
+    )
+    return ClientSupportCaseResponse.model_validate(serialize_client_support_case(updated))
 
 
 @public_client_pages_router.get("/{token}", response_model=ClientPagePublicResponse)

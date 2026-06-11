@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class SupportCaseBase(BaseModel):
     subject: str = Field(min_length=1)
     description: str | None = None
+    category: str | None = Field(default=None, max_length=80)
     status: str = "new"
     priority: str = "medium"
     source: str | None = None
@@ -26,6 +27,7 @@ class SupportCaseCreateRequest(SupportCaseBase):
 class SupportCaseUpdateRequest(BaseModel):
     subject: str | None = None
     description: str | None = None
+    category: str | None = Field(default=None, max_length=80)
     status: str | None = None
     priority: str | None = None
     source: str | None = None
@@ -86,6 +88,7 @@ class SupportCaseListItem(BaseModel):
     id: int
     case_number: str
     subject: str
+    category: str | None = None
     status: str
     priority: str
     source: str | None = None
