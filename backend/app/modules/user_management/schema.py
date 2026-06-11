@@ -32,6 +32,8 @@ class UserProfile(BaseModel):
     bio: Optional[str] = None
     auth_mode: UserAuthMode
     last_login_provider: Optional[str] = None
+    mfa_enabled: bool = False
+    mfa_required: bool = False
     is_active: UserStatus
 
     model_config = ConfigDict(from_attributes=True)
@@ -48,6 +50,8 @@ class UserListItem(BaseModel):
     role_level: Optional[int] = None
     photo_url: Optional[str] = None
     auth_mode: Optional[UserAuthMode] = None
+    mfa_enabled: bool = False
+    mfa_required: bool = False
     is_active: Optional[UserStatus] = None
 
 class UserListResponse(BaseModel):
@@ -277,6 +281,51 @@ class ManualSignupRequest(BaseModel):
 class ManualLoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class MfaSetupResponse(BaseModel):
+    secret: str
+    otpauth_uri: str
+
+
+class MfaEnableRequest(BaseModel):
+    code: str
+
+
+class MfaEnableResponse(BaseModel):
+    status: str = "ok"
+    backup_codes: list[str]
+
+
+class MfaChallengeRequest(BaseModel):
+    mfa_token: str
+    code: str | None = None
+    backup_code: str | None = None
+
+
+class MfaDisableRequest(BaseModel):
+    current_password: str
+    code: str | None = None
+    backup_code: str | None = None
+
+
+class TenantMfaPolicy(str, Enum):
+    off = "off"
+    admins_only = "admins_only"
+    all_users = "all_users"
+
+
+class TenantMfaPolicyRequest(BaseModel):
+    policy: TenantMfaPolicy
+
+
+class TenantMfaPolicyResponse(BaseModel):
+    policy: TenantMfaPolicy
+
+
+class AdminMfaResetResponse(BaseModel):
+    status: str = "ok"
+    message: str
 
 
 class SetupPasswordRequest(BaseModel):

@@ -1,15 +1,17 @@
 "use client";
 
-import { Plus } from "lucide-react";
+import { Plus, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserManagementTable, type SortDirection, type SortKey } from "@/components/users/userManagementTable";
 import CreateUserDialog from "@/components/users/createUserDialog";
 import EditUserDialog from "@/components/users/editUserDialog";
-import { useUserManagement } from "@/hooks/admin/useUserManagement";
+import { useUserManagement, type MfaPolicy } from "@/hooks/admin/useUserManagement";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
@@ -26,6 +28,9 @@ export default function UserManagementPage() {
     isEditOpen,
     isCreateOpen,
     optionsData,
+    mfaPolicy,
+    isMfaPolicyLoading,
+    isMfaPolicySaving,
     roles,
     teams,
     openEditModal,
@@ -34,6 +39,9 @@ export default function UserManagementPage() {
     closeCreateModal,
     createUser,
     updateUser,
+    updateMfaPolicy,
+    resetUserMfa,
+    isResettingUserMfa,
   } = useUserManagement();
   const {
     views,
@@ -102,6 +110,34 @@ export default function UserManagementPage() {
         }
       />
 
+      <Card className="px-4 py-3">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-950">
+              <ShieldCheck className="size-4 text-neutral-300" />
+            </div>
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-100">MFA policy</h2>
+              <p className="text-xs text-neutral-500">Applies to local app MFA for manual CRM sign-in.</p>
+            </div>
+          </div>
+          <Select
+            value={mfaPolicy}
+            disabled={isMfaPolicyLoading || isMfaPolicySaving}
+            onValueChange={(value) => updateMfaPolicy(value as MfaPolicy)}
+          >
+            <SelectTrigger className="w-full md:w-60">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="off">Do not require MFA</SelectItem>
+              <SelectItem value="admins_only">Require for admins</SelectItem>
+              <SelectItem value="all_users">Require for all users</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </Card>
+
       <UserManagementTable
         currentUserId={currentUserId}
         optionsData={optionsData}
@@ -159,6 +195,11 @@ export default function UserManagementPage() {
             await updateUser(id, form);
             closeEditModal();
           }}
+          onResetMfa={async (id) => {
+            await resetUserMfa(id);
+            closeEditModal();
+          }}
+          isResettingMfa={isResettingUserMfa}
         />
       )}
     </div>

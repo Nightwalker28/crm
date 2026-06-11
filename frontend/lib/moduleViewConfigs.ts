@@ -207,6 +207,7 @@ export const USER_COLUMNS: TableColumnOption[] = [
   { key: "role_name", label: "Role" },
   { key: "email", label: "Email" },
   { key: "auth_mode", label: "Sign-in Mode" },
+  { key: "mfa_enabled", label: "MFA" },
   { key: "is_active", label: "Status" },
 ];
 
@@ -278,7 +279,7 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
     sort: null,
   },
   admin_users: {
-    visible_columns: ["name", "team_name", "role_name", "email", "is_active"],
+    visible_columns: ["name", "team_name", "role_name", "email", "mfa_enabled", "is_active"],
     filters: {
       search: "",
       logic: "all",

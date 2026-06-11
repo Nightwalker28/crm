@@ -4,10 +4,11 @@ from fastapi import HTTPException, status
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.core.access_control import ADMIN_MIN_ROLE_LEVEL
 from app.core.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.pagination import Pagination, build_paged_response
 from app.modules.user_management.repositories import admin_users_repository
-from app.modules.user_management.models import Role, Team, User, UserAuthMode, UserStatus
+from app.modules.user_management.models import Role, Team, Tenant, User, UserAuthMode, UserStatus
 from app.modules.user_management.schema import (
     AdminCreateUserRequest,
     AdminCreateUserResponse,
@@ -28,12 +29,15 @@ def list_all_users(db: Session, *, tenant_id: int, pagination: Pagination):
         offset=pagination.offset,
         limit=pagination.limit,
     )
+    _attach_tenant_mfa_policy(db, tenant_id=tenant_id, users=items)
     serialized = _serialize_user_profiles(items)
     return build_paged_response(serialized, total_count, pagination)
 
 
 def list_all_users_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None):
-    return admin_users_repository.list_users_cursor(db, tenant_id=tenant_id, limit=limit, cursor=cursor)
+    users = admin_users_repository.list_users_cursor(db, tenant_id=tenant_id, limit=limit, cursor=cursor)
+    _attach_tenant_mfa_policy(db, tenant_id=tenant_id, users=users)
+    return users
 
 
 def search_users(
@@ -64,6 +68,7 @@ def search_users(
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
     )
+    _attach_tenant_mfa_policy(db, tenant_id=tenant_id, users=items)
     serialized = _serialize_user_profiles(items)
     return build_paged_response(serialized, total_count, pagination)
 
@@ -83,7 +88,7 @@ def search_users_cursor(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ):
-    return admin_users_repository.search_users_cursor(
+    users = admin_users_repository.search_users_cursor(
         db,
         tenant_id=tenant_id,
         limit=limit,
@@ -97,6 +102,8 @@ def search_users_cursor(
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
     )
+    _attach_tenant_mfa_policy(db, tenant_id=tenant_id, users=users)
+    return users
 
 
 def list_user_update_options(db: Session, *, tenant_id: int) -> UserUpdateOptions:
@@ -242,6 +249,10 @@ def _serialize_user_profiles(users: list[User]):
 
 
 def serialize_user_profile(user: User) -> UserProfile:
+    role_level = (
+        getattr(user, "_serialized_role_level", None)
+        or getattr(getattr(user, "role", None), "level", None)
+    )
     payload = {
         "id": user.id,
         "first_name": user.first_name,
@@ -259,10 +270,7 @@ def serialize_user_profile(user: User) -> UserProfile:
             or getattr(getattr(user, "role", None), "name", None)
             or "Unassigned"
         ),
-        "role_level": (
-            getattr(user, "_serialized_role_level", None)
-            or getattr(getattr(user, "role", None), "level", None)
-        ),
+        "role_level": role_level,
         "is_admin": False,
         "photo_url": user.photo_url,
         "phone_number": user.phone_number,
@@ -271,6 +279,8 @@ def serialize_user_profile(user: User) -> UserProfile:
         "bio": user.bio,
         "auth_mode": user.auth_mode,
         "last_login_provider": user.last_login_provider,
+        "mfa_enabled": bool(getattr(user, "mfa_enabled", False)),
+        "mfa_required": _user_requires_mfa(user, role_level=role_level),
         "is_active": user.is_active,
     }
     return UserProfile.model_validate(payload)
@@ -286,6 +296,27 @@ def _coerce_user_status(value) -> UserStatus:
 
 def _coerce_auth_mode(value) -> UserAuthMode:
     return UserAuthMode(getattr(value, "value", value))
+
+
+def _user_requires_mfa(user: User, *, role_level: int | None) -> bool:
+    policy = (
+        getattr(user, "_tenant_mfa_policy", None)
+        or getattr(getattr(user, "tenant", None), "mfa_policy", "off")
+        or "off"
+    )
+    if policy == "all_users":
+        return True
+    if policy == "admins_only":
+        return role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL
+    return False
+
+
+def _attach_tenant_mfa_policy(db: Session, *, tenant_id: int, users: list[User]) -> None:
+    if not users:
+        return
+    policy = db.query(Tenant.mfa_policy).filter(Tenant.id == tenant_id).scalar() or "off"
+    for user in users:
+        user._tenant_mfa_policy = policy
 
 
 def _get_role_or_404(db: Session, role_id: int, *, tenant_id: int) -> Role:

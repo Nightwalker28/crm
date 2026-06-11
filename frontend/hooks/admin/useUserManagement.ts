@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
 import type { User } from "@/components/users/userManagementTable";
@@ -10,6 +10,7 @@ import type { User } from "@/components/users/userManagementTable";
 type UserOption = { id: number; name: string };
 type AuthMode = "manual_only" | "manual_or_google";
 type UserStatus = "active" | "inactive";
+export type MfaPolicy = "off" | "admins_only" | "all_users";
 
 export type UserOptionsData = {
   roles: UserOption[];
@@ -79,6 +80,62 @@ export function useUserManagement() {
     refetchOnMount: true,
   });
 
+  const mfaPolicyQuery = useQuery<{ policy: MfaPolicy }>({
+    queryKey: ["admin-mfa-policy"],
+    queryFn: async () => {
+      const res = await apiFetch("/admin/users/mfa-policy");
+      if (!res.ok) throw new Error("Failed to fetch MFA policy");
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+  });
+
+  const updateMfaPolicyMutation = useMutation({
+    mutationFn: async (policy: MfaPolicy) => {
+      const res = await apiFetch("/admin/users/mfa-policy", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ policy }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-mfa-policy"] }),
+        queryClient.invalidateQueries({ queryKey: ["users-paged"] }),
+      ]);
+      toast.success("MFA policy updated.");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update MFA policy.");
+    },
+  });
+
+  const resetUserMfaMutation = useMutation({
+    mutationFn: async (userId: number) => {
+      const res = await apiFetch(`/admin/users/${userId}/mfa-reset`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["users-paged"] });
+      toast.success("MFA reset.");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to reset MFA.");
+    },
+  });
+
   async function refreshUsers() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["users-paged"] }),
@@ -146,6 +203,9 @@ export function useUserManagement() {
     isEditOpen,
     isCreateOpen,
     optionsData: optionsQuery.data ?? EMPTY_USER_OPTIONS,
+    mfaPolicy: mfaPolicyQuery.data?.policy ?? "off",
+    isMfaPolicyLoading: mfaPolicyQuery.isLoading,
+    isMfaPolicySaving: updateMfaPolicyMutation.isPending,
     roles: optionsQuery.data?.roles ?? EMPTY_USER_OPTIONS.roles,
     teams: optionsQuery.data?.teams ?? EMPTY_USER_OPTIONS.teams,
     openEditModal,
@@ -154,5 +214,8 @@ export function useUserManagement() {
     closeCreateModal,
     createUser,
     updateUser,
+    updateMfaPolicy: (policy: MfaPolicy) => updateMfaPolicyMutation.mutate(policy),
+    resetUserMfa: (userId: number) => resetUserMfaMutation.mutateAsync(userId),
+    isResettingUserMfa: resetUserMfaMutation.isPending,
   };
 }

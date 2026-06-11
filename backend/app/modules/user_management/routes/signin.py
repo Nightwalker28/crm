@@ -1,17 +1,20 @@
 import urllib.parse
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
+from jose import JWTError, jwt
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, get_user_role_level
 from app.core.database import get_db
 from app.core.passwords import get_password_policy
 from app.core.security import (
     check_refresh_token_rate_limit,
     clear_failed_refresh_attempts,
+    get_current_user,
     record_failed_refresh_attempt,
 )
 from app.core.tenancy import get_frontend_origin_for_request, is_auth_tenant_resolution_enabled, is_cloud_mode_enabled
@@ -26,7 +29,15 @@ from app.modules.documents.services.document_services import (
     handle_google_drive_callback,
     handle_microsoft_onedrive_callback,
 )
-from app.modules.user_management.schema import ManualLoginRequest, SetupPasswordRequest
+from app.modules.user_management.schema import (
+    ManualLoginRequest,
+    MfaChallengeRequest,
+    MfaDisableRequest,
+    MfaEnableRequest,
+    MfaEnableResponse,
+    MfaSetupResponse,
+    SetupPasswordRequest,
+)
 from app.modules.user_management.services.auth import (
     authenticate_manual_user,
     create_access_token,
@@ -41,8 +52,10 @@ from app.modules.user_management.services.auth import (
     rotate_refresh_token,
     set_initial_password,
 )
+from app.modules.user_management.services.mfa import activate_mfa, disable_mfa, start_mfa_setup, verify_mfa_challenge
 
 router = APIRouter(tags=["Auth"])
+MFA_CHALLENGE_EXPIRE_MINUTES = 5
 
 
 @router.get("/password-policy")
@@ -119,6 +132,64 @@ def _set_session_cookies(
     )
 
 
+def _create_mfa_challenge_token(user: User) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user.id),
+        "tenant_id": user.tenant_id,
+        "type": "mfa_challenge",
+        "iat": now,
+        "exp": now + timedelta(minutes=MFA_CHALLENGE_EXPIRE_MINUTES),
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
+
+
+def _decode_mfa_challenge_token(token: str) -> dict:
+    try:
+        payload = jwt.decode(token, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    except JWTError:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA challenge")
+    if payload.get("type") != "mfa_challenge":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA challenge")
+    return payload
+
+
+def _issue_session_response(user: User, db: Session, *, body: dict | None = None) -> JSONResponse:
+    access_token = create_access_token(user)
+    refresh_token = create_refresh_token(user, db)
+    response = JSONResponse(body or {"status": "ok", "message": "Signed in"})
+    _set_session_cookies(
+        response,
+        access_token=access_token,
+        refresh_token=refresh_token,
+    )
+    return response
+
+
+def _mfa_challenge_response(user: User) -> JSONResponse:
+    return JSONResponse(
+        {
+            "status": "mfa_required",
+            "message": "MFA verification required",
+            "mfa_token": _create_mfa_challenge_token(user),
+            "expires_in": MFA_CHALLENGE_EXPIRE_MINUTES * 60,
+        }
+    )
+
+
+def _tenant_mfa_policy_requires_setup(db: Session, *, user: User) -> bool:
+    policy = getattr(getattr(user, "tenant", None), "mfa_policy", None)
+    if policy is None:
+        tenant = db.query(Tenant).filter(Tenant.id == user.tenant_id).first()
+        policy = getattr(tenant, "mfa_policy", "off") if tenant else "off"
+    if policy == "all_users":
+        return True
+    if policy == "admins_only":
+        role_level = get_user_role_level(db, user)
+        return role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL
+    return False
+
+
 @router.post("/login")
 def manual_login(
     payload: ManualLoginRequest,
@@ -137,16 +208,74 @@ def manual_login(
         password=payload.password,
         frontend_origin=get_frontend_origin_for_request(request),
     )
-    access_token = create_access_token(user)
-    refresh_token = create_refresh_token(user, db)
+    if getattr(user, "mfa_enabled", False):
+        return _mfa_challenge_response(user)
+    if _tenant_mfa_policy_requires_setup(db, user=user):
+        return _issue_session_response(
+            user,
+            db,
+            body={
+                "status": "mfa_setup_required",
+                "message": "MFA setup required",
+            },
+        )
+    return _issue_session_response(user, db)
 
-    response = JSONResponse({"status": "ok", "message": "Signed in"})
-    _set_session_cookies(
-        response,
-        access_token=access_token,
-        refresh_token=refresh_token,
+
+@router.post("/mfa/setup", response_model=MfaSetupResponse)
+def setup_mfa(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    return start_mfa_setup(db, user=current_user)
+
+
+@router.post("/mfa/enable", response_model=MfaEnableResponse)
+def enable_mfa(
+    payload: MfaEnableRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    backup_codes = activate_mfa(db, user=current_user, code=payload.code)
+    return MfaEnableResponse(backup_codes=backup_codes)
+
+
+@router.post("/mfa/challenge")
+def complete_mfa_challenge(
+    payload: MfaChallengeRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    token_payload = _decode_mfa_challenge_token(payload.mfa_token)
+    _validate_request_tenant(request, token_payload)
+    user = (
+        db.query(User)
+        .filter(
+            User.id == int(token_payload["sub"]),
+            User.tenant_id == int(token_payload["tenant_id"]),
+        )
+        .first()
     )
-    return response
+    if not user or user.is_active != UserStatus.active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA challenge")
+    verify_mfa_challenge(db, user=user, code=payload.code, backup_code=payload.backup_code)
+    return _issue_session_response(user, db)
+
+
+@router.post("/mfa/disable")
+def disable_mfa_route(
+    payload: MfaDisableRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    disable_mfa(
+        db,
+        user=current_user,
+        current_password=payload.current_password,
+        code=payload.code,
+        backup_code=payload.backup_code,
+    )
+    return JSONResponse({"status": "ok", "message": "MFA disabled"})
 
 
 @router.post("/setup-password")

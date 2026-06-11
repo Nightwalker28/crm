@@ -1,5 +1,6 @@
 import base64
 import hashlib
+from dataclasses import dataclass
 
 from cryptography.fernet import Fernet, InvalidToken
 
@@ -44,3 +45,42 @@ def decrypt_secret_with_rotation(value: str | None) -> tuple[str | None, bool]:
         except InvalidToken as exc:
             last_error = exc
     raise RuntimeError("Stored mailbox credential could not be decrypted") from last_error
+
+
+@dataclass(frozen=True)
+class EncryptedSecret:
+    ciphertext: str
+    key_version: str
+
+
+def _application_secret_entries() -> list[tuple[str, str]]:
+    current_secret = settings.APP_ENCRYPTION_SECRET
+    if not current_secret:
+        raise RuntimeError("APP_ENCRYPTION_SECRET must be set before storing protected application secrets")
+    current_version = settings.APP_ENCRYPTION_KEY_VERSION or "v1"
+    entries = [(current_version, current_secret)]
+    for index, secret in enumerate(settings.APP_ENCRYPTION_PREVIOUS_SECRETS or [], start=1):
+        if secret and secret != current_secret:
+            entries.append((f"previous-{index}", secret))
+    return entries
+
+
+def encrypt_application_secret(value: str) -> EncryptedSecret:
+    key_version, secret = _application_secret_entries()[0]
+    ciphertext = _fernet_for_secret(secret).encrypt(value.encode("utf-8")).decode("utf-8")
+    return EncryptedSecret(ciphertext=ciphertext, key_version=key_version)
+
+
+def decrypt_application_secret(value: str | None, *, key_version: str | None = None) -> str | None:
+    if not value:
+        return None
+    entries = _application_secret_entries()
+    if key_version:
+        entries = sorted(entries, key=lambda entry: 0 if entry[0] == key_version else 1)
+    last_error = None
+    for _version, secret in entries:
+        try:
+            return _fernet_for_secret(secret).decrypt(value.encode("utf-8")).decode("utf-8")
+        except InvalidToken as exc:
+            last_error = exc
+    raise RuntimeError("Stored application secret could not be decrypted") from last_error

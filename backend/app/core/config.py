@@ -86,6 +86,9 @@ class Settings:
     MICROSOFT_SCOPES: list[str] = _env_scope_list("MICROSOFT_SCOPES")
     GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED: bool = os.getenv("GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED", "false").lower() == "true"
     MAIL_CREDENTIAL_SECRET: str = os.getenv("MAIL_CREDENTIAL_SECRET", "").strip()
+    APP_ENCRYPTION_SECRET: str = os.getenv("APP_ENCRYPTION_SECRET", "").strip()
+    APP_ENCRYPTION_KEY_VERSION: str = os.getenv("APP_ENCRYPTION_KEY_VERSION", "v1").strip() or "v1"
+    APP_ENCRYPTION_PREVIOUS_SECRETS: list[str] = _env_str_list("APP_ENCRYPTION_PREVIOUS_SECRETS")
 
     # -------------------------
     # JWT configuration

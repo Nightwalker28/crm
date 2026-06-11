@@ -27,6 +27,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { resolveMediaUrl } from "@/lib/media";
+import { useConfirm } from "@/hooks/useConfirm";
 
 type User = {
   id: number;
@@ -37,6 +38,8 @@ type User = {
   role_id: number;
   photo_url?: string;
   auth_mode?: "manual_only" | "manual_or_google";
+  mfa_enabled?: boolean;
+  mfa_required?: boolean;
   is_active: "active" | "inactive";
 };
 
@@ -52,6 +55,8 @@ type Props = {
 
   onClose: () => void;
   onSave: (id: number, form: { role_id: number; team_id: number; auth_mode: "manual_only" | "manual_or_google"; is_active: "active" | "inactive" }) => Promise<void>;
+  onResetMfa?: (id: number) => Promise<void>;
+  isResettingMfa?: boolean;
 };
 
 export default function EditUserDialog({
@@ -62,7 +67,10 @@ export default function EditUserDialog({
   currentUserId,
   onClose,
   onSave,
+  onResetMfa,
+  isResettingMfa = false,
 }: Props) {
+  const { confirm } = useConfirm();
   const [role, setRole] = useState<number>(user.role_id);
   const [team, setTeam] = useState<number>(user.team_id);
   const [authMode, setAuthMode] = useState<"manual_only" | "manual_or_google">(user.auth_mode ?? "manual_or_google");
@@ -221,6 +229,39 @@ export default function EditUserDialog({
                 <FieldDescription>
                   Inactive users cannot sign in until they are reactivated.
                 </FieldDescription>
+              </Field>
+
+              <Field>
+                <FieldLabel>MFA</FieldLabel>
+                <div className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950/50 px-3 py-2">
+                  <div className="min-w-0 text-sm">
+                    <div className="font-medium text-neutral-200">
+                      {user.mfa_enabled ? "Enabled" : user.mfa_required ? "Required" : "Off"}
+                    </div>
+                    <div className="text-xs text-neutral-500">
+                      {user.mfa_enabled ? "Reset removes the user MFA secret and recovery codes." : "No local MFA secret is active for this user."}
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!user.mfa_enabled || isResettingMfa}
+                    onClick={async () => {
+                      if (!onResetMfa) return;
+                      const confirmed = await confirm({
+                        title: "Reset MFA?",
+                        description: `Reset MFA for ${user.email}? The user must enroll again before satisfying MFA policy.`,
+                        confirmLabel: "Reset MFA",
+                        variant: "destructive",
+                      });
+                      if (!confirmed) return;
+                      await onResetMfa(user.id);
+                    }}
+                  >
+                    Reset
+                  </Button>
+                </div>
               </Field>
             </FieldGroup>
           </div>

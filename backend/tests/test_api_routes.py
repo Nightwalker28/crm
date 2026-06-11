@@ -163,11 +163,41 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 404)
 
     def test_manual_login_sets_auth_cookies(self):
-        fake_user = SimpleNamespace(id=7, email="user@example.com")
+        fake_user = SimpleNamespace(id=7, tenant_id=1, email="user@example.com", mfa_enabled=False)
 
         with patch(
             "app.modules.user_management.routes.signin.authenticate_manual_user",
             return_value=fake_user,
+        ), patch(
+            "app.modules.user_management.routes.signin.create_access_token",
+            return_value="access-token",
+        ), patch(
+            "app.modules.user_management.routes.signin.create_refresh_token",
+            return_value="refresh-token",
+        ), patch(
+            "app.modules.user_management.routes.signin._tenant_mfa_policy_requires_setup",
+            return_value=False,
+        ):
+            response = self.client.post(
+                "/api/v1/auth/login",
+                json={"email": "user@example.com", "password": "secret123"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "ok", "message": "Signed in"})
+        set_cookie = response.headers.get("set-cookie", "")
+        self.assertIn("lynk_access_token=access-token", set_cookie)
+        self.assertIn("lynk_refresh_token=refresh-token", set_cookie)
+
+    def test_manual_login_returns_mfa_challenge_without_session_cookies(self):
+        fake_user = SimpleNamespace(id=7, tenant_id=1, email="user@example.com", mfa_enabled=True)
+
+        with patch(
+            "app.modules.user_management.routes.signin.authenticate_manual_user",
+            return_value=fake_user,
+        ), patch(
+            "app.modules.user_management.routes.signin.settings.JWT_SECRET",
+            "test-secret",
         ), patch(
             "app.modules.user_management.routes.signin.create_access_token",
             return_value="access-token",
@@ -181,7 +211,36 @@ class APIRouteTests(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), {"status": "ok", "message": "Signed in"})
+        payload = response.json()
+        self.assertEqual(payload["status"], "mfa_required")
+        self.assertIn("mfa_token", payload)
+        set_cookie = response.headers.get("set-cookie", "")
+        self.assertNotIn("lynk_access_token=access-token", set_cookie)
+        self.assertNotIn("lynk_refresh_token=refresh-token", set_cookie)
+
+    def test_manual_login_returns_mfa_setup_required_when_policy_requires_enrollment(self):
+        fake_user = SimpleNamespace(id=7, tenant_id=1, email="user@example.com", mfa_enabled=False)
+
+        with patch(
+            "app.modules.user_management.routes.signin.authenticate_manual_user",
+            return_value=fake_user,
+        ), patch(
+            "app.modules.user_management.routes.signin._tenant_mfa_policy_requires_setup",
+            return_value=True,
+        ), patch(
+            "app.modules.user_management.routes.signin.create_access_token",
+            return_value="access-token",
+        ), patch(
+            "app.modules.user_management.routes.signin.create_refresh_token",
+            return_value="refresh-token",
+        ):
+            response = self.client.post(
+                "/api/v1/auth/login",
+                json={"email": "user@example.com", "password": "secret123"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "mfa_setup_required", "message": "MFA setup required"})
         set_cookie = response.headers.get("set-cookie", "")
         self.assertIn("lynk_access_token=access-token", set_cookie)
         self.assertIn("lynk_refresh_token=refresh-token", set_cookie)

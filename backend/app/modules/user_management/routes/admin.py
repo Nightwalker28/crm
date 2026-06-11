@@ -28,13 +28,17 @@ from app.modules.user_management.schema import (
     TeamCreateRequest,
     TeamSchema,
     TeamUpdateRequest,
+    TenantMfaPolicyRequest,
+    TenantMfaPolicyResponse,
     UpdateUserRequest,
     UserListResponse,
     UserListItem,
     UserProfile,
     UserUpdateOptions,
+    AdminMfaResetResponse,
 )
 from app.modules.user_management.services import admin_modules, admin_structure, admin_users, role_permissions
+from app.modules.user_management.services.mfa import admin_reset_user_mfa, get_tenant_mfa_policy, update_tenant_mfa_policy
 from typing import Optional
 
 router = APIRouter(prefix="/admin/users", tags=["Admin Users"])
@@ -50,6 +54,8 @@ USER_LIST_FIELDS = {
     "role_level",
     "photo_url",
     "auth_mode",
+    "mfa_enabled",
+    "mfa_required",
     "is_active",
 }
 
@@ -64,10 +70,12 @@ def _parse_list_fields(raw_fields: str | None) -> set[str]:
 
 def _serialize_user_list_item(user, fields: set[str]) -> UserListItem:
     safe_fields = set(fields)
-    safe_fields.update({"team_name", "first_name", "last_name", "email", "team_id", "role_id", "role_name", "role_level", "auth_mode", "is_active", "photo_url"})
+    safe_fields.update({"team_name", "first_name", "last_name", "email", "team_id", "role_id", "role_name", "role_level", "auth_mode", "mfa_enabled", "mfa_required", "is_active", "photo_url"})
+    profile = admin_users.serialize_user_profile(user)
+    profile_payload = profile.model_dump()
     payload = {"id": user.id}
     for field in safe_fields:
-        payload[field] = getattr(user, field, None)
+        payload[field] = profile_payload.get(field, getattr(user, field, None))
     return UserListItem.model_validate(payload)
 
 @router.get("", response_model=UserListResponse)
@@ -389,6 +397,45 @@ def delete_team(
 ):
     admin_structure.delete_team(db, team_id, tenant_id=admin.tenant_id)
     admin_users.invalidate_user_update_options_cache(admin.tenant_id)
+
+
+@router.get("/mfa-policy", response_model=TenantMfaPolicyResponse)
+def get_mfa_policy(
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return TenantMfaPolicyResponse(policy=get_tenant_mfa_policy(db, tenant_id=admin.tenant_id))
+
+
+@router.put("/mfa-policy", response_model=TenantMfaPolicyResponse)
+def update_mfa_policy(
+    payload: TenantMfaPolicyRequest,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    policy = update_tenant_mfa_policy(
+        db,
+        tenant_id=admin.tenant_id,
+        actor_user_id=admin.id,
+        policy=payload.policy.value,
+    )
+    return TenantMfaPolicyResponse(policy=policy)
+
+
+@router.post("/{user_id}/mfa-reset", response_model=AdminMfaResetResponse)
+def reset_user_mfa(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    admin_reset_user_mfa(
+        db,
+        tenant_id=admin.tenant_id,
+        actor_user_id=admin.id,
+        user_id=user_id,
+    )
+    return AdminMfaResetResponse(message="MFA reset")
+
 
 @router.put("/{user_id}", response_model=UserProfile)
 def update_user(

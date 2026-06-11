@@ -42,6 +42,8 @@ export type User = {
   role_level?: number | null;
   photo_url?: string;
   auth_mode?: "manual_only" | "manual_or_google";
+  mfa_enabled?: boolean;
+  mfa_required?: boolean;
   is_active: UserStatus;
 };
 
@@ -337,6 +339,8 @@ export function UserManagementTable({
         );
       case "auth_mode":
         return <TableHead key={column}>Sign-in Mode</TableHead>;
+      case "mfa_enabled":
+        return <TableHead key={column}>MFA</TableHead>;
       case "is_active":
         return (
           <SortableHead
@@ -417,6 +421,24 @@ export function UserManagementTable({
         return (
           <TableCell>
             {u.auth_mode === "manual_only" ? "Manual only" : "Manual + SSO"}
+          </TableCell>
+        );
+      case "mfa_enabled":
+        return (
+          <TableCell>
+            {u.mfa_enabled ? (
+              <Pill bg="bg-emerald-900/30" text="text-emerald-300" border="border-emerald-700/40">
+                Enabled
+              </Pill>
+            ) : u.mfa_required ? (
+              <Pill bg="bg-amber-900/30" text="text-amber-300" border="border-amber-700/40">
+                Required
+              </Pill>
+            ) : (
+              <Pill bg="bg-zinc-900/30" text="text-zinc-400" border="border-zinc-700/40">
+                Off
+              </Pill>
+            )}
           </TableCell>
         );
       case "is_active":

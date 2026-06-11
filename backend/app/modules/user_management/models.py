@@ -12,6 +12,7 @@ from sqlalchemy import (
     func,
     Enum,
     JSON,
+    Boolean,
     UniqueConstraint,
 )
 from sqlalchemy.orm import relationship
@@ -50,6 +51,7 @@ class Tenant(Base):
     slug = Column(String(120), nullable=False, unique=True, index=True)
     name = Column(String(150), nullable=False)
     is_active = Column(SmallInteger, nullable=False, default=1)
+    mfa_policy = Column(String(20), nullable=False, server_default="off")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True),
@@ -213,6 +215,10 @@ class User(Base):
         server_default=UserAuthMode.manual_or_google.value,
     )
     last_login_provider = Column(String(20), nullable=True, index=True)
+    mfa_enabled = Column(Boolean, nullable=False, server_default="false")
+    encrypted_totp_secret = Column(Text, nullable=True)
+    mfa_secret_key_version = Column(String(32), nullable=True)
+    mfa_verified_at = Column(DateTime(timezone=True), nullable=True)
 
     is_active = Column(
         Enum(UserStatus, name="user_status"),
@@ -229,6 +235,26 @@ class User(Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+    mfa_backup_codes = relationship(
+        "UserMfaBackupCode",
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+
+class UserMfaBackupCode(Base):
+    __tablename__ = "user_mfa_backup_codes"
+    __table_args__ = (
+        Index("ix_user_mfa_backup_codes_user_consumed", "user_id", "consumed_at"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    code_hash = Column(String(64), nullable=False, unique=True, index=True)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    user = relationship("User", back_populates="mfa_backup_codes")
 
 
 class Module(Base):
