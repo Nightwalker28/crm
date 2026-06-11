@@ -347,6 +347,7 @@ def respond_to_client_quote(db: Session, *, quote: SalesQuote, action: str, clie
     db.commit()
     db.refresh(quote)
     action_label = "approved" if action == "approve" else "rejected"
+    audit_action = "portal.quote.approved" if action == "approve" else "portal.quote.rejected"
     log_activity(
         db,
         tenant_id=quote.tenant_id,
@@ -354,7 +355,7 @@ def respond_to_client_quote(db: Session, *, quote: SalesQuote, action: str, clie
         module_key="sales_quotes",
         entity_type="sales_quote",
         entity_id=quote.quote_id,
-        action=f"portal.quote.{action}",
+        action=audit_action,
         description=f"Client {action_label} quote {quote.quote_number}",
         before_state={"status": before_status},
         after_state={

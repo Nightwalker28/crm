@@ -15,7 +15,9 @@ from app.modules.client_portal.routes.client_portal_routes import (
     _request_metadata,
     _resolve_client_auth_tenant,
     get_client_me,
+    login_client_route,
 )
+from app.modules.client_portal.schema import ClientLoginRequest
 from app.modules.client_portal.services import client_portal_services
 from app.modules.platform.models import ActivityLog
 from app.modules.sales.models import SalesContact, SalesOrganization, SalesQuote
@@ -143,6 +145,39 @@ class ClientPortalServiceTests(unittest.TestCase):
             )
 
         self.assertEqual(exc.exception.status_code, 401)
+
+    def test_client_login_route_logs_safe_portal_activity(self):
+        _account, setup_token = client_portal_services.create_client_account(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={"email": "buyer@example.com", "contact_id": 7, "status": "pending"},
+        )
+        client_portal_services.setup_client_password(
+            self.db,
+            token=setup_token,
+            password="ClientPass123",
+        )
+        request = SimpleNamespace(
+            state=SimpleNamespace(tenant=SimpleNamespace(id=10)),
+            client=SimpleNamespace(host="203.0.113.40"),
+            headers={"user-agent": "Portal Test"},
+        )
+
+        response = login_client_route(
+            payload=ClientLoginRequest(email="buyer@example.com", password="ClientPass123"),
+            request=request,
+            db=self.db,
+        )
+
+        self.assertTrue(response["access_token"])
+        entry = self.db.query(ActivityLog).filter(ActivityLog.action == "portal.login").one()
+        self.assertEqual(entry.module_key, "client_portal")
+        self.assertEqual(entry.entity_type, "client_account")
+        self.assertEqual(entry.after_state["client_account_id"], 1)
+        self.assertEqual(entry.after_state["request"]["client_host"], "203.0.113.40")
+        self.assertNotIn("password", str(entry.after_state).lower())
+        self.assertNotIn("access_token", entry.after_state)
 
     def test_client_accounts_sort_by_email(self):
         client_portal_services.create_client_account(
@@ -772,7 +807,7 @@ class ClientPortalServiceTests(unittest.TestCase):
             .filter(ActivityLog.module_key == "sales_quotes", ActivityLog.entity_id == "504")
             .one()
         )
-        self.assertEqual(log.action, "portal.quote.approve")
+        self.assertEqual(log.action, "portal.quote.approved")
         self.assertEqual(log.after_state["client_account_id"], 42)
         self.assertEqual(log.after_state["message"], "Looks good.")
 

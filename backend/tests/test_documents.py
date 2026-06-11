@@ -24,6 +24,7 @@ from app.modules.documents.services.document_services import (
     list_document_versions,
     list_documents,
     log_client_document_download,
+    log_client_document_view,
     read_document_upload,
     revoke_document_client_share,
     resolve_document_storage_path,
@@ -445,12 +446,20 @@ class DocumentServiceTests(unittest.TestCase):
         )
         share = get_client_document_share_or_404(self.db, tenant_id=10, contact_id=7, organization_id=None, document_id=1)
 
+        log_client_document_view(self.db, share=share, client_account_id=22)
         log_client_document_download(self.db, share=share, client_account_id=22)
 
-        entry = self.db.query(ActivityLog).filter(ActivityLog.action == "client.download").one()
-        self.assertEqual(entry.tenant_id, 10)
-        self.assertEqual(entry.entity_id, "1")
-        self.assertEqual(entry.after_state["client_account_id"], 22)
+        entries = (
+            self.db.query(ActivityLog)
+            .filter(ActivityLog.action.in_(["portal.document.viewed", "portal.document.downloaded"]))
+            .order_by(ActivityLog.id.asc())
+            .all()
+        )
+        self.assertEqual([entry.action for entry in entries], ["portal.document.viewed", "portal.document.downloaded"])
+        for entry in entries:
+            self.assertEqual(entry.tenant_id, 10)
+            self.assertEqual(entry.entity_id, "1")
+            self.assertEqual(entry.after_state["client_account_id"], 22)
 
 
 class MicrosoftOneDriveStorageTests(unittest.TestCase):

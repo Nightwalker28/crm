@@ -1350,6 +1350,27 @@ def log_document_download(db: Session, *, document: Document, current_user) -> N
     )
 
 
+def log_client_document_view(db: Session, *, share: DocumentClientShare, client_account_id: int) -> None:
+    document = share.document
+    log_activity(
+        db,
+        tenant_id=document.tenant_id,
+        actor_user_id=None,
+        module_key="documents",
+        entity_type="document",
+        entity_id=document.id,
+        action="portal.document.viewed",
+        description=f"Client viewed document {document.title}",
+        after_state={
+            "document_id": document.id,
+            "share_id": share.id,
+            "client_account_id": client_account_id,
+            "contact_id": share.contact_id,
+            "organization_id": share.organization_id,
+        },
+    )
+
+
 def log_client_document_download(db: Session, *, share: DocumentClientShare, client_account_id: int) -> None:
     document = share.document
     log_activity(
@@ -1359,7 +1380,7 @@ def log_client_document_download(db: Session, *, share: DocumentClientShare, cli
         module_key="documents",
         entity_type="document",
         entity_id=document.id,
-        action="client.download",
+        action="portal.document.downloaded",
         description=f"Client downloaded document {document.title}",
         after_state={
             "document_id": document.id,

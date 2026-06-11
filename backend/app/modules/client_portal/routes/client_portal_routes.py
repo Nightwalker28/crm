@@ -97,6 +97,7 @@ from app.modules.documents.services.document_services import (
     get_client_document_share_or_404,
     list_client_documents,
     log_client_document_download,
+    log_client_document_view,
     resolve_document_download,
     serialize_client_document_share,
 )
@@ -584,6 +585,22 @@ def login_client_route(
             record_failed_client_login_attempt(tenant_id=tenant.id, email=email, client_host=client_host)
         raise
     clear_failed_client_login_attempts(tenant_id=tenant.id, email=email, client_host=client_host)
+    safe_log_activity(
+        db,
+        tenant_id=account.tenant_id,
+        actor_user_id=None,
+        module_key="client_portal",
+        entity_type="client_account",
+        entity_id=account.id,
+        action="portal.login",
+        description=f"Client portal login for {account.email}",
+        after_state={
+            "client_account_id": account.id,
+            "contact_id": account.contact_id,
+            "organization_id": account.organization_id,
+            "request": _request_metadata(request),
+        },
+    )
     return {
         "access_token": token,
         "token_type": "bearer",
@@ -722,7 +739,7 @@ def create_client_support_case_route(
         module_key="support_cases",
         entity_type="support_case",
         entity_id=case.id,
-        action="client_create",
+        action="portal.ticket.created",
         description=f"Client created support case {case.case_number}",
         after_state=serialize_client_support_case(case),
     )
@@ -771,7 +788,7 @@ def create_client_support_case_comment_route(
         module_key="support_cases",
         entity_type="support_case",
         entity_id=case.id,
-        action="client_comment",
+        action="portal.ticket.replied",
         description=f"Client replied to support case {case.case_number}",
     )
     return ClientSupportCaseCommentResponse.model_validate(
@@ -863,7 +880,7 @@ def create_client_message_route(
         module_key="support_cases",
         entity_type="support_case",
         entity_id=message.id,
-        action="client_message_create",
+        action="portal.message.sent",
         description=f"Client asked quick question {message.case_number}",
         after_state=serialize_client_support_case(message),
     )
@@ -914,7 +931,7 @@ def create_client_message_comment_route(
         module_key="support_cases",
         entity_type="support_case",
         entity_id=message.id,
-        action="client_message_comment",
+        action="portal.message.sent",
         description=f"Client replied to quick question {message.case_number}",
     )
     return ClientSupportCaseCommentResponse.model_validate(
@@ -963,6 +980,7 @@ def download_client_document_route(
     document = share.document
     storage_user = SimpleNamespace(id=document.uploaded_by_user_id or 0, tenant_id=document.tenant_id)
     download = resolve_document_download(db, document=document, current_user=storage_user)
+    log_client_document_view(db, share=share, client_account_id=account.id)
     log_client_document_download(db, share=share, client_account_id=account.id)
     if download["kind"] == "bytes":
         return Response(
