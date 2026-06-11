@@ -116,6 +116,63 @@ export type ClientSupportCase = {
   comments: ClientSupportCaseComment[];
 };
 
+export type ClientDocument = {
+  id: number;
+  title: string;
+  description?: string | null;
+  original_filename: string;
+  content_type: string;
+  extension: string;
+  file_size_bytes: number;
+  created_at: string;
+  updated_at: string;
+  share_id: number;
+  expires_at?: string | null;
+};
+
+export type ClientQuote = {
+  quote_id: number;
+  quote_number: string;
+  title?: string | null;
+  customer_name: string;
+  status: string;
+  issue_date?: string | null;
+  expiry_date?: string | null;
+  currency: string;
+  subtotal_amount: string | number;
+  discount_amount: string | number;
+  tax_amount: string | number;
+  total_amount: string | number;
+  notes?: string | null;
+  contact_id?: number | null;
+  organization_id?: number | null;
+  proposal_document_id?: number | null;
+  proposal_title?: string | null;
+  proposal_content_text?: string | null;
+  proposal_generated_at?: string | null;
+  can_respond: boolean;
+  created_time: string;
+  updated_at?: string | null;
+};
+
+export type ClientBooking = {
+  id: number;
+  booking_type_id: number;
+  booking_type_name?: string | null;
+  owner_name?: string | null;
+  guest_name: string;
+  guest_email: string;
+  guest_note?: string | null;
+  start_at: string;
+  end_at: string;
+  timezone: string;
+  status: string;
+  booked_date: string;
+  meeting_url?: string | null;
+  location?: string | null;
+  created_at: string;
+};
+
 export type PricingItemPayload = {
   sku?: string | null;
   name: string;
@@ -484,6 +541,23 @@ export function useClientSupportCase(caseId: string | number) {
   });
 }
 
+export function useClientMessages() {
+  return useQuery({
+    queryKey: ["client-messages"],
+    queryFn: () => publicJson<{ results: ClientSupportCase[] }>("/client-messages", {}, "Failed to load messages."),
+    staleTime: 30_000,
+  });
+}
+
+export function useClientMessage(messageId: string | number) {
+  return useQuery({
+    queryKey: ["client-messages", String(messageId)],
+    queryFn: () => publicJson<ClientSupportCase>(`/client-messages/${messageId}`, {}, "Message not found."),
+    enabled: Boolean(messageId),
+    staleTime: 30_000,
+  });
+}
+
 export function useClientSupportActions() {
   const queryClient = useQueryClient();
   const invalidate = async (caseId?: string | number) => {
@@ -524,6 +598,139 @@ export function useClientSupportActions() {
     isCreatingCase: createCase.isPending,
     isAddingComment: addComment.isPending,
     isUpdatingStatus: updateStatus.isPending,
+  };
+}
+
+export function useClientDocuments() {
+  return useQuery({
+    queryKey: ["client-documents"],
+    queryFn: () => publicJson<{ results: ClientDocument[] }>("/client-documents", {}, "Failed to load documents."),
+    staleTime: 30_000,
+  });
+}
+
+export function useClientQuotes() {
+  return useQuery({
+    queryKey: ["client-quotes"],
+    queryFn: () => publicJson<{ results: ClientQuote[] }>("/client-quotes", {}, "Failed to load quotes."),
+    staleTime: 30_000,
+  });
+}
+
+export function useClientQuote(quoteId: string | number) {
+  return useQuery({
+    queryKey: ["client-quotes", String(quoteId)],
+    queryFn: () => publicJson<ClientQuote>(`/client-quotes/${quoteId}`, {}, "Quote not found."),
+    enabled: Boolean(quoteId),
+    staleTime: 30_000,
+  });
+}
+
+export function useClientBookings() {
+  return useQuery({
+    queryKey: ["client-bookings"],
+    queryFn: () => publicJson<{ results: ClientBooking[] }>("/client-bookings", {}, "Failed to load bookings."),
+    staleTime: 30_000,
+  });
+}
+
+export function useClientBooking(bookingId: string | number) {
+  return useQuery({
+    queryKey: ["client-bookings", String(bookingId)],
+    queryFn: () => publicJson<ClientBooking>(`/client-bookings/${bookingId}`, {}, "Booking not found."),
+    enabled: Boolean(bookingId),
+    staleTime: 30_000,
+  });
+}
+
+export function clientDocumentDownloadUrl(documentId: number) {
+  return apiUrl(`/client-documents/${documentId}/download`);
+}
+
+export async function downloadClientDocument(document: ClientDocument) {
+  const blob = await publicBlob(
+    `/client-documents/${document.id}/download`,
+    {},
+    "Failed to download document.",
+  );
+  const url = window.URL.createObjectURL(blob);
+  const anchor = window.document.createElement("a");
+  anchor.href = url;
+  anchor.download = document.original_filename || document.title;
+  anchor.rel = "noopener";
+  window.document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export async function downloadClientQuoteProposal(quote: ClientQuote) {
+  const blob = await publicBlob(
+    `/client-quotes/${quote.quote_id}/proposal/download`,
+    {},
+    "Failed to download quote proposal.",
+  );
+  const url = window.URL.createObjectURL(blob);
+  const anchor = window.document.createElement("a");
+  anchor.href = url;
+  anchor.download = `${quote.quote_number || "quote"}-proposal.txt`;
+  anchor.rel = "noopener";
+  window.document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.URL.revokeObjectURL(url);
+}
+
+export function useClientQuoteActions() {
+  const queryClient = useQueryClient();
+  const invalidate = async (quoteId?: string | number) => {
+    await queryClient.invalidateQueries({ queryKey: ["client-quotes"] });
+    if (quoteId) await queryClient.invalidateQueries({ queryKey: ["client-quotes", String(quoteId)] });
+  };
+  const respond = useMutation({
+    mutationFn: ({ quoteId, action, message }: { quoteId: number | string; action: "approve" | "reject"; message?: string | null }) =>
+      publicJson<ClientQuote>(
+        `/client-quotes/${quoteId}/${action}`,
+        { method: "POST", body: JSON.stringify({ message: message || null }) },
+        action === "approve" ? "Failed to approve quote." : "Failed to reject quote.",
+      ),
+    onSuccess: (updated) => invalidate(updated.quote_id),
+  });
+  return {
+    respondToQuote: respond.mutateAsync,
+    isRespondingToQuote: respond.isPending,
+  };
+}
+
+export function useClientMessageActions() {
+  const queryClient = useQueryClient();
+  const invalidate = async (messageId?: string | number) => {
+    await queryClient.invalidateQueries({ queryKey: ["client-messages"] });
+    if (messageId) await queryClient.invalidateQueries({ queryKey: ["client-messages", String(messageId)] });
+  };
+  const createMessage = useMutation({
+    mutationFn: (payload: { subject: string; message: string }) =>
+      publicJson<ClientSupportCase>(
+        "/client-messages",
+        { method: "POST", body: JSON.stringify(payload) },
+        "Failed to send question.",
+      ),
+    onSuccess: (created) => invalidate(created.id),
+  });
+  const addComment = useMutation({
+    mutationFn: ({ messageId, body }: { messageId: number | string; body: string }) =>
+      publicJson<ClientSupportCaseComment>(
+        `/client-messages/${messageId}/comments`,
+        { method: "POST", body: JSON.stringify({ body }) },
+        "Failed to reply to message.",
+      ),
+    onSuccess: (_comment, variables) => invalidate(variables.messageId),
+  });
+  return {
+    createMessage: createMessage.mutateAsync,
+    addMessageComment: addComment.mutateAsync,
+    isCreatingMessage: createMessage.isPending,
+    isAddingMessageComment: addComment.isPending,
   };
 }
 

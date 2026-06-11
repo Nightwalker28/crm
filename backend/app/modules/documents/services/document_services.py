@@ -17,12 +17,13 @@ from app.core.secrets import decrypt_secret_with_rotation, encrypt_secret
 from app.core.microsoft_oauth import MICROSOFT_DRIVE_SCOPE, MICROSOFT_GRAPH_BASE, microsoft_auth_url, microsoft_scope_string, microsoft_token_url
 from app.core.access_control import require_role_module_action_access
 from app.core.tenancy import get_frontend_origin_for_request, get_google_redirect_uri_for_request, get_microsoft_redirect_uri_for_request
-from app.modules.documents.models import Document, DocumentLink, DocumentStorageConnection, DocumentVersion
+from app.modules.documents.models import Document, DocumentClientShare, DocumentLink, DocumentStorageConnection, DocumentVersion
 from app.modules.documents.repositories import documents_repository
 from app.modules.documents.schema import DocumentResponse
 from app.modules.documents.services.storage_backends import get_document_storage_backend, supported_storage_providers
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.record_comments import get_record_comment_module_config, get_record_reference
+from app.modules.sales.models import SalesContact, SalesOrganization
 from app.modules.user_management.models import Tenant, User, UserStatus
 
 ALLOWED_DOCUMENT_EXTENSIONS = {"pdf", "doc", "docx", "txt", "rtf", "odt"}
@@ -685,6 +686,23 @@ def _serialize_document(document: Document) -> dict:
     return DocumentResponse.model_validate(document).model_dump(mode="json")
 
 
+def serialize_client_document_share(share: DocumentClientShare) -> dict:
+    document = share.document
+    return {
+        "id": document.id,
+        "title": document.title,
+        "description": document.description,
+        "original_filename": document.original_filename,
+        "content_type": document.content_type,
+        "extension": document.extension,
+        "file_size_bytes": document.file_size_bytes,
+        "created_at": document.created_at,
+        "updated_at": document.updated_at,
+        "share_id": share.id,
+        "expires_at": share.expires_at,
+    }
+
+
 def _serialize_version(version: DocumentVersion) -> dict:
     return {
         "id": version.id,
@@ -830,6 +848,178 @@ def get_document_or_404(db: Session, *, tenant_id: int, document_id: int) -> Doc
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
     return document
+
+
+def _ensure_share_target(db: Session, *, tenant_id: int, contact_id: int | None, organization_id: int | None) -> None:
+    if contact_id is None and organization_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Share target is required.")
+    if contact_id is not None:
+        contact = db.query(SalesContact.contact_id).filter(SalesContact.tenant_id == tenant_id, SalesContact.contact_id == contact_id).first()
+        if not contact:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contact not found.")
+    if organization_id is not None:
+        organization = db.query(SalesOrganization.org_id).filter(SalesOrganization.tenant_id == tenant_id, SalesOrganization.org_id == organization_id).first()
+        if not organization:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found.")
+
+
+def _active_share_filter(now: datetime):
+    return (
+        DocumentClientShare.revoked_at.is_(None),
+        or_(DocumentClientShare.expires_at.is_(None), DocumentClientShare.expires_at > now),
+    )
+
+
+def list_document_client_shares(db: Session, *, tenant_id: int, document_id: int) -> list[DocumentClientShare]:
+    document = get_document_or_404(db, tenant_id=tenant_id, document_id=document_id)
+    return (
+        db.query(DocumentClientShare)
+        .filter(DocumentClientShare.tenant_id == tenant_id, DocumentClientShare.document_id == document.id)
+        .order_by(DocumentClientShare.created_at.desc(), DocumentClientShare.id.desc())
+        .all()
+    )
+
+
+def share_document_with_client(db: Session, *, tenant_id: int, document_id: int, payload: dict, current_user) -> DocumentClientShare:
+    document = get_document_or_404(db, tenant_id=tenant_id, document_id=document_id)
+    if current_user is not None:
+        require_document_link_access(db, user=current_user, document=document, action="edit")
+    contact_id = payload.get("contact_id")
+    organization_id = payload.get("organization_id")
+    expires_at = payload.get("expires_at")
+    _ensure_share_target(db, tenant_id=tenant_id, contact_id=contact_id, organization_id=organization_id)
+    share = (
+        db.query(DocumentClientShare)
+        .filter(
+            DocumentClientShare.tenant_id == tenant_id,
+            DocumentClientShare.document_id == document.id,
+            DocumentClientShare.contact_id.is_(None) if contact_id is None else DocumentClientShare.contact_id == contact_id,
+            DocumentClientShare.organization_id.is_(None) if organization_id is None else DocumentClientShare.organization_id == organization_id,
+            DocumentClientShare.revoked_at.is_(None),
+        )
+        .first()
+    )
+    if not share:
+        share = DocumentClientShare(
+            tenant_id=tenant_id,
+            document_id=document.id,
+            contact_id=contact_id,
+            organization_id=organization_id,
+            created_by_user_id=getattr(current_user, "id", None),
+        )
+    share.expires_at = expires_at
+    share.revoked_at = None
+    db.add(share)
+    db.commit()
+    db.refresh(share)
+    log_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=getattr(current_user, "id", None),
+        module_key="documents",
+        entity_type="document",
+        entity_id=document.id,
+        action="client_share.create",
+        description=f"Shared document {document.title} with client portal",
+        after_state={"share_id": share.id, "contact_id": share.contact_id, "organization_id": share.organization_id, "expires_at": share.expires_at.isoformat() if share.expires_at else None},
+    )
+    return share
+
+
+def revoke_document_client_share(db: Session, *, tenant_id: int, document_id: int, share_id: int, current_user) -> DocumentClientShare:
+    document = get_document_or_404(db, tenant_id=tenant_id, document_id=document_id)
+    if current_user is not None:
+        require_document_link_access(db, user=current_user, document=document, action="edit")
+    share = (
+        db.query(DocumentClientShare)
+        .filter(
+            DocumentClientShare.tenant_id == tenant_id,
+            DocumentClientShare.document_id == document.id,
+            DocumentClientShare.id == share_id,
+        )
+        .first()
+    )
+    if not share:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document share not found.")
+    if share.revoked_at is None:
+        share.revoked_at = _utcnow()
+        db.add(share)
+        db.commit()
+        db.refresh(share)
+        log_activity(
+            db,
+            tenant_id=tenant_id,
+            actor_user_id=getattr(current_user, "id", None),
+            module_key="documents",
+            entity_type="document",
+            entity_id=document.id,
+            action="client_share.revoke",
+            description=f"Revoked client portal access for document {document.title}",
+            after_state={"share_id": share.id, "revoked_at": share.revoked_at.isoformat() if share.revoked_at else None},
+        )
+    return share
+
+
+def list_client_documents(
+    db: Session,
+    *,
+    tenant_id: int,
+    contact_id: int | None,
+    organization_id: int | None,
+) -> list[DocumentClientShare]:
+    if contact_id is None and organization_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client account is not linked to a document profile.")
+    conditions = []
+    if contact_id is not None:
+        conditions.append(DocumentClientShare.contact_id == contact_id)
+    if organization_id is not None:
+        conditions.append(DocumentClientShare.organization_id == organization_id)
+    return (
+        db.query(DocumentClientShare)
+        .join(Document, Document.id == DocumentClientShare.document_id)
+        .options(joinedload(DocumentClientShare.document))
+        .filter(
+            DocumentClientShare.tenant_id == tenant_id,
+            Document.deleted_at.is_(None),
+            or_(*conditions),
+            *_active_share_filter(_utcnow()),
+        )
+        .order_by(Document.updated_at.desc(), Document.id.desc(), DocumentClientShare.id.desc())
+        .all()
+    )
+
+
+def get_client_document_share_or_404(
+    db: Session,
+    *,
+    tenant_id: int,
+    contact_id: int | None,
+    organization_id: int | None,
+    document_id: int,
+) -> DocumentClientShare:
+    if contact_id is None and organization_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client account is not linked to a document profile.")
+    conditions = []
+    if contact_id is not None:
+        conditions.append(DocumentClientShare.contact_id == contact_id)
+    if organization_id is not None:
+        conditions.append(DocumentClientShare.organization_id == organization_id)
+    share = (
+        db.query(DocumentClientShare)
+        .join(Document, Document.id == DocumentClientShare.document_id)
+        .options(joinedload(DocumentClientShare.document))
+        .filter(
+            DocumentClientShare.tenant_id == tenant_id,
+            DocumentClientShare.document_id == document_id,
+            Document.deleted_at.is_(None),
+            or_(*conditions),
+            *_active_share_filter(_utcnow()),
+        )
+        .first()
+    )
+    if not share:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found.")
+    return share
 
 
 def get_deleted_document_or_404(db: Session, *, tenant_id: int, document_id: int) -> Document:
@@ -1157,4 +1347,25 @@ def log_document_download(db: Session, *, document: Document, current_user) -> N
         action="download",
         description=f"Downloaded document {document.title}",
         after_state=_serialize_document(document),
+    )
+
+
+def log_client_document_download(db: Session, *, share: DocumentClientShare, client_account_id: int) -> None:
+    document = share.document
+    log_activity(
+        db,
+        tenant_id=document.tenant_id,
+        actor_user_id=None,
+        module_key="documents",
+        entity_type="document",
+        entity_id=document.id,
+        action="client.download",
+        description=f"Client downloaded document {document.title}",
+        after_state={
+            "document_id": document.id,
+            "share_id": share.id,
+            "client_account_id": client_account_id,
+            "contact_id": share.contact_id,
+            "organization_id": share.organization_id,
+        },
     )

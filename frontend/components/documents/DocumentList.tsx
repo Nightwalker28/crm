@@ -1,9 +1,10 @@
 "use client";
 
 import { Fragment, useRef, useState } from "react";
-import { ChevronDown, Download, ExternalLink, FileText, History, Tag, Trash2, Upload } from "lucide-react";
+import { ChevronDown, Download, ExternalLink, FileText, History, Share2, Tag, Trash2, Upload, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
+import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
@@ -61,8 +62,24 @@ function DocumentRow({ document, onDelete, isDeleting }: { document: DocumentIte
   const versionInputRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [templateCategory, setTemplateCategory] = useState(document.template_category ?? "");
+  const [shareTargetType, setShareTargetType] = useState<"contact" | "organization">("contact");
+  const [shareTargetId, setShareTargetId] = useState<number | null>(null);
+  const [shareTargetDisplay, setShareTargetDisplay] = useState("");
+  const [shareExpiresAt, setShareExpiresAt] = useState("");
   const versionsQuery = useDocumentVersions(document.id, expanded);
-  const { uploadDocumentVersion, updateDocumentTemplateStatus, isUploadingDocumentVersion, isUpdatingDocumentTemplate } = useDocumentActions();
+  const {
+    uploadDocumentVersion,
+    updateDocumentTemplateStatus,
+    shareDocumentWithClient,
+    revokeDocumentClientShare,
+    isUploadingDocumentVersion,
+    isUpdatingDocumentTemplate,
+    isSharingDocument,
+    isRevokingDocumentShare,
+  } = useDocumentActions();
+  const activeShares = (document.client_shares ?? []).filter(
+    (share) => !share.revoked_at && (!share.expires_at || new Date(share.expires_at) > new Date()),
+  );
 
   async function handleVersionFile(file: File | undefined) {
     if (!file) return;
@@ -85,6 +102,40 @@ function DocumentRow({ document, onDelete, isDeleting }: { document: DocumentIte
       toast.success(nextTemplate ? "Document marked as template." : "Template flag removed.");
     } catch (error) {
       toast.error(errorMessage(error, "Failed to update template status."));
+    }
+  }
+
+  function handleShareSelect(option: LinkedRecordOption) {
+    setShareTargetId(shareTargetType === "contact" ? option.contact_id ?? option.id : option.organization_id ?? option.id);
+    setShareTargetDisplay(option.label);
+  }
+
+  async function handleShareDocument() {
+    if (!shareTargetId) return;
+    try {
+      await shareDocumentWithClient({
+        documentId: document.id,
+        payload: {
+          contact_id: shareTargetType === "contact" ? shareTargetId : null,
+          organization_id: shareTargetType === "organization" ? shareTargetId : null,
+          expires_at: shareExpiresAt ? new Date(shareExpiresAt).toISOString() : null,
+        },
+      });
+      setShareTargetId(null);
+      setShareTargetDisplay("");
+      setShareExpiresAt("");
+      toast.success("Document shared with client portal.");
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to share document."));
+    }
+  }
+
+  async function handleRevokeShare(shareId: number) {
+    try {
+      await revokeDocumentClientShare({ documentId: document.id, shareId });
+      toast.success("Client document access revoked.");
+    } catch (error) {
+      toast.error(errorMessage(error, "Failed to revoke document access."));
     }
   }
 
@@ -173,6 +224,73 @@ function DocumentRow({ document, onDelete, isDeleting }: { document: DocumentIte
                     <Upload className="h-4 w-4" />
                     New Version
                   </Button>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-md border border-neutral-800 bg-neutral-950/60 p-3">
+                <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                  <Share2 className="h-3.5 w-3.5" />
+                  Client Portal Access
+                </div>
+                <div className="grid gap-3 lg:grid-cols-[160px_minmax(220px,1fr)_220px_auto] lg:items-end">
+                  <div>
+                    <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-neutral-500">Target</label>
+                    <select
+                      value={shareTargetType}
+                      onChange={(event) => {
+                        setShareTargetType(event.target.value as "contact" | "organization");
+                        setShareTargetId(null);
+                        setShareTargetDisplay("");
+                      }}
+                      className="h-9 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100"
+                    >
+                      <option value="contact">Contact</option>
+                      <option value="organization">Account</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-neutral-500">{shareTargetType === "contact" ? "Contact" : "Account"}</label>
+                    <LinkedRecordPicker
+                      recordType={shareTargetType}
+                      valueId={shareTargetId}
+                      displayValue={shareTargetDisplay}
+                      onDisplayValueChange={(value) => {
+                        setShareTargetDisplay(value);
+                        setShareTargetId(null);
+                      }}
+                      onSelect={handleShareSelect}
+                      onClear={() => {
+                        setShareTargetId(null);
+                        setShareTargetDisplay("");
+                      }}
+                      placeholder={shareTargetType === "contact" ? "Search contacts" : "Search accounts"}
+                      queryKeyPrefix={`document-client-share-${document.id}-${shareTargetType}`}
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-neutral-500">Expires</label>
+                    <Input type="datetime-local" value={shareExpiresAt} onChange={(event) => setShareExpiresAt(event.target.value)} className="h-9" />
+                  </div>
+                  <Button type="button" variant="outline" onClick={() => void handleShareDocument()} disabled={!shareTargetId || isSharingDocument}>
+                    <Share2 className="h-4 w-4" />
+                    Share
+                  </Button>
+                </div>
+                <div className="mt-4 divide-y divide-neutral-800 rounded-md border border-neutral-800">
+                  {activeShares.length ? activeShares.map((share) => (
+                    <div key={share.id} className="flex flex-col gap-2 px-3 py-3 md:flex-row md:items-center md:justify-between">
+                      <div className="text-sm text-neutral-300">
+                        {share.contact_id ? `Contact #${share.contact_id}` : `Account #${share.organization_id}`}
+                        <span className="ml-2 text-xs text-neutral-500">
+                          {share.expires_at ? `Expires ${formatDateTime(share.expires_at)}` : "No expiry"}
+                        </span>
+                      </div>
+                      <Button type="button" variant="outline" onClick={() => void handleRevokeShare(share.id)} disabled={isRevokingDocumentShare}>
+                        <XCircle className="h-4 w-4" />
+                        Revoke
+                      </Button>
+                    </div>
+                  )) : <div className="px-3 py-3 text-sm text-neutral-500">Not shared with any client portal account.</div>}
                 </div>
               </div>
 

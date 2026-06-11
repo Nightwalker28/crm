@@ -425,6 +425,39 @@ class SalesQuoteProposalPublicResponse(BaseModel):
     expiry_date: date | None = None
 
 
+class ClientQuoteResponse(BaseModel):
+    quote_id: int
+    quote_number: str
+    title: str | None = None
+    customer_name: str
+    status: str
+    issue_date: date | None = None
+    expiry_date: date | None = None
+    currency: str
+    subtotal_amount: Decimal
+    discount_amount: Decimal
+    tax_amount: Decimal
+    total_amount: Decimal
+    notes: str | None = None
+    contact_id: int | None = None
+    organization_id: int | None = None
+    proposal_document_id: int | None = None
+    proposal_title: str | None = None
+    proposal_content_text: str | None = None
+    proposal_generated_at: datetime | None = None
+    can_respond: bool = False
+    created_time: datetime
+    updated_at: datetime | None = None
+
+
+class ClientQuoteListResponse(BaseModel):
+    results: list[ClientQuoteResponse]
+
+
+class ClientQuoteActionRequest(BaseModel):
+    message: str | None = Field(default=None, max_length=2000)
+
+
 class SalesOrderItemBase(BaseModel):
     name: str
     description: str | None = None

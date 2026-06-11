@@ -73,8 +73,8 @@ class CalendarBookingServiceTests(unittest.TestCase):
                 tenant_id=10,
                 owner_user_id=1,
                 title="Busy",
-                start_at=datetime(2026, 6, 1, 9, 0, tzinfo=timezone.utc),
-                end_at=datetime(2026, 6, 1, 9, 30, tzinfo=timezone.utc),
+                start_at=datetime(2099, 6, 1, 9, 0, tzinfo=timezone.utc),
+                end_at=datetime(2099, 6, 1, 9, 30, tzinfo=timezone.utc),
             )
         )
         self.db.commit()
@@ -82,8 +82,8 @@ class CalendarBookingServiceTests(unittest.TestCase):
         slots = booking_services.available_slots(
             self.db,
             slug="discovery-call",
-            start_date=date(2026, 6, 1),
-            end_date=date(2026, 6, 1),
+            start_date=date(2099, 6, 1),
+            end_date=date(2099, 6, 1),
         )
 
         self.assertEqual([slot["start_at"].hour for slot in slots], [9])
@@ -97,7 +97,7 @@ class CalendarBookingServiceTests(unittest.TestCase):
             self.db,
             slug="discovery-call",
             payload={
-                "start_at": datetime(2026, 6, 1, 9, 0, tzinfo=timezone.utc),
+                "start_at": datetime(2099, 6, 1, 9, 0, tzinfo=timezone.utc),
                 "guest_name": "Grace Hopper",
                 "guest_email": "grace@example.com",
                 "guest_note": "Need CRM help",
@@ -117,7 +117,7 @@ class CalendarBookingServiceTests(unittest.TestCase):
                 self.db,
                 slug="discovery-call",
                 payload={
-                    "start_at": datetime(2026, 6, 1, 9, 0, tzinfo=timezone.utc),
+                    "start_at": datetime(2099, 6, 1, 9, 0, tzinfo=timezone.utc),
                     "guest_name": "Second Guest",
                     "guest_email": "second@example.com",
                     "answers": {"1": "Beta"},
@@ -126,6 +126,59 @@ class CalendarBookingServiceTests(unittest.TestCase):
 
         self.assertIn("Selected slot is no longer available", str(exc.exception))
         self.assertEqual(self.db.query(MeetingBookingType).count(), 1)
+
+    def test_client_bookings_are_scoped_by_tenant_and_guest_email(self):
+        booking_type = self._create_booking_type()
+        booking_type_id = booking_type["id"]
+        self.db.add_all(
+            [
+                MeetingBooking(
+                    id=201,
+                    tenant_id=10,
+                    booking_type_id=booking_type_id,
+                    guest_name="Grace Hopper",
+                    guest_email="grace@example.com",
+                    start_at=datetime(2099, 6, 1, 9, 0, tzinfo=timezone.utc),
+                    end_at=datetime(2099, 6, 1, 9, 30, tzinfo=timezone.utc),
+                    timezone="UTC",
+                    status="confirmed",
+                    booked_date=date(2099, 6, 1),
+                ),
+                MeetingBooking(
+                    id=202,
+                    tenant_id=10,
+                    booking_type_id=booking_type_id,
+                    guest_name="Other Guest",
+                    guest_email="other@example.com",
+                    start_at=datetime(2099, 6, 1, 10, 0, tzinfo=timezone.utc),
+                    end_at=datetime(2099, 6, 1, 10, 30, tzinfo=timezone.utc),
+                    timezone="UTC",
+                    status="confirmed",
+                    booked_date=date(2099, 6, 1),
+                ),
+                MeetingBooking(
+                    id=203,
+                    tenant_id=99,
+                    booking_type_id=booking_type_id,
+                    guest_name="Grace Other Tenant",
+                    guest_email="grace@example.com",
+                    start_at=datetime(2099, 6, 1, 11, 0, tzinfo=timezone.utc),
+                    end_at=datetime(2099, 6, 1, 11, 30, tzinfo=timezone.utc),
+                    timezone="UTC",
+                    status="confirmed",
+                    booked_date=date(2099, 6, 1),
+                ),
+            ]
+        )
+        self.db.commit()
+
+        bookings = booking_services.list_client_bookings(self.db, tenant_id=10, email=" Grace@Example.com ")
+
+        self.assertEqual([booking.id for booking in bookings], [201])
+        self.assertEqual(booking_services.get_client_booking_or_404(self.db, tenant_id=10, email="grace@example.com", booking_id=201).id, 201)
+        with self.assertRaises(Exception) as exc:
+            booking_services.get_client_booking_or_404(self.db, tenant_id=10, email="grace@example.com", booking_id=202)
+        self.assertIn("Booking not found", str(exc.exception))
 
 
 if __name__ == "__main__":

@@ -43,7 +43,7 @@ def list_documents(
 ) -> tuple[list[Document], int]:
     query = (
         db.query(Document)
-        .options(joinedload(Document.links))
+        .options(joinedload(Document.links), joinedload(Document.client_shares))
         .filter(Document.tenant_id == tenant_id, Document.deleted_at.is_(None))
     )
     if module_key and entity_id is not None:
@@ -81,7 +81,7 @@ def list_documents_cursor(
 ) -> list[Document]:
     query = (
         db.query(Document)
-        .options(joinedload(Document.links))
+        .options(joinedload(Document.links), joinedload(Document.client_shares))
         .filter(Document.tenant_id == tenant_id, Document.deleted_at.is_(None))
     )
     if module_key and entity_id is not None:
@@ -109,7 +109,7 @@ def list_documents_cursor(
 def get_document(db: Session, *, tenant_id: int, document_id: int, include_deleted: bool = False) -> Document | None:
     query = (
         db.query(Document)
-        .options(joinedload(Document.links))
+        .options(joinedload(Document.links), joinedload(Document.client_shares))
         .filter(Document.id == document_id, Document.tenant_id == tenant_id)
     )
     query = query.filter(Document.deleted_at.is_not(None) if include_deleted else Document.deleted_at.is_(None))
@@ -119,7 +119,7 @@ def get_document(db: Session, *, tenant_id: int, document_id: int, include_delet
 def list_deleted_documents(db: Session, *, tenant_id: int, pagination) -> tuple[list[Document], int]:
     query = (
         db.query(Document)
-        .options(joinedload(Document.links))
+        .options(joinedload(Document.links), joinedload(Document.client_shares))
         .filter(Document.tenant_id == tenant_id, Document.deleted_at.is_not(None))
     )
     total = query.count()

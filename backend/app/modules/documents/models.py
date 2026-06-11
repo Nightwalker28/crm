@@ -1,4 +1,4 @@
-from sqlalchemy import JSON, BigInteger, Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
+from sqlalchemy import JSON, BigInteger, Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -30,6 +30,7 @@ class Document(Base):
 
     uploaded_by = relationship("User")
     links = relationship("DocumentLink", back_populates="document", cascade="all, delete-orphan")
+    client_shares = relationship("DocumentClientShare", back_populates="document", cascade="all, delete-orphan")
     versions = relationship(
         "DocumentVersion",
         back_populates="document",
@@ -104,4 +105,29 @@ class DocumentLink(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     document = relationship("Document", back_populates="links")
+    created_by = relationship("User")
+
+
+class DocumentClientShare(Base):
+    __tablename__ = "document_client_shares"
+    __table_args__ = (
+        CheckConstraint("contact_id IS NOT NULL OR organization_id IS NOT NULL", name="ck_document_client_shares_target"),
+        Index("ix_document_client_shares_tenant_document", "tenant_id", "document_id"),
+        Index("ix_document_client_shares_tenant_contact", "tenant_id", "contact_id"),
+        Index("ix_document_client_shares_tenant_org", "tenant_id", "organization_id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    contact_id = Column(BigInteger, ForeignKey("sales_contacts.contact_id", ondelete="CASCADE"), nullable=True, index=True)
+    organization_id = Column(BigInteger, ForeignKey("sales_organizations.org_id", ondelete="CASCADE"), nullable=True, index=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    revoked_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    document = relationship("Document", back_populates="client_shares")
+    contact = relationship("SalesContact", lazy="select")
+    organization = relationship("SalesOrganization", lazy="select")
     created_by = relationship("User")

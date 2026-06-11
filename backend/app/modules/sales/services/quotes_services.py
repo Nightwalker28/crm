@@ -7,6 +7,7 @@ import secrets
 from typing import Sequence
 
 from fastapi import HTTPException, status
+from sqlalchemy import or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -20,6 +21,7 @@ from app.modules.platform.services.custom_fields import (
     save_custom_field_values,
     validate_custom_field_payload,
 )
+from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.models import SalesQuote, SalesQuoteDocument, SalesQuoteOpenEvent
 from app.modules.sales.repositories import quotes_repository
 from app.modules.user_management.models import User
@@ -50,6 +52,7 @@ EXPORT_COLUMNS = [
 PROPOSAL_TOKEN_BYTES = 32
 PROPOSAL_LINK_TTL_DAYS = 30
 PROPOSAL_EVENT_TYPES = {"opened", "viewed", "downloaded"}
+CLIENT_QUOTE_RESPONDABLE_STATUSES = {"sent"}
 
 
 def _coerce_optional(value) -> str | None:
@@ -183,6 +186,48 @@ def _build_proposal_content(quote: SalesQuote) -> str:
     return "\n".join(lines)
 
 
+def _client_quote_conditions(*, contact_id: int | None, organization_id: int | None):
+    conditions = []
+    if contact_id is not None:
+        conditions.append(SalesQuote.contact_id == contact_id)
+    if organization_id is not None:
+        conditions.append(SalesQuote.organization_id == organization_id)
+    return conditions
+
+
+def _ensure_client_quote_scope(*, contact_id: int | None, organization_id: int | None) -> None:
+    if contact_id is None and organization_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client account is not linked to a quote profile.")
+
+
+def serialize_client_quote(db: Session, quote: SalesQuote) -> dict:
+    proposal = get_latest_quote_proposal(db, quote)
+    return {
+        "quote_id": quote.quote_id,
+        "quote_number": quote.quote_number,
+        "title": quote.title,
+        "customer_name": quote.customer_name,
+        "status": quote.status,
+        "issue_date": quote.issue_date,
+        "expiry_date": quote.expiry_date,
+        "currency": quote.currency,
+        "subtotal_amount": quote.subtotal_amount,
+        "discount_amount": quote.discount_amount,
+        "tax_amount": quote.tax_amount,
+        "total_amount": quote.total_amount,
+        "notes": quote.notes,
+        "contact_id": quote.contact_id,
+        "organization_id": quote.organization_id,
+        "proposal_document_id": proposal.id if proposal else None,
+        "proposal_title": proposal.title if proposal else None,
+        "proposal_content_text": proposal.content_text if proposal else None,
+        "proposal_generated_at": proposal.generated_at if proposal else None,
+        "can_respond": quote.status in CLIENT_QUOTE_RESPONDABLE_STATUSES,
+        "created_time": quote.created_time,
+        "updated_at": quote.updated_at,
+    }
+
+
 def _proposal_public_url_path(raw_token: str) -> str:
     return f"/sales/quotes/proposal/public/{raw_token}"
 
@@ -244,6 +289,81 @@ def get_quote_or_404(db: Session, quote_id: int, *, tenant_id: int, include_dele
     if not quote:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quote not found")
     return hydrate_custom_field_record(db, tenant_id=tenant_id, module_key="sales_quotes", record=quote, record_id=quote.quote_id)
+
+
+def list_client_quotes(
+    db: Session,
+    *,
+    tenant_id: int,
+    contact_id: int | None,
+    organization_id: int | None,
+) -> Sequence[SalesQuote]:
+    _ensure_client_quote_scope(contact_id=contact_id, organization_id=organization_id)
+    return (
+        db.query(SalesQuote)
+        .filter(
+            SalesQuote.tenant_id == tenant_id,
+            SalesQuote.deleted_at.is_(None),
+            or_(*_client_quote_conditions(contact_id=contact_id, organization_id=organization_id)),
+        )
+        .order_by(SalesQuote.updated_at.desc(), SalesQuote.quote_id.desc())
+        .all()
+    )
+
+
+def get_client_quote_or_404(
+    db: Session,
+    *,
+    tenant_id: int,
+    contact_id: int | None,
+    organization_id: int | None,
+    quote_id: int,
+) -> SalesQuote:
+    _ensure_client_quote_scope(contact_id=contact_id, organization_id=organization_id)
+    quote = (
+        db.query(SalesQuote)
+        .filter(
+            SalesQuote.tenant_id == tenant_id,
+            SalesQuote.quote_id == quote_id,
+            SalesQuote.deleted_at.is_(None),
+            or_(*_client_quote_conditions(contact_id=contact_id, organization_id=organization_id)),
+        )
+        .first()
+    )
+    if not quote:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quote not found.")
+    return quote
+
+
+def respond_to_client_quote(db: Session, *, quote: SalesQuote, action: str, client_account_id: int, message: str | None = None) -> SalesQuote:
+    action = action.strip().lower()
+    if action not in {"approve", "reject"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported quote action.")
+    if quote.status not in CLIENT_QUOTE_RESPONDABLE_STATUSES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote is not open for portal response.")
+    before_status = quote.status
+    quote.status = "accepted" if action == "approve" else "declined"
+    db.add(quote)
+    db.commit()
+    db.refresh(quote)
+    action_label = "approved" if action == "approve" else "rejected"
+    log_activity(
+        db,
+        tenant_id=quote.tenant_id,
+        actor_user_id=None,
+        module_key="sales_quotes",
+        entity_type="sales_quote",
+        entity_id=quote.quote_id,
+        action=f"portal.quote.{action}",
+        description=f"Client {action_label} quote {quote.quote_number}",
+        before_state={"status": before_status},
+        after_state={
+            "status": quote.status,
+            "client_account_id": client_account_id,
+            "message": (message or "").strip() or None,
+        },
+    )
+    return quote
 
 
 def create_sales_quote(db: Session, payload: dict, current_user, replace_duplicates: bool = False, skip_duplicates: bool = False, create_new_records: bool = False) -> SalesQuote:

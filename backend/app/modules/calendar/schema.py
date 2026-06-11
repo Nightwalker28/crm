@@ -319,3 +319,25 @@ class MeetingBookingResponse(BaseModel):
 
 class MeetingBookingListResponse(BaseModel):
     results: list[MeetingBookingResponse]
+
+
+class ClientMeetingBookingResponse(BaseModel):
+    id: int
+    booking_type_id: int
+    booking_type_name: str | None = None
+    owner_name: str | None = None
+    guest_name: str
+    guest_email: str
+    guest_note: str | None = None
+    start_at: datetime
+    end_at: datetime
+    timezone: str
+    status: str
+    booked_date: date
+    meeting_url: str | None = None
+    location: str | None = None
+    created_at: datetime
+
+
+class ClientMeetingBookingListResponse(BaseModel):
+    results: list[ClientMeetingBookingResponse]

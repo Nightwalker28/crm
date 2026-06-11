@@ -15,7 +15,7 @@ const sections = [
   { key: "support", label: "Support tickets", href: "/client/support", icon: HelpCircle, state: "Next" },
   { key: "messages", label: "Messages", href: "/client/messages", icon: MessageSquare, state: "Next" },
   { key: "documents", label: "Documents", href: "/client/documents", icon: FileText, state: "Next" },
-  { key: "agreements", label: "Quotes and contracts", href: "/client/agreements", icon: ScrollText, state: "Next" },
+  { key: "quotes", label: "Quotes", href: "/client/quotes", icon: ScrollText, state: "Next" },
   { key: "bookings", label: "Bookings", href: "/client/bookings", icon: CalendarDays, state: "Next" },
   { key: "profile", label: "Profile", href: "/client/profile", icon: UserRound, state: "Next" },
 ];
@@ -92,7 +92,7 @@ export default function ClientPortalHomePage() {
             <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {sections.map((section) => {
                 const Icon = section.icon;
-                const enabled = section.href === "/client" || section.href === "/client/catalog" || section.href === "/client/orders" || section.href === "/client/support";
+                const enabled = section.href === "/client" || section.href === "/client/catalog" || section.href === "/client/orders" || section.href === "/client/support" || section.href === "/client/messages" || section.href === "/client/documents" || section.href === "/client/quotes" || section.href === "/client/bookings";
                 const className =
                   "group rounded-md border border-neutral-800 bg-neutral-900 p-4 transition-colors " +
                   (enabled ? "hover:border-neutral-600 hover:bg-neutral-800/70" : "cursor-default opacity-70");

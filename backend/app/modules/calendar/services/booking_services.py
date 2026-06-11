@@ -4,6 +4,7 @@ from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -238,6 +239,75 @@ def list_bookings(db: Session, current_user, *, booking_type_id: int | None = No
     return query.order_by(MeetingBooking.start_at.desc(), MeetingBooking.id.desc()).limit(200).all()
 
 
+def _normalize_guest_email(email: str | None) -> str:
+    return (email or "").strip().lower()
+
+
+def serialize_client_booking(booking: MeetingBooking) -> dict:
+    event = booking.calendar_event
+    return {
+        "id": booking.id,
+        "booking_type_id": booking.booking_type_id,
+        "booking_type_name": booking.booking_type.name if booking.booking_type else None,
+        "owner_name": _display_user_name(booking.booking_type.owner) if booking.booking_type and booking.booking_type.owner else None,
+        "guest_name": booking.guest_name,
+        "guest_email": booking.guest_email,
+        "guest_note": booking.guest_note,
+        "start_at": booking.start_at,
+        "end_at": booking.end_at,
+        "timezone": booking.timezone,
+        "status": booking.status,
+        "booked_date": booking.booked_date,
+        "meeting_url": event.meeting_url if event else None,
+        "location": event.location if event else None,
+        "created_at": booking.created_at,
+    }
+
+
+def list_client_bookings(db: Session, *, tenant_id: int, email: str) -> list[MeetingBooking]:
+    guest_email = _normalize_guest_email(email)
+    if not guest_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client account email is required.")
+    now = _utcnow()
+    return (
+        db.query(MeetingBooking)
+        .options(
+            selectinload(MeetingBooking.booking_type).selectinload(MeetingBookingType.owner),
+            selectinload(MeetingBooking.calendar_event),
+        )
+        .filter(
+            MeetingBooking.tenant_id == tenant_id,
+            func.lower(MeetingBooking.guest_email) == guest_email,
+            MeetingBooking.end_at >= now,
+        )
+        .order_by(MeetingBooking.start_at.asc(), MeetingBooking.id.asc())
+        .limit(100)
+        .all()
+    )
+
+
+def get_client_booking_or_404(db: Session, *, tenant_id: int, email: str, booking_id: int) -> MeetingBooking:
+    guest_email = _normalize_guest_email(email)
+    if not guest_email:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client account email is required.")
+    booking = (
+        db.query(MeetingBooking)
+        .options(
+            selectinload(MeetingBooking.booking_type).selectinload(MeetingBookingType.owner),
+            selectinload(MeetingBooking.calendar_event),
+        )
+        .filter(
+            MeetingBooking.tenant_id == tenant_id,
+            MeetingBooking.id == booking_id,
+            func.lower(MeetingBooking.guest_email) == guest_email,
+        )
+        .first()
+    )
+    if not booking:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking not found.")
+    return booking
+
+
 def get_public_booking_type(db: Session, *, slug: str) -> dict:
     return _public_booking_type_payload(_get_public_booking_type_or_404(db, slug=slug))
 
@@ -326,7 +396,7 @@ def submit_public_booking(db: Session, *, slug: str, payload: dict) -> MeetingBo
             part
             for part in [
                 f"Booked through public booking link: {booking_type.name}",
-                f"Guest: {payload['guest_name'].strip()} <{payload['guest_email'].strip()}>",
+                f"Guest: {payload['guest_name'].strip()} <{_normalize_guest_email(payload['guest_email'])}>",
                 (payload.get("guest_note") or "").strip(),
             ]
             if part
@@ -356,7 +426,7 @@ def submit_public_booking(db: Session, *, slug: str, payload: dict) -> MeetingBo
         booking_type_id=booking_type.id,
         calendar_event_id=event.id,
         guest_name=payload["guest_name"].strip(),
-        guest_email=payload["guest_email"].strip().lower(),
+        guest_email=_normalize_guest_email(payload["guest_email"]),
         guest_note=(payload.get("guest_note") or "").strip() or None,
         answers_json=answers,
         start_at=start_at,

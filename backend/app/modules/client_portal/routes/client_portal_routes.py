@@ -11,6 +11,12 @@ from app.core.cursor_pagination import CursorPagination, build_cursor_response, 
 from app.core.database import get_db
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
+from app.modules.calendar.schema import ClientMeetingBookingListResponse, ClientMeetingBookingResponse
+from app.modules.calendar.services.booking_services import (
+    get_client_booking_or_404,
+    list_client_bookings,
+    serialize_client_booking,
+)
 from app.modules.client_portal.schema import (
     ClientAccountCreateRequest,
     ClientAccountResponse,
@@ -32,6 +38,7 @@ from app.modules.client_portal.schema import (
     ClientPageUpdateRequest,
     ClientPortalOrderListResponse,
     ClientPortalOrderResponse,
+    ClientQuickQuestionCreate,
     ClientLoginRequest,
     ClientLoginResponse,
     ClientMeResponse,
@@ -85,8 +92,23 @@ from app.modules.client_portal.services.client_portal_services import (
     update_client_account_status,
     update_customer_group,
 )
-from app.modules.documents.services.document_services import resolve_document_download
+from app.modules.documents.schema import ClientDocumentListResponse, ClientDocumentResponse
+from app.modules.documents.services.document_services import (
+    get_client_document_share_or_404,
+    list_client_documents,
+    log_client_document_download,
+    resolve_document_download,
+    serialize_client_document_share,
+)
 from app.modules.platform.services.activity_logs import safe_log_activity
+from app.modules.platform.services.crm_events import safe_publish_crm_event
+from app.modules.sales.schema import ClientQuoteActionRequest, ClientQuoteListResponse, ClientQuoteResponse
+from app.modules.sales.services.quotes_services import (
+    get_client_quote_or_404,
+    list_client_quotes,
+    respond_to_client_quote,
+    serialize_client_quote,
+)
 from app.modules.support.services.cases_services import (
     add_client_support_case_comment,
     create_client_support_case,
@@ -104,6 +126,10 @@ public_client_pages_router = APIRouter(prefix="/client-pages", tags=["Client Pag
 client_catalog_router = APIRouter(prefix="/client-catalog", tags=["Client Catalog"])
 client_orders_router = APIRouter(prefix="/client-orders", tags=["Client Orders"])
 client_support_router = APIRouter(prefix="/client-support", tags=["Client Support"])
+client_messages_router = APIRouter(prefix="/client-messages", tags=["Client Messages"])
+client_documents_router = APIRouter(prefix="/client-documents", tags=["Client Documents"])
+client_quotes_router = APIRouter(prefix="/client-quotes", tags=["Client Quotes"])
+client_bookings_router = APIRouter(prefix="/client-bookings", tags=["Client Bookings"])
 client_bearer = HTTPBearer(auto_error=False)
 
 
@@ -789,6 +815,308 @@ def update_client_support_case_status_route(
         after_state=serialize_client_support_case(updated),
     )
     return ClientSupportCaseResponse.model_validate(serialize_client_support_case(updated))
+
+
+@client_messages_router.get("", response_model=ClientSupportCaseListResponse)
+def list_client_messages_route(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    messages = list_client_support_cases(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        source="client_portal_message",
+    )
+    return {"results": [ClientSupportCaseResponse.model_validate(serialize_client_support_case(message)) for message in messages]}
+
+
+@client_messages_router.post("", response_model=ClientSupportCaseResponse, status_code=status.HTTP_201_CREATED)
+def create_client_message_route(
+    payload: ClientQuickQuestionCreate,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    message = create_client_support_case(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        payload={
+            "subject": payload.subject,
+            "description": payload.message,
+            "category": "question",
+            "priority": "medium",
+        },
+        source="client_portal_message",
+        event_type="client_message_created",
+    )
+    safe_log_activity(
+        db,
+        tenant_id=account.tenant_id,
+        actor_user_id=None,
+        module_key="support_cases",
+        entity_type="support_case",
+        entity_id=message.id,
+        action="client_message_create",
+        description=f"Client asked quick question {message.case_number}",
+        after_state=serialize_client_support_case(message),
+    )
+    return ClientSupportCaseResponse.model_validate(serialize_client_support_case(message))
+
+
+@client_messages_router.get("/{message_id}", response_model=ClientSupportCaseResponse)
+def get_client_message_route(
+    message_id: int,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    message = get_client_support_case_or_404(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        case_id=message_id,
+        source="client_portal_message",
+    )
+    return ClientSupportCaseResponse.model_validate(serialize_client_support_case(message))
+
+
+@client_messages_router.post("/{message_id}/comments", response_model=ClientSupportCaseCommentResponse, status_code=status.HTTP_201_CREATED)
+def create_client_message_comment_route(
+    message_id: int,
+    payload: ClientSupportCaseCommentCreate,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    message = get_client_support_case_or_404(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        case_id=message_id,
+        source="client_portal_message",
+    )
+    comment = add_client_support_case_comment(db, case=message, payload=payload.model_dump())
+    safe_log_activity(
+        db,
+        tenant_id=account.tenant_id,
+        actor_user_id=None,
+        module_key="support_cases",
+        entity_type="support_case",
+        entity_id=message.id,
+        action="client_message_comment",
+        description=f"Client replied to quick question {message.case_number}",
+    )
+    return ClientSupportCaseCommentResponse.model_validate(
+        {
+            "id": comment.id,
+            "case_id": comment.case_id,
+            "body": comment.body,
+            "is_internal": comment.is_internal,
+            "author_type": "client",
+            "created_at": comment.created_at,
+        }
+    )
+
+
+@client_documents_router.get("", response_model=ClientDocumentListResponse)
+def list_client_documents_route(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    shares = list_client_documents(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+    )
+    return {"results": [ClientDocumentResponse.model_validate(serialize_client_document_share(share)) for share in shares]}
+
+
+@client_documents_router.get("/{document_id}/download")
+def download_client_document_route(
+    document_id: int,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    share = get_client_document_share_or_404(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        document_id=document_id,
+    )
+    document = share.document
+    storage_user = SimpleNamespace(id=document.uploaded_by_user_id or 0, tenant_id=document.tenant_id)
+    download = resolve_document_download(db, document=document, current_user=storage_user)
+    log_client_document_download(db, share=share, client_account_id=account.id)
+    if download["kind"] == "bytes":
+        return Response(
+            content=download["content"],
+            media_type=document.content_type,
+            headers={"Content-Disposition": f'inline; filename="{document.original_filename}"'},
+        )
+    return FileResponse(
+        download["path"],
+        media_type=document.content_type,
+        filename=document.original_filename,
+        content_disposition_type="inline",
+    )
+
+
+@client_quotes_router.get("", response_model=ClientQuoteListResponse)
+def list_client_quotes_route(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    quotes = list_client_quotes(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+    )
+    return {"results": [ClientQuoteResponse.model_validate(serialize_client_quote(db, quote)) for quote in quotes]}
+
+
+@client_quotes_router.get("/{quote_id}", response_model=ClientQuoteResponse)
+def get_client_quote_route(
+    quote_id: int,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    quote = get_client_quote_or_404(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        quote_id=quote_id,
+    )
+    return ClientQuoteResponse.model_validate(serialize_client_quote(db, quote))
+
+
+@client_quotes_router.get("/{quote_id}/proposal/download")
+def download_client_quote_proposal_route(
+    quote_id: int,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    quote = get_client_quote_or_404(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        quote_id=quote_id,
+    )
+    payload = serialize_client_quote(db, quote)
+    content = (payload.get("proposal_content_text") or "").strip()
+    if not content:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quote proposal not found.")
+    safe_log_activity(
+        db,
+        tenant_id=quote.tenant_id,
+        actor_user_id=None,
+        module_key="sales_quotes",
+        entity_type="sales_quote",
+        entity_id=quote.quote_id,
+        action="portal.quote.download",
+        description=f"Client downloaded quote proposal {quote.quote_number}",
+        after_state={"client_account_id": account.id, "quote_id": quote.quote_id},
+    )
+    return Response(
+        content=content,
+        media_type="text/plain; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{quote.quote_number}-proposal.txt"'},
+    )
+
+
+@client_quotes_router.post("/{quote_id}/{action}", response_model=ClientQuoteResponse)
+def respond_to_client_quote_route(
+    quote_id: int,
+    action: str,
+    payload: ClientQuoteActionRequest,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    if action not in {"approve", "reject"}:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quote action not found.")
+    quote = get_client_quote_or_404(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        quote_id=quote_id,
+    )
+    previous_status = quote.status
+    updated = respond_to_client_quote(
+        db,
+        quote=quote,
+        action=action,
+        client_account_id=account.id,
+        message=payload.message,
+    )
+    safe_publish_crm_event(
+        db,
+        tenant_id=updated.tenant_id,
+        actor_user_id=None,
+        event_type="quote.status_changed",
+        entity_type="sales_quote",
+        entity_id=updated.quote_id,
+        payload={
+            "quote_id": updated.quote_id,
+            "quote_number": updated.quote_number,
+            "client_account_id": account.id,
+            "previous_status": previous_status,
+            "status": updated.status,
+            "message": (payload.message or "").strip() or None,
+            "href": f"/dashboard/sales/quotes/{updated.quote_id}",
+        },
+    )
+    return ClientQuoteResponse.model_validate(serialize_client_quote(db, updated))
+
+
+@client_bookings_router.get("", response_model=ClientMeetingBookingListResponse)
+def list_client_bookings_route(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    bookings = list_client_bookings(db, tenant_id=account.tenant_id, email=account.email)
+    return {"results": [ClientMeetingBookingResponse.model_validate(serialize_client_booking(booking)) for booking in bookings]}
+
+
+@client_bookings_router.get("/{booking_id}", response_model=ClientMeetingBookingResponse)
+def get_client_booking_route(
+    booking_id: int,
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    booking = get_client_booking_or_404(db, tenant_id=account.tenant_id, email=account.email, booking_id=booking_id)
+    return ClientMeetingBookingResponse.model_validate(serialize_client_booking(booking))
 
 
 @public_client_pages_router.get("/{token}", response_model=ClientPagePublicResponse)

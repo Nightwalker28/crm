@@ -14,18 +14,25 @@ from sqlalchemy.orm import sessionmaker
 from starlette.datastructures import Headers
 
 from app.core.database import Base
-from app.modules.documents.models import Document, DocumentLink, DocumentVersion
+from app.modules.documents.models import Document, DocumentClientShare, DocumentLink, DocumentVersion
 from app.modules.documents.services import storage_backends
 from app.modules.documents.services.storage_backends import LocalDocumentStorage, MicrosoftOneDriveDocumentStorage
 from app.modules.documents.services.document_services import (
+    get_client_document_share_or_404,
     list_document_templates,
+    list_client_documents,
     list_document_versions,
     list_documents,
+    log_client_document_download,
     read_document_upload,
+    revoke_document_client_share,
     resolve_document_storage_path,
+    share_document_with_client,
+    serialize_client_document_share,
     update_document_template_status,
     upload_document_version,
 )
+from app.modules.platform.models import ActivityLog
 from app.modules.sales.models import SalesContact
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Role, Tenant, User, UserStatus
@@ -390,6 +397,60 @@ class DocumentServiceTests(unittest.TestCase):
         self.assertEqual([version.version_number for version in versions], [2, 1])
         self.assertEqual(document.current_version_id, versions[0].id)
         self.assertEqual(versions[1].storage_key, "tenant-10/contract-v1.pdf")
+
+    def test_client_document_share_scopes_lists_and_revokes(self):
+        share = share_document_with_client(
+            self.db,
+            tenant_id=10,
+            document_id=1,
+            payload={"contact_id": 7, "organization_id": None, "expires_at": None},
+            current_user=None,
+        )
+        client_shares = list_client_documents(self.db, tenant_id=10, contact_id=7, organization_id=None)
+        serialized = serialize_client_document_share(client_shares[0])
+
+        self.assertEqual(share.document_id, 1)
+        self.assertEqual([item.document_id for item in client_shares], [1])
+        self.assertEqual(serialized["title"], "Proposal")
+        with self.assertRaises(HTTPException) as exc:
+            get_client_document_share_or_404(self.db, tenant_id=10, contact_id=8, organization_id=None, document_id=1)
+        self.assertEqual(exc.exception.status_code, 404)
+
+        revoked = revoke_document_client_share(self.db, tenant_id=10, document_id=1, share_id=share.id, current_user=None)
+        self.assertIsNotNone(revoked.revoked_at)
+        self.assertEqual(list_client_documents(self.db, tenant_id=10, contact_id=7, organization_id=None), [])
+
+    def test_expired_client_document_share_is_hidden(self):
+        self.db.add(
+            DocumentClientShare(
+                id=10,
+                tenant_id=10,
+                document_id=1,
+                contact_id=7,
+                expires_at=datetime(2020, 1, 1, tzinfo=timezone.utc),
+                created_by_user_id=1,
+            )
+        )
+        self.db.commit()
+
+        self.assertEqual(list_client_documents(self.db, tenant_id=10, contact_id=7, organization_id=None), [])
+
+    def test_client_document_download_is_audited(self):
+        share = share_document_with_client(
+            self.db,
+            tenant_id=10,
+            document_id=1,
+            payload={"contact_id": 7},
+            current_user=None,
+        )
+        share = get_client_document_share_or_404(self.db, tenant_id=10, contact_id=7, organization_id=None, document_id=1)
+
+        log_client_document_download(self.db, share=share, client_account_id=22)
+
+        entry = self.db.query(ActivityLog).filter(ActivityLog.action == "client.download").one()
+        self.assertEqual(entry.tenant_id, 10)
+        self.assertEqual(entry.entity_id, "1")
+        self.assertEqual(entry.after_state["client_account_id"], 22)
 
 
 class MicrosoftOneDriveStorageTests(unittest.TestCase):

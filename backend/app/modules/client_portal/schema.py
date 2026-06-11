@@ -204,6 +204,11 @@ class ClientSupportCaseListResponse(BaseModel):
     results: list[ClientSupportCaseResponse]
 
 
+class ClientQuickQuestionCreate(BaseModel):
+    subject: str = Field(min_length=1, max_length=240)
+    message: str = Field(min_length=1, max_length=8000)
+
+
 class ClientPagePricingItemRequest(BaseModel):
     sku: str | None = Field(default=None, max_length=80)
     name: str = Field(min_length=1, max_length=180)

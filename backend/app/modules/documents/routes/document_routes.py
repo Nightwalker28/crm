@@ -9,6 +9,8 @@ from app.core.security import require_user
 from app.modules.documents.schema import (
     DocumentListResponse,
     DocumentResponse,
+    DocumentClientShareRequest,
+    DocumentClientShareResponse,
     DocumentStorageConnectResponse,
     DocumentStorageConnectionResponse,
     DocumentStorageProviderResponse,
@@ -29,15 +31,18 @@ from app.modules.documents.services.document_services import (
     get_document_version_or_404,
     get_document_or_404,
     list_document_templates,
+    list_document_client_shares,
     list_document_storage_connections,
     list_document_versions,
     list_documents,
     list_documents_cursor,
     log_document_download,
+    revoke_document_client_share,
     require_document_link_access,
     resolve_document_download,
     resolve_document_version_download,
     soft_delete_document,
+    share_document_with_client,
     update_document_template_status,
     upload_document_version,
 )
@@ -262,6 +267,57 @@ def get_document_versions(
     document = get_document_or_404(db, tenant_id=current_user.tenant_id, document_id=document_id)
     require_document_link_access(db, user=current_user, document=document, action="view")
     return {"results": [DocumentVersionResponse.model_validate(version) for version in list_document_versions(db, document=document)]}
+
+
+@router.get("/{document_id}/client-shares", response_model=list[DocumentClientShareResponse])
+def get_document_client_shares(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("documents")),
+    require_permission=Depends(require_action_access("documents", "view")),
+):
+    document = get_document_or_404(db, tenant_id=current_user.tenant_id, document_id=document_id)
+    require_document_link_access(db, user=current_user, document=document, action="view")
+    return [DocumentClientShareResponse.model_validate(share) for share in list_document_client_shares(db, tenant_id=current_user.tenant_id, document_id=document_id)]
+
+
+@router.post("/{document_id}/client-shares", response_model=DocumentClientShareResponse, status_code=status.HTTP_201_CREATED)
+def create_document_client_share(
+    document_id: int,
+    payload: DocumentClientShareRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("documents")),
+    require_permission=Depends(require_action_access("documents", "edit")),
+):
+    share = share_document_with_client(
+        db,
+        tenant_id=current_user.tenant_id,
+        document_id=document_id,
+        payload=payload.model_dump(),
+        current_user=current_user,
+    )
+    return DocumentClientShareResponse.model_validate(share)
+
+
+@router.delete("/{document_id}/client-shares/{share_id}", response_model=DocumentClientShareResponse)
+def delete_document_client_share(
+    document_id: int,
+    share_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("documents")),
+    require_permission=Depends(require_action_access("documents", "edit")),
+):
+    share = revoke_document_client_share(
+        db,
+        tenant_id=current_user.tenant_id,
+        document_id=document_id,
+        share_id=share_id,
+        current_user=current_user,
+    )
+    return DocumentClientShareResponse.model_validate(share)
 
 
 @router.post("/{document_id}/versions", response_model=DocumentResponse)

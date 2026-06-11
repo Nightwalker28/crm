@@ -18,7 +18,12 @@ from app.modules.client_portal.routes.client_portal_routes import (
 )
 from app.modules.client_portal.services import client_portal_services
 from app.modules.platform.models import ActivityLog
-from app.modules.sales.models import SalesContact, SalesOrganization
+from app.modules.sales.models import SalesContact, SalesOrganization, SalesQuote
+from app.modules.sales.services.quotes_services import (
+    get_client_quote_or_404,
+    list_client_quotes,
+    respond_to_client_quote,
+)
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
 from app.modules.website_integrations.models import WebsiteIntegrationOrder
@@ -691,6 +696,111 @@ class ClientPortalServiceTests(unittest.TestCase):
             client_portal_services.get_client_order_or_404(self.db, account=second, order_id=50)
 
         self.assertEqual(exc.exception.status_code, 404)
+
+    def test_client_quotes_are_scoped_to_linked_customer(self):
+        self.db.add_all(
+            [
+                SalesQuote(
+                    quote_id=501,
+                    tenant_id=10,
+                    quote_number="Q-501",
+                    customer_name="Buyer Contact",
+                    contact_id=7,
+                    status="sent",
+                    currency="USD",
+                    total_amount=Decimal("1200"),
+                ),
+                SalesQuote(
+                    quote_id=502,
+                    tenant_id=10,
+                    quote_number="Q-502",
+                    customer_name="Buyer Co",
+                    organization_id=3,
+                    status="sent",
+                    currency="USD",
+                    total_amount=Decimal("2200"),
+                ),
+                SalesQuote(
+                    quote_id=503,
+                    tenant_id=99,
+                    quote_number="Q-503",
+                    customer_name="Other Tenant",
+                    contact_id=7,
+                    status="sent",
+                    currency="USD",
+                    total_amount=Decimal("3200"),
+                ),
+            ]
+        )
+        self.db.commit()
+
+        contact_quotes = list_client_quotes(self.db, tenant_id=10, contact_id=7, organization_id=None)
+        org_quotes = list_client_quotes(self.db, tenant_id=10, contact_id=None, organization_id=3)
+
+        self.assertEqual([quote.quote_id for quote in contact_quotes], [501])
+        self.assertEqual([quote.quote_id for quote in org_quotes], [502])
+        with self.assertRaises(HTTPException) as exc:
+            get_client_quote_or_404(self.db, tenant_id=10, contact_id=7, organization_id=None, quote_id=502)
+        self.assertEqual(exc.exception.status_code, 404)
+
+    def test_client_quote_approval_updates_status_and_logs_activity(self):
+        quote = SalesQuote(
+            quote_id=504,
+            tenant_id=10,
+            quote_number="Q-504",
+            customer_name="Buyer Contact",
+            contact_id=7,
+            status="sent",
+            currency="USD",
+            total_amount=Decimal("1200"),
+        )
+        account = ClientAccount(id=42, tenant_id=10, contact_id=7, email="buyer@example.com", status="active")
+        self.db.add_all([quote, account])
+        self.db.commit()
+
+        updated = respond_to_client_quote(
+            self.db,
+            quote=quote,
+            action="approve",
+            client_account_id=account.id,
+            message="Looks good.",
+        )
+
+        self.assertEqual(updated.status, "accepted")
+        log = (
+            self.db.query(ActivityLog)
+            .filter(ActivityLog.module_key == "sales_quotes", ActivityLog.entity_id == "504")
+            .one()
+        )
+        self.assertEqual(log.action, "portal.quote.approve")
+        self.assertEqual(log.after_state["client_account_id"], 42)
+        self.assertEqual(log.after_state["message"], "Looks good.")
+
+    def test_client_quote_reject_blocks_when_not_open(self):
+        quote = SalesQuote(
+            quote_id=505,
+            tenant_id=10,
+            quote_number="Q-505",
+            customer_name="Buyer Contact",
+            contact_id=7,
+            status="accepted",
+            currency="USD",
+            total_amount=Decimal("1200"),
+        )
+        self.db.add(quote)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as exc:
+            respond_to_client_quote(
+                self.db,
+                quote=quote,
+                action="reject",
+                client_account_id=42,
+                message="No longer needed.",
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Quote is not open for portal response.")
 
     def test_client_portal_writes_are_activity_logged(self):
         group = client_portal_services.create_customer_group(

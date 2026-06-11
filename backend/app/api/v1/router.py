@@ -6,8 +6,12 @@ from app.modules.calendar.routes.calendar_routes import router as calendar_route
 from app.modules.client_portal.routes.client_portal_routes import (
     router as client_portal_router,
     client_auth_router,
+    client_bookings_router,
     client_catalog_router,
+    client_documents_router,
+    client_messages_router,
     client_orders_router,
+    client_quotes_router,
     client_support_router,
     public_client_pages_router,
 )
@@ -89,8 +93,12 @@ router.include_router(calendar_booking_router)
 router.include_router(calendar_booking_public_router)
 router.include_router(client_portal_router)
 router.include_router(client_auth_router)
+router.include_router(client_bookings_router)
 router.include_router(client_catalog_router)
+router.include_router(client_documents_router)
+router.include_router(client_messages_router)
 router.include_router(client_orders_router)
+router.include_router(client_quotes_router)
 router.include_router(client_support_router)
 router.include_router(public_client_pages_router)
 router.include_router(catalog_products_router)

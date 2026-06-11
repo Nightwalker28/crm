@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class DocumentLinkResponse(BaseModel):
@@ -10,6 +10,31 @@ class DocumentLinkResponse(BaseModel):
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentClientShareResponse(BaseModel):
+    id: int
+    document_id: int
+    contact_id: int | None = None
+    organization_id: int | None = None
+    expires_at: datetime | None = None
+    revoked_at: datetime | None = None
+    created_by_user_id: int | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DocumentClientShareRequest(BaseModel):
+    contact_id: int | None = None
+    organization_id: int | None = None
+    expires_at: datetime | None = None
+
+    @model_validator(mode="after")
+    def require_target(self):
+        if self.contact_id is None and self.organization_id is None:
+            raise ValueError("contact_id or organization_id is required")
+        return self
 
 
 class DocumentResponse(BaseModel):
@@ -28,6 +53,7 @@ class DocumentResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     links: list[DocumentLinkResponse] = []
+    client_shares: list[DocumentClientShareResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -49,6 +75,24 @@ class DocumentVersionResponse(BaseModel):
 class DocumentListResponse(BaseModel):
     results: list[DocumentResponse]
     total: int
+
+
+class ClientDocumentResponse(BaseModel):
+    id: int
+    title: str
+    description: str | None = None
+    original_filename: str
+    content_type: str
+    extension: str
+    file_size_bytes: int
+    created_at: datetime
+    updated_at: datetime
+    share_id: int
+    expires_at: datetime | None = None
+
+
+class ClientDocumentListResponse(BaseModel):
+    results: list[ClientDocumentResponse]
 
 
 class DocumentVersionListResponse(BaseModel):

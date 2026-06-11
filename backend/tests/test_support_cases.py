@@ -165,6 +165,34 @@ class SupportCaseTests(unittest.TestCase):
             get_client_support_case_or_404(self.db, tenant_id=10, contact_id=30, organization_id=20, case_id=second.id)
         self.assertEqual(exc.exception.status_code, 404)
 
+    def test_client_quick_questions_are_source_scoped(self):
+        ticket = create_client_support_case(
+            self.db,
+            tenant_id=10,
+            contact_id=30,
+            organization_id=20,
+            payload={"subject": "Formal ticket", "category": "technical"},
+        )
+        question = create_client_support_case(
+            self.db,
+            tenant_id=10,
+            contact_id=30,
+            organization_id=20,
+            payload={"subject": "Quick question", "description": "Can you confirm this?", "category": "question"},
+            source="client_portal_message",
+            event_type="client_message_created",
+        )
+
+        tickets = list_client_support_cases(self.db, tenant_id=10, contact_id=30, organization_id=20)
+        messages = list_client_support_cases(self.db, tenant_id=10, contact_id=30, organization_id=20, source="client_portal_message")
+
+        self.assertEqual([case.id for case in tickets], [ticket.id])
+        self.assertEqual([case.id for case in messages], [question.id])
+        self.assertEqual(question.source, "client_portal_message")
+        with self.assertRaises(HTTPException) as exc:
+            get_client_support_case_or_404(self.db, tenant_id=10, contact_id=30, organization_id=20, case_id=ticket.id, source="client_portal_message")
+        self.assertEqual(exc.exception.status_code, 404)
+
     def test_client_can_close_and_reopen_own_case(self):
         item = create_client_support_case(
             self.db,

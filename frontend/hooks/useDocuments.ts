@@ -14,6 +14,17 @@ export type DocumentLink = {
   created_at: string;
 };
 
+export type DocumentClientShare = {
+  id: number;
+  document_id: number;
+  contact_id?: number | null;
+  organization_id?: number | null;
+  expires_at?: string | null;
+  revoked_at?: string | null;
+  created_by_user_id?: number | null;
+  created_at: string;
+};
+
 export type DocumentItem = {
   id: number;
   title: string;
@@ -30,6 +41,7 @@ export type DocumentItem = {
   created_at: string;
   updated_at: string;
   links: DocumentLink[];
+  client_shares: DocumentClientShare[];
 };
 
 export type DocumentVersion = {
@@ -233,6 +245,31 @@ export async function deleteDocument(documentId: number): Promise<DocumentItem> 
   return body as DocumentItem;
 }
 
+export async function shareDocumentWithClient(
+  documentId: number,
+  payload: { contact_id?: number | null; organization_id?: number | null; expires_at?: string | null },
+): Promise<DocumentClientShare> {
+  const res = await apiFetch(`/documents/${documentId}/client-shares`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const body = await readJsonSafely(res);
+  if (!res.ok) {
+    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to share document.");
+  }
+  return body as DocumentClientShare;
+}
+
+export async function revokeDocumentClientShare(documentId: number, shareId: number): Promise<DocumentClientShare> {
+  const res = await apiFetch(`/documents/${documentId}/client-shares/${shareId}`, { method: "DELETE" });
+  const body = await readJsonSafely(res);
+  if (!res.ok) {
+    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to revoke document access.");
+  }
+  return body as DocumentClientShare;
+}
+
 export function useDocuments(params: { search?: string; moduleKey?: string; entityId?: string | number; isTemplate?: boolean; limit?: number; sort?: DocumentSortState } = {}) {
   return useQuery({
     queryKey: [
@@ -305,6 +342,15 @@ export function useDocumentActions(scope?: { moduleKey?: string; entityId?: stri
       updateDocumentTemplateStatus(documentId, { is_template: isTemplate, template_category: templateCategory }),
     onSuccess: invalidate,
   });
+  const shareMutation = useMutation({
+    mutationFn: ({ documentId, payload }: { documentId: number; payload: { contact_id?: number | null; organization_id?: number | null; expires_at?: string | null } }) =>
+      shareDocumentWithClient(documentId, payload),
+    onSuccess: invalidate,
+  });
+  const revokeShareMutation = useMutation({
+    mutationFn: ({ documentId, shareId }: { documentId: number; shareId: number }) => revokeDocumentClientShare(documentId, shareId),
+    onSuccess: invalidate,
+  });
   const connectDriveMutation = useMutation({
     mutationFn: () => connectGoogleDriveStorage(),
   });
@@ -319,6 +365,8 @@ export function useDocumentActions(scope?: { moduleKey?: string; entityId?: stri
     uploadDocument: uploadMutation.mutateAsync,
     uploadDocumentVersion: uploadVersionMutation.mutateAsync,
     updateDocumentTemplateStatus: templateMutation.mutateAsync,
+    shareDocumentWithClient: shareMutation.mutateAsync,
+    revokeDocumentClientShare: revokeShareMutation.mutateAsync,
     deleteDocument: deleteMutation.mutateAsync,
     connectGoogleDriveStorage: connectDriveMutation.mutateAsync,
     disconnectGoogleDriveStorage: disconnectDriveMutation.mutateAsync,
@@ -327,6 +375,8 @@ export function useDocumentActions(scope?: { moduleKey?: string; entityId?: stri
     isUploadingDocument: uploadMutation.isPending,
     isUploadingDocumentVersion: uploadVersionMutation.isPending,
     isUpdatingDocumentTemplate: templateMutation.isPending,
+    isSharingDocument: shareMutation.isPending,
+    isRevokingDocumentShare: revokeShareMutation.isPending,
     isDeletingDocument: deleteMutation.isPending,
     isConnectingGoogleDrive: connectDriveMutation.isPending,
     isDisconnectingGoogleDrive: disconnectDriveMutation.isPending,

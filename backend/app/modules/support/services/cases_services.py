@@ -223,8 +223,8 @@ def get_case_or_404(db: Session, *, tenant_id: int, case_id: int) -> SupportCase
     return item
 
 
-def _client_scope_filter(query, *, tenant_id: int, contact_id: int | None, organization_id: int | None):
-    query = query.filter(SupportCase.tenant_id == tenant_id, SupportCase.source == "client_portal")
+def _client_scope_filter(query, *, tenant_id: int, contact_id: int | None, organization_id: int | None, source: str = "client_portal"):
+    query = query.filter(SupportCase.tenant_id == tenant_id, SupportCase.source == source)
     conditions = []
     if contact_id:
         conditions.append(SupportCase.contact_id == contact_id)
@@ -242,6 +242,7 @@ def _client_case_or_404(
     contact_id: int | None,
     organization_id: int | None,
     case_id: int,
+    source: str = "client_portal",
 ) -> SupportCase:
     item = (
         _client_scope_filter(
@@ -249,6 +250,7 @@ def _client_case_or_404(
             tenant_id=tenant_id,
             contact_id=contact_id,
             organization_id=organization_id,
+            source=source,
         )
         .filter(SupportCase.id == case_id)
         .first()
@@ -264,6 +266,7 @@ def list_client_support_cases(
     tenant_id: int,
     contact_id: int | None,
     organization_id: int | None,
+    source: str = "client_portal",
 ) -> list[SupportCase]:
     return (
         _client_scope_filter(
@@ -271,6 +274,7 @@ def list_client_support_cases(
             tenant_id=tenant_id,
             contact_id=contact_id,
             organization_id=organization_id,
+            source=source,
         )
         .order_by(SupportCase.updated_at.desc(), SupportCase.id.desc())
         .all()
@@ -284,6 +288,7 @@ def get_client_support_case_or_404(
     contact_id: int | None,
     organization_id: int | None,
     case_id: int,
+    source: str = "client_portal",
 ) -> SupportCase:
     return _client_case_or_404(
         db,
@@ -291,6 +296,7 @@ def get_client_support_case_or_404(
         contact_id=contact_id,
         organization_id=organization_id,
         case_id=case_id,
+        source=source,
     )
 
 
@@ -301,6 +307,8 @@ def create_client_support_case(
     contact_id: int | None,
     organization_id: int | None,
     payload: dict,
+    source: str = "client_portal",
+    event_type: str = "client_created",
 ) -> SupportCase:
     if not contact_id and not organization_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client account is not linked to a support profile")
@@ -310,7 +318,7 @@ def create_client_support_case(
         "category": _clean_text(payload.get("category")),
         "priority": _validate_choice(payload.get("priority"), CASE_PRIORITIES, default="medium", detail="Invalid case priority"),
         "status": "new",
-        "source": "client_portal",
+        "source": source,
         "contact_id": contact_id,
         "organization_id": organization_id,
         "case_number": _generate_case_number(db, tenant_id=tenant_id),
@@ -321,7 +329,7 @@ def create_client_support_case(
     item = SupportCase(tenant_id=tenant_id, **data)
     db.add(item)
     db.flush()
-    _record_event(db, item, event_type="client_created", current_user=None, payload={"category": data["category"]})
+    _record_event(db, item, event_type=event_type, current_user=None, payload={"category": data["category"], "source": source})
     case_id = item.id
     try:
         db.commit()
