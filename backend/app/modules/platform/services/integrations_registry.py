@@ -18,67 +18,124 @@ KNOWN_PROVIDERS = [
         "name": "Gmail",
         "category": "Communication",
         "description": "Google mailbox sending and opt-in inbox sync.",
-        "metadata_json": {"config_href": "/dashboard/mail", "source": "mail"},
+        "metadata_json": {
+            "config_href": "/dashboard/mail",
+            "reconnect_href": "/dashboard/mail",
+            "reconnect_action": "Connect Gmail",
+            "source": "mail",
+        },
     },
     {
         "key": "microsoft_mail",
         "name": "Microsoft Mail",
         "category": "Communication",
         "description": "Microsoft Graph mailbox sending and opt-in inbox sync.",
-        "metadata_json": {"config_href": "/dashboard/mail", "source": "mail"},
+        "metadata_json": {
+            "config_href": "/dashboard/mail",
+            "reconnect_href": "/dashboard/mail",
+            "reconnect_action": "Connect Microsoft Mail",
+            "source": "mail",
+        },
     },
     {
         "key": "imap_smtp_mail",
         "name": "IMAP / SMTP",
         "category": "Communication",
         "description": "Custom mailbox connection for sending and inbox sync.",
-        "metadata_json": {"config_href": "/dashboard/mail", "source": "mail"},
+        "metadata_json": {
+            "config_href": "/dashboard/mail",
+            "reconnect_href": "/dashboard/mail",
+            "reconnect_action": "Reconnect IMAP / SMTP",
+            "source": "mail",
+        },
     },
     {
         "key": "google_calendar",
         "name": "Google Calendar",
         "category": "Scheduling",
         "description": "Google Calendar sync for CRM calendar events.",
-        "metadata_json": {"config_href": "/dashboard/calendar", "source": "calendar"},
+        "metadata_json": {
+            "config_href": "/dashboard/calendar",
+            "reconnect_href": "/dashboard/calendar",
+            "reconnect_action": "Reconnect Google Calendar",
+            "source": "calendar",
+        },
     },
     {
         "key": "microsoft_calendar",
         "name": "Microsoft Calendar",
         "category": "Scheduling",
         "description": "Microsoft Calendar connection readiness.",
-        "metadata_json": {"config_href": "/dashboard/calendar", "source": "calendar"},
+        "metadata_json": {
+            "config_href": "/dashboard/calendar",
+            "reconnect_href": "/dashboard/calendar",
+            "reconnect_action": "Reconnect Microsoft Calendar",
+            "source": "calendar",
+        },
     },
     {
         "key": "google_drive",
         "name": "Google Drive",
         "category": "Documents",
         "description": "External document storage connection.",
-        "metadata_json": {"config_href": "/dashboard/documents", "source": "documents"},
+        "metadata_json": {
+            "config_href": "/dashboard/documents",
+            "reconnect_href": "/dashboard/documents",
+            "reconnect_action": "Reconnect Google Drive",
+            "source": "documents",
+        },
+    },
+    {
+        "key": "microsoft_onedrive",
+        "name": "Microsoft OneDrive",
+        "category": "Documents",
+        "description": "Microsoft OneDrive document storage connection.",
+        "metadata_json": {
+            "config_href": "/dashboard/documents",
+            "reconnect_href": "/dashboard/documents",
+            "reconnect_action": "Reconnect OneDrive",
+            "source": "documents",
+        },
     },
     {
         "key": "website_api",
         "name": "Website API",
         "category": "Website",
         "description": "Scoped API keys for public catalog reads and website order writeback.",
-        "metadata_json": {"config_href": "/dashboard/settings/integrations#website-apis", "source": "website"},
+        "metadata_json": {
+            "config_href": "/dashboard/settings/integrations#website-apis",
+            "reconnect_href": "/dashboard/settings/integrations#website-apis",
+            "reconnect_action": "Create API Key",
+            "source": "website",
+        },
     },
     {
         "key": "slack_webhooks",
         "name": "Slack Webhooks",
         "category": "Notifications",
         "description": "Slack incoming webhooks for CRM event alerts.",
-        "metadata_json": {"config_href": "/dashboard/settings/integrations#webhooks", "source": "notifications"},
+        "metadata_json": {
+            "config_href": "/dashboard/settings/integrations#webhooks",
+            "reconnect_href": "/dashboard/settings/integrations#webhooks",
+            "reconnect_action": "Add Slack Webhook",
+            "source": "notifications",
+        },
     },
     {
         "key": "teams_webhooks",
         "name": "Microsoft Teams Webhooks",
         "category": "Notifications",
         "description": "Microsoft Teams incoming webhooks for CRM event alerts.",
-        "metadata_json": {"config_href": "/dashboard/settings/integrations#webhooks", "source": "notifications"},
+        "metadata_json": {
+            "config_href": "/dashboard/settings/integrations#webhooks",
+            "reconnect_href": "/dashboard/settings/integrations#webhooks",
+            "reconnect_action": "Add Teams Webhook",
+            "source": "notifications",
+        },
     },
 ]
 
-_PUBLIC_SETTINGS_KEYS = {"label", "notes", "scope_summary"}
+_PUBLIC_SETTINGS_KEYS = {"label", "last_failure_reason", "notes", "scope_summary"}
 
 
 def _public_settings(settings: dict[str, Any] | None) -> dict[str, Any]:
@@ -92,6 +149,8 @@ def _latest(*values: datetime | None) -> datetime | None:
 
 def _aggregate_status(rows) -> str:
     statuses = {str(row.status).lower() for row in rows}
+    if "expired" in statuses or "reconnect_required" in statuses:
+        return "reconnect_required"
     if "connected" in statuses or "active" in statuses:
         return "connected"
     if "error" in statuses:
@@ -101,15 +160,70 @@ def _aggregate_status(rows) -> str:
     return "disconnected"
 
 
+def _normalize_scopes(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return sorted({str(item).strip() for item in value if str(item).strip()})
+    if isinstance(value, str):
+        return sorted({part.strip() for part in value.replace(",", " ").split() if part.strip()})
+    return []
+
+
+def _credential_state_for_rows(rows) -> str:
+    rows = list(rows)
+    if not rows:
+        return "not_configured"
+    now = datetime.now(timezone.utc)
+    has_connected = False
+    has_expired = False
+    for row in rows:
+        status = str(getattr(row, "status", "") or "").lower()
+        if status in {"expired", "reconnect_required"}:
+            has_expired = True
+        expires_at = getattr(row, "token_expires_at", None)
+        if expires_at is not None:
+            comparable = expires_at if expires_at.tzinfo is not None else expires_at.replace(tzinfo=timezone.utc)
+            if comparable <= now and not getattr(row, "refresh_token", None):
+                has_expired = True
+        if status in {"connected", "active"}:
+            has_connected = True
+    if has_expired:
+        return "expired"
+    if has_connected:
+        return "valid"
+    return "not_configured"
+
+
+def _health_status(status: str, credential_state: str, last_error: str | None) -> str:
+    if last_error or status == "error":
+        return "error"
+    if status == "reconnect_required" or credential_state == "expired":
+        return "reconnect_required"
+    if status == "connected":
+        return "healthy"
+    if status == "pending":
+        return "pending"
+    return "not_configured"
+
+
 def _aggregate_rows(rows, *, last_sync_attr: str | None = None, error_attr: str | None = None) -> dict[str, Any]:
     rows = list(rows)
     last_sync_at = _latest(*(getattr(row, last_sync_attr, None) for row in rows)) if last_sync_attr else None
     errors = [getattr(row, error_attr, None) for row in rows] if error_attr else []
+    last_error = next((error for error in errors if error), None)
+    scopes: set[str] = set()
+    for row in rows:
+        scopes.update(_normalize_scopes(getattr(row, "scopes", None)))
+    status = _aggregate_status(rows)
+    credential_state = _credential_state_for_rows(rows)
     return {
-        "status": _aggregate_status(rows),
+        "status": "reconnect_required" if credential_state == "expired" and status == "connected" else status,
         "connection_count": sum(1 for row in rows if str(row.status).lower() in {"connected", "active"}),
         "last_sync_at": last_sync_at,
-        "last_error": next((error for error in errors if error), None),
+        "last_successful_sync_at": last_sync_at if not last_error else None,
+        "last_error": last_error,
+        "last_failure_reason": last_error,
+        "credential_state": credential_state,
+        "scopes": sorted(scopes),
     }
 
 
@@ -142,17 +256,28 @@ def list_registry_connections(db: Session, *, tenant_id: int) -> list[Integratio
 
 
 def serialize_registry_connection(connection: IntegrationConnection) -> dict[str, Any]:
+    settings = _public_settings(connection.settings_json)
+    scopes = _normalize_scopes(settings.get("scope_summary"))
+    last_failure_reason = settings.get("last_failure_reason")
     return {
         "id": connection.id,
         "provider_key": connection.provider_key,
         "status": connection.status,
+        "provider_display_name": connection.provider.name if connection.provider else connection.provider_key,
         "connected_by_id": connection.connected_by_id,
         "connected_at": connection.connected_at,
         "last_sync_at": connection.last_sync_at,
-        "settings_json": _public_settings(connection.settings_json),
+        "last_successful_sync_at": connection.last_sync_at if connection.status == "connected" else None,
+        "settings_json": settings,
         "source": "registry",
         "connection_count": 1 if connection.status == "connected" else 0,
-        "last_error": None,
+        "credential_state": "valid" if connection.status == "connected" else "not_configured",
+        "health_status": _health_status(connection.status, "valid" if connection.status == "connected" else "not_configured", last_failure_reason),
+        "scopes": scopes,
+        "last_error": last_failure_reason,
+        "last_failure_reason": last_failure_reason,
+        "reconnect_url": (connection.provider.metadata_json or {}).get("reconnect_href") if connection.provider else None,
+        "reconnect_action": (connection.provider.metadata_json or {}).get("reconnect_action") if connection.provider else None,
         "created_at": connection.created_at,
         "updated_at": connection.updated_at,
     }
@@ -173,9 +298,11 @@ def _derived_connections(db: Session, *, tenant_id: int) -> dict[str, dict[str, 
         if rows:
             derived[provider_key] = {**_aggregate_rows(rows, last_sync_attr="last_synced_at", error_attr="last_error"), "source": "calendar"}
 
-    storage_rows = db.query(DocumentStorageConnection).filter(DocumentStorageConnection.tenant_id == tenant_id, DocumentStorageConnection.provider == "google_drive").all()
-    if storage_rows:
-        derived["google_drive"] = {**_aggregate_rows(storage_rows, error_attr="last_error"), "source": "documents"}
+    storage_rows = db.query(DocumentStorageConnection).filter(DocumentStorageConnection.tenant_id == tenant_id).all()
+    for source_key, provider_key in {"google_drive": "google_drive", "microsoft_onedrive": "microsoft_onedrive"}.items():
+        rows = [row for row in storage_rows if row.provider == source_key]
+        if rows:
+            derived[provider_key] = {**_aggregate_rows(rows, error_attr="last_error"), "source": "documents"}
 
     website_keys = db.query(WebsiteIntegrationApiKey).filter(WebsiteIntegrationApiKey.tenant_id == tenant_id).all()
     if website_keys:
@@ -184,7 +311,11 @@ def _derived_connections(db: Session, *, tenant_id: int) -> dict[str, dict[str, 
             "status": "connected" if active_keys else "disconnected",
             "connection_count": len(active_keys),
             "last_sync_at": _latest(*(key.last_used_at for key in website_keys)),
+            "last_successful_sync_at": _latest(*(key.last_used_at for key in website_keys)),
             "last_error": None,
+            "last_failure_reason": None,
+            "credential_state": "valid" if active_keys else "not_configured",
+            "scopes": sorted({scope for key in active_keys for scope in (key.scopes or [])}),
             "source": "website",
         }
 
@@ -197,24 +328,38 @@ def _derived_connections(db: Session, *, tenant_id: int) -> dict[str, dict[str, 
                 "status": "connected" if active_rows else "disconnected",
                 "connection_count": len(active_rows),
                 "last_sync_at": None,
+                "last_successful_sync_at": None,
                 "last_error": None,
+                "last_failure_reason": None,
+                "credential_state": "valid" if active_rows else "not_configured",
+                "scopes": [],
                 "source": "notifications",
             }
     return derived
 
 
 def _merge_connection(provider_key: str, registry: IntegrationConnection | None, derived: dict[str, Any] | None) -> dict[str, Any]:
+    provider = registry.provider if registry else None
+    metadata = provider.metadata_json if provider else {}
     base = serialize_registry_connection(registry) if registry else {
         "id": None,
         "provider_key": provider_key,
         "status": "disconnected",
+        "provider_display_name": None,
         "connected_by_id": None,
         "connected_at": None,
         "last_sync_at": None,
+        "last_successful_sync_at": None,
         "settings_json": {},
         "source": "provider_catalog",
         "connection_count": 0,
+        "credential_state": "not_configured",
+        "health_status": "not_configured",
+        "scopes": [],
         "last_error": None,
+        "last_failure_reason": None,
+        "reconnect_url": None,
+        "reconnect_action": None,
         "created_at": None,
         "updated_at": None,
     }
@@ -222,10 +367,19 @@ def _merge_connection(provider_key: str, registry: IntegrationConnection | None,
         base.update({
             "status": derived["status"],
             "last_sync_at": _latest(base["last_sync_at"], derived["last_sync_at"]),
+            "last_successful_sync_at": _latest(base["last_successful_sync_at"], derived["last_successful_sync_at"]),
             "source": derived["source"] if not registry else f'{derived["source"]}+registry',
             "connection_count": derived["connection_count"],
             "last_error": derived["last_error"],
+            "last_failure_reason": derived["last_failure_reason"],
+            "credential_state": derived["credential_state"],
+            "scopes": derived["scopes"],
         })
+    if provider is not None:
+        base["provider_display_name"] = provider.name
+        base["reconnect_url"] = metadata.get("reconnect_href")
+        base["reconnect_action"] = metadata.get("reconnect_action")
+    base["health_status"] = _health_status(base["status"], base["credential_state"], base["last_failure_reason"])
     return base
 
 
@@ -233,7 +387,18 @@ def list_integration_health(db: Session, *, tenant_id: int) -> list[dict[str, An
     providers = seed_provider_registry(db)
     registry = {connection.provider_key: connection for connection in list_registry_connections(db, tenant_id=tenant_id)}
     derived = _derived_connections(db, tenant_id=tenant_id)
-    return [{"provider": provider, "connection": _merge_connection(provider.key, registry.get(provider.key), derived.get(provider.key))} for provider in providers]
+    return [
+        {
+            "provider": provider,
+            "connection": {
+                **_merge_connection(provider.key, registry.get(provider.key), derived.get(provider.key)),
+                "provider_display_name": provider.name,
+                "reconnect_url": (provider.metadata_json or {}).get("reconnect_href"),
+                "reconnect_action": (provider.metadata_json or {}).get("reconnect_action"),
+            },
+        }
+        for provider in providers
+    ]
 
 
 def list_integration_connections(db: Session, *, tenant_id: int) -> list[dict[str, Any]]:

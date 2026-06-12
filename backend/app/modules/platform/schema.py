@@ -765,13 +765,21 @@ class IntegrationConnectionResponse(BaseModel):
     id: int | None = None
     provider_key: str
     status: str
+    provider_display_name: str | None = None
     connected_by_id: int | None = None
     connected_at: datetime | None = None
     last_sync_at: datetime | None = None
+    last_successful_sync_at: datetime | None = None
     settings_json: dict[str, Any] = Field(default_factory=dict)
     source: str = "registry"
     connection_count: int = 0
+    credential_state: str = "not_configured"
+    health_status: str = "not_configured"
+    scopes: list[str] = Field(default_factory=list)
     last_error: str | None = None
+    last_failure_reason: str | None = None
+    reconnect_url: str | None = None
+    reconnect_action: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

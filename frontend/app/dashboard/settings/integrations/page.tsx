@@ -81,10 +81,18 @@ type IntegrationRegistryHealth = {
     id: number | null;
     provider_key: string;
     status: string;
+    provider_display_name: string | null;
     last_sync_at: string | null;
+    last_successful_sync_at: string | null;
     source: string;
     connection_count: number;
+    credential_state: string;
+    health_status: string;
+    scopes: string[];
     last_error: string | null;
+    last_failure_reason: string | null;
+    reconnect_url: string | null;
+    reconnect_action: string | null;
   };
 };
 
@@ -210,13 +218,17 @@ function connectionStatusPill(status: string) {
   if (status === "connected") {
     return { bg: "bg-emerald-950/60", text: "text-emerald-200", border: "border-emerald-800/70" };
   }
-  if (status === "error") {
+  if (status === "error" || status === "reconnect_required") {
     return { bg: "bg-red-950/60", text: "text-red-200", border: "border-red-800/70" };
   }
   if (status === "pending") {
     return { bg: "bg-amber-950/60", text: "text-amber-200", border: "border-amber-800/70" };
   }
   return { bg: "bg-neutral-900", text: "text-neutral-400", border: "border-neutral-800" };
+}
+
+function formatStatus(value: string) {
+  return value.replace(/_/g, " ");
 }
 
 function money(value: string | number | null | undefined, currency: string) {
@@ -539,17 +551,25 @@ export default function IntegrationsPage() {
                         <h3 className="mt-1 text-base font-semibold text-neutral-100">{provider.name}</h3>
                       </div>
                     </div>
-                    <Pill bg={tone.bg} text={tone.text} border={tone.border}>{connection.status}</Pill>
+                    <Pill bg={tone.bg} text={tone.text} border={tone.border}>{formatStatus(connection.status)}</Pill>
                   </div>
                   <p className="mt-3 text-sm leading-5 text-neutral-500">{provider.description}</p>
                   <div className="mt-4 grid gap-1 text-xs text-neutral-500">
                     <div>{connection.connection_count} active connection{connection.connection_count === 1 ? "" : "s"}</div>
+                    <div>Health: {formatStatus(connection.health_status)}</div>
+                    <div>Credentials: {formatStatus(connection.credential_state)}</div>
                     <div>{connection.last_sync_at ? `Last activity ${formatDateTime(connection.last_sync_at)}` : "No sync activity recorded"}</div>
-                    {connection.last_error ? <div className="truncate text-red-300">{connection.last_error}</div> : null}
+                    <div>{connection.last_successful_sync_at ? `Last successful sync ${formatDateTime(connection.last_successful_sync_at)}` : "No successful sync recorded"}</div>
+                    {connection.scopes.length ? <div className="truncate">Scopes: {connection.scopes.join(", ")}</div> : null}
+                    {connection.last_failure_reason || connection.last_error ? (
+                      <div className="truncate text-red-300">{connection.last_failure_reason || connection.last_error}</div>
+                    ) : null}
                   </div>
-                  {provider.metadata_json.config_href ? (
+                  {connection.reconnect_url || provider.metadata_json.config_href ? (
                     <Button type="button" variant="outline" size="sm" className="mt-4" asChild>
-                      <Link href={provider.metadata_json.config_href}>Configure</Link>
+                      <Link href={connection.reconnect_url || provider.metadata_json.config_href || "#"}>
+                        {connection.status === "connected" ? "Configure" : connection.reconnect_action || "Reconnect"}
+                      </Link>
                     </Button>
                   ) : null}
                 </Card>

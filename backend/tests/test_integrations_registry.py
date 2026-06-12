@@ -5,6 +5,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.modules.calendar.models import UserCalendarConnection
+from app.modules.documents.models import DocumentStorageConnection
 from app.modules.finance import models as finance_models  # noqa: F401
 from app.modules.mail.models import UserMailConnection
 from app.modules.platform.models import IntegrationConnection, NotificationChannel
@@ -38,9 +40,10 @@ class IntegrationsRegistryTests(unittest.TestCase):
 
         providers = list_provider_registry(self.db)
 
-        self.assertEqual(len(providers), 9)
-        self.assertEqual(len({provider.key for provider in providers}), 9)
+        self.assertEqual(len(providers), 10)
+        self.assertEqual(len({provider.key for provider in providers}), 10)
         self.assertEqual(next(provider for provider in providers if provider.key == "google_mail").metadata_json["config_href"], "/dashboard/mail")
+        self.assertEqual(next(provider for provider in providers if provider.key == "microsoft_onedrive").metadata_json["source"], "documents")
 
     def test_health_derives_existing_connections_inside_tenant(self):
         now = datetime.now(timezone.utc)
@@ -48,6 +51,8 @@ class IntegrationsRegistryTests(unittest.TestCase):
             [
                 UserMailConnection(id=1, tenant_id=10, user_id=1, provider="google", status="connected", last_synced_at=now),
                 UserMailConnection(id=2, tenant_id=99, user_id=2, provider="google", status="connected"),
+                UserCalendarConnection(id=1, tenant_id=10, user_id=1, provider="microsoft", status="connected", scopes=["Calendars.ReadWrite"], token_expires_at=now),
+                DocumentStorageConnection(id=1, tenant_id=10, user_id=1, provider="microsoft_onedrive", status="connected", scopes=["Files.ReadWrite.AppFolder"]),
                 WebsiteIntegrationApiKey(id=1, tenant_id=10, name="WordPress", key_prefix="lynk_live", key_hash="a" * 64, status="active"),
                 WebsiteIntegrationApiKey(id=2, tenant_id=99, name="Other", key_prefix="lynk_other", key_hash="b" * 64, status="active"),
                 NotificationChannel(id=1, tenant_id=10, provider="slack", webhook_url="https://hooks.slack.example/test", is_active=True),
@@ -60,6 +65,14 @@ class IntegrationsRegistryTests(unittest.TestCase):
         self.assertEqual(health["google_mail"]["status"], "connected")
         self.assertEqual(health["google_mail"]["connection_count"], 1)
         self.assertEqual(health["google_mail"]["last_sync_at"], now.replace(tzinfo=None))
+        self.assertEqual(health["google_mail"]["credential_state"], "valid")
+        self.assertEqual(health["google_mail"]["health_status"], "healthy")
+        self.assertEqual(health["microsoft_calendar"]["status"], "reconnect_required")
+        self.assertEqual(health["microsoft_calendar"]["credential_state"], "expired")
+        self.assertEqual(health["microsoft_calendar"]["health_status"], "reconnect_required")
+        self.assertEqual(health["microsoft_calendar"]["scopes"], ["Calendars.ReadWrite"])
+        self.assertEqual(health["microsoft_onedrive"]["status"], "connected")
+        self.assertEqual(health["microsoft_onedrive"]["scopes"], ["Files.ReadWrite.AppFolder"])
         self.assertEqual(health["website_api"]["connection_count"], 1)
         self.assertEqual(health["slack_webhooks"]["status"], "connected")
         self.assertEqual(health["microsoft_mail"]["status"], "disconnected")
@@ -71,7 +84,7 @@ class IntegrationsRegistryTests(unittest.TestCase):
             tenant_id=10,
             provider_key="google_drive",
             status="connected",
-            settings_json={"label": "Shared Drive", "access_token": "do-not-return"},
+            settings_json={"label": "Shared Drive", "scope_summary": "drive.file", "last_failure_reason": "Shared drive permission failed", "access_token": "do-not-return"},
         )
         upsert_integration_connection(self.db, tenant_id=99, provider_key="google_drive", status="connected")
 
@@ -79,7 +92,12 @@ class IntegrationsRegistryTests(unittest.TestCase):
 
         self.assertEqual(len(connections), 1)
         self.assertEqual(connections[0]["provider_key"], "google_drive")
-        self.assertEqual(connections[0]["settings_json"], {"label": "Shared Drive"})
+        self.assertEqual(
+            connections[0]["settings_json"],
+            {"label": "Shared Drive", "last_failure_reason": "Shared drive permission failed", "scope_summary": "drive.file"},
+        )
+        self.assertEqual(connections[0]["scopes"], ["drive.file"])
+        self.assertEqual(connections[0]["last_failure_reason"], "Shared drive permission failed")
 
     def test_sync_runs_are_tenant_scoped_and_filterable(self):
         seed_provider_registry(self.db)
