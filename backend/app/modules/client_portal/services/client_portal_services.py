@@ -360,6 +360,143 @@ def serialize_client_order(order: WebsiteIntegrationOrder) -> dict:
     }
 
 
+def build_client_overview(db: Session, *, account: ClientAccount) -> dict:
+    from app.modules.calendar.services.booking_services import list_client_bookings
+    from app.modules.documents.services.document_services import list_client_documents
+    from app.modules.sales.services.quotes_services import list_client_quotes, serialize_client_quote
+    from app.modules.support.services.cases_services import list_client_support_cases
+
+    group = resolve_client_customer_group(db, account=account)
+    account_payload = serialize_client_account(account)
+    catalog_items = list_client_catalog_items(db, account=account, limit=100)
+    orders = list_client_orders(db, account=account)
+    support_cases = list_client_support_cases(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+    )
+    messages = list_client_support_cases(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+        source="client_portal_message",
+    )
+    documents = list_client_documents(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+    )
+    quotes = list_client_quotes(
+        db,
+        tenant_id=account.tenant_id,
+        contact_id=account.contact_id,
+        organization_id=account.organization_id,
+    )
+    bookings = list_client_bookings(db, tenant_id=account.tenant_id, email=account.email)
+    quote_payloads = [serialize_client_quote(db, quote) for quote in quotes]
+    open_support_cases = [case for case in support_cases if case.status not in {"closed", "resolved"}]
+    pending_orders = [order for order in orders if order.status in {"submitted", "under_review", "confirmed", "in_progress"}]
+
+    actions: list[dict] = []
+    quote_to_review = next((quote for quote in quote_payloads if quote.get("can_respond")), None)
+    if quote_to_review:
+        actions.append(
+            {
+                "key": f"quote-{quote_to_review['quote_id']}",
+                "label": f"Review quote {quote_to_review['quote_number']}",
+                "description": quote_to_review.get("proposal_title") or quote_to_review.get("title") or "Quote is waiting for your response.",
+                "href": f"/client/quotes/{quote_to_review['quote_id']}",
+                "status": quote_to_review.get("status"),
+                "created_at": quote_to_review.get("created_time"),
+            }
+        )
+    if pending_orders:
+        order = pending_orders[0]
+        actions.append(
+            {
+                "key": f"order-{order.id}",
+                "label": f"Track order {order.external_reference}",
+                "description": f"{order.currency} {_money(order.subtotal_amount)}",
+                "href": f"/client/orders/{order.id}",
+                "status": order.status,
+                "created_at": order.created_at,
+            }
+        )
+    if open_support_cases:
+        case = open_support_cases[0]
+        actions.append(
+            {
+                "key": f"support-{case.id}",
+                "label": f"Follow up on {case.case_number}",
+                "description": case.subject,
+                "href": f"/client/support/{case.id}",
+                "status": case.status,
+                "created_at": case.updated_at,
+            }
+        )
+    if documents:
+        share = documents[0]
+        actions.append(
+            {
+                "key": f"document-{share.document_id}",
+                "label": f"Open {share.document.title}",
+                "description": share.document.original_filename,
+                "href": "/client/documents",
+                "status": "shared",
+                "created_at": share.created_at,
+            }
+        )
+    if bookings:
+        booking = bookings[0]
+        actions.append(
+            {
+                "key": f"booking-{booking.id}",
+                "label": booking.booking_type.name if booking.booking_type else "Upcoming booking",
+                "description": booking.guest_note or booking.timezone,
+                "href": f"/client/bookings/{booking.id}",
+                "status": booking.status,
+                "created_at": booking.start_at,
+            }
+        )
+    if not actions:
+        actions.append(
+            {
+                "key": "catalog",
+                "label": "Browse products and services",
+                "description": "See pricing resolved for your client account.",
+                "href": "/client/catalog",
+                "status": None,
+                "created_at": None,
+            }
+        )
+
+    return {
+        "account": {
+            "id": account.id,
+            "email": account.email,
+            "tenant_id": account.tenant_id,
+            "contact_id": account.contact_id,
+            "organization_id": account.organization_id,
+            "contact_name": account_payload["contact_name"],
+            "organization_name": account_payload["organization_name"],
+            "customer_group": serialize_customer_group(group),
+        },
+        "metrics": [
+            {"key": "quotes", "label": "Quotes", "value": len(quotes), "href": "/client/quotes"},
+            {"key": "orders", "label": "Orders", "value": len(orders), "href": "/client/orders"},
+            {"key": "support", "label": "Open tickets", "value": len(open_support_cases), "href": "/client/support"},
+            {"key": "documents", "label": "Shared documents", "value": len(documents), "href": "/client/documents"},
+            {"key": "bookings", "label": "Bookings", "value": len(bookings), "href": "/client/bookings"},
+            {"key": "catalog", "label": "Catalog items", "value": len(catalog_items), "href": "/client/catalog"},
+            {"key": "messages", "label": "Messages", "value": len(messages), "href": "/client/messages"},
+        ],
+        "next_actions": actions[:5],
+    }
+
+
 def _list_client_page_documents(db: Session | None, page: ClientPage) -> list[dict]:
     document_ids = [int(document_id) for document_id in page.document_ids or [] if int(document_id) > 0]
     if not db or not document_ids:

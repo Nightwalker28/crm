@@ -51,6 +51,28 @@ export type ClientMe = {
   customer_group?: CustomerGroup | null;
 };
 
+export type ClientOverviewMetric = {
+  key: string;
+  label: string;
+  value: number;
+  href: string;
+};
+
+export type ClientOverviewAction = {
+  key: string;
+  label: string;
+  description?: string | null;
+  href: string;
+  status?: string | null;
+  created_at?: string | null;
+};
+
+export type ClientOverview = {
+  account: ClientMe;
+  metrics: ClientOverviewMetric[];
+  next_actions: ClientOverviewAction[];
+};
+
 export type ClientCatalogItem = {
   kind: ClientCatalogKind;
   id: number;
@@ -482,6 +504,15 @@ export function useClientMe() {
     queryFn: () => publicJson<ClientMe>("/client-auth/me", {}, "Sign in to open your portal."),
     retry: false,
     staleTime: 60_000,
+  });
+}
+
+export function useClientOverview() {
+  return useQuery({
+    queryKey: ["client-overview"],
+    queryFn: () => publicJson<ClientOverview>("/client-overview", {}, "Sign in to open your portal."),
+    retry: false,
+    staleTime: 30_000,
   });
 }
 

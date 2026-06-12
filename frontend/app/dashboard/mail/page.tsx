@@ -1,8 +1,9 @@
 "use client";
 
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Inbox, KeyRound, Link2, Mail, RefreshCw, Search, ShieldCheck, Trash2, UserPlus } from "lucide-react";
+import { Inbox, KeyRound, Link2, RefreshCw, Search, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -45,12 +46,6 @@ type ImapForm = {
   smtpSecurity: "ssl" | "starttls" | "none";
   smtpUsername: string;
   password: string;
-};
-type OAuthProvider = Extract<MailProvider, "google" | "microsoft">;
-type ProviderAction = {
-  label: string;
-  provider: OAuthProvider;
-  mode: "connect" | "reconnect" | "sync";
 };
 type LinkTargetModuleKey = typeof LINK_TARGET_MODULES[number]["key"];
 type LinkTarget = {
@@ -171,7 +166,6 @@ export default function MailPage() {
   const [composeBody, setComposeBody] = useState("");
   const [imapFormOpen, setImapFormOpen] = useState(false);
   const [imapForm, setImapForm] = useState<ImapForm>(emptyImapForm);
-  const [connectingProvider, setConnectingProvider] = useState<OAuthProvider | null>(null);
   const [linkModuleKey, setLinkModuleKey] = useState<LinkTargetModuleKey>("sales_contacts");
   const [linkSearch, setLinkSearch] = useState("");
   const [linkTargets, setLinkTargets] = useState<LinkTarget[]>([]);
@@ -182,7 +176,7 @@ export default function MailPage() {
   const contextQuery = useMailContext();
   const messagesQuery = useMailMessages(folder || undefined, deferredSearch);
   const selectedMessageQuery = useMailMessage(selectedMessageId);
-  const { connectMail, connectImapSmtp, syncMail, disconnectMail, sendMail, linkMail, isConnectingMail, isSyncingMail, isDisconnectingMail, isSendingMail, isLinkingMail } = useMailActions();
+  const { connectImapSmtp, syncMail, disconnectMail, sendMail, linkMail, isConnectingMail, isSyncingMail, isDisconnectingMail, isSendingMail, isLinkingMail } = useMailActions();
   const messages = useMemo(() => messagesQuery.data?.results ?? [], [messagesQuery.data?.results]);
   const selectedMessage = selectedMessageQuery.data ?? messages.find((message) => message.id === selectedMessageId) ?? null;
   const googleConnection = contextQuery.data?.connections.find((connection) => connection.provider === "google");
@@ -195,17 +189,6 @@ export default function MailPage() {
     if (microsoftConnection?.can_send) return "microsoft";
     return "imap_smtp";
   }, [googleConnection?.can_send, microsoftConnection?.can_send]);
-  const googleAction = useMemo<ProviderAction>(() => {
-    if (googleConnection?.can_sync) return { provider: "google", mode: "sync", label: "Sync Gmail" };
-    if (googleConnection?.status === "connected") return { provider: "google", mode: "reconnect", label: "Reconnect Gmail" };
-    return { provider: "google", mode: "connect", label: "Connect Gmail" };
-  }, [googleConnection?.can_sync, googleConnection?.status]);
-  const microsoftAction = useMemo<ProviderAction>(() => {
-    if (microsoftConnection?.can_sync) return { provider: "microsoft", mode: "sync", label: "Sync Microsoft" };
-    if (microsoftConnection?.status === "connected") return { provider: "microsoft", mode: "reconnect", label: "Reconnect Microsoft" };
-    return { provider: "microsoft", mode: "connect", label: "Connect Microsoft" };
-  }, [microsoftConnection?.can_sync, microsoftConnection?.status]);
-
   useEffect(() => {
     if (mailConnectStatus === "connected") {
       toast.success("Gmail inbox connected.");
@@ -250,53 +233,6 @@ export default function MailPage() {
       cancelled = true;
     };
   }, [linkModuleKey, linkSearch]);
-
-  async function handleConnectGoogle() {
-    setConnectingProvider("google");
-    try {
-      const result = await connectMail("google");
-      window.location.href = result.auth_url;
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to start Gmail connection."));
-      setConnectingProvider(null);
-    }
-  }
-
-  async function handleConnectMicrosoft() {
-    setConnectingProvider("microsoft");
-    try {
-      const result = await connectMail("microsoft");
-      window.location.href = result.auth_url;
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to start Microsoft mailbox connection."));
-      setConnectingProvider(null);
-    }
-  }
-
-  function handleProviderAction(action: ProviderAction) {
-    if (action.mode === "sync") {
-      return action.provider === "google" ? handleSyncGoogle() : handleSyncMicrosoft();
-    }
-    return action.provider === "google" ? handleConnectGoogle() : handleConnectMicrosoft();
-  }
-
-  async function handleSyncGoogle() {
-    try {
-      const result = await syncMail("google");
-      toast.success(`Synced ${result.synced_message_count} new Gmail message${result.synced_message_count === 1 ? "" : "s"}.`);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to sync Gmail."));
-    }
-  }
-
-  async function handleSyncMicrosoft() {
-    try {
-      const result = await syncMail("microsoft");
-      toast.success(`Synced ${result.synced_message_count} new Microsoft message${result.synced_message_count === 1 ? "" : "s"}.`);
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to sync Microsoft mailbox."));
-    }
-  }
 
   async function handleSyncImapSmtp() {
     try {
@@ -430,18 +366,6 @@ export default function MailPage() {
     setComposeOpen((current) => !current);
   }
 
-  function renderProviderAction(action: ProviderAction) {
-    const isConnectingThisProvider = isConnectingMail && connectingProvider === action.provider;
-    const isBusy = action.mode === "sync" ? isSyncingMail : isConnectingMail;
-    const label = isConnectingThisProvider ? "Connecting..." : action.label;
-    return (
-      <Button type="button" variant="outline" onClick={() => void handleProviderAction(action)} disabled={isBusy}>
-        <RefreshCw className={"h-4 w-4 " + (isBusy ? "animate-spin" : "")} />
-        {label}
-      </Button>
-    );
-  }
-
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
@@ -449,12 +373,9 @@ export default function MailPage() {
         description="Centralize user mailbox integration and CRM communication history without mixing provider scopes into normal sign-in."
         actions={
           <>
-            <div className="flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-xs text-neutral-400">
-              <ShieldCheck className="h-4 w-4 text-neutral-500" />
-              {contextQuery.data?.sync_available ? "Mailbox sync connected" : "Mailbox sync not connected"}
-            </div>
-            {renderProviderAction(googleAction)}
-            {renderProviderAction(microsoftAction)}
+            <Button type="button" variant="outline" asChild>
+              <Link href="/dashboard/settings/integrations">Manage Integrations</Link>
+            </Button>
             {imapSmtpConnection?.can_sync ? (
               <>
                 <Button type="button" variant="outline" onClick={() => void handleSyncImapSmtp()} disabled={isSyncingMail}>
@@ -590,67 +511,7 @@ export default function MailPage() {
         </section>
       ) : null}
 
-      <section className="grid gap-4 lg:grid-cols-[1fr_1.2fr]">
-        <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60 p-5">
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-white/10 bg-white/5">
-              <Mail className="h-5 w-5 text-neutral-300" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-neutral-100">Provider Connections</h2>
-              <p className="mt-1 text-sm text-neutral-500">
-                Google and Microsoft mail will connect through a dedicated mailbox authorization flow.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-5 space-y-3">
-            {(contextQuery.data?.connections.length ? contextQuery.data.connections : []).map((connection) => (
-              <div key={connection.provider} className="rounded-xl border border-neutral-800 bg-neutral-900/50 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold capitalize text-neutral-100">{connection.provider}</div>
-                    <div className="mt-1 text-xs text-neutral-500">{connection.account_email || "No mailbox account connected"}</div>
-                    <div className="mt-2 text-[11px] text-neutral-500">
-                      {connection.can_send ? "Send enabled" : "Send not granted"} / {connection.can_sync ? "Inbox sync enabled" : "Inbox sync not enabled"}
-                    </div>
-                  </div>
-                  <span className="rounded-full border border-neutral-700 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-neutral-400">
-                    {connection.status}
-                  </span>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {connection.provider === "imap_smtp" && connection.status === "connected" ? (
-                    <Button type="button" variant="outline" onClick={() => void handleSyncImapSmtp()} disabled={isSyncingMail}>
-                      <RefreshCw className={"h-4 w-4 " + (isSyncingMail ? "animate-spin" : "")} />
-                      Sync
-                    </Button>
-                  ) : null}
-                  <Button type="button" variant="outline" onClick={() => void handleDisconnectMail(connection.provider)} disabled={isDisconnectingMail}>
-                    <Trash2 className="h-4 w-4" />
-                    Disconnect
-                  </Button>
-                </div>
-                {connection.last_error ? <div className="mt-3 text-xs text-red-300">{connection.last_error}</div> : null}
-              </div>
-            ))}
-
-            {!contextQuery.data?.connections.length ? (
-              <div className="rounded-xl border border-dashed border-neutral-800 bg-neutral-900/30 p-4 text-sm text-neutral-500">
-                No mailbox provider is connected yet. Connect Gmail send, Microsoft Graph, or IMAP/SMTP for mailbox sync.
-              </div>
-            ) : null}
-          </div>
-
-          <div className="mt-5 rounded-xl border border-sky-900/40 bg-sky-950/20 p-4 text-sm text-sky-100">
-            {contextQuery.data?.sync_note || "Mailbox sync uses an explicit opt-in provider connection per user."}
-          </div>
-
-          <div className="mt-3 rounded-xl border border-neutral-800 bg-neutral-900/40 p-4 text-sm text-neutral-400">
-            For Gmail IMAP, use `imap.gmail.com` port `993` with SSL and `smtp.gmail.com` port `587` with STARTTLS. Use the full Gmail address as username and a Google app password.
-          </div>
-        </div>
-
+      <section className="grid gap-4">
         <div className="rounded-2xl border border-neutral-800 bg-neutral-950/60">
           <div className="border-b border-neutral-800 p-5">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

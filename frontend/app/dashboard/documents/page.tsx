@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { HardDrive, Upload } from "lucide-react";
+import Link from "next/link";
+import { Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import DocumentList from "@/components/documents/DocumentList";
@@ -45,16 +46,8 @@ export default function DocumentsPage() {
   const {
     uploadDocument,
     deleteDocument,
-    connectGoogleDriveStorage,
-    disconnectGoogleDriveStorage,
-    connectMicrosoftOneDriveStorage,
-    disconnectMicrosoftOneDriveStorage,
     isUploadingDocument,
     isDeletingDocument,
-    isConnectingGoogleDrive,
-    isDisconnectingGoogleDrive,
-    isConnectingMicrosoftOneDrive,
-    isDisconnectingMicrosoftOneDrive,
   } = useDocumentActions();
   const storageUsage = storageUsageQuery.data;
   const googleDriveConnection = storageConnectionsQuery.data?.find((connection) => connection.provider === "google_drive");
@@ -105,44 +98,6 @@ export default function DocumentsPage() {
     }
   }
 
-  async function handleConnectDrive() {
-    try {
-      const result = await connectGoogleDriveStorage();
-      window.location.href = result.auth_url;
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to connect Google Drive."));
-    }
-  }
-
-  async function handleDisconnectDrive() {
-    try {
-      await disconnectGoogleDriveStorage();
-      if (storageProvider === "google_drive") setStorageProvider("local");
-      toast.success("Google Drive disconnected.");
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to disconnect Google Drive."));
-    }
-  }
-
-  async function handleConnectOneDrive() {
-    try {
-      const result = await connectMicrosoftOneDriveStorage();
-      window.location.href = result.auth_url;
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to connect Microsoft OneDrive."));
-    }
-  }
-
-  async function handleDisconnectOneDrive() {
-    try {
-      await disconnectMicrosoftOneDriveStorage();
-      if (storageProvider === "microsoft_onedrive") setStorageProvider("local");
-      toast.success("Microsoft OneDrive disconnected.");
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to disconnect Microsoft OneDrive."));
-    }
-  }
-
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
@@ -174,51 +129,6 @@ export default function DocumentsPage() {
       </div>
 
       <Card className="px-5 py-5">
-        <div className="mb-5 flex flex-col gap-3 rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-start gap-3">
-            <HardDrive className="mt-0.5 h-5 w-5 text-neutral-400" />
-            <div>
-              <div className="text-sm font-semibold text-neutral-100">Google Drive storage</div>
-              <FieldDescription className="mt-1">
-                {googleDriveConnected
-                  ? `Connected${googleDriveConnection?.account_email ? ` as ${googleDriveConnection.account_email}` : ""}.`
-                  : "Connect Drive to store selected document uploads in your own Google Drive."}
-              </FieldDescription>
-            </div>
-          </div>
-          {googleDriveConnected ? (
-            <Button type="button" variant="outline" onClick={() => void handleDisconnectDrive()} disabled={isDisconnectingGoogleDrive}>
-              Disconnect
-            </Button>
-          ) : (
-            <Button type="button" variant="outline" onClick={() => void handleConnectDrive()} disabled={isConnectingGoogleDrive}>
-              Connect Drive
-            </Button>
-          )}
-        </div>
-        <div className="mb-5 flex flex-col gap-3 rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-4 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-start gap-3">
-            <HardDrive className="mt-0.5 h-5 w-5 text-neutral-400" />
-            <div>
-              <div className="text-sm font-semibold text-neutral-100">Microsoft OneDrive storage</div>
-              <FieldDescription className="mt-1">
-                {oneDriveConnected
-                  ? `Connected${oneDriveConnection?.account_email ? ` as ${oneDriveConnection.account_email}` : ""}.`
-                  : "Connect OneDrive to store selected document uploads in your own Microsoft drive."}
-              </FieldDescription>
-            </div>
-          </div>
-          {oneDriveConnected ? (
-            <Button type="button" variant="outline" onClick={() => void handleDisconnectOneDrive()} disabled={isDisconnectingMicrosoftOneDrive}>
-              Disconnect
-            </Button>
-          ) : (
-            <Button type="button" variant="outline" onClick={() => void handleConnectOneDrive()} disabled={isConnectingMicrosoftOneDrive}>
-              Connect OneDrive
-            </Button>
-          )}
-        </div>
-
         <div className="grid gap-3 md:grid-cols-[1fr_1fr_220px_auto] md:items-end">
           <div>
             <label className="mb-2 block text-sm font-medium text-neutral-200">Title</label>
@@ -260,7 +170,8 @@ export default function DocumentsPage() {
           </div>
         </div>
         <FieldDescription className="mt-3">
-          Allowed types: PDF, DOC, DOCX, TXT, RTF, and ODT. Current upload limit is enforced by the backend.
+          Allowed types: PDF, DOC, DOCX, TXT, RTF, and ODT. Manage Google Drive and OneDrive connections from{" "}
+          <Link href="/dashboard/settings/integrations" className="text-neutral-200 underline-offset-4 hover:underline">Integrations</Link>.
         </FieldDescription>
       </Card>
 

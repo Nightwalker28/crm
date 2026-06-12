@@ -1,3 +1,4 @@
+import logging
 import urllib.parse
 
 from datetime import datetime, timedelta, timezone
@@ -60,6 +61,7 @@ from app.modules.user_management.services.sso import build_sso_start_url, handle
 
 router = APIRouter(tags=["Auth"])
 MFA_CHALLENGE_EXPIRE_MINUTES = 5
+logger = logging.getLogger(__name__)
 
 
 @router.get("/password-policy")
@@ -298,7 +300,13 @@ def start_sso_login(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    return SsoStartResponse(auth_url=build_sso_start_url(db, request=request, email=payload.email))
+    try:
+        return SsoStartResponse(auth_url=build_sso_start_url(db, request=request, email=payload.email))
+    except HTTPException as exc:
+        email = str(payload.email or "")
+        domain = email.rsplit("@", 1)[-1].lower() if "@" in email else None
+        logger.warning("SSO start failed", extra={"status_code": exc.status_code, "domain": domain, "detail": exc.detail})
+        raise
 
 
 @router.get("/oidc/callback", name="oidc_callback")
@@ -338,7 +346,14 @@ def setup_mfa(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    return start_mfa_setup(db, user=current_user)
+    try:
+        return start_mfa_setup(db, user=current_user)
+    except RuntimeError as exc:
+        logger.exception("MFA setup failed because application secret encryption is unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MFA setup is not configured. Ask an administrator to configure APP_ENCRYPTION_SECRET.",
+        ) from exc
 
 
 @router.post("/mfa/enable", response_model=MfaEnableResponse)

@@ -328,6 +328,24 @@ class AdminMfaResetResponse(BaseModel):
     message: str
 
 
+class TenantDomainResponse(BaseModel):
+    id: int
+    hostname: str
+    is_primary: bool = False
+    status: str
+    verification_token: str | None = None
+    txt_record_name: str
+    txt_record_value: str | None = None
+    cname_target: str | None = None
+    verified_at: datetime | None = None
+    created_at: datetime | None = None
+
+
+class TenantDomainCreateRequest(BaseModel):
+    hostname: str = Field(min_length=1, max_length=255)
+    is_primary: bool = False
+
+
 class TenantSsoSettingsResponse(BaseModel):
     enabled: bool = False
     provider_type: str = "oidc"
@@ -378,7 +396,7 @@ class TenantSsoSettingsUpdateRequest(BaseModel):
 
 
 class SsoStartRequest(BaseModel):
-    email: EmailStr
+    email: EmailStr | None = None
 
 
 class SsoStartResponse(BaseModel):

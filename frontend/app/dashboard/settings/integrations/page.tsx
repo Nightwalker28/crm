@@ -19,6 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, Ta
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { connectGoogleDriveStorage, connectMicrosoftOneDriveStorage } from "@/hooks/useDocuments";
 
 type NotificationChannel = {
   id: number;
@@ -297,6 +298,7 @@ export default function IntegrationsPage() {
   const [eventFilters, setEventFilters] = useState<EventFilters>({ event_type: "all", delivery_status: "all" });
   const [saving, setSaving] = useState(false);
   const [websiteSaving, setWebsiteSaving] = useState(false);
+  const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
 
   const websiteQuery = useQuery({
     queryKey: ["integrations", "website"],
@@ -515,6 +517,48 @@ export default function IntegrationsPage() {
     }
   }
 
+  async function connectDocumentProvider(providerKey: string) {
+    try {
+      setConnectingProvider(providerKey);
+      const result =
+        providerKey === "google_drive"
+          ? await connectGoogleDriveStorage("/dashboard/settings/integrations")
+          : await connectMicrosoftOneDriveStorage("/dashboard/settings/integrations");
+      window.location.href = result.auth_url;
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to start storage connection.");
+      setConnectingProvider(null);
+    }
+  }
+
+  function renderRegistryAction(provider: IntegrationRegistryHealth["provider"], connection: IntegrationRegistryHealth["connection"]) {
+    if (provider.key === "google_drive" || provider.key === "microsoft_onedrive") {
+      const isConnecting = connectingProvider === provider.key;
+      return (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="mt-4"
+          disabled={Boolean(connectingProvider)}
+          onClick={() => void connectDocumentProvider(provider.key)}
+        >
+          {isConnecting ? "Connecting..." : connection.status === "connected" ? "Reconnect" : connection.reconnect_action || "Connect"}
+        </Button>
+      );
+    }
+    if (connection.reconnect_url || provider.metadata_json.config_href) {
+      return (
+        <Button type="button" variant="outline" size="sm" className="mt-4" asChild>
+          <Link href={connection.reconnect_url || provider.metadata_json.config_href || "#"}>
+            {connection.status === "connected" ? "Configure" : connection.reconnect_action || "Reconnect"}
+          </Link>
+        </Button>
+      );
+    }
+    return null;
+  }
+
   return (
     <div className="flex flex-col gap-5 text-neutral-200">
       <PageHeader
@@ -565,13 +609,7 @@ export default function IntegrationsPage() {
                       <div className="truncate text-red-300">{connection.last_failure_reason || connection.last_error}</div>
                     ) : null}
                   </div>
-                  {connection.reconnect_url || provider.metadata_json.config_href ? (
-                    <Button type="button" variant="outline" size="sm" className="mt-4" asChild>
-                      <Link href={connection.reconnect_url || provider.metadata_json.config_href || "#"}>
-                        {connection.status === "connected" ? "Configure" : connection.reconnect_action || "Reconnect"}
-                      </Link>
-                    </Button>
-                  ) : null}
+                  {renderRegistryAction(provider, connection)}
                 </Card>
               );
             })

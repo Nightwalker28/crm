@@ -63,7 +63,7 @@ class Settings:
     DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "10"))
     DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "20"))
     DB_POOL_RECYCLE_SECONDS: int = int(os.getenv("DB_POOL_RECYCLE_SECONDS", "1800"))
-    DB_POOL_PRE_PING: bool = _env_bool("DB_POOL_PRE_PING")
+    DB_POOL_PRE_PING: bool = _env_bool("DB_POOL_PRE_PING", True)
     DB_STATEMENT_TIMEOUT_MS: int = int(os.getenv("DB_STATEMENT_TIMEOUT_MS", "30000"))
     DB_IDLE_IN_TRANSACTION_TIMEOUT_MS: int = int(
         os.getenv("DB_IDLE_IN_TRANSACTION_TIMEOUT_MS", "60000")
@@ -157,6 +157,7 @@ class Settings:
     DEPLOYMENT_LICENSE_ALGORITHM: str = os.getenv("DEPLOYMENT_LICENSE_ALGORITHM", "RS256")
     DEPLOYMENT_LICENSE_CACHE_TTL_SECONDS: int = int(os.getenv("DEPLOYMENT_LICENSE_CACHE_TTL_SECONDS", str(24 * 60 * 60)))
     TENANT_RESOLUTION_MODE: str = os.getenv("TENANT_RESOLUTION_MODE", "host").strip().lower()
+    CUSTOM_DOMAIN_CNAME_TARGET: str = os.getenv("CUSTOM_DOMAIN_CNAME_TARGET", "").strip().lower()
     SINGLE_TENANT_SLUG: str = os.getenv("SINGLE_TENANT_SLUG", "default")
     SINGLE_TENANT_NAME: str = os.getenv("SINGLE_TENANT_NAME", "Default Tenant")
     GOOGLE_OAUTH_STATE_EXPIRE_MINUTES: int = int(

@@ -11,9 +11,10 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.secrets import decrypt_application_secret, encrypt_application_secret
-from app.core.tenancy import get_frontend_origin_for_request
+from app.core.tenancy import get_frontend_origin_for_request, normalize_hostname
 from app.modules.platform.services.activity_logs import safe_log_activity
-from app.modules.user_management.models import Role, Team, Tenant, TenantSsoSettings, User, UserAuthMode, UserStatus
+from app.modules.user_management.models import Role, Team, Tenant, TenantDomain, TenantSsoSettings, User, UserAuthMode, UserStatus
+from app.modules.user_management.services.tenant_domains import DOMAIN_STATUS_VERIFIED, tenant_domain_email_domains
 
 OIDC_DISCOVERY_TIMEOUT_SECONDS = 10
 OIDC_TOKEN_TIMEOUT_SECONDS = 15
@@ -49,8 +50,9 @@ def _oidc_redirect_uri_for_request(request: Request) -> str:
 def get_or_create_sso_settings(db: Session, *, tenant_id: int) -> TenantSsoSettings:
     settings_row = db.query(TenantSsoSettings).filter(TenantSsoSettings.tenant_id == tenant_id).first()
     if settings_row:
+        _sync_allowed_domains_from_custom_domains(db, settings_row)
         return settings_row
-    settings_row = TenantSsoSettings(tenant_id=tenant_id)
+    settings_row = TenantSsoSettings(tenant_id=tenant_id, allowed_email_domains=tenant_domain_email_domains(db, tenant_id=tenant_id))
     db.add(settings_row)
     db.commit()
     db.refresh(settings_row)
@@ -120,7 +122,9 @@ def update_sso_settings(
         settings_row.email_claim = "email"
 
     if "allowed_email_domains" in payload:
-        settings_row.allowed_email_domains = _normalize_domains(payload["allowed_email_domains"])
+        settings_row.allowed_email_domains = _verified_custom_email_domains_or_legacy(db, settings_row)
+    else:
+        settings_row.allowed_email_domains = _verified_custom_email_domains_or_legacy(db, settings_row)
 
     client_secret = payload.get("client_secret")
     if client_secret:
@@ -248,8 +252,13 @@ def test_sso_settings(
     return result
 
 
-def build_sso_start_url(db: Session, *, request: Request, email: str) -> str:
-    settings_row = resolve_sso_settings_for_email(db, request=request, email=email)
+def build_sso_start_url(db: Session, *, request: Request, email: str | None = None) -> str:
+    login_hint = email.strip().lower() if email else ""
+    settings_row = (
+        resolve_sso_settings_for_email(db, request=request, email=login_hint)
+        if login_hint
+        else resolve_sso_settings_for_request(db, request=request)
+    )
     metadata = _resolve_oidc_metadata(settings_row)
     nonce = secrets.token_urlsafe(24)
     state = _create_oidc_state(
@@ -264,21 +273,37 @@ def build_sso_start_url(db: Session, *, request: Request, email: str) -> str:
         "scope": "openid email profile",
         "state": state,
         "nonce": nonce,
-        "login_hint": email.strip().lower(),
     }
+    if login_hint:
+        params["login_hint"] = login_hint
     return metadata["authorization_endpoint"] + "?" + urllib.parse.urlencode(params)
 
 
-def resolve_sso_settings_for_email(db: Session, *, request: Request, email: str) -> TenantSsoSettings:
+def _enabled_sso_settings_query(db: Session, *, request: Request):
     request_tenant = getattr(request.state, "tenant", None)
-    domain = _email_domain(email)
+    sso_tenant_id = _resolve_verified_custom_domain_tenant_id(db, request=request)
     query = db.query(TenantSsoSettings).join(Tenant, Tenant.id == TenantSsoSettings.tenant_id).filter(
         TenantSsoSettings.enabled == True,  # noqa: E712
         Tenant.is_active == 1,
+        TenantSsoSettings.tenant_id == sso_tenant_id,
     )
     if request_tenant:
         query = query.filter(TenantSsoSettings.tenant_id == request_tenant.id)
-    settings_rows = query.all()
+    return query
+
+
+def resolve_sso_settings_for_request(db: Session, *, request: Request) -> TenantSsoSettings:
+    settings_rows = _enabled_sso_settings_query(db, request=request).all()
+    if len(settings_rows) == 1:
+        return settings_rows[0]
+    if not settings_rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO is not enabled for this tenant")
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter your email to choose the right SSO provider")
+
+
+def resolve_sso_settings_for_email(db: Session, *, request: Request, email: str) -> TenantSsoSettings:
+    domain = _email_domain(email)
+    settings_rows = _enabled_sso_settings_query(db, request=request).all()
     for settings_row in settings_rows:
         if domain in set(settings_row.allowed_email_domains or []):
             return settings_row
@@ -292,6 +317,8 @@ def handle_oidc_callback(db: Session, *, request: Request, code: str | None, sta
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid SSO callback")
 
     tenant_id = int(state_payload["tenant_id"])
+    if _resolve_verified_custom_domain_tenant_id(db, request=request) != tenant_id:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Tenant context mismatch")
     settings_row = db.query(TenantSsoSettings).filter(TenantSsoSettings.tenant_id == tenant_id).first()
     if not settings_row or not settings_row.enabled:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="SSO is not enabled")
@@ -469,7 +496,8 @@ def _map_oidc_user(db: Session, *, settings_row: TenantSsoSettings, claims: dict
     if claims.get("email_verified") is False:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="OIDC user email is not verified")
     email = raw_email.strip().lower()
-    if _email_domain(email) not in set(settings_row.allowed_email_domains or []):
+    allowed_domains = set(_verified_custom_email_domains_or_legacy(db, settings_row))
+    if _email_domain(email) not in allowed_domains:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="OIDC user email domain is not allowed")
     user = (
         db.query(User)
@@ -568,3 +596,39 @@ def _safe_metadata_state(metadata: dict[str, str]) -> dict[str, str]:
 
 def _settings_enabled(settings_row: TenantSsoSettings) -> bool:
     return settings_row.enabled is True or settings_row.enabled == 1
+
+
+def _sync_allowed_domains_from_custom_domains(db: Session, settings_row: TenantSsoSettings) -> None:
+    domains = tenant_domain_email_domains(db, tenant_id=settings_row.tenant_id)
+    if domains and domains != list(settings_row.allowed_email_domains or []):
+        settings_row.allowed_email_domains = domains
+        db.add(settings_row)
+        db.commit()
+        db.refresh(settings_row)
+
+
+def _verified_custom_email_domains_or_legacy(db: Session, settings_row: TenantSsoSettings) -> list[str]:
+    domains = tenant_domain_email_domains(db, tenant_id=settings_row.tenant_id)
+    return domains or _normalize_domains(settings_row.allowed_email_domains or [])
+
+
+def _resolve_verified_custom_domain_tenant_id(db: Session, *, request: Request) -> int:
+    hostname = normalize_hostname(request.headers.get("host"))
+    if not hostname:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Request host is missing")
+    tenant_domain = (
+        db.query(TenantDomain)
+        .join(Tenant, Tenant.id == TenantDomain.tenant_id)
+        .filter(
+            TenantDomain.hostname == hostname,
+            TenantDomain.status == DOMAIN_STATUS_VERIFIED,
+            Tenant.is_active == 1,
+        )
+        .first()
+    )
+    if not tenant_domain:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="SSO is only available from a verified custom domain")
+    request_tenant = getattr(request.state, "tenant", None)
+    if request_tenant and int(request_tenant.id) != int(tenant_domain.tenant_id):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Tenant context mismatch")
+    return int(tenant_domain.tenant_id)

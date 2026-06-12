@@ -283,7 +283,7 @@ export function UserManagementTable({
     const map = new Map<string, User[]>();
     const order: string[] = [];
     for (const u of users) {
-      const key = u.team_name || "Untitled Team";
+      const key = u.team_name && u.team_name !== "Unassigned" ? u.team_name : "Unassigned";
       if (!map.has(key)) {
         map.set(key, []);
         order.push(key);
@@ -299,6 +299,8 @@ export function UserManagementTable({
 
   const columnCount = visibleColumns.length;
   const getUserName = (user: User) => [user.first_name, user.last_name].filter(Boolean).join(" ").trim() || user.email;
+  const getTeamName = (user: User) => user.team_name || (user.team_id ? `Team #${user.team_id}` : "Unassigned");
+  const getRoleName = (user: User) => user.role_name || (user.role_id ? `Role #${user.role_id}` : "Unassigned");
 
   const renderHead = (column: string) => {
     switch (column) {
@@ -359,7 +361,9 @@ export function UserManagementTable({
 
   const renderUserCell = (u: User, column: string) => {
     const isSelf = typeof currentUserId === "number" && u.id === currentUserId;
-    const roleProps = getRolePillProps(u.role_name, u.role_level);
+    const teamName = getTeamName(u);
+    const roleName = getRoleName(u);
+    const roleProps = getRolePillProps(roleName, u.role_level);
 
     switch (column) {
       case "name":
@@ -395,7 +399,7 @@ export function UserManagementTable({
           </TableCell>
         );
       case "team_name":
-        return <TableCell>{u.team_name}</TableCell>;
+        return <TableCell>{teamName}</TableCell>;
       case "role_name":
         return (
           <TableCell>
@@ -405,7 +409,7 @@ export function UserManagementTable({
               border={roleProps.border}
               className="w-22"
             >
-              {u.role_name}
+              {roleName}
             </Pill>
           </TableCell>
         );

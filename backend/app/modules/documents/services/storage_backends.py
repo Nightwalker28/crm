@@ -22,6 +22,23 @@ class StoredDocument:
     storage_path: str
 
 
+def _provider_error_detail(response: requests.Response, *, provider_name: str) -> str:
+    fallback = response.text[:500] if response.text else response.reason
+    try:
+        payload = response.json()
+    except ValueError:
+        payload = None
+    if isinstance(payload, dict):
+        error = payload.get("error")
+        if isinstance(error, dict):
+            message = error.get("message") or error.get("code")
+            if message:
+                fallback = str(message)
+        elif payload.get("message"):
+            fallback = str(payload["message"])
+    return f"Failed to upload document to {provider_name}: {fallback or response.status_code}"
+
+
 class LocalDocumentStorage:
     provider = "local"
 
@@ -68,7 +85,10 @@ class GoogleDriveDocumentStorage:
         )
         body = response.json() if response.content else {}
         if not response.ok or not body.get("id"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to upload document to Google Drive.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=_provider_error_detail(response, provider_name="Google Drive"),
+            )
         return StoredDocument(provider=self.provider, storage_path=body["id"])
 
     def download(self, storage_path: str) -> bytes:
@@ -99,7 +119,10 @@ class MicrosoftOneDriveDocumentStorage:
         )
         body = response.json() if response.content else {}
         if not response.ok or not body.get("id"):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to upload document to Microsoft OneDrive.")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=_provider_error_detail(response, provider_name="Microsoft OneDrive"),
+            )
         return StoredDocument(provider=self.provider, storage_path=body["id"])
 
     def download(self, storage_path: str) -> bytes:

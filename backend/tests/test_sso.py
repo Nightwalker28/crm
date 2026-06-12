@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
 from app.core.secrets import decrypt_application_secret
 from app.modules.platform.models import ActivityLog
-from app.modules.user_management.models import Department, Role, Team, Tenant, TenantSsoSettings, User, UserStatus
+from app.modules.user_management.models import Department, Role, Team, Tenant, TenantDomain, TenantSsoSettings, User, UserStatus
 from app.modules.user_management.services import sso
 
 
@@ -24,9 +24,8 @@ class FakeResponse:
 
 
 class FakeRequest:
-    headers = {}
-
-    def __init__(self, tenant=None):
+    def __init__(self, tenant=None, host="crm.example.com"):
+        self.headers = {"host": host} if host else {}
         self.state = SimpleNamespace(tenant=tenant)
 
     def url_for(self, _name):
@@ -44,6 +43,7 @@ class SsoServiceTests(unittest.TestCase):
                 Team.__table__,
                 Role.__table__,
                 User.__table__,
+                TenantDomain.__table__,
                 TenantSsoSettings.__table__,
                 ActivityLog.__table__,
             ],
@@ -54,6 +54,8 @@ class SsoServiceTests(unittest.TestCase):
             [
                 Tenant(id=1, slug="default", name="Default"),
                 Tenant(id=2, slug="other", name="Other"),
+                TenantDomain(id=1, tenant_id=1, hostname="crm.example.com", status="verified"),
+                TenantDomain(id=2, tenant_id=2, hostname="crm.other.com", status="verified"),
                 Department(id=1, tenant_id=1, name="Ops"),
                 Team(id=1, tenant_id=1, department_id=1, name="Revenue"),
                 Role(id=1, tenant_id=1, name="User", level=10),
@@ -189,7 +191,38 @@ class SsoServiceTests(unittest.TestCase):
 
         with self.assertRaises(HTTPException) as ctx:
             sso.resolve_sso_settings_for_email(self.db, request=FakeRequest(tenant=SimpleNamespace(id=2)), email="ada@example.com")
-        self.assertEqual(ctx.exception.status_code, 404)
+        self.assertEqual(ctx.exception.status_code, 401)
+
+    def test_resolve_sso_settings_for_request_uses_single_enabled_config(self):
+        self.db.add(
+            TenantSsoSettings(
+                tenant_id=1,
+                enabled=True,
+                issuer_url="https://idp.example.com",
+                client_id="one",
+                allowed_email_domains=["example.com"],
+            )
+        )
+        self.db.commit()
+
+        resolved = sso.resolve_sso_settings_for_request(self.db, request=FakeRequest())
+
+        self.assertEqual(resolved.tenant_id, 1)
+
+    def test_resolve_sso_settings_for_request_requires_verified_custom_domain(self):
+        self.db.add_all(
+            [
+                TenantSsoSettings(tenant_id=1, enabled=True, issuer_url="https://idp.example.com", client_id="one", allowed_email_domains=["example.com"]),
+                TenantSsoSettings(tenant_id=2, enabled=True, issuer_url="https://idp.other.com", client_id="two", allowed_email_domains=["other.com"]),
+            ]
+        )
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as ctx:
+            sso.resolve_sso_settings_for_request(self.db, request=FakeRequest(host="app.example.com"))
+
+        self.assertEqual(ctx.exception.status_code, 403)
+        self.assertIn("verified custom domain", ctx.exception.detail)
 
     @patch("app.modules.user_management.services.sso._resolve_oidc_metadata", return_value={"authorization_endpoint": "https://idp.example.com/auth"})
     @patch("app.modules.user_management.services.sso.get_frontend_origin_for_request", return_value="https://app.example.com")
@@ -212,6 +245,27 @@ class SsoServiceTests(unittest.TestCase):
         self.assertIn("client_id=client-id", auth_url)
         self.assertIn("nonce=", auth_url)
         self.assertIn("state=", auth_url)
+
+    @patch("app.modules.user_management.services.sso._resolve_oidc_metadata", return_value={"authorization_endpoint": "https://idp.example.com/auth"})
+    @patch("app.modules.user_management.services.sso.get_frontend_origin_for_request", return_value="https://app.example.com")
+    @patch("app.modules.user_management.services.sso.settings.JWT_SECRET", "state-secret")
+    def test_build_sso_start_url_can_start_single_tenant_without_email(self, _origin, _metadata):
+        self.db.add(
+            TenantSsoSettings(
+                tenant_id=1,
+                enabled=True,
+                issuer_url="https://idp.example.com",
+                client_id="client-id",
+                allowed_email_domains=["example.com"],
+            )
+        )
+        self.db.commit()
+
+        auth_url = sso.build_sso_start_url(self.db, request=FakeRequest())
+
+        self.assertIn("https://idp.example.com/auth?", auth_url)
+        self.assertIn("client_id=client-id", auth_url)
+        self.assertNotIn("login_hint=", auth_url)
 
     @patch("app.modules.user_management.services.sso._resolve_oidc_metadata", return_value={"issuer": "https://idp.example.com", "token_endpoint": "https://idp.example.com/token", "jwks_uri": "https://idp.example.com/jwks"})
     @patch("app.modules.user_management.services.sso._exchange_code_for_tokens", return_value={"id_token": "token"})

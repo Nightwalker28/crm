@@ -35,6 +35,19 @@ export type SsoSettings = {
   last_failed_login_reason: string | null;
 };
 
+export type TenantDomain = {
+  id: number;
+  hostname: string;
+  is_primary: boolean;
+  status: "pending" | "verified" | "failed" | string;
+  verification_token: string | null;
+  txt_record_name: string;
+  txt_record_value: string | null;
+  cname_target: string | null;
+  verified_at: string | null;
+  created_at: string | null;
+};
+
 export type SsoTestResult = {
   ok: boolean;
   message: string;
@@ -137,6 +150,17 @@ export function useUserManagement() {
     refetchOnWindowFocus: false,
   });
 
+  const domainsQuery = useQuery<TenantDomain[]>({
+    queryKey: ["admin-tenant-domains"],
+    queryFn: async () => {
+      const res = await apiFetch("/admin/users/domains");
+      if (!res.ok) throw new Error("Failed to fetch custom domains");
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+  });
+
   const updateMfaPolicyMutation = useMutation({
     mutationFn: async (policy: MfaPolicy) => {
       const res = await apiFetch("/admin/users/mfa-policy", {
@@ -228,6 +252,68 @@ export function useUserManagement() {
     },
   });
 
+  const createDomainMutation = useMutation({
+    mutationFn: async (payload: { hostname: string; is_primary?: boolean }) => {
+      const res = await apiFetch("/admin/users/domains", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+      return body as TenantDomain;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-tenant-domains"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-sso-settings"] }),
+      ]);
+      toast.success("Custom domain added.");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to add custom domain.");
+    },
+  });
+
+  const verifyDomainMutation = useMutation({
+    mutationFn: async (domainId: number) => {
+      const res = await apiFetch(`/admin/users/domains/${domainId}/verify`, { method: "POST" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+      return body as TenantDomain;
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-tenant-domains"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-sso-settings"] }),
+      ]);
+      toast.success("Custom domain verified.");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to verify custom domain.");
+    },
+  });
+
+  const deleteDomainMutation = useMutation({
+    mutationFn: async (domainId: number) => {
+      const res = await apiFetch(`/admin/users/domains/${domainId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["admin-tenant-domains"] }),
+        queryClient.invalidateQueries({ queryKey: ["admin-sso-settings"] }),
+      ]);
+      toast.success("Custom domain removed.");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to remove custom domain.");
+    },
+  });
+
   async function refreshUsers() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["users-paged"] }),
@@ -299,6 +385,9 @@ export function useUserManagement() {
     isMfaPolicyLoading: mfaPolicyQuery.isLoading,
     isMfaPolicySaving: updateMfaPolicyMutation.isPending,
     ssoSettings: ssoSettingsQuery.data,
+    tenantDomains: domainsQuery.data ?? [],
+    isTenantDomainsLoading: domainsQuery.isLoading,
+    isTenantDomainSaving: createDomainMutation.isPending || verifyDomainMutation.isPending || deleteDomainMutation.isPending,
     isSsoSettingsLoading: ssoSettingsQuery.isLoading,
     isSsoSettingsSaving: updateSsoSettingsMutation.isPending,
     isSsoSettingsTesting: testSsoSettingsMutation.isPending,
@@ -315,5 +404,8 @@ export function useUserManagement() {
     isResettingUserMfa: resetUserMfaMutation.isPending,
     updateSsoSettings: (payload: SsoSettingsUpdate) => updateSsoSettingsMutation.mutateAsync(payload),
     testSsoSettings: () => testSsoSettingsMutation.mutateAsync(),
+    createTenantDomain: (payload: { hostname: string; is_primary?: boolean }) => createDomainMutation.mutateAsync(payload),
+    verifyTenantDomain: (domainId: number) => verifyDomainMutation.mutateAsync(domainId),
+    deleteTenantDomain: (domainId: number) => deleteDomainMutation.mutateAsync(domainId),
   };
 }

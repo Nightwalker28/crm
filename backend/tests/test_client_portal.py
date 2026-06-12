@@ -710,6 +710,87 @@ class ClientPortalServiceTests(unittest.TestCase):
         orders = client_portal_services.list_client_orders(self.db, account=account)
         self.assertEqual([item.id for item in orders], [order.id])
 
+    def test_client_overview_is_scoped_and_actionable(self):
+        self.db.add_all(
+            [
+                CatalogProduct(
+                    id=130,
+                    tenant_id=10,
+                    name="Portal Product",
+                    currency="USD",
+                    public_unit_price="40",
+                    stock_status="in_stock",
+                    is_public=1,
+                    is_active=1,
+                ),
+                CatalogProduct(
+                    id=131,
+                    tenant_id=99,
+                    name="Other Tenant Product",
+                    currency="USD",
+                    public_unit_price="40",
+                    stock_status="in_stock",
+                    is_public=1,
+                    is_active=1,
+                ),
+                WebsiteIntegrationOrder(
+                    id=51,
+                    tenant_id=10,
+                    external_reference="portal-35-order",
+                    source_platform="client_portal",
+                    status="submitted",
+                    request_hash="order-hash",
+                    customer_email="buyer@example.com",
+                    currency="USD",
+                    subtotal_amount="40",
+                ),
+                WebsiteIntegrationOrder(
+                    id=52,
+                    tenant_id=10,
+                    external_reference="portal-other-order",
+                    source_platform="client_portal",
+                    status="submitted",
+                    request_hash="other-order-hash",
+                    customer_email="other@example.com",
+                    currency="USD",
+                    subtotal_amount="40",
+                ),
+                SalesQuote(
+                    quote_id=506,
+                    tenant_id=10,
+                    quote_number="Q-506",
+                    customer_name="Buyer Contact",
+                    contact_id=7,
+                    status="sent",
+                    currency="USD",
+                    total_amount=Decimal("400"),
+                ),
+                SalesQuote(
+                    quote_id=507,
+                    tenant_id=10,
+                    quote_number="Q-507",
+                    customer_name="Buyer Co",
+                    organization_id=3,
+                    status="sent",
+                    currency="USD",
+                    total_amount=Decimal("800"),
+                ),
+            ]
+        )
+        account = ClientAccount(id=35, tenant_id=10, contact_id=7, email="buyer@example.com", status="active")
+        self.db.add(account)
+        self.db.commit()
+
+        overview = client_portal_services.build_client_overview(self.db, account=account)
+        metrics = {item["key"]: item for item in overview["metrics"]}
+
+        self.assertEqual(overview["account"]["email"], "buyer@example.com")
+        self.assertEqual(metrics["catalog"]["value"], 1)
+        self.assertEqual(metrics["orders"]["value"], 1)
+        self.assertEqual(metrics["quotes"]["value"], 1)
+        self.assertEqual(overview["next_actions"][0]["href"], "/client/quotes/506")
+        self.assertTrue(any(action["href"] == "/client/orders/51" for action in overview["next_actions"]))
+
     def test_client_order_lookup_rejects_other_client_order(self):
         first = ClientAccount(id=33, tenant_id=10, contact_id=7, email="buyer@example.com", status="active")
         second = ClientAccount(id=34, tenant_id=10, organization_id=3, email="org@example.com", status="active")

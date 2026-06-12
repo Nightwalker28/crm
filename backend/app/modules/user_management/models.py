@@ -81,7 +81,7 @@ class Tenant(Base):
 class TenantDomain(Base):
     __tablename__ = "tenant_domains"
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(
         BigInteger,
         ForeignKey("tenants.id", ondelete="CASCADE"),
@@ -90,7 +90,15 @@ class TenantDomain(Base):
     )
     hostname = Column(String(255), nullable=False, unique=True, index=True)
     is_primary = Column(SmallInteger, nullable=False, default=0)
+    status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    verification_token = Column(String(96), nullable=True, unique=True, index=True)
+    verified_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
     tenant = relationship("Tenant", back_populates="domains")
 

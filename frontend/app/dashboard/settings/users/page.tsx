@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, ShieldCheck } from "lucide-react";
+import { Globe2, Plus, ShieldCheck, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -30,7 +30,6 @@ type SsoDraft = {
   jwks_uri: string;
   client_id: string;
   client_secret: string;
-  allowed_email_domains: string;
   auto_provision_users: boolean;
   default_role_id: string;
   default_team_id: string;
@@ -48,7 +47,6 @@ const emptySsoDraft: SsoDraft = {
   jwks_uri: "",
   client_id: "",
   client_secret: "",
-  allowed_email_domains: "",
   auto_provision_users: false,
   default_role_id: "",
   default_team_id: "",
@@ -74,6 +72,9 @@ export default function UserManagementPage() {
     isSsoSettingsLoading,
     isSsoSettingsSaving,
     isSsoSettingsTesting,
+    tenantDomains,
+    isTenantDomainsLoading,
+    isTenantDomainSaving,
     roles,
     teams,
     openEditModal,
@@ -87,8 +88,12 @@ export default function UserManagementPage() {
     isResettingUserMfa,
     updateSsoSettings,
     testSsoSettings,
+    createTenantDomain,
+    verifyTenantDomain,
+    deleteTenantDomain,
   } = useUserManagement();
   const [ssoDraft, setSsoDraft] = useState<SsoDraft>(emptySsoDraft);
+  const [domainDraft, setDomainDraft] = useState("");
   const {
     views,
     selectedViewId,
@@ -132,7 +137,6 @@ export default function UserManagementPage() {
       jwks_uri: ssoSettings.jwks_uri ?? "",
       client_id: ssoSettings.client_id ?? "",
       client_secret: "",
-      allowed_email_domains: ssoSettings.allowed_email_domains.join(", "),
       auto_provision_users: ssoSettings.auto_provision_users,
       default_role_id: ssoSettings.default_role_id ? String(ssoSettings.default_role_id) : "",
       default_team_id: ssoSettings.default_team_id ? String(ssoSettings.default_team_id) : "",
@@ -152,7 +156,6 @@ export default function UserManagementPage() {
       jwks_uri: ssoDraft.jwks_uri || null,
       client_id: ssoDraft.client_id || null,
       client_secret: ssoDraft.client_secret || null,
-      allowed_email_domains: ssoDraft.allowed_email_domains.split(",").map((item) => item.trim()).filter(Boolean),
       auto_provision_users: ssoDraft.auto_provision_users,
       default_role_id: ssoDraft.default_role_id ? Number(ssoDraft.default_role_id) : null,
       default_team_id: ssoDraft.default_team_id ? Number(ssoDraft.default_team_id) : null,
@@ -161,6 +164,13 @@ export default function UserManagementPage() {
       last_name_claim: ssoDraft.last_name_claim || null,
     });
     setSsoDraft((current) => ({ ...current, client_secret: "" }));
+  };
+
+  const addDomain = async () => {
+    const hostname = domainDraft.trim();
+    if (!hostname) return;
+    await createTenantDomain({ hostname, is_primary: tenantDomains.length === 0 });
+    setDomainDraft("");
   };
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
@@ -230,6 +240,74 @@ export default function UserManagementPage() {
       <Card className="px-4 py-4">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex size-9 items-center justify-center rounded-md border border-neutral-800 bg-neutral-950">
+                <Globe2 className="size-4 text-neutral-300" />
+              </div>
+              <div>
+                <h2 className="text-sm font-semibold text-neutral-100">Custom domains</h2>
+                <p className="text-xs text-neutral-500">Verify a CNAME domain before using tenant SSO.</p>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Input
+                value={domainDraft}
+                onChange={(event) => setDomainDraft(event.target.value)}
+                placeholder="crm.example.com"
+                disabled={isTenantDomainSaving}
+              />
+              <Button type="button" onClick={() => void addDomain()} disabled={isTenantDomainSaving || !domainDraft.trim()}>
+                Add Domain
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3">
+            {tenantDomains.length ? tenantDomains.map((domain) => (
+              <div key={domain.id} className="rounded-md border border-neutral-800 bg-neutral-950/50 p-3">
+                <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-sm text-neutral-100">{domain.hostname}</span>
+                      <span className={domain.status === "verified" ? "rounded bg-emerald-950 px-2 py-0.5 text-xs text-emerald-300" : domain.status === "failed" ? "rounded bg-red-950 px-2 py-0.5 text-xs text-red-300" : "rounded bg-amber-950 px-2 py-0.5 text-xs text-amber-300"}>
+                        {domain.status}
+                      </span>
+                      {domain.is_primary ? <span className="rounded bg-neutral-800 px-2 py-0.5 text-xs text-neutral-300">primary</span> : null}
+                    </div>
+                    <div className="mt-2 grid gap-1 text-xs text-neutral-400">
+                      {domain.cname_target ? (
+                        <div>
+                          CNAME <span className="font-mono text-neutral-200">{domain.hostname}</span> to <span className="font-mono text-neutral-200">{domain.cname_target}</span>
+                        </div>
+                      ) : null}
+                      <div>
+                        TXT <span className="font-mono text-neutral-200">{domain.txt_record_name}</span> = <span className="font-mono text-neutral-200">{domain.txt_record_value}</span>
+                      </div>
+                      {domain.verified_at ? <div>Verified {formatDateTime(domain.verified_at)}</div> : null}
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="secondary" onClick={() => void verifyTenantDomain(domain.id)} disabled={isTenantDomainSaving || domain.status === "verified"}>
+                      Verify
+                    </Button>
+                    <Button type="button" variant="ghost" size="icon-sm" title="Remove domain" onClick={() => void deleteTenantDomain(domain.id)} disabled={isTenantDomainSaving}>
+                      <Trash2 className="size-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )) : (
+              <div className="rounded-md border border-neutral-800 bg-neutral-950/50 p-3 text-sm text-neutral-400">
+                {isTenantDomainsLoading ? "Loading domains..." : "No custom domains added."}
+              </div>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      <Card className="px-4 py-4">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             <div>
               <h2 className="text-sm font-semibold text-neutral-100">OIDC SSO</h2>
               <p className="text-xs text-neutral-500">Tenant sign-in through an external identity provider.</p>
@@ -264,8 +342,9 @@ export default function UserManagementPage() {
               />
             </Field>
             <Field>
-              <FieldLabel>Allowed Domains</FieldLabel>
-              <Input value={ssoDraft.allowed_email_domains} onChange={(event) => setSsoDraft((current) => ({ ...current, allowed_email_domains: event.target.value }))} placeholder="example.com, company.com" />
+              <FieldLabel>Allowed Email Domains</FieldLabel>
+              <Input value={ssoSettings?.allowed_email_domains.join(", ") ?? ""} readOnly placeholder="Verify a custom domain first" />
+              <FieldDescription>Derived from verified custom domains.</FieldDescription>
             </Field>
             <Field>
               <FieldLabel>Authorization Endpoint</FieldLabel>

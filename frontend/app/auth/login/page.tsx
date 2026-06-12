@@ -2,7 +2,6 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 
 import { AnimatedShinyText } from "@/components/ui/AnimatedShinyText";
@@ -15,6 +14,8 @@ type SignInForm = {
   password: string;
 };
 
+type LoginStep = "login" | "mfa_challenge" | "mfa_setup";
+
 const emptySignIn: SignInForm = {
   email: "",
   password: "",
@@ -24,14 +25,33 @@ function getErrorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
+function GoogleMark() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-5 w-5">
+      <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.5-.2-2.2H12v4.2h6.5a5.6 5.6 0 0 1-2.4 3.7v2.7h3.5c2-1.9 3.2-4.6 3.2-7.9z" />
+      <path fill="#34A853" d="M12 24c3.2 0 5.9-1.1 7.9-2.9l-3.8-3a7.2 7.2 0 0 1-10.7-3.8H1.7v2.8A12 12 0 0 0 12 24z" />
+      <path fill="#FBBC05" d="M5.4 14.3a7.1 7.1 0 0 1 0-4.6V6.9H1.7a12 12 0 0 0 0 10.2z" />
+      <path fill="#EA4335" d="M12 4.8c1.7 0 3.2.6 4.4 1.7l3.3-3.3A11.9 11.9 0 0 0 1.7 6.9l3.7 2.8A7.2 7.2 0 0 1 12 4.8z" />
+    </svg>
+  );
+}
+
 export default function LoginPage() {
   const router = useRouter();
   const [googleLoading, setGoogleLoading] = useState(false);
   const [microsoftLoading, setMicrosoftLoading] = useState(false);
   const [ssoLoading, setSsoLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
+  const [mfaLoading, setMfaLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signIn, setSignIn] = useState<SignInForm>(emptySignIn);
+  const [loginStep, setLoginStep] = useState<LoginStep>("login");
+  const [mfaToken, setMfaToken] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaBackupCode, setMfaBackupCode] = useState("");
+  const [mfaSecret, setMfaSecret] = useState("");
+  const [mfaOtpAuthUri, setMfaOtpAuthUri] = useState("");
+  const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState<string[]>([]);
 
   async function handleGoogleLogin() {
     try {
@@ -64,18 +84,14 @@ export default function LoginPage() {
   }
 
   async function handleSsoLogin() {
-    if (!signIn.email.trim()) {
-      setError("Enter your email to continue with SSO.");
-      return;
-    }
-
     try {
       setError(null);
       setSsoLoading(true);
+      const email = signIn.email.trim();
       const res = await apiFetch("/auth/sso/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: signIn.email.trim() }),
+        body: JSON.stringify(email ? { email } : {}),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
@@ -120,12 +136,88 @@ export default function LoginPage() {
         throw new Error(detailMessage ?? `Status ${res.status}`);
       }
 
+      if (data?.status === "mfa_required" && typeof data.mfa_token === "string") {
+        setMfaToken(data.mfa_token);
+        setMfaCode("");
+        setMfaBackupCode("");
+        setLoginStep("mfa_challenge");
+        return;
+      }
+
+      if (data?.status === "mfa_setup_required") {
+        await startMfaSetup();
+        return;
+      }
+
       router.replace("/dashboard");
       router.refresh();
     } catch (loginError) {
       setError(getErrorMessage(loginError, "Failed to sign in"));
     } finally {
       setFormLoading(false);
+    }
+  }
+
+  async function startMfaSetup() {
+    setMfaLoading(true);
+    try {
+      const res = await apiFetch("/auth/mfa/setup", { method: "POST" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.detail ?? data?.message ?? `Status ${res.status}`);
+      setMfaSecret(data.secret ?? "");
+      setMfaOtpAuthUri(data.otpauth_uri ?? "");
+      setMfaCode("");
+      setMfaRecoveryCodes([]);
+      setLoginStep("mfa_setup");
+    } catch (setupError) {
+      setError(getErrorMessage(setupError, "Failed to start MFA setup"));
+    } finally {
+      setMfaLoading(false);
+    }
+  }
+
+  async function handleMfaChallenge(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setMfaLoading(true);
+    try {
+      const res = await apiFetch("/auth/mfa/challenge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mfa_token: mfaToken,
+          code: mfaCode.trim() || null,
+          backup_code: mfaBackupCode.trim() || null,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.detail ?? data?.message ?? `Status ${res.status}`);
+      router.replace("/dashboard");
+      router.refresh();
+    } catch (challengeError) {
+      setError(getErrorMessage(challengeError, "Failed to verify MFA"));
+    } finally {
+      setMfaLoading(false);
+    }
+  }
+
+  async function handleEnableMfa(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError(null);
+    setMfaLoading(true);
+    try {
+      const res = await apiFetch("/auth/mfa/enable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: mfaCode.trim() }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.detail ?? data?.message ?? `Status ${res.status}`);
+      setMfaRecoveryCodes(Array.isArray(data?.backup_codes) ? data.backup_codes : []);
+    } catch (enableError) {
+      setError(getErrorMessage(enableError, "Failed to enable MFA"));
+    } finally {
+      setMfaLoading(false);
     }
   }
 
@@ -137,6 +229,7 @@ export default function LoginPage() {
 
       <p className="mb-6 text-sm text-slate-200/80">Sign in with your provisioned account.</p>
 
+      {loginStep === "login" ? (
       <form className="space-y-4 text-left" onSubmit={handleManualSignIn}>
         <div className="space-y-2">
           <Label htmlFor="signin-email">Email</Label>
@@ -169,13 +262,107 @@ export default function LoginPage() {
           {formLoading ? "Signing in..." : "Sign in with email"}
         </button>
       </form>
+      ) : null}
 
-      <div className="my-5 flex items-center gap-3 text-xs uppercase tracking-[0.25em] text-slate-400/70">
+      {loginStep === "mfa_challenge" ? (
+        <form className="space-y-4 text-left" onSubmit={handleMfaChallenge}>
+          <div className="rounded-md border border-amber-800/50 bg-amber-950/30 px-3 py-3 text-sm text-amber-100">
+            Enter your authenticator code or one recovery code to finish signing in.
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="mfa-code">Authenticator Code</Label>
+            <Input
+              id="mfa-code"
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              value={mfaCode}
+              onChange={(event) => setMfaCode(event.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="mfa-backup-code">Recovery Code</Label>
+            <Input
+              id="mfa-backup-code"
+              value={mfaBackupCode}
+              onChange={(event) => setMfaBackupCode(event.target.value)}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={mfaLoading || (!mfaCode.trim() && !mfaBackupCode.trim())}
+            className="w-full cursor-pointer rounded-md border border-white/20 bg-white px-4 py-3 text-sm font-medium text-black transition-all hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {mfaLoading ? "Verifying..." : "Verify MFA"}
+          </button>
+        </form>
+      ) : null}
+
+      {loginStep === "mfa_setup" ? (
+        <form className="space-y-4 text-left" onSubmit={handleEnableMfa}>
+          {mfaRecoveryCodes.length ? (
+            <>
+              <div className="rounded-md border border-emerald-800/50 bg-emerald-950/30 px-3 py-3 text-sm text-emerald-100">
+                MFA is enabled. Save these recovery codes before continuing.
+              </div>
+              <div className="grid gap-2 rounded-md border border-neutral-800 bg-neutral-950/70 p-3 font-mono text-xs text-neutral-200">
+                {mfaRecoveryCodes.map((code) => <div key={code}>{code}</div>)}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  router.replace("/dashboard");
+                  router.refresh();
+                }}
+                className="w-full cursor-pointer rounded-md border border-white/20 bg-white px-4 py-3 text-sm font-medium text-black transition-all hover:bg-white/90"
+              >
+                Continue to dashboard
+              </button>
+            </>
+          ) : (
+            <>
+              <div className="rounded-md border border-amber-800/50 bg-amber-950/30 px-3 py-3 text-sm text-amber-100">
+                Your tenant requires MFA. Add this secret to an authenticator app, then enter the 6-digit code.
+              </div>
+              <div className="rounded-md border border-neutral-800 bg-neutral-950/70 p-3">
+                <div className="text-xs uppercase tracking-wide text-neutral-500">Secret</div>
+                <div className="mt-2 break-all font-mono text-sm text-neutral-100">{mfaSecret}</div>
+              </div>
+              {mfaOtpAuthUri ? (
+                <a className="block break-all text-xs text-neutral-400 underline-offset-4 hover:underline" href={mfaOtpAuthUri}>
+                  Open authenticator setup link
+                </a>
+              ) : null}
+              <div className="space-y-2">
+                <Label htmlFor="setup-mfa-code">Authenticator Code</Label>
+                <Input
+                  id="setup-mfa-code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  value={mfaCode}
+                  onChange={(event) => setMfaCode(event.target.value)}
+                  required
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={mfaLoading || !mfaCode.trim()}
+                className="w-full cursor-pointer rounded-md border border-white/20 bg-white px-4 py-3 text-sm font-medium text-black transition-all hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {mfaLoading ? "Enabling..." : "Enable MFA"}
+              </button>
+            </>
+          )}
+        </form>
+      ) : null}
+
+      {loginStep === "login" ? <div className="my-5 flex items-center gap-3 text-xs uppercase tracking-[0.25em] text-slate-400/70">
         <div className="h-px flex-1 bg-white/10" />
         <span>or</span>
         <div className="h-px flex-1 bg-white/10" />
-      </div>
+      </div> : null}
 
+      {loginStep === "login" ? (
+      <>
       <button
         type="button"
         onClick={handleSsoLogin}
@@ -197,13 +384,7 @@ export default function LoginPage() {
         <span className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 bg-[radial-gradient(circle_at_15%_20%,rgba(255,255,255,0.10),transparent_65%),radial-gradient(circle_at_85%_80%,rgba(255,255,255,0.06),transparent_65%)] group-hover:opacity-100" />
 
         <span className="relative z-10 flex items-center justify-center gap-3">
-          <Image
-            src="https://www.svgrepo.com/show/475656/google-color.svg"
-            alt="google"
-            width={20}
-            height={20}
-            className="h-5 w-5"
-          />
+          <GoogleMark />
           <AnimatedShinyText shimmerWidth={40}>
             {googleLoading ? "Redirecting..." : "Sign in with Google"}
           </AnimatedShinyText>
@@ -227,6 +408,8 @@ export default function LoginPage() {
           </AnimatedShinyText>
         </span>
       </button>
+      </>
+      ) : null}
 
       {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
     </>

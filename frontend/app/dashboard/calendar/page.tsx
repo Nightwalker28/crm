@@ -412,49 +412,6 @@ export default function CalendarPage() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60">
-            <div className="border-b border-neutral-800 px-5 py-4">
-              <div className="text-base font-semibold text-neutral-100">Sync Status</div>
-              <div className="mt-1 text-sm text-neutral-400">
-                Manual-login users stay internal-only. Provider-based sync follows the current signed-in provider where available.
-              </div>
-            </div>
-            <div className="space-y-3 p-4">
-              {contextQuery.data?.connections.length ? (
-                contextQuery.data.connections.map((connection) => (
-                  <div key={connection.provider} className="rounded-xl border border-neutral-800 bg-black/20 px-4 py-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-semibold text-neutral-100">{connection.provider === "google" ? "Google Calendar" : "Microsoft Calendar"}</div>
-                        <div className="mt-1 text-sm text-neutral-400">{connection.account_email || "Connected account"}</div>
-                        <div className="mt-1 text-xs text-neutral-500">
-                          Sync target: {connection.provider_calendar_name || "CRM"}{connection.provider_calendar_id ? ` (${connection.provider_calendar_id})` : ""}
-                        </div>
-                      </div>
-                      <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300">
-                        {connection.sync_enabled_for_current_session ? "Active" : connection.status}
-                      </div>
-                    </div>
-                    <div className="mt-3">
-                      <Button type="button" size="sm" variant="outline" disabled={isSyncingCalendar || !connection.sync_enabled_for_current_session} onClick={() => void handleManualSync()}>
-                        <RefreshCw className={"h-4 w-4 " + (isSyncingCalendar ? "animate-spin" : "")} />
-                        Manual Sync
-                      </Button>
-                    </div>
-                    {connection.last_error ? (
-                      <div className="mt-2 text-xs text-red-300">{connection.last_error}</div>
-                    ) : connection.last_synced_at ? (
-                      <div className="mt-2 text-xs text-neutral-500">Last synced {formatDateTime(connection.last_synced_at)}</div>
-                    ) : null}
-                  </div>
-                ))
-              ) : (
-                <div className="rounded-xl border border-dashed border-neutral-800 bg-black/20 px-4 py-8 text-center text-sm text-neutral-500">
-                  No external calendar is active yet. Manual sign-in remains internal-only for now.
-                </div>
-              )}
-            </div>
-          </section>
         </div>
       </div>
 

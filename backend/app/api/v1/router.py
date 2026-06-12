@@ -11,6 +11,7 @@ from app.modules.client_portal.routes.client_portal_routes import (
     client_documents_router,
     client_messages_router,
     client_orders_router,
+    client_overview_router,
     client_quotes_router,
     client_support_router,
     public_client_pages_router,
@@ -98,6 +99,7 @@ router.include_router(client_catalog_router)
 router.include_router(client_documents_router)
 router.include_router(client_messages_router)
 router.include_router(client_orders_router)
+router.include_router(client_overview_router)
 router.include_router(client_quotes_router)
 router.include_router(client_support_router)
 router.include_router(public_client_pages_router)

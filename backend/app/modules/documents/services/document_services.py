@@ -582,7 +582,11 @@ def _refresh_microsoft_onedrive_access_token(db: Session, connection: DocumentSt
         return access_token
     refresh_token = _connection_token(db, connection, "refresh_token")
     if not refresh_token:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reconnect Microsoft OneDrive to restore document storage access.")
+        connection.status = "error"
+        connection.last_error = "Reconnect Microsoft OneDrive to restore document storage access."
+        db.add(connection)
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
     token_res = requests.post(
         microsoft_token_url(),
         data={
@@ -596,11 +600,17 @@ def _refresh_microsoft_onedrive_access_token(db: Session, connection: DocumentSt
     )
     token_json = token_res.json()
     if not token_res.ok or not token_json.get("access_token"):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to refresh Microsoft OneDrive access.")
+        connection.status = "error"
+        connection.last_error = "Failed to refresh Microsoft OneDrive access."
+        db.add(connection)
+        db.commit()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
     _set_connection_token(connection, "access_token", token_json["access_token"])
     if token_json.get("refresh_token"):
         _set_connection_token(connection, "refresh_token", token_json["refresh_token"])
     connection.token_expires_at = _token_expiry(token_json)
+    connection.status = "connected"
+    connection.last_error = None
     db.add(connection)
     db.commit()
     return token_json["access_token"]

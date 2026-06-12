@@ -42,6 +42,7 @@ from app.modules.client_portal.schema import (
     ClientLoginRequest,
     ClientLoginResponse,
     ClientMeResponse,
+    ClientOverviewResponse,
     ClientSetupPasswordRequest,
     CustomerGroupAssignmentRequest,
     CustomerGroupCreateRequest,
@@ -60,6 +61,7 @@ from app.modules.client_portal.services.client_portal_services import (
     create_client_catalog_order,
     create_client_page,
     create_customer_group,
+    build_client_overview,
     get_client_account_or_404,
     get_client_catalog_item_or_404,
     get_client_order_or_404,
@@ -131,6 +133,7 @@ client_messages_router = APIRouter(prefix="/client-messages", tags=["Client Mess
 client_documents_router = APIRouter(prefix="/client-documents", tags=["Client Documents"])
 client_quotes_router = APIRouter(prefix="/client-quotes", tags=["Client Quotes"])
 client_bookings_router = APIRouter(prefix="/client-bookings", tags=["Client Bookings"])
+client_overview_router = APIRouter(prefix="/client-overview", tags=["Client Overview"])
 client_bearer = HTTPBearer(auto_error=False)
 
 
@@ -627,6 +630,16 @@ def get_client_me(
         "organization_name": serialized_account["organization_name"],
         "customer_group": serialize_customer_group(group),
     }
+
+
+@client_overview_router.get("", response_model=ClientOverviewResponse)
+def get_client_overview_route(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+    db: Session = Depends(get_db),
+):
+    account = _require_client_account(request, credentials, db)
+    return ClientOverviewResponse.model_validate(build_client_overview(db, account=account))
 
 
 @client_catalog_router.get("", response_model=ClientCatalogListResponse)

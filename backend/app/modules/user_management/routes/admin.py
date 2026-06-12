@@ -28,6 +28,8 @@ from app.modules.user_management.schema import (
     TeamCreateRequest,
     TeamSchema,
     TeamUpdateRequest,
+    TenantDomainCreateRequest,
+    TenantDomainResponse,
     TenantSsoSettingsResponse,
     TenantSsoTestResponse,
     TenantSsoSettingsUpdateRequest,
@@ -43,6 +45,7 @@ from app.modules.user_management.schema import (
 from app.modules.user_management.services import admin_modules, admin_structure, admin_users, role_permissions
 from app.modules.user_management.services.mfa import admin_reset_user_mfa, get_tenant_mfa_policy, update_tenant_mfa_policy
 from app.modules.user_management.services.sso import get_or_create_sso_settings, serialize_sso_settings, test_sso_settings, update_sso_settings
+from app.modules.user_management.services.tenant_domains import create_tenant_domain, delete_tenant_domain, list_tenant_domains, serialize_tenant_domain, verify_tenant_domain
 from typing import Optional
 
 router = APIRouter(prefix="/admin/users", tags=["Admin Users"])
@@ -439,6 +442,49 @@ def reset_user_mfa(
         user_id=user_id,
     )
     return AdminMfaResetResponse(message="MFA reset")
+
+
+@router.get("/domains", response_model=list[TenantDomainResponse])
+def get_tenant_domains(
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return list_tenant_domains(db, tenant_id=admin.tenant_id)
+
+
+@router.post("/domains", response_model=TenantDomainResponse, status_code=status.HTTP_201_CREATED)
+def add_tenant_domain(
+    payload: TenantDomainCreateRequest,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    domain = create_tenant_domain(
+        db,
+        tenant_id=admin.tenant_id,
+        actor_user_id=admin.id,
+        hostname=payload.hostname,
+        is_primary=payload.is_primary,
+    )
+    return serialize_tenant_domain(domain)
+
+
+@router.post("/domains/{domain_id}/verify", response_model=TenantDomainResponse)
+def verify_custom_domain(
+    domain_id: int,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    domain = verify_tenant_domain(db, tenant_id=admin.tenant_id, actor_user_id=admin.id, domain_id=domain_id)
+    return serialize_tenant_domain(domain)
+
+
+@router.delete("/domains/{domain_id}", status_code=status.HTTP_204_NO_CONTENT)
+def remove_tenant_domain(
+    domain_id: int,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    delete_tenant_domain(db, tenant_id=admin.tenant_id, actor_user_id=admin.id, domain_id=domain_id)
 
 
 @router.get("/sso-settings", response_model=TenantSsoSettingsResponse)

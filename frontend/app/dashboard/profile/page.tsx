@@ -24,6 +24,8 @@ type ProfileResponse = {
   bio?: string | null;
   team_name?: string | null;
   role_name?: string | null;
+  mfa_enabled?: boolean;
+  mfa_required?: boolean;
 };
 
 type ProfileForm = {
@@ -51,6 +53,15 @@ export default function ProfilePage() {
   const [email, setEmail] = useState("");
   const [teamName, setTeamName] = useState<string | null>(null);
   const [roleName, setRoleName] = useState<string | null>(null);
+  const [mfaEnabled, setMfaEnabled] = useState(false);
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaSecret, setMfaSecret] = useState("");
+  const [mfaOtpAuthUri, setMfaOtpAuthUri] = useState("");
+  const [mfaCode, setMfaCode] = useState("");
+  const [mfaBackupCode, setMfaBackupCode] = useState("");
+  const [mfaPassword, setMfaPassword] = useState("");
+  const [mfaRecoveryCodes, setMfaRecoveryCodes] = useState<string[]>([]);
+  const [mfaBusy, setMfaBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
@@ -83,6 +94,8 @@ export default function ProfilePage() {
         setEmail(data.email ?? "");
         setTeamName(data.team_name ?? null);
         setRoleName(data.role_name ?? null);
+        setMfaEnabled(Boolean(data.mfa_enabled));
+        setMfaRequired(Boolean(data.mfa_required));
       } catch (loadError) {
         if (!cancelled) {
           setError(loadError instanceof Error ? loadError.message : "Failed to load profile");
@@ -157,6 +170,75 @@ export default function ProfilePage() {
       setError(uploadError instanceof Error ? uploadError.message : "Failed to upload profile image");
     } finally {
       setUploadingPhoto(false);
+    }
+  }
+
+  async function handleStartMfaSetup() {
+    try {
+      setMfaBusy(true);
+      setError(null);
+      const res = await apiFetch("/auth/mfa/setup", { method: "POST" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      setMfaSecret(body.secret ?? "");
+      setMfaOtpAuthUri(body.otpauth_uri ?? "");
+      setMfaCode("");
+      setMfaRecoveryCodes([]);
+    } catch (setupError) {
+      setError(setupError instanceof Error ? setupError.message : "Failed to start MFA setup");
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  async function handleEnableMfa() {
+    try {
+      setMfaBusy(true);
+      setError(null);
+      const res = await apiFetch("/auth/mfa/enable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: mfaCode.trim() }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      setMfaEnabled(true);
+      setMfaRecoveryCodes(Array.isArray(body?.backup_codes) ? body.backup_codes : []);
+      setMfaCode("");
+      toast.success("MFA enabled.");
+    } catch (enableError) {
+      setError(enableError instanceof Error ? enableError.message : "Failed to enable MFA");
+    } finally {
+      setMfaBusy(false);
+    }
+  }
+
+  async function handleDisableMfa() {
+    try {
+      setMfaBusy(true);
+      setError(null);
+      const res = await apiFetch("/auth/mfa/disable", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          current_password: mfaPassword,
+          code: mfaCode.trim() || null,
+          backup_code: mfaBackupCode.trim() || null,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      setMfaEnabled(false);
+      setMfaSecret("");
+      setMfaOtpAuthUri("");
+      setMfaCode("");
+      setMfaBackupCode("");
+      setMfaPassword("");
+      toast.success("MFA disabled.");
+    } catch (disableError) {
+      setError(disableError instanceof Error ? disableError.message : "Failed to disable MFA");
+    } finally {
+      setMfaBusy(false);
     }
   }
 
@@ -258,6 +340,84 @@ export default function ProfilePage() {
                 {saving ? "Saving..." : "Save Profile"}
               </Button>
             </div>
+          </div>
+        )}
+      </Card>
+
+      <Card className="px-5 py-5">
+        <div className="mb-4 flex flex-col gap-1">
+          <h2 className="text-lg font-semibold text-neutral-100">Account Security</h2>
+          <p className="text-sm text-neutral-500">Manage local app MFA for manual CRM sign-in.</p>
+        </div>
+
+        {loading ? (
+          <div className="text-sm text-neutral-500">Loading security settings...</div>
+        ) : (
+          <div className="grid gap-4">
+            <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+              <div className="text-xs uppercase tracking-wide text-neutral-500">MFA Status</div>
+              <div className="mt-2 text-sm text-neutral-100">
+                {mfaEnabled ? "Enabled" : mfaRequired ? "Required by tenant policy" : "Off"}
+              </div>
+            </div>
+
+            {!mfaEnabled ? (
+              <div className="grid gap-4">
+                {!mfaSecret ? (
+                  <Button type="button" onClick={() => void handleStartMfaSetup()} disabled={mfaBusy}>
+                    {mfaBusy ? "Starting..." : "Set Up MFA"}
+                  </Button>
+                ) : (
+                  <div className="grid gap-3">
+                    <div className="rounded-md border border-neutral-800 bg-neutral-950/60 p-3">
+                      <div className="text-xs uppercase tracking-wide text-neutral-500">Authenticator Secret</div>
+                      <div className="mt-2 break-all font-mono text-sm text-neutral-100">{mfaSecret}</div>
+                    </div>
+                    {mfaOtpAuthUri ? (
+                      <a href={mfaOtpAuthUri} className="text-sm text-neutral-300 underline-offset-4 hover:underline">
+                        Open authenticator setup link
+                      </a>
+                    ) : null}
+                    <Field>
+                      <FieldLabel>Authenticator Code</FieldLabel>
+                      <Input value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" />
+                    </Field>
+                    <Button type="button" onClick={() => void handleEnableMfa()} disabled={mfaBusy || !mfaCode.trim()}>
+                      {mfaBusy ? "Enabling..." : "Enable MFA"}
+                    </Button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-3">
+                <Field>
+                  <FieldLabel>Current Password</FieldLabel>
+                  <Input type="password" value={mfaPassword} onChange={(event) => setMfaPassword(event.target.value)} />
+                </Field>
+                <Field>
+                  <FieldLabel>Authenticator Code</FieldLabel>
+                  <Input value={mfaCode} onChange={(event) => setMfaCode(event.target.value)} inputMode="numeric" autoComplete="one-time-code" />
+                </Field>
+                <Field>
+                  <FieldLabel>Recovery Code</FieldLabel>
+                  <Input value={mfaBackupCode} onChange={(event) => setMfaBackupCode(event.target.value)} />
+                </Field>
+                <div className="md:col-span-3">
+                  <Button type="button" variant="outline" onClick={() => void handleDisableMfa()} disabled={mfaBusy || !mfaPassword || (!mfaCode.trim() && !mfaBackupCode.trim())}>
+                    {mfaBusy ? "Disabling..." : "Disable MFA"}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {mfaRecoveryCodes.length ? (
+              <div className="rounded-md border border-emerald-800/50 bg-emerald-950/20 p-3">
+                <div className="mb-2 text-sm font-semibold text-emerald-100">Recovery Codes</div>
+                <div className="grid gap-1 font-mono text-xs text-emerald-50">
+                  {mfaRecoveryCodes.map((code) => <span key={code}>{code}</span>)}
+                </div>
+              </div>
+            ) : null}
           </div>
         )}
       </Card>

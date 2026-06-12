@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, CalendarClock, Cloud, Download, Play, RotateCcw, Save, Trash2 } from "lucide-react";
+import { Archive, CalendarClock, Download, Play, RotateCcw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -172,14 +172,6 @@ async function fetchDestinationConnections(): Promise<TenantBackupDestinationCon
   const body = await readJson(res);
   if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
   return body as TenantBackupDestinationConnection[];
-}
-
-async function connectBackupDestination(destination: "google_drive" | "onedrive"): Promise<{ auth_url: string }> {
-  const path = destination === "google_drive" ? "google-drive" : "microsoft-onedrive";
-  const res = await apiFetch(`/admin/tenant-backup-settings/destinations/connect/${path}`, { method: "POST" });
-  const body = await readJson(res);
-  if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
-  return body as { auth_url: string };
 }
 
 async function previewRestore(payload: { source_backup_run_id: number; module_key: string }): Promise<TenantRestorePreview> {
@@ -355,22 +347,6 @@ export default function BackupSettingsPage() {
       ]);
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to create tenant backup."),
-  });
-
-  const connectGoogleDriveMutation = useMutation({
-    mutationFn: () => connectBackupDestination("google_drive"),
-    onSuccess: (result) => {
-      window.location.href = result.auth_url;
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to connect Google Drive."),
-  });
-
-  const connectOneDriveMutation = useMutation({
-    mutationFn: () => connectBackupDestination("onedrive"),
-    onSuccess: (result) => {
-      window.location.href = result.auth_url;
-    },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to connect Microsoft OneDrive."),
   });
 
   const previewRestoreMutation = useMutation({
@@ -607,50 +583,6 @@ export default function BackupSettingsPage() {
           </div>
         </Card>
       </div>
-
-      <Card className="px-5 py-5">
-        <div className="mb-4 flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-neutral-300">
-            <Cloud className="h-4 w-4" />
-          </span>
-          <div>
-            <h2 className="text-lg font-semibold text-neutral-100">Cloud Destinations</h2>
-            <p className="mt-1 text-sm text-neutral-500">Connected customer-owned storage for tenant backups.</p>
-          </div>
-        </div>
-
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-sm font-semibold text-neutral-100">Google Drive</div>
-                <div className="mt-1 text-xs text-neutral-500">
-                  {googleDriveConnected ? googleDriveConnection?.account_email ?? "Connected" : "Not connected"}
-                </div>
-                {googleDriveConnection?.last_error ? <div className="mt-2 text-xs text-red-300">{googleDriveConnection.last_error}</div> : null}
-              </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => connectGoogleDriveMutation.mutate()} disabled={connectGoogleDriveMutation.isPending}>
-                {googleDriveConnected ? "Reconnect" : "Connect"}
-              </Button>
-            </div>
-          </div>
-
-          <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-4">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-sm font-semibold text-neutral-100">Microsoft OneDrive</div>
-                <div className="mt-1 text-xs text-neutral-500">
-                  {oneDriveConnected ? oneDriveConnection?.account_email ?? "Connected" : "Not connected"}
-                </div>
-                {oneDriveConnection?.last_error ? <div className="mt-2 text-xs text-red-300">{oneDriveConnection.last_error}</div> : null}
-              </div>
-              <Button type="button" variant="outline" size="sm" onClick={() => connectOneDriveMutation.mutate()} disabled={connectOneDriveMutation.isPending}>
-                {oneDriveConnected ? "Reconnect" : "Connect"}
-              </Button>
-            </div>
-          </div>
-        </div>
-      </Card>
 
       <Card className="px-5 py-5">
         <div className="mb-4 flex items-center gap-3">

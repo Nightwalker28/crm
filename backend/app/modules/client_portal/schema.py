@@ -106,6 +106,28 @@ class ClientMeResponse(BaseModel):
     customer_group: CustomerGroupResponse | None = None
 
 
+class ClientOverviewMetricResponse(BaseModel):
+    key: str
+    label: str
+    value: int
+    href: str
+
+
+class ClientOverviewActionResponse(BaseModel):
+    key: str
+    label: str
+    description: str | None = None
+    href: str
+    status: str | None = None
+    created_at: datetime | None = None
+
+
+class ClientOverviewResponse(BaseModel):
+    account: ClientMeResponse
+    metrics: list[ClientOverviewMetricResponse]
+    next_actions: list[ClientOverviewActionResponse]
+
+
 class ClientCatalogItemResponse(BaseModel):
     kind: Literal["product", "service"]
     id: int

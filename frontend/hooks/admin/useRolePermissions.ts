@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -73,6 +73,9 @@ export function useRolePermissions() {
     queryFn: () => fetchRolePermissions(selectedRoleId as number),
     enabled: selectedRoleId != null,
   });
+  const roles = useMemo(() => overviewQuery.data?.roles ?? [], [overviewQuery.data?.roles]);
+  const templates = useMemo(() => overviewQuery.data?.templates ?? [], [overviewQuery.data?.templates]);
+  const permissions = useMemo(() => permissionsQuery.data ?? [], [permissionsQuery.data]);
 
   async function createRole(payload: { name: string; description?: string; level?: number; template_key: string }) {
     const res = await apiFetch("/admin/users/roles", {
@@ -109,11 +112,11 @@ export function useRolePermissions() {
   }
 
   return {
-    roles: overviewQuery.data?.roles ?? [],
-    templates: overviewQuery.data?.templates ?? [],
+    roles,
+    templates,
     selectedRoleId,
     setSelectedRoleId,
-    permissions: permissionsQuery.data ?? [],
+    permissions,
     isLoading: overviewQuery.isLoading || permissionsQuery.isLoading,
     createRole,
     updatePermissions,

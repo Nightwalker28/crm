@@ -185,7 +185,7 @@ def resolve_request_tenant(db: Session, request: Request) -> Tenant | None:
     tenant_domain = (
         db.query(TenantDomain)
         .options(joinedload(TenantDomain.tenant))
-        .filter(TenantDomain.hostname == hostname)
+        .filter(TenantDomain.hostname == hostname, TenantDomain.status == "verified")
         .first()
     )
     if not tenant_domain or not tenant_domain.tenant or not tenant_domain.tenant.is_active:
