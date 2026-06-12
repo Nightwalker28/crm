@@ -57,6 +57,26 @@ class TenantDomainServiceTests(unittest.TestCase):
         self.assertIsNotNone(verified.verified_at)
         self.assertEqual(self.db.query(ActivityLog).filter(ActivityLog.action == "tenant_domain.verified").count(), 1)
 
+    def test_verification_txt_record_uses_account_domain(self):
+        domain = tenant_domains.create_tenant_domain(self.db, tenant_id=1, actor_user_id=7, hostname="lynk.maadmustafa.dev")
+
+        payload = tenant_domains.serialize_tenant_domain(domain)
+
+        self.assertEqual(payload["txt_record_name"], "maadmustafa.dev")
+        self.assertTrue(payload["txt_record_value"].startswith("lynk-domain-verification="))
+        self.assertNotIn("cname_target", payload)
+
+    @patch("app.modules.user_management.services.tenant_domains._lookup_txt")
+    def test_verify_dns_requires_txt_at_account_domain(self, lookup_txt):
+        lookup_txt.return_value = {"lynk-domain-verification=token"}
+
+        result = tenant_domains._verify_dns("lynk.maadmustafa.dev", "lynk-domain-verification=token")
+
+        self.assertTrue(result["verified"])
+        self.assertEqual(result["txt_host"], "maadmustafa.dev")
+        lookup_txt.assert_called_once()
+        self.assertEqual(lookup_txt.call_args.args[0], "maadmustafa.dev")
+
     def test_tenant_domain_email_domains_use_verified_custom_domains(self):
         self.db.add_all(
             [

@@ -43,7 +43,6 @@ export type TenantDomain = {
   verification_token: string | null;
   txt_record_name: string;
   txt_record_value: string | null;
-  cname_target: string | null;
   verified_at: string | null;
   created_at: string | null;
 };

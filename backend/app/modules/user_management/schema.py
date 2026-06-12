@@ -336,7 +336,6 @@ class TenantDomainResponse(BaseModel):
     verification_token: str | None = None
     txt_record_name: str
     txt_record_value: str | None = None
-    cname_target: str | None = None
     verified_at: datetime | None = None
     created_at: datetime | None = None
 

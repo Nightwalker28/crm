@@ -246,7 +246,7 @@ export default function UserManagementPage() {
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-neutral-100">Custom domains</h2>
-                <p className="text-xs text-neutral-500">Verify a CNAME domain before using tenant SSO.</p>
+                <p className="text-xs text-neutral-500">Add the TXT record shown here before using tenant SSO.</p>
               </div>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row">
@@ -275,11 +275,6 @@ export default function UserManagementPage() {
                       {domain.is_primary ? <span className="rounded bg-neutral-800 px-2 py-0.5 text-xs text-neutral-300">primary</span> : null}
                     </div>
                     <div className="mt-2 grid gap-1 text-xs text-neutral-400">
-                      {domain.cname_target ? (
-                        <div>
-                          CNAME <span className="font-mono text-neutral-200">{domain.hostname}</span> to <span className="font-mono text-neutral-200">{domain.cname_target}</span>
-                        </div>
-                      ) : null}
                       <div>
                         TXT <span className="font-mono text-neutral-200">{domain.txt_record_name}</span> = <span className="font-mono text-neutral-200">{domain.txt_record_value}</span>
                       </div>

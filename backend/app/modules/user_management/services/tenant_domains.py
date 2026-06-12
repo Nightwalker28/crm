@@ -10,7 +10,6 @@ from typing import Any
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.config import settings
 from app.core.tenancy import normalize_hostname
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.user_management.models import TenantDomain
@@ -18,7 +17,6 @@ from app.modules.user_management.models import TenantDomain
 DOMAIN_STATUS_PENDING = "pending"
 DOMAIN_STATUS_VERIFIED = "verified"
 DOMAIN_STATUS_FAILED = "failed"
-DOMAIN_VERIFICATION_TXT_NAME = "_lynk-verify"
 COMMON_APP_SUBDOMAINS = {"app", "crm", "portal", "lynk"}
 
 
@@ -185,9 +183,8 @@ def serialize_tenant_domain(domain: TenantDomain) -> dict[str, Any]:
         "is_primary": bool(domain.is_primary),
         "status": domain.status or DOMAIN_STATUS_PENDING,
         "verification_token": token,
-        "txt_record_name": f"{DOMAIN_VERIFICATION_TXT_NAME}.{domain.hostname}",
+        "txt_record_name": _verification_txt_host(domain.hostname),
         "txt_record_value": token,
-        "cname_target": _cname_target(),
         "verified_at": domain.verified_at,
         "created_at": domain.created_at,
     }
@@ -227,50 +224,32 @@ def _email_domain_from_hostname(hostname: str | None) -> str | None:
 
 
 def _verification_txt_host(hostname: str) -> str:
-    return f"{DOMAIN_VERIFICATION_TXT_NAME}.{hostname}"
-
-
-def _cname_target() -> str | None:
-    configured = (settings.CUSTOM_DOMAIN_CNAME_TARGET or "").rstrip(".").lower()
-    if configured:
-        return configured
-    frontend_host = normalize_hostname(settings.FRONTEND_ORIGIN)
-    if frontend_host and frontend_host not in {"localhost", "127.0.0.1"}:
-        return frontend_host
-    return None
+    return _email_domain_from_hostname(hostname) or normalize_hostname(hostname) or hostname
 
 
 def _verify_dns(hostname: str, verification_token: str | None) -> dict[str, Any]:
     errors: list[str] = []
-    txt_values = _lookup_txt(_verification_txt_host(hostname), errors)
-    cname_values = _lookup_cname(hostname, errors)
-    expected_cname = (_cname_target() or "").rstrip(".").lower()
+    txt_host = _verification_txt_host(hostname)
+    txt_values = _lookup_txt(txt_host, errors)
     token = verification_token or ""
 
     txt_ok = bool(token and token in txt_values)
-    cname_ok = bool(expected_cname and expected_cname in {value.rstrip(".").lower() for value in cname_values})
-    if txt_ok or cname_ok:
+    if txt_ok:
         return {
             "verified": True,
             "message": "Domain verified.",
             "txt_ok": txt_ok,
-            "cname_ok": cname_ok,
-            "txt_host": _verification_txt_host(hostname),
-            "cname_target": expected_cname or None,
+            "txt_host": txt_host,
         }
     if errors:
         message = "; ".join(errors)
-    elif expected_cname:
-        message = f"DNS verification failed. Add TXT {token} or CNAME {hostname} to {expected_cname}."
     else:
-        message = f"DNS verification failed. Add TXT {token} at {_verification_txt_host(hostname)}."
+        message = f"DNS verification failed. Add TXT {token} at {txt_host}."
     return {
         "verified": False,
         "message": message,
         "txt_ok": False,
-        "cname_ok": False,
-        "txt_host": _verification_txt_host(hostname),
-        "cname_target": expected_cname or None,
+        "txt_host": txt_host,
     }
 
 
@@ -293,26 +272,4 @@ def _lookup_txt(hostname: str, errors: list[str]) -> set[str]:
         errors.append(f"TXT lookup failed for {hostname}: {result.stderr.strip() or 'dig failed'}")
         return set()
     errors.append("DNS TXT lookup is unavailable in this runtime")
-    return set()
-
-
-def _lookup_cname(hostname: str, errors: list[str]) -> set[str]:
-    try:
-        import dns.resolver  # type: ignore
-
-        answers = dns.resolver.resolve(hostname, "CNAME")
-        return {str(answer.target).rstrip(".").lower() for answer in answers}
-    except ImportError:
-        pass
-    except Exception as exc:
-        errors.append(f"CNAME lookup failed for {hostname}: {exc}")
-        return set()
-
-    if shutil.which("dig"):
-        result = subprocess.run(["dig", "+short", "CNAME", hostname], check=False, capture_output=True, text=True, timeout=10)
-        if result.returncode == 0:
-            return {line.strip().rstrip(".").lower() for line in result.stdout.splitlines() if line.strip()}
-        errors.append(f"CNAME lookup failed for {hostname}: {result.stderr.strip() or 'dig failed'}")
-        return set()
-    errors.append("DNS CNAME lookup is unavailable in this runtime")
     return set()
