@@ -29,6 +29,7 @@ from app.modules.documents.services.document_services import (
     handle_google_drive_callback,
     handle_microsoft_onedrive_callback,
 )
+from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.user_management.schema import (
     ManualLoginRequest,
     MfaChallengeRequest,
@@ -36,6 +37,8 @@ from app.modules.user_management.schema import (
     MfaEnableRequest,
     MfaEnableResponse,
     MfaSetupResponse,
+    SsoStartRequest,
+    SsoStartResponse,
     SetupPasswordRequest,
 )
 from app.modules.user_management.services.auth import (
@@ -53,6 +56,7 @@ from app.modules.user_management.services.auth import (
     set_initial_password,
 )
 from app.modules.user_management.services.mfa import activate_mfa, disable_mfa, start_mfa_setup, verify_mfa_challenge
+from app.modules.user_management.services.sso import build_sso_start_url, handle_oidc_callback
 
 router = APIRouter(tags=["Auth"])
 MFA_CHALLENGE_EXPIRE_MINUTES = 5
@@ -154,7 +158,54 @@ def _decode_mfa_challenge_token(token: str) -> dict:
     return payload
 
 
-def _issue_session_response(user: User, db: Session, *, body: dict | None = None) -> JSONResponse:
+def _log_auth_event(
+    db: Session,
+    *,
+    action: str,
+    user: User | None = None,
+    tenant_id: int | None = None,
+    description: str,
+    after_state: dict | None = None,
+) -> None:
+    resolved_tenant_id = int(getattr(user, "tenant_id", None) or tenant_id or 0)
+    if not resolved_tenant_id:
+        return
+    safe_log_activity(
+        db,
+        tenant_id=resolved_tenant_id,
+        actor_user_id=getattr(user, "id", None),
+        module_key="security",
+        entity_type="user" if user else "auth",
+        entity_id=getattr(user, "id", None) or resolved_tenant_id,
+        action=action,
+        description=description,
+        after_state=after_state,
+    )
+
+
+def _log_oauth_failure(
+    db: Session,
+    *,
+    tenant_id: int | None,
+    provider: str,
+    status_value: str = "error",
+) -> None:
+    _log_auth_event(
+        db,
+        action="auth.login.failed",
+        tenant_id=tenant_id,
+        description=f"{provider.title()} login failed",
+        after_state={"provider": provider, "status": status_value},
+    )
+
+
+def _issue_session_response(
+    user: User,
+    db: Session,
+    *,
+    body: dict | None = None,
+    auth_event_provider: str | None = None,
+) -> JSONResponse:
     access_token = create_access_token(user)
     refresh_token = create_refresh_token(user, db)
     response = JSONResponse(body or {"status": "ok", "message": "Signed in"})
@@ -163,6 +214,14 @@ def _issue_session_response(user: User, db: Session, *, body: dict | None = None
         access_token=access_token,
         refresh_token=refresh_token,
     )
+    if auth_event_provider:
+        _log_auth_event(
+            db,
+            action="auth.login.success",
+            user=user,
+            description="Login succeeded",
+            after_state={"provider": auth_event_provider},
+        )
     return response
 
 
@@ -201,25 +260,77 @@ def manual_login(
     if tenant_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
 
-    user = authenticate_manual_user(
-        db,
-        tenant_id=tenant_id,
-        email=payload.email,
-        password=payload.password,
-        frontend_origin=get_frontend_origin_for_request(request),
-    )
+    try:
+        user = authenticate_manual_user(
+            db,
+            tenant_id=tenant_id,
+            email=payload.email,
+            password=payload.password,
+            frontend_origin=get_frontend_origin_for_request(request),
+        )
+    except HTTPException as exc:
+        _log_auth_event(
+            db,
+            action="auth.login.failed",
+            tenant_id=tenant_id,
+            description="Manual login failed",
+            after_state={"provider": "manual", "status_code": exc.status_code},
+        )
+        raise
     if getattr(user, "mfa_enabled", False):
         return _mfa_challenge_response(user)
     if _tenant_mfa_policy_requires_setup(db, user=user):
         return _issue_session_response(
             user,
             db,
+            auth_event_provider="manual",
             body={
                 "status": "mfa_setup_required",
                 "message": "MFA setup required",
             },
         )
-    return _issue_session_response(user, db)
+    return _issue_session_response(user, db, auth_event_provider="manual")
+
+
+@router.post("/sso/start", response_model=SsoStartResponse)
+def start_sso_login(
+    payload: SsoStartRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    return SsoStartResponse(auth_url=build_sso_start_url(db, request=request, email=payload.email))
+
+
+@router.get("/oidc/callback", name="oidc_callback")
+def oidc_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    db: Session = Depends(get_db),
+):
+    frontend_origin = get_frontend_origin_for_request(request)
+    try:
+        result = handle_oidc_callback(db, request=request, code=code, state=state)
+    except HTTPException as exc:
+        status_value = "forbidden" if exc.status_code == status.HTTP_403_FORBIDDEN else "error"
+        return RedirectResponse(url=f"{frontend_origin}/auth/callback?status={status_value}")
+
+    user = result["user"]
+    frontend_origin = result.get("frontend_origin") or frontend_origin
+    response = RedirectResponse(url=f"{frontend_origin}/auth/callback?status=active")
+    _set_session_cookies(
+        response,
+        access_token=create_access_token(user),
+        refresh_token=create_refresh_token(user, db),
+    )
+    _log_auth_event(
+        db,
+        action="auth.login.success",
+        user=user,
+        description="Login succeeded",
+        after_state={"provider": "oidc"},
+    )
+    return response
 
 
 @router.post("/mfa/setup", response_model=MfaSetupResponse)
@@ -259,7 +370,7 @@ def complete_mfa_challenge(
     if not user or user.is_active != UserStatus.active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA challenge")
     verify_mfa_challenge(db, user=user, code=payload.code, backup_code=payload.backup_code)
-    return _issue_session_response(user, db)
+    return _issue_session_response(user, db, auth_event_provider="manual_mfa")
 
 
 @router.post("/mfa/disable")
@@ -406,14 +517,17 @@ def google_callback(
     )
 
     if not state_payload:
+        _log_oauth_failure(db, tenant_id=None, provider="google")
         query = urllib.parse.urlencode({"status": "error"})
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?{query}")
 
     if state_payload and tenant and state_payload.get("tenant_id") != tenant.id:
+        _log_oauth_failure(db, tenant_id=state_payload.get("tenant_id"), provider="google")
         query = urllib.parse.urlencode({"status": "error"})
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?{query}")
 
     if not code:
+        _log_oauth_failure(db, tenant_id=state_payload.get("tenant_id"), provider="google")
         query = urllib.parse.urlencode({"status": "error"})
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?{query}")
 
@@ -423,11 +537,23 @@ def google_callback(
         result = handle_google_callback(code, db, tenant=tenant, request=request)
     except HTTPException as exc:
         status_value = "forbidden" if exc.status_code == 403 else "error"
+        _log_oauth_failure(
+            db,
+            tenant_id=state_payload.get("tenant_id"),
+            provider="google",
+            status_value=status_value,
+        )
         query = urllib.parse.urlencode({"status": status_value})
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?{query}")
 
     status_value = result.get("status", "error")
     if status_value != "active":
+        _log_oauth_failure(
+            db,
+            tenant_id=state_payload.get("tenant_id"),
+            provider="google",
+            status_value=status_value,
+        )
         query = urllib.parse.urlencode({"status": status_value})
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?{query}")
 
@@ -440,6 +566,13 @@ def google_callback(
         response,
         access_token=access_token,
         refresh_token=refresh_token,
+    )
+    _log_auth_event(
+        db,
+        action="auth.login.success",
+        user=user,
+        description="Login succeeded",
+        after_state={"provider": "google"},
     )
     return response
 
@@ -479,10 +612,13 @@ def microsoft_callback(
         return RedirectResponse(url=f"{frontend_origin}{return_path}?driveConnect=connected&provider=microsoft_onedrive")
 
     if not login_state_payload:
+        _log_oauth_failure(db, tenant_id=None, provider="microsoft")
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?status=error")
     if tenant and login_state_payload.get("tenant_id") != tenant.id:
+        _log_oauth_failure(db, tenant_id=login_state_payload.get("tenant_id"), provider="microsoft")
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?status=error")
     if not code:
+        _log_oauth_failure(db, tenant_id=login_state_payload.get("tenant_id"), provider="microsoft")
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?status=error")
     try:
         if not tenant and not (is_cloud_mode_enabled() and is_auth_tenant_resolution_enabled()):
@@ -490,12 +626,31 @@ def microsoft_callback(
         result = handle_microsoft_callback(code, db, tenant=tenant, request=request)
     except HTTPException as exc:
         status_value = "forbidden" if exc.status_code == 403 else "error"
+        _log_oauth_failure(
+            db,
+            tenant_id=login_state_payload.get("tenant_id"),
+            provider="microsoft",
+            status_value=status_value,
+        )
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?status={status_value}")
     if result.get("status") != "active":
+        _log_oauth_failure(
+            db,
+            tenant_id=login_state_payload.get("tenant_id"),
+            provider="microsoft",
+            status_value=result.get("status", "error"),
+        )
         return RedirectResponse(url=f"{frontend_origin}/auth/callback?status={result.get('status', 'error')}")
     user = result["user"]
     response = RedirectResponse(url=f"{frontend_origin}/auth/callback?status=active")
     _set_session_cookies(response, access_token=create_access_token(user), refresh_token=create_refresh_token(user, db))
+    _log_auth_event(
+        db,
+        action="auth.login.success",
+        user=user,
+        description="Login succeeded",
+        after_state={"provider": "microsoft"},
+    )
     return response
 
 
@@ -519,6 +674,16 @@ def logout(
             payload = decode_token(refresh_token, expected_type="refresh")
             _validate_request_tenant(request, payload)
             user_id = payload.get("sub")
+            tenant_id = payload.get("tenant_id")
+            user = db.query(User).filter(User.id == int(user_id)).first() if user_id else None
+            _log_auth_event(
+                db,
+                action="auth.logout",
+                tenant_id=int(tenant_id) if tenant_id else None,
+                user=user,
+                description="Logout succeeded",
+                after_state={"session": "revoked"},
+            )
             if user_id:
                 db.query(RefreshToken).filter(RefreshToken.user_id == int(user_id)).delete()
                 db.commit()
@@ -537,6 +702,7 @@ def refresh_access_token(
     db: Session = Depends(get_db),
 ):
     user_id = None
+    tenant_id = getattr(getattr(request.state, "tenant", None), "id", None)
     check_refresh_token_rate_limit(request)
     refresh_token = request.cookies.get(settings.REFRESH_TOKEN_COOKIE_NAME)
     try:
@@ -544,6 +710,7 @@ def refresh_access_token(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing refresh token")
 
         payload = decode_token(refresh_token, expected_type="refresh")
+        tenant_id = payload.get("tenant_id") or tenant_id
         _validate_request_tenant(request, payload)
         user_id = payload.get("sub")
         jti = payload.get("jti")
@@ -583,6 +750,13 @@ def refresh_access_token(
     except HTTPException as exc:
         if exc.status_code == status.HTTP_401_UNAUTHORIZED:
             record_failed_refresh_attempt(request, user_id)
+            _log_auth_event(
+                db,
+                action="auth.refresh.failed",
+                tenant_id=int(tenant_id) if tenant_id else None,
+                description="Refresh token failed",
+                after_state={"status_code": exc.status_code},
+            )
         raise
 
     access_token = create_access_token(user)

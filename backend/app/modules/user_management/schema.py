@@ -328,6 +328,63 @@ class AdminMfaResetResponse(BaseModel):
     message: str
 
 
+class TenantSsoSettingsResponse(BaseModel):
+    enabled: bool = False
+    provider_type: str = "oidc"
+    issuer_url: str | None = None
+    authorization_endpoint: str | None = None
+    token_endpoint: str | None = None
+    userinfo_endpoint: str | None = None
+    jwks_uri: str | None = None
+    client_id: str | None = None
+    has_client_secret: bool = False
+    allowed_email_domains: list[str] = Field(default_factory=list)
+    auto_provision_users: bool = False
+    default_role_id: int | None = None
+    default_team_id: int | None = None
+    email_claim: str = "email"
+    first_name_claim: str | None = None
+    last_name_claim: str | None = None
+    status: str = "draft"
+    last_test_result: dict[str, Any] | None = None
+    last_successful_login_at: datetime | None = None
+    last_failed_login_reason: str | None = None
+
+
+class TenantSsoTestResponse(BaseModel):
+    ok: bool
+    message: str
+    checked_at: datetime
+    metadata: dict[str, Any] = Field(default_factory=dict)
+    errors: list[str] = Field(default_factory=list)
+
+
+class TenantSsoSettingsUpdateRequest(BaseModel):
+    enabled: bool | None = None
+    issuer_url: str | None = None
+    authorization_endpoint: str | None = None
+    token_endpoint: str | None = None
+    userinfo_endpoint: str | None = None
+    jwks_uri: str | None = None
+    client_id: str | None = None
+    client_secret: str | None = None
+    allowed_email_domains: list[str] | None = None
+    auto_provision_users: bool | None = None
+    default_role_id: int | None = None
+    default_team_id: int | None = None
+    email_claim: str | None = None
+    first_name_claim: str | None = None
+    last_name_claim: str | None = None
+
+
+class SsoStartRequest(BaseModel):
+    email: EmailStr
+
+
+class SsoStartResponse(BaseModel):
+    auth_url: str
+
+
 class SetupPasswordRequest(BaseModel):
     token: str
     password: str

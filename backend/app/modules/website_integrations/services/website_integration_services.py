@@ -232,7 +232,7 @@ def create_api_key(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
         module_key="website_integrations",
         entity_type="integration_api_key",
         entity_id=record.id,
-        action="integration_api_key.create",
+        action="api_key.created",
         description=f"Created website integration API key {record.name}",
         after_state=serialize_api_key(record, api_key=None),
     )
@@ -265,12 +265,38 @@ def revoke_api_key(db: Session, *, key: WebsiteIntegrationApiKey, actor_user_id:
         module_key="website_integrations",
         entity_type="integration_api_key",
         entity_id=key.id,
-        action="integration_api_key.revoke",
+        action="api_key.revoked",
         description=f"Revoked website integration API key {key.name}",
         before_state=before_state,
         after_state=serialize_api_key(key),
     )
     return key
+
+
+def rotate_api_key(db: Session, *, key: WebsiteIntegrationApiKey, actor_user_id: int | None) -> tuple[WebsiteIntegrationApiKey, str]:
+    if key.status != "active":
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only active integration API keys can be rotated")
+
+    before_state = serialize_api_key(key)
+    raw_key = _new_api_key()
+    key.key_prefix = _key_prefix(raw_key)
+    key.key_hash = _hash_api_key(raw_key)
+    db.add(key)
+    db.commit()
+    db.refresh(key)
+    log_activity(
+        db,
+        tenant_id=key.tenant_id,
+        actor_user_id=actor_user_id,
+        module_key="website_integrations",
+        entity_type="integration_api_key",
+        entity_id=key.id,
+        action="api_key.rotated",
+        description=f"Rotated website integration API key {key.name}",
+        before_state=before_state,
+        after_state=serialize_api_key(key),
+    )
+    return key, raw_key
 
 
 def resolve_public_api_key(db: Session, *, api_key: str | None, required_scope: str = DEFAULT_CATALOG_READ_SCOPE) -> WebsiteIntegrationApiKey:

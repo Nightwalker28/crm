@@ -28,6 +28,9 @@ from app.modules.user_management.schema import (
     TeamCreateRequest,
     TeamSchema,
     TeamUpdateRequest,
+    TenantSsoSettingsResponse,
+    TenantSsoTestResponse,
+    TenantSsoSettingsUpdateRequest,
     TenantMfaPolicyRequest,
     TenantMfaPolicyResponse,
     UpdateUserRequest,
@@ -39,6 +42,7 @@ from app.modules.user_management.schema import (
 )
 from app.modules.user_management.services import admin_modules, admin_structure, admin_users, role_permissions
 from app.modules.user_management.services.mfa import admin_reset_user_mfa, get_tenant_mfa_policy, update_tenant_mfa_policy
+from app.modules.user_management.services.sso import get_or_create_sso_settings, serialize_sso_settings, test_sso_settings, update_sso_settings
 from typing import Optional
 
 router = APIRouter(prefix="/admin/users", tags=["Admin Users"])
@@ -435,6 +439,41 @@ def reset_user_mfa(
         user_id=user_id,
     )
     return AdminMfaResetResponse(message="MFA reset")
+
+
+@router.get("/sso-settings", response_model=TenantSsoSettingsResponse)
+def get_sso_settings(
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return serialize_sso_settings(get_or_create_sso_settings(db, tenant_id=admin.tenant_id))
+
+
+@router.put("/sso-settings", response_model=TenantSsoSettingsResponse)
+def update_tenant_sso_settings(
+    payload: TenantSsoSettingsUpdateRequest,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    settings_row = update_sso_settings(
+        db,
+        tenant_id=admin.tenant_id,
+        actor_user_id=admin.id,
+        payload=payload.model_dump(exclude_unset=True),
+    )
+    return serialize_sso_settings(settings_row)
+
+
+@router.post("/sso-settings/test", response_model=TenantSsoTestResponse)
+def test_tenant_sso_settings(
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    return test_sso_settings(
+        db,
+        tenant_id=admin.tenant_id,
+        actor_user_id=admin.id,
+    )
 
 
 @router.put("/{user_id}", response_model=UserProfile)

@@ -41,8 +41,8 @@ Each integration/provider connection should track:
 ### Acceptance criteria
 
 - Google, Microsoft, OneDrive, mail, calendar, and public API integrations follow a shared structure where practical.
-- Admin can see connection health.
-- Admin can reconnect broken integrations.
+- users can see connection health.
+- users can reconnect broken integrations.
 - Tokens/secrets are encrypted.
 
 ## Task 6.2 — Public catalog/order integration completion

@@ -71,16 +71,41 @@ def encrypt_application_secret(value: str) -> EncryptedSecret:
     return EncryptedSecret(ciphertext=ciphertext, key_version=key_version)
 
 
+def current_application_key_version() -> str:
+    return _application_secret_entries()[0][0]
+
+
 def decrypt_application_secret(value: str | None, *, key_version: str | None = None) -> str | None:
+    result, _ = decrypt_application_secret_with_rotation(value, key_version=key_version)
+    return result
+
+
+def decrypt_application_secret_with_rotation(value: str | None, *, key_version: str | None = None) -> tuple[str | None, bool]:
     if not value:
-        return None
+        return None, False
     entries = _application_secret_entries()
+    current_version = entries[0][0]
     if key_version:
         entries = sorted(entries, key=lambda entry: 0 if entry[0] == key_version else 1)
     last_error = None
-    for _version, secret in entries:
+    for version, secret in entries:
         try:
-            return _fernet_for_secret(secret).decrypt(value.encode("utf-8")).decode("utf-8")
+            return (
+                _fernet_for_secret(secret).decrypt(value.encode("utf-8")).decode("utf-8"),
+                version != current_version,
+            )
         except InvalidToken as exc:
             last_error = exc
     raise RuntimeError("Stored application secret could not be decrypted") from last_error
+
+
+def encrypt_sensitive_value(value: str) -> EncryptedSecret:
+    return encrypt_application_secret(value)
+
+
+def decrypt_sensitive_value(value: str | None, *, key_version: str | None = None) -> str | None:
+    return decrypt_application_secret(value, key_version=key_version)
+
+
+def decrypt_sensitive_value_with_rotation(value: str | None, *, key_version: str | None = None) -> tuple[str | None, bool]:
+    return decrypt_application_secret_with_rotation(value, key_version=key_version)

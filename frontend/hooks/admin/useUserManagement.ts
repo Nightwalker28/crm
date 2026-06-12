@@ -12,6 +12,41 @@ type AuthMode = "manual_only" | "manual_or_google";
 type UserStatus = "active" | "inactive";
 export type MfaPolicy = "off" | "admins_only" | "all_users";
 
+export type SsoSettings = {
+  enabled: boolean;
+  provider_type: "oidc";
+  issuer_url: string | null;
+  authorization_endpoint: string | null;
+  token_endpoint: string | null;
+  userinfo_endpoint: string | null;
+  jwks_uri: string | null;
+  client_id: string | null;
+  has_client_secret: boolean;
+  allowed_email_domains: string[];
+  auto_provision_users: boolean;
+  default_role_id: number | null;
+  default_team_id: number | null;
+  email_claim: string;
+  first_name_claim: string | null;
+  last_name_claim: string | null;
+  status: string;
+  last_test_result: SsoTestResult | null;
+  last_successful_login_at: string | null;
+  last_failed_login_reason: string | null;
+};
+
+export type SsoTestResult = {
+  ok: boolean;
+  message: string;
+  checked_at: string;
+  metadata: Record<string, string>;
+  errors: string[];
+};
+
+export type SsoSettingsUpdate = Partial<Omit<SsoSettings, "provider_type" | "has_client_secret" | "status" | "last_test_result" | "last_successful_login_at" | "last_failed_login_reason">> & {
+  client_secret?: string | null;
+};
+
 export type UserOptionsData = {
   roles: UserOption[];
   teams: UserOption[];
@@ -91,6 +126,17 @@ export function useUserManagement() {
     refetchOnWindowFocus: false,
   });
 
+  const ssoSettingsQuery = useQuery<SsoSettings>({
+    queryKey: ["admin-sso-settings"],
+    queryFn: async () => {
+      const res = await apiFetch("/admin/users/sso-settings");
+      if (!res.ok) throw new Error("Failed to fetch SSO settings");
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 5,
+    refetchOnWindowFocus: false,
+  });
+
   const updateMfaPolicyMutation = useMutation({
     mutationFn: async (policy: MfaPolicy) => {
       const res = await apiFetch("/admin/users/mfa-policy", {
@@ -133,6 +179,52 @@ export function useUserManagement() {
     },
     onError: (error) => {
       toast.error(error instanceof Error ? error.message : "Failed to reset MFA.");
+    },
+  });
+
+  const updateSsoSettingsMutation = useMutation({
+    mutationFn: async (payload: SsoSettingsUpdate) => {
+      const res = await apiFetch("/admin/users/sso-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-sso-settings"] });
+      toast.success("SSO settings updated.");
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to update SSO settings.");
+    },
+  });
+
+  const testSsoSettingsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiFetch("/admin/users/sso-settings/test", {
+        method: "POST",
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+      }
+      return body as SsoTestResult;
+    },
+    onSuccess: async (result) => {
+      await queryClient.invalidateQueries({ queryKey: ["admin-sso-settings"] });
+      if (result.ok) {
+        toast.success("SSO configuration test passed.");
+      } else {
+        toast.error(result.message || "SSO configuration test failed.");
+      }
+    },
+    onError: (error) => {
+      toast.error(error instanceof Error ? error.message : "Failed to test SSO settings.");
     },
   });
 
@@ -206,6 +298,10 @@ export function useUserManagement() {
     mfaPolicy: mfaPolicyQuery.data?.policy ?? "off",
     isMfaPolicyLoading: mfaPolicyQuery.isLoading,
     isMfaPolicySaving: updateMfaPolicyMutation.isPending,
+    ssoSettings: ssoSettingsQuery.data,
+    isSsoSettingsLoading: ssoSettingsQuery.isLoading,
+    isSsoSettingsSaving: updateSsoSettingsMutation.isPending,
+    isSsoSettingsTesting: testSsoSettingsMutation.isPending,
     roles: optionsQuery.data?.roles ?? EMPTY_USER_OPTIONS.roles,
     teams: optionsQuery.data?.teams ?? EMPTY_USER_OPTIONS.teams,
     openEditModal,
@@ -217,5 +313,7 @@ export function useUserManagement() {
     updateMfaPolicy: (policy: MfaPolicy) => updateMfaPolicyMutation.mutate(policy),
     resetUserMfa: (userId: number) => resetUserMfaMutation.mutateAsync(userId),
     isResettingUserMfa: resetUserMfaMutation.isPending,
+    updateSsoSettings: (payload: SsoSettingsUpdate) => updateSsoSettingsMutation.mutateAsync(payload),
+    testSsoSettings: () => testSsoSettingsMutation.mutateAsync(),
   };
 }

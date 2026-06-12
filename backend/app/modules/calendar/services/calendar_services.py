@@ -11,6 +11,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.encrypted_fields import get_encrypted_model_value, set_encrypted_model_value
 from app.core.microsoft_oauth import MICROSOFT_CALENDAR_SCOPE, MICROSOFT_GRAPH_BASE, microsoft_scope_string, microsoft_token_url
 from app.modules.calendar.models import CalendarEvent, CalendarEventParticipant, UserCalendarConnection
 from app.modules.calendar.repositories import calendar_repository
@@ -346,6 +347,19 @@ def _calendar_connection_for_user(db: Session, *, tenant_id: int, user_id: int, 
     return None
 
 
+def _set_calendar_connection_token(connection: UserCalendarConnection, field_name: str, value: str | None) -> None:
+    set_encrypted_model_value(connection, field_name, value, key_version_field=f"{field_name}_key_version")
+
+
+def _calendar_connection_token(db: Session, connection: UserCalendarConnection, field_name: str) -> str | None:
+    return get_encrypted_model_value(
+        db,
+        connection,
+        field_name,
+        key_version_field=f"{field_name}_key_version",
+    )
+
+
 def upsert_google_calendar_connection(
     db: Session,
     *,
@@ -373,8 +387,10 @@ def upsert_google_calendar_connection(
     connection.status = "connected"
     connection.account_email = account_email
     connection.scopes = scopes
-    connection.access_token = token_json.get("access_token") or connection.access_token
-    connection.refresh_token = token_json.get("refresh_token") or connection.refresh_token
+    if token_json.get("access_token"):
+        _set_calendar_connection_token(connection, "access_token", token_json["access_token"])
+    if token_json.get("refresh_token"):
+        _set_calendar_connection_token(connection, "refresh_token", token_json["refresh_token"])
     connection.token_expires_at = (
         _utcnow() + timedelta(seconds=int(expires_in))
         if expires_in is not None
@@ -402,8 +418,10 @@ def upsert_microsoft_calendar_connection(
     connection.status = "connected"
     connection.account_email = account_email
     connection.scopes = scopes
-    connection.access_token = token_json.get("access_token") or connection.access_token
-    connection.refresh_token = token_json.get("refresh_token") or connection.refresh_token
+    if token_json.get("access_token"):
+        _set_calendar_connection_token(connection, "access_token", token_json["access_token"])
+    if token_json.get("refresh_token"):
+        _set_calendar_connection_token(connection, "refresh_token", token_json["refresh_token"])
     connection.token_expires_at = _utcnow() + timedelta(seconds=int(token_json.get("expires_in") or 3600))
     connection.last_error = None
     db.add(connection)
@@ -413,7 +431,8 @@ def upsert_microsoft_calendar_connection(
 
 
 def _refresh_google_access_token(db: Session, connection: UserCalendarConnection) -> UserCalendarConnection:
-    if not connection.refresh_token:
+    refresh_token = _calendar_connection_token(db, connection, "refresh_token")
+    if not refresh_token:
         connection.status = "error"
         connection.last_error = "Missing Google refresh token for calendar sync."
         db.add(connection)
@@ -425,7 +444,7 @@ def _refresh_google_access_token(db: Session, connection: UserCalendarConnection
         data={
             "client_id": settings.GOOGLE_CLIENT_ID,
             "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "refresh_token": connection.refresh_token,
+            "refresh_token": refresh_token,
             "grant_type": "refresh_token",
         },
         timeout=20,
@@ -439,7 +458,7 @@ def _refresh_google_access_token(db: Session, connection: UserCalendarConnection
         return connection
 
     expires_in = body.get("expires_in")
-    connection.access_token = body.get("access_token")
+    _set_calendar_connection_token(connection, "access_token", body.get("access_token"))
     connection.token_expires_at = _utcnow() + timedelta(seconds=int(expires_in or 3600))
     connection.status = "connected"
     connection.last_error = None
@@ -452,12 +471,13 @@ def _refresh_google_access_token(db: Session, connection: UserCalendarConnection
 def _ensure_google_access_token(db: Session, connection: UserCalendarConnection) -> str | None:
     if connection.token_expires_at and connection.token_expires_at <= _utcnow() + timedelta(minutes=1):
         connection = _refresh_google_access_token(db, connection)
-    return connection.access_token
+    return _calendar_connection_token(db, connection, "access_token")
 
 
 def _ensure_microsoft_access_token(db: Session, connection: UserCalendarConnection) -> str | None:
     if connection.token_expires_at and connection.token_expires_at <= _utcnow() + timedelta(minutes=1):
-        if not connection.refresh_token:
+        refresh_token = _calendar_connection_token(db, connection, "refresh_token")
+        if not refresh_token:
             connection.status = "error"
             connection.last_error = "Missing Microsoft refresh token for calendar sync."
             db.add(connection)
@@ -468,7 +488,7 @@ def _ensure_microsoft_access_token(db: Session, connection: UserCalendarConnecti
             data={
                 "client_id": settings.MICROSOFT_CLIENT_ID,
                 "client_secret": settings.MICROSOFT_CLIENT_SECRET,
-                "refresh_token": connection.refresh_token,
+                "refresh_token": refresh_token,
                 "grant_type": "refresh_token",
                 "scope": microsoft_scope_string(MICROSOFT_CALENDAR_SCOPE),
             },
@@ -481,12 +501,13 @@ def _ensure_microsoft_access_token(db: Session, connection: UserCalendarConnecti
             db.add(connection)
             db.commit()
             return None
-        connection.access_token = body["access_token"]
-        connection.refresh_token = body.get("refresh_token") or connection.refresh_token
+        _set_calendar_connection_token(connection, "access_token", body["access_token"])
+        if body.get("refresh_token"):
+            _set_calendar_connection_token(connection, "refresh_token", body["refresh_token"])
         connection.token_expires_at = _utcnow() + timedelta(seconds=int(body.get("expires_in") or 3600))
         db.add(connection)
         db.commit()
-    return connection.access_token
+    return _calendar_connection_token(db, connection, "access_token")
 
 
 def _google_calendar_events_url(calendar_id: str) -> str:

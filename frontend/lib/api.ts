@@ -5,6 +5,7 @@ const AUTH_PUBLIC_PATHS = new Set([
   "/auth/google",
   "/auth/microsoft",
   "/auth/login",
+  "/auth/sso/start",
   "/auth/password-policy",
   "/auth/setup-password",
 ]);

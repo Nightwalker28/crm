@@ -107,8 +107,51 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
         )
         services.revoke_api_key(self.db, key=key, actor_user_id=None)
 
+        created_event = (
+            self.db.query(platform_models.ActivityLog)
+            .filter(platform_models.ActivityLog.action == "api_key.created")
+            .one()
+        )
+        revoked_event = (
+            self.db.query(platform_models.ActivityLog)
+            .filter(platform_models.ActivityLog.action == "api_key.revoked")
+            .one()
+        )
+        self.assertEqual(created_event.tenant_id, 10)
+        self.assertEqual(revoked_event.tenant_id, 10)
+        self.assertNotIn(raw_key, str(created_event.after_state))
+        self.assertNotIn(raw_key, str(revoked_event.before_state))
+        self.assertNotIn(raw_key, str(revoked_event.after_state))
+
         with self.assertRaises(Exception):
             services.resolve_public_api_key(self.db, api_key=raw_key)
+
+    def test_rotate_api_key_replaces_secret_and_logs_safe_event(self):
+        key, original_raw_key = services.create_api_key(
+            self.db,
+            tenant_id=10,
+            actor_user_id=7,
+            payload={"name": "WordPress", "scopes": ["catalog:read"], "allowed_origins": []},
+        )
+
+        rotated_key, rotated_raw_key = services.rotate_api_key(self.db, key=key, actor_user_id=7)
+
+        self.assertNotEqual(original_raw_key, rotated_raw_key)
+        self.assertEqual(rotated_key.status, "active")
+        self.assertEqual(services.resolve_public_api_key(self.db, api_key=rotated_raw_key).id, key.id)
+        with self.assertRaises(Exception):
+            services.resolve_public_api_key(self.db, api_key=original_raw_key)
+        activity = (
+            self.db.query(platform_models.ActivityLog)
+            .filter(platform_models.ActivityLog.action == "api_key.rotated")
+            .one()
+        )
+        self.assertEqual(activity.tenant_id, 10)
+        self.assertEqual(activity.actor_user_id, 7)
+        self.assertNotIn(original_raw_key, str(activity.before_state))
+        self.assertNotIn(original_raw_key, str(activity.after_state))
+        self.assertNotIn(rotated_raw_key, str(activity.before_state))
+        self.assertNotIn(rotated_raw_key, str(activity.after_state))
 
     def test_public_order_is_idempotent_and_decrements_stock_once(self):
         key, _raw_key = services.create_api_key(

@@ -9,7 +9,8 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
-from app.core.secrets import decrypt_secret, encrypt_secret
+from app.core.secrets import decrypt_application_secret, encrypt_secret
+from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.mail.models import MailMessage, UserMailConnection
 from app.modules.mail.schema import MailProvider
 from app.modules.mail.services import mail_services
@@ -120,7 +121,8 @@ class MailImapSmtpTests(unittest.TestCase):
     def tearDown(self):
         self.db.close()
 
-    @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mail-password-secret")
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v4")
     def test_upsert_imap_smtp_connection_encrypts_password_and_enables_sync(self):
         self.db.add(
             UserMailConnection(
@@ -156,6 +158,8 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(connection.status, "connected")
         self.assertEqual(connection.smtp_username, "ava@example.com")
         self.assertNotEqual(connection.encrypted_password, "app-password")
+        self.assertEqual(connection.encrypted_password_key_version, "v4")
+        self.assertEqual(decrypt_application_secret(connection.encrypted_password, key_version="v4"), "app-password")
         self.assertTrue(_serialize_connection(connection)["can_send"])
         self.assertTrue(_serialize_connection(connection)["can_sync"])
         imap_mock.assert_called_once()
@@ -199,6 +203,8 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(exc.exception.status_code, 409)
         self.assertEqual(self.db.query(UserMailConnection).count(), 0)
 
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mail-password-secret")
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v6")
     @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
     def test_sync_imap_smtp_inbox_stores_user_scoped_message(self):
         raw_message = (
@@ -259,6 +265,8 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(result["last_error"], None)
         self.assertEqual(self.db.query(UserMailConnection).first().sync_cursor, "42")
 
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mail-password-secret")
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v6")
     @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
     def test_sync_imap_smtp_inbox_filters_boundary_uid_and_keeps_cursor_order(self):
         connection = UserMailConnection(
@@ -292,6 +300,8 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(result["synced_message_count"], 2)
         self.assertEqual(self.db.query(UserMailConnection).first().sync_cursor, "45")
 
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mail-password-secret")
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v6")
     @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
     def test_send_imap_smtp_message_uses_smtp_and_appends_to_sent_folder(self):
         connection = UserMailConnection(
@@ -336,6 +346,8 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(fake_smtp.sent_message["Subject"], "Quote")
         self.assertEqual(fake_imap.appended_folder, "Sent")
 
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mail-password-secret")
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v6")
     @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
     def test_send_imap_smtp_message_records_sent_append_failure(self):
         connection = UserMailConnection(
@@ -595,12 +607,16 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(message.subject, "Hello Maya")
         self.assertEqual(message.body_text, "Dear Maya,\nWelcome to my newsletter")
 
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "oauth-secret")
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v9")
     def test_mail_token_refresh_flushes_without_committing(self):
         db = Mock()
 
         google_connection = SimpleNamespace(
             access_token=None,
             refresh_token="google-refresh",
+            access_token_key_version=None,
+            refresh_token_key_version=None,
             token_expires_at=None,
             status="connected",
             last_error=None,
@@ -610,14 +626,19 @@ class MailImapSmtpTests(unittest.TestCase):
             token = mail_services._refresh_google_mail_token(db, google_connection)
 
         self.assertEqual(token, "new-google-token")
-        self.assertEqual(google_connection.access_token, "new-google-token")
-        self.assertEqual(db.flush.call_count, 1)
+        self.assertNotEqual(google_connection.access_token, "new-google-token")
+        self.assertEqual(google_connection.access_token_key_version, "v9")
+        self.assertEqual(decrypt_application_secret(google_connection.access_token, key_version="v9"), "new-google-token")
+        self.assertEqual(decrypt_application_secret(google_connection.refresh_token, key_version="v9"), "google-refresh")
+        self.assertEqual(db.flush.call_count, 2)
         db.commit.assert_not_called()
 
         db.reset_mock()
         microsoft_connection = SimpleNamespace(
             access_token=None,
             refresh_token="microsoft-refresh",
+            access_token_key_version=None,
+            refresh_token_key_version=None,
             token_expires_at=None,
             status="connected",
             last_error=None,
@@ -629,8 +650,11 @@ class MailImapSmtpTests(unittest.TestCase):
             token = mail_services._refresh_microsoft_mail_token(db, microsoft_connection)
 
         self.assertEqual(token, "new-microsoft-token")
-        self.assertEqual(microsoft_connection.access_token, "new-microsoft-token")
-        self.assertEqual(db.flush.call_count, 1)
+        self.assertNotEqual(microsoft_connection.access_token, "new-microsoft-token")
+        self.assertEqual(microsoft_connection.access_token_key_version, "v9")
+        self.assertEqual(decrypt_application_secret(microsoft_connection.access_token, key_version="v9"), "new-microsoft-token")
+        self.assertEqual(decrypt_application_secret(microsoft_connection.refresh_token, key_version="v9"), "microsoft-refresh")
+        self.assertEqual(db.flush.call_count, 2)
         db.commit.assert_not_called()
 
     def test_list_mail_messages_uses_cursor_and_skips_tiny_search(self):
@@ -766,6 +790,7 @@ class MailImapSmtpTests(unittest.TestCase):
 
         self.assertEqual(connection.status, "disconnected")
         self.assertIsNone(connection.encrypted_password)
+        self.assertIsNone(connection.encrypted_password_key_version)
         self.assertIsNone(connection.imap_host)
         self.assertIsNone(connection.sync_cursor)
         self.assertFalse(_serialize_connection(connection)["can_send"])
@@ -813,6 +838,8 @@ class MailImapSmtpTests(unittest.TestCase):
 
         with patch.object(mail_services.settings, "JWT_SECRET", "old-mail-secret"), \
              patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", "new-mail-secret"), \
+             patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mail-password-secret"), \
+             patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v5"), \
              patch.object(mail_services, "_connect_smtp", return_value=fake_smtp), \
              patch.object(mail_services, "_connect_imap", return_value=fake_imap):
             _send_imap_smtp_message(
@@ -830,9 +857,9 @@ class MailImapSmtpTests(unittest.TestCase):
 
         connection = self.db.query(UserMailConnection).first()
         self.assertNotEqual(connection.encrypted_password, legacy_encrypted_password)
-        with patch.object(mail_services.settings, "JWT_SECRET", "old-mail-secret"), \
-             patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", "new-mail-secret"):
-            self.assertEqual(decrypt_secret(connection.encrypted_password), "app-password")
+        self.assertEqual(connection.encrypted_password_key_version, "v5")
+        with patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mail-password-secret"):
+            self.assertEqual(decrypt_application_secret(connection.encrypted_password, key_version="v5"), "app-password")
 
 
 if __name__ == "__main__":

@@ -22,9 +22,10 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.encrypted_fields import get_encrypted_model_value, set_encrypted_model_value
 from app.core.microsoft_oauth import MICROSOFT_GRAPH_BASE, MICROSOFT_MAIL_SCOPES, microsoft_auth_url, microsoft_scope_string, microsoft_token_url
 from app.core.access_control import require_role_module_action_access
-from app.core.secrets import decrypt_secret_with_rotation, encrypt_secret
+from app.core.secrets import decrypt_secret_with_rotation
 from app.core.tenancy import (
     get_frontend_origin_for_request,
     get_google_redirect_uri_for_request,
@@ -345,6 +346,33 @@ def _token_expiry(token_json: dict) -> datetime | None:
     return _utcnow() + timedelta(seconds=int(expires_in))
 
 
+def _set_oauth_connection_token(connection: UserMailConnection, field_name: str, value: str | None) -> None:
+    set_encrypted_model_value(connection, field_name, value, key_version_field=f"{field_name}_key_version")
+
+
+def _oauth_connection_token(db: Session, connection: UserMailConnection, field_name: str) -> str | None:
+    return get_encrypted_model_value(
+        db,
+        connection,
+        field_name,
+        key_version_field=f"{field_name}_key_version",
+    )
+
+
+def _set_mail_password(connection: UserMailConnection, value: str | None) -> None:
+    set_encrypted_model_value(connection, "encrypted_password", value, key_version_field="encrypted_password_key_version")
+
+
+def _mail_password(db: Session, connection: UserMailConnection) -> str | None:
+    return get_encrypted_model_value(
+        db,
+        connection,
+        "encrypted_password",
+        key_version_field="encrypted_password_key_version",
+        legacy_decrypt=lambda value: decrypt_secret_with_rotation(value)[0],
+    )
+
+
 def _get_oauth_mail_connection(
     db: Session,
     *,
@@ -366,9 +394,9 @@ def _apply_oauth_mail_connection_state(
     connection.status = "connected"
     connection.account_email = account_email
     connection.scopes = token_json.get("scope", "").split()
-    connection.access_token = token_json.get("access_token")
+    _set_oauth_connection_token(connection, "access_token", token_json.get("access_token"))
     if token_json.get("refresh_token"):
-        connection.refresh_token = token_json["refresh_token"]
+        _set_oauth_connection_token(connection, "refresh_token", token_json["refresh_token"])
     connection.token_expires_at = _token_expiry(token_json)
     connection.provider_mailbox_id = account_email
     connection.provider_mailbox_name = mailbox_name
@@ -554,7 +582,7 @@ def upsert_imap_smtp_mail_connection(
     connection.smtp_port = int(payload["smtp_port"])
     connection.smtp_security = payload["smtp_security"]
     connection.smtp_username = smtp_username
-    connection.encrypted_password = encrypt_secret(password)
+    _set_mail_password(connection, password)
     connection.provider_mailbox_id = connection.account_email
     connection.provider_mailbox_name = "IMAP/SMTP Mailbox"
     connection.sync_cursor = None
@@ -577,8 +605,8 @@ def disconnect_mail_connection(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Mail connection not found.")
     connection.status = "disconnected"
     connection.scopes = None
-    connection.access_token = None
-    connection.refresh_token = None
+    _set_oauth_connection_token(connection, "access_token", None)
+    _set_oauth_connection_token(connection, "refresh_token", None)
     connection.token_expires_at = None
     connection.provider_mailbox_id = None
     connection.provider_mailbox_name = None
@@ -590,7 +618,7 @@ def disconnect_mail_connection(
     connection.smtp_port = None
     connection.smtp_security = None
     connection.smtp_username = None
-    connection.encrypted_password = None
+    _set_mail_password(connection, None)
     connection.sync_cursor = None
     connection.last_error = None
     db.add(connection)
@@ -616,19 +644,21 @@ def _refresh_oauth_mail_token(
     failed_refresh_detail: str,
 ) -> str:
     expires_at = connection.token_expires_at
-    if connection.access_token and expires_at:
+    access_token = _oauth_connection_token(db, connection, "access_token")
+    if access_token and expires_at:
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
         if expires_at > _utcnow() + timedelta(minutes=2):
-            return connection.access_token
+            return access_token
 
-    if not connection.refresh_token:
+    refresh_token = _oauth_connection_token(db, connection, "refresh_token")
+    if not refresh_token:
         _mark_mail_connection_error(db, connection, missing_refresh_detail)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
 
     res = requests.post(
         token_url,
-        data=token_data,
+        data={**token_data, "refresh_token": refresh_token},
         timeout=20,
     )
     body = res.json()
@@ -636,13 +666,15 @@ def _refresh_oauth_mail_token(
         _mark_mail_connection_error(db, connection, failed_refresh_detail)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
 
-    connection.access_token = body["access_token"]
+    _set_oauth_connection_token(connection, "access_token", body["access_token"])
+    if body.get("refresh_token"):
+        _set_oauth_connection_token(connection, "refresh_token", body["refresh_token"])
     connection.token_expires_at = _token_expiry(body)
     connection.status = "connected"
     connection.last_error = None
     db.add(connection)
     db.flush()
-    return connection.access_token
+    return body["access_token"]
 
 
 def _refresh_google_mail_token(db: Session, connection: UserMailConnection) -> str:
@@ -653,7 +685,6 @@ def _refresh_google_mail_token(db: Session, connection: UserMailConnection) -> s
         token_data={
             "client_id": settings.GOOGLE_CLIENT_ID,
             "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "refresh_token": connection.refresh_token,
             "grant_type": "refresh_token",
         },
         missing_refresh_detail="Reconnect Gmail to refresh mailbox access.",
@@ -672,7 +703,6 @@ def _refresh_microsoft_mail_token(db: Session, connection: UserMailConnection) -
         token_data={
             "client_id": settings.MICROSOFT_CLIENT_ID,
             "client_secret": settings.MICROSOFT_CLIENT_SECRET,
-            "refresh_token": connection.refresh_token,
             "grant_type": "refresh_token",
             "scope": microsoft_scope_string(*MICROSOFT_MAIL_SCOPES),
         },
@@ -695,19 +725,7 @@ def _mail_connection_for_user(
 
 
 def _decrypt_connection_password(db: Session, connection: UserMailConnection) -> str | None:
-    password, needs_reencrypt = decrypt_secret_with_rotation(connection.encrypted_password)
-    if password and needs_reencrypt:
-        connection.encrypted_password = encrypt_secret(password)
-        db.add(connection)
-        db.flush()
-        logger.info(
-            "Re-encrypted rotated mailbox credential for tenant_id=%s user_id=%s provider=%s connection_id=%s",
-            connection.tenant_id,
-            connection.user_id,
-            connection.provider,
-            connection.id,
-        )
-    return password
+    return _mail_password(db, connection)
 
 
 def _recipient_dicts(emails: list[str]) -> list[dict] | None:

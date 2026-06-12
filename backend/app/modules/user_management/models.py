@@ -70,6 +70,12 @@ class Tenant(Base):
         back_populates="tenant",
         cascade="all, delete-orphan",
     )
+    sso_settings = relationship(
+        "TenantSsoSettings",
+        back_populates="tenant",
+        cascade="all, delete-orphan",
+        uselist=False,
+    )
 
 
 class TenantDomain(Base):
@@ -87,6 +93,44 @@ class TenantDomain(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     tenant = relationship("Tenant", back_populates="domains")
+
+
+class TenantSsoSettings(Base):
+    __tablename__ = "tenant_sso_settings"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", name="uq_tenant_sso_settings_tenant"),
+        Index("ix_tenant_sso_settings_enabled", "enabled"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=False, server_default="false")
+    provider_type = Column(String(20), nullable=False, server_default="oidc")
+    issuer_url = Column(String(500), nullable=True)
+    authorization_endpoint = Column(String(500), nullable=True)
+    token_endpoint = Column(String(500), nullable=True)
+    userinfo_endpoint = Column(String(500), nullable=True)
+    jwks_uri = Column(String(500), nullable=True)
+    client_id = Column(String(255), nullable=True)
+    encrypted_client_secret = Column(Text, nullable=True)
+    client_secret_key_version = Column(String(32), nullable=True)
+    allowed_email_domains = Column(JSON, nullable=False, server_default="[]")
+    auto_provision_users = Column(Boolean, nullable=False, default=False, server_default="false")
+    default_role_id = Column(BigInteger, ForeignKey("roles.id", ondelete="SET NULL"), nullable=True)
+    default_team_id = Column(BigInteger, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
+    email_claim = Column(String(100), nullable=False, server_default="email")
+    first_name_claim = Column(String(100), nullable=True)
+    last_name_claim = Column(String(100), nullable=True)
+    status = Column(String(20), nullable=False, server_default="draft")
+    last_test_result = Column(JSON, nullable=True)
+    last_successful_login_at = Column(DateTime(timezone=True), nullable=True)
+    last_failed_login_reason = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    tenant = relationship("Tenant", back_populates="sso_settings")
+    default_role = relationship("Role", foreign_keys=[default_role_id])
+    default_team = relationship("Team", foreign_keys=[default_team_id])
 
 class Role(Base):
     __tablename__ = "roles"
@@ -189,7 +233,7 @@ class User(Base):
         UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(
         BigInteger,
         ForeignKey("tenants.id", ondelete="CASCADE"),

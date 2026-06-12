@@ -28,6 +28,7 @@ export default function LoginPage() {
   const router = useRouter();
   const [googleLoading, setGoogleLoading] = useState(false);
   const [microsoftLoading, setMicrosoftLoading] = useState(false);
+  const [ssoLoading, setSsoLoading] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signIn, setSignIn] = useState<SignInForm>(emptySignIn);
@@ -59,6 +60,31 @@ export default function LoginPage() {
     } catch (loginError) {
       setError(getErrorMessage(loginError, "Failed to start Microsoft sign-in"));
       setMicrosoftLoading(false);
+    }
+  }
+
+  async function handleSsoLogin() {
+    if (!signIn.email.trim()) {
+      setError("Enter your email to continue with SSO.");
+      return;
+    }
+
+    try {
+      setError(null);
+      setSsoLoading(true);
+      const res = await apiFetch("/auth/sso/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: signIn.email.trim() }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(data?.detail ?? data?.message ?? `Status ${res.status}`);
+      }
+      window.location.href = data.auth_url;
+    } catch (loginError) {
+      setError(getErrorMessage(loginError, "Failed to start SSO sign-in"));
+      setSsoLoading(false);
     }
   }
 
@@ -137,7 +163,7 @@ export default function LoginPage() {
 
         <button
           type="submit"
-          disabled={formLoading || googleLoading || microsoftLoading}
+          disabled={formLoading || googleLoading || microsoftLoading || ssoLoading}
           className="w-full cursor-pointer rounded-md border border-white/20 bg-white px-4 py-3 text-sm font-medium text-black transition-all hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
         >
           {formLoading ? "Signing in..." : "Sign in with email"}
@@ -151,8 +177,21 @@ export default function LoginPage() {
       </div>
 
       <button
+        type="button"
+        onClick={handleSsoLogin}
+        disabled={googleLoading || microsoftLoading || formLoading || ssoLoading}
+        className="group relative mt-2 w-full cursor-pointer overflow-hidden rounded-md border border-white/25 bg-neutral-950/90 px-4 py-3 text-sm font-medium text-neutral-50 shadow-[0_0_15px_rgba(0,0,0,0.45)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-white/60 hover:shadow-[0_12px_25px_rgba(0,0,0,0.65)] disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        <span className="relative z-10 flex items-center justify-center gap-3">
+          <AnimatedShinyText shimmerWidth={40}>
+            {ssoLoading ? "Redirecting..." : "Continue with SSO"}
+          </AnimatedShinyText>
+        </span>
+      </button>
+
+      <button
         onClick={handleGoogleLogin}
-        disabled={googleLoading || microsoftLoading || formLoading}
+        disabled={googleLoading || microsoftLoading || formLoading || ssoLoading}
         className="group relative mt-2 w-full cursor-pointer overflow-hidden rounded-md border border-white/25 bg-neutral-950/90 px-4 py-3 text-sm font-medium text-neutral-50 shadow-[0_0_15px_rgba(0,0,0,0.45)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-white/60 hover:shadow-[0_12px_25px_rgba(0,0,0,0.65)] disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 bg-[radial-gradient(circle_at_15%_20%,rgba(255,255,255,0.10),transparent_65%),radial-gradient(circle_at_85%_80%,rgba(255,255,255,0.06),transparent_65%)] group-hover:opacity-100" />
@@ -173,7 +212,7 @@ export default function LoginPage() {
 
       <button
         onClick={handleMicrosoftLogin}
-        disabled={googleLoading || microsoftLoading || formLoading}
+        disabled={googleLoading || microsoftLoading || formLoading || ssoLoading}
         className="group relative mt-3 w-full cursor-pointer overflow-hidden rounded-md border border-white/25 bg-neutral-950/90 px-4 py-3 text-sm font-medium text-neutral-50 shadow-[0_0_15px_rgba(0,0,0,0.45)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-white/60 hover:shadow-[0_12px_25px_rgba(0,0,0,0.65)] disabled:cursor-not-allowed disabled:opacity-60"
       >
         <span className="relative z-10 flex items-center justify-center gap-3">

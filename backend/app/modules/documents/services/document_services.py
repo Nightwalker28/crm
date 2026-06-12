@@ -13,7 +13,8 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.config import settings
-from app.core.secrets import decrypt_secret_with_rotation, encrypt_secret
+from app.core.encrypted_fields import get_encrypted_model_value, set_encrypted_model_value
+from app.core.secrets import decrypt_secret_with_rotation
 from app.core.microsoft_oauth import MICROSOFT_DRIVE_SCOPE, MICROSOFT_GRAPH_BASE, microsoft_auth_url, microsoft_scope_string, microsoft_token_url
 from app.core.access_control import require_role_module_action_access
 from app.core.tenancy import get_frontend_origin_for_request, get_google_redirect_uri_for_request, get_microsoft_redirect_uri_for_request
@@ -194,25 +195,18 @@ def _as_utc(value: datetime | None) -> datetime | None:
     return value.astimezone(timezone.utc)
 
 
-def _encrypt_connection_token(value: str | None) -> str | None:
-    return encrypt_secret(value) if value else value
+def _set_connection_token(connection: DocumentStorageConnection, field_name: str, value: str | None) -> None:
+    set_encrypted_model_value(connection, field_name, value, key_version_field=f"{field_name}_key_version")
 
 
 def _connection_token(db: Session, connection: DocumentStorageConnection, field_name: str) -> str | None:
-    value = getattr(connection, field_name, None)
-    if not value:
-        return None
-    try:
-        token, needs_reencrypt = decrypt_secret_with_rotation(value)
-    except RuntimeError:
-        token = value
-        needs_reencrypt = True
-    if token and needs_reencrypt:
-        setattr(connection, field_name, encrypt_secret(token))
-        db.add(connection)
-        db.commit()
-        db.refresh(connection)
-    return token
+    return get_encrypted_model_value(
+        db,
+        connection,
+        field_name,
+        key_version_field=f"{field_name}_key_version",
+        legacy_decrypt=lambda value: decrypt_secret_with_rotation(value)[0],
+    )
 
 
 def _upsert_google_drive_connection(
@@ -242,9 +236,10 @@ def _upsert_google_drive_connection(
     connection.status = "connected"
     connection.account_email = account_email
     connection.scopes = token_json.get("scope", "").split()
-    connection.access_token = _encrypt_connection_token(token_json.get("access_token")) or connection.access_token
+    if token_json.get("access_token"):
+        _set_connection_token(connection, "access_token", token_json["access_token"])
     if token_json.get("refresh_token"):
-        connection.refresh_token = _encrypt_connection_token(token_json["refresh_token"])
+        _set_connection_token(connection, "refresh_token", token_json["refresh_token"])
     connection.token_expires_at = _token_expiry(token_json)
     connection.provider_root_id = "drive"
     connection.provider_root_name = "Google Drive"
@@ -355,8 +350,10 @@ def _upsert_document_storage_connection(
     connection.status = "connected"
     connection.account_email = account_email
     connection.scopes = token_json.get("scope", "").split()
-    connection.access_token = _encrypt_connection_token(token_json.get("access_token")) or connection.access_token
-    connection.refresh_token = _encrypt_connection_token(token_json.get("refresh_token")) or connection.refresh_token
+    if token_json.get("access_token"):
+        _set_connection_token(connection, "access_token", token_json["access_token"])
+    if token_json.get("refresh_token"):
+        _set_connection_token(connection, "refresh_token", token_json["refresh_token"])
     connection.token_expires_at = _token_expiry(token_json)
     connection.provider_root_id = provider_root_id
     connection.provider_root_name = provider_root_name
@@ -378,8 +375,8 @@ def disconnect_document_storage_connection(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported document storage provider.")
     connection = _document_storage_connection(db, tenant_id=tenant_id, user_id=user_id, provider=provider, connected_only=False)
     connection.status = "disconnected"
-    connection.access_token = None
-    connection.refresh_token = None
+    _set_connection_token(connection, "access_token", None)
+    _set_connection_token(connection, "refresh_token", None)
     connection.token_expires_at = None
     connection.last_error = None
     db.add(connection)
@@ -551,14 +548,14 @@ def _refresh_google_drive_access_token(db: Session, connection: DocumentStorageC
         db.add(connection)
         db.commit()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
-    connection.access_token = _encrypt_connection_token(token_json["access_token"])
+    _set_connection_token(connection, "access_token", token_json["access_token"])
     connection.token_expires_at = _token_expiry(token_json)
     connection.status = "connected"
     connection.last_error = None
     db.add(connection)
     db.commit()
     db.refresh(connection)
-    return connection.access_token
+    return token_json["access_token"]
 
 
 def _google_drive_backend_for_user(db: Session, *, tenant_id: int, user_id: int):
@@ -600,8 +597,9 @@ def _refresh_microsoft_onedrive_access_token(db: Session, connection: DocumentSt
     token_json = token_res.json()
     if not token_res.ok or not token_json.get("access_token"):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Failed to refresh Microsoft OneDrive access.")
-    connection.access_token = _encrypt_connection_token(token_json["access_token"])
-    connection.refresh_token = _encrypt_connection_token(token_json.get("refresh_token")) or connection.refresh_token
+    _set_connection_token(connection, "access_token", token_json["access_token"])
+    if token_json.get("refresh_token"):
+        _set_connection_token(connection, "refresh_token", token_json["refresh_token"])
     connection.token_expires_at = _token_expiry(token_json)
     db.add(connection)
     db.commit()

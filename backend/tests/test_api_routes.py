@@ -63,6 +63,9 @@ class RouteTestQuery:
     def all(self):
         return []
 
+    def delete(self):
+        return 1
+
 
 class RouteTestSession:
     def query(self, *entities):
@@ -177,7 +180,9 @@ class APIRouteTests(unittest.TestCase):
         ), patch(
             "app.modules.user_management.routes.signin._tenant_mfa_policy_requires_setup",
             return_value=False,
-        ):
+        ), patch(
+            "app.modules.user_management.routes.signin.safe_log_activity",
+        ) as log_mock:
             response = self.client.post(
                 "/api/v1/auth/login",
                 json={"email": "user@example.com", "password": "secret123"},
@@ -188,6 +193,32 @@ class APIRouteTests(unittest.TestCase):
         set_cookie = response.headers.get("set-cookie", "")
         self.assertIn("lynk_access_token=access-token", set_cookie)
         self.assertIn("lynk_refresh_token=refresh-token", set_cookie)
+        log_mock.assert_called_once()
+        self.assertEqual(log_mock.call_args.kwargs["action"], "auth.login.success")
+        self.assertEqual(log_mock.call_args.kwargs["tenant_id"], 1)
+        self.assertEqual(log_mock.call_args.kwargs["actor_user_id"], 7)
+        self.assertEqual(log_mock.call_args.kwargs["after_state"], {"provider": "manual"})
+
+    def test_manual_login_failure_logs_without_secret_payload(self):
+        with patch(
+            "app.modules.user_management.routes.signin.authenticate_manual_user",
+            side_effect=HTTPException(status_code=401, detail="Invalid email or password"),
+        ), patch(
+            "app.modules.user_management.routes.signin.safe_log_activity",
+        ) as log_mock:
+            response = self.client.post(
+                "/api/v1/auth/login",
+                json={"email": "user@example.com", "password": "secret123"},
+            )
+
+        self.assertEqual(response.status_code, 401)
+        log_mock.assert_called_once()
+        self.assertEqual(log_mock.call_args.kwargs["action"], "auth.login.failed")
+        self.assertEqual(log_mock.call_args.kwargs["tenant_id"], 1)
+        self.assertIsNone(log_mock.call_args.kwargs["actor_user_id"])
+        self.assertEqual(log_mock.call_args.kwargs["after_state"], {"provider": "manual", "status_code": 401})
+        self.assertNotIn("user@example.com", str(log_mock.call_args.kwargs))
+        self.assertNotIn("secret123", str(log_mock.call_args.kwargs))
 
     def test_manual_login_returns_mfa_challenge_without_session_cookies(self):
         fake_user = SimpleNamespace(id=7, tenant_id=1, email="user@example.com", mfa_enabled=True)
@@ -204,7 +235,9 @@ class APIRouteTests(unittest.TestCase):
         ), patch(
             "app.modules.user_management.routes.signin.create_refresh_token",
             return_value="refresh-token",
-        ):
+        ), patch(
+            "app.modules.user_management.routes.signin.safe_log_activity",
+        ) as log_mock:
             response = self.client.post(
                 "/api/v1/auth/login",
                 json={"email": "user@example.com", "password": "secret123"},
@@ -217,6 +250,7 @@ class APIRouteTests(unittest.TestCase):
         set_cookie = response.headers.get("set-cookie", "")
         self.assertNotIn("lynk_access_token=access-token", set_cookie)
         self.assertNotIn("lynk_refresh_token=refresh-token", set_cookie)
+        log_mock.assert_not_called()
 
     def test_manual_login_returns_mfa_setup_required_when_policy_requires_enrollment(self):
         fake_user = SimpleNamespace(id=7, tenant_id=1, email="user@example.com", mfa_enabled=False)
@@ -233,7 +267,9 @@ class APIRouteTests(unittest.TestCase):
         ), patch(
             "app.modules.user_management.routes.signin.create_refresh_token",
             return_value="refresh-token",
-        ):
+        ), patch(
+            "app.modules.user_management.routes.signin.safe_log_activity",
+        ) as log_mock:
             response = self.client.post(
                 "/api/v1/auth/login",
                 json={"email": "user@example.com", "password": "secret123"},
@@ -244,6 +280,9 @@ class APIRouteTests(unittest.TestCase):
         set_cookie = response.headers.get("set-cookie", "")
         self.assertIn("lynk_access_token=access-token", set_cookie)
         self.assertIn("lynk_refresh_token=refresh-token", set_cookie)
+        log_mock.assert_called_once()
+        self.assertEqual(log_mock.call_args.kwargs["action"], "auth.login.success")
+        self.assertEqual(log_mock.call_args.kwargs["after_state"], {"provider": "manual"})
 
     def test_google_callback_network_timeout_returns_controlled_auth_error(self):
         with patch(
@@ -386,6 +425,48 @@ class APIRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()["detail"], "Missing refresh token")
+
+    def test_refresh_failure_logs_when_tenant_context_is_known(self):
+        app.dependency_overrides[get_db] = self._override_db
+
+        with patch(
+            "app.modules.user_management.routes.signin.decode_token",
+            return_value={"sub": "7", "tenant_id": 1, "jti": "revoked"},
+        ), patch(
+            "app.modules.user_management.routes.signin.safe_log_activity",
+        ) as log_mock:
+            response = self.client.post(
+                "/api/v1/auth/refresh",
+                cookies={"lynk_refresh_token": "refresh-token"},
+            )
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()["detail"], "Session revoked")
+        log_mock.assert_called_once()
+        self.assertEqual(log_mock.call_args.kwargs["action"], "auth.refresh.failed")
+        self.assertEqual(log_mock.call_args.kwargs["tenant_id"], 1)
+        self.assertIsNone(log_mock.call_args.kwargs["actor_user_id"])
+
+    def test_logout_logs_when_refresh_token_identifies_tenant(self):
+        app.dependency_overrides[get_db] = self._override_db
+
+        with patch(
+            "app.modules.user_management.routes.signin.decode_token",
+            return_value={"sub": "7", "tenant_id": 1},
+        ), patch(
+            "app.modules.user_management.routes.signin.safe_log_activity",
+        ) as log_mock:
+            response = self.client.post(
+                "/api/v1/auth/logout",
+                cookies={"lynk_refresh_token": "refresh-token"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"status": "logged_out"})
+        log_mock.assert_called_once()
+        self.assertEqual(log_mock.call_args.kwargs["action"], "auth.logout")
+        self.assertEqual(log_mock.call_args.kwargs["tenant_id"], 1)
+        self.assertEqual(log_mock.call_args.kwargs["after_state"], {"session": "revoked"})
 
     def test_admin_teams_route_returns_serialized_list(self):
         app.dependency_overrides[require_admin] = self._admin_user

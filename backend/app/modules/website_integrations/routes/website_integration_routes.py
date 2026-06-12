@@ -28,6 +28,7 @@ from app.modules.website_integrations.services.website_integration_services impo
     create_pos_invoice_for_order,
     resolve_public_api_key,
     revoke_api_key,
+    rotate_api_key,
     serialize_api_key,
     serialize_catalog_item,
     serialize_order,
@@ -117,6 +118,17 @@ def revoke_integration_api_key_route(
     key = get_api_key_or_404(db, tenant_id=current_user.tenant_id, key_id=key_id)
     key = revoke_api_key(db, key=key, actor_user_id=current_user.id)
     return WebsiteIntegrationApiKeyResponse.model_validate(serialize_api_key(key))
+
+
+@router.post("/api-keys/{key_id}/rotate", response_model=WebsiteIntegrationApiKeyResponse)
+def rotate_integration_api_key_route(
+    key_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    key = get_api_key_or_404(db, tenant_id=current_user.tenant_id, key_id=key_id)
+    key, raw_key = rotate_api_key(db, key=key, actor_user_id=current_user.id)
+    return WebsiteIntegrationApiKeyResponse.model_validate(serialize_api_key(key, api_key=raw_key))
 
 
 @router.get("/orders", response_model=list[WebsiteOrderResponse])

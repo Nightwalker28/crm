@@ -4,6 +4,8 @@ import { Plus, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
@@ -14,9 +16,46 @@ import EditUserDialog from "@/components/users/editUserDialog";
 import { useUserManagement, type MfaPolicy } from "@/hooks/admin/useUserManagement";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { formatDateTime } from "@/lib/datetime";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 import type { UserFiltersValue } from "@/components/users/userFilters";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
+
+type SsoDraft = {
+  enabled: boolean;
+  issuer_url: string;
+  authorization_endpoint: string;
+  token_endpoint: string;
+  userinfo_endpoint: string;
+  jwks_uri: string;
+  client_id: string;
+  client_secret: string;
+  allowed_email_domains: string;
+  auto_provision_users: boolean;
+  default_role_id: string;
+  default_team_id: string;
+  email_claim: string;
+  first_name_claim: string;
+  last_name_claim: string;
+};
+
+const emptySsoDraft: SsoDraft = {
+  enabled: false,
+  issuer_url: "",
+  authorization_endpoint: "",
+  token_endpoint: "",
+  userinfo_endpoint: "",
+  jwks_uri: "",
+  client_id: "",
+  client_secret: "",
+  allowed_email_domains: "",
+  auto_provision_users: false,
+  default_role_id: "",
+  default_team_id: "",
+  email_claim: "email",
+  first_name_claim: "given_name",
+  last_name_claim: "family_name",
+};
 
 export default function UserManagementPage() {
   const { fields: moduleFields } = useModuleFieldConfigs("admin_users");
@@ -31,6 +70,10 @@ export default function UserManagementPage() {
     mfaPolicy,
     isMfaPolicyLoading,
     isMfaPolicySaving,
+    ssoSettings,
+    isSsoSettingsLoading,
+    isSsoSettingsSaving,
+    isSsoSettingsTesting,
     roles,
     teams,
     openEditModal,
@@ -42,7 +85,10 @@ export default function UserManagementPage() {
     updateMfaPolicy,
     resetUserMfa,
     isResettingUserMfa,
+    updateSsoSettings,
+    testSsoSettings,
   } = useUserManagement();
+  const [ssoDraft, setSsoDraft] = useState<SsoDraft>(emptySsoDraft);
   const {
     views,
     selectedViewId,
@@ -73,6 +119,49 @@ export default function UserManagementPage() {
     }),
     [draftConfig.sort],
   );
+
+  useEffect(() => {
+    if (!ssoSettings) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setSsoDraft({
+      enabled: ssoSettings.enabled,
+      issuer_url: ssoSettings.issuer_url ?? "",
+      authorization_endpoint: ssoSettings.authorization_endpoint ?? "",
+      token_endpoint: ssoSettings.token_endpoint ?? "",
+      userinfo_endpoint: ssoSettings.userinfo_endpoint ?? "",
+      jwks_uri: ssoSettings.jwks_uri ?? "",
+      client_id: ssoSettings.client_id ?? "",
+      client_secret: "",
+      allowed_email_domains: ssoSettings.allowed_email_domains.join(", "),
+      auto_provision_users: ssoSettings.auto_provision_users,
+      default_role_id: ssoSettings.default_role_id ? String(ssoSettings.default_role_id) : "",
+      default_team_id: ssoSettings.default_team_id ? String(ssoSettings.default_team_id) : "",
+      email_claim: ssoSettings.email_claim || "email",
+      first_name_claim: ssoSettings.first_name_claim ?? "given_name",
+      last_name_claim: ssoSettings.last_name_claim ?? "family_name",
+    });
+  }, [ssoSettings]);
+
+  const saveSsoSettings = async () => {
+    await updateSsoSettings({
+      enabled: ssoDraft.enabled,
+      issuer_url: ssoDraft.issuer_url || null,
+      authorization_endpoint: ssoDraft.authorization_endpoint || null,
+      token_endpoint: ssoDraft.token_endpoint || null,
+      userinfo_endpoint: ssoDraft.userinfo_endpoint || null,
+      jwks_uri: ssoDraft.jwks_uri || null,
+      client_id: ssoDraft.client_id || null,
+      client_secret: ssoDraft.client_secret || null,
+      allowed_email_domains: ssoDraft.allowed_email_domains.split(",").map((item) => item.trim()).filter(Boolean),
+      auto_provision_users: ssoDraft.auto_provision_users,
+      default_role_id: ssoDraft.default_role_id ? Number(ssoDraft.default_role_id) : null,
+      default_team_id: ssoDraft.default_team_id ? Number(ssoDraft.default_team_id) : null,
+      email_claim: ssoDraft.email_claim || "email",
+      first_name_claim: ssoDraft.first_name_claim || null,
+      last_name_claim: ssoDraft.last_name_claim || null,
+    });
+    setSsoDraft((current) => ({ ...current, client_secret: "" }));
+  };
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
@@ -135,6 +224,149 @@ export default function UserManagementPage() {
               <SelectItem value="all_users">Require for all users</SelectItem>
             </SelectContent>
           </Select>
+        </div>
+      </Card>
+
+      <Card className="px-4 py-4">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-neutral-100">OIDC SSO</h2>
+              <p className="text-xs text-neutral-500">Tenant sign-in through an external identity provider.</p>
+            </div>
+            <label className="flex items-center gap-2 text-sm text-neutral-300">
+              <input
+                type="checkbox"
+                checked={ssoDraft.enabled}
+                disabled={isSsoSettingsLoading || isSsoSettingsSaving}
+                onChange={(event) => setSsoDraft((current) => ({ ...current, enabled: event.target.checked }))}
+              />
+              Enabled
+            </label>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field>
+              <FieldLabel>Issuer URL</FieldLabel>
+              <Input value={ssoDraft.issuer_url} onChange={(event) => setSsoDraft((current) => ({ ...current, issuer_url: event.target.value }))} placeholder="https://idp.example.com" />
+            </Field>
+            <Field>
+              <FieldLabel>Client ID</FieldLabel>
+              <Input value={ssoDraft.client_id} onChange={(event) => setSsoDraft((current) => ({ ...current, client_id: event.target.value }))} />
+            </Field>
+            <Field>
+              <FieldLabel>Client Secret</FieldLabel>
+              <Input
+                type="password"
+                value={ssoDraft.client_secret}
+                onChange={(event) => setSsoDraft((current) => ({ ...current, client_secret: event.target.value }))}
+                placeholder={ssoSettings?.has_client_secret ? "Stored secret" : ""}
+              />
+            </Field>
+            <Field>
+              <FieldLabel>Allowed Domains</FieldLabel>
+              <Input value={ssoDraft.allowed_email_domains} onChange={(event) => setSsoDraft((current) => ({ ...current, allowed_email_domains: event.target.value }))} placeholder="example.com, company.com" />
+            </Field>
+            <Field>
+              <FieldLabel>Authorization Endpoint</FieldLabel>
+              <Input value={ssoDraft.authorization_endpoint} onChange={(event) => setSsoDraft((current) => ({ ...current, authorization_endpoint: event.target.value }))} />
+              <FieldDescription>Optional when discovery is available.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>Token Endpoint</FieldLabel>
+              <Input value={ssoDraft.token_endpoint} onChange={(event) => setSsoDraft((current) => ({ ...current, token_endpoint: event.target.value }))} />
+              <FieldDescription>Optional when discovery is available.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>UserInfo Endpoint</FieldLabel>
+              <Input value={ssoDraft.userinfo_endpoint} onChange={(event) => setSsoDraft((current) => ({ ...current, userinfo_endpoint: event.target.value }))} />
+            </Field>
+            <Field>
+              <FieldLabel>JWKS URI</FieldLabel>
+              <Input value={ssoDraft.jwks_uri} onChange={(event) => setSsoDraft((current) => ({ ...current, jwks_uri: event.target.value }))} />
+              <FieldDescription>Optional when discovery is available.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>Email Claim</FieldLabel>
+              <Input value={ssoDraft.email_claim} onChange={(event) => setSsoDraft((current) => ({ ...current, email_claim: event.target.value }))} />
+            </Field>
+            <Field>
+              <FieldLabel>First Name Claim</FieldLabel>
+              <Input value={ssoDraft.first_name_claim} onChange={(event) => setSsoDraft((current) => ({ ...current, first_name_claim: event.target.value }))} />
+            </Field>
+            <Field>
+              <FieldLabel>Last Name Claim</FieldLabel>
+              <Input value={ssoDraft.last_name_claim} onChange={(event) => setSsoDraft((current) => ({ ...current, last_name_claim: event.target.value }))} />
+            </Field>
+            <Field>
+              <FieldLabel>Default Role</FieldLabel>
+              <Select value={ssoDraft.default_role_id || "__none__"} onValueChange={(value) => setSsoDraft((current) => ({ ...current, default_role_id: value === "__none__" ? "" : value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {roles.map((role) => <SelectItem key={role.id} value={String(role.id)}>{role.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Default Team</FieldLabel>
+              <Select value={ssoDraft.default_team_id || "__none__"} onValueChange={(value) => setSsoDraft((current) => ({ ...current, default_team_id: value === "__none__" ? "" : value }))}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__none__">None</SelectItem>
+                  {teams.map((team) => <SelectItem key={team.id} value={String(team.id)}>{team.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <label className="flex items-center gap-2 text-sm text-neutral-300">
+              <input
+                type="checkbox"
+                checked={ssoDraft.auto_provision_users}
+                onChange={(event) => setSsoDraft((current) => ({ ...current, auto_provision_users: event.target.checked }))}
+              />
+              Auto-provision users
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="secondary" onClick={() => void testSsoSettings()} disabled={isSsoSettingsLoading || isSsoSettingsSaving || isSsoSettingsTesting}>
+                {isSsoSettingsTesting ? "Testing..." : "Test Connection"}
+              </Button>
+              <Button type="button" onClick={() => void saveSsoSettings()} disabled={isSsoSettingsLoading || isSsoSettingsSaving || isSsoSettingsTesting}>
+                Save SSO Settings
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-3 border-t border-neutral-800 pt-4 text-sm md:grid-cols-3">
+            <div>
+              <div className="text-xs uppercase text-neutral-500">Last test</div>
+              <div className={ssoSettings?.last_test_result?.ok ? "mt-1 text-emerald-300" : "mt-1 text-amber-300"}>
+                {ssoSettings?.last_test_result
+                  ? `${ssoSettings.last_test_result.ok ? "Passed" : "Failed"} · ${formatDateTime(ssoSettings.last_test_result.checked_at)}`
+                  : "Not tested"}
+              </div>
+              {ssoSettings?.last_test_result?.message && (
+                <div className="mt-1 text-xs text-neutral-400">{ssoSettings.last_test_result.message}</div>
+              )}
+              {ssoSettings?.last_test_result?.errors?.map((error) => (
+                <div key={error} className="mt-1 text-xs text-red-300">{error}</div>
+              ))}
+            </div>
+            <div>
+              <div className="text-xs uppercase text-neutral-500">Last SSO login</div>
+              <div className="mt-1 text-neutral-200">
+                {ssoSettings?.last_successful_login_at ? formatDateTime(ssoSettings.last_successful_login_at) : "Never"}
+              </div>
+            </div>
+            <div>
+              <div className="text-xs uppercase text-neutral-500">Last failure</div>
+              <div className="mt-1 text-neutral-200">
+                {ssoSettings?.last_failed_login_reason || "None recorded"}
+              </div>
+            </div>
+          </div>
         </div>
       </Card>
 
