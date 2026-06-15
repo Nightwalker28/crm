@@ -24,8 +24,10 @@ class FakeResponse:
 
 
 class FakeRequest:
-    def __init__(self, tenant=None, host="crm.example.com"):
+    def __init__(self, tenant=None, host="crm.example.com", origin=None):
         self.headers = {"host": host} if host else {}
+        if origin:
+            self.headers["origin"] = origin
         self.state = SimpleNamespace(tenant=tenant)
 
     def url_for(self, _name):
@@ -224,18 +226,49 @@ class SsoServiceTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 403)
         self.assertIn("verified custom domain", ctx.exception.detail)
 
+    def test_resolve_sso_settings_for_request_uses_verified_frontend_origin(self):
+        self.db.add_all(
+            [
+                TenantDomain(id=3, tenant_id=1, hostname="lynk.example.com", status="verified"),
+                TenantSsoSettings(tenant_id=1, enabled=True, issuer_url="https://idp.example.com", client_id="one", allowed_email_domains=["example.com"]),
+            ]
+        )
+        self.db.commit()
+
+        resolved = sso.resolve_sso_settings_for_request(
+            self.db,
+            request=FakeRequest(host="api.example.com", origin="https://lynk.example.com"),
+        )
+
+        self.assertEqual(resolved.tenant_id, 1)
+
+    def test_callback_tenant_check_uses_signed_frontend_origin(self):
+        self.db.add(TenantDomain(id=3, tenant_id=1, hostname="lynk.example.com", status="verified"))
+        self.db.commit()
+
+        tenant_id = sso._resolve_verified_custom_domain_tenant_id(
+            self.db,
+            request=FakeRequest(host="api.example.com"),
+            frontend_origin="https://lynk.example.com",
+        )
+
+        self.assertEqual(tenant_id, 1)
+
     @patch("app.modules.user_management.services.sso._resolve_oidc_metadata", return_value={"authorization_endpoint": "https://idp.example.com/auth"})
     @patch("app.modules.user_management.services.sso.get_frontend_origin_for_request", return_value="https://app.example.com")
     @patch("app.modules.user_management.services.sso.settings.JWT_SECRET", "state-secret")
     def test_build_sso_start_url_contains_state_and_nonce(self, _origin, _metadata):
-        self.db.add(
-            TenantSsoSettings(
-                tenant_id=1,
-                enabled=True,
-                issuer_url="https://idp.example.com",
-                client_id="client-id",
-                allowed_email_domains=["example.com"],
-            )
+        self.db.add_all(
+            [
+                TenantDomain(id=4, tenant_id=1, hostname="app.example.com", status="verified"),
+                TenantSsoSettings(
+                    tenant_id=1,
+                    enabled=True,
+                    issuer_url="https://idp.example.com",
+                    client_id="client-id",
+                    allowed_email_domains=["example.com"],
+                ),
+            ]
         )
         self.db.commit()
 
@@ -250,14 +283,17 @@ class SsoServiceTests(unittest.TestCase):
     @patch("app.modules.user_management.services.sso.get_frontend_origin_for_request", return_value="https://app.example.com")
     @patch("app.modules.user_management.services.sso.settings.JWT_SECRET", "state-secret")
     def test_build_sso_start_url_can_start_single_tenant_without_email(self, _origin, _metadata):
-        self.db.add(
-            TenantSsoSettings(
-                tenant_id=1,
-                enabled=True,
-                issuer_url="https://idp.example.com",
-                client_id="client-id",
-                allowed_email_domains=["example.com"],
-            )
+        self.db.add_all(
+            [
+                TenantDomain(id=4, tenant_id=1, hostname="app.example.com", status="verified"),
+                TenantSsoSettings(
+                    tenant_id=1,
+                    enabled=True,
+                    issuer_url="https://idp.example.com",
+                    client_id="client-id",
+                    allowed_email_domains=["example.com"],
+                ),
+            ]
         )
         self.db.commit()
 
@@ -273,14 +309,17 @@ class SsoServiceTests(unittest.TestCase):
     @patch("app.modules.user_management.services.sso.get_frontend_origin_for_request", return_value="https://app.example.com")
     @patch("app.modules.user_management.services.sso.settings.JWT_SECRET", "state-secret")
     def test_oidc_callback_maps_existing_user(self, _origin, _claims, _tokens, _metadata):
-        self.db.add(
-            TenantSsoSettings(
-                tenant_id=1,
-                enabled=True,
-                issuer_url="https://idp.example.com",
-                client_id="client-id",
-                allowed_email_domains=["example.com"],
-            )
+        self.db.add_all(
+            [
+                TenantDomain(id=4, tenant_id=1, hostname="app.example.com", status="verified"),
+                TenantSsoSettings(
+                    tenant_id=1,
+                    enabled=True,
+                    issuer_url="https://idp.example.com",
+                    client_id="client-id",
+                    allowed_email_domains=["example.com"],
+                ),
+            ]
         )
         self.db.commit()
         state = sso._create_oidc_state(tenant_id=1, nonce="nonce", frontend_origin="https://app.example.com")
@@ -298,17 +337,20 @@ class SsoServiceTests(unittest.TestCase):
     @patch("app.modules.user_management.services.sso.get_frontend_origin_for_request", return_value="https://app.example.com")
     @patch("app.modules.user_management.services.sso.settings.JWT_SECRET", "state-secret")
     def test_oidc_callback_auto_provisions_inside_tenant_defaults(self, _origin, _claims, _tokens, _metadata):
-        self.db.add(
-            TenantSsoSettings(
-                tenant_id=1,
-                enabled=True,
-                issuer_url="https://idp.example.com",
-                client_id="client-id",
-                allowed_email_domains=["example.com"],
-                auto_provision_users=True,
-                default_role_id=1,
-                default_team_id=1,
-            )
+        self.db.add_all(
+            [
+                TenantDomain(id=4, tenant_id=1, hostname="app.example.com", status="verified"),
+                TenantSsoSettings(
+                    tenant_id=1,
+                    enabled=True,
+                    issuer_url="https://idp.example.com",
+                    client_id="client-id",
+                    allowed_email_domains=["example.com"],
+                    auto_provision_users=True,
+                    default_role_id=1,
+                    default_team_id=1,
+                ),
+            ]
         )
         self.db.commit()
         state = sso._create_oidc_state(tenant_id=1, nonce="nonce", frontend_origin="https://app.example.com")

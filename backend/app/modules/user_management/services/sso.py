@@ -317,7 +317,7 @@ def handle_oidc_callback(db: Session, *, request: Request, code: str | None, sta
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid SSO callback")
 
     tenant_id = int(state_payload["tenant_id"])
-    if _resolve_verified_custom_domain_tenant_id(db, request=request) != tenant_id:
+    if _resolve_verified_custom_domain_tenant_id(db, request=request, frontend_origin=frontend_origin) != tenant_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Tenant context mismatch")
     settings_row = db.query(TenantSsoSettings).filter(TenantSsoSettings.tenant_id == tenant_id).first()
     if not settings_row or not settings_row.enabled:
@@ -612,8 +612,8 @@ def _verified_custom_email_domains_or_legacy(db: Session, settings_row: TenantSs
     return domains or _normalize_domains(settings_row.allowed_email_domains or [])
 
 
-def _resolve_verified_custom_domain_tenant_id(db: Session, *, request: Request) -> int:
-    hostname = normalize_hostname(request.headers.get("host"))
+def _resolve_verified_custom_domain_tenant_id(db: Session, *, request: Request, frontend_origin: str | None = None) -> int:
+    hostname = normalize_hostname(frontend_origin or request.headers.get("origin") or request.headers.get("host"))
     if not hostname:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Request host is missing")
     tenant_domain = (
