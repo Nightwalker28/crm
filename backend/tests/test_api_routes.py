@@ -24,6 +24,7 @@ from app.modules.sales.schema import (
 )
 from app.modules.user_management.models import Module, TenantModuleConfig, UserAuthMode, UserStatus
 from app.modules.user_management.routes import admin as admin_routes
+from app.modules.user_management.routes import signin as signin_routes
 from app.modules.user_management.schema import UserProfile
 from app.modules.user_management.services.auth import (
     _profile_from_google_id_token,
@@ -324,6 +325,9 @@ class APIRouteTests(unittest.TestCase):
         ), patch(
             "app.modules.user_management.services.auth.settings.JWT_SECRET",
             "test-secret",
+        ), patch(
+            "app.core.tenancy.is_cloud_mode_enabled",
+            return_value=True,
         ):
             auth_url = get_google_auth_url(
                 request=SimpleNamespace(headers={"host": "crm.example.com"}),
@@ -335,6 +339,52 @@ class APIRouteTests(unittest.TestCase):
         self.assertIsNotNone(state)
         self.assertNotIn("tenant_id", state)
         self.assertEqual(state["frontend_origin"], "https://crm.example.com")
+
+    def test_google_login_route_uses_verified_custom_domain_tenant(self):
+        request = SimpleNamespace(
+            state=SimpleNamespace(tenant=None),
+            headers={"x-lynk-frontend-origin": "https://lynk.example.com"},
+        )
+        with patch(
+            "app.modules.user_management.routes.signin._verified_tenant_from_request_origin",
+            return_value=SimpleNamespace(id=42),
+        ), patch(
+            "app.modules.user_management.services.auth.get_google_redirect_uri_for_request",
+            return_value="https://crm.example.com/api/v1/auth/google/callback",
+        ), patch(
+            "app.modules.user_management.services.auth.settings.JWT_SECRET",
+            "test-secret",
+        ), patch(
+            "app.core.tenancy.is_cloud_mode_enabled",
+            return_value=True,
+        ):
+            response = signin_routes.google_login(request=request, db=RouteTestSession())
+            params = urllib.parse.parse_qs(urllib.parse.urlparse(response["auth_url"]).query)
+            state = decode_oauth_state(params["state"][0])
+
+        self.assertEqual(state["tenant_id"], 42)
+        self.assertEqual(state["frontend_origin"], "https://lynk.example.com")
+
+    def test_manual_login_tenant_resolution_prefers_verified_custom_domain(self):
+        request = SimpleNamespace(headers={"x-lynk-frontend-origin": "https://lynk.example.com"})
+        with patch(
+            "app.modules.user_management.routes.signin.is_cloud_mode_enabled",
+            return_value=True,
+        ), patch(
+            "app.modules.user_management.routes.signin.is_auth_tenant_resolution_enabled",
+            return_value=True,
+        ), patch(
+            "app.modules.user_management.routes.signin._verified_tenant_from_request_origin",
+            return_value=SimpleNamespace(id=42),
+        ):
+            tenant_id = signin_routes._resolve_manual_login_tenant_id(
+                RouteTestSession(),
+                email="shared@example.net",
+                request=request,
+                request_tenant=None,
+            )
+
+        self.assertEqual(tenant_id, 42)
 
     def test_microsoft_login_url_uses_configured_calendar_scopes(self):
         with patch("app.modules.user_management.services.auth.settings.MICROSOFT_CLIENT_ID", "client-id"), \
@@ -349,6 +399,27 @@ class APIRouteTests(unittest.TestCase):
 
         self.assertTrue({"openid", "profile", "offline_access", "User.Read", "Calendars.ReadWrite"}.issubset(set(params["scope"][0].split())))
         self.assertEqual(state["tenant_id"], 1)
+
+    def test_microsoft_login_route_uses_verified_custom_domain_tenant(self):
+        request = SimpleNamespace(
+            state=SimpleNamespace(tenant=None),
+            headers={"x-lynk-frontend-origin": "https://lynk.example.com"},
+        )
+        with patch(
+            "app.modules.user_management.routes.signin._verified_tenant_from_request_origin",
+            return_value=SimpleNamespace(id=42),
+        ), patch("app.modules.user_management.services.auth.settings.MICROSOFT_CLIENT_ID", "client-id"), \
+             patch("app.modules.user_management.services.auth.settings.MICROSOFT_CLIENT_SECRET", "client-secret"), \
+             patch("app.modules.user_management.services.auth.settings.MICROSOFT_SCOPES", ["openid", "profile", "offline_access", "User.Read"]), \
+             patch("app.modules.user_management.services.auth.get_microsoft_redirect_uri_for_request", return_value="https://crm.example.com/api/v1/auth/microsoft/callback"), \
+             patch("app.modules.user_management.services.auth.settings.JWT_SECRET", "test-secret"), \
+             patch("app.core.tenancy.is_cloud_mode_enabled", return_value=True):
+            response = signin_routes.microsoft_login(request=request, db=RouteTestSession())
+            params = urllib.parse.parse_qs(urllib.parse.urlparse(response["auth_url"]).query)
+            state = decode_microsoft_oauth_state(params["state"][0])
+
+        self.assertEqual(state["tenant_id"], 42)
+        self.assertEqual(state["frontend_origin"], "https://lynk.example.com")
 
     def test_google_callback_resolves_user_by_email_in_auth_tenant_mode(self):
         id_token = jose_jwt.encode(

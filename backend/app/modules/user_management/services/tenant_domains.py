@@ -8,11 +8,11 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.tenancy import normalize_hostname
 from app.modules.platform.services.activity_logs import safe_log_activity
-from app.modules.user_management.models import TenantDomain
+from app.modules.user_management.models import Tenant, TenantDomain
 
 DOMAIN_STATUS_PENDING = "pending"
 DOMAIN_STATUS_VERIFIED = "verified"
@@ -69,6 +69,26 @@ def is_verified_tenant_domain(db: Session, *, tenant_id: int, hostname: str | No
         .first()
         is not None
     )
+
+
+def verified_tenant_for_hostname(db: Session, *, hostname: str | None) -> Tenant | None:
+    normalized = normalize_hostname(hostname)
+    if not normalized:
+        return None
+    tenant_domain = (
+        db.query(TenantDomain)
+        .options(joinedload(TenantDomain.tenant))
+        .join(Tenant, Tenant.id == TenantDomain.tenant_id)
+        .filter(
+            TenantDomain.hostname == normalized,
+            TenantDomain.status == DOMAIN_STATUS_VERIFIED,
+            Tenant.is_active == 1,
+        )
+        .first()
+    )
+    if not tenant_domain or not tenant_domain.tenant:
+        return None
+    return tenant_domain.tenant
 
 
 def list_tenant_domains(db: Session, *, tenant_id: int) -> list[dict[str, Any]]:

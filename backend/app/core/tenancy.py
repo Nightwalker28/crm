@@ -96,6 +96,9 @@ def get_request_scheme(request: Request) -> str:
 
 
 def get_request_origin(request: Request) -> str:
+    frontend_origin = request.headers.get("x-lynk-frontend-origin")
+    if frontend_origin:
+        return frontend_origin.rstrip("/")
     origin = request.headers.get("origin")
     if origin:
         return origin.rstrip("/")

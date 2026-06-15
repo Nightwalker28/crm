@@ -13,8 +13,8 @@ from app.core.config import settings
 from app.core.secrets import decrypt_application_secret, encrypt_application_secret
 from app.core.tenancy import get_frontend_origin_for_request, normalize_hostname
 from app.modules.platform.services.activity_logs import safe_log_activity
-from app.modules.user_management.models import Role, Team, Tenant, TenantDomain, TenantSsoSettings, User, UserAuthMode, UserStatus
-from app.modules.user_management.services.tenant_domains import DOMAIN_STATUS_VERIFIED, tenant_domain_email_domains
+from app.modules.user_management.models import Role, Team, Tenant, TenantSsoSettings, User, UserAuthMode, UserStatus
+from app.modules.user_management.services.tenant_domains import tenant_domain_email_domains, verified_tenant_for_hostname
 
 OIDC_DISCOVERY_TIMEOUT_SECONDS = 10
 OIDC_TOKEN_TIMEOUT_SECONDS = 15
@@ -32,10 +32,6 @@ def _normalize_domains(values: list[str] | None) -> list[str]:
         if domain and domain not in domains:
             domains.append(domain)
     return domains
-
-
-def _email_domain(email: str) -> str:
-    return email.strip().lower().split("@")[-1]
 
 
 def _strip_url(value: str | None) -> str | None:
@@ -302,12 +298,12 @@ def resolve_sso_settings_for_request(db: Session, *, request: Request) -> Tenant
 
 
 def resolve_sso_settings_for_email(db: Session, *, request: Request, email: str) -> TenantSsoSettings:
-    domain = _email_domain(email)
     settings_rows = _enabled_sso_settings_query(db, request=request).all()
-    for settings_row in settings_rows:
-        if domain in set(settings_row.allowed_email_domains or []):
-            return settings_row
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO is not configured for this email domain")
+    if len(settings_rows) == 1:
+        return settings_rows[0]
+    if not settings_rows:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="SSO is not enabled for this tenant")
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter your email to choose the right SSO provider")
 
 
 def handle_oidc_callback(db: Session, *, request: Request, code: str | None, state: str | None) -> dict[str, Any]:
@@ -496,9 +492,6 @@ def _map_oidc_user(db: Session, *, settings_row: TenantSsoSettings, claims: dict
     if claims.get("email_verified") is False:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="OIDC user email is not verified")
     email = raw_email.strip().lower()
-    allowed_domains = set(_verified_custom_email_domains_or_legacy(db, settings_row))
-    if _email_domain(email) not in allowed_domains:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="OIDC user email domain is not allowed")
     user = (
         db.query(User)
         .filter(
@@ -613,22 +606,18 @@ def _verified_custom_email_domains_or_legacy(db: Session, settings_row: TenantSs
 
 
 def _resolve_verified_custom_domain_tenant_id(db: Session, *, request: Request, frontend_origin: str | None = None) -> int:
-    hostname = normalize_hostname(frontend_origin or request.headers.get("origin") or request.headers.get("host"))
+    hostname = normalize_hostname(
+        frontend_origin
+        or request.headers.get("x-lynk-frontend-origin")
+        or request.headers.get("origin")
+        or request.headers.get("host")
+    )
     if not hostname:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Request host is missing")
-    tenant_domain = (
-        db.query(TenantDomain)
-        .join(Tenant, Tenant.id == TenantDomain.tenant_id)
-        .filter(
-            TenantDomain.hostname == hostname,
-            TenantDomain.status == DOMAIN_STATUS_VERIFIED,
-            Tenant.is_active == 1,
-        )
-        .first()
-    )
-    if not tenant_domain:
+    tenant = verified_tenant_for_hostname(db, hostname=hostname)
+    if not tenant:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="SSO is only available from a verified custom domain")
     request_tenant = getattr(request.state, "tenant", None)
-    if request_tenant and int(request_tenant.id) != int(tenant_domain.tenant_id):
+    if request_tenant and int(request_tenant.id) != int(tenant.id):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Tenant context mismatch")
-    return int(tenant_domain.tenant_id)
+    return int(tenant.id)

@@ -57,6 +57,15 @@ function fetchWithGetDeduplication(input: string, init: RequestInit) {
   return request.then((res) => res.clone());
 }
 
+function requestHeaders(headers?: HeadersInit) {
+  const merged = new Headers(headers);
+  merged.set("Accept", "application/json");
+  if (typeof window !== "undefined") {
+    merged.set("X-Lynk-Frontend-Origin", window.location.origin);
+  }
+  return merged;
+}
+
 // This function attempts to refresh the session. On success, it dispatches
 // a global event that a session provider can listen for to reset its timers.
 async function refreshOnce(): Promise<boolean> {
@@ -82,10 +91,7 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
     fetchWithGetDeduplication(apiUrl(path), {
       ...init,
       credentials: "include",
-      headers: {
-        Accept: "application/json",
-        ...(init.headers ?? {}),
-      },
+      headers: requestHeaders(init.headers),
     });
 
   let res = await doRequest();

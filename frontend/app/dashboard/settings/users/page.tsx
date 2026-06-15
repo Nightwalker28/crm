@@ -337,9 +337,9 @@ export default function UserManagementPage() {
               />
             </Field>
             <Field>
-              <FieldLabel>Allowed Email Domains</FieldLabel>
+              <FieldLabel>Verified Login Domains</FieldLabel>
               <Input value={ssoSettings?.allowed_email_domains.join(", ") ?? ""} readOnly placeholder="Verify a custom domain first" />
-              <FieldDescription>Derived from verified custom domains.</FieldDescription>
+              <FieldDescription>Used to route SSO to this tenant. SSO users are matched inside this tenant after the provider verifies them.</FieldDescription>
             </Field>
             <Field>
               <FieldLabel>Authorization Endpoint</FieldLabel>

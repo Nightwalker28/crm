@@ -24,8 +24,10 @@ class FakeResponse:
 
 
 class FakeRequest:
-    def __init__(self, tenant=None, host="crm.example.com", origin=None):
+    def __init__(self, tenant=None, host="crm.example.com", origin=None, frontend_origin=None):
         self.headers = {"host": host} if host else {}
+        if frontend_origin:
+            self.headers["x-lynk-frontend-origin"] = frontend_origin
         if origin:
             self.headers["origin"] = origin
         self.state = SimpleNamespace(tenant=tenant)
@@ -179,7 +181,7 @@ class SsoServiceTests(unittest.TestCase):
         self.assertNotIn("client-secret", str(result))
         self.assertTrue(settings_row.last_failed_login_reason)
 
-    def test_resolve_sso_settings_for_email_is_tenant_and_domain_scoped(self):
+    def test_resolve_sso_settings_for_email_uses_verified_domain_tenant(self):
         self.db.add_all(
             [
                 TenantSsoSettings(tenant_id=1, enabled=True, issuer_url="https://idp.example.com", client_id="one", allowed_email_domains=["example.com"]),
@@ -188,7 +190,7 @@ class SsoServiceTests(unittest.TestCase):
         )
         self.db.commit()
 
-        resolved = sso.resolve_sso_settings_for_email(self.db, request=FakeRequest(), email="ada@example.com")
+        resolved = sso.resolve_sso_settings_for_email(self.db, request=FakeRequest(), email="ada@another-domain.test")
         self.assertEqual(resolved.tenant_id, 1)
 
         with self.assertRaises(HTTPException) as ctx:
@@ -238,6 +240,22 @@ class SsoServiceTests(unittest.TestCase):
         resolved = sso.resolve_sso_settings_for_request(
             self.db,
             request=FakeRequest(host="api.example.com", origin="https://lynk.example.com"),
+        )
+
+        self.assertEqual(resolved.tenant_id, 1)
+
+    def test_resolve_sso_settings_for_request_uses_frontend_origin_header(self):
+        self.db.add_all(
+            [
+                TenantDomain(id=3, tenant_id=1, hostname="lynk.example.com", status="verified"),
+                TenantSsoSettings(tenant_id=1, enabled=True, issuer_url="https://idp.example.com", client_id="one", allowed_email_domains=[]),
+            ]
+        )
+        self.db.commit()
+
+        resolved = sso.resolve_sso_settings_for_request(
+            self.db,
+            request=FakeRequest(host="api.example.com", frontend_origin="https://lynk.example.com"),
         )
 
         self.assertEqual(resolved.tenant_id, 1)
@@ -333,7 +351,7 @@ class SsoServiceTests(unittest.TestCase):
 
     @patch("app.modules.user_management.services.sso._resolve_oidc_metadata", return_value={"issuer": "https://idp.example.com", "token_endpoint": "https://idp.example.com/token", "jwks_uri": "https://idp.example.com/jwks"})
     @patch("app.modules.user_management.services.sso._exchange_code_for_tokens", return_value={"id_token": "token"})
-    @patch("app.modules.user_management.services.sso._validate_id_token", return_value={"email": "new@example.com", "given_name": "New", "family_name": "User", "email_verified": True})
+    @patch("app.modules.user_management.services.sso._validate_id_token", return_value={"email": "new@another-domain.test", "given_name": "New", "family_name": "User", "email_verified": True})
     @patch("app.modules.user_management.services.sso.get_frontend_origin_for_request", return_value="https://app.example.com")
     @patch("app.modules.user_management.services.sso.settings.JWT_SECRET", "state-secret")
     def test_oidc_callback_auto_provisions_inside_tenant_defaults(self, _origin, _claims, _tokens, _metadata):
@@ -358,7 +376,7 @@ class SsoServiceTests(unittest.TestCase):
         result = sso.handle_oidc_callback(self.db, request=FakeRequest(), code="code", state=state)
 
         user = result["user"]
-        self.assertEqual(user.email, "new@example.com")
+        self.assertEqual(user.email, "new@another-domain.test")
         self.assertEqual(user.tenant_id, 1)
         self.assertEqual(user.role_id, 1)
         self.assertEqual(user.team_id, 1)

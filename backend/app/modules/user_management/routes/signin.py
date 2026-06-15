@@ -18,7 +18,7 @@ from app.core.security import (
     get_current_user,
     record_failed_refresh_attempt,
 )
-from app.core.tenancy import get_frontend_origin_for_request, is_auth_tenant_resolution_enabled, is_cloud_mode_enabled
+from app.core.tenancy import get_frontend_origin_for_request, is_auth_tenant_resolution_enabled, is_cloud_mode_enabled, normalize_hostname
 from app.modules.user_management.models import RefreshToken, Tenant, User, UserStatus
 from app.modules.mail.services.mail_services import (
     decode_mail_oauth_state,
@@ -58,6 +58,7 @@ from app.modules.user_management.services.auth import (
 )
 from app.modules.user_management.services.mfa import activate_mfa, disable_mfa, start_mfa_setup, verify_mfa_challenge
 from app.modules.user_management.services.sso import build_sso_start_url, handle_oidc_callback
+from app.modules.user_management.services.tenant_domains import verified_tenant_for_hostname
 
 router = APIRouter(tags=["Auth"])
 MFA_CHALLENGE_EXPIRE_MINUTES = 5
@@ -91,11 +92,15 @@ def _validate_request_tenant(request: Request, payload: dict) -> int | None:
     return token_tenant_id
 
 
-def _resolve_manual_login_tenant_id(db: Session, *, email: str, request_tenant) -> int | None:
+def _resolve_manual_login_tenant_id(db: Session, *, email: str, request: Request, request_tenant) -> int | None:
     if request_tenant:
         return int(request_tenant.id)
     if not (is_cloud_mode_enabled() and is_auth_tenant_resolution_enabled()):
         return None
+
+    origin_tenant = _verified_tenant_from_request_origin(db, request)
+    if origin_tenant:
+        return int(origin_tenant.id)
 
     user = (
         db.query(User)
@@ -107,6 +112,30 @@ def _resolve_manual_login_tenant_id(db: Session, *, email: str, request_tenant) 
         .first()
     )
     return int(user.tenant_id) if user else None
+
+
+def _request_frontend_hostname(request: Request, frontend_origin: str | None = None) -> str | None:
+    return normalize_hostname(
+        frontend_origin
+        or request.headers.get("x-lynk-frontend-origin")
+        or request.headers.get("origin")
+        or request.headers.get("host")
+    )
+
+
+def _verified_tenant_from_request_origin(db: Session, request: Request, *, frontend_origin: str | None = None) -> Tenant | None:
+    return verified_tenant_for_hostname(db, hostname=_request_frontend_hostname(request, frontend_origin))
+
+
+def _tenant_from_signed_state(db: Session, state_payload: dict | None) -> Tenant | None:
+    if not state_payload or not state_payload.get("tenant_id"):
+        return None
+    tenant = (
+        db.query(Tenant)
+        .filter(Tenant.id == int(state_payload["tenant_id"]), Tenant.is_active == 1)
+        .first()
+    )
+    return tenant
 
 
 def _set_session_cookies(
@@ -258,7 +287,7 @@ def manual_login(
     db: Session = Depends(get_db),
 ):
     tenant = getattr(request.state, "tenant", None)
-    tenant_id = _resolve_manual_login_tenant_id(db, email=payload.email, request_tenant=tenant)
+    tenant_id = _resolve_manual_login_tenant_id(db, email=payload.email, request=request, request_tenant=tenant)
     if tenant_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
 
@@ -461,8 +490,9 @@ def dev_login(
 @router.get("/google")
 def google_login(
     request: Request,
+    db: Session = Depends(get_db),
 ):
-    tenant = getattr(request.state, "tenant", None)
+    tenant = getattr(request.state, "tenant", None) or _verified_tenant_from_request_origin(db, request)
     if not tenant and not (is_cloud_mode_enabled() and is_auth_tenant_resolution_enabled()):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
     return {"auth_url": get_google_auth_url(request=request, tenant=tenant)}
@@ -525,7 +555,7 @@ def google_callback(
         return RedirectResponse(url=f"{frontend_origin}{return_path}?{query}")
 
     state_payload = decode_oauth_state(state)
-    tenant = getattr(request.state, "tenant", None)
+    tenant = getattr(request.state, "tenant", None) or _tenant_from_signed_state(db, state_payload)
     frontend_origin = (
         (state_payload or {}).get("frontend_origin")
         or get_frontend_origin_for_request(request)
@@ -606,7 +636,7 @@ def microsoft_callback(
         (mail_state_payload or drive_state_payload or login_state_payload or {}).get("frontend_origin")
         or get_frontend_origin_for_request(request)
     )
-    tenant = getattr(request.state, "tenant", None)
+    tenant = getattr(request.state, "tenant", None) or _tenant_from_signed_state(db, login_state_payload)
     if mail_state_payload and mail_state_payload.get("provider") == "microsoft":
         if not tenant or mail_state_payload.get("tenant_id") != tenant.id or not code:
             return RedirectResponse(url=f"{frontend_origin}/dashboard/mail?mailConnect=error")
@@ -670,8 +700,8 @@ def microsoft_callback(
 
 
 @router.get("/microsoft")
-def microsoft_login(request: Request):
-    tenant = getattr(request.state, "tenant", None)
+def microsoft_login(request: Request, db: Session = Depends(get_db)):
+    tenant = getattr(request.state, "tenant", None) or _verified_tenant_from_request_origin(db, request)
     if not tenant and not (is_cloud_mode_enabled() and is_auth_tenant_resolution_enabled()):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
     return {"auth_url": get_microsoft_auth_url(request=request, tenant=tenant)}
