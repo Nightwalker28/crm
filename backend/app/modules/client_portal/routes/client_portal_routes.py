@@ -17,6 +17,7 @@ from app.modules.calendar.services.booking_services import (
     list_client_bookings,
     serialize_client_booking,
 )
+from app.modules.client_portal.repositories import client_portal_repository
 from app.modules.client_portal.schema import (
     ClientAccountCreateRequest,
     ClientAccountResponse,
@@ -177,6 +178,7 @@ def _resolve_client_auth_tenant(
     db: Session,
     request: Request,
     *,
+    email: str | None = None,
     page_token: str | None = None,
     tenant_slug: str | None = None,
 ):
@@ -188,6 +190,16 @@ def _resolve_client_auth_tenant(
         return _tenant_by_id_or_400(db, int(page.tenant_id))
     if tenant_slug and tenant_slug.strip():
         return _tenant_by_slug_or_400(db, tenant_slug)
+    if email and email.strip():
+        accounts = client_portal_repository.list_active_client_accounts_by_email(db, email=email)
+        tenant_ids = {int(account.tenant_id) for account in accounts}
+        if len(tenant_ids) == 1:
+            return _tenant_by_id_or_400(db, next(iter(tenant_ids)))
+        if len(tenant_ids) > 1:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Tenant context is required. Use a tenant-specific client link.",
+            )
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
 
 
@@ -570,6 +582,7 @@ def login_client_route(
     tenant = _resolve_client_auth_tenant(
         db,
         request,
+        email=str(payload.email),
         page_token=payload.page_token,
         tenant_slug=payload.tenant_slug,
     )

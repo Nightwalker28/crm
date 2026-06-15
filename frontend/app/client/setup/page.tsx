@@ -13,6 +13,10 @@ function getError(error: unknown) {
   return error instanceof Error ? error.message : "Failed to set password.";
 }
 
+function loginHref(tenantSlug: string | null) {
+  return tenantSlug ? `/client/login?tenant=${encodeURIComponent(tenantSlug)}` : "/client/login";
+}
+
 function ClientSetupContent() {
   const searchParams = useSearchParams();
   const token = useMemo(() => searchParams.get("token") ?? "", [searchParams]);
@@ -56,7 +60,7 @@ function ClientSetupContent() {
           <div className="rounded-md border border-emerald-900/60 bg-emerald-950/20 p-4">
             <div className="text-sm text-emerald-200">Password set. You can now sign in from any shared client page.</div>
             <Button asChild className="mt-4">
-              <Link href="/client/login">Go to client login</Link>
+              <Link href={loginHref(tenantSlug)}>Go to client login</Link>
             </Button>
           </div>
         ) : (

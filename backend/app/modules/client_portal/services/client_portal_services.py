@@ -5,6 +5,7 @@ import re
 import secrets
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
+from urllib.parse import quote
 
 from fastapi.encoders import jsonable_encoder
 from fastapi import HTTPException, status
@@ -764,8 +765,18 @@ def _create_setup_token(account: ClientAccount) -> str:
     return token
 
 
-def _setup_link(token: str) -> str:
-    return f"{settings.FRONTEND_ORIGIN.rstrip('/')}/client/setup?token={token}"
+def _tenant_slug_for_account(account: ClientAccount) -> str | None:
+    tenant = getattr(account, "tenant", None)
+    slug = getattr(tenant, "slug", None)
+    return str(slug).strip() if slug else None
+
+
+def _setup_link(token: str, account: ClientAccount) -> str:
+    link = f"{settings.FRONTEND_ORIGIN.rstrip('/')}/client/setup?token={quote(token, safe='')}"
+    tenant_slug = _tenant_slug_for_account(account)
+    if tenant_slug:
+        link += f"&tenant={quote(tenant_slug, safe='')}"
+    return link
 
 
 def _client_page_link(token: str) -> str:
@@ -822,7 +833,7 @@ def serialize_client_account(account: ClientAccount, *, setup_token: str | None 
         "contact_name": _contact_display_name(account.contact),
         "organization_name": _organization_display_name(account.organization),
         "has_password": bool(account.password_hash),
-        "setup_link": _setup_link(setup_token) if setup_token else None,
+        "setup_link": _setup_link(setup_token, account) if setup_token else None,
         "setup_token_expires_at": account.setup_token_expires_at,
         "last_login_at": account.last_login_at,
         "created_at": account.created_at,

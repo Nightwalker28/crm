@@ -7,6 +7,7 @@ from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPa
 from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.documents.models import Document
 from app.modules.sales.models import SalesContact, SalesOrganization
+from app.modules.user_management.models import Tenant
 from app.modules.website_integrations.models import WebsiteIntegrationOrder
 
 
@@ -372,6 +373,22 @@ def get_client_account_by_setup_hash(db: Session, *, token_hash: str) -> ClientA
 
 def get_client_account_by_email(db: Session, *, tenant_id: int, email: str) -> ClientAccount | None:
     return db.query(ClientAccount).filter(ClientAccount.tenant_id == tenant_id, ClientAccount.email == email).first()
+
+
+def list_active_client_accounts_by_email(db: Session, *, email: str) -> list[ClientAccount]:
+    normalized_email = email.strip().lower()
+    return (
+        db.query(ClientAccount)
+        .join(Tenant, Tenant.id == ClientAccount.tenant_id)
+        .options(joinedload(ClientAccount.tenant))
+        .filter(
+            ClientAccount.email == normalized_email,
+            ClientAccount.status == "active",
+            Tenant.is_active == 1,
+        )
+        .order_by(ClientAccount.tenant_id.asc(), ClientAccount.id.asc())
+        .all()
+    )
 
 
 def get_client_account_by_token_payload(db: Session, *, tenant_id: int, account_id: int) -> ClientAccount | None:

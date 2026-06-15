@@ -117,7 +117,9 @@ class ClientPortalServiceTests(unittest.TestCase):
 
         self.assertEqual(account.status, "pending")
         self.assertTrue(setup_token)
-        self.assertTrue(client_portal_services.serialize_client_account(account, setup_token=setup_token)["setup_link"])
+        setup_link = client_portal_services.serialize_client_account(account, setup_token=setup_token)["setup_link"]
+        self.assertTrue(setup_link)
+        self.assertIn("tenant=default", setup_link)
 
         account = client_portal_services.setup_client_password(
             self.db,
@@ -462,6 +464,67 @@ class ClientPortalServiceTests(unittest.TestCase):
         )
 
         self.assertEqual(tenant.id, 10)
+
+    def test_client_auth_tenant_resolves_from_unique_client_email(self):
+        _account, setup_token = client_portal_services.create_client_account(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={"email": "buyer@example.com", "contact_id": 7, "status": "pending"},
+        )
+        client_portal_services.setup_client_password(
+            self.db,
+            token=setup_token,
+            password="ClientPass123",
+        )
+        request = SimpleNamespace(state=SimpleNamespace())
+
+        tenant = _resolve_client_auth_tenant(
+            self.db,
+            request,
+            email="buyer@example.com",
+            page_token=None,
+            tenant_slug=None,
+        )
+
+        self.assertEqual(tenant.id, 10)
+
+    def test_client_auth_tenant_requires_hint_for_duplicate_client_email(self):
+        _first, first_setup_token = client_portal_services.create_client_account(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={"email": "shared@example.com", "contact_id": 7, "status": "pending"},
+        )
+        _second, second_setup_token = client_portal_services.create_client_account(
+            self.db,
+            tenant_id=99,
+            actor_user_id=1,
+            payload={"email": "shared@example.com", "contact_id": 8, "status": "pending"},
+        )
+        client_portal_services.setup_client_password(
+            self.db,
+            token=first_setup_token,
+            password="ClientPass123",
+        )
+        client_portal_services.setup_client_password(
+            self.db,
+            token=second_setup_token,
+            password="ClientPass123",
+        )
+        request = SimpleNamespace(state=SimpleNamespace())
+
+        with self.assertRaises(HTTPException) as exc:
+            _resolve_client_auth_tenant(
+                self.db,
+                request,
+                email="shared@example.com",
+                page_token=None,
+                tenant_slug=None,
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertIn("Tenant context is required", exc.exception.detail)
 
     def test_client_auth_tenant_prefers_request_tenant_over_page_token(self):
         page = client_portal_services.create_client_page(
