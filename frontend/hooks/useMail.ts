@@ -15,6 +15,14 @@ export type MailConnection = {
   can_sync: boolean;
   last_synced_at?: string | null;
   last_error?: string | null;
+  health_status: "healthy" | "warning" | "error" | "disconnected" | "reconnect_required" | "limited" | "unknown";
+  credential_state: "active" | "refresh_available" | "reconnect_required" | "unknown";
+  scopes: string[];
+  last_successful_sync_at?: string | null;
+  last_failure_reason?: string | null;
+  reconnect_required: boolean;
+  reconnect_label?: string | null;
+  sync_unavailable_reason?: string | null;
 };
 
 export type MailContext = {

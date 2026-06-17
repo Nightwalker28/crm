@@ -67,7 +67,7 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "DATABASE_URL must be set"):
                 config.validate_startup_settings()
 
-    def test_startup_validation_requires_redis_for_production_website_rate_limits(self):
+    def test_startup_validation_requires_redis_for_production_public_rate_limits(self):
         with patch.object(
             config,
             "settings",
@@ -81,7 +81,7 @@ class ConfigTests(unittest.TestCase):
                 TENANT_RESOLUTION_MODE="host",
             ),
         ):
-            with self.assertRaisesRegex(RuntimeError, "REDIS_URL must be set"):
+            with self.assertRaisesRegex(RuntimeError, "production public rate limiting"):
                 config.validate_startup_settings()
 
 

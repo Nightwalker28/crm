@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.modules.calendar.models import CalendarEvent, CalendarEventParticipant, UserCalendarConnection
 from app.modules.calendar.schema import CalendarProvider
+from app.modules.platform.models import DataTransferJob
 from app.modules.user_management.models import Team, User
 
 
@@ -199,6 +200,21 @@ def list_user_calendar_connections(db: Session, *, tenant_id: int, user_id: int)
         db.query(UserCalendarConnection)
         .filter(UserCalendarConnection.tenant_id == tenant_id, UserCalendarConnection.user_id == user_id)
         .order_by(UserCalendarConnection.provider.asc())
+        .all()
+    )
+
+
+def list_recent_calendar_sync_jobs(db: Session, *, tenant_id: int, actor_user_id: int, limit: int = 5) -> list[DataTransferJob]:
+    return (
+        db.query(DataTransferJob)
+        .filter(
+            DataTransferJob.tenant_id == tenant_id,
+            DataTransferJob.actor_user_id == actor_user_id,
+            DataTransferJob.module_key == "calendar",
+            DataTransferJob.operation_type == "sync",
+        )
+        .order_by(DataTransferJob.id.desc())
+        .limit(limit)
         .all()
     )
 

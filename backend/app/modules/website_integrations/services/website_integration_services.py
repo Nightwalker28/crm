@@ -37,6 +37,8 @@ ORDER_STATUSES = {"submitted", "under_review", "confirmed", "in_progress", "comp
 class PublicCatalogItem:
     id: int
     item_type: str
+    catalog_product_id: int | None
+    catalog_service_id: int | None
     slug: str | None
     sku: str | None
     name: str
@@ -147,6 +149,8 @@ def serialize_catalog_item(item: PublicCatalogItem | WebsiteCatalogItem, *, publ
     payload = {
         "id": item.id,
         "item_type": item.item_type,
+        "catalog_product_id": getattr(item, "catalog_product_id", None),
+        "catalog_service_id": getattr(item, "catalog_service_id", None),
         "slug": item.slug,
         "sku": item.sku,
         "name": item.name,
@@ -205,6 +209,31 @@ def serialize_order(order: WebsiteIntegrationOrder, *, idempotent_replayed: bool
             for line in getattr(order, "line_items", []) or []
         ],
     }
+
+
+def log_public_api_request(
+    db: Session,
+    *,
+    key: WebsiteIntegrationApiKey,
+    operation: str,
+    metadata: dict | None = None,
+) -> None:
+    log_activity(
+        db,
+        tenant_id=key.tenant_id,
+        actor_user_id=None,
+        module_key="website_integrations",
+        entity_type="integration_api_key",
+        entity_id=key.id,
+        action=f"public_api.{operation}",
+        description=f"Website integration public API request: {operation.replace('_', ' ')}",
+        after_state={
+            "operation": operation,
+            "key_prefix": key.key_prefix,
+            "scopes": _normalize_scopes(key.scopes),
+            "metadata": metadata or {},
+        },
+    )
 
 
 def create_api_key(db: Session, *, tenant_id: int, actor_user_id: int | None, payload: dict) -> tuple[WebsiteIntegrationApiKey, str]:
@@ -333,6 +362,8 @@ def _public_item_from_product(product: CatalogProduct) -> PublicCatalogItem:
     return PublicCatalogItem(
         id=product.id,
         item_type="product",
+        catalog_product_id=product.id,
+        catalog_service_id=None,
         slug=product.slug,
         sku=product.sku,
         name=product.name,
@@ -355,6 +386,8 @@ def _public_item_from_service(service: CatalogService) -> PublicCatalogItem:
     return PublicCatalogItem(
         id=service.id,
         item_type="service",
+        catalog_product_id=None,
+        catalog_service_id=service.id,
         slug=service.slug,
         sku=None,
         name=service.name,
@@ -611,7 +644,7 @@ def create_public_order(
         api_key_id=api_key_id,
         external_reference=external_reference,
         source_platform=(payload.get("source_platform") or "").strip() or None,
-        status="confirmed",
+        status="submitted",
         request_hash=request_hash,
         customer_name=(payload.get("customer_name") or "").strip() or None,
         customer_email=(payload.get("customer_email") or "").strip().lower() or None,
@@ -677,8 +710,8 @@ def create_public_order(
         module_key="website_integrations",
         entity_type="website_order",
         entity_id=order.id,
-        action="website_order.confirmed",
-        description=f"Website order confirmed from {order.source_platform or 'external site'}",
+        action="website_order.submitted",
+        description=f"Website order submitted from {order.source_platform or 'external site'}",
         after_state=_order_state(order),
     )
     return order, False

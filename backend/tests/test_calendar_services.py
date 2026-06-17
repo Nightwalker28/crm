@@ -1,4 +1,5 @@
 import unittest
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -261,6 +262,72 @@ class CalendarGoogleSyncTests(unittest.TestCase):
             payload={"provider": "google"},
         )
         delay_mock.assert_called_once_with(55)
+
+    def test_calendar_connection_diagnostics_treat_expired_access_token_as_refreshable(self):
+        current_user = SimpleNamespace(last_login_provider="google")
+        last_synced_at = calendar_services._utcnow() - timedelta(hours=2)
+        connection = SimpleNamespace(
+            provider="google",
+            status="connected",
+            account_email="ava@example.com",
+            provider_calendar_id="crm@example.com",
+            provider_calendar_name="CRM",
+            access_token="encrypted-access",
+            refresh_token="encrypted-refresh",
+            token_expires_at=calendar_services._utcnow() - timedelta(minutes=5),
+            scopes=["calendar.events"],
+            last_synced_at=last_synced_at,
+            last_error=None,
+        )
+
+        serialized = calendar_services._serialize_connection(connection, current_user=current_user)
+
+        self.assertTrue(serialized["sync_enabled_for_current_session"])
+        self.assertEqual(serialized["health_status"], "healthy")
+        self.assertEqual(serialized["credential_state"], "refresh_available")
+        self.assertFalse(serialized["reconnect_required"])
+        self.assertEqual(serialized["last_successful_sync_at"], last_synced_at)
+        self.assertEqual(serialized["scopes"], ["calendar.events"])
+
+    def test_calendar_connection_diagnostics_require_reconnect_without_refresh_token(self):
+        current_user = SimpleNamespace(last_login_provider="microsoft")
+        connection = SimpleNamespace(
+            provider="microsoft",
+            status="connected",
+            account_email="ava@example.com",
+            provider_calendar_id=None,
+            provider_calendar_name=None,
+            access_token="encrypted-access",
+            refresh_token=None,
+            token_expires_at=calendar_services._utcnow() - timedelta(minutes=5),
+            scopes=None,
+            last_synced_at=None,
+            last_error="Missing Microsoft refresh token for calendar sync.",
+        )
+
+        serialized = calendar_services._serialize_connection(connection, current_user=current_user)
+
+        self.assertFalse(serialized["sync_enabled_for_current_session"])
+        self.assertEqual(serialized["health_status"], "reconnect_required")
+        self.assertEqual(serialized["credential_state"], "reconnect_required")
+        self.assertTrue(serialized["reconnect_required"])
+        self.assertEqual(serialized["last_failure_reason"], "Missing Microsoft refresh token for calendar sync.")
+
+    def test_calendar_context_includes_recent_sync_jobs_for_current_user(self):
+        db = FakeDB()
+        current_user = SimpleNamespace(id=1, tenant_id=10)
+        user = SimpleNamespace(id=1, email="ava@example.com", team_id=None, first_name="Ava", last_name="Khan")
+        job = SimpleNamespace(id=99, status="completed")
+
+        with patch.object(calendar_services.calendar_repository, "list_context_users", return_value=[user]), \
+             patch.object(calendar_services.calendar_repository, "list_context_teams", return_value=[]), \
+             patch.object(calendar_services.calendar_repository, "list_user_calendar_connections", return_value=[]), \
+             patch.object(calendar_services.calendar_repository, "list_recent_calendar_sync_jobs", return_value=[job]) as jobs_mock, \
+             patch.object(calendar_services.calendar_repository, "pending_invite_count", return_value=0):
+            context = calendar_services.build_calendar_context(db, tenant_id=10, current_user=current_user)
+
+        self.assertEqual(context["recent_sync_jobs"], [job])
+        jobs_mock.assert_called_once_with(db, tenant_id=10, actor_user_id=1)
 
 
 if __name__ == "__main__":

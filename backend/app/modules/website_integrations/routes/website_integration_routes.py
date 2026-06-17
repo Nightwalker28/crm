@@ -26,6 +26,7 @@ from app.modules.website_integrations.services.website_integration_services impo
     list_orders,
     list_orders_cursor,
     create_pos_invoice_for_order,
+    log_public_api_request,
     resolve_public_api_key,
     revoke_api_key,
     rotate_api_key,
@@ -57,6 +58,14 @@ def _check_allowed_origin(request: Request, allowed_origins: list[str]) -> None:
         return
     if origin.rstrip("/") not in allowed_origins:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Origin is not allowed for this integration key")
+
+
+def _public_request_metadata(request: Request) -> dict:
+    user_agent = request.headers.get("user-agent")
+    return {
+        "origin": request.headers.get("origin"),
+        "user_agent": user_agent[:160] if user_agent else None,
+    }
 
 
 def _public_key_context(
@@ -131,6 +140,32 @@ def rotate_integration_api_key_route(
     return WebsiteIntegrationApiKeyResponse.model_validate(serialize_api_key(key, api_key=raw_key))
 
 
+@router.get("/catalog/published", response_model=PublicWebsiteCatalogListResponse)
+def get_published_catalog_items(
+    search: str | None = Query(default=None, max_length=120),
+    item_type: str | None = Query(default=None),
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    items, total = list_catalog_items(
+        db,
+        tenant_id=current_user.tenant_id,
+        include_private=False,
+        search=search,
+        item_type=item_type,
+        limit=limit,
+        offset=offset,
+    )
+    return PublicWebsiteCatalogListResponse(
+        results=[PublicWebsiteCatalogItemResponse.model_validate(serialize_catalog_item(item, public=True)) for item in items],
+        total_count=total,
+        limit=limit,
+        offset=offset,
+    )
+
+
 @router.get("/orders", response_model=list[WebsiteOrderResponse])
 def get_website_orders(
     limit: int = Query(default=50, ge=1, le=100),
@@ -198,6 +233,7 @@ def create_website_order_pos_invoice(
 
 @public_router.get("/catalog", response_model=PublicWebsiteCatalogListResponse)
 def get_public_catalog(
+    request: Request,
     search: str | None = Query(default=None),
     item_type: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
@@ -214,6 +250,12 @@ def get_public_catalog(
         limit=limit,
         offset=offset,
     )
+    log_public_api_request(
+        db,
+        key=key,
+        operation="catalog_list",
+        metadata={**_public_request_metadata(request), "limit": limit, "offset": offset},
+    )
     return PublicWebsiteCatalogListResponse(
         results=[PublicWebsiteCatalogItemResponse.model_validate(serialize_catalog_item(item, public=True)) for item in items],
         total_count=total,
@@ -224,16 +266,24 @@ def get_public_catalog(
 
 @public_router.get("/catalog/{slug}", response_model=PublicWebsiteCatalogItemResponse)
 def get_public_catalog_item(
+    request: Request,
     slug: str,
     db: Session = Depends(get_db),
     key=Depends(_public_key_context),
 ):
     item = get_public_catalog_item_by_slug_or_404(db, tenant_id=key.tenant_id, slug=slug)
+    log_public_api_request(
+        db,
+        key=key,
+        operation="catalog_item",
+        metadata={**_public_request_metadata(request), "slug": slug},
+    )
     return PublicWebsiteCatalogItemResponse.model_validate(serialize_catalog_item(item, public=True))
 
 
 @public_router.post("/orders", response_model=WebsiteOrderResponse, status_code=status.HTTP_201_CREATED)
 def create_public_order_route(
+    request: Request,
     payload: PublicWebsiteOrderCreateRequest,
     db: Session = Depends(get_db),
     key=Depends(_public_order_key_context),
@@ -243,5 +293,15 @@ def create_public_order_route(
         tenant_id=key.tenant_id,
         api_key_id=key.id,
         payload=payload.model_dump(),
+    )
+    log_public_api_request(
+        db,
+        key=key,
+        operation="order_create",
+        metadata={
+            **_public_request_metadata(request),
+            "external_reference": payload.external_reference,
+            "idempotent_replayed": replayed,
+        },
     )
     return WebsiteOrderResponse.model_validate(serialize_order(order, idempotent_replayed=replayed))

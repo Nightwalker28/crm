@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Plus, RefreshCw } from "lucide-react";
+import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, PlugZap, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import CalendarEventDialog from "@/components/calendar/CalendarEventDialog";
@@ -14,8 +14,10 @@ import {
   useCalendarActions,
   useCalendarContext,
   useCalendarEvents,
+  type CalendarConnectionSummary,
   type CalendarEvent,
   type CalendarEventPayload,
+  type CalendarSyncJob,
 } from "@/hooks/useCalendar";
 import { useJobPoller } from "@/hooks/useJobPoller";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
@@ -60,6 +62,37 @@ function getEventTone(event: CalendarEvent) {
   if (event.current_user_response === "shared") return "border-sky-800/70 bg-sky-950/30 text-sky-100";
   if (event.current_user_response === "declined") return "border-neutral-800 bg-neutral-950/40 text-neutral-500";
   return "border-neutral-800 bg-neutral-900/70 text-neutral-100";
+}
+
+function providerLabel(provider: CalendarConnectionSummary["provider"]) {
+  return provider === "microsoft" ? "Microsoft" : "Google";
+}
+
+function connectionStatusLabel(connection: CalendarConnectionSummary) {
+  if (connection.health_status === "healthy") return "Ready";
+  if (connection.health_status === "session_provider_mismatch") return "Connected, sign-in mismatch";
+  if (connection.health_status === "warning") return "Needs attention";
+  if (connection.health_status === "error") return "Sync error";
+  if (connection.health_status === "reconnect_required") return "Reconnect required";
+  return connection.status.replaceAll("_", " ");
+}
+
+function connectionStatusTone(connection: CalendarConnectionSummary) {
+  if (connection.health_status === "healthy") return "border-emerald-800/70 bg-emerald-950/20 text-emerald-200";
+  if (connection.health_status === "warning" || connection.health_status === "session_provider_mismatch") {
+    return "border-amber-800/70 bg-amber-950/20 text-amber-200";
+  }
+  return "border-red-800/70 bg-red-950/20 text-red-200";
+}
+
+function syncJobLabel(job: CalendarSyncJob) {
+  if (job.status === "completed") {
+    const syncedCount = typeof job.summary?.synced_event_count === "number" ? job.summary.synced_event_count : null;
+    return syncedCount === null ? "Completed" : `Synced ${syncedCount} event${syncedCount === 1 ? "" : "s"}`;
+  }
+  if (job.status === "failed") return job.error_message || "Failed";
+  if (job.progress_message) return job.progress_message;
+  return job.status;
 }
 
 export default function CalendarPage() {
@@ -374,6 +407,110 @@ export default function CalendarPage() {
                   No events on this day yet.
                 </div>
               )}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60">
+            <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-5 py-4">
+              <div>
+                <div className="text-base font-semibold text-neutral-100">Calendar Sync</div>
+                <div className="mt-1 text-sm text-neutral-400">Provider health and recent sync activity.</div>
+              </div>
+              <PlugZap className="h-4 w-4 text-neutral-500" />
+            </div>
+            <div className="space-y-3 p-4">
+              {contextQuery.data?.connections.length ? (
+                contextQuery.data.connections.map((connection) => (
+                  <div key={connection.provider} className="rounded-xl border border-neutral-800 bg-black/20 px-4 py-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-neutral-100">
+                          {providerLabel(connection.provider)} Calendar
+                        </div>
+                        <div className="mt-1 text-xs text-neutral-500">{connection.account_email || "No account email"}</div>
+                      </div>
+                      <span className={"rounded-full border px-2.5 py-1 text-[11px] font-medium " + connectionStatusTone(connection)}>
+                        {connectionStatusLabel(connection)}
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-xs text-neutral-400 sm:grid-cols-2">
+                      <div>
+                        <span className="text-neutral-500">Calendar</span>
+                        <div className="mt-0.5 truncate text-neutral-300">
+                          {connection.provider_calendar_name || connection.provider_calendar_id || "Not selected yet"}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="text-neutral-500">Last sync</span>
+                        <div className="mt-0.5 text-neutral-300">
+                          {connection.last_successful_sync_at ? formatDateTime(connection.last_successful_sync_at) : "No successful sync yet"}
+                        </div>
+                      </div>
+                    </div>
+                    {connection.last_failure_reason ? (
+                      <div className="mt-3 flex gap-2 rounded-lg border border-red-900/60 bg-red-950/20 px-3 py-2 text-xs text-red-200">
+                        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        <span>{connection.last_failure_reason}</span>
+                      </div>
+                    ) : null}
+                    {connection.scopes.length ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {connection.scopes.slice(0, 3).map((scope) => (
+                          <span key={scope} className="max-w-full truncate rounded-full border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-400">
+                            {scope}
+                          </span>
+                        ))}
+                        {connection.scopes.length > 3 ? (
+                          <span className="rounded-full border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-500">
+                            +{connection.scopes.length - 3}
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button type="button" size="sm" variant="outline" onClick={() => router.push("/dashboard/settings/integrations")}>
+                        {connection.reconnect_label || "Manage Provider"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={!connection.sync_enabled_for_current_session || isCalendarSyncActive}
+                        onClick={() => void handleManualSync()}
+                      >
+                        <RefreshCw className={"h-3.5 w-3.5 " + (isCalendarSyncActive ? "animate-spin" : "")} />
+                        Sync
+                      </Button>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-xl border border-dashed border-neutral-800 bg-black/20 px-4 py-8 text-center text-sm text-neutral-500">
+                  No external calendar provider connected.
+                </div>
+              )}
+
+              {contextQuery.data?.recent_sync_jobs.length ? (
+                <div className="space-y-2 pt-1">
+                  {contextQuery.data.recent_sync_jobs.slice(0, 3).map((job) => (
+                    <div key={job.id} className="flex items-start gap-3 rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-3">
+                      {job.status === "completed" ? (
+                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
+                      ) : job.status === "failed" ? (
+                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                      ) : (
+                        <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-xs font-medium text-neutral-200">{syncJobLabel(job)}</div>
+                        <div className="mt-0.5 text-[11px] text-neutral-500">
+                          {formatDateTime(job.completed_at || job.started_at || job.created_at)}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
           </section>
 

@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
@@ -656,6 +656,58 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(decrypt_application_secret(microsoft_connection.refresh_token, key_version="v9"), "microsoft-refresh")
         self.assertEqual(db.flush.call_count, 2)
         db.commit.assert_not_called()
+
+    def test_mail_connection_diagnostics_treat_expired_oauth_token_as_refreshable(self):
+        connection = SimpleNamespace(
+            provider=MailProvider.microsoft.value,
+            status="connected",
+            account_email="ava@example.com",
+            provider_mailbox_id="ava@example.com",
+            provider_mailbox_name="Ava",
+            sync_cursor=None,
+            scopes=["Mail.Send", "Mail.Read"],
+            access_token="encrypted-access",
+            refresh_token="encrypted-refresh",
+            encrypted_password=None,
+            token_expires_at=datetime.now(timezone.utc) - timedelta(minutes=5),
+            last_synced_at=datetime.now(timezone.utc) - timedelta(hours=1),
+            last_error=None,
+        )
+
+        serialized = _serialize_connection(connection)
+
+        self.assertTrue(serialized["can_send"])
+        self.assertTrue(serialized["can_sync"])
+        self.assertEqual(serialized["health_status"], "healthy")
+        self.assertEqual(serialized["credential_state"], "refresh_available")
+        self.assertFalse(serialized["reconnect_required"])
+        self.assertIsNone(serialized["sync_unavailable_reason"])
+
+    def test_mail_connection_diagnostics_show_reconnect_and_sync_reason(self):
+        connection = SimpleNamespace(
+            provider=MailProvider.imap_smtp.value,
+            status="connected",
+            account_email="ava@example.com",
+            provider_mailbox_id=None,
+            provider_mailbox_name=None,
+            sync_cursor="42",
+            scopes=[],
+            access_token=None,
+            refresh_token=None,
+            encrypted_password=None,
+            token_expires_at=None,
+            last_synced_at=None,
+            last_error="Reconnect IMAP/SMTP mail to save mailbox credentials.",
+        )
+
+        serialized = _serialize_connection(connection)
+
+        self.assertFalse(serialized["can_sync"])
+        self.assertEqual(serialized["health_status"], "reconnect_required")
+        self.assertEqual(serialized["credential_state"], "reconnect_required")
+        self.assertTrue(serialized["reconnect_required"])
+        self.assertEqual(serialized["sync_unavailable_reason"], "Reconnect IMAP/SMTP to save mailbox credentials.")
+        self.assertEqual(serialized["last_failure_reason"], "Reconnect IMAP/SMTP mail to save mailbox credentials.")
 
     def test_list_mail_messages_uses_cursor_and_skips_tiny_search(self):
         self.db.add_all(

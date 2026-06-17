@@ -9,7 +9,7 @@ from app.modules.calendar.models import UserCalendarConnection
 from app.modules.documents.models import DocumentStorageConnection
 from app.modules.finance import models as finance_models  # noqa: F401
 from app.modules.mail.models import UserMailConnection
-from app.modules.platform.models import IntegrationConnection, NotificationChannel
+from app.modules.platform.models import DataTransferJob, IntegrationConnection, NotificationChannel, TenantBackupRun, TenantBackupSettings
 from app.modules.platform.services.integrations_registry import (
     list_integration_connections,
     list_integration_health,
@@ -40,9 +40,10 @@ class IntegrationsRegistryTests(unittest.TestCase):
 
         providers = list_provider_registry(self.db)
 
-        self.assertEqual(len(providers), 10)
-        self.assertEqual(len({provider.key for provider in providers}), 10)
-        self.assertEqual(next(provider for provider in providers if provider.key == "google_mail").metadata_json["config_href"], "/dashboard/mail")
+        self.assertEqual(len(providers), 11)
+        self.assertEqual(len({provider.key for provider in providers}), 11)
+        self.assertEqual(next(provider for provider in providers if provider.key == "google_mail").metadata_json["config_href"], "/dashboard/settings/integrations")
+        self.assertEqual(next(provider for provider in providers if provider.key == "backup_destinations").metadata_json["config_href"], "/dashboard/settings/backups")
         self.assertEqual(next(provider for provider in providers if provider.key == "microsoft_onedrive").metadata_json["source"], "documents")
 
     def test_health_derives_existing_connections_inside_tenant(self):
@@ -56,6 +57,8 @@ class IntegrationsRegistryTests(unittest.TestCase):
                 WebsiteIntegrationApiKey(id=1, tenant_id=10, name="WordPress", key_prefix="lynk_live", key_hash="a" * 64, status="active"),
                 WebsiteIntegrationApiKey(id=2, tenant_id=99, name="Other", key_prefix="lynk_other", key_hash="b" * 64, status="active"),
                 NotificationChannel(id=1, tenant_id=10, provider="slack", webhook_url="https://hooks.slack.example/test", is_active=True),
+                DataTransferJob(id=1, tenant_id=10, actor_user_id=1, module_key="calendar", operation_type="sync", status="queued"),
+                DataTransferJob(id=2, tenant_id=10, actor_user_id=1, module_key="calendar", operation_type="sync", status="failed", error_message="Calendar queue failed"),
             ]
         )
         self.db.commit()
@@ -71,6 +74,9 @@ class IntegrationsRegistryTests(unittest.TestCase):
         self.assertEqual(health["microsoft_calendar"]["credential_state"], "expired")
         self.assertEqual(health["microsoft_calendar"]["health_status"], "reconnect_required")
         self.assertEqual(health["microsoft_calendar"]["scopes"], ["Calendars.ReadWrite"])
+        self.assertEqual(health["microsoft_calendar"]["queued_jobs"], 1)
+        self.assertEqual(health["microsoft_calendar"]["failed_jobs"], 1)
+        self.assertIn("Calendar", health["microsoft_calendar"]["help_text"])
         self.assertEqual(health["microsoft_onedrive"]["status"], "connected")
         self.assertEqual(health["microsoft_onedrive"]["scopes"], ["Files.ReadWrite.AppFolder"])
         self.assertEqual(health["website_api"]["connection_count"], 1)
@@ -98,6 +104,78 @@ class IntegrationsRegistryTests(unittest.TestCase):
         )
         self.assertEqual(connections[0]["scopes"], ["drive.file"])
         self.assertEqual(connections[0]["last_failure_reason"], "Shared drive permission failed")
+        self.assertEqual(connections[0]["queued_jobs"], 0)
+        self.assertEqual(connections[0]["failed_jobs"], 0)
+        self.assertIn("Google Drive", connections[0]["help_text"])
+
+    def test_backup_destination_health_surfaces_runs_and_destination_errors(self):
+        now = datetime.now(timezone.utc)
+        self.db.add(
+            TenantBackupSettings(
+                id=1,
+                tenant_id=10,
+                enabled=True,
+                frequency="daily",
+                scope="full_tenant",
+                selected_modules=[],
+                retention_count=3,
+                destination="google_drive",
+                include_documents=True,
+                next_run_at=now,
+            )
+        )
+        self.db.add_all(
+            [
+                TenantBackupRun(
+                    id=1,
+                    tenant_id=10,
+                    requested_by_user_id=1,
+                    settings_id=1,
+                    scope="full_tenant",
+                    modules_included=[],
+                    status="completed",
+                    completed_at=now,
+                    destination="google_drive",
+                    destination_upload_status="uploaded",
+                    metadata_json={},
+                ),
+                TenantBackupRun(
+                    id=2,
+                    tenant_id=10,
+                    requested_by_user_id=1,
+                    settings_id=1,
+                    scope="full_tenant",
+                    modules_included=[],
+                    status="failed",
+                    error_message="Backup artifact upload failed",
+                    destination="google_drive",
+                    destination_upload_status="failed",
+                    metadata_json={},
+                ),
+                TenantBackupRun(
+                    id=3,
+                    tenant_id=99,
+                    requested_by_user_id=2,
+                    scope="full_tenant",
+                    modules_included=[],
+                    status="failed",
+                    error_message="Other tenant failure",
+                    destination="google_drive",
+                    destination_upload_status="failed",
+                    metadata_json={},
+                ),
+            ]
+        )
+        self.db.commit()
+
+        health = {item["provider"].key: item["connection"] for item in list_integration_health(self.db, tenant_id=10)}
+
+        self.assertEqual(health["backup_destinations"]["status"], "error")
+        self.assertEqual(health["backup_destinations"]["connection_count"], 1)
+        self.assertEqual(health["backup_destinations"]["failed_jobs"], 1)
+        self.assertEqual(health["backup_destinations"]["last_failure_reason"], "Backup artifact upload failed")
+        self.assertEqual(health["backup_destinations"]["settings_json"]["destination"], "google_drive")
+        self.assertIn("backup settings", health["backup_destinations"]["help_text"].lower())
 
     def test_sync_runs_are_tenant_scoped_and_filterable(self):
         seed_provider_registry(self.db)

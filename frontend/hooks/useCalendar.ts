@@ -54,6 +54,30 @@ export type CalendarConnectionSummary = {
   sync_enabled_for_current_session: boolean;
   last_synced_at?: string | null;
   last_error?: string | null;
+  health_status: "healthy" | "warning" | "error" | "disconnected" | "reconnect_required" | "session_provider_mismatch" | "unknown";
+  credential_state: "active" | "refresh_available" | "reconnect_required" | "unknown";
+  scopes: string[];
+  last_successful_sync_at?: string | null;
+  last_failure_reason?: string | null;
+  reconnect_required: boolean;
+  reconnect_label?: string | null;
+};
+
+export type CalendarSyncJob = {
+  id: number;
+  actor_user_id?: number | null;
+  module_key: string;
+  operation_type: string;
+  status: string;
+  mode: string;
+  summary?: Record<string, unknown> | null;
+  error_message?: string | null;
+  progress_percent: number;
+  progress_message?: string | null;
+  started_at?: string | null;
+  completed_at?: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type CalendarAssignmentUserOption = {
@@ -74,6 +98,7 @@ export type CalendarContext = {
   users: CalendarAssignmentUserOption[];
   teams: CalendarAssignmentTeamOption[];
   connections: CalendarConnectionSummary[];
+  recent_sync_jobs: CalendarSyncJob[];
   pending_invite_count: number;
 };
 

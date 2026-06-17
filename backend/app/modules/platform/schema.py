@@ -780,6 +780,9 @@ class IntegrationConnectionResponse(BaseModel):
     last_failure_reason: str | None = None
     reconnect_url: str | None = None
     reconnect_action: str | None = None
+    queued_jobs: int = 0
+    failed_jobs: int = 0
+    help_text: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

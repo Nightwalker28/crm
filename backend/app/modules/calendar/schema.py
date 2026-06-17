@@ -3,6 +3,8 @@ from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from app.modules.platform.schema import DataTransferJobResponse
+
 
 class CalendarParticipantType(str, Enum):
     user = "user"
@@ -137,6 +139,13 @@ class CalendarConnectionSummaryResponse(BaseModel):
     sync_enabled_for_current_session: bool = False
     last_synced_at: datetime | None = None
     last_error: str | None = None
+    health_status: str = "unknown"
+    credential_state: str = "unknown"
+    scopes: list[str] = Field(default_factory=list)
+    last_successful_sync_at: datetime | None = None
+    last_failure_reason: str | None = None
+    reconnect_required: bool = False
+    reconnect_label: str | None = None
 
 
 class CalendarAssignmentUserOption(BaseModel):
@@ -157,6 +166,7 @@ class CalendarContextResponse(BaseModel):
     users: list[CalendarAssignmentUserOption]
     teams: list[CalendarAssignmentTeamOption]
     connections: list[CalendarConnectionSummaryResponse]
+    recent_sync_jobs: list[DataTransferJobResponse] = Field(default_factory=list)
     pending_invite_count: int = 0
 
 
@@ -303,6 +313,9 @@ class MeetingBookingResponse(BaseModel):
     id: int
     booking_type_id: int
     calendar_event_id: int | None = None
+    crm_source_module_key: str | None = None
+    crm_source_entity_id: str | None = None
+    crm_source_label: str | None = None
     guest_name: str
     guest_email: str
     guest_note: str | None = None

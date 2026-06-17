@@ -78,9 +78,9 @@ def _parse_list_fields(raw_fields: str | None) -> set[str]:
 def _serialize_user_list_item(user, fields: set[str]) -> UserListItem:
     safe_fields = set(fields)
     safe_fields.update({"team_name", "first_name", "last_name", "email", "team_id", "role_id", "role_name", "role_level", "auth_mode", "mfa_enabled", "mfa_required", "is_active", "photo_url"})
-    profile = admin_users.serialize_user_profile(user)
+    profile = user if isinstance(user, UserProfile) else admin_users.serialize_user_profile(user)
     profile_payload = profile.model_dump()
-    payload = {"id": user.id}
+    payload = {"id": profile_payload["id"]}
     for field in safe_fields:
         payload[field] = profile_payload.get(field, getattr(user, field, None))
     return UserListItem.model_validate(payload)

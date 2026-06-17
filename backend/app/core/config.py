@@ -215,6 +215,12 @@ class Settings:
     PUBLIC_CLIENT_PAGE_ACTION_WINDOW_SECONDS: int = int(
         os.getenv("PUBLIC_CLIENT_PAGE_ACTION_WINDOW_SECONDS", "300")
     )
+    PUBLIC_BOOKING_SUBMIT_LIMIT: int = int(
+        os.getenv("PUBLIC_BOOKING_SUBMIT_LIMIT", "10")
+    )
+    PUBLIC_BOOKING_SUBMIT_WINDOW_SECONDS: int = int(
+        os.getenv("PUBLIC_BOOKING_SUBMIT_WINDOW_SECONDS", "300")
+    )
     PAGINATION_DEFAULT_PAGE_SIZE: int = int(os.getenv("PAGINATION_DEFAULT_PAGE_SIZE", "10"))
     PAGINATION_PAGE_SIZE_OPTIONS: list[int] = _env_int_list(
         "PAGINATION_PAGE_SIZE_OPTIONS",
@@ -269,10 +275,13 @@ def validate_startup_settings() -> None:
         raise RuntimeError("JWT_SECRET must be set outside purely local debug mode")
     if (
         not settings.DEBUG
-        and int(getattr(settings, "WEBSITE_INTEGRATION_RATE_LIMIT_COUNT", 0) or 0) > 0
+        and (
+            int(getattr(settings, "WEBSITE_INTEGRATION_RATE_LIMIT_COUNT", 0) or 0) > 0
+            or int(getattr(settings, "PUBLIC_BOOKING_SUBMIT_LIMIT", 0) or 0) > 0
+        )
         and not getattr(settings, "REDIS_URL", None)
     ):
-        raise RuntimeError("REDIS_URL must be set for production website integration rate limiting")
+        raise RuntimeError("REDIS_URL must be set for production public rate limiting")
     tenant_resolution_mode = getattr(settings, "TENANT_RESOLUTION_MODE", "host")
     if tenant_resolution_mode not in {"host", "auth"}:
         raise RuntimeError("TENANT_RESOLUTION_MODE must be either 'host' or 'auth'")

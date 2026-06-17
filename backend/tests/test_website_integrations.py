@@ -1,5 +1,6 @@
 import unittest
 from decimal import Decimal
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from sqlalchemy import create_engine
@@ -9,10 +10,12 @@ from app.core.database import Base
 from app.core import cache
 from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.catalog.services import product_services, service_services
+from app.modules.documents import models as documents_models  # noqa: F401
 from app.modules.finance import models as finance_models  # noqa: F401
 from app.modules.platform import models as platform_models  # noqa: F401
 from app.modules.user_management.models import CompanyProfile, Tenant, User
 from app.modules.website_integrations import models as website_models  # noqa: F401
+from app.modules.website_integrations.routes import website_integration_routes
 from app.modules.website_integrations.services import website_integration_services as services
 
 
@@ -96,7 +99,65 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
         self.assertEqual(resolved.tenant_id, 10)
         self.assertEqual(total, 1)
         self.assertEqual(items[0].slug, "starter-package")
+        self.assertEqual(items[0].catalog_product_id, items[0].id)
+        self.assertIsNone(items[0].catalog_service_id)
         self.assertEqual(str(items[0].stock_quantity), "5.0000")
+
+    def test_public_api_key_scope_is_enforced_and_last_used_is_tracked(self):
+        key, raw_key = services.create_api_key(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Catalog Only", "scopes": ["catalog:read"], "allowed_origins": []},
+        )
+
+        resolved = services.resolve_public_api_key(self.db, api_key=raw_key, required_scope=services.DEFAULT_CATALOG_READ_SCOPE)
+        self.assertEqual(resolved.id, key.id)
+        self.assertIsNotNone(resolved.last_used_at)
+
+        with self.assertRaises(Exception) as exc:
+            services.resolve_public_api_key(self.db, api_key=raw_key, required_scope=services.ORDER_WRITE_SCOPE)
+        self.assertEqual(exc.exception.status_code, 403)
+
+    def test_allowed_origin_rejects_untrusted_browser_origins(self):
+        allowed_request = SimpleNamespace(headers={"origin": "https://shop.example.com"})
+        blocked_request = SimpleNamespace(headers={"origin": "https://attacker.example"})
+        server_request = SimpleNamespace(headers={})
+
+        website_integration_routes._check_allowed_origin(allowed_request, ["https://shop.example.com"])
+        website_integration_routes._check_allowed_origin(server_request, ["https://shop.example.com"])
+        with self.assertRaises(Exception) as exc:
+            website_integration_routes._check_allowed_origin(blocked_request, ["https://shop.example.com"])
+
+        self.assertEqual(exc.exception.status_code, 403)
+
+    def test_public_api_request_audit_log_redacts_secret(self):
+        key, raw_key = services.create_api_key(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Audited", "scopes": ["catalog:read"], "allowed_origins": ["https://shop.example.com"]},
+        )
+        resolved = services.resolve_public_api_key(self.db, api_key=raw_key)
+
+        services.log_public_api_request(
+            self.db,
+            key=resolved,
+            operation="catalog_list",
+            metadata={"origin": "https://shop.example.com", "limit": 25},
+        )
+
+        activity = (
+            self.db.query(platform_models.ActivityLog)
+            .filter(platform_models.ActivityLog.action == "public_api.catalog_list")
+            .one()
+        )
+        self.assertEqual(activity.tenant_id, 10)
+        self.assertIsNone(activity.actor_user_id)
+        self.assertEqual(activity.entity_type, "integration_api_key")
+        self.assertEqual(activity.after_state["key_prefix"], key.key_prefix)
+        self.assertEqual(activity.after_state["metadata"]["origin"], "https://shop.example.com")
+        self.assertNotIn(raw_key, str(activity.after_state))
 
     def test_revoked_api_key_is_rejected(self):
         key, raw_key = services.create_api_key(
@@ -202,8 +263,15 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
         self.assertFalse(replayed)
         self.assertTrue(second_replayed)
         self.assertEqual(order.id, second_order.id)
+        self.assertEqual(order.status, "submitted")
         self.assertEqual(str(item.stock_quantity), "2.0000")
         self.assertEqual(str(order.subtotal_amount), "100.0000")
+        activity = (
+            self.db.query(platform_models.ActivityLog)
+            .filter(platform_models.ActivityLog.action == "website_order.submitted")
+            .one()
+        )
+        self.assertEqual(activity.after_state["status"], "submitted")
 
     def test_website_order_can_be_converted_to_pos_invoice_once(self):
         key, _raw_key = services.create_api_key(

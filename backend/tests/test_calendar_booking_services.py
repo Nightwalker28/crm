@@ -1,6 +1,7 @@
 import unittest
 from datetime import date, datetime, time, timezone
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -8,6 +9,9 @@ from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
 from app.modules.calendar.models import CalendarEvent, MeetingBooking, MeetingBookingType
 from app.modules.calendar.services import booking_services
+from app.modules.documents import models as document_models  # noqa: F401
+from app.modules.platform.models import ActivityLog, UserNotification
+from app.modules.sales.models import SalesContact, SalesLead
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
 
@@ -108,9 +112,16 @@ class CalendarBookingServiceTests(unittest.TestCase):
         self.assertEqual(booking.booking_type_id, booking_type_id)
         self.assertIsNotNone(booking.calendar_event_id)
         event = self.db.query(CalendarEvent).filter(CalendarEvent.id == booking.calendar_event_id).one()
-        self.assertEqual(event.source_module_key, "calendar_booking")
-        self.assertEqual(event.source_entity_id, str(booking.id))
+        lead = self.db.query(SalesLead).filter(SalesLead.primary_email == "grace@example.com").one()
+        self.assertEqual(event.source_module_key, "sales_leads")
+        self.assertEqual(event.source_entity_id, str(lead.lead_id))
+        self.assertEqual(event.source_label, "Grace Hopper")
+        self.assertEqual(lead.company, "Acme")
+        self.assertEqual(lead.assigned_to, 1)
+        self.assertEqual(booking.crm_source_module_key, "sales_leads")
         self.assertEqual(self.db.query(MeetingBooking).count(), 1)
+        self.assertEqual(self.db.query(ActivityLog).filter(ActivityLog.action == "calendar_booking.created").count(), 1)
+        self.assertEqual(self.db.query(UserNotification).filter(UserNotification.category == "calendar").count(), 1)
 
         with self.assertRaises(Exception) as exc:
             booking_services.submit_public_booking(
@@ -126,6 +137,61 @@ class CalendarBookingServiceTests(unittest.TestCase):
 
         self.assertIn("Selected slot is no longer available", str(exc.exception))
         self.assertEqual(self.db.query(MeetingBookingType).count(), 1)
+
+    def test_public_booking_links_existing_contact_by_guest_email(self):
+        self.db.add(
+            SalesContact(
+                contact_id=55,
+                tenant_id=10,
+                first_name="Grace",
+                last_name="Hopper",
+                primary_email="Grace@Example.com",
+                assigned_to=1,
+            )
+        )
+        self.db.commit()
+        self._create_booking_type()
+
+        booking = booking_services.submit_public_booking(
+            self.db,
+            slug="discovery-call",
+            payload={
+                "start_at": datetime(2099, 6, 1, 9, 0, tzinfo=timezone.utc),
+                "guest_name": "Grace Hopper",
+                "guest_email": "grace@example.com",
+                "answers": {"1": "Acme"},
+            },
+        )
+
+        event = self.db.query(CalendarEvent).filter(CalendarEvent.id == booking.calendar_event_id).one()
+        self.assertEqual(event.source_module_key, "sales_contacts")
+        self.assertEqual(event.source_entity_id, "55")
+        self.assertEqual(event.source_label, "Grace Hopper")
+        self.assertEqual(self.db.query(SalesLead).count(), 0)
+
+    def test_public_booking_submit_rate_limit_counts_slug_and_host(self):
+        store = {}
+
+        def fake_get(key):
+            return store.get(key)
+
+        def fake_set(key, value, *, ttl_seconds):
+            store[key] = value
+
+        with patch.object(booking_services.settings, "PUBLIC_BOOKING_SUBMIT_LIMIT", 2), \
+             patch.object(booking_services, "cache_get_json", side_effect=fake_get), \
+             patch.object(booking_services, "cache_set_json", side_effect=fake_set):
+            booking_services.check_public_booking_rate_limit(slug="discovery-call", client_host="203.0.113.10")
+            booking_services.record_public_booking_attempt(slug="discovery-call", client_host="203.0.113.10")
+            booking_services.check_public_booking_rate_limit(slug="discovery-call", client_host="203.0.113.10")
+            booking_services.record_public_booking_attempt(slug="discovery-call", client_host="203.0.113.10")
+
+            with self.assertRaises(Exception) as exc:
+                booking_services.check_public_booking_rate_limit(slug="discovery-call", client_host="203.0.113.10")
+
+        self.assertIn("Too many booking attempts", str(exc.exception))
+        self.assertEqual(len(store), 1)
+        self.assertNotIn("discovery-call", next(iter(store.keys())))
 
     def test_client_bookings_are_scoped_by_tenant_and_guest_email(self):
         booking_type = self._create_booking_type()

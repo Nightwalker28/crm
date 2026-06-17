@@ -8,7 +8,15 @@ from sqlalchemy.orm import Session
 from app.modules.calendar.models import UserCalendarConnection
 from app.modules.documents.models import DocumentStorageConnection
 from app.modules.mail.models import UserMailConnection
-from app.modules.platform.models import IntegrationConnection, IntegrationProvider, IntegrationSyncRun, NotificationChannel
+from app.modules.platform.models import (
+    DataTransferJob,
+    IntegrationConnection,
+    IntegrationProvider,
+    IntegrationSyncRun,
+    NotificationChannel,
+    TenantBackupRun,
+    TenantBackupSettings,
+)
 from app.modules.website_integrations.models import WebsiteIntegrationApiKey
 
 
@@ -110,6 +118,18 @@ KNOWN_PROVIDERS = [
         },
     },
     {
+        "key": "backup_destinations",
+        "name": "Backup Destinations",
+        "category": "Backups",
+        "description": "Tenant backup schedule and destination health.",
+        "metadata_json": {
+            "config_href": "/dashboard/settings/backups",
+            "reconnect_href": "/dashboard/settings/backups",
+            "reconnect_action": "Configure Backups",
+            "source": "backups",
+        },
+    },
+    {
         "key": "slack_webhooks",
         "name": "Slack Webhooks",
         "category": "Notifications",
@@ -136,6 +156,26 @@ KNOWN_PROVIDERS = [
 ]
 
 _PUBLIC_SETTINGS_KEYS = {"label", "last_failure_reason", "notes", "scope_summary"}
+_QUEUED_JOB_STATUSES = {"queued", "pending", "running"}
+_FAILED_JOB_STATUSES = {"failed"}
+_DATA_TRANSFER_MODULES_BY_PROVIDER = {
+    "google_calendar": "calendar",
+    "microsoft_calendar": "calendar",
+    "backup_destinations": "tenant_backups",
+}
+_HELP_TEXT_BY_PROVIDER = {
+    "google_mail": "Reconnect Gmail if credentials expire, then run a mail sync or send a test email.",
+    "microsoft_mail": "Reconnect Microsoft Mail if Graph credentials expire, then run a mail sync or send a test email.",
+    "imap_smtp_mail": "Check IMAP/SMTP host, port, security mode, username, and app password when mail health is broken.",
+    "google_calendar": "Reconnect Google Calendar or trigger calendar sync when events stop updating.",
+    "microsoft_calendar": "Reconnect Microsoft Calendar or trigger calendar sync when events stop updating.",
+    "google_drive": "Reconnect Google Drive from Integrations when document uploads fail.",
+    "microsoft_onedrive": "Reconnect OneDrive from Integrations when document uploads fail.",
+    "website_api": "Rotate or create a scoped website API key if public catalog or order requests fail.",
+    "backup_destinations": "Open backup settings to fix failed runs, destination upload errors, or schedule configuration.",
+    "slack_webhooks": "Update the Slack webhook URL or send a test notification if delivery fails.",
+    "teams_webhooks": "Update the Teams webhook URL or send a test notification if delivery fails.",
+}
 
 
 def _public_settings(settings: dict[str, Any] | None) -> dict[str, Any]:
@@ -224,6 +264,88 @@ def _aggregate_rows(rows, *, last_sync_attr: str | None = None, error_attr: str 
         "last_failure_reason": last_error,
         "credential_state": credential_state,
         "scopes": sorted(scopes),
+        "queued_jobs": 0,
+        "failed_jobs": 0,
+    }
+
+
+def _data_transfer_job_counts(db: Session, *, tenant_id: int, module_key: str) -> dict[str, int]:
+    rows = (
+        db.query(DataTransferJob.status)
+        .filter(DataTransferJob.tenant_id == tenant_id, DataTransferJob.module_key == module_key)
+        .all()
+    )
+    statuses = [str(row.status).lower() for row in rows]
+    return {
+        "queued_jobs": sum(1 for status in statuses if status in _QUEUED_JOB_STATUSES),
+        "failed_jobs": sum(1 for status in statuses if status in _FAILED_JOB_STATUSES),
+    }
+
+
+def _sync_run_counts(db: Session, *, tenant_id: int, provider_key: str) -> dict[str, int]:
+    rows = (
+        db.query(IntegrationSyncRun.status)
+        .join(IntegrationConnection)
+        .filter(
+            IntegrationSyncRun.tenant_id == tenant_id,
+            IntegrationConnection.tenant_id == tenant_id,
+            IntegrationConnection.provider_key == provider_key,
+        )
+        .all()
+    )
+    statuses = [str(row.status).lower() for row in rows]
+    return {
+        "queued_jobs": sum(1 for status in statuses if status in _QUEUED_JOB_STATUSES),
+        "failed_jobs": sum(1 for status in statuses if status in _FAILED_JOB_STATUSES),
+    }
+
+
+def _backup_destination_health(db: Session, *, tenant_id: int) -> dict[str, Any] | None:
+    settings = db.query(TenantBackupSettings).filter(TenantBackupSettings.tenant_id == tenant_id).first()
+    runs = (
+        db.query(TenantBackupRun)
+        .filter(TenantBackupRun.tenant_id == tenant_id, TenantBackupRun.backup_type == "tenant")
+        .order_by(TenantBackupRun.created_at.desc(), TenantBackupRun.id.desc())
+        .all()
+    )
+    if settings is None and not runs:
+        return None
+
+    queued_jobs = sum(1 for run in runs if str(run.status).lower() in _QUEUED_JOB_STATUSES)
+    failed_runs = [
+        run
+        for run in runs
+        if str(run.status).lower() in _FAILED_JOB_STATUSES or str(run.destination_upload_status).lower() == "failed"
+    ]
+    completed_runs = [run for run in runs if str(run.status).lower() == "completed"]
+    latest_failed = failed_runs[0] if failed_runs else None
+    latest_activity = _latest(*(run.completed_at or run.started_at or run.created_at for run in runs))
+    latest_success = _latest(*(run.completed_at for run in completed_runs))
+    destination = settings.destination if settings else (runs[0].destination if runs else "local_download")
+    enabled = bool(settings.enabled) if settings else False
+    status = "connected" if enabled or latest_success else "disconnected"
+    if queued_jobs:
+        status = "pending"
+    if latest_failed is not None:
+        status = "error"
+
+    return {
+        "status": status,
+        "connection_count": 1 if enabled else 0,
+        "last_sync_at": latest_activity,
+        "last_successful_sync_at": latest_success,
+        "last_error": latest_failed.error_message if latest_failed else None,
+        "last_failure_reason": latest_failed.error_message if latest_failed else None,
+        "credential_state": "valid" if enabled or latest_success else "not_configured",
+        "scopes": [],
+        "source": "backups",
+        "queued_jobs": queued_jobs,
+        "failed_jobs": len(failed_runs),
+        "settings_json": {
+            "destination": destination,
+            "frequency": settings.frequency if settings else "manual",
+            "next_run_at": settings.next_run_at if settings else None,
+        },
     }
 
 
@@ -278,6 +400,9 @@ def serialize_registry_connection(connection: IntegrationConnection) -> dict[str
         "last_failure_reason": last_failure_reason,
         "reconnect_url": (connection.provider.metadata_json or {}).get("reconnect_href") if connection.provider else None,
         "reconnect_action": (connection.provider.metadata_json or {}).get("reconnect_action") if connection.provider else None,
+        "queued_jobs": 0,
+        "failed_jobs": 0,
+        "help_text": _HELP_TEXT_BY_PROVIDER.get(connection.provider_key),
         "created_at": connection.created_at,
         "updated_at": connection.updated_at,
     }
@@ -317,6 +442,8 @@ def _derived_connections(db: Session, *, tenant_id: int) -> dict[str, dict[str, 
             "credential_state": "valid" if active_keys else "not_configured",
             "scopes": sorted({scope for key in active_keys for scope in (key.scopes or [])}),
             "source": "website",
+            "queued_jobs": 0,
+            "failed_jobs": 0,
         }
 
     channels = db.query(NotificationChannel).filter(NotificationChannel.tenant_id == tenant_id).all()
@@ -334,7 +461,12 @@ def _derived_connections(db: Session, *, tenant_id: int) -> dict[str, dict[str, 
                 "credential_state": "valid" if active_rows else "not_configured",
                 "scopes": [],
                 "source": "notifications",
+                "queued_jobs": 0,
+                "failed_jobs": 0,
             }
+    backup_health = _backup_destination_health(db, tenant_id=tenant_id)
+    if backup_health:
+        derived["backup_destinations"] = backup_health
     return derived
 
 
@@ -360,6 +492,9 @@ def _merge_connection(provider_key: str, registry: IntegrationConnection | None,
         "last_failure_reason": None,
         "reconnect_url": None,
         "reconnect_action": None,
+        "queued_jobs": 0,
+        "failed_jobs": 0,
+        "help_text": None,
         "created_at": None,
         "updated_at": None,
     }
@@ -374,12 +509,17 @@ def _merge_connection(provider_key: str, registry: IntegrationConnection | None,
             "last_failure_reason": derived["last_failure_reason"],
             "credential_state": derived["credential_state"],
             "scopes": derived["scopes"],
+            "queued_jobs": derived.get("queued_jobs", base["queued_jobs"]),
+            "failed_jobs": derived.get("failed_jobs", base["failed_jobs"]),
         })
+        if "settings_json" in derived:
+            base["settings_json"] = {**base.get("settings_json", {}), **derived["settings_json"]}
     if provider is not None:
         base["provider_display_name"] = provider.name
         base["reconnect_url"] = metadata.get("reconnect_href")
         base["reconnect_action"] = metadata.get("reconnect_action")
     base["health_status"] = _health_status(base["status"], base["credential_state"], base["last_failure_reason"])
+    base["help_text"] = _HELP_TEXT_BY_PROVIDER.get(provider_key)
     return base
 
 
@@ -387,18 +527,29 @@ def list_integration_health(db: Session, *, tenant_id: int) -> list[dict[str, An
     providers = seed_provider_registry(db)
     registry = {connection.provider_key: connection for connection in list_registry_connections(db, tenant_id=tenant_id)}
     derived = _derived_connections(db, tenant_id=tenant_id)
-    return [
-        {
-            "provider": provider,
-            "connection": {
-                **_merge_connection(provider.key, registry.get(provider.key), derived.get(provider.key)),
-                "provider_display_name": provider.name,
-                "reconnect_url": (provider.metadata_json or {}).get("reconnect_href"),
-                "reconnect_action": (provider.metadata_json or {}).get("reconnect_action"),
-            },
-        }
-        for provider in providers
-    ]
+    results = []
+    for provider in providers:
+        connection = _merge_connection(provider.key, registry.get(provider.key), derived.get(provider.key))
+        sync_counts = _sync_run_counts(db, tenant_id=tenant_id, provider_key=provider.key)
+        data_transfer_counts = _data_transfer_job_counts(
+            db,
+            tenant_id=tenant_id,
+            module_key=_DATA_TRANSFER_MODULES_BY_PROVIDER[provider.key],
+        ) if provider.key in _DATA_TRANSFER_MODULES_BY_PROVIDER else {"queued_jobs": 0, "failed_jobs": 0}
+        connection["queued_jobs"] = max(connection["queued_jobs"], sync_counts["queued_jobs"], data_transfer_counts["queued_jobs"])
+        connection["failed_jobs"] = max(connection["failed_jobs"], sync_counts["failed_jobs"], data_transfer_counts["failed_jobs"])
+        results.append(
+            {
+                "provider": provider,
+                "connection": {
+                    **connection,
+                    "provider_display_name": provider.name,
+                    "reconnect_url": (provider.metadata_json or {}).get("reconnect_href"),
+                    "reconnect_action": (provider.metadata_json or {}).get("reconnect_action"),
+                },
+            }
+        )
+    return results
 
 
 def list_integration_connections(db: Session, *, tenant_id: int) -> list[dict[str, Any]]:

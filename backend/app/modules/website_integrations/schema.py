@@ -160,6 +160,8 @@ class WebsiteCatalogItemUpdateRequest(BaseModel):
 class WebsiteCatalogItemResponse(BaseModel):
     id: int
     item_type: WebsiteCatalogItemType
+    catalog_product_id: int | None = None
+    catalog_service_id: int | None = None
     slug: str
     sku: str | None = None
     name: str
@@ -181,6 +183,8 @@ class WebsiteCatalogItemResponse(BaseModel):
 class PublicWebsiteCatalogItemResponse(BaseModel):
     id: int
     item_type: WebsiteCatalogItemType
+    catalog_product_id: int | None = None
+    catalog_service_id: int | None = None
     slug: str
     sku: str | None = None
     name: str

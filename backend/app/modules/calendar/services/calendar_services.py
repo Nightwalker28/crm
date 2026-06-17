@@ -38,6 +38,14 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_aware_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _display_user_name(user: User | None) -> str | None:
     if not user:
         return None
@@ -197,17 +205,58 @@ def _apply_event_participants(
 
 
 def _serialize_connection(connection: UserCalendarConnection, *, current_user) -> dict:
+    scopes = connection.scopes if isinstance(connection.scopes, list) else []
+    refresh_token_present = bool(connection.refresh_token)
+    access_token_present = bool(connection.access_token)
+    expires_at = _as_aware_utc(connection.token_expires_at)
+    token_is_expired = bool(expires_at and expires_at <= _utcnow())
+    session_provider_matches = current_user.last_login_provider == connection.provider
+
+    if connection.status != "connected" or not refresh_token_present:
+        credential_state = "reconnect_required"
+    elif token_is_expired:
+        credential_state = "refresh_available"
+    elif access_token_present:
+        credential_state = "active"
+    else:
+        credential_state = "refresh_available"
+
+    if connection.status == "error":
+        health_status = "error"
+    elif connection.status != "connected":
+        health_status = "disconnected"
+    elif credential_state == "reconnect_required":
+        health_status = "reconnect_required"
+    elif not session_provider_matches:
+        health_status = "session_provider_mismatch"
+    elif connection.last_error:
+        health_status = "warning"
+    else:
+        health_status = "healthy"
+
+    reconnect_required = connection.status != "connected" or credential_state == "reconnect_required"
+    reconnect_label = None
+    if reconnect_required:
+        reconnect_label = f"Reconnect {connection.provider.title()} Calendar"
+    elif not session_provider_matches:
+        reconnect_label = f"Sign in with {connection.provider.title()} to sync this calendar"
+
     return {
         "provider": connection.provider,
         "status": connection.status,
         "account_email": connection.account_email,
         "provider_calendar_id": connection.provider_calendar_id,
         "provider_calendar_name": connection.provider_calendar_name,
-        "sync_enabled_for_current_session": bool(
-            current_user.last_login_provider == connection.provider and connection.status == "connected"
-        ),
+        "sync_enabled_for_current_session": bool(session_provider_matches and connection.status == "connected" and refresh_token_present),
         "last_synced_at": connection.last_synced_at,
         "last_error": connection.last_error,
+        "health_status": health_status,
+        "credential_state": credential_state,
+        "scopes": [str(scope) for scope in scopes if scope],
+        "last_successful_sync_at": connection.last_synced_at,
+        "last_failure_reason": connection.last_error,
+        "reconnect_required": reconnect_required,
+        "reconnect_label": reconnect_label,
     }
 
 
@@ -995,6 +1044,7 @@ def build_calendar_context(db: Session, *, tenant_id: int, current_user) -> dict
     users = calendar_repository.list_context_users(db, tenant_id=tenant_id)
     teams = calendar_repository.list_context_teams(db, tenant_id=tenant_id)
     connections = calendar_repository.list_user_calendar_connections(db, tenant_id=tenant_id, user_id=current_user.id)
+    recent_sync_jobs = calendar_repository.list_recent_calendar_sync_jobs(db, tenant_id=tenant_id, actor_user_id=current_user.id)
     pending_invite_count = calendar_repository.pending_invite_count(db, tenant_id=tenant_id, user_id=current_user.id)
     return {
         "users": [
@@ -1016,6 +1066,7 @@ def build_calendar_context(db: Session, *, tenant_id: int, current_user) -> dict
             for team in teams
         ],
         "connections": [_serialize_connection(connection, current_user=current_user) for connection in connections],
+        "recent_sync_jobs": recent_sync_jobs,
         "pending_invite_count": pending_invite_count,
     }
 

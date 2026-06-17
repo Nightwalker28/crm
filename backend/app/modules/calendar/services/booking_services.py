@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import hashlib
+import logging
+import re
 from datetime import date, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -8,6 +11,8 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.cache import cache_get_json, cache_set_json
+from app.core.config import settings
 from app.modules.calendar.models import (
     CalendarEvent,
     CalendarEventParticipant,
@@ -16,7 +21,19 @@ from app.modules.calendar.models import (
     MeetingBookingQuestion,
     MeetingBookingType,
 )
+from app.modules.platform.services.activity_logs import safe_log_activity
+from app.modules.platform.services.notifications import create_notification
+from app.modules.sales.models import SalesContact, SalesLead
 from app.modules.user_management.models import User
+
+logger = logging.getLogger(__name__)
+PUBLIC_BOOKING_RATE_LIMIT_PREFIX = "calendar_booking:public_submit"
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+CRM_SOURCE_ENTITY_TYPES = {
+    "sales_contacts": "contact",
+    "sales_leads": "lead",
+    "sales_opportunities": "opportunity",
+}
 
 
 def _utcnow() -> datetime:
@@ -243,6 +260,40 @@ def _normalize_guest_email(email: str | None) -> str:
     return (email or "").strip().lower()
 
 
+def _validate_guest_email(email: str | None) -> str:
+    normalized = _normalize_guest_email(email)
+    if not normalized or not EMAIL_RE.match(normalized):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A valid guest email is required.")
+    return normalized
+
+
+def _public_booking_rate_limit_key(*, slug: str, client_host: str | None) -> str:
+    slug_hash = hashlib.sha256(slug.strip().lower().encode("utf-8")).hexdigest()
+    host_hash = hashlib.sha256((client_host or "unknown").strip().lower().encode("utf-8")).hexdigest()
+    return f"{PUBLIC_BOOKING_RATE_LIMIT_PREFIX}:slug:{slug_hash}:ip:{host_hash}"
+
+
+def check_public_booking_rate_limit(*, slug: str, client_host: str | None = None) -> None:
+    cache_key = _public_booking_rate_limit_key(slug=slug, client_host=client_host)
+    payload = cache_get_json(cache_key) or {}
+    if int(payload.get("count") or 0) >= settings.PUBLIC_BOOKING_SUBMIT_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many booking attempts. Please try again later.",
+        )
+
+
+def record_public_booking_attempt(*, slug: str, client_host: str | None = None) -> None:
+    cache_key = _public_booking_rate_limit_key(slug=slug, client_host=client_host)
+    payload = cache_get_json(cache_key) or {}
+    count = int(payload.get("count") or 0) + 1
+    cache_set_json(
+        cache_key,
+        {"count": count},
+        ttl_seconds=settings.PUBLIC_BOOKING_SUBMIT_WINDOW_SECONDS,
+    )
+
+
 def serialize_client_booking(booking: MeetingBooking) -> dict:
     event = booking.calendar_event
     return {
@@ -375,8 +426,140 @@ def _validate_answers(booking_type: MeetingBookingType, answers: dict[str, str])
     return normalized
 
 
+def _split_guest_name(name: str) -> tuple[str | None, str | None]:
+    parts = [part for part in name.strip().split() if part]
+    if not parts:
+        return None, None
+    if len(parts) == 1:
+        return parts[0], None
+    return parts[0], " ".join(parts[1:])
+
+
+def _answer_by_label(booking_type: MeetingBookingType, answers: dict[str, str], labels: set[str]) -> str | None:
+    wanted = {label.lower() for label in labels}
+    for question in booking_type.questions:
+        if question.label.strip().lower() in wanted:
+            value = answers.get(str(question.id))
+            if value:
+                return value
+    return None
+
+
+def _find_contact_by_email(db: Session, *, tenant_id: int, email: str) -> SalesContact | None:
+    return (
+        db.query(SalesContact)
+        .filter(
+            SalesContact.tenant_id == tenant_id,
+            SalesContact.deleted_at.is_(None),
+            func.lower(SalesContact.primary_email) == email,
+        )
+        .order_by(SalesContact.contact_id.asc())
+        .first()
+    )
+
+
+def _find_lead_by_email(db: Session, *, tenant_id: int, email: str) -> SalesLead | None:
+    return (
+        db.query(SalesLead)
+        .filter(
+            SalesLead.tenant_id == tenant_id,
+            SalesLead.deleted_at.is_(None),
+            func.lower(SalesLead.primary_email) == email,
+        )
+        .order_by(SalesLead.lead_id.asc())
+        .first()
+    )
+
+
+def _crm_source_label(*, guest_name: str, email: str) -> str:
+    return guest_name.strip() or email
+
+
+def _resolve_booking_crm_source(
+    db: Session,
+    *,
+    booking_type: MeetingBookingType,
+    guest_name: str,
+    guest_email: str,
+    guest_note: str | None,
+    answers: dict[str, str],
+) -> dict[str, str]:
+    contact = _find_contact_by_email(db, tenant_id=booking_type.tenant_id, email=guest_email)
+    if contact:
+        label = " ".join(part for part in [contact.first_name, contact.last_name] if part).strip() or contact.primary_email
+        return {"module_key": "sales_contacts", "entity_id": str(contact.contact_id), "label": label}
+
+    lead = _find_lead_by_email(db, tenant_id=booking_type.tenant_id, email=guest_email)
+    if lead:
+        label = " ".join(part for part in [lead.first_name, lead.last_name] if part).strip() or lead.primary_email
+        return {"module_key": "sales_leads", "entity_id": str(lead.lead_id), "label": label}
+
+    first_name, last_name = _split_guest_name(guest_name)
+    company = _answer_by_label(booking_type, answers, {"company", "organization", "organisation", "business"})
+    lead = SalesLead(
+        tenant_id=booking_type.tenant_id,
+        first_name=first_name,
+        last_name=last_name,
+        company=company,
+        primary_email=guest_email,
+        source="booking_link",
+        status="new",
+        notes=guest_note,
+        assigned_to=booking_type.owner_id,
+    )
+    db.add(lead)
+    db.flush()
+    return {"module_key": "sales_leads", "entity_id": str(lead.lead_id), "label": _crm_source_label(guest_name=guest_name, email=guest_email)}
+
+
+def _record_booking_side_effects(db: Session, *, booking: MeetingBooking, event: CalendarEvent, crm_source: dict[str, str]) -> None:
+    after_state = {
+        "booking_id": booking.id,
+        "booking_type_id": booking.booking_type_id,
+        "calendar_event_id": event.id,
+        "guest_name": booking.guest_name,
+        "guest_email": booking.guest_email,
+        "start_at": booking.start_at,
+        "end_at": booking.end_at,
+        "timezone": booking.timezone,
+    }
+    safe_log_activity(
+        db,
+        tenant_id=booking.tenant_id,
+        actor_user_id=None,
+        module_key=crm_source["module_key"],
+        entity_type=CRM_SOURCE_ENTITY_TYPES.get(crm_source["module_key"], crm_source["module_key"]),
+        entity_id=crm_source["entity_id"],
+        action="calendar_booking.created",
+        description=f"Public booking received from {booking.guest_name}",
+        after_state=after_state,
+    )
+    try:
+        create_notification(
+            db,
+            tenant_id=booking.tenant_id,
+            user_id=event.owner_user_id,
+            category="calendar",
+            title=f"New booking: {booking.booking_type.name if booking.booking_type else 'Meeting'}",
+            message=f"{booking.guest_name} booked {booking.start_at.isoformat()}",
+            link_url=f"/dashboard/calendar?eventId={event.id}",
+            metadata={
+                "booking_id": booking.id,
+                "calendar_event_id": event.id,
+                "source_module_key": crm_source["module_key"],
+                "source_entity_id": crm_source["entity_id"],
+            },
+        )
+    except Exception:
+        db.rollback()
+        logger.exception("Booking notification failed", extra={"tenant_id": booking.tenant_id, "booking_id": booking.id})
+
+
 def submit_public_booking(db: Session, *, slug: str, payload: dict) -> MeetingBooking:
     booking_type = _get_public_booking_type_or_404(db, slug=slug)
+    guest_name = payload["guest_name"].strip()
+    guest_email = _validate_guest_email(payload["guest_email"])
+    guest_note = (payload.get("guest_note") or "").strip() or None
     start_at = payload["start_at"]
     if start_at.tzinfo is None:
         start_at = start_at.replace(tzinfo=timezone.utc)
@@ -387,25 +570,35 @@ def submit_public_booking(db: Session, *, slug: str, payload: dict) -> MeetingBo
     if not any(slot["start_at"] == start_at for slot in valid_slots):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Selected slot is no longer available")
     answers = _validate_answers(booking_type, payload.get("answers") or {})
+    crm_source = _resolve_booking_crm_source(
+        db,
+        booking_type=booking_type,
+        guest_name=guest_name,
+        guest_email=guest_email,
+        guest_note=guest_note,
+        answers=answers,
+    )
 
     event = CalendarEvent(
         tenant_id=booking_type.tenant_id,
         owner_user_id=booking_type.owner_id,
-        title=f"{booking_type.name} with {payload['guest_name'].strip()}",
+        title=f"{booking_type.name} with {guest_name}",
         description="\n\n".join(
             part
             for part in [
                 f"Booked through public booking link: {booking_type.name}",
-                f"Guest: {payload['guest_name'].strip()} <{_normalize_guest_email(payload['guest_email'])}>",
-                (payload.get("guest_note") or "").strip(),
+                f"Guest: {guest_name} <{guest_email}>",
+                f"CRM source: {crm_source['module_key']} #{crm_source['entity_id']}",
+                guest_note,
             ]
             if part
         ),
         start_at=start_at,
         end_at=end_at,
         status="confirmed",
-        source_module_key="calendar_booking",
-        source_label=booking_type.name,
+        source_module_key=crm_source["module_key"],
+        source_entity_id=crm_source["entity_id"],
+        source_label=crm_source["label"],
     )
     db.add(event)
     db.flush()
@@ -425,9 +618,9 @@ def submit_public_booking(db: Session, *, slug: str, payload: dict) -> MeetingBo
         tenant_id=booking_type.tenant_id,
         booking_type_id=booking_type.id,
         calendar_event_id=event.id,
-        guest_name=payload["guest_name"].strip(),
-        guest_email=_normalize_guest_email(payload["guest_email"]),
-        guest_note=(payload.get("guest_note") or "").strip() or None,
+        guest_name=guest_name,
+        guest_email=guest_email,
+        guest_note=guest_note,
         answers_json=answers,
         start_at=start_at,
         end_at=end_at,
@@ -436,12 +629,11 @@ def submit_public_booking(db: Session, *, slug: str, payload: dict) -> MeetingBo
     )
     db.add(booking)
     db.flush()
-    event.source_entity_id = str(booking.id)
-    db.add(event)
     try:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Selected slot is no longer available") from exc
     db.refresh(booking)
+    _record_booking_side_effects(db, booking=booking, event=event, crm_source=crm_source)
     return booking

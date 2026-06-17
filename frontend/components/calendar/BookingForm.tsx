@@ -9,7 +9,6 @@ import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
-import { formatDateTime } from "@/lib/datetime";
 
 type BookingQuestion = {
   id?: number | null;
@@ -34,8 +33,26 @@ type PublicSlot = {
   label: string;
 };
 
+const DISPLAY_TIMEZONES = ["UTC", "America/New_York", "Europe/London", "Asia/Colombo", "Asia/Dubai", "Asia/Singapore", "Australia/Sydney"];
+
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function browserTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+}
+
+function formatSlotTime(value: string, timeZone: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone,
+    timeZoneName: "short",
+  }).format(new Date(value));
 }
 
 function addDaysIso(days: number) {
@@ -82,6 +99,7 @@ export default function BookingForm({ slug }: { slug: string }) {
   const [guestEmail, setGuestEmail] = useState("");
   const [guestNote, setGuestNote] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [displayTimezone, setDisplayTimezone] = useState(() => browserTimezone());
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -100,6 +118,7 @@ export default function BookingForm({ slug }: { slug: string }) {
         if (cancelled) return;
         setBookingType(typeData);
         setSlots(slotData);
+        setDisplayTimezone((current) => current || typeData.timezone || browserTimezone());
       } catch (loadError) {
         if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Booking link is unavailable.");
       } finally {
@@ -145,6 +164,9 @@ export default function BookingForm({ slug }: { slug: string }) {
         <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-300" />
         <h1 className="mt-4 text-xl font-semibold text-neutral-100">Meeting booked</h1>
         <p className="mt-2 text-sm text-neutral-400">Your time is confirmed with {bookingType.owner_name || "the team"}.</p>
+        {selectedSlot ? (
+          <p className="mt-3 text-sm text-neutral-300">{formatSlotTime(selectedSlot.start_at, displayTimezone)}</p>
+        ) : null}
       </Card>
     );
   }
@@ -165,6 +187,18 @@ export default function BookingForm({ slug }: { slug: string }) {
           <Clock3 className="h-4 w-4 text-neutral-500" />
           {bookingType.duration_minutes} minutes
         </div>
+        <div className="mt-5 rounded-lg border border-neutral-800 bg-neutral-950/70 px-3 py-3">
+          <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-500">Display timezone</label>
+          <select
+            value={displayTimezone}
+            onChange={(event) => setDisplayTimezone(event.target.value)}
+            className="mt-2 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none"
+          >
+            {Array.from(new Set([browserTimezone(), bookingType.timezone, ...DISPLAY_TIMEZONES])).map((zone) => (
+              <option key={zone} value={zone}>{zone}</option>
+            ))}
+          </select>
+        </div>
       </Card>
 
       <Card className="px-5 py-5">
@@ -183,7 +217,7 @@ export default function BookingForm({ slug }: { slug: string }) {
                       : "border-neutral-800 bg-neutral-950 text-neutral-200 hover:border-neutral-700"
                   }`}
                 >
-                  {formatDateTime(slot.start_at, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                  {formatSlotTime(slot.start_at, displayTimezone)}
                 </button>
               )) : <div className="rounded-md border border-dashed border-neutral-800 px-3 py-5 text-sm text-neutral-500">No slots are available in the next two weeks.</div>}
             </div>
@@ -191,6 +225,11 @@ export default function BookingForm({ slug }: { slug: string }) {
 
           <div>
             <h2 className="text-sm font-semibold text-neutral-100">Your details</h2>
+            {selectedSlot ? (
+              <div className="mt-3 rounded-md border border-emerald-900/60 bg-emerald-950/20 px-3 py-2 text-sm text-emerald-100">
+                {formatSlotTime(selectedSlot.start_at, displayTimezone)}
+              </div>
+            ) : null}
             <FieldGroup className="mt-3 grid gap-3">
               <Field>
                 <FieldLabel>Name</FieldLabel>

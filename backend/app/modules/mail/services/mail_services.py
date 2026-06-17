@@ -62,37 +62,115 @@ MAIL_CONNECT_STATE_TYPES = {
 }
 
 
+def _as_aware_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _serialize_connection(connection: UserMailConnection) -> dict:
-    scopes = set(connection.scopes or [])
+    raw_scopes = getattr(connection, "scopes", None)
+    scopes = set(raw_scopes or [])
+    provider = getattr(connection, "provider", None)
+    status_value = getattr(connection, "status", None)
+    refresh_token_present = bool(getattr(connection, "refresh_token", None))
+    access_token_present = bool(getattr(connection, "access_token", None))
+    password_present = bool(getattr(connection, "encrypted_password", None))
+    token_expires_at = _as_aware_utc(getattr(connection, "token_expires_at", None))
+    token_expired = bool(token_expires_at and token_expires_at <= _utcnow())
+    is_oauth = provider in {MailProvider.google.value, MailProvider.microsoft.value}
+    is_imap = provider == MailProvider.imap_smtp.value
+    can_send = (
+        status_value == "connected"
+        and (
+            (provider == MailProvider.google.value and GMAIL_SEND_SCOPE in scopes)
+            or (provider == MailProvider.microsoft.value and "Mail.Send" in scopes)
+            or provider == MailProvider.imap_smtp.value
+        )
+    )
+    can_sync = (
+        status_value == "connected"
+        and (
+            (
+                provider == MailProvider.google.value
+                and settings.GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED
+                and GMAIL_READONLY_SCOPE in scopes
+            )
+            or (provider == MailProvider.microsoft.value and "Mail.Read" in scopes)
+            or provider == MailProvider.imap_smtp.value
+        )
+    )
+    if status_value != "connected":
+        credential_state = "reconnect_required"
+    elif is_oauth and not refresh_token_present:
+        credential_state = "reconnect_required"
+    elif is_imap and not password_present:
+        credential_state = "reconnect_required"
+    elif is_oauth and token_expired:
+        credential_state = "refresh_available"
+    elif is_oauth and access_token_present:
+        credential_state = "active"
+    elif is_oauth:
+        credential_state = "refresh_available"
+    else:
+        credential_state = "active"
+
+    if credential_state == "reconnect_required":
+        can_send = False
+        can_sync = False
+
+    sync_unavailable_reason = None
+    if status_value != "connected":
+        sync_unavailable_reason = "Reconnect this mailbox before syncing."
+    elif provider == MailProvider.google.value and not settings.GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED:
+        sync_unavailable_reason = "Gmail inbox sync is disabled until restricted Google scope verification is planned."
+    elif provider == MailProvider.google.value and GMAIL_READONLY_SCOPE not in scopes:
+        sync_unavailable_reason = "Reconnect Gmail with inbox read scope to sync messages."
+    elif provider == MailProvider.microsoft.value and "Mail.Read" not in scopes:
+        sync_unavailable_reason = "Reconnect Microsoft with Mail.Read scope to sync messages."
+    elif provider == MailProvider.imap_smtp.value and not password_present:
+        sync_unavailable_reason = "Reconnect IMAP/SMTP to save mailbox credentials."
+
+    if status_value == "error":
+        health_status = "error"
+    elif status_value != "connected":
+        health_status = "disconnected"
+    elif credential_state == "reconnect_required":
+        health_status = "reconnect_required"
+    elif getattr(connection, "last_error", None):
+        health_status = "warning"
+    elif not can_send and not can_sync:
+        health_status = "limited"
+    else:
+        health_status = "healthy"
+
+    reconnect_required = status_value != "connected" or credential_state == "reconnect_required"
+    provider_label = {
+        MailProvider.google.value: "Gmail",
+        MailProvider.microsoft.value: "Microsoft",
+        MailProvider.imap_smtp.value: "IMAP/SMTP",
+    }.get(provider, str(provider or "mail"))
     return {
-        "provider": connection.provider,
-        "status": connection.status,
-        "account_email": connection.account_email,
-        "provider_mailbox_id": connection.provider_mailbox_id,
-        "provider_mailbox_name": connection.provider_mailbox_name,
-        "sync_cursor": connection.sync_cursor,
-        "can_send": (
-            connection.status == "connected"
-            and (
-                (connection.provider == MailProvider.google.value and GMAIL_SEND_SCOPE in scopes)
-                or (connection.provider == MailProvider.microsoft.value and "Mail.Send" in scopes)
-                or connection.provider == MailProvider.imap_smtp.value
-            )
-        ),
-        "can_sync": (
-            connection.status == "connected"
-            and (
-                (
-                    connection.provider == MailProvider.google.value
-                    and settings.GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED
-                    and GMAIL_READONLY_SCOPE in scopes
-                )
-                or (connection.provider == MailProvider.microsoft.value and "Mail.Read" in scopes)
-                or connection.provider == MailProvider.imap_smtp.value
-            )
-        ),
-        "last_synced_at": connection.last_synced_at,
-        "last_error": connection.last_error,
+        "provider": provider,
+        "status": status_value,
+        "account_email": getattr(connection, "account_email", None),
+        "provider_mailbox_id": getattr(connection, "provider_mailbox_id", None),
+        "provider_mailbox_name": getattr(connection, "provider_mailbox_name", None),
+        "sync_cursor": getattr(connection, "sync_cursor", None),
+        "can_send": can_send,
+        "can_sync": can_sync,
+        "last_synced_at": getattr(connection, "last_synced_at", None),
+        "last_error": getattr(connection, "last_error", None),
+        "health_status": health_status,
+        "credential_state": credential_state,
+        "scopes": [str(scope) for scope in raw_scopes or [] if scope],
+        "last_successful_sync_at": getattr(connection, "last_synced_at", None),
+        "last_failure_reason": getattr(connection, "last_error", None),
+        "reconnect_required": reconnect_required,
+        "reconnect_label": f"Reconnect {provider_label}" if reconnect_required else None,
+        "sync_unavailable_reason": None if can_sync else sync_unavailable_reason,
     }
 
 

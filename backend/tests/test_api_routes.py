@@ -692,6 +692,57 @@ class APIRouteTests(unittest.TestCase):
             any_filter_conditions=[{"field": "role_name", "operator": "is", "value": "Admin", "values": None}],
         )
 
+    def test_admin_user_search_preserves_serialized_assignment_names(self):
+        pagination = Pagination(page=1, page_size=10, offset=0, limit=10)
+        db = object()
+        admin = SimpleNamespace(id=7, tenant_id=42)
+        profile = UserProfile(
+            id=55,
+            first_name="Ada",
+            last_name="Lovelace",
+            email="ada@example.com",
+            team_id=4,
+            role_id=9,
+            team_name="Platform",
+            role_name="Admin",
+            role_level=100,
+            photo_url=None,
+            auth_mode="manual_only",
+            is_active="active",
+        )
+
+        with patch.object(
+            admin_routes.admin_users,
+            "search_users",
+            return_value={
+                "results": [profile],
+                "range_start": 1,
+                "range_end": 1,
+                "total_count": 1,
+                "total_pages": 1,
+                "page": 1,
+                "page_size": 10,
+            },
+        ):
+            response = admin_routes.search_users(
+                q=None,
+                teams=None,
+                roles=None,
+                status=None,
+                sort_by="name",
+                sort_order="asc",
+                fields=None,
+                filters_all=None,
+                filters_any=None,
+                pagination=pagination,
+                db=db,
+                admin=admin,
+            )
+
+        self.assertEqual(response["results"][0].team_name, "Platform")
+        self.assertEqual(response["results"][0].role_name, "Admin")
+        self.assertEqual(response["results"][0].role_level, 100)
+
     def test_contact_organization_search_passes_tenant_and_name_by_keyword(self):
         pagination = Pagination(page=1, page_size=10, offset=0, limit=10)
         db = object()

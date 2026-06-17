@@ -3,14 +3,14 @@
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Inbox, KeyRound, Link2, RefreshCw, Search, Trash2, UserPlus } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Inbox, KeyRound, Link2, PlugZap, RefreshCw, Search, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/button";
 import { apiFetch } from "@/lib/api";
 import { useMailActions, useMailContext, useMailMessage, useMailMessages } from "@/hooks/useMail";
-import type { MailMessage, MailProvider } from "@/hooks/useMail";
+import type { MailConnection, MailMessage, MailProvider, OAuthMailProvider } from "@/hooks/useMail";
 import { formatDateTime } from "@/lib/datetime";
 
 const FOLDERS = [
@@ -106,6 +106,29 @@ function linkedRecordHref(message: MailMessage) {
   return null;
 }
 
+function providerLabel(provider: MailProvider) {
+  if (provider === "google") return "Gmail";
+  if (provider === "microsoft") return "Microsoft";
+  return "IMAP/SMTP";
+}
+
+function connectionStatusLabel(connection: MailConnection) {
+  if (connection.health_status === "healthy") return "Ready";
+  if (connection.health_status === "limited") return "Connected, limited scope";
+  if (connection.health_status === "warning") return "Needs attention";
+  if (connection.health_status === "error") return "Sync error";
+  if (connection.health_status === "reconnect_required") return "Reconnect required";
+  return connection.status;
+}
+
+function connectionStatusTone(connection: MailConnection) {
+  if (connection.health_status === "healthy") return "border-emerald-800/70 bg-emerald-950/20 text-emerald-200";
+  if (connection.health_status === "limited" || connection.health_status === "warning") {
+    return "border-amber-800/70 bg-amber-950/20 text-amber-200";
+  }
+  return "border-red-800/70 bg-red-950/20 text-red-200";
+}
+
 function splitSenderName(name?: string | null) {
   const parts = (name ?? "").trim().split(/\s+/).filter(Boolean);
   if (!parts.length) return { first_name: null, last_name: null };
@@ -176,7 +199,7 @@ export default function MailPage() {
   const contextQuery = useMailContext();
   const messagesQuery = useMailMessages(folder || undefined, deferredSearch);
   const selectedMessageQuery = useMailMessage(selectedMessageId);
-  const { connectImapSmtp, syncMail, disconnectMail, sendMail, linkMail, isConnectingMail, isSyncingMail, isDisconnectingMail, isSendingMail, isLinkingMail } = useMailActions();
+  const { connectMail, connectImapSmtp, syncMail, disconnectMail, sendMail, linkMail, isConnectingMail, isSyncingMail, isDisconnectingMail, isSendingMail, isLinkingMail } = useMailActions();
   const messages = useMemo(() => messagesQuery.data?.results ?? [], [messagesQuery.data?.results]);
   const selectedMessage = selectedMessageQuery.data ?? messages.find((message) => message.id === selectedMessageId) ?? null;
   const googleConnection = contextQuery.data?.connections.find((connection) => connection.provider === "google");
@@ -234,12 +257,12 @@ export default function MailPage() {
     };
   }, [linkModuleKey, linkSearch]);
 
-  async function handleSyncImapSmtp() {
+  async function handleSyncProvider(provider: MailProvider) {
     try {
-      const result = await syncMail("imap_smtp");
-      toast.success(`Synced ${result.synced_message_count} new IMAP message${result.synced_message_count === 1 ? "" : "s"}.`);
+      const result = await syncMail(provider);
+      toast.success(`Synced ${result.synced_message_count} new ${providerLabel(provider)} message${result.synced_message_count === 1 ? "" : "s"}.`);
     } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to sync IMAP mailbox."));
+      toast.error(getErrorMessage(error, `Failed to sync ${providerLabel(provider)} mailbox.`));
     }
   }
 
@@ -273,6 +296,19 @@ export default function MailPage() {
       toast.error(getErrorMessage(error, "Failed to connect IMAP/SMTP mailbox."));
     } finally {
       setImapForm((current) => ({ ...current, password: "" }));
+    }
+  }
+
+  async function handleManageConnection(provider: MailProvider) {
+    if (provider === "imap_smtp") {
+      setImapFormOpen(true);
+      return;
+    }
+    try {
+      const result = await connectMail(provider as OAuthMailProvider);
+      window.location.href = result.auth_url;
+    } catch (error) {
+      toast.error(getErrorMessage(error, `Failed to connect ${providerLabel(provider)}.`));
     }
   }
 
@@ -378,7 +414,7 @@ export default function MailPage() {
             </Button>
             {imapSmtpConnection?.can_sync ? (
               <>
-                <Button type="button" variant="outline" onClick={() => void handleSyncImapSmtp()} disabled={isSyncingMail}>
+                <Button type="button" variant="outline" onClick={() => void handleSyncProvider("imap_smtp")} disabled={isSyncingMail}>
                   <RefreshCw className={"h-4 w-4 " + (isSyncingMail ? "animate-spin" : "")} />
                   Sync IMAP
                 </Button>
@@ -399,6 +435,91 @@ export default function MailPage() {
           </>
         }
       />
+
+      <section className="rounded-2xl border border-neutral-800 bg-neutral-950/70">
+        <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-5 py-4">
+          <div>
+            <h2 className="text-base font-semibold text-neutral-100">Mail Connections</h2>
+            <p className="mt-1 text-sm text-neutral-500">{contextQuery.data?.sync_note || "Mailbox sync state will appear here."}</p>
+          </div>
+          <PlugZap className="h-4 w-4 text-neutral-500" />
+        </div>
+        <div className="grid gap-3 p-4 lg:grid-cols-3">
+          {contextQuery.data?.connections.length ? (
+            contextQuery.data.connections.map((connection) => (
+              <div key={connection.provider} className="rounded-xl border border-neutral-800 bg-black/20 px-4 py-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-sm font-semibold text-neutral-100">{providerLabel(connection.provider)}</div>
+                    <div className="mt-1 text-xs text-neutral-500">{connection.account_email || "No account email"}</div>
+                  </div>
+                  <span className={"rounded-full border px-2.5 py-1 text-[11px] font-medium " + connectionStatusTone(connection)}>
+                    {connectionStatusLabel(connection)}
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2 text-xs text-neutral-400">
+                  <div>
+                    <span className="text-neutral-500">Mailbox</span>
+                    <div className="mt-0.5 truncate text-neutral-300">
+                      {connection.provider_mailbox_name || connection.provider_mailbox_id || connection.account_email || "Not selected"}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-neutral-500">Last sync</span>
+                    <div className="mt-0.5 text-neutral-300">
+                      {connection.last_successful_sync_at ? formatDateTime(connection.last_successful_sync_at) : "No successful sync yet"}
+                    </div>
+                  </div>
+                </div>
+                {connection.last_failure_reason || connection.sync_unavailable_reason ? (
+                  <div className="mt-3 flex gap-2 rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{connection.last_failure_reason || connection.sync_unavailable_reason}</span>
+                  </div>
+                ) : (
+                  <div className="mt-3 flex gap-2 rounded-lg border border-emerald-900/50 bg-emerald-950/15 px-3 py-2 text-xs text-emerald-100">
+                    <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    <span>{connection.can_sync ? "Inbox sync is available." : "Sending is available."}</span>
+                  </div>
+                )}
+                {connection.scopes.length ? (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {connection.scopes.slice(0, 3).map((scope) => (
+                      <span key={scope} className="max-w-full truncate rounded-full border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-400">
+                        {scope}
+                      </span>
+                    ))}
+                    {connection.scopes.length > 3 ? (
+                      <span className="rounded-full border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-500">
+                        +{connection.scopes.length - 3}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button type="button" size="sm" variant="outline" onClick={() => void handleManageConnection(connection.provider)} disabled={isConnectingMail}>
+                    {connection.reconnect_label || "Manage"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={!connection.can_sync || isSyncingMail}
+                    onClick={() => void handleSyncProvider(connection.provider)}
+                  >
+                    <RefreshCw className={"h-3.5 w-3.5 " + (isSyncingMail ? "animate-spin" : "")} />
+                    Sync
+                  </Button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="rounded-xl border border-dashed border-neutral-800 bg-black/20 px-4 py-8 text-center text-sm text-neutral-500 lg:col-span-3">
+              No mailbox provider connected yet.
+            </div>
+          )}
+        </div>
+      </section>
 
       {composeOpen ? (
         <section className="rounded-2xl border border-neutral-800 bg-neutral-950/70 p-5">

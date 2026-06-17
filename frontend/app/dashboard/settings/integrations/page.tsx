@@ -94,6 +94,9 @@ type IntegrationRegistryHealth = {
     last_failure_reason: string | null;
     reconnect_url: string | null;
     reconnect_action: string | null;
+    queued_jobs: number;
+    failed_jobs: number;
+    help_text: string | null;
   };
 };
 
@@ -107,6 +110,21 @@ type IntegrationApiKey = {
   last_used_at: string | null;
   created_at: string;
   api_key?: string | null;
+};
+
+type WebsiteCatalogItem = {
+  id: number;
+  item_type: "product" | "service" | "bundle";
+  catalog_product_id: number | null;
+  catalog_service_id: number | null;
+  slug: string;
+  sku: string | null;
+  name: string;
+  currency: string;
+  public_unit_price: string | number;
+  stock_status: string;
+  stock_quantity: string | number | null;
+  updated_at: string;
 };
 
 type WebsiteOrderLine = {
@@ -253,15 +271,19 @@ function responseError(body: unknown, fallback: string) {
 }
 
 async function fetchWebsiteIntegrations() {
-  const [keysRes, ordersRes] = await Promise.all([
+  const [keysRes, catalogRes, ordersRes] = await Promise.all([
     apiFetch("/integrations/api-keys"),
+    apiFetch("/integrations/catalog/published?limit=10&offset=0"),
     apiFetch("/integrations/orders?limit=10&offset=0"),
   ]);
-  const [keysBody, ordersBody] = await Promise.all([readJson(keysRes), readJson(ordersRes)]);
+  const [keysBody, catalogBody, ordersBody] = await Promise.all([readJson(keysRes), readJson(catalogRes), readJson(ordersRes)]);
   if (!keysRes.ok) throw new Error(responseError(keysBody, `Failed with ${keysRes.status}`));
+  if (!catalogRes.ok) throw new Error(responseError(catalogBody, `Failed with ${catalogRes.status}`));
   if (!ordersRes.ok) throw new Error(responseError(ordersBody, `Failed with ${ordersRes.status}`));
   return {
     apiKeys: Array.isArray(keysBody) ? keysBody as IntegrationApiKey[] : [],
+    publishedCatalog: Array.isArray(catalogBody?.results) ? catalogBody.results as WebsiteCatalogItem[] : [],
+    publishedCatalogTotal: typeof catalogBody?.total_count === "number" ? catalogBody.total_count : 0,
     websiteOrders: Array.isArray(ordersBody) ? ordersBody as WebsiteOrder[] : [],
   };
 }
@@ -318,6 +340,8 @@ export default function IntegrationsPage() {
   });
 
   const apiKeys = websiteQuery.data?.apiKeys ?? [];
+  const publishedCatalog = websiteQuery.data?.publishedCatalog ?? [];
+  const publishedCatalogTotal = websiteQuery.data?.publishedCatalogTotal ?? 0;
   const websiteOrders = websiteQuery.data?.websiteOrders ?? [];
   const channels = channelsQuery.data ?? [];
   const events = eventsQuery.data ?? [];
@@ -428,6 +452,22 @@ export default function IntegrationsPage() {
       toast.success("Website API key revoked.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to revoke API key.");
+    } finally {
+      setWebsiteSaving(false);
+    }
+  }
+
+  async function rotateApiKey(key: IntegrationApiKey) {
+    try {
+      setWebsiteSaving(true);
+      const res = await apiFetch(`/integrations/api-keys/${key.id}/rotate`, { method: "POST" });
+      const body = await readJson(res);
+      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+      setLatestApiKey(typeof body?.api_key === "string" ? body.api_key : null);
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
+      toast.success("Website API key rotated.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to rotate API key.");
     } finally {
       setWebsiteSaving(false);
     }
@@ -598,16 +638,33 @@ export default function IntegrationsPage() {
                     <Pill bg={tone.bg} text={tone.text} border={tone.border}>{formatStatus(connection.status)}</Pill>
                   </div>
                   <p className="mt-3 text-sm leading-5 text-neutral-500">{provider.description}</p>
-                  <div className="mt-4 grid gap-1 text-xs text-neutral-500">
-                    <div>{connection.connection_count} active connection{connection.connection_count === 1 ? "" : "s"}</div>
+                  <div className="mt-4 grid gap-2 text-xs text-neutral-500">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2">
+                        <div className="text-neutral-600">Connections</div>
+                        <div className="mt-1 text-sm font-medium text-neutral-200">{connection.connection_count}</div>
+                      </div>
+                      <div className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2">
+                        <div className="text-neutral-600">Queued</div>
+                        <div className="mt-1 text-sm font-medium text-neutral-200">{connection.queued_jobs}</div>
+                      </div>
+                      <div className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2">
+                        <div className="text-neutral-600">Failed</div>
+                        <div className={`mt-1 text-sm font-medium ${connection.failed_jobs ? "text-red-200" : "text-neutral-200"}`}>{connection.failed_jobs}</div>
+                      </div>
+                      <div className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2">
+                        <div className="text-neutral-600">Credentials</div>
+                        <div className="mt-1 truncate text-sm font-medium text-neutral-200">{formatStatus(connection.credential_state)}</div>
+                      </div>
+                    </div>
                     <div>Health: {formatStatus(connection.health_status)}</div>
-                    <div>Credentials: {formatStatus(connection.credential_state)}</div>
-                    <div>{connection.last_sync_at ? `Last activity ${formatDateTime(connection.last_sync_at)}` : "No sync activity recorded"}</div>
-                    <div>{connection.last_successful_sync_at ? `Last successful sync ${formatDateTime(connection.last_successful_sync_at)}` : "No successful sync recorded"}</div>
+                    <div>{connection.last_sync_at ? `Last activity ${formatDateTime(connection.last_sync_at)}` : "No activity recorded"}</div>
+                    <div>{connection.last_successful_sync_at ? `Last successful run ${formatDateTime(connection.last_successful_sync_at)}` : "No successful run recorded"}</div>
                     {connection.scopes.length ? <div className="truncate">Scopes: {connection.scopes.join(", ")}</div> : null}
                     {connection.last_failure_reason || connection.last_error ? (
                       <div className="truncate text-red-300">{connection.last_failure_reason || connection.last_error}</div>
                     ) : null}
+                    {connection.help_text ? <div className="leading-5 text-neutral-400">{connection.help_text}</div> : null}
                   </div>
                   {renderRegistryAction(provider, connection)}
                 </Card>
@@ -629,6 +686,11 @@ export default function IntegrationsPage() {
             <RefreshCw size={14} />
             Refresh
           </Button>
+        </div>
+
+        <div>
+          <h3 className="text-base font-semibold text-neutral-100">API Keys</h3>
+          <p className="mt-1 text-sm text-neutral-500">Create scoped credentials for catalog reads and website order writeback.</p>
         </div>
 
         <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
@@ -730,7 +792,11 @@ export default function IntegrationsPage() {
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-neutral-400">{key.last_used_at ? formatDateTime(key.last_used_at) : "-"}</TableCell>
                       <TableCell>
-                        <div className="flex justify-end">
+                        <div className="flex justify-end gap-2">
+                          <Button type="button" variant="outline" size="sm" disabled={websiteSaving || key.status !== "active"} onClick={() => rotateApiKey(key)}>
+                            <RefreshCw size={14} />
+                            Rotate
+                          </Button>
                           <Button type="button" variant="outline" size="sm" disabled={websiteSaving || key.status !== "active"} onClick={() => revokeApiKey(key)}>
                             <Trash2 size={14} />
                             Revoke
@@ -748,6 +814,54 @@ export default function IntegrationsPage() {
             </Table>
           </ModuleTableShell>
         </div>
+
+        <div>
+          <h3 className="text-base font-semibold text-neutral-100">Published Catalog</h3>
+          <p className="mt-1 text-sm text-neutral-500">Only active public products and services with slugs are exposed to integration API consumers.</p>
+        </div>
+
+        <ModuleTableShell>
+          <Table className="min-w-[940px]">
+            <TableHeader>
+              <TableHeaderRow>
+                <TableHead>Item</TableHead>
+                <TableHead>Mapping</TableHead>
+                <TableHead>Price</TableHead>
+                <TableHead>Stock</TableHead>
+                <TableHead>Updated</TableHead>
+              </TableHeaderRow>
+            </TableHeader>
+            <TableBody>
+              {websiteLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-10 text-center text-neutral-500">Loading published catalog...</TableCell>
+                </TableRow>
+              ) : publishedCatalog.length ? (
+                publishedCatalog.map((item) => (
+                  <TableRow key={`${item.item_type}-${item.id}`}>
+                    <TableCell>
+                      <div className="font-medium text-neutral-100">{item.name}</div>
+                      <div className="text-xs text-neutral-500">/{item.slug}{item.sku ? ` · ${item.sku}` : ""}</div>
+                    </TableCell>
+                    <TableCell className="text-neutral-300">
+                      {item.catalog_product_id ? `Product #${item.catalog_product_id}` : item.catalog_service_id ? `Service #${item.catalog_service_id}` : item.item_type}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-neutral-300">{money(item.public_unit_price, item.currency)}</TableCell>
+                    <TableCell className="text-neutral-400">
+                      {item.item_type === "product" ? `${formatStatus(item.stock_status)}${item.stock_quantity != null ? ` · ${item.stock_quantity}` : ""}` : "Service"}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-neutral-400">{formatDateTime(item.updated_at)}</TableCell>
+                  </TableRow>
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-10 text-center text-neutral-500">No published catalog items are exposed yet.</TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </ModuleTableShell>
+        <div className="text-xs text-neutral-500">{publishedCatalogTotal} published item{publishedCatalogTotal === 1 ? "" : "s"} available through the public catalog API.</div>
 
         <div className="grid gap-5 md:grid-cols-2">
           <Card className="px-5 py-5">
@@ -778,6 +892,11 @@ export default function IntegrationsPage() {
               </div>
             </div>
           </Card>
+        </div>
+
+        <div>
+          <h3 className="text-base font-semibold text-neutral-100">Website and Client Orders</h3>
+          <p className="mt-1 text-sm text-neutral-500">Incoming website orders stay separate from internal POS invoices until reviewed or converted.</p>
         </div>
 
         <ModuleTableShell>
@@ -983,8 +1102,8 @@ export default function IntegrationsPage() {
       <section className="flex flex-col gap-3">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-neutral-100">Event Delivery History</h2>
-            <p className="mt-1 text-sm text-neutral-500">Recent CRM events and webhook delivery attempts for this tenant.</p>
+            <h2 className="text-lg font-semibold text-neutral-100">Sync and Health Logs</h2>
+            <p className="mt-1 text-sm text-neutral-500">Recent CRM events, webhook delivery attempts, and integration health signals for this tenant.</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Select value={eventFilters.event_type} onValueChange={(value) => setEventFilters((current) => ({ ...current, event_type: value }))}>

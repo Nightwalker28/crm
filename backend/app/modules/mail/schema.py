@@ -39,6 +39,14 @@ class MailConnectionSummaryResponse(BaseModel):
     can_sync: bool = False
     last_synced_at: datetime | None = None
     last_error: str | None = None
+    health_status: str = "unknown"
+    credential_state: str = "unknown"
+    scopes: list[str] = Field(default_factory=list)
+    last_successful_sync_at: datetime | None = None
+    last_failure_reason: str | None = None
+    reconnect_required: bool = False
+    reconnect_label: str | None = None
+    sync_unavailable_reason: str | None = None
 
 
 class MailContextResponse(BaseModel):

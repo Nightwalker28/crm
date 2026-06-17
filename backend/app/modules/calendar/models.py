@@ -205,3 +205,15 @@ class MeetingBooking(Base):
 
     booking_type = relationship("MeetingBookingType", lazy="joined")
     calendar_event = relationship("CalendarEvent", lazy="joined")
+
+    @property
+    def crm_source_module_key(self) -> str | None:
+        return self.calendar_event.source_module_key if self.calendar_event else None
+
+    @property
+    def crm_source_entity_id(self) -> str | None:
+        return self.calendar_event.source_entity_id if self.calendar_event else None
+
+    @property
+    def crm_source_label(self) -> str | None:
+        return self.calendar_event.source_label if self.calendar_event else None

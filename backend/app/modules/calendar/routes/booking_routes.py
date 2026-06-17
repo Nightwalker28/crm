@@ -1,6 +1,6 @@
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -137,6 +137,10 @@ def get_public_booking_slots(
 def submit_public_booking(
     slug: str,
     payload: PublicMeetingBookingSubmitRequest,
+    request: Request,
     db: Session = Depends(get_db),
 ):
+    client_host = request.client.host if request.client else None
+    booking_services.check_public_booking_rate_limit(slug=slug, client_host=client_host)
+    booking_services.record_public_booking_attempt(slug=slug, client_host=client_host)
     return booking_services.submit_public_booking(db, slug=slug, payload=payload.model_dump())
