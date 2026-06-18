@@ -844,25 +844,254 @@ This document converts the senior review notes for Contracts, Calendar, Catalog,
 
 # Client portal tasks
 
-The available uploaded audit text did not include a concrete client-portal issue list. The repository does include client portal routes, so use this section as a verification gate and do not invent speculative fixes.
+## CP-01 — Enforce client password policy at schema and service boundary
 
-## CP-01 — Reconcile missing client-portal audit notes before editing
+- **Severity:** Critical
+- **Assessment:** Valid.
+- **Files:** `backend/app/modules/client_portal/schema.py`, `backend/app/modules/client_portal/services/client_portal_services.py`, `frontend/app/client/setup/page.tsx`, tests.
+- **Issue:** `ClientSetupPasswordRequest.password` uses `Field(min_length=1)`, and `setup_client_password` delegates to `hash_password` without an explicit client-portal policy.
+- **Fix:** Add a single policy constant, for example `CLIENT_PASSWORD_MIN_LENGTH = 8`, and enforce it in both Pydantic schema and `setup_client_password` before hashing. Keep `ClientLoginRequest.password` as `min_length=1` unless product wants login-side min-length rejection too.
+- **Frontend:** Add setup-page hint and pre-submit validation.
+- **Tests:** One-character setup password returns 422/400 and never calls hash/write logic.
+- **Done when:** A setup token cannot create a trivial password.
 
-- **Severity:** Needs verification
-- **Files:** `backend/app/modules/client_portal/**`, frontend client portal paths, any later supplied audit source
-- **Issue:** User indicated client portal audit text exists, but no concrete client-portal findings were available in the loaded audit text used for this plan.
-- **Fix:** Search issue/PR context for client-portal audit notes before coding. If found, add tasks in this same format. If not found, skip speculative client-portal edits.
-- **Done when:** Client portal work is based on actual findings, not assumptions.
+## CP-02 — Make default customer group seeding race-safe
 
-## CP-02 — Smoke-test client portal after core hardening
+- **Severity:** Critical
+- **Assessment:** Valid.
+- **Files:** `backend/app/modules/client_portal/services/client_portal_services.py`, `backend/app/modules/client_portal/repositories/client_portal_repository.py`, tests.
+- **Issue:** `ensure_default_customer_groups` checks cache/DB, inserts missing keys, then commits. Concurrent workers can race and hit `uq_customer_groups_tenant_key`.
+- **Fix:** Use PostgreSQL `INSERT ... ON CONFLICT DO NOTHING` for seed rows, or wrap commit in `try/except IntegrityError` with rollback and re-read. Keep cache as optimization only, not correctness.
+- **Done when:** Concurrent first access for a tenant does not produce a 500 or partial seed failure.
 
-- **Severity:** Depends on core tasks
-- **Files:** client portal backend routes and frontend pages
-- **Issue:** Core CORS, tenant cache, auth, pagination, and media behavior affect client portal flows.
-- **Fix:** After CORE tasks, smoke-test client portal auth, public pages, bookings, catalog, documents, messages, orders, quotes, overview, and support routes.
-- **Done when:** Core security/cache changes do not break legitimate portal origins or tenant resolution.
+## CP-03 — Constrain support status action route
+
+- **Severity:** High
+- **Assessment:** Valid.
+- **Files:** `backend/app/modules/client_portal/routes/client_portal_routes.py`, support service tests.
+- **Issue:** `POST /client-support/cases/{case_id}/{action}` accepts arbitrary path strings and validates only inside service.
+- **Fix:** Replace with explicit routes such as `/close` and `/reopen`, or use a FastAPI path enum/Literal constrained to supported actions.
+- **Done when:** Unsupported support actions do not reach service logic as arbitrary strings.
+
+## CP-04 — Standardize client page action names
+
+- **Severity:** Medium/High
+- **Assessment:** Partially valid. Current public backend route hardcodes `request_changes`, so the request-changes flow works today; the URL/frontend/API naming still mixes hyphen and underscore.
+- **Files:** `backend/app/modules/client_portal/routes/client_portal_routes.py`, `backend/app/modules/client_portal/services/client_portal_services.py`, `frontend/hooks/useClientPortal.ts`, frontend public page.
+- **Issue:** DB constraint uses `request_changes`; public route and frontend use `request-changes` in the URL.
+- **Fix:** Keep the external URL `/request-changes` if desired, but centralize an action normalizer that maps `request-changes` to `request_changes`. Use typed constants for stored action values and URL action values.
+- **Tests:** Service accepts only canonical stored actions or documented aliases; API response always returns canonical `request_changes`.
+- **Done when:** There is one canonical internal action vocabulary and one documented URL alias.
+
+## CP-05 — Replace client overview full-list fetches with summary queries
+
+- **Severity:** High
+- **Assessment:** Valid.
+- **Files:** `backend/app/modules/client_portal/services/client_portal_services.py`, relevant module repositories/services for summary helpers, tests.
+- **Issue:** `build_client_overview` loads catalog, orders, support cases, messages, documents, quotes, and bookings, then counts/slices in Python.
+- **Fix:** Add dedicated count/latest helpers for each overview metric. Fetch counts with `COUNT(*)` and next-action candidates with `LIMIT 1` ordered by the relevant timestamp/status.
+- **Done when:** Overview response does not pull full lists just to compute metrics and five next actions.
+
+## CP-06 — Make customer-group relationship resolution explicit
+
+- **Severity:** Medium
+- **Assessment:** Partially valid.
+- **Files:** `backend/app/modules/client_portal/services/client_portal_services.py`, repository helpers, tests.
+- **Issue:** `resolve_client_customer_group` checks `account.__dict__` for loaded relationships and falls back to DB/session lookups. If no session exists, it returns `None`, which can hide a lazy-load/detached-object problem.
+- **Fix:** Prefer passing `db` explicitly for all code paths that need group resolution. If no DB/session exists and a linked customer exists, raise or return an explicit “unavailable” path rather than silently `None`.
+- **Done when:** Missing loaded relationship/session cannot silently change pricing from personalized to public.
+
+## CP-07 — Tighten customer-group seeded cache semantics
+
+- **Severity:** Medium
+- **Assessment:** Partially valid.
+- **Files:** client portal service/cache tests.
+- **Issue:** The cache key is namespaced but cache-hit behavior still performs a DB check. That is safe but reduces the value of caching.
+- **Fix:** After CP-02 makes DB seeding idempotent, simplify cache to an optimization: either trust it for a short TTL where safe, or remove it entirely and rely on upsert seeding.
+- **Done when:** Seeding behavior is simple, race-safe, and not dependent on cache correctness.
+
+## CP-08 — Limit page-action summaries at the database layer
+
+- **Severity:** High
+- **Assessment:** Valid.
+- **Files:** `backend/app/modules/client_portal/repositories/client_portal_repository.py`, `backend/app/modules/client_portal/services/client_portal_services.py`, tests.
+- **Issue:** `action_summaries` fetches all actions for all page IDs, and the service keeps only three per page.
+- **Fix:** Use a window function: `row_number() over (partition by client_page_id order by created_at desc, id desc)` and filter `row_number <= 3`. Keep a separate grouped count query or combine if practical.
+- **Done when:** Recent action summaries fetch at most three action rows per page plus counts.
+
+## CP-09 — Add service-level finite Decimal validation for pricing/order payloads
+
+- **Severity:** Medium/High
+- **Assessment:** Partially valid. Route schemas validate normal API calls, but services accept raw dicts.
+- **Files:** `client_portal_services.py`, schema tests.
+- **Issue:** `_normalize_pricing_items` and order/request flows convert raw values to `Decimal` and compare them without consistent finite checks.
+- **Fix:** Add a helper like `_decimal_or_400(value, field, *, gt=None, ge=None)` that rejects invalid, NaN, Infinity, and wrong bounds. Use it for pricing item quantity/public price and catalog order quantity.
+- **Done when:** Malformed direct service payloads return clean 400s, not `InvalidOperation`/500.
+
+## CP-10 — Avoid clearing client token on every 401
+
+- **Severity:** High frontend/auth
+- **Assessment:** Valid.
+- **Files:** `frontend/hooks/useClientPortal.ts`.
+- **Issue:** `publicJson` and `publicBlob` call `clearClientToken()` on any 401 from any client endpoint.
+- **Fix:** Clear token only for definitive auth/session endpoints, for example `/client-auth/me`, `/client-auth/login`, `/client-auth/setup`, or when backend returns a known invalid-token error code. Do not clear for unrelated transient 401s without confirming token invalidity.
+- **Done when:** A single endpoint-specific 401 cannot unnecessarily log out a valid client session.
+
+## CP-11 — Debounce client catalog search before query hook
+
+- **Severity:** High frontend/perf
+- **Assessment:** Valid.
+- **Files:** `frontend/hooks/useClientPortal.ts`, client catalog page component.
+- **Issue:** `useClientCatalog` query key includes raw search text, so callers that pass live input trigger one query per keystroke.
+- **Fix:** Debounce in the page/component before calling `useClientCatalog`, or add a `useDebouncedValue` hook and pass the debounced search to the query hook.
+- **Done when:** Typing in catalog search does not fire a request for every keystroke.
+
+## CP-12 — Remove dynamic `_action_summary` ORM attribute
+
+- **Severity:** Medium
+- **Assessment:** Valid as fragility/maintainability.
+- **Files:** `client_portal_services.py`, repository/service return types, tests.
+- **Issue:** Page serializers can read `page._action_summary`, an arbitrary dynamic attribute on SQLAlchemy objects.
+- **Fix:** Return a typed wrapper/dataclass, or pass `action_summary` explicitly into `serialize_client_page`.
+- **Done when:** Action summaries are explicit typed data, not hidden ORM attributes.
+
+## CP-13 — Make request metadata client host behavior explicit
+
+- **Severity:** Low/Medium
+- **Assessment:** Partially valid.
+- **Files:** `client_portal_routes.py`, tests.
+- **Issue:** `_request_metadata` handles missing/invalid `request.client`, but returns `client_host=None` silently.
+- **Fix:** Keep no-crash behavior, but include a clear `client_host_status` or omit invalid hosts intentionally. Ensure tests cover `request.client is None`.
+- **Done when:** Request metadata behavior is explicit for missing/invalid client host.
+
+## CP-14 — Remove redundant order refresh after client catalog order creation
+
+- **Severity:** Medium
+- **Assessment:** Valid.
+- **Files:** `client_portal_services.py`, tests.
+- **Issue:** `create_client_catalog_order` commits, refreshes `order`, then immediately discards it by calling `get_client_order_or_404`.
+- **Fix:** Remove the intermediate `db.refresh(order)` before the selectinload refetch, or avoid the second fetch by loading required line items another way.
+- **Done when:** Order creation performs only required post-commit DB round trips.
+
+## CP-15 — Guard client account/page serialization against lazy-load surprises
+
+- **Severity:** Medium
+- **Assessment:** Valid as future-proofing.
+- **Files:** `client_portal_services.py`, repository tests.
+- **Issue:** `serialize_client_account` and `serialize_client_page` assume `contact`/`organization` are loaded. Repositories generally joinedload them, but future callers can trigger N+1 or detached-object errors.
+- **Fix:** Add helper that checks SQLAlchemy inspection state without triggering lazy loads, or require serializers to receive display names from loaded query projections.
+- **Done when:** Serialization cannot accidentally lazy-load per row or crash on detached objects.
+
+## CP-16 — Keep DB action constraint canonical and document URL alias
+
+- **Severity:** Medium
+- **Assessment:** Partially valid; overlaps CP-04.
+- **Files:** `models.py`, route/service tests.
+- **Issue:** DB stores `request_changes`; external route uses `/request-changes`.
+- **Fix:** Do not change DB constraint unless changing storage vocabulary. Add tests proving `/request-changes` stores `request_changes` and service normalizes aliases if exposed elsewhere.
+- **Done when:** Route alias and DB value are documented/tested.
+
+## CP-17 — Make browser download helpers safe in non-browser/test DOMs
+
+- **Severity:** Medium frontend
+- **Assessment:** Valid for `downloadClientDocument`; partially valid for `downloadPublicClientPageDocument` because it uses `window.open` rather than body append.
+- **Files:** `frontend/hooks/useClientPortal.ts`, tests where practical.
+- **Issue:** `downloadClientDocument` appends an anchor to `document.body` without a fallback. Public page download uses object URL/window.open and should also guard `window` availability.
+- **Fix:** Use `const container = window.document.body ?? window.document.documentElement`; guard `typeof window !== "undefined"`; clean up object URLs in finally blocks.
+- **Done when:** Download helpers do not crash under SSR/Jest-like environments.
+
+## CP-18 — Trim public page brand accent before regex validation
+
+- **Severity:** Low
+- **Assessment:** Valid low-risk polish.
+- **Files:** `frontend/app/client/pages/[token]/page.tsx`.
+- **Issue:** `brandAccent` tests the raw string and falls back on values with harmless whitespace.
+- **Fix:** `const trimmed = (value ?? "").trim(); return HEX_RE.test(trimmed) ? trimmed : fallback;`
+- **Done when:** Whitespace around valid hex colors does not drop branding.
+
+## CP-19 — Normalize public/setup token expiry datetimes consistently
+
+- **Severity:** Medium
+- **Assessment:** Valid.
+- **Files:** `client_portal_services.py`, core DB/timezone config/tests.
+- **Issue:** `get_public_client_page` and `setup_client_password` patch naive datetimes with UTC but do not normalize aware non-UTC values.
+- **Fix:** Add a shared `_as_utc` helper like other modules use. Convert naive values to UTC and aware values via `.astimezone(timezone.utc)`. Long-term, ensure DB sessions use UTC.
+- **Done when:** Expiry comparisons are correct for naive and aware datetimes.
+
+## CP-20 — Standardize retry policy for authenticated client hooks
+
+- **Severity:** Low/Medium frontend
+- **Assessment:** Valid.
+- **Files:** `frontend/hooks/useClientPortal.ts`.
+- **Issue:** `useClientMe` and `useClientOverview` use `retry: false`; sibling authenticated hooks rely on React Query defaults.
+- **Fix:** Create `clientQueryDefaults = { retry: false, staleTime: 30_000 }` and apply to authenticated client portal queries unless a specific endpoint needs retry.
+- **Done when:** 401/client-auth failures do not incur useless retry latency.
+
+## CP-21 — Limit or deprecate flat client account/page list routes
+
+- **Severity:** Medium/High
+- **Assessment:** Valid.
+- **Files:** `client_portal_routes.py`, `client_portal_repository.py`, frontend admin hooks/pages.
+- **Issue:** `GET /client-portal/accounts` and `GET /client-portal/pages` return all rows for a tenant. Cursor variants exist but flat routes remain unbounded.
+- **Fix:** Prefer cursor routes in UI. Add hard `limit` query param with safe max to flat routes, or mark flat routes deprecated and remove call sites.
+- **Done when:** No route can accidentally serialize thousands of client accounts/pages without a limit.
+
+## CP-22 — Seed placeholder customer groups without misleading 0% discounts
+
+- **Severity:** Low/Medium product correctness
+- **Assessment:** Valid.
+- **Files:** `client_portal_services.py`, seed migration/data tests if needed.
+- **Issue:** Wholesale/retailer/VIP placeholders are seeded as `percent` with `0`, making them appear as personalized discount groups even though they do not change price.
+- **Fix:** Seed placeholder groups with `discount_type="none"` and `discount_value=None`, or seed only the default group and let tenants create discount groups. Provide a migration/data correction for existing untouched zero-percent placeholder groups.
+- **Done when:** Placeholder groups do not show misleading personalized 0% pricing.
+
+## CP-23 — Add client-side setup password validation and hint
+
+- **Severity:** Low/Medium frontend
+- **Assessment:** Valid; pairs with CP-01.
+- **Files:** `frontend/app/client/setup/page.tsx`.
+- **Issue:** Setup form only checks required and password confirmation. Users see backend errors after submit.
+- **Fix:** Add visible rule text, `minLength`, and explicit submit guard matching backend policy.
+- **Done when:** User sees password requirements before submission.
 
 ---
+
+## Migration checklist
+
+- CP-02: no migration required if using upsert/IntegrityError handling; verify `uq_customer_groups_tenant_key` exists.
+- CP-08: optional index review for `client_page_actions`: consider `(tenant_id, client_page_id, created_at DESC, id DESC)`.
+- CP-21: no migration; API behavior/route change only.
+- CP-22: optional data migration to update existing default placeholder groups from `percent/0` to `none/NULL` where they still match the original seed names and have not been customized.
+
+## Test checklist
+
+Backend:
+
+- Setup password shorter than policy is rejected before hashing.
+- Concurrent default group seeding succeeds without 500s.
+- Public `/request-changes` stores canonical `request_changes`.
+- Unsupported support case action is rejected at route/path boundary.
+- Overview returns the same response shape with summary/count queries.
+- Action summaries return max three recent actions per page.
+- Decimal helper rejects NaN/Infinity/malformed values with 400.
+- Expiry comparison handles naive and non-UTC aware datetimes.
+- Flat list routes enforce a limit or UI uses cursor routes.
+
+Frontend/manual:
+
+- Client token is not cleared by a non-auth endpoint 401 unless backend confirms invalid token.
+- Client catalog search is debounced.
+- Authenticated client hooks do not retry 401s repeatedly.
+- Setup page shows and enforces password minimum.
+- Download helpers work in browser and do not crash in DOM-light tests.
+- Brand accent accepts valid hex with whitespace.
+
+## Explicit audit wording corrections
+
+- The public `request-changes` flow is not currently broken at the backend route level because the route hardcodes `action="request_changes"` before calling the service. Treat this as a consistency/latent bug, not a confirmed current 400.
+- The customer-group cache key already has a namespace prefix. The real problem is not collision; it is that cache is not a correctness mechanism for the seeding race.
+- Decimal NaN/Infinity risk is mainly a service-boundary hardening issue because the public Pydantic schemas already cover normal route inputs.
+
 
 # Migration checklist
 
@@ -879,6 +1108,304 @@ Create migrations if current schema lacks the target state:
 - CAT-04: optional SmallInteger-to-Boolean migration only if chosen.
 - CAT-13: currency check constraints.
 - CAT-14: `pg_trgm` extension and catalog search indexes.
+
+## DOC-01 — Lock document storage OAuth token refresh
+
+- **Severity:** Critical
+- **Assessment:** Valid.
+- **Files:** `backend/app/modules/documents/services/document_services.py`, shared Redis/distributed-lock helper, tests.
+- **Issue:** `_refresh_google_drive_access_token` and `_refresh_microsoft_onedrive_access_token` refresh the same connection with no cross-worker lock.
+- **Fix:** Add a distributed lock keyed by `(tenant_id, user_id, provider)`. Re-read connection state after acquiring the lock so waiters can reuse a token refreshed by another worker. Redis is required for production correctness; local fallback is dev-only.
+- **Acceptance:** Concurrent refresh attempts cannot clobber provider token state.
+
+## DOC-02 — Replace global storage-path uniqueness with scoped constraints
+
+- **Severity:** Critical/High
+- **Assessment:** Valid.
+- **Files:** `backend/app/modules/documents/models.py`, Alembic migration, tests.
+- **Issue:** `Document.storage_path` and `DocumentVersion.storage_key` are globally unique, which is too broad for cloud provider item IDs.
+- **Fix:** Remove global `unique=True`. Add scoped constraints/indexes matching the real contract, for example `(tenant_id, storage_provider, storage_path)` for documents and tenant/document-scoped storage-key uniqueness for versions if needed. Check/backfill duplicates before migration.
+- **Acceptance:** Legitimate same provider IDs across tenants/providers do not fail as DB 500s.
+
+## DOC-03 — Fix deleted-document repository filtering semantics
+
+- **Severity:** Critical
+- **Assessment:** Valid.
+- **Files:** `backend/app/modules/documents/repositories/documents_repository.py`, document service tests.
+- **Issue:** `get_document(..., include_deleted=True)` filters `deleted_at IS NOT NULL`; the flag currently means “only deleted,” not “include deleted.”
+- **Fix:** Make `include_deleted=True` omit the deleted filter. Add an explicit deleted-only helper if restore should only target deleted rows.
+- **Acceptance:** Active fetch, deleted fetch, restore, and delete paths use the intended row set.
+
+## DOC-04 — Simplify local document path resolution
+
+- **Severity:** Medium, despite Critical audit label
+- **Assessment:** Partially valid. The final `resolve()` containment guard is useful; the confusing part is accepting and stripping a `documents/` prefix.
+- **Files:** `backend/app/modules/documents/services/storage_backends.py`, storage tests.
+- **Issue:** `LocalDocumentStorage.resolve_path` strips `documents/` before resolving.
+- **Fix:** Accept only canonical paths relative to `DOCUMENT_STORAGE_DIR`, such as `tenant-{id}/uuid.ext`. Reject absolute paths, `..`, null bytes, encoded traversal, and `documents/`-prefixed paths.
+- **Acceptance:** Local storage paths cannot resolve outside the storage root and have one canonical format.
+
+## DOC-05 — Define and enforce unlinked-document access
+
+- **Severity:** Critical
+- **Assessment:** Valid; product/security decision required.
+- **Files:** document services/routes/schema/models as needed, tests.
+- **Issue:** `_require_any_linked_record_access` succeeds when `document.links` is empty, making unlinked documents visible to any tenant user with documents permission.
+- **Fix:** Define explicit document-level visibility for unlinked files: owner/uploader, admin, explicit visibility, or documented tenant-wide access. Prefer owner/admin unless tenant-wide visibility is intentional.
+- **Acceptance:** Unlinked document visibility is explicit and tested.
+
+## DOC-06 — Reduce full-byte upload memory retention
+
+- **Severity:** High
+- **Assessment:** Valid; staged fix acceptable.
+- **Files:** `document_services.py`, `storage_backends.py`, tests.
+- **Issue:** `read_document_upload` reads the whole file into memory and keeps bytes through quota, checksum, and cloud upload.
+- **Fix:** Short term: avoid duplicate byte copies and keep strict max size. Medium term: stream to a temp file, compute signature/hash/quota from chunks, and pass file-like objects to storage backends.
+- **Acceptance:** Upload memory use is bounded or explicitly limited by configuration and tests.
+
+## DOC-07 — Remove blocking provider HTTP from async routes
+
+- **Severity:** High
+- **Assessment:** Valid.
+- **Files:** document service/storage backends/routes, tests.
+- **Issue:** Async upload/version routes call synchronous `requests` provider operations.
+- **Fix:** Convert provider clients to `httpx.AsyncClient`, or make upload routes sync `def` so FastAPI runs them in a threadpool. Choose one consistent approach and preserve timeouts.
+- **Acceptance:** Provider network I/O does not block the async event loop.
+
+## DOC-08 — Optimize or intentionally defer document count queries
+
+- **Severity:** Medium/High
+- **Assessment:** Valid performance concern.
+- **Files:** `backend/app/modules/documents/repositories/documents_repository.py`, tests.
+- **Issue:** `list_documents` uses `count()` plus a separate paginated select.
+- **Fix:** Use a window count/subquery if this endpoint is hot. If cursor pagination is the scalable path, document the offset/list endpoint as compatibility-only.
+- **Acceptance:** Pagination totals remain correct and the query strategy is intentional.
+
+## DOC-09 — Combine tenant storage usage aggregates
+
+- **Severity:** Medium/High
+- **Assessment:** Valid.
+- **Files:** `backend/app/modules/documents/services/document_services.py`, tests.
+- **Issue:** `_tenant_storage_used` runs two aggregate queries on every upload.
+- **Fix:** Use one CTE or `UNION ALL` aggregate covering current-version rows and legacy rows while excluding deleted documents.
+- **Acceptance:** Storage totals match current behavior with one aggregate query.
+
+## DOC-10 — Make OAuth state decode fail closed
+
+- **Severity:** High
+- **Assessment:** Valid.
+- **Files:** `document_services.py`, OAuth callback routes/tests.
+- **Issue:** `decode_drive_oauth_state` returns `None`; missed checks can become later `KeyError`/500 failures.
+- **Fix:** Raise `HTTPException(400)` directly or add a required `decode_drive_oauth_state_or_400` helper and update all callbacks.
+- **Acceptance:** Invalid/missing/wrong-provider state returns 400 before user lookup.
+
+## DOC-11 — Use application UTC timestamp for soft delete
+
+- **Severity:** Medium/High
+- **Assessment:** Valid.
+- **Files:** `document_services.py`, tests.
+- **Issue:** `soft_delete_document` assigns `func.now()` to `deleted_at`, which can make audit serialization observe stale/expression state before refresh.
+- **Fix:** Use `_utcnow()` before commit.
+- **Acceptance:** Delete audit `after_state.deleted_at` is populated with a timezone-aware timestamp.
+
+## DOC-12 — Avoid full-file text decode for txt/rtf validation
+
+- **Severity:** Medium
+- **Assessment:** Valid, bounded by upload max.
+- **Files:** document service tests.
+- **Issue:** `_validate_document_signature` decodes full txt/rtf content.
+- **Fix:** Decode a representative sample, for example `content[:8192]`, while preserving binary/polyglot and RTF magic checks.
+- **Acceptance:** Text validation avoids full decode without accepting binary/polyglot files.
+
+## DOC-13 — Remove redundant document refetch after create/version upload
+
+- **Severity:** Medium
+- **Assessment:** Valid.
+- **Files:** document service tests.
+- **Issue:** `create_document` and `upload_document_version` commit/refresh, then call `get_document_or_404` again.
+- **Fix:** Use one explicit response loader only when relationships are needed, or refresh/load required relationships directly.
+- **Acceptance:** Response shape stays correct without redundant default refetch.
+
+## DOC-14 — Verify client-share listing duplicate fetch
+
+- **Severity:** Medium
+- **Assessment:** Needs verification.
+- **Files:** document service/routes/tests.
+- **Issue:** `list_document_client_shares` fetches the document internally; the route may already fetch it.
+- **Fix:** If duplicated, pass the loaded document to the share-list function or split permission check from share query. If not duplicated, mark skipped.
+- **Acceptance:** No duplicate document fetch remains in the share-listing path.
+
+## DOC-15 — Harden OAuth return-path normalization
+
+- **Severity:** Medium
+- **Assessment:** Valid.
+- **Files:** document service tests.
+- **Issue:** `_safe_return_path` does not reject null bytes or encoded slash/backslash/traversal patterns.
+- **Fix:** Reject control/null bytes and encoded traversal, or decode once before validation. Keep dashboard-relative paths and the length cap.
+- **Acceptance:** Open-redirect/confusing encoded return paths fail closed.
+
+## DOC-16 — Use one document content-type policy map
+
+- **Severity:** Medium
+- **Assessment:** Valid.
+- **Files:** document service/schema tests.
+- **Issue:** `ALLOWED_DOCUMENT_CONTENT_TYPES` and `DOCUMENT_CONTENT_TYPES_BY_EXTENSION` can drift.
+- **Fix:** Derive allowed content types from one `DOCUMENT_TYPE_POLICY` or from the extension map.
+- **Acceptance:** Adding a document type requires one policy update.
+
+## DOC-17 — Clarify client-share dedup target semantics
+
+- **Severity:** Medium
+- **Assessment:** Partially valid.
+- **Files:** document service tests.
+- **Issue:** Exact AND matching on contact/org/null may be intentional, but it cannot merge a share with both contact and org when later sharing to one side only.
+- **Fix:** Decide exact tuple versus target-overlap semantics. Implement a named helper and tests for contact-only, org-only, and contact+org cases. Do not switch to OR unless product behavior requires it.
+- **Acceptance:** Share deduplication semantics are explicit and tested.
+
+## DOC-18 — Add document template and active-share indexes
+
+- **Severity:** Low/Medium
+- **Assessment:** Valid.
+- **Files:** document models/migration.
+- **Issue:** Template lists and active portal share lookups need composite/partial indexes.
+- **Fix:** Add `(tenant_id, is_template)` partial index where `deleted_at IS NULL`, plus active share indexes such as `(tenant_id, contact_id)` and `(tenant_id, organization_id)` where `revoked_at IS NULL`.
+- **Acceptance:** Template and active-share queries have targeted indexes.
+
+## DOC-19 — Encode OAuth state iat/exp as NumericDate
+
+- **Severity:** Low/Medium
+- **Assessment:** Valid.
+- **Files:** document service tests.
+- **Issue:** OAuth state uses datetime objects for JWT `iat`/`exp`.
+- **Fix:** Use Unix timestamp ints with `int(now.timestamp())` and `int(exp.timestamp())`.
+- **Acceptance:** State JWT claims are RFC-compatible NumericDate values.
+
+## DOC-20 — Reduce redundant document query invalidations
+
+- **Severity:** Medium frontend
+- **Assessment:** Valid.
+- **Files:** `frontend/hooks/useDocuments.ts`.
+- **Issue:** `useDocumentActions.invalidate` awaits multiple invalidations sequentially, and broad `["documents"]` invalidation already covers subkeys.
+- **Fix:** Use the narrowest correct invalidation set. If multiple invalidations remain, run them with `Promise.all`.
+- **Acceptance:** Mutations refresh needed document data without redundant rerender cycles.
+
+## DOC-21 — Canonicalize document query keys
+
+- **Severity:** Medium frontend
+- **Assessment:** Partially valid. Current key normalizes several values, but a helper reduces mismatch risk.
+- **Files:** `frontend/hooks/useDocuments.ts`.
+- **Issue:** The list query key has many primitive positions; call-site differences can create unnecessary cache misses.
+- **Fix:** Add `buildDocumentQueryParams` and `buildDocumentQueryKey` helpers, then use the same normalized object for URL construction and query key.
+- **Acceptance:** Query key and URL use identical canonical values.
+
+## DOC-22 — Memoize active client shares in document rows
+
+- **Severity:** Low frontend
+- **Assessment:** Valid but low ROI.
+- **Files:** `frontend/components/documents/DocumentList.tsx`.
+- **Issue:** `activeShares` is recomputed every render.
+- **Fix:** Wrap in `useMemo` keyed on `document.client_shares`, or leave skipped if profiling shows no issue.
+- **Acceptance:** No behavior change; row render work is reduced if implemented.
+
+## DOC-23 — Verify download auth model for raw new-tab URLs
+
+- **Severity:** Medium frontend/security
+- **Assessment:** Needs verification.
+- **Files:** `frontend/hooks/useDocuments.ts`, `frontend/components/documents/DocumentList.tsx`, document download routes.
+- **Issue:** `window.open(documentVersionDownloadUrl(...))` only works if API auth is cookie-based; JWT-only auth would 401.
+- **Fix:** Confirm auth transport. If bearer-only, fetch with `apiFetch`, create an object URL/blob, and trigger download; otherwise document the cookie requirement.
+- **Acceptance:** Version/download buttons work under the production auth model.
+
+## DOC-24 — Stream provider downloads instead of loading full bytes
+
+- **Severity:** Low/Medium
+- **Assessment:** Valid for larger files.
+- **Files:** storage backends, document routes.
+- **Issue:** Google Drive and OneDrive download methods return `response.content`, loading the whole file in memory.
+- **Fix:** Use streaming provider responses and return `StreamingResponse` for cloud downloads where possible.
+- **Acceptance:** Large cloud downloads do not require full file bytes in app memory.
+
+## DOC-25 — Deduplicate list and cursor endpoint logic
+
+- **Severity:** Low
+- **Assessment:** Valid.
+- **Files:** `backend/app/modules/documents/routes/document_routes.py`, repository/service list helpers.
+- **Issue:** `GET /documents` and `GET /documents/cursor` duplicate filters and can diverge; cursor lacks response model/sort parity.
+- **Fix:** Extract shared filter/list parameter handling. Add a cursor response model if schema exists, or create one. Decide whether cursor supports sorting or always uses IDs.
+- **Acceptance:** List/cursor behavior remains intentional and shared where possible.
+
+## DOC-26 — Remove fragile `order_by(None)` from cursor query
+
+- **Severity:** Low
+- **Assessment:** Valid low-risk cleanup.
+- **Files:** `backend/app/modules/documents/repositories/documents_repository.py`, tests.
+- **Issue:** `list_documents_cursor` uses `.order_by(None).order_by(Document.id.desc())`.
+- **Fix:** Build the cursor query without default ordering before applying `Document.id.desc()`, or document why clearing is necessary.
+- **Acceptance:** Cursor ordering is deterministic without fragile order clearing.
+
+## DOC-27 — Reduce heavy audit state on downloads
+
+- **Severity:** Low
+- **Assessment:** Valid.
+- **Files:** document service/activity log tests.
+- **Issue:** `log_document_download` serializes the full document, including relationships, just for audit state.
+- **Fix:** Log a slim after-state with document ID, title, current version, provider, and size.
+- **Acceptance:** Download audit remains useful without loading/serializing full relationship graphs.
+
+## DOC-28 — Handle provider-upload DB failure cleanup
+
+- **Severity:** Medium
+- **Assessment:** Valid extension of storage consistency.
+- **Files:** document service/storage backends.
+- **Issue:** A file/provider object can be stored before DB commit; if DB commit fails, storage may be orphaned.
+- **Fix:** Add best-effort cleanup/delete to the storage backend interface or record orphan cleanup jobs. At minimum, catch DB `IntegrityError`, rollback, and log orphan cleanup metadata.
+- **Acceptance:** DB failures after storage upload do not silently leak storage forever.
+
+## DOC-29 — Add clean IntegrityError handling for document/version writes
+
+- **Severity:** Medium
+- **Assessment:** Valid.
+- **Files:** document service tests.
+- **Issue:** Storage path/key uniqueness or version uniqueness conflicts can bubble as 500s.
+- **Fix:** Wrap create/version commit paths in `try/except IntegrityError`, rollback, and return 409/400 with a useful message.
+- **Acceptance:** User-fixable document write conflicts return clean 4xx.
+
+## DOC-30 — Keep local-storage collision handling explicit
+
+- **Severity:** Low
+- **Assessment:** Valid housekeeping.
+- **Files:** storage backend tests.
+- **Issue:** Local filenames use `uuid4().hex`; collisions are extremely unlikely but not impossible.
+- **Fix:** Use exclusive create (`xb`) or retry on existing filename before write.
+- **Acceptance:** Local storage save is collision-safe without relying only on probability.
+
+## Migration checklist additions
+
+- DOC-02: replace global document/version storage uniqueness with scoped indexes/constraints after duplicate checks.
+- DOC-18: add document template and active client-share partial/composite indexes.
+
+## Test checklist additions
+
+Backend:
+
+- Document OAuth token refresh concurrency lock.
+- Document deleted/include-deleted filtering and restore behavior.
+- Document local storage canonical path and traversal rejection.
+- Document unlinked access model.
+- Document storage usage aggregate totals.
+- Document OAuth state invalid-token handling and NumericDate claims.
+- Document write conflict handling returns 4xx.
+
+Frontend/manual:
+
+- Documents mutations invalidate correct query keys without redundant sequential invalidations.
+- Documents query key and URL params use the same canonical values.
+- Document version/download buttons work with the production auth transport.
+
+## Explicit audit wording corrections
+
+- Do not blindly switch document client-share matching from AND to OR. First decide whether share identity is an exact `(contact_id, organization_id)` tuple or target-overlap matching, then implement tests.
+- Do not overstate local document path traversal. The existing final containment guard is useful; the required cleanup is canonical path acceptance and removal of confusing prefix stripping.
 
 Migration rules:
 
