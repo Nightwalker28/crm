@@ -8,6 +8,7 @@ class Document(Base):
     __tablename__ = "documents"
     __table_args__ = (
         Index("ix_documents_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+        UniqueConstraint("tenant_id", "storage_provider", "storage_path", name="uq_documents_tenant_provider_storage_path"),
     )
 
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
@@ -23,7 +24,7 @@ class Document(Base):
     is_template = Column(Boolean, nullable=False, default=False, server_default="false", index=True)
     template_category = Column(String(120), nullable=True, index=True)
     storage_provider = Column(String(40), nullable=False, default="local", server_default="local", index=True)
-    storage_path = Column(Text, nullable=False, unique=True)
+    storage_path = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
@@ -45,6 +46,7 @@ class DocumentVersion(Base):
     __tablename__ = "document_versions"
     __table_args__ = (
         UniqueConstraint("tenant_id", "document_id", "version_number", name="uq_document_versions_document_number"),
+        UniqueConstraint("tenant_id", "document_id", "storage_key", name="uq_document_versions_document_storage_key"),
         Index("ix_document_versions_tenant_document", "tenant_id", "document_id"),
     )
 
@@ -52,7 +54,7 @@ class DocumentVersion(Base):
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
     version_number = Column(Integer, nullable=False)
-    storage_key = Column(Text, nullable=False, unique=True)
+    storage_key = Column(Text, nullable=False)
     file_name = Column(String(255), nullable=False)
     mime_type = Column(String(120), nullable=False)
     size_bytes = Column(BigInteger, nullable=False)

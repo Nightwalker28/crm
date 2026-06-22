@@ -6,7 +6,7 @@ import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from fastapi import HTTPException, UploadFile
 from sqlalchemy import create_engine
@@ -15,9 +15,13 @@ from starlette.datastructures import Headers
 
 from app.core.database import Base
 from app.modules.documents.models import Document, DocumentClientShare, DocumentLink, DocumentVersion
+from app.modules.documents.repositories import documents_repository
 from app.modules.documents.services import storage_backends
 from app.modules.documents.services.storage_backends import LocalDocumentStorage, MicrosoftOneDriveDocumentStorage
+from app.modules.documents.services import document_services
 from app.modules.documents.services.document_services import (
+    _create_drive_oauth_state,
+    _refresh_google_drive_access_token,
     get_client_document_share_or_404,
     list_document_templates,
     list_client_documents,
@@ -156,7 +160,7 @@ class DocumentServiceTests(unittest.TestCase):
                     extension="pdf",
                     file_size_bytes=16,
                     storage_provider="local",
-                    storage_path="documents/tenant-10/proposal.pdf",
+                    storage_path="tenant-10/proposal.pdf",
                 ),
                 Document(
                     id=2,
@@ -168,7 +172,7 @@ class DocumentServiceTests(unittest.TestCase):
                     extension="pdf",
                     file_size_bytes=16,
                     storage_provider="local",
-                    storage_path="documents/tenant-99/other.pdf",
+                    storage_path="tenant-99/other.pdf",
                 ),
                 DocumentLink(
                     id=1,
@@ -210,7 +214,7 @@ class DocumentServiceTests(unittest.TestCase):
                     extension="pdf",
                     file_size_bytes=2_000,
                     storage_provider="local",
-                    storage_path="documents/tenant-10/alpha.pdf",
+                    storage_path="tenant-10/alpha.pdf",
                     created_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
                     updated_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
                 ),
@@ -224,7 +228,7 @@ class DocumentServiceTests(unittest.TestCase):
                     extension="pdf",
                     file_size_bytes=500,
                     storage_provider="local",
-                    storage_path="documents/tenant-10/zulu.pdf",
+                    storage_path="tenant-10/zulu.pdf",
                     created_at=datetime(2024, 1, 2, tzinfo=timezone.utc),
                     updated_at=datetime(2024, 1, 2, tzinfo=timezone.utc),
                 ),
@@ -252,7 +256,7 @@ class DocumentServiceTests(unittest.TestCase):
             target.parent.mkdir()
             target.write_bytes(b"%PDF-1.7\ncontent")
 
-            document = Document(storage_provider="local", storage_path="documents/tenant-10/proposal.pdf")
+            document = Document(storage_provider="local", storage_path="tenant-10/proposal.pdf")
             with patch.object(storage_backends, "UPLOADS_DIR", upload_root), \
                  patch.object(storage_backends, "DOCUMENT_STORAGE_DIR", docs_root):
                 resolved = resolve_document_storage_path(document)
@@ -268,6 +272,22 @@ class DocumentServiceTests(unittest.TestCase):
             escaped.write_bytes(b"%PDF-1.7\ncontent")
 
             document = Document(storage_provider="local", storage_path="../outside.pdf")
+            with patch.object(storage_backends, "UPLOADS_DIR", upload_root), \
+                 patch.object(storage_backends, "DOCUMENT_STORAGE_DIR", docs_root), \
+                 self.assertRaises(HTTPException) as exc:
+                resolve_document_storage_path(document)
+
+        self.assertEqual(exc.exception.status_code, 404)
+
+    def test_resolve_document_storage_path_rejects_legacy_documents_prefix(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            upload_root = Path(tmpdir)
+            docs_root = upload_root / "documents"
+            target = docs_root / "tenant-10" / "proposal.pdf"
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"%PDF-1.7\ncontent")
+
+            document = Document(storage_provider="local", storage_path="documents/tenant-10/proposal.pdf")
             with patch.object(storage_backends, "UPLOADS_DIR", upload_root), \
                  patch.object(storage_backends, "DOCUMENT_STORAGE_DIR", docs_root), \
                  self.assertRaises(HTTPException) as exc:
@@ -337,6 +357,68 @@ class DocumentServiceTests(unittest.TestCase):
         self.assertEqual(document.template_category, "Proposals")
         self.assertEqual(total, 1)
         self.assertEqual([item.id for item in templates], [1])
+
+    def test_get_document_include_deleted_keeps_active_rows_visible(self):
+        active = documents_repository.get_document(self.db, tenant_id=10, document_id=1, include_deleted=True)
+
+        self.assertIsNotNone(active)
+        self.assertIsNone(active.deleted_at)
+
+    def test_get_deleted_document_is_deleted_only(self):
+        self.db.query(Document).filter(Document.id == 1).update({"deleted_at": datetime(2024, 1, 1, tzinfo=timezone.utc)})
+        self.db.commit()
+
+        deleted = documents_repository.get_deleted_document(self.db, tenant_id=10, document_id=1)
+        active = documents_repository.get_document(self.db, tenant_id=10, document_id=1)
+
+        self.assertIsNotNone(deleted)
+        self.assertIsNone(active)
+
+    def test_drive_oauth_state_uses_numeric_dates_and_safe_return_path(self):
+        tenant = SimpleNamespace(id=10)
+        user = SimpleNamespace(id=1)
+
+        token = _create_drive_oauth_state(
+            tenant=tenant,
+            user=user,
+            frontend_origin="https://app.example.com/",
+            return_path="/dashboard/documents?next=unsafe#fragment",
+        )
+        payload = document_services.decode_drive_oauth_state(token)
+
+        self.assertIsInstance(payload["iat"], int)
+        self.assertIsInstance(payload["exp"], int)
+        self.assertEqual(payload["frontend_origin"], "https://app.example.com")
+        self.assertEqual(payload["return_path"], "/dashboard/documents")
+
+    def test_drive_oauth_state_rejects_invalid_origin(self):
+        token = _create_drive_oauth_state(
+            tenant=SimpleNamespace(id=10),
+            user=SimpleNamespace(id=1),
+            frontend_origin="https://app.example.com",
+            return_path="/dashboard/documents",
+        )
+        with patch.object(document_services.jwt, "decode", return_value={**document_services.jwt.decode(token, document_services.settings.JWT_SECRET, algorithms=[document_services.settings.JWT_ALGORITHM]), "frontend_origin": "javascript:alert(1)"}):
+            payload = document_services.decode_drive_oauth_state(token)
+
+        self.assertIsNone(payload)
+
+    def test_drive_token_refresh_rechecks_connection_after_lock(self):
+        connection = SimpleNamespace(id=5)
+        db = SimpleNamespace(refresh=Mock())
+
+        with patch.object(document_services, "_usable_connection_access_token", side_effect=[None, "fresh-token"]) as usable_mock, \
+             patch.object(document_services, "cache_acquire_lock", return_value="lock-token") as acquire_mock, \
+             patch.object(document_services, "cache_release_lock") as release_mock, \
+             patch.object(document_services.requests, "post") as post_mock:
+            token = _refresh_google_drive_access_token(db, connection)
+
+        self.assertEqual(token, "fresh-token")
+        acquire_mock.assert_called_once_with("document-storage-token-refresh:5", ttl_seconds=30)
+        release_mock.assert_called_once_with("document-storage-token-refresh:5", "lock-token")
+        db.refresh.assert_called_once_with(connection)
+        self.assertEqual(usable_mock.call_count, 2)
+        post_mock.assert_not_called()
 
     def test_upload_document_version_preserves_previous_version_and_updates_current(self):
         unlinked = Document(

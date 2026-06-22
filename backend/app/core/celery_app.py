@@ -1,6 +1,7 @@
 from celery import Celery
+from celery.signals import worker_init
 
-from app.core.config import settings
+from app.core.config import settings, validate_startup_settings
 
 
 celery_app = Celery(
@@ -20,7 +21,10 @@ celery_app = Celery(
 celery_app.conf.update(
     task_serializer="json",
     accept_content=["json"],
-    result_backend=None,
+    result_backend=settings.CELERY_RESULT_BACKEND,
+    result_expires=settings.CELERY_RESULT_EXPIRES_SECONDS,
+    task_ignore_result=settings.CELERY_TASK_IGNORE_RESULT,
+    task_store_errors_even_if_ignored=True,
     broker_connection_retry_on_startup=True,
     task_track_started=True,
     timezone="UTC",
@@ -52,3 +56,8 @@ celery_app.conf.update(
         },
     },
 )
+
+
+@worker_init.connect
+def validate_celery_startup_config(**_: object) -> None:
+    validate_startup_settings()

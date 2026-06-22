@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import Any
 
@@ -395,7 +395,7 @@ def create_invoice(db: Session, current_user, payload: dict[str, Any]) -> Financ
         customer_name=customer_name,
         customer_email=_normalize_text(payload.get("customer_email")),
         customer_address=_normalize_text(payload.get("customer_address")),
-        issue_date=parse_human_date(payload["issue_date"]) if payload.get("issue_date") else datetime.utcnow().date(),
+        issue_date=parse_human_date(payload["issue_date"]) if payload.get("issue_date") else datetime.now(timezone.utc).date(),
         due_date=parse_human_date(payload["due_date"]) if payload.get("due_date") else None,
         currency=_normalize_allowed_currency(db, current_user, payload.get("currency")),
         payment_terms=_normalize_text(payload.get("payment_terms")),
@@ -499,7 +499,7 @@ def update_invoice(db: Session, current_user, invoice_id: int, payload: dict[str
 def soft_delete_invoice(db: Session, current_user, invoice_id: int) -> None:
     invoice = get_invoice_or_404(db, current_user, invoice_id)
     before_state = serialize_invoice(invoice, current_user=current_user)
-    invoice.deleted_at = datetime.utcnow()
+    invoice.deleted_at = datetime.now(timezone.utc)
     db.add(invoice)
     db.commit()
     log_activity(

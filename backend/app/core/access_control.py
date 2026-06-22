@@ -257,7 +257,7 @@ def get_user_role_level(db: Session, user: User | None) -> int | None:
     if token_role_level is not None:
         return int(token_role_level)
 
-    logger.warning(
+    logger.debug(
         "Access token for user %s is missing role_level; falling back to a role lookup during JWT claim transition",
         getattr(user, "id", None),
     )

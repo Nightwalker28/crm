@@ -86,6 +86,7 @@ class Settings:
     MICROSOFT_SCOPES: list[str] = _env_scope_list("MICROSOFT_SCOPES")
     GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED: bool = os.getenv("GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED", "false").lower() == "true"
     MAIL_CREDENTIAL_SECRET: str = os.getenv("MAIL_CREDENTIAL_SECRET", "").strip()
+    MAIL_CREDENTIAL_PREVIOUS_SECRETS: list[str] = _env_str_list("MAIL_CREDENTIAL_PREVIOUS_SECRETS")
     APP_ENCRYPTION_SECRET: str = os.getenv("APP_ENCRYPTION_SECRET", "").strip()
     APP_ENCRYPTION_KEY_VERSION: str = os.getenv("APP_ENCRYPTION_KEY_VERSION", "v1").strip() or "v1"
     APP_ENCRYPTION_PREVIOUS_SECRETS: list[str] = _env_str_list("APP_ENCRYPTION_PREVIOUS_SECRETS")
@@ -176,6 +177,9 @@ class Settings:
     REDIS_CIRCUIT_BREAKER_FAILURE_THRESHOLD: int = int(os.getenv("REDIS_CIRCUIT_BREAKER_FAILURE_THRESHOLD", "3"))
     REDIS_CIRCUIT_BREAKER_COOLDOWN_SECONDS: int = int(os.getenv("REDIS_CIRCUIT_BREAKER_COOLDOWN_SECONDS", "60"))
     CELERY_BROKER_URL: str | None = os.getenv("CELERY_BROKER_URL") or os.getenv("REDIS_URL")
+    CELERY_RESULT_BACKEND: str | None = os.getenv("CELERY_RESULT_BACKEND") or CELERY_BROKER_URL
+    CELERY_RESULT_EXPIRES_SECONDS: int = int(os.getenv("CELERY_RESULT_EXPIRES_SECONDS", str(24 * 60 * 60)))
+    CELERY_TASK_IGNORE_RESULT: bool = _env_bool("CELERY_TASK_IGNORE_RESULT", True)
     AUTOMATION_MAX_EVENT_DEPTH: int = int(os.getenv("AUTOMATION_MAX_EVENT_DEPTH", "3"))
     DATA_TRANSFER_BACKGROUND_ROW_THRESHOLD: int = int(
         os.getenv("DATA_TRANSFER_BACKGROUND_ROW_THRESHOLD", "10000")
@@ -271,12 +275,17 @@ settings = Settings()
 def validate_startup_settings() -> None:
     if not settings.DATABASE_URL:
         raise RuntimeError("DATABASE_URL must be set")
-    if (not settings.DEBUG or settings.ALLOWED_DOMAINS) and not settings.JWT_SECRET:
-        raise RuntimeError("JWT_SECRET must be set outside purely local debug mode")
+    if not getattr(settings, "JWT_SECRET", ""):
+        raise RuntimeError("JWT_SECRET must be set")
+    if not getattr(settings, "APP_ENCRYPTION_SECRET", ""):
+        raise RuntimeError("APP_ENCRYPTION_SECRET must be set")
+    if not getattr(settings, "MAIL_CREDENTIAL_SECRET", ""):
+        raise RuntimeError("MAIL_CREDENTIAL_SECRET must be set")
     if (
         not settings.DEBUG
         and (
             int(getattr(settings, "WEBSITE_INTEGRATION_RATE_LIMIT_COUNT", 0) or 0) > 0
+            or int(getattr(settings, "PUBLIC_CLIENT_PAGE_ACTION_LIMIT", 0) or 0) > 0
             or int(getattr(settings, "PUBLIC_BOOKING_SUBMIT_LIMIT", 0) or 0) > 0
         )
         and not getattr(settings, "REDIS_URL", None)
@@ -285,3 +294,5 @@ def validate_startup_settings() -> None:
     tenant_resolution_mode = getattr(settings, "TENANT_RESOLUTION_MODE", "host")
     if tenant_resolution_mode not in {"host", "auth"}:
         raise RuntimeError("TENANT_RESOLUTION_MODE must be either 'host' or 'auth'")
+    if not settings.DEBUG and tenant_resolution_mode == "host" and not getattr(settings, "REDIS_URL", None):
+        raise RuntimeError("REDIS_URL must be set for production host tenant resolution")

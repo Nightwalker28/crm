@@ -13,12 +13,13 @@ def _fernet_for_secret(secret: str) -> Fernet:
 
 
 def _credential_secrets() -> list[str]:
-    secret = settings.MAIL_CREDENTIAL_SECRET or settings.JWT_SECRET
+    secret = settings.MAIL_CREDENTIAL_SECRET
     if not secret:
-        raise RuntimeError("MAIL_CREDENTIAL_SECRET or JWT_SECRET must be set before storing mailbox credentials")
+        raise RuntimeError("MAIL_CREDENTIAL_SECRET must be set before storing mailbox credentials")
     secrets = [secret]
-    if settings.MAIL_CREDENTIAL_SECRET and settings.JWT_SECRET and settings.JWT_SECRET != settings.MAIL_CREDENTIAL_SECRET:
-        secrets.append(settings.JWT_SECRET)
+    for previous_secret in getattr(settings, "MAIL_CREDENTIAL_PREVIOUS_SECRETS", []) or []:
+        if previous_secret and previous_secret not in secrets:
+            secrets.append(previous_secret)
     return secrets
 
 

@@ -33,36 +33,78 @@ class ConfigTests(unittest.TestCase):
         with patch.object(
             config,
             "settings",
-            SimpleNamespace(DEBUG=False, JWT_SECRET="", DATABASE_URL="postgresql://db/app", ALLOWED_DOMAINS=[]),
-        ):
-            with self.assertRaisesRegex(
-                RuntimeError,
-                "JWT_SECRET must be set outside purely local debug mode",
-            ):
-                config.validate_startup_settings()
-
-    def test_startup_validation_allows_missing_jwt_secret_in_debug_mode(self):
-        with patch.object(
-            config,
-            "settings",
-            SimpleNamespace(DEBUG=True, JWT_SECRET="", DATABASE_URL="sqlite://", ALLOWED_DOMAINS=[]),
-        ):
-            config.validate_startup_settings()
-
-    def test_startup_validation_rejects_missing_jwt_secret_in_debug_with_allowed_domains(self):
-        with patch.object(
-            config,
-            "settings",
-            SimpleNamespace(DEBUG=True, JWT_SECRET="", DATABASE_URL="sqlite://", ALLOWED_DOMAINS=["example.com"]),
+            SimpleNamespace(
+                DEBUG=False,
+                JWT_SECRET="",
+                APP_ENCRYPTION_SECRET="app-secret",
+                MAIL_CREDENTIAL_SECRET="mail-secret",
+                DATABASE_URL="postgresql://db/app",
+                ALLOWED_DOMAINS=[],
+            ),
         ):
             with self.assertRaisesRegex(RuntimeError, "JWT_SECRET must be set"):
+                config.validate_startup_settings()
+
+    def test_startup_validation_rejects_missing_jwt_secret_in_debug_mode(self):
+        with patch.object(
+            config,
+            "settings",
+            SimpleNamespace(
+                DEBUG=True,
+                JWT_SECRET="",
+                APP_ENCRYPTION_SECRET="app-secret",
+                MAIL_CREDENTIAL_SECRET="mail-secret",
+                DATABASE_URL="sqlite://",
+                ALLOWED_DOMAINS=[],
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "JWT_SECRET must be set"):
+                config.validate_startup_settings()
+
+    def test_startup_validation_rejects_missing_app_encryption_secret(self):
+        with patch.object(
+            config,
+            "settings",
+            SimpleNamespace(
+                DEBUG=True,
+                JWT_SECRET="jwt-secret",
+                APP_ENCRYPTION_SECRET="",
+                MAIL_CREDENTIAL_SECRET="mail-secret",
+                DATABASE_URL="sqlite://",
+                ALLOWED_DOMAINS=[],
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "APP_ENCRYPTION_SECRET must be set"):
+                config.validate_startup_settings()
+
+    def test_startup_validation_rejects_missing_mail_credential_secret(self):
+        with patch.object(
+            config,
+            "settings",
+            SimpleNamespace(
+                DEBUG=True,
+                JWT_SECRET="jwt-secret",
+                APP_ENCRYPTION_SECRET="app-secret",
+                MAIL_CREDENTIAL_SECRET="",
+                DATABASE_URL="sqlite://",
+                ALLOWED_DOMAINS=[],
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "MAIL_CREDENTIAL_SECRET must be set"):
                 config.validate_startup_settings()
 
     def test_startup_validation_rejects_missing_database_url(self):
         with patch.object(
             config,
             "settings",
-            SimpleNamespace(DEBUG=True, JWT_SECRET="", DATABASE_URL=None, ALLOWED_DOMAINS=[]),
+            SimpleNamespace(
+                DEBUG=True,
+                JWT_SECRET="jwt-secret",
+                APP_ENCRYPTION_SECRET="app-secret",
+                MAIL_CREDENTIAL_SECRET="mail-secret",
+                DATABASE_URL=None,
+                ALLOWED_DOMAINS=[],
+            ),
         ):
             with self.assertRaisesRegex(RuntimeError, "DATABASE_URL must be set"):
                 config.validate_startup_settings()
@@ -74,15 +116,88 @@ class ConfigTests(unittest.TestCase):
             SimpleNamespace(
                 DEBUG=False,
                 JWT_SECRET="secret",
+                APP_ENCRYPTION_SECRET="app-secret",
+                MAIL_CREDENTIAL_SECRET="mail-secret",
                 DATABASE_URL="postgresql://db/app",
                 ALLOWED_DOMAINS=[],
                 REDIS_URL=None,
                 WEBSITE_INTEGRATION_RATE_LIMIT_COUNT=120,
+                PUBLIC_CLIENT_PAGE_ACTION_LIMIT=0,
+                PUBLIC_BOOKING_SUBMIT_LIMIT=0,
                 TENANT_RESOLUTION_MODE="host",
             ),
         ):
             with self.assertRaisesRegex(RuntimeError, "production public rate limiting"):
                 config.validate_startup_settings()
+
+    def test_startup_validation_requires_redis_for_production_public_client_actions(self):
+        with patch.object(
+            config,
+            "settings",
+            SimpleNamespace(
+                DEBUG=False,
+                JWT_SECRET="secret",
+                APP_ENCRYPTION_SECRET="app-secret",
+                MAIL_CREDENTIAL_SECRET="mail-secret",
+                DATABASE_URL="postgresql://db/app",
+                ALLOWED_DOMAINS=[],
+                REDIS_URL=None,
+                WEBSITE_INTEGRATION_RATE_LIMIT_COUNT=0,
+                PUBLIC_CLIENT_PAGE_ACTION_LIMIT=10,
+                PUBLIC_BOOKING_SUBMIT_LIMIT=0,
+                TENANT_RESOLUTION_MODE="auth",
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "production public rate limiting"):
+                config.validate_startup_settings()
+
+    def test_startup_validation_requires_redis_for_production_host_tenant_resolution(self):
+        with patch.object(
+            config,
+            "settings",
+            SimpleNamespace(
+                DEBUG=False,
+                JWT_SECRET="secret",
+                APP_ENCRYPTION_SECRET="app-secret",
+                MAIL_CREDENTIAL_SECRET="mail-secret",
+                DATABASE_URL="postgresql://db/app",
+                ALLOWED_DOMAINS=[],
+                REDIS_URL=None,
+                WEBSITE_INTEGRATION_RATE_LIMIT_COUNT=0,
+                PUBLIC_CLIENT_PAGE_ACTION_LIMIT=0,
+                PUBLIC_BOOKING_SUBMIT_LIMIT=0,
+                TENANT_RESOLUTION_MODE="host",
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "production host tenant resolution"):
+                config.validate_startup_settings()
+
+    def test_celery_worker_startup_validates_settings(self):
+        from app.core import celery_app
+
+        with patch.object(celery_app, "validate_startup_settings") as validate:
+            celery_app.validate_celery_startup_config()
+
+        validate.assert_called_once_with()
+
+    def test_celery_stores_task_failures_when_results_are_ignored(self):
+        from app.core.celery_app import celery_app
+
+        self.assertTrue(celery_app.conf.task_ignore_result)
+        self.assertTrue(celery_app.conf.task_store_errors_even_if_ignored)
+        self.assertIsNotNone(celery_app.conf.result_backend)
+
+    def test_cors_uses_configured_origins_without_wildcard_regex(self):
+        from app.main import app
+
+        cors_middleware = next(
+            middleware
+            for middleware in app.user_middleware
+            if middleware.cls.__name__ == "CORSMiddleware"
+        )
+
+        self.assertEqual(cors_middleware.kwargs["allow_origins"], config.settings.FRONTEND_CORS_ORIGINS)
+        self.assertIsNone(cors_middleware.kwargs["allow_origin_regex"])
 
 
 if __name__ == "__main__":

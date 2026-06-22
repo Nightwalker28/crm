@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 import re
 
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from decimal import Decimal, InvalidOperation
 from io import BytesIO
 from pathlib import Path
@@ -28,16 +28,14 @@ from app.modules.user_management.models import Module
 
 # Single folder override via env
 _upload_dir = os.getenv("IO_SEARCH_UPLOAD_DIR")
-if not _upload_dir:
-    raise RuntimeError("IO_SEARCH_UPLOAD_DIR environment variable is required")
-IO_SEARCH_UPLOAD_DIR = Path(_upload_dir).resolve()
-IO_SEARCH_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+IO_SEARCH_UPLOAD_DIR = Path(_upload_dir).resolve() if _upload_dir else None
 
 # IO module_id in the modules table
 DEFAULT_MODULE_ID = 2
 FINANCE_MODULE_KEY = "finance_io"
 DEFAULT_IO_STATUS = "draft"
 DEFAULT_IO_CURRENCY = "USD"
+VALID_IO_STATUSES = {"draft", "issued", "active", "completed", "cancelled", "imported"}
 
 MONTH_ALIASES: dict[str, int] = {
     "jan": 1,
@@ -88,6 +86,36 @@ def sanitize_file_name(file_name: str) -> str:
     stem, suffix = os.path.splitext(name_only)
     sanitized_stem = re.sub(r"\s+", "-", stem.strip())
     return f"{sanitized_stem}{suffix}"
+
+
+def get_io_search_upload_dir() -> Path:
+    upload_dir = IO_SEARCH_UPLOAD_DIR
+    if upload_dir is None:
+        raw_upload_dir = os.getenv("IO_SEARCH_UPLOAD_DIR")
+        if not raw_upload_dir:
+            raise RuntimeError("IO_SEARCH_UPLOAD_DIR environment variable is required for finance file operations")
+        upload_dir = Path(raw_upload_dir).resolve()
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    return upload_dir
+
+
+def _relative_io_file_path(file_path: Path, *, root: Path) -> str:
+    try:
+        return file_path.resolve().relative_to(root.resolve()).as_posix()
+    except ValueError as exc:
+        raise ValueError("File path must stay inside the insertion order upload directory") from exc
+
+
+def normalize_io_status(value: Any, *, default: str | None = DEFAULT_IO_STATUS) -> str | None:
+    normalized = _normalize_text(value)
+    if normalized is None:
+        if default is None:
+            return None
+        normalized = default
+    normalized = normalized.lower()
+    if normalized not in VALID_IO_STATUSES:
+        raise ValueError(f"Status must be one of: {', '.join(sorted(VALID_IO_STATUSES))}")
+    return normalized
 
 def _parse_decimal(value: Any) -> Decimal | None:
     if value is None:
@@ -359,7 +387,7 @@ def _parse_docx_bytes(
     original_name = Path(file_name).name
     sanitized_name = sanitize_file_name(original_name)
 
-    target_dir = destination_dir or IO_SEARCH_UPLOAD_DIR
+    target_dir = destination_dir or get_io_search_upload_dir()
 
     if destination_dir:
         destination_dir.mkdir(parents=True, exist_ok=True)
@@ -372,7 +400,7 @@ def _parse_docx_bytes(
     for table_dict in tables:
         record = {
             "file_name": original_name,
-            "file_path": str(target_dir / sanitized_name),
+            "file_path": _relative_io_file_path(target_dir / sanitized_name, root=target_dir),
         }
         record.update(table_dict)
         records.append(record)
@@ -389,7 +417,7 @@ def _parse_pdf_bytes(
     original_name = Path(file_name).name
     sanitized_name = sanitize_file_name(original_name)
 
-    target_dir = destination_dir or IO_SEARCH_UPLOAD_DIR
+    target_dir = destination_dir or get_io_search_upload_dir()
 
     if destination_dir:
         destination_dir.mkdir(parents=True, exist_ok=True)
@@ -402,7 +430,7 @@ def _parse_pdf_bytes(
     for table_dict in tables:
         record = {
             "file_name": original_name,
-            "file_path": str(target_dir / sanitized_name),
+            "file_path": _relative_io_file_path(target_dir / sanitized_name, root=target_dir),
         }
         record.update(table_dict)
         records.append(record)
@@ -542,7 +570,7 @@ def parse_io_files(
     return all_records
 
 
-def parse_human_date(value: str) -> datetime.date | None:
+def parse_human_date(value: str) -> date | None:
     """
     Parse common human-readable dates.
     Supports:
@@ -734,7 +762,7 @@ def create_insertion_order(
     )
     if not resolved_customer_name:
         raise ValueError("customer_name is required")
-    issue_date = parse_human_date(data["issue_date"]) if data.get("issue_date") else datetime.utcnow().date()
+    issue_date = parse_human_date(data["issue_date"]) if data.get("issue_date") else datetime.now(timezone.utc).date()
     effective_date = parse_human_date(data["effective_date"]) if data.get("effective_date") else None
     due_date = parse_human_date(data["due_date"]) if data.get("due_date") else None
     start_date = parse_human_date(data["start_date"]) if data.get("start_date") else None
@@ -756,7 +784,7 @@ def create_insertion_order(
         due_date=due_date,
         start_date=start_date,
         end_date=end_date,
-        status=_normalize_text(data.get("status")) or DEFAULT_IO_STATUS,
+        status=normalize_io_status(data.get("status")),
         currency=_normalize_allowed_currency(db, current_user, data.get("currency")),
         subtotal_amount=_parse_decimal(data.get("subtotal_amount")),
         tax_amount=_parse_decimal(data.get("tax_amount")),
@@ -874,6 +902,8 @@ def update_insertion_order(
             value = _normalize_text(data[key]) if data[key] is not None else None
             if key == "currency":
                 value = _normalize_allowed_currency(db, current_user, value)
+            if key == "status":
+                value = normalize_io_status(value, default=None)
             setattr(record, key, value)
 
     for key in {"subtotal_amount", "tax_amount", "total_amount"}:
@@ -911,7 +941,7 @@ def update_insertion_order(
 
 
 def soft_delete_insertion_order(db: Session, *, record: FinanceIO) -> None:
-    record.deleted_at = datetime.utcnow()
+    record.deleted_at = datetime.now(timezone.utc)
     db.add(record)
     db.commit()
 

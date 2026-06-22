@@ -7,6 +7,7 @@ from fastapi import HTTPException, Request, status
 from jose import JWTError, jwt
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.cache import cache_delete, cache_delete_prefix, cache_get_json, cache_set_json
 from app.core.config import settings
 from app.modules.user_management.models import Tenant, TenantDomain
 
@@ -20,8 +21,8 @@ class RequestTenantContext:
 
 
 _license_cache: tuple[float, dict | None] | None = None
-_tenant_context_cache: dict[str, tuple[float, RequestTenantContext | None]] = {}
 TENANT_CONTEXT_CACHE_TTL_SECONDS = 60
+TENANT_CONTEXT_CACHE_PREFIX = "tenant-context:"
 
 
 def _clear_verified_deployment_license_cache() -> None:
@@ -172,6 +173,40 @@ def to_request_tenant_context(tenant: Tenant) -> RequestTenantContext:
     )
 
 
+def _tenant_context_cache_key(hostname: str) -> str:
+    return f"{TENANT_CONTEXT_CACHE_PREFIX}{hostname}"
+
+
+def _serialize_request_tenant_context(context: RequestTenantContext | None) -> dict | None:
+    if context is None:
+        return None
+    return {
+        "id": context.id,
+        "slug": context.slug,
+        "name": context.name,
+        "is_active": context.is_active,
+    }
+
+
+def _deserialize_request_tenant_context(payload: dict | None) -> RequestTenantContext | None:
+    if not payload:
+        return None
+    return RequestTenantContext(
+        id=int(payload["id"]),
+        slug=str(payload["slug"]),
+        name=str(payload["name"]),
+        is_active=bool(payload["is_active"]),
+    )
+
+
+def invalidate_tenant_context_cache(hostname: str | None = None) -> None:
+    normalized = normalize_hostname(hostname)
+    if normalized:
+        cache_delete(_tenant_context_cache_key(f"host:{normalized}"))
+        return
+    cache_delete_prefix(TENANT_CONTEXT_CACHE_PREFIX)
+
+
 def resolve_request_tenant(db: Session, request: Request) -> Tenant | None:
     if not is_cloud_mode_enabled():
         return get_or_create_single_tenant(db)
@@ -204,13 +239,16 @@ def resolve_request_tenant_context_cached(db: Session, request: Request) -> Requ
         return None
 
     hostname = normalize_hostname(request.headers.get("host")) or "single"
-    cache_key = "single" if not is_cloud_mode_enabled() else f"host:{hostname}"
-    now = time.monotonic()
-    cached = _tenant_context_cache.get(cache_key)
-    if cached and now - cached[0] < TENANT_CONTEXT_CACHE_TTL_SECONDS:
-        return cached[1]
+    cache_key = _tenant_context_cache_key("single" if not is_cloud_mode_enabled() else f"host:{hostname}")
+    cached = cache_get_json(cache_key)
+    if cached is not None:
+        return _deserialize_request_tenant_context(cached)
 
     tenant = resolve_request_tenant(db, request)
     context = to_request_tenant_context(tenant) if tenant else None
-    _tenant_context_cache[cache_key] = (now, context)
+    cache_set_json(
+        cache_key,
+        _serialize_request_tenant_context(context),
+        ttl_seconds=TENANT_CONTEXT_CACHE_TTL_SECONDS,
+    )
     return context

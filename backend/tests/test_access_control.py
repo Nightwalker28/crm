@@ -56,10 +56,10 @@ class RoleLevelTests(unittest.TestCase):
 
         self.assertEqual(role_level, 100)
 
-    def test_get_user_role_level_logs_legacy_token_fallback(self):
+    def test_get_user_role_level_debug_logs_legacy_token_fallback(self):
         user = SimpleNamespace(id=7, tenant_id=1, role_id=5)
 
-        with self.assertLogs("app.core.access_control", level="WARNING") as logs:
+        with self.assertLogs("app.core.access_control", level="DEBUG") as logs:
             role_level = access_control.get_user_role_level(FakeDB(100), user)
 
         self.assertEqual(role_level, 100)

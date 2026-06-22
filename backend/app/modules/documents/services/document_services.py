@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import hashlib
+import time
 import urllib.parse
 import zipfile
 from datetime import datetime, timedelta, timezone
@@ -12,6 +13,7 @@ from jose import JWTError, jwt
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.cache import cache_acquire_lock, cache_release_lock
 from app.core.config import settings
 from app.core.encrypted_fields import get_encrypted_model_value, set_encrypted_model_value
 from app.core.secrets import decrypt_secret_with_rotation
@@ -103,7 +105,10 @@ def _safe_return_path(return_path: str | None) -> str:
     value = (return_path or "/dashboard/documents").strip()
     if not value.startswith("/") or value.startswith("//") or "\\" in value:
         return "/dashboard/documents"
-    return value[:300]
+    parsed = urllib.parse.urlsplit(value)
+    if parsed.scheme or parsed.netloc or not parsed.path.startswith("/"):
+        return "/dashboard/documents"
+    return parsed.path[:300] or "/dashboard/documents"
 
 
 def _create_drive_oauth_state(
@@ -122,8 +127,8 @@ def _create_drive_oauth_state(
         "user_id": user.id,
         "frontend_origin": frontend_origin.rstrip("/"),
         "return_path": _safe_return_path(return_path),
-        "iat": now,
-        "exp": now + timedelta(minutes=settings.GOOGLE_OAUTH_STATE_EXPIRE_MINUTES),
+        "iat": int(now.timestamp()),
+        "exp": int((now + timedelta(minutes=settings.GOOGLE_OAUTH_STATE_EXPIRE_MINUTES)).timestamp()),
     }
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
@@ -139,6 +144,17 @@ def decode_drive_oauth_state(state_token: str | None) -> dict | None:
         return None
     if payload.get("provider") not in {DOCUMENT_PROVIDER_GOOGLE_DRIVE, DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE}:
         return None
+    try:
+        int(payload["tenant_id"])
+        int(payload["user_id"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    frontend_origin = str(payload.get("frontend_origin") or "").strip().rstrip("/")
+    parsed_origin = urllib.parse.urlsplit(frontend_origin)
+    if parsed_origin.scheme not in {"http", "https"} or not parsed_origin.netloc:
+        return None
+    payload["frontend_origin"] = frontend_origin
+    payload["return_path"] = _safe_return_path(payload.get("return_path"))
     return payload
 
 
@@ -207,6 +223,44 @@ def _connection_token(db: Session, connection: DocumentStorageConnection, field_
         key_version_field=f"{field_name}_key_version",
         legacy_decrypt=lambda value: decrypt_secret_with_rotation(value)[0],
     )
+
+
+def _usable_connection_access_token(db: Session, connection: DocumentStorageConnection) -> str | None:
+    expires_at = _as_utc(connection.token_expires_at)
+    access_token = _connection_token(db, connection, "access_token")
+    if access_token and expires_at and expires_at > _utcnow() + timedelta(minutes=1):
+        return access_token
+    return None
+
+
+def _refresh_connection_access_token_with_lock(
+    db: Session,
+    connection: DocumentStorageConnection,
+    *,
+    provider_label: str,
+    refresh,
+) -> str:
+    lock_key = f"document-storage-token-refresh:{connection.id}"
+    token = cache_acquire_lock(lock_key, ttl_seconds=30)
+    if not token:
+        for _ in range(10):
+            time.sleep(0.1)
+            db.refresh(connection)
+            access_token = _usable_connection_access_token(db, connection)
+            if access_token:
+                return access_token
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"{provider_label} token refresh is already in progress.",
+        )
+    try:
+        db.refresh(connection)
+        access_token = _usable_connection_access_token(db, connection)
+        if access_token:
+            return access_token
+        return refresh()
+    finally:
+        cache_release_lock(lock_key, token)
 
 
 def _upsert_google_drive_connection(
@@ -520,42 +574,45 @@ def _document_storage_connection(
 
 
 def _refresh_google_drive_access_token(db: Session, connection: DocumentStorageConnection) -> str:
-    expires_at = _as_utc(connection.token_expires_at)
-    access_token = _connection_token(db, connection, "access_token")
-    if access_token and expires_at and expires_at > _utcnow() + timedelta(minutes=1):
+    access_token = _usable_connection_access_token(db, connection)
+    if access_token:
         return access_token
-    refresh_token = _connection_token(db, connection, "refresh_token")
-    if not refresh_token:
-        connection.status = "error"
-        connection.last_error = "Reconnect Google Drive to restore document storage access."
+
+    def refresh() -> str:
+        refresh_token = _connection_token(db, connection, "refresh_token")
+        if not refresh_token:
+            connection.status = "error"
+            connection.last_error = "Reconnect Google Drive to restore document storage access."
+            db.add(connection)
+            db.commit()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
+        token_res = requests.post(
+            GOOGLE_TOKEN_URL,
+            data={
+                "client_id": settings.GOOGLE_CLIENT_ID,
+                "client_secret": settings.GOOGLE_CLIENT_SECRET,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+            },
+            timeout=20,
+        )
+        token_json = token_res.json()
+        if not token_res.ok or not token_json.get("access_token"):
+            connection.status = "error"
+            connection.last_error = "Failed to refresh Google Drive access."
+            db.add(connection)
+            db.commit()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
+        _set_connection_token(connection, "access_token", token_json["access_token"])
+        connection.token_expires_at = _token_expiry(token_json)
+        connection.status = "connected"
+        connection.last_error = None
         db.add(connection)
         db.commit()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
-    token_res = requests.post(
-        GOOGLE_TOKEN_URL,
-        data={
-            "client_id": settings.GOOGLE_CLIENT_ID,
-            "client_secret": settings.GOOGLE_CLIENT_SECRET,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
-        },
-        timeout=20,
-    )
-    token_json = token_res.json()
-    if not token_res.ok or not token_json.get("access_token"):
-        connection.status = "error"
-        connection.last_error = "Failed to refresh Google Drive access."
-        db.add(connection)
-        db.commit()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
-    _set_connection_token(connection, "access_token", token_json["access_token"])
-    connection.token_expires_at = _token_expiry(token_json)
-    connection.status = "connected"
-    connection.last_error = None
-    db.add(connection)
-    db.commit()
-    db.refresh(connection)
-    return token_json["access_token"]
+        db.refresh(connection)
+        return token_json["access_token"]
+
+    return _refresh_connection_access_token_with_lock(db, connection, provider_label="Google Drive", refresh=refresh)
 
 
 def _google_drive_backend_for_user(db: Session, *, tenant_id: int, user_id: int):
@@ -576,44 +633,48 @@ def _microsoft_onedrive_backend_for_user(db: Session, *, tenant_id: int, user_id
 
 
 def _refresh_microsoft_onedrive_access_token(db: Session, connection: DocumentStorageConnection) -> str:
-    expires_at = _as_utc(connection.token_expires_at)
-    access_token = _connection_token(db, connection, "access_token")
-    if access_token and expires_at and expires_at > _utcnow() + timedelta(minutes=1):
+    access_token = _usable_connection_access_token(db, connection)
+    if access_token:
         return access_token
-    refresh_token = _connection_token(db, connection, "refresh_token")
-    if not refresh_token:
-        connection.status = "error"
-        connection.last_error = "Reconnect Microsoft OneDrive to restore document storage access."
+
+    def refresh() -> str:
+        refresh_token = _connection_token(db, connection, "refresh_token")
+        if not refresh_token:
+            connection.status = "error"
+            connection.last_error = "Reconnect Microsoft OneDrive to restore document storage access."
+            db.add(connection)
+            db.commit()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
+        token_res = requests.post(
+            microsoft_token_url(),
+            data={
+                "client_id": settings.MICROSOFT_CLIENT_ID,
+                "client_secret": settings.MICROSOFT_CLIENT_SECRET,
+                "refresh_token": refresh_token,
+                "grant_type": "refresh_token",
+                "scope": microsoft_scope_string(MICROSOFT_DRIVE_SCOPE),
+            },
+            timeout=20,
+        )
+        token_json = token_res.json()
+        if not token_res.ok or not token_json.get("access_token"):
+            connection.status = "error"
+            connection.last_error = "Failed to refresh Microsoft OneDrive access."
+            db.add(connection)
+            db.commit()
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
+        _set_connection_token(connection, "access_token", token_json["access_token"])
+        if token_json.get("refresh_token"):
+            _set_connection_token(connection, "refresh_token", token_json["refresh_token"])
+        connection.token_expires_at = _token_expiry(token_json)
+        connection.status = "connected"
+        connection.last_error = None
         db.add(connection)
         db.commit()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
-    token_res = requests.post(
-        microsoft_token_url(),
-        data={
-            "client_id": settings.MICROSOFT_CLIENT_ID,
-            "client_secret": settings.MICROSOFT_CLIENT_SECRET,
-            "refresh_token": refresh_token,
-            "grant_type": "refresh_token",
-            "scope": microsoft_scope_string(MICROSOFT_DRIVE_SCOPE),
-        },
-        timeout=20,
-    )
-    token_json = token_res.json()
-    if not token_res.ok or not token_json.get("access_token"):
-        connection.status = "error"
-        connection.last_error = "Failed to refresh Microsoft OneDrive access."
-        db.add(connection)
-        db.commit()
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
-    _set_connection_token(connection, "access_token", token_json["access_token"])
-    if token_json.get("refresh_token"):
-        _set_connection_token(connection, "refresh_token", token_json["refresh_token"])
-    connection.token_expires_at = _token_expiry(token_json)
-    connection.status = "connected"
-    connection.last_error = None
-    db.add(connection)
-    db.commit()
-    return token_json["access_token"]
+        db.refresh(connection)
+        return token_json["access_token"]
+
+    return _refresh_connection_access_token_with_lock(db, connection, provider_label="Microsoft OneDrive", refresh=refresh)
 
 
 def require_connected_document_storage(
@@ -1031,7 +1092,7 @@ def get_client_document_share_or_404(
 
 
 def get_deleted_document_or_404(db: Session, *, tenant_id: int, document_id: int) -> Document:
-    document = documents_repository.get_document(db, tenant_id=tenant_id, document_id=document_id, include_deleted=True)
+    document = documents_repository.get_deleted_document(db, tenant_id=tenant_id, document_id=document_id)
     if not document:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deleted document not found.")
     return document

@@ -24,19 +24,21 @@ class TenantDomainServiceTests(unittest.TestCase):
         self.db.close()
 
     def test_create_tenant_domain_normalizes_and_generates_verification_record(self):
-        domain = tenant_domains.create_tenant_domain(
-            self.db,
-            tenant_id=1,
-            actor_user_id=7,
-            hostname="HTTPS://CRM.Example.com/path",
-            is_primary=True,
-        )
+        with patch.object(tenant_domains, "invalidate_tenant_context_cache") as invalidate:
+            domain = tenant_domains.create_tenant_domain(
+                self.db,
+                tenant_id=1,
+                actor_user_id=7,
+                hostname="HTTPS://CRM.Example.com/path",
+                is_primary=True,
+            )
 
         self.assertEqual(domain.hostname, "crm.example.com")
         self.assertEqual(domain.status, "pending")
         self.assertTrue(domain.verification_token.startswith("lynk-domain-verification="))
         self.assertTrue(domain.is_primary)
         self.assertEqual(self.db.query(ActivityLog).filter(ActivityLog.action == "tenant_domain.created").count(), 1)
+        invalidate.assert_called_once_with("crm.example.com")
 
     def test_create_tenant_domain_rejects_cross_tenant_duplicate(self):
         self.db.add(TenantDomain(tenant_id=2, hostname="crm.example.com", status="verified"))
@@ -51,11 +53,22 @@ class TenantDomainServiceTests(unittest.TestCase):
     def test_verify_tenant_domain_marks_verified(self, _verify):
         domain = tenant_domains.create_tenant_domain(self.db, tenant_id=1, actor_user_id=7, hostname="crm.example.com")
 
-        verified = tenant_domains.verify_tenant_domain(self.db, tenant_id=1, actor_user_id=7, domain_id=domain.id)
+        with patch.object(tenant_domains, "invalidate_tenant_context_cache") as invalidate:
+            verified = tenant_domains.verify_tenant_domain(self.db, tenant_id=1, actor_user_id=7, domain_id=domain.id)
 
         self.assertEqual(verified.status, "verified")
         self.assertIsNotNone(verified.verified_at)
         self.assertEqual(self.db.query(ActivityLog).filter(ActivityLog.action == "tenant_domain.verified").count(), 1)
+        invalidate.assert_called_once_with("crm.example.com")
+
+    def test_delete_tenant_domain_invalidates_tenant_context_cache(self):
+        domain = tenant_domains.create_tenant_domain(self.db, tenant_id=1, actor_user_id=7, hostname="crm.example.com")
+
+        with patch.object(tenant_domains, "invalidate_tenant_context_cache") as invalidate:
+            tenant_domains.delete_tenant_domain(self.db, tenant_id=1, actor_user_id=7, domain_id=domain.id)
+
+        self.assertIsNone(self.db.query(TenantDomain).filter(TenantDomain.id == domain.id).first())
+        invalidate.assert_called_once_with("crm.example.com")
 
     def test_verification_txt_record_uses_account_domain(self):
         domain = tenant_domains.create_tenant_domain(self.db, tenant_id=1, actor_user_id=7, hostname="lynk.maadmustafa.dev")

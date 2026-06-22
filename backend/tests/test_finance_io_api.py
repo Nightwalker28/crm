@@ -5,17 +5,23 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
+from pydantic import ValidationError
 
+from app.modules.finance.routes import io_search_routes
+from app.modules.finance.schema import InsertionOrderCreateRequest, InsertionOrderUpdateRequest
 from app.modules.finance.services import io_search_api
 from app.modules.finance.repositories import io_repository
+from app.modules.finance.services import io_search_services
 
 
 class FakeFinanceQuery:
     def __init__(self, record=None, duplicate_campaigns=None):
         self.record = record
         self.duplicate_campaigns = duplicate_campaigns or []
+        self.filters = []
 
     def filter(self, *args, **kwargs):
+        self.filters.extend(args)
         return self
 
     def distinct(self):
@@ -33,9 +39,11 @@ class FakeFinanceDB:
     def __init__(self, record=None, duplicate_campaigns=None):
         self.record = record
         self.duplicate_campaigns = duplicate_campaigns or []
+        self.last_query = None
 
     def query(self, *_args, **_kwargs):
-        return FakeFinanceQuery(self.record, self.duplicate_campaigns)
+        self.last_query = FakeFinanceQuery(self.record, self.duplicate_campaigns)
+        return self.last_query
 
 
 class FakeInsertionOrderQuery:
@@ -99,13 +107,13 @@ class FinanceDownloadTests(unittest.TestCase):
             file_name="outside.docx",
         )
         db = FakeFinanceDB(record)
-        current_user = SimpleNamespace(id=7)
+        current_user = SimpleNamespace(id=7, tenant_id=42)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             upload_root = Path(tmpdir) / "uploads" / "io-search"
             upload_root.mkdir(parents=True, exist_ok=True)
 
-            with patch.object(io_search_api, "IO_SEARCH_UPLOAD_DIR", upload_root), \
+            with patch.object(io_search_api, "get_io_search_upload_dir", return_value=upload_root), \
                  patch.object(io_search_api, "get_finance_module_id", return_value=1), \
                  patch.object(
                      io_search_api,
@@ -115,8 +123,33 @@ class FinanceDownloadTests(unittest.TestCase):
                 with self.assertRaises(HTTPException) as exc:
                     io_search_api.get_downloadable_insertion_order(db, current_user, "IO-1")
 
-        self.assertEqual(exc.exception.status_code, 403)
-        self.assertEqual(exc.exception.detail, "Access denied.")
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Invalid file location.")
+
+    def test_get_downloadable_insertion_order_rejects_absolute_stored_path(self):
+        record = SimpleNamespace(
+            file_path="/tmp/outside.docx",
+            file_name="outside.docx",
+        )
+        db = FakeFinanceDB(record)
+        current_user = SimpleNamespace(id=7, tenant_id=42)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            upload_root = Path(tmpdir) / "uploads" / "io-search"
+            upload_root.mkdir(parents=True, exist_ok=True)
+
+            with patch.object(io_search_api, "get_io_search_upload_dir", return_value=upload_root), \
+                 patch.object(io_search_api, "get_finance_module_id", return_value=1), \
+                 patch.object(
+                     io_search_api,
+                     "get_finance_user_scope",
+                     return_value=SimpleNamespace(user_id_filter=7),
+                 ):
+                with self.assertRaises(HTTPException) as exc:
+                    io_search_api.get_downloadable_insertion_order(db, current_user, "IO-1")
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Invalid file location.")
 
     def test_get_downloadable_insertion_order_sanitizes_fallback_file_name(self):
         record = SimpleNamespace(
@@ -124,7 +157,7 @@ class FinanceDownloadTests(unittest.TestCase):
             file_name="../nested/order.docx",
         )
         db = FakeFinanceDB(record)
-        current_user = SimpleNamespace(id=7)
+        current_user = SimpleNamespace(id=7, tenant_id=42)
 
         with tempfile.TemporaryDirectory() as tmpdir:
             upload_root = Path(tmpdir) / "uploads" / "io-search"
@@ -132,7 +165,7 @@ class FinanceDownloadTests(unittest.TestCase):
             target = upload_root / "order.docx"
             target.write_bytes(b"docx")
 
-            with patch.object(io_search_api, "IO_SEARCH_UPLOAD_DIR", upload_root), \
+            with patch.object(io_search_api, "get_io_search_upload_dir", return_value=upload_root), \
                  patch.object(io_search_api, "get_finance_module_id", return_value=1), \
                  patch.object(
                      io_search_api,
@@ -143,6 +176,47 @@ class FinanceDownloadTests(unittest.TestCase):
 
         self.assertEqual(file_path.name, "order.docx")
         self.assertEqual(file_name, "order.docx")
+
+    def test_get_downloadable_insertion_order_accepts_relative_stored_path(self):
+        record = SimpleNamespace(
+            file_path="tenant-42/order.pdf",
+            file_name="order.pdf",
+        )
+        db = FakeFinanceDB(record)
+        current_user = SimpleNamespace(id=7, tenant_id=42)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            upload_root = Path(tmpdir) / "uploads" / "io-search"
+            target = upload_root / "tenant-42" / "order.pdf"
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"pdf")
+
+            with patch.object(io_search_api, "get_io_search_upload_dir", return_value=upload_root), \
+                 patch.object(io_search_api, "get_finance_module_id", return_value=1), \
+                 patch.object(
+                     io_search_api,
+                     "get_finance_user_scope",
+                     return_value=SimpleNamespace(user_id_filter=7),
+                 ):
+                file_path, file_name = io_search_api.get_downloadable_insertion_order(db, current_user, "IO-1")
+
+        self.assertEqual(file_path, target)
+        self.assertEqual(file_name, "order.pdf")
+        self.assertTrue(any("finance_io.tenant_id" in str(condition) for condition in db.last_query.filters))
+
+    def test_download_media_type_uses_file_extension(self):
+        self.assertEqual(io_search_routes._download_media_type("order.pdf"), "application/pdf")
+        self.assertEqual(
+            io_search_routes._download_media_type("order.docx"),
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        )
+        self.assertEqual(io_search_routes._download_media_type("order.bin"), "application/octet-stream")
+
+    def test_upload_root_is_resolved_lazily_for_file_operations(self):
+        with patch.object(io_search_services, "IO_SEARCH_UPLOAD_DIR", None), \
+             patch.object(io_search_services.os, "getenv", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "IO_SEARCH_UPLOAD_DIR"):
+                io_search_services.get_io_search_upload_dir()
 
 
 class FinanceInsertionOrderListTests(unittest.TestCase):
@@ -168,6 +242,35 @@ class FinanceInsertionOrderListTests(unittest.TestCase):
             query.operations,
             ["count", "order_by_reset", "order_by", "offset:10", "limit:5", "all"],
         )
+
+    def test_list_serializer_respects_requested_fields(self):
+        item = io_search_routes._serialize_insertion_order_list_item(
+            {
+                "id": 1,
+                "io_number": "IO-001",
+                "customer_name": "Acme",
+                "total_amount": 50.0,
+                "notes": "private",
+            },
+            {"io_number"},
+        )
+
+        payload = item.model_dump(exclude_none=True)
+
+        self.assertEqual(payload, {"id": 1, "io_number": "IO-001"})
+
+
+class FinanceInsertionOrderValidationTests(unittest.TestCase):
+    def test_create_request_rejects_invalid_status(self):
+        with self.assertRaises(ValidationError):
+            InsertionOrderCreateRequest(customer_name="Acme", status="bogus")
+
+    def test_update_request_rejects_invalid_status(self):
+        with self.assertRaises(ValidationError):
+            InsertionOrderUpdateRequest(status="bogus")
+
+    def test_service_normalizes_status(self):
+        self.assertEqual(io_search_services.normalize_io_status("ACTIVE"), "active")
 
 
 if __name__ == "__main__":

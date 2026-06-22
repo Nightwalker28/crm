@@ -205,7 +205,7 @@ class MailImapSmtpTests(unittest.TestCase):
 
     @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mail-password-secret")
     @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v6")
-    @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
+    @patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", "test-mail-secret")
     def test_sync_imap_smtp_inbox_stores_user_scoped_message(self):
         raw_message = (
             b"From: Sender <sender@example.com>\r\n"
@@ -267,7 +267,7 @@ class MailImapSmtpTests(unittest.TestCase):
 
     @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mail-password-secret")
     @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v6")
-    @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
+    @patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", "test-mail-secret")
     def test_sync_imap_smtp_inbox_filters_boundary_uid_and_keeps_cursor_order(self):
         connection = UserMailConnection(
             id=1,
@@ -302,7 +302,7 @@ class MailImapSmtpTests(unittest.TestCase):
 
     @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mail-password-secret")
     @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v6")
-    @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
+    @patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", "test-mail-secret")
     def test_send_imap_smtp_message_uses_smtp_and_appends_to_sent_folder(self):
         connection = UserMailConnection(
             id=1,
@@ -348,7 +348,7 @@ class MailImapSmtpTests(unittest.TestCase):
 
     @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mail-password-secret")
     @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v6")
-    @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
+    @patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", "test-mail-secret")
     def test_send_imap_smtp_message_records_sent_append_failure(self):
         connection = UserMailConnection(
             id=1,
@@ -808,7 +808,7 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(get_mock.call_args_list[0].kwargs["params"]["fields"], mail_services.GMAIL_MESSAGE_LIST_FIELDS)
         self.assertEqual(get_mock.call_args_list[1].kwargs["params"]["fields"], mail_services.GMAIL_MESSAGE_DETAIL_FIELDS)
 
-    @patch.object(mail_services.settings, "JWT_SECRET", "test-mail-secret")
+    @patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", "test-mail-secret")
     def test_disconnect_mail_connection_clears_credentials_and_disables_capabilities(self):
         self.db.add(
             UserMailConnection(
@@ -860,8 +860,7 @@ class MailImapSmtpTests(unittest.TestCase):
         self.assertEqual(exc.exception.status_code, 404)
         self.assertEqual(self.db.query(UserMailConnection).count(), 0)
 
-    @patch.object(mail_services.settings, "JWT_SECRET", "old-mail-secret")
-    @patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", None)
+    @patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", "old-mail-secret")
     def test_imap_password_reencrypts_after_secret_rotation(self):
         legacy_encrypted_password = encrypt_secret("app-password")
         self.db.add(
@@ -888,8 +887,9 @@ class MailImapSmtpTests(unittest.TestCase):
         fake_imap = FakeImapClient()
         fake_smtp = FakeSmtpClient()
 
-        with patch.object(mail_services.settings, "JWT_SECRET", "old-mail-secret"), \
+        with patch.object(mail_services.settings, "JWT_SECRET", "rotated-jwt-secret"), \
              patch.object(mail_services.settings, "MAIL_CREDENTIAL_SECRET", "new-mail-secret"), \
+             patch.object(mail_services.settings, "MAIL_CREDENTIAL_PREVIOUS_SECRETS", ["old-mail-secret"]), \
              patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mail-password-secret"), \
              patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v5"), \
              patch.object(mail_services, "_connect_smtp", return_value=fake_smtp), \

@@ -112,8 +112,18 @@ def get_document(db: Session, *, tenant_id: int, document_id: int, include_delet
         .options(joinedload(Document.links), joinedload(Document.client_shares))
         .filter(Document.id == document_id, Document.tenant_id == tenant_id)
     )
-    query = query.filter(Document.deleted_at.is_not(None) if include_deleted else Document.deleted_at.is_(None))
+    if not include_deleted:
+        query = query.filter(Document.deleted_at.is_(None))
     return query.first()
+
+
+def get_deleted_document(db: Session, *, tenant_id: int, document_id: int) -> Document | None:
+    return (
+        db.query(Document)
+        .options(joinedload(Document.links), joinedload(Document.client_shares))
+        .filter(Document.id == document_id, Document.tenant_id == tenant_id, Document.deleted_at.is_not(None))
+        .first()
+    )
 
 
 def list_deleted_documents(db: Session, *, tenant_id: int, pagination) -> tuple[list[Document], int]:

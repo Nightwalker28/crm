@@ -1,3 +1,5 @@
+import mimetypes
+
 from fastapi import APIRouter, Body, Depends, File, UploadFile, status, Request, Query, HTTPException, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
@@ -130,30 +132,22 @@ def _enabled_insertion_order_import_fields(db: Session, tenant_id: int) -> list[
 
 def _serialize_insertion_order_list_item(record: dict, fields: set[str]) -> InsertionOrderListItem:
     safe_fields = set(fields)
-    safe_fields.update(
-        {
-            "customer_contact_id",
-            "customer_organization_id",
-            "counterparty_reference",
-            "external_reference",
-            "effective_date",
-            "start_date",
-            "end_date",
-            "subtotal_amount",
-            "tax_amount",
-            "total_amount",
-            "status",
-            "currency",
-            "issue_date",
-            "due_date",
-            "notes",
-            "custom_fields",
-        }
-    )
     payload = {"id": record["id"]}
     for field in safe_fields:
         payload[field] = record.get(field)
     return InsertionOrderListItem.model_validate(payload)
+
+
+def _download_media_type(file_name: str) -> str:
+    guessed, _ = mimetypes.guess_type(file_name)
+    if guessed:
+        return guessed
+    suffix = file_name.rsplit(".", 1)[-1].lower() if "." in file_name else ""
+    if suffix == "pdf":
+        return "application/pdf"
+    if suffix == "docx":
+        return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return "application/octet-stream"
 
 
 @router.get("/insertion-orders", response_model=InsertionOrderListResponse)
@@ -455,5 +449,5 @@ def download_insertion_order_file(
     return FileResponse(
         file_path,
         filename=file_name,
-        media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        media_type=_download_media_type(file_name),
     )

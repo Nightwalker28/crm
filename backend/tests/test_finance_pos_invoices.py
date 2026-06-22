@@ -1,10 +1,13 @@
 import unittest
 from decimal import Decimal
+from datetime import date
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from app.modules.finance.models import FinancePosInvoice
 from app.modules.finance.repositories import pos_invoice_repository
+from app.modules.finance.services import io_search_services
+from app.modules.finance.services import pos_invoice_services
 from app.modules.finance.services.pos_invoice_services import serialize_invoice
 
 
@@ -31,6 +34,18 @@ class FakePosInvoiceQuery:
     def all(self):
         self.operations.append("all")
         return [SimpleNamespace(id=2, invoice_number="POS-002")]
+
+
+class FakeDeleteDB:
+    def __init__(self):
+        self.added = []
+        self.committed = False
+
+    def add(self, value):
+        self.added.append(value)
+
+    def commit(self):
+        self.committed = True
 
 
 class FinancePosInvoiceTests(unittest.TestCase):
@@ -81,6 +96,40 @@ class FinancePosInvoiceTests(unittest.TestCase):
             query.operations,
             ["count", "order_by_reset", "order_by", "offset:10", "limit:5", "all"],
         )
+
+    def test_soft_delete_invoice_uses_aware_utc_timestamp(self):
+        invoice = FinancePosInvoice(
+            id=1,
+            tenant_id=10,
+            user_id=1,
+            invoice_number="POS-1",
+            mode="pos",
+            status="issued",
+            payment_status="unpaid",
+            template_id="modern",
+            accent_color="#14b8a6",
+            customer_name="Buyer",
+            currency="USD",
+            subtotal_amount=Decimal("10.00"),
+            discount_amount=Decimal("0.00"),
+            tax_rate=Decimal("0.00"),
+            tax_amount=Decimal("0.00"),
+            total_amount=Decimal("10.00"),
+            amount_paid=Decimal("0.00"),
+        )
+        db = FakeDeleteDB()
+
+        with patch.object(pos_invoice_services, "get_invoice_or_404", return_value=invoice), \
+             patch.object(pos_invoice_services, "log_activity"):
+            pos_invoice_services.soft_delete_invoice(db, SimpleNamespace(id=1, tenant_id=10), invoice_id=1)
+
+        self.assertIsNotNone(invoice.deleted_at)
+        self.assertIsNotNone(invoice.deleted_at.tzinfo)
+        self.assertTrue(db.committed)
+
+    def test_parse_human_date_annotation_matches_date_return(self):
+        self.assertEqual(io_search_services.parse_human_date.__annotations__["return"], "date | None")
+        self.assertIsInstance(io_search_services.parse_human_date("2026-06-22"), date)
 
 
 if __name__ == "__main__":

@@ -9,6 +9,7 @@ from typing import Literal
 
 from fastapi import HTTPException, Request, status
 from jose import jwt, JWTError
+from jose.exceptions import ExpiredSignatureError
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -245,7 +246,28 @@ def rotate_refresh_token(user: User, db: Session, *, old_refresh_token_id: int) 
     if deleted != 1:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session revoked")
-    return create_refresh_token(user, db)
+
+    jti = uuid.uuid4().hex
+    expires_at = datetime.now(timezone.utc) + timedelta(
+        hours=settings.REFRESH_TOKEN_EXPIRE_HOURS
+    )
+    db.add(
+        RefreshToken(
+            user_id=user.id,
+            token_jti=jti,
+            expires_at=expires_at,
+        )
+    )
+    db.commit()
+
+    payload = {
+        "sub": str(user.id),
+        "tenant_id": user.tenant_id,
+        "type": "refresh",
+        "jti": jti,
+        "exp": expires_at,
+    }
+    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
 
 
 # -------------------------------------------------------------------
@@ -258,6 +280,11 @@ def decode_token(token: str, expected_type: Literal["access", "refresh"]) -> dic
             token,
             settings.JWT_SECRET,
             algorithms=[settings.JWT_ALGORITHM],
+        )
+    except ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired",
         )
     except JWTError:
         raise HTTPException(

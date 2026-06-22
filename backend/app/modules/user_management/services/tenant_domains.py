@@ -10,7 +10,7 @@ from typing import Any
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
-from app.core.tenancy import normalize_hostname
+from app.core.tenancy import invalidate_tenant_context_cache, normalize_hostname
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.user_management.models import Tenant, TenantDomain
 
@@ -128,6 +128,7 @@ def create_tenant_domain(
     db.add(domain)
     db.commit()
     db.refresh(domain)
+    invalidate_tenant_context_cache(domain.hostname)
     safe_log_activity(
         db,
         tenant_id=tenant_id,
@@ -160,6 +161,7 @@ def verify_tenant_domain(
     db.add(domain)
     db.commit()
     db.refresh(domain)
+    invalidate_tenant_context_cache(domain.hostname)
     safe_log_activity(
         db,
         tenant_id=tenant_id,
@@ -180,8 +182,10 @@ def verify_tenant_domain(
 def delete_tenant_domain(db: Session, *, tenant_id: int, actor_user_id: int, domain_id: int) -> None:
     domain = _get_tenant_domain(db, tenant_id=tenant_id, domain_id=domain_id)
     before = _safe_domain_state(domain)
+    hostname = domain.hostname
     db.delete(domain)
     db.commit()
+    invalidate_tenant_context_cache(hostname)
     safe_log_activity(
         db,
         tenant_id=tenant_id,

@@ -1,5 +1,7 @@
 from typing import Any, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.modules.finance.services.io_search_services import normalize_io_status
 
 
 class InsertionOrderImportResponse(BaseModel):
@@ -34,6 +36,11 @@ class InsertionOrderBase(BaseModel):
     notes: Optional[str] = None
     custom_fields: dict[str, Any] | None = None
 
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str) -> str:
+        return normalize_io_status(value)
+
 
 class InsertionOrderCreateRequest(InsertionOrderBase):
     pass
@@ -59,6 +66,11 @@ class InsertionOrderUpdateRequest(BaseModel):
     total_amount: Optional[float] = None
     notes: Optional[str] = None
     custom_fields: dict[str, Any] | None = None
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        return normalize_io_status(value, default=None)
 
 
 class InsertionOrderResponse(BaseModel):

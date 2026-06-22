@@ -148,11 +148,16 @@ def get_current_user(
         )
 
     # 1. Try access token
+    access_token_expired = False
     if access_token:
         try:
             payload = decode_token(access_token, expected_type="access")
             user_id = _validate_request_tenant(request, payload)
-        except HTTPException:
+        except HTTPException as exc:
+            if exc.status_code == status.HTTP_401_UNAUTHORIZED and exc.detail == "Token expired":
+                access_token_expired = True
+            else:
+                raise
             payload = None
 
         if payload:
@@ -174,8 +179,13 @@ def get_current_user(
             )
             return request.state._current_user
 
-    # 2. Access token missing or expired → try refresh
+    # 2. Access token missing or expired -> try refresh
     if refresh_token:
+        if access_token and not access_token_expired:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token",
+            )
         try:
             payload = decode_token(refresh_token, expected_type="refresh")
             user_id = _validate_request_tenant(request, payload)

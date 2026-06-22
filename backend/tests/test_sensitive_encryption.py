@@ -3,7 +3,12 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 from app.core.encrypted_fields import get_encrypted_model_value, set_encrypted_model_value
-from app.core.secrets import decrypt_application_secret, encrypt_application_secret
+from app.core.secrets import (
+    decrypt_application_secret,
+    decrypt_secret,
+    encrypt_application_secret,
+    encrypt_secret,
+)
 
 
 class SensitiveEncryptionTests(unittest.TestCase):
@@ -41,6 +46,29 @@ class SensitiveEncryptionTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, "could not be decrypted"):
             get_encrypted_model_value(db, model, "token", key_version_field="token_key_version")
+
+    @patch("app.core.secrets.settings.MAIL_CREDENTIAL_SECRET", "mail-secret")
+    @patch("app.core.secrets.settings.JWT_SECRET", "jwt-secret")
+    def test_mail_credentials_do_not_depend_on_jwt_secret(self):
+        encrypted = encrypt_secret("mail-password")
+
+        with patch("app.core.secrets.settings.JWT_SECRET", "rotated-jwt-secret"):
+            self.assertEqual(decrypt_secret(encrypted), "mail-password")
+
+    @patch("app.core.secrets.settings.JWT_SECRET", "jwt-secret")
+    @patch("app.core.secrets.settings.MAIL_CREDENTIAL_SECRET", "")
+    def test_mail_credentials_reject_jwt_fallback(self):
+        with self.assertRaisesRegex(RuntimeError, "MAIL_CREDENTIAL_SECRET must be set"):
+            encrypt_secret("mail-password")
+
+    @patch("app.core.secrets.settings.MAIL_CREDENTIAL_SECRET", "old-mail-secret")
+    @patch("app.core.secrets.settings.MAIL_CREDENTIAL_PREVIOUS_SECRETS", [])
+    def test_mail_credentials_can_decrypt_previous_mail_secret(self):
+        encrypted = encrypt_secret("mail-password")
+
+        with patch("app.core.secrets.settings.MAIL_CREDENTIAL_SECRET", "new-mail-secret"), \
+             patch("app.core.secrets.settings.MAIL_CREDENTIAL_PREVIOUS_SECRETS", ["old-mail-secret"]):
+            self.assertEqual(decrypt_secret(encrypted), "mail-password")
 
 
 if __name__ == "__main__":

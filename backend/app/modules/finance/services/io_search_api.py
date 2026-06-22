@@ -1,6 +1,6 @@
 from pathlib import Path
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, Request, UploadFile, status
@@ -23,11 +23,12 @@ from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
 from app.modules.finance.models import FinanceIO
 from app.modules.finance.services.io_search_services import (
-    IO_SEARCH_UPLOAD_DIR,
     IO_NUMBER_PAD,
     IO_NUMBER_PREFIX,
     _build_insertion_orders_query,
     _get_next_io_sequence,
+    get_io_search_upload_dir,
+    normalize_io_status,
     _normalize_allowed_currency,
     _normalize_text,
     _parse_decimal,
@@ -349,12 +350,12 @@ def _create_imported_insertion_order(
         customer_name=customer_name,
         counterparty_reference=_normalize_text(payload.get("counterparty_reference")),
         external_reference=_normalize_text(payload.get("external_reference")),
-        issue_date=parse_human_date(payload["issue_date"]) if payload.get("issue_date") else datetime.utcnow().date(),
+        issue_date=parse_human_date(payload["issue_date"]) if payload.get("issue_date") else datetime.now(timezone.utc).date(),
         effective_date=parse_human_date(payload["effective_date"]) if payload.get("effective_date") else None,
         due_date=parse_human_date(payload["due_date"]) if payload.get("due_date") else None,
         start_date=parse_human_date(payload["start_date"]) if payload.get("start_date") else None,
         end_date=parse_human_date(payload["end_date"]) if payload.get("end_date") else None,
-        status=_normalize_text(payload.get("status")) or "draft",
+        status=normalize_io_status(payload.get("status")),
         currency=_normalize_allowed_currency(db, current_user, payload.get("currency")),
         subtotal_amount=_parse_decimal(payload.get("subtotal_amount")),
         tax_amount=_parse_decimal(payload.get("tax_amount")),
@@ -476,9 +477,15 @@ def _add_import_chunk_counts(target: dict[str, int], chunk_summary: dict[str, in
 
 
 def _resolve_io_download_path(record: FinanceIO) -> Path:
-    allowed_root = IO_SEARCH_UPLOAD_DIR.resolve()
+    allowed_root = get_io_search_upload_dir().resolve()
     if record.file_path:
-        file_path = Path(record.file_path).resolve()
+        raw_path = Path(record.file_path)
+        if raw_path.is_absolute() or ".." in raw_path.parts:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid file location.",
+            )
+        file_path = (allowed_root / raw_path).resolve()
     else:
         file_name = Path((record.file_name or "").strip()).name
         if not file_name:
@@ -688,6 +695,7 @@ def get_downloadable_insertion_order(db: Session, current_user, io_number: str) 
 
     query = db.query(FinanceIO).filter(
         FinanceIO.module_id == module_id,
+        FinanceIO.tenant_id == current_user.tenant_id,
         FinanceIO.io_number == io_number,
         FinanceIO.deleted_at.is_(None),
     )

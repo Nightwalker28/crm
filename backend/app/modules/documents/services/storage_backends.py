@@ -14,6 +14,7 @@ from app.core.uploads import UPLOADS_DIR
 
 DOCUMENT_STORAGE_DIR = UPLOADS_DIR / "documents"
 DOCUMENT_STORAGE_DIR.mkdir(parents=True, exist_ok=True)
+LOCAL_SAVE_ATTEMPTS = 5
 
 
 @dataclass(frozen=True)
@@ -45,15 +46,28 @@ class LocalDocumentStorage:
     def save(self, *, tenant_id: int, extension: str, content: bytes) -> StoredDocument:
         target_dir = DOCUMENT_STORAGE_DIR / f"tenant-{tenant_id}"
         target_dir.mkdir(parents=True, exist_ok=True)
-        path = target_dir / f"{uuid4().hex}.{extension}"
-        path.write_bytes(content)
-        return StoredDocument(provider=self.provider, storage_path=path.relative_to(DOCUMENT_STORAGE_DIR).as_posix())
+        for _ in range(LOCAL_SAVE_ATTEMPTS):
+            path = target_dir / f"{uuid4().hex}.{extension}"
+            try:
+                with path.open("xb") as handle:
+                    handle.write(content)
+            except FileExistsError:
+                continue
+            return StoredDocument(provider=self.provider, storage_path=path.relative_to(DOCUMENT_STORAGE_DIR).as_posix())
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Could not store document file.")
 
     def resolve_path(self, storage_path: str) -> Path:
         root = DOCUMENT_STORAGE_DIR.resolve()
-        normalized_path = (storage_path or "").strip().lstrip("/")
-        if normalized_path.startswith("documents/"):
-            normalized_path = normalized_path.removeprefix("documents/")
+        normalized_path = (storage_path or "").strip()
+        if (
+            not normalized_path
+            or Path(normalized_path).is_absolute()
+            or normalized_path.startswith("/")
+            or normalized_path.startswith("documents/")
+            or "\\" in normalized_path
+            or any(part in {"", ".", ".."} for part in Path(normalized_path).parts)
+        ):
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document file not found.")
         path = (root / normalized_path).resolve()
         if root != path and root not in path.parents:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document file not found.")

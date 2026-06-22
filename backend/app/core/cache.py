@@ -4,6 +4,7 @@ import json
 import logging
 import os
 import threading
+from uuid import uuid4
 from collections import OrderedDict
 from time import monotonic
 from typing import Any
@@ -26,6 +27,8 @@ _redis_lock = threading.Lock()
 _redis_failure_logged = False
 _redis_consecutive_failures = 0
 _redis_circuit_open_until = 0.0
+_local_locks: dict[str, tuple[float, str]] = {}
+_local_locks_lock = threading.Lock()
 
 
 def _record_redis_failure(exc: Exception) -> None:
@@ -154,9 +157,14 @@ def cache_delete_prefix(prefix: str) -> None:
     client = _get_redis_client()
     if client is not None:
         try:
-            keys = client.keys(f"{prefix}*")
-            if keys:
-                client.delete(*keys)
+            cursor = 0
+            pattern = f"{prefix}*"
+            while True:
+                cursor, keys = client.scan(cursor=cursor, match=pattern, count=500)
+                if keys:
+                    client.delete(*keys)
+                if cursor == 0:
+                    break
         except Exception as exc:  # pragma: no cover - network/service dependent
             logger.warning("Redis delete prefix failed for %s: %s", prefix, exc)
             _record_redis_failure(exc)
@@ -167,3 +175,50 @@ def cache_delete_prefix(prefix: str) -> None:
     for key in list(_local_cache.keys()):
         if key.startswith(prefix):
             _local_cache.pop(key, None)
+
+
+def cache_acquire_lock(key: str, *, ttl_seconds: int = 30) -> str | None:
+    token = uuid4().hex
+    client = _get_redis_client()
+    if client is not None:
+        try:
+            acquired = client.set(key, token, nx=True, ex=ttl_seconds)
+            return token if acquired else None
+        except Exception as exc:  # pragma: no cover - network/service dependent
+            logger.warning("Redis lock acquire failed for key %s: %s", key, exc)
+            _record_redis_failure(exc)
+        return None
+    if settings.REDIS_URL:
+        return None
+
+    now = monotonic()
+    with _local_locks_lock:
+        existing = _local_locks.get(key)
+        if existing and existing[0] > now:
+            return None
+        _local_locks[key] = (now + ttl_seconds, token)
+        return token
+
+
+def cache_release_lock(key: str, token: str) -> None:
+    client = _get_redis_client()
+    if client is not None:
+        try:
+            client.eval(
+                "if redis.call('get', KEYS[1]) == ARGV[1] then "
+                "return redis.call('del', KEYS[1]) else return 0 end",
+                1,
+                key,
+                token,
+            )
+        except Exception as exc:  # pragma: no cover - network/service dependent
+            logger.warning("Redis lock release failed for key %s: %s", key, exc)
+            _record_redis_failure(exc)
+        return
+    if settings.REDIS_URL:
+        return
+
+    with _local_locks_lock:
+        existing = _local_locks.get(key)
+        if existing and existing[1] == token:
+            _local_locks.pop(key, None)

@@ -71,6 +71,41 @@ class CacheTests(unittest.TestCase):
 
         self.assertGreater(cache._redis_circuit_open_until, 0)
 
+    def test_redis_prefix_delete_uses_scan_batches(self):
+        class FakeRedisClient:
+            def __init__(self):
+                self.scan_calls = []
+                self.deleted = []
+
+            def scan(self, *, cursor, match, count):
+                self.scan_calls.append((cursor, match, count))
+                if cursor == 0:
+                    return 7, ["custom-field-definitions:1"]
+                return 0, ["custom-field-definitions:2"]
+
+            def delete(self, *keys):
+                self.deleted.extend(keys)
+
+            def keys(self, *_args, **_kwargs):  # pragma: no cover - fails if used
+                raise AssertionError("cache_delete_prefix must not use KEYS")
+
+        client = FakeRedisClient()
+
+        with patch.object(cache, "_get_redis_client", return_value=client):
+            cache.cache_delete_prefix("custom-field-definitions:")
+
+        self.assertEqual(
+            client.scan_calls,
+            [
+                (0, "custom-field-definitions:*", 500),
+                (7, "custom-field-definitions:*", 500),
+            ],
+        )
+        self.assertEqual(
+            client.deleted,
+            ["custom-field-definitions:1", "custom-field-definitions:2"],
+        )
+
 
 class ModuleCsvTests(unittest.IsolatedAsyncioTestCase):
     async def test_read_upload_bytes_rejects_non_csv_content_type_for_csv_upload(self):
