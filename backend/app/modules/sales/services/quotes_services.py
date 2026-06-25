@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.duplicates import DuplicateMode, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.module_export import dict_rows_to_csv_bytes
+from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.platform.services.custom_fields import (
     hydrate_custom_field_record,
     hydrate_custom_field_records,
@@ -80,6 +81,16 @@ def _coerce_decimal(value) -> Decimal:
         return Decimal(str(value))
     except (InvalidOperation, ValueError) as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid amount") from exc
+
+
+def _parse_optional_int(value, field_name: str) -> int | None:
+    cleaned = _coerce_optional(value)
+    if cleaned is None:
+        return None
+    try:
+        return int(cleaned)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{field_name} '{cleaned}' must be an integer.") from exc
 
 
 def _validate_status(value: str | None) -> str:
@@ -151,13 +162,7 @@ def _normalize_quote_payload(data: dict, *, partial: bool = False) -> dict:
 
 
 def _generate_quote_number(db: Session, *, tenant_id: int) -> str:
-    prefix = f"Q-{datetime.utcnow():%Y%m%d}"
-    count = (
-        db.query(SalesQuote.quote_id)
-        .filter(SalesQuote.tenant_id == tenant_id, SalesQuote.quote_number.like(f"{prefix}-%"))
-        .count()
-    )
-    return f"{prefix}-{count + 1:04d}"
+    return allocate_business_number(db, tenant_id=tenant_id, scope="sales_quotes", prefix="Q")
 
 
 def _hash_value(value: str | None) -> str | None:
@@ -575,6 +580,9 @@ def import_quotes_from_csv(db: Session, file_bytes: bytes, *, tenant_id: int, de
                 "quote_number": _coerce_optional(normalized.get("quote_number")),
                 "title": _coerce_optional(normalized.get("title")),
                 "customer_name": normalized.get("customer_name"),
+                "contact_id": _parse_optional_int(normalized.get("contact_id"), "contact_id"),
+                "organization_id": _parse_optional_int(normalized.get("organization_id"), "organization_id"),
+                "opportunity_id": _parse_optional_int(normalized.get("opportunity_id"), "opportunity_id"),
                 "status": normalized.get("status"),
                 "currency": normalized.get("currency"),
                 "subtotal_amount": normalized.get("subtotal_amount"),
@@ -584,6 +592,10 @@ def import_quotes_from_csv(db: Session, file_bytes: bytes, *, tenant_id: int, de
                 "notes": _coerce_optional(normalized.get("notes")),
                 "assigned_to": assigned_to,
             })
+            _ensure_linked_records(db, payload, tenant_id=tenant_id)
+        except HTTPException as exc:
+            failures.append({"row_number": row_number, "record_identifier": identifier, "reason": str(exc.detail)})
+            continue
         except Exception as exc:
             failures.append({"row_number": row_number, "record_identifier": identifier, "reason": str(exc)})
             continue

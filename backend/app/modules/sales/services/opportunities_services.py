@@ -404,6 +404,28 @@ def get_opportunity_or_404(
     )
 
 
+def get_deleted_opportunity_or_404(
+    db: Session,
+    opportunity_id: int,
+    *,
+    tenant_id: int,
+) -> SalesOpportunity:
+    opportunity = opportunities_repository.get_deleted_opportunity(
+        db,
+        tenant_id=tenant_id,
+        opportunity_id=opportunity_id,
+    )
+    if not opportunity:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Opportunity not found in recycle bin")
+    return hydrate_custom_field_record(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_opportunities",
+        record=opportunity,
+        record_id=opportunity.opportunity_id,
+    )
+
+
 def create_opportunity(db: Session, data: dict, *, current_user) -> SalesOpportunity:
     custom_data = validate_custom_field_payload(
         db,

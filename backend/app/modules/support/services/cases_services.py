@@ -9,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.module_filters import apply_filter_conditions
+from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.support.models import SupportCase, SupportCaseComment, SupportCaseEvent
 from app.modules.user_management.models import User
@@ -17,6 +18,7 @@ from app.modules.user_management.models import User
 CASE_STATUSES = {"new", "open", "pending", "resolved", "closed"}
 CASE_PRIORITIES = {"low", "medium", "high", "urgent"}
 CLOSED_STATUSES = {"resolved", "closed"}
+CASE_NUMBER_RETRY_LIMIT = 3
 SUPPORT_CASE_SORT_FIELDS = {
     "case_number": SupportCase.case_number,
     "subject": SupportCase.subject,
@@ -44,6 +46,11 @@ def _clean_text(value) -> str | None:
         return None
     cleaned = str(value).strip()
     return cleaned or None
+
+
+def _normalize_source(value) -> str | None:
+    cleaned = _clean_text(value)
+    return cleaned.lower() if cleaned else None
 
 
 def _validate_choice(value: str | None, allowed: set[str], *, default: str, detail: str) -> str:
@@ -96,9 +103,11 @@ def _normalize_payload(db: Session, payload: dict, *, tenant_id: int, current_us
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subject is required")
     elif not partial:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subject is required")
-    for field in {"description", "category", "source"}:
+    for field in {"description", "category"}:
         if field in data:
             data[field] = _clean_text(data[field])
+    if "source" in data:
+        data["source"] = _normalize_source(data["source"])
     if "status" in data:
         data["status"] = _validate_choice(data["status"], CASE_STATUSES, default="new", detail="Invalid case status")
     elif not partial:
@@ -108,20 +117,18 @@ def _normalize_payload(db: Session, payload: dict, *, tenant_id: int, current_us
     elif not partial:
         data["priority"] = "medium"
     if not partial:
-        data["case_number"] = data.get("case_number") or _generate_case_number(db, tenant_id=tenant_id)
         data["created_by_id"] = current_user.id if current_user else None
     _ensure_linked_records(db, data, tenant_id=tenant_id)
     return data
 
 
-def _generate_case_number(db: Session, *, tenant_id: int) -> str:
-    prefix = f"CASE-{datetime.now(timezone.utc):%Y%m%d}"
-    count = (
-        db.query(SupportCase.id)
-        .filter(SupportCase.tenant_id == tenant_id, SupportCase.case_number.like(f"{prefix}-%"))
-        .count()
-    )
-    return f"{prefix}-{count + 1:04d}"
+def _generate_case_number(db: Session, *, tenant_id: int, now: datetime | None = None) -> str:
+    return allocate_business_number(db, tenant_id=tenant_id, scope="support_cases", prefix="CASE", timestamp=now)
+
+
+def _is_case_number_conflict(exc: IntegrityError) -> bool:
+    message = str(getattr(exc, "orig", exc)).lower()
+    return "support_cases" in message and ("case_number" in message or "tenant_number" in message)
 
 
 def _record_event(db: Session, case: SupportCase, *, event_type: str, current_user, payload: dict | None = None) -> SupportCaseEvent:
@@ -224,7 +231,8 @@ def get_case_or_404(db: Session, *, tenant_id: int, case_id: int) -> SupportCase
 
 
 def _client_scope_filter(query, *, tenant_id: int, contact_id: int | None, organization_id: int | None, source: str = "client_portal"):
-    query = query.filter(SupportCase.tenant_id == tenant_id, SupportCase.source == source)
+    normalized_source = _normalize_source(source)
+    query = query.filter(SupportCase.tenant_id == tenant_id, func.lower(func.coalesce(SupportCase.source, "")) == (normalized_source or ""))
     conditions = []
     if contact_id:
         conditions.append(SupportCase.contact_id == contact_id)
@@ -312,31 +320,42 @@ def create_client_support_case(
 ) -> SupportCase:
     if not contact_id and not organization_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client account is not linked to a support profile")
+    normalized_source = _normalize_source(source) or "client_portal"
     data = {
         "subject": _clean_text(payload.get("subject")),
         "description": _clean_text(payload.get("description")),
         "category": _clean_text(payload.get("category")),
         "priority": _validate_choice(payload.get("priority"), CASE_PRIORITIES, default="medium", detail="Invalid case priority"),
         "status": "new",
-        "source": source,
+        "source": normalized_source,
         "contact_id": contact_id,
         "organization_id": organization_id,
-        "case_number": _generate_case_number(db, tenant_id=tenant_id),
         "created_by_id": None,
     }
     if not data["subject"]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subject is required")
-    item = SupportCase(tenant_id=tenant_id, **data)
-    db.add(item)
-    db.flush()
-    _record_event(db, item, event_type=event_type, current_user=None, payload={"category": data["category"], "source": source})
-    case_id = item.id
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Support case could not be created") from exc
-    return get_case_or_404(db, tenant_id=tenant_id, case_id=case_id)
+    for attempt in range(CASE_NUMBER_RETRY_LIMIT):
+        item = SupportCase(
+            tenant_id=tenant_id,
+            **data,
+            case_number=_generate_case_number(db, tenant_id=tenant_id),
+        )
+        db.add(item)
+        try:
+            db.flush()
+            _record_event(db, item, event_type=event_type, current_user=None, payload={"category": data["category"], "source": normalized_source})
+            db.commit()
+            db.refresh(item)
+            return item
+        except IntegrityError as exc:
+            db.rollback()
+            if _is_case_number_conflict(exc) and attempt < CASE_NUMBER_RETRY_LIMIT - 1:
+                continue
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Support case could not be created") from exc
+        except Exception:
+            db.rollback()
+            raise
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Support case could not be created")
 
 
 def add_client_support_case_comment(
@@ -355,10 +374,17 @@ def add_client_support_case_comment(
         body=body,
         is_internal=False,
     )
-    db.add(comment)
-    _record_event(db, case, event_type="client_replied", current_user=None)
-    db.commit()
-    db.refresh(comment)
+    try:
+        db.add(comment)
+        _record_event(db, case, event_type="client_replied", current_user=None)
+        db.commit()
+        db.refresh(comment)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Support case comment could not be created") from exc
+    except Exception:
+        db.rollback()
+        raise
     return comment
 
 
@@ -382,9 +408,18 @@ def update_client_support_case_status(db: Session, *, case: SupportCase, action:
     else:
         case.closed_at = None
         case.resolved_at = None
-    _record_event(db, case, event_type="client_status_changed", current_user=None, payload={"from": before_status, "to": next_status})
-    db.commit()
-    return get_case_or_404(db, tenant_id=case.tenant_id, case_id=case.id)
+    try:
+        _record_event(db, case, event_type="client_status_changed", current_user=None, payload={"from": before_status, "to": next_status})
+        case_id = case.id
+        tenant_id = case.tenant_id
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Support case status could not be updated") from exc
+    except Exception:
+        db.rollback()
+        raise
+    return get_case_or_404(db, tenant_id=tenant_id, case_id=case_id)
 
 
 def serialize_client_support_case(case: SupportCase) -> dict:
@@ -416,17 +451,28 @@ def serialize_client_support_case(case: SupportCase) -> dict:
 
 def create_support_case(db: Session, payload: dict, current_user) -> SupportCase:
     data = _normalize_payload(db, payload, tenant_id=current_user.tenant_id, current_user=current_user)
-    item = SupportCase(tenant_id=current_user.tenant_id, **data)
-    db.add(item)
-    db.flush()
-    _record_event(db, item, event_type="created", current_user=current_user)
-    case_id = item.id
-    try:
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Support case could not be created") from exc
-    return get_case_or_404(db, tenant_id=current_user.tenant_id, case_id=case_id)
+    for attempt in range(CASE_NUMBER_RETRY_LIMIT):
+        item = SupportCase(
+            tenant_id=current_user.tenant_id,
+            **data,
+            case_number=_generate_case_number(db, tenant_id=current_user.tenant_id),
+        )
+        db.add(item)
+        try:
+            db.flush()
+            _record_event(db, item, event_type="created", current_user=current_user)
+            db.commit()
+            db.refresh(item)
+            return item
+        except IntegrityError as exc:
+            db.rollback()
+            if _is_case_number_conflict(exc) and attempt < CASE_NUMBER_RETRY_LIMIT - 1:
+                continue
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Support case could not be created") from exc
+        except Exception:
+            db.rollback()
+            raise
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Support case could not be created")
 
 
 def update_support_case(db: Session, case: SupportCase, payload: dict, current_user) -> SupportCase:
@@ -447,11 +493,16 @@ def update_support_case(db: Session, case: SupportCase, payload: dict, current_u
     else:
         _record_event(db, case, event_type="updated", current_user=current_user, payload={"fields": sorted(data)})
     try:
+        case_id = case.id
+        tenant_id = case.tenant_id
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Support case could not be updated") from exc
-    return get_case_or_404(db, tenant_id=case.tenant_id, case_id=case.id)
+    except Exception:
+        db.rollback()
+        raise
+    return get_case_or_404(db, tenant_id=tenant_id, case_id=case_id)
 
 
 def add_case_comment(db: Session, case: SupportCase, payload: dict, current_user) -> SupportCaseComment:
@@ -465,12 +516,19 @@ def add_case_comment(db: Session, case: SupportCase, payload: dict, current_user
         body=body,
         is_internal=bool(payload.get("is_internal")),
     )
-    db.add(comment)
-    if case.first_response_at is None:
-        case.first_response_at = datetime.now(timezone.utc)
-    _record_event(db, case, event_type="commented", current_user=current_user, payload={"is_internal": bool(comment.is_internal)})
-    db.commit()
-    db.refresh(comment)
+    try:
+        db.add(comment)
+        if case.first_response_at is None:
+            case.first_response_at = datetime.now(timezone.utc)
+        _record_event(db, case, event_type="commented", current_user=current_user, payload={"is_internal": bool(comment.is_internal)})
+        db.commit()
+        db.refresh(comment)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Support case comment could not be created") from exc
+    except Exception:
+        db.rollback()
+        raise
     return comment
 
 

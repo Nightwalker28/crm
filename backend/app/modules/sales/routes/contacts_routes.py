@@ -484,6 +484,8 @@ def search_organizations_for_contacts(
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "view")),
+    require_organization_module = Depends(require_module_access("sales_organizations")),
+    require_organization_permission = Depends(require_action_access("sales_organizations", "view")),
 ):
     items, total = search_organizations_paginated(
         db=db,

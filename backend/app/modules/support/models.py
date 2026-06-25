@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, JSON, Text, func, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, JSON, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -9,6 +9,7 @@ class SupportCase(Base):
     __table_args__ = (
         CheckConstraint("status IN ('new', 'open', 'pending', 'resolved', 'closed')", name="ck_support_cases_status"),
         CheckConstraint("priority IN ('low', 'medium', 'high', 'urgent')", name="ck_support_cases_priority"),
+        UniqueConstraint("tenant_id", "case_number", name="uq_support_cases_tenant_number"),
         Index("ix_support_cases_active_tenant", "tenant_id", postgresql_where=text("closed_at IS NULL")),
         Index("ix_support_cases_tenant_status", "tenant_id", "status"),
         Index("ix_support_cases_tenant_priority", "tenant_id", "priority"),

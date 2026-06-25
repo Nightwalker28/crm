@@ -4,7 +4,7 @@ import hashlib
 import re
 import secrets
 from datetime import datetime, timedelta, timezone
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from urllib.parse import quote
 
 from fastapi.encoders import jsonable_encoder
@@ -14,7 +14,7 @@ from sqlalchemy.orm import Session
 
 from app.core.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.config import settings
-from app.core.passwords import hash_password, password_hash_needs_upgrade, verify_password
+from app.core.passwords import hash_password, password_hash_needs_upgrade, validate_password_strength, verify_password
 from app.core.uploads import build_media_url
 from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPageAction, CustomerGroup
 from app.modules.client_portal.repositories import client_portal_repository
@@ -45,8 +45,33 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_utc(value: datetime | None) -> datetime | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _hash_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _finite_decimal(value, *, field_name: str, default: str | None = None) -> Decimal:
+    raw_value = default if value is None and default is not None else value
+    try:
+        decimal_value = Decimal(str(raw_value))
+    except (InvalidOperation, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} must be a finite number") from exc
+    if not decimal_value.is_finite():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} must be a finite number")
+    return decimal_value
+
+
+def _loaded_relationship(obj, relationship_name: str):
+    if obj is None:
+        return None
+    return getattr(obj, "__dict__", {}).get(relationship_name)
 
 
 def _client_login_attempt_keys(*, tenant_id: int, email: str, client_host: str | None) -> list[str]:
@@ -133,7 +158,7 @@ def _validate_discount(discount_type: str, discount_value) -> Decimal | None:
         return None
     if discount_value is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Discount value is required")
-    value = Decimal(discount_value)
+    value = _finite_decimal(discount_value, field_name="Discount value")
     if value < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Discount value cannot be negative")
     if discount_type == "percent" and value > 100:
@@ -183,14 +208,14 @@ def _client_page_state(page: ClientPage) -> dict:
 
 
 def _money(value) -> Decimal:
-    return Decimal(str(value or "0")).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return _finite_decimal(value or "0", field_name="Amount").quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
 def _normalize_pricing_items(items: list[dict] | None) -> list[dict]:
     normalized: list[dict] = []
     for item in items or []:
-        quantity = Decimal(str(item.get("quantity", "1")))
-        public_unit_price = Decimal(str(item.get("public_unit_price", "0")))
+        quantity = _finite_decimal(item.get("quantity"), field_name="Pricing item quantity", default="1")
+        public_unit_price = _finite_decimal(item.get("public_unit_price"), field_name="Pricing item public price", default="0")
         if quantity <= 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pricing item quantity must be greater than zero")
         if public_unit_price < 0:
@@ -266,7 +291,7 @@ def _serialize_brand_settings(settings_payload: dict | None) -> dict | None:
 def _resolved_unit_price(public_unit_price: Decimal, group: CustomerGroup | None) -> tuple[Decimal, str, Decimal | None]:
     if not group or group.discount_type == "none":
         return _money(public_unit_price), "none", None
-    discount_value = Decimal(str(group.discount_value or "0"))
+    discount_value = _finite_decimal(group.discount_value or "0", field_name="Discount value")
     if group.discount_type == "percent":
         resolved = public_unit_price * (Decimal("100") - discount_value) / Decimal("100")
     elif group.discount_type == "fixed":
@@ -282,7 +307,7 @@ def _serialize_pricing_items(items: list[dict], group: CustomerGroup | None = No
     serialized: list[dict] = []
     for item in items or []:
         public_unit_price = _money(item.get("public_unit_price"))
-        quantity = Decimal(str(item.get("quantity") or "1"))
+        quantity = _finite_decimal(item.get("quantity") or "1", field_name="Pricing item quantity")
         resolved_unit_price, discount_type, discount_value = _resolved_unit_price(public_unit_price, group)
         serialized.append(
             {
@@ -824,14 +849,16 @@ def _organization_display_name(organization: SalesOrganization | None) -> str | 
 
 
 def serialize_client_account(account: ClientAccount, *, setup_token: str | None = None) -> dict:
+    contact = _loaded_relationship(account, "contact")
+    organization = _loaded_relationship(account, "organization")
     return {
         "id": account.id,
         "email": account.email,
         "status": account.status,
         "contact_id": account.contact_id,
         "organization_id": account.organization_id,
-        "contact_name": _contact_display_name(account.contact),
-        "organization_name": _organization_display_name(account.organization),
+        "contact_name": _contact_display_name(contact),
+        "organization_name": _organization_display_name(organization),
         "has_password": bool(account.password_hash),
         "setup_link": _setup_link(setup_token, account) if setup_token else None,
         "setup_token_expires_at": account.setup_token_expires_at,
@@ -844,6 +871,8 @@ def serialize_client_account(account: ClientAccount, *, setup_token: str | None 
 def serialize_client_page(page: ClientPage, *, group: CustomerGroup | None = None, public_token: str | None = None, db: Session | None = None) -> dict:
     personalized = group is not None
     action_summary = getattr(page, "_action_summary", None) or _client_page_action_summary(db, page)
+    contact = _loaded_relationship(page, "contact")
+    organization = _loaded_relationship(page, "organization")
     return {
         "id": page.id,
         "title": page.title,
@@ -851,8 +880,8 @@ def serialize_client_page(page: ClientPage, *, group: CustomerGroup | None = Non
         "status": page.status,
         "contact_id": page.contact_id,
         "organization_id": page.organization_id,
-        "contact_name": _contact_display_name(page.contact),
-        "organization_name": _organization_display_name(page.organization),
+        "contact_name": _contact_display_name(contact),
+        "organization_name": _organization_display_name(organization),
         "source_module_key": page.source_module_key,
         "source_entity_id": page.source_entity_id,
         "document_ids": page.document_ids or [],
@@ -1021,12 +1050,12 @@ def create_client_catalog_order(
     item: CatalogProduct | CatalogService,
     payload: dict,
 ) -> WebsiteIntegrationOrder:
-    quantity = Decimal(str(payload.get("quantity") or "1"))
+    quantity = _finite_decimal(payload.get("quantity") or "1", field_name="Quantity")
     if quantity <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quantity must be greater than zero")
     group = resolve_client_customer_group(db, account=account)
     serialized_item = serialize_client_catalog_item(item, group=group)
-    unit_price = Decimal(str(serialized_item["resolved_unit_price"]))
+    unit_price = _finite_decimal(serialized_item["resolved_unit_price"], field_name="Resolved unit price")
     line_total = _money(unit_price * quantity)
     details = (payload.get("details") or "").strip() or None
     reference = f"portal-{account.id}-{secrets.token_urlsafe(8)}"
@@ -1320,16 +1349,18 @@ def get_public_client_page(db: Session, *, token: str) -> ClientPage:
     page = client_portal_repository.get_public_client_page_by_token_hash(db, token_hash=token_hash)
     if not page or page.status != "published" or not page.public_token_expires_at:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Client page not found")
-    expires_at = page.public_token_expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    expires_at = _as_utc(page.public_token_expires_at)
     if expires_at <= _utcnow():
         raise HTTPException(status_code=status.HTTP_410_GONE, detail="Client page link has expired")
     return page
 
 
 def serialize_public_client_page(page: ClientPage, *, account: ClientAccount | None = None, db: Session | None = None) -> dict:
-    group = resolve_client_customer_group(db=db, account=account) if _validate_client_account_matches_page(account, page) else None
+    group = (
+        resolve_client_customer_group(db=db, account=account, require_context=True)
+        if _validate_client_account_matches_page(account, page)
+        else None
+    )
     return {
         "title": page.title,
         "summary": page.summary,
@@ -1421,15 +1452,14 @@ def setup_client_password(db: Session, *, token: str, password: str, expected_te
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Setup link is invalid")
     if expected_tenant_id is not None and account.tenant_id != expected_tenant_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Setup link is invalid")
-    expires_at = account.setup_token_expires_at
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    expires_at = _as_utc(account.setup_token_expires_at)
     if expires_at <= _utcnow():
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Setup link has expired")
     if account.status == "inactive":
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Client account is inactive")
     before_state = _client_account_state(account)
     try:
+        validate_password_strength(password)
         account.password_hash = hash_password(password)
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
@@ -1504,16 +1534,21 @@ def client_account_from_token(db: Session, *, token: str) -> ClientAccount:
     return account
 
 
-def resolve_client_customer_group(db: Session | None, *, account: ClientAccount) -> CustomerGroup | None:
+def resolve_client_customer_group(db: Session | None, *, account: ClientAccount, require_context: bool = False) -> CustomerGroup | None:
     loaded_contact = account.__dict__.get("contact") if account.contact_id else None
-    if loaded_contact:
-        return loaded_contact.customer_group
+    if loaded_contact and "customer_group" in getattr(loaded_contact, "__dict__", {}):
+        return loaded_contact.__dict__.get("customer_group")
     loaded_organization = account.__dict__.get("organization") if account.organization_id else None
-    if loaded_organization:
-        return loaded_organization.customer_group
+    if loaded_organization and "customer_group" in getattr(loaded_organization, "__dict__", {}):
+        return loaded_organization.__dict__.get("customer_group")
     if db is None:
         db = client_portal_repository.get_object_session(account)
     if db is None:
+        if require_context:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Client customer group context is required for personalized pricing",
+            )
         return None
     if account.contact_id:
         contact = client_portal_repository.get_contact_with_customer_group(db, tenant_id=account.tenant_id, contact_id=account.contact_id)

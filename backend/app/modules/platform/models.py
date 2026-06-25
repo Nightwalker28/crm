@@ -29,6 +29,22 @@ class ActivityLog(Base):
         return str(value)
 
 
+class CrmNumberCounter(Base):
+    __tablename__ = "crm_number_counters"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "scope", "period", name="uq_crm_number_counters_tenant_scope_period"),
+        Index("ix_crm_number_counters_tenant_scope", "tenant_id", "scope"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    scope = Column(String(100), nullable=False)
+    period = Column(String(20), nullable=False)
+    next_value = Column(Integer, nullable=False, server_default="1")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class CustomFieldDefinition(Base):
     __tablename__ = "custom_field_definitions"
     __table_args__ = (

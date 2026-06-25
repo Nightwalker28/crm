@@ -145,23 +145,6 @@ def create_organization(
         record_id=organization.org_id,
     )
 
-def list_organizations(db: Session) -> list[SalesOrganization]:
-    """Return all organizations sorted by creation time (newest first)."""
-    organizations = (
-        # SELECT * FROM sales_organizations ORDER BY created_time DESC
-        db.query(SalesOrganization)
-        .filter(SalesOrganization.deleted_at.is_(None))
-        .order_by(SalesOrganization.created_time.desc())
-        .all()
-    )
-    return hydrate_custom_field_records(
-        db,
-        module_key="sales_organizations",
-        records=organizations,
-        record_id_attr="org_id",
-    )
-
-
 def _build_organization_query(
     db: Session,
     *,

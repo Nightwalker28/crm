@@ -4,7 +4,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import ANY, patch
 
 import requests
 from fastapi import HTTPException
@@ -16,6 +16,7 @@ from app.core.pagination import Pagination
 from app.core.security import get_current_user, require_admin, require_user
 from app.main import app
 from app.modules.sales.routes import contacts_routes, organizations_routes
+from app.modules.tasks.routes import tasks_routes
 from app.modules.sales.schema import (
     SalesLeadResponse,
     SalesContactResponse,
@@ -800,6 +801,8 @@ class APIRouteTests(unittest.TestCase):
             limit=10,
             all_filter_conditions=[],
             any_filter_conditions=[],
+            sort_by=ANY,
+            sort_direction=ANY,
         )
 
     def test_organizations_import_route_is_registered_once(self):
@@ -969,6 +972,40 @@ class APIRouteTests(unittest.TestCase):
         create_data = create_mock.call_args.args[1]
         self.assertEqual(create_data["assigned_to"], 7)
 
+    def test_sales_opportunity_create_does_not_reintroduce_disabled_assigned_to_default(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+        created = SalesOpportunityResponse(
+            opportunity_id=12,
+            opportunity_name="ACME Launch",
+            client="ACME",
+            assigned_to=None,
+            attachments=[],
+        )
+
+        with patch("app.core.permissions.require_department_module_access"), patch(
+            "app.modules.sales.routes.opportunities_routes.reject_disabled_field_writes",
+        ), patch(
+            "app.modules.sales.routes.opportunities_routes.sanitize_disabled_field_payload",
+            return_value={"opportunity_name": "ACME Launch", "client": "ACME"},
+        ) as sanitize_mock, patch(
+            "app.modules.sales.routes.opportunities_routes.create_opportunity",
+            return_value=created,
+        ) as create_mock:
+            response = self.client.post(
+                "/api/v1/sales/opportunities",
+                json={
+                    "opportunity_name": "ACME Launch",
+                    "client": "ACME",
+                },
+            )
+
+        self.assertEqual(response.status_code, 201)
+        sanitize_payload = sanitize_mock.call_args.kwargs["payload"]
+        self.assertEqual(sanitize_payload["assigned_to"], 7)
+        create_data = create_mock.call_args.args[1]
+        self.assertNotIn("assigned_to", create_data)
+
     def test_sales_opportunity_attachment_upload_route_calls_service(self):
         app.dependency_overrides[require_user] = self._active_user
         app.dependency_overrides[get_db] = self._override_db
@@ -991,6 +1028,96 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()["opportunity_id"], 13)
         upload_mock.assert_called_once()
+        self.assertEqual(upload_mock.call_args.kwargs["tenant_id"], 1)
+        self.assertEqual(upload_mock.call_args.kwargs["current_user"].id, 7)
+
+    def test_task_recycle_route_passes_current_user_to_visibility_filtered_service(self):
+        pagination = Pagination(page=1, page_size=10, offset=0, limit=10)
+        db = object()
+        user = SimpleNamespace(id=7, tenant_id=42)
+        task = SimpleNamespace(id=11)
+        serialized = {
+            "id": 11,
+            "title": "Deleted task",
+            "description": None,
+            "status": "todo",
+            "priority": "medium",
+            "start_at": None,
+            "due_at": None,
+            "completed_at": None,
+            "source_module_key": None,
+            "source_entity_id": None,
+            "source_label": None,
+            "created_by_user_id": 7,
+            "updated_by_user_id": 7,
+            "assigned_by_user_id": None,
+            "created_by_name": None,
+            "updated_by_name": None,
+            "assigned_by_name": None,
+            "assigned_at": None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "assignees": [],
+        }
+
+        with patch.object(tasks_routes, "list_deleted_tasks", return_value=([task], 1)) as list_mock, \
+             patch.object(tasks_routes, "serialize_task", return_value=serialized):
+            response = tasks_routes.get_deleted_tasks(
+                pagination=pagination,
+                db=db,
+                current_user=user,
+            )
+
+        self.assertEqual(response["total_count"], 1)
+        list_mock.assert_called_once_with(
+            db,
+            tenant_id=42,
+            current_user=user,
+            pagination=pagination,
+        )
+
+    def test_task_restore_route_uses_deleted_only_lookup(self):
+        db = object()
+        user = SimpleNamespace(id=7, tenant_id=42)
+        task = SimpleNamespace(id=11, title="Deleted task", source_module_key=None, source_entity_id=None)
+        serialized = {
+            "id": 11,
+            "title": "Deleted task",
+            "description": None,
+            "status": "todo",
+            "priority": "medium",
+            "start_at": None,
+            "due_at": None,
+            "completed_at": None,
+            "source_module_key": None,
+            "source_entity_id": None,
+            "source_label": None,
+            "created_by_user_id": 7,
+            "updated_by_user_id": 7,
+            "assigned_by_user_id": None,
+            "created_by_name": None,
+            "updated_by_name": None,
+            "assigned_by_name": None,
+            "assigned_at": None,
+            "created_at": datetime.utcnow(),
+            "updated_at": datetime.utcnow(),
+            "assignees": [],
+        }
+
+        with patch.object(tasks_routes, "get_deleted_task_or_404", return_value=task) as get_mock, \
+             patch.object(tasks_routes, "restore_task", return_value=task) as restore_mock, \
+             patch.object(tasks_routes, "serialize_task", return_value=serialized), \
+             patch.object(tasks_routes, "log_activity"), \
+             patch.object(tasks_routes, "_mirror_task_source_activity"):
+            response = tasks_routes.restore_task_route(
+                task_id=11,
+                db=db,
+                current_user=user,
+            )
+
+        self.assertEqual(response.id, 11)
+        get_mock.assert_called_once_with(db, 11, tenant_id=42, current_user=user)
+        restore_mock.assert_called_once_with(db, task=task, current_user=user)
 
     def test_sales_opportunity_create_finance_io_route_calls_service(self):
         app.dependency_overrides[require_user] = self._active_user

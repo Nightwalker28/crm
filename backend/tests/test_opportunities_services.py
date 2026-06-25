@@ -11,6 +11,7 @@ from app.core.database import Base
 from app.core.pagination import create_pagination
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesOpportunity
+from app.modules.sales.repositories import opportunities_repository
 from app.modules.sales.services import opportunities_services
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
@@ -145,6 +146,90 @@ class OpportunityListTests(unittest.TestCase):
         self.assertEqual(
             [opportunity.opportunity_name for opportunity in opportunities],
             ["Ada renewal", "Mia expansion"],
+        )
+
+    def test_get_opportunity_include_deleted_returns_active_and_deleted_rows(self):
+        active = SalesOpportunity(
+            opportunity_id=201,
+            tenant_id=10,
+            opportunity_name="Active deal",
+            client="Ada",
+            sales_stage="lead",
+            assigned_to=1,
+        )
+        deleted = SalesOpportunity(
+            opportunity_id=202,
+            tenant_id=10,
+            opportunity_name="Deleted deal",
+            client="Mia",
+            sales_stage="lead",
+            assigned_to=1,
+            deleted_at=datetime.utcnow(),
+        )
+        self.db.add_all([active, deleted])
+        self.db.commit()
+
+        self.assertIs(
+            opportunities_repository.get_opportunity(
+                self.db,
+                tenant_id=10,
+                opportunity_id=201,
+                include_deleted=True,
+            ),
+            active,
+        )
+        self.assertIs(
+            opportunities_repository.get_opportunity(
+                self.db,
+                tenant_id=10,
+                opportunity_id=202,
+                include_deleted=True,
+            ),
+            deleted,
+        )
+        self.assertIsNone(
+            opportunities_repository.get_opportunity(
+                self.db,
+                tenant_id=10,
+                opportunity_id=202,
+            )
+        )
+
+    def test_get_deleted_opportunity_only_returns_recycle_bin_rows(self):
+        active = SalesOpportunity(
+            opportunity_id=203,
+            tenant_id=10,
+            opportunity_name="Active restore candidate",
+            client="Ada",
+            sales_stage="lead",
+            assigned_to=1,
+        )
+        deleted = SalesOpportunity(
+            opportunity_id=204,
+            tenant_id=10,
+            opportunity_name="Deleted restore candidate",
+            client="Mia",
+            sales_stage="lead",
+            assigned_to=1,
+            deleted_at=datetime.utcnow(),
+        )
+        self.db.add_all([active, deleted])
+        self.db.commit()
+
+        self.assertIsNone(
+            opportunities_repository.get_deleted_opportunity(
+                self.db,
+                tenant_id=10,
+                opportunity_id=203,
+            )
+        )
+        self.assertIs(
+            opportunities_repository.get_deleted_opportunity(
+                self.db,
+                tenant_id=10,
+                opportunity_id=204,
+            ),
+            deleted,
         )
 
 

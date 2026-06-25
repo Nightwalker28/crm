@@ -2,7 +2,15 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+
+from app.core.passwords import MIN_PASSWORD_LENGTH
+
+
+def _validate_finite_decimal(value: Decimal | None, field_name: str) -> Decimal | None:
+    if value is not None and not value.is_finite():
+        raise ValueError(f"{field_name} must be a finite number")
+    return value
 
 
 class CustomerGroupCreateRequest(BaseModel):
@@ -14,6 +22,11 @@ class CustomerGroupCreateRequest(BaseModel):
     is_default: bool = False
     is_active: bool = True
 
+    @field_validator("discount_value")
+    @classmethod
+    def validate_discount_value(cls, value: Decimal | None):
+        return _validate_finite_decimal(value, "Discount value")
+
 
 class CustomerGroupUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
@@ -22,6 +35,11 @@ class CustomerGroupUpdateRequest(BaseModel):
     discount_value: Decimal | None = None
     is_default: bool | None = None
     is_active: bool | None = None
+
+    @field_validator("discount_value")
+    @classmethod
+    def validate_discount_value(cls, value: Decimal | None):
+        return _validate_finite_decimal(value, "Discount value")
 
 
 class CustomerGroupResponse(BaseModel):
@@ -78,7 +96,7 @@ class ClientAccountResponse(BaseModel):
 
 class ClientSetupPasswordRequest(BaseModel):
     token: str = Field(min_length=16)
-    password: str = Field(min_length=1)
+    password: str = Field(min_length=MIN_PASSWORD_LENGTH)
     tenant_slug: str | None = Field(default=None, max_length=120)
 
 
@@ -152,6 +170,11 @@ class ClientCatalogListResponse(BaseModel):
 class ClientCatalogRequestCreate(BaseModel):
     quantity: Decimal = Field(default=Decimal("1"), gt=0)
     details: str | None = Field(default=None, max_length=4000)
+
+    @field_validator("quantity")
+    @classmethod
+    def validate_quantity(cls, value: Decimal):
+        return _validate_finite_decimal(value, "Quantity")
 
 
 class ClientCatalogRequestResponse(BaseModel):
@@ -238,6 +261,12 @@ class ClientPagePricingItemRequest(BaseModel):
     quantity: Decimal = Field(default=Decimal("1"), gt=0)
     currency: str = Field(default="USD", min_length=3, max_length=3)
     public_unit_price: Decimal = Field(ge=0)
+
+    @field_validator("quantity", "public_unit_price")
+    @classmethod
+    def validate_pricing_decimal(cls, value: Decimal, info):
+        label = "Quantity" if info.field_name == "quantity" else "Public unit price"
+        return _validate_finite_decimal(value, label)
 
 
 class ClientPageProposalSectionRequest(BaseModel):

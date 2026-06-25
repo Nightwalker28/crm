@@ -214,7 +214,22 @@ def get_opportunity(
         SalesOpportunity.opportunity_id == opportunity_id,
         SalesOpportunity.tenant_id == tenant_id,
     )
-    query = query.filter(SalesOpportunity.deleted_at.is_not(None) if include_deleted else SalesOpportunity.deleted_at.is_(None))
+    if not include_deleted:
+        query = query.filter(SalesOpportunity.deleted_at.is_(None))
+    return query.first()
+
+
+def get_deleted_opportunity(
+    db: Session,
+    *,
+    tenant_id: int,
+    opportunity_id: int,
+) -> SalesOpportunity | None:
+    query = db.query(SalesOpportunity).filter(
+        SalesOpportunity.opportunity_id == opportunity_id,
+        SalesOpportunity.tenant_id == tenant_id,
+        SalesOpportunity.deleted_at.is_not(None),
+    )
     return query.first()
 
 

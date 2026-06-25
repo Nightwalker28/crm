@@ -1,6 +1,6 @@
 # Codex Production Readiness Backlog
 
-_Last updated: 2026-06-22_
+_Last updated: 2026-06-25_
 
 This is the consolidated implementation backlog for the production-readiness audit across Core Backend, Contracts, Calendar, Catalog, Client Portal, Documents, Platform, Finance, Sales, Support, and Tasks.
 
@@ -32,8 +32,8 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 
 ## Recommended PR Order
 
-1. **Critical security and startup safety:** CP-SEC, SALES-SEC, TASKS-CORE, SUPPORT-CASES.
-2. **Concurrency and transaction correctness:** CRM-NUMBERS, CON-CONC, CAL-CONC, CAT-MEDIA, CP-SEED, DOC-STORAGE, FIN-TXN, SALES-TXN, TASKS-CORE, SUPPORT-SLA, PLAT-RESTORE.
+1. **Critical security and startup safety:** None currently active.
+2. **Concurrency and transaction correctness:** CON-CONC, CAL-CONC, CAT-MEDIA, CP-SEED, DOC-STORAGE, FIN-TXN, SALES-TXN, SUPPORT-SLA, PLAT-RESTORE.
 3. **External side effects and background work:** CAL-SYNC, DOC-STORAGE, TASKS-EVENTS, PLAT-EVENTS, PLAT-RESTORE.
 4. **Query scalability and indexes:** SEARCH-IDX, LIST-PERF, SALES-PERF, SUPPORT-PERF, TASKS-PERF, PLAT-QUERY.
 5. **Frontend cache, validation, and browser reliability:** FE-QUERY, FE-FORMS, FE-BROWSER.
@@ -77,6 +77,41 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Files:** `backend/app/core/cache.py`, `backend/app/modules/documents/models.py`, `backend/app/modules/documents/repositories/documents_repository.py`, `backend/app/modules/documents/services/document_services.py`, `backend/app/modules/documents/services/storage_backends.py`, `backend/alembic/versions/20260709_document_storage_scope.py`, focused document tests
 - **Result:** Document OAuth provider token refresh now uses a Redis-backed lock with state re-read after lock acquisition; document storage uniqueness is scoped by tenant/provider/document instead of global storage keys; local document downloads accept canonical relative paths only while the migration normalizes legacy `documents/` prefixes; deleted-row retrieval has explicit include-vs-deleted-only semantics; OAuth state uses NumericDate timestamps and fail-closed origin/return-path normalization; local saves use exclusive-create retries.
 - **Verification:** `docker compose exec -T backend python -m unittest tests.test_documents`; `docker compose exec -T backend alembic upgrade head`; `docker compose exec -T backend alembic current`
+
+## CP-SEC — Harden client portal password, auth, pricing, and visibility boundaries
+
+- **Completed:** 2026-06-25
+- **Files:** `backend/app/modules/client_portal/schema.py`, `backend/app/modules/client_portal/services/client_portal_services.py`, `backend/tests/test_client_portal.py`, `frontend/hooks/useClientPortal.ts`, `frontend/app/client/setup/page.tsx`
+- **Result:** Client setup passwords now share the core password-policy minimum at schema, service, and setup UI boundaries; client pricing and discount Decimal handling rejects non-finite values with clean 400/422 responses; public personalized pricing fails closed when a matching client account lacks a resolvable DB/session context; client account/page serializers avoid lazy relationship loads; public/client frontend requests only clear stored client tokens for explicit invalid-session responses; client setup UI mirrors the shared password policy before submit.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_client_portal`; `docker compose exec -T backend python -m compileall app tests`; `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`
+
+## SALES-SEC — Fix sales tenant boundaries, deleted-row semantics, and field policy bypasses
+
+- **Completed:** 2026-06-25
+- **Files:** `backend/app/modules/sales/repositories/opportunities_repository.py`, `backend/app/modules/sales/services/opportunities_services.py`, `backend/app/modules/sales/services/opportunities_api.py`, `backend/app/modules/sales/services/organizations_services.py`, `backend/app/modules/sales/services/quotes_services.py`, `backend/app/modules/sales/routes/opportunities_routes.py`, `backend/app/modules/sales/routes/contacts_routes.py`, focused sales/API tests
+- **Result:** Opportunity attachment upload/delete paths now pass the authenticated user through update validation; opportunity active/detail, include-deleted, and restore lookups use explicit active-plus-deleted vs deleted-only semantics; contact-side organization search requires organization view access; quote CSV import parses linked record IDs and validates them through tenant-scoped link checks; opportunity create defaults are sanitized before disabled-field policy can drop them.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_opportunities_services tests.test_opportunities_api tests.test_quotes_services tests.test_api_routes`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## TASKS-CORE — Make task writes and deleted-record access safe
+
+- **Completed:** 2026-06-25
+- **Files:** `backend/app/modules/tasks/repositories/tasks_repository.py`, `backend/app/modules/tasks/services/tasks_services.py`, `backend/app/modules/tasks/routes/tasks_routes.py`, `backend/tests/test_task_source_activity.py`, `backend/tests/test_api_routes.py`
+- **Result:** Task create/update/delete/restore writes now roll back on failure; blank titles are rejected at service boundary before database constraints; task lookups now distinguish active-plus-deleted from deleted-only restore/recycle paths; recycle listing requires restore permission and still applies normal task visibility; restore uses a deleted-only lookup and logs restore activity; duplicate task query-builder code was removed from the service layer.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_task_source_activity tests.test_task_reminders tests.test_api_routes`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SUPPORT-CASES — Make support case creation, comments, and case numbers safe
+
+- **Completed:** 2026-06-25
+- **Files:** `backend/app/modules/support/models.py`, `backend/app/modules/support/services/cases_services.py`, `backend/tests/test_support_cases.py`
+- **Result:** Support case model metadata now matches the existing per-tenant case-number uniqueness constraint; generated admin and client case numbers retry cleanly on uniqueness collisions instead of returning generic failures; create paths commit the case and initial event in one transaction and return the committed object without a post-commit lookup; admin/client comment and status writes now roll back on integrity failures with clean 409 responses; support source values are normalized and client source lookups are case-insensitive.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_support_cases`; `docker compose exec -T backend python -m unittest tests.test_client_portal`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## CRM-NUMBERS — Make sales and support number allocation atomic
+
+- **Completed:** 2026-06-25
+- **Files:** `backend/app/modules/platform/models.py`, `backend/app/modules/platform/services/numbering.py`, `backend/alembic/versions/20260710_crm_number_counters.py`, `backend/app/modules/sales/services/quotes_services.py`, `backend/app/modules/sales/services/orders_services.py`, `backend/app/modules/support/services/cases_services.py`, focused numbering/sales/support tests
+- **Result:** Added a tenant-scoped `crm_number_counters` platform primitive with atomic upsert allocation per tenant, scope, and day. Quote, order, and support case generated numbers now use that allocator instead of date-prefix count scans. The migration backfills counter rows from existing `Q-YYYYMMDD-NNNN`, `SO-YYYYMMDD-NNNN`, and `CASE-YYYYMMDD-NNNN` values so new allocations continue after current data. Existing quote/order/support uniqueness remains the database backstop for manual numbers and race protection.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_crm_numbering tests.test_quotes_services tests.test_sales_orders tests.test_support_cases`; `docker compose exec -T backend alembic upgrade head`; `docker compose exec -T backend alembic current`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
 
 ---
 
@@ -145,15 +180,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Fix:** Use aware UTC timestamps. Track new and previous media paths separately; delete new media on rollback and old media only after commit. Define slug/null/update contracts explicitly. Cast booleans in serializers and validate service inputs before writing. Extract shared slug/validator helpers only where it reduces duplication.
 - **Acceptance:** Media and DB state remain consistent on failures; active slug collisions fail while intended soft-deleted reuse works; API returns booleans; direct service calls cannot write invalid enum-like values.
 
-## CP-SEC — Harden client portal password, auth, pricing, and visibility boundaries
-
-- **Severity:** Critical/High
-- **Source items:** CP-01, CP-06, CP-09, CP-10, CP-15, CP-19, CP-23
-- **Files:** client portal schemas/services/routes, `frontend/hooks/useClientPortal.ts`, setup page, tests
-- **Issue:** Setup passwords can be trivial, pricing/customer-group resolution can silently degrade, Decimal parsing lacks finite checks at service boundaries, frontend clears tokens on any 401, serializers assume loaded relationships, and expiry datetime normalization is inconsistent.
-- **Fix:** Add one client password policy constant enforced in schema, service, and setup UI. Require explicit DB/session-backed customer-group resolution where personalized pricing matters. Add finite Decimal helper. Clear client token only for definitive invalid-session responses. Guard serializers against lazy-load surprises. Normalize naive and aware datetimes to UTC.
-- **Acceptance:** Setup tokens cannot create trivial passwords; personalized pricing does not silently fall back to public because of detached state; malformed pricing/order data returns clean 400; unrelated 401s do not log out valid clients.
-
 ## CP-SEED — Make client portal seed/action/list flows bounded and canonical
 
 - **Severity:** Critical/High
@@ -180,24 +206,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Issue:** IO custom fields commit separately from records, CSV import parses twice and expires full session inside row errors, POS invoice uniqueness ignores soft deletes while DB index does not, SQLite number generation can race, line updates churn all rows, audit logs commit after mutations, tax rates are unbounded, and update route semantics are PATCH-like on PUT.
 - **Fix:** Flush IDs and commit IO/custom fields once. Parse CSV once and use row savepoints instead of broad `expire_all()`. Align service and DB uniqueness on active POS invoices. Add bounded SQLite retry if needed. Diff invoice lines by ID. Write audit logs in the same transaction. Cap tax rates. Remove dead duplicate query helpers. Add PATCH or document/alias PUT semantics. Share cursor/list serializers.
 - **Acceptance:** Record/custom-field and invoice/audit writes commit or roll back together; soft-deleted invoice numbers can be reused while active duplicates fail; invoice line updates preserve unchanged rows; invalid tax rates return 4xx.
-
-## CRM-NUMBERS — Make sales and support number allocation atomic
-
-- **Severity:** Critical
-- **Source items:** SALES-03, SALES-04, SALES-37, SALES-DEEP-25, SUP-01, SUP-02
-- **Files:** sales quote/order services, support case services, models, migrations, tests
-- **Issue:** Quote, order, and support case numbers use date-prefix plus count/LIKE scans. Concurrent requests can generate the same number, and support cases lack a per-tenant DB uniqueness guarantee.
-- **Fix:** Use a shared tenant/date counter table, PostgreSQL sequence, or atomic upsert allocator for generated business numbers. Compute the prefix timestamp once per create. Add/verify unique constraints and clean `IntegrityError` handling/retry paths for generated and manual numbers.
-- **Acceptance:** Concurrent quote/order/support case creation produces unique numbers without generic 500s; database constraints enforce active business-number uniqueness where applicable.
-
-## SALES-SEC — Fix sales tenant boundaries, deleted-row semantics, and field policy bypasses
-
-- **Severity:** Critical/High
-- **Source items:** SALES-01, SALES-02, SALES-05, SALES-23, SALES-40, SALES-DEEP-10, SALES-DEEP-24, SALES-DEEP-38, SALES-DEEP-41
-- **Files:** sales opportunity/organization/contact/quote repositories, services, routes, field-gating tests
-- **Issue:** Opportunity attachment helpers can call update code without `current_user`; opportunity `include_deleted=True` means deleted-only; legacy organization list helpers and import duplicate preloads can miss tenant filters; quote imports can link cross-tenant IDs; contact organization-search may expose organizations through contact permissions; opportunity list/default-assignee logic can bypass disabled-field policy.
-- **Fix:** Pass `current_user` through attachment update paths or add a dedicated safe helper. Correct include-deleted semantics and add deleted-only restore helpers/tests. Remove or tenant-scope legacy list helpers and duplicate preload queries. Batch-validate imported linked IDs by tenant. Require the right organization permission or restrict helper output. Apply defaults before disabled-field sanitization or define explicit exemptions.
-- **Acceptance:** Sales helpers cannot leak cross-tenant data, imports cannot link to foreign records, include-deleted semantics are consistent across sales repositories, and disabled field policy cannot be reintroduced by route defaults.
 
 ## SALES-TXN — Make sales writes, imports, follow-ups, and audits atomic
 
@@ -235,15 +243,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Fix:** Use grouped SQL aggregation for pipeline/summary metrics. Hydrate custom fields only where response schemas expose them. Scope reminder scans per tenant and chunk/cursor work. Avoid proposal/event queries when no proposal exists. Stream quote exports or route large jobs through background export. Make opportunity board scope explicit or load complete stage data incrementally.
 - **Acceptance:** Sales summaries preserve response shapes with fewer queries, reminders are tenant-scoped and bounded, large exports do not materialize whole datasets, and board scope is clear to users.
 
-## SUPPORT-CASES — Make support case creation, comments, and case numbers safe
-
-- **Severity:** Critical/High
-- **Source items:** SUP-01, SUP-02, SUP-03, SUP-04, SUP-08, SUP-09
-- **Files:** support case services/models/migrations, client support paths, tests
-- **Issue:** Support case numbers are non-atomic and not unique per tenant, create paths re-fetch after commit, comment/status helpers lack rollback guards, source matching is case-sensitive, and operations can compute multiple timestamps.
-- **Fix:** Use the shared atomic number allocator and add per-tenant case-number uniqueness. Create case and initial event in one transaction and return the refreshed object without unnecessary re-fetch. Wrap comment/status commits with rollback/clean 4xx handling. Normalize source values on write/read and compute one timestamp per logical operation.
-- **Acceptance:** Concurrent admin/client case creation gets unique numbers; failed comment/status writes leave no dirty session; source matching is stable regardless of casing.
-
 ## SUPPORT-SLA — Protect support SLA lifecycle and linked-record updates
 
 - **Severity:** High/Medium
@@ -261,15 +260,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Issue:** Support list/summary endpoints use separate count/aggregate queries, client serialization loads then filters internal comments, search wildcard behavior is literal-unsafe, visible columns affect frontend keys without backend projection, and saved-view search routing needs verification.
 - **Fix:** Use count-specific or conditional aggregate queries. Fetch only client-visible comments for client responses. Add or adjust support SLA/open-case indexes after EXPLAIN. Escape LIKE wildcards. Either implement `fields=` projection or keep visible columns UI-only. Verify saved-view search routes through `/search`. Keep list responses on lightweight schemas with regression tests.
 - **Acceptance:** Support list/summary/search responses remain compatible with lower query cost, client endpoints avoid internal-comment over-fetching, and column/search cache behavior matches actual payloads.
-
-## TASKS-CORE — Make task writes and deleted-record access safe
-
-- **Severity:** Critical/High
-- **Source items:** TASK-01, TASK-02, TASK-03, TASK-04, TASK-05, TASK-06, TASK-08, TASK-31, TASK-33
-- **Files:** task services, repository, routes, recycle-bin tests
-- **Issue:** Task create/update paths can commit/refresh/re-query redundantly, create lacks a full rollback guard, `include_deleted=True` maps to deleted-only, deleted-task listing can bypass normal visibility, blank titles can reach DB constraints, source-context errors can surface unintentionally, and dead duplicate query code remains in the service layer.
-- **Fix:** Wrap task write bodies with rollback-safe transaction handling. Use one intentional post-commit load strategy, not refresh plus re-query. Make `include_deleted=True` include active and deleted rows, with explicit deleted-only helpers for restore/recycle-bin paths. Apply active-task visibility to deleted lists or gate them behind admin/restore permission. Reject blank titles before commit. Make source-context failure behavior strict where needed and logged/best-effort elsewhere. Remove dead service query builders.
-- **Acceptance:** Failed task writes leave no dirty session or partial assignee rows; deleted-task access matches explicit visibility/admin policy; include/deleted semantics are clear at every call site.
 
 ## TASKS-PERF — Batch task assignees, options, scans, and serialization
 

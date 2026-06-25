@@ -9,6 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
 from app.core.pagination import create_pagination
 from app.modules.documents import models as document_models  # noqa: F401
+from app.modules.platform import models as platform_models  # noqa: F401
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.sales.services.orders_services import convert_quote_to_order, create_sales_order, get_order_by_quote, list_sales_orders
 from app.modules.user_management import models as user_management_models  # noqa: F401

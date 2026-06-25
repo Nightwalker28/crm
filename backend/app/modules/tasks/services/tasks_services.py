@@ -4,14 +4,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
 from fastapi import HTTPException, status
-from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
-from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, get_user_role_level
-from app.core.module_filters import apply_filter_conditions
-from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination
-from app.core.postgres_search import searchable_text
 from app.modules.platform.models import CrmEvent
 from app.modules.platform.services.crm_events import safe_emit_crm_event
 from app.modules.platform.services.notifications import create_notification
@@ -49,74 +44,11 @@ def _assignee_key(assignee_type: str, target_id: int) -> str:
     return f"{assignee_type}:{target_id}"
 
 
-def _build_task_query(
-    db: Session,
-    *,
-    tenant_id: int,
-    current_user,
-    include_deleted: bool = False,
-    only_deleted: bool = False,
-    search: str | None = None,
-    all_filter_conditions: list[dict] | None = None,
-    any_filter_conditions: list[dict] | None = None,
-):
-    query = (
-        db.query(Task)
-        .options(
-            selectinload(Task.assignees).selectinload(TaskAssignee.user),
-            selectinload(Task.assignees).selectinload(TaskAssignee.team),
-        )
-        .filter(
-            Task.tenant_id == tenant_id,
-        )
-    )
-    if only_deleted:
-        query = query.filter(Task.deleted_at.is_not(None))
-    elif not include_deleted:
-        query = query.filter(Task.deleted_at.is_(None))
-
-    role_level = get_user_role_level(db, current_user)
-    if role_level is None or role_level < ADMIN_MIN_ROLE_LEVEL:
-        visibility_filters = [
-            Task.created_by_user_id == current_user.id,
-            Task.assignees.any(TaskAssignee.user_id == current_user.id),
-        ]
-        if getattr(current_user, "team_id", None):
-            visibility_filters.append(Task.assignees.any(TaskAssignee.team_id == current_user.team_id))
-        query = query.filter(or_(*visibility_filters))
-
-    field_map = {
-        "title": {"expression": Task.title, "type": "text"},
-        "description": {"expression": Task.description, "type": "text"},
-        "status": {"expression": Task.status, "type": "text"},
-        "priority": {"expression": Task.priority, "type": "text"},
-        "source_label": {"expression": Task.source_label, "type": "text"},
-        "source_module_key": {"expression": Task.source_module_key, "type": "text"},
-        "source_entity_id": {"expression": Task.source_entity_id, "type": "text"},
-        "start_at": {"expression": Task.start_at, "type": "date"},
-        "due_at": {"expression": Task.due_at, "type": "date"},
-        "assigned_at": {"expression": Task.assigned_at, "type": "date"},
-        "created_at": {"expression": Task.created_at, "type": "date"},
-    }
-    query = apply_filter_conditions(
-        query,
-        conditions=all_filter_conditions,
-        logic="all",
-        field_map=field_map,
-    )
-    query = apply_filter_conditions(
-        query,
-        conditions=any_filter_conditions,
-        logic="any",
-        field_map=field_map,
-    )
-
-    return apply_ranked_search(
-        query,
-        search=search,
-        document=searchable_text(Task.title, Task.description, Task.status, Task.priority, Task.source_label),
-        default_order_column=Task.created_at,
-    )
+def _clean_required_title(value) -> str:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Task title is required")
+    return cleaned
 
 
 def list_tasks(
@@ -185,6 +117,24 @@ def get_task_or_404(
     )
     if not task:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found")
+    return task
+
+
+def get_deleted_task_or_404(
+    db: Session,
+    task_id: int,
+    *,
+    tenant_id: int,
+    current_user,
+) -> Task:
+    task = tasks_repository.get_deleted_task(
+        db,
+        tenant_id=tenant_id,
+        current_user=current_user,
+        task_id=task_id,
+    )
+    if not task:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found in recycle bin")
     return task
 
 
@@ -515,40 +465,44 @@ def serialize_task(task: Task) -> dict:
 def create_task(db: Session, *, payload: dict, current_user) -> tuple[Task, list[str]]:
     data = dict(payload)
     assignees_payload = data.pop("assignees", None)
-    task = Task(
-        tenant_id=current_user.tenant_id,
-        title=data["title"].strip(),
-        description=(data.get("description") or "").strip() or None,
-        status=data.get("status", "todo"),
-        priority=data.get("priority", "medium"),
-        start_at=data.get("start_at"),
-        due_at=data.get("due_at"),
-        completed_at=data.get("completed_at"),
-        source_module_key=(data.get("source_module_key") or "").strip() or None,
-        source_entity_id=str(data.get("source_entity_id")).strip() if data.get("source_entity_id") not in {None, ""} else None,
-        source_label=(data.get("source_label") or "").strip() or None,
-        created_by_user_id=current_user.id,
-        updated_by_user_id=current_user.id,
-    )
-    db.add(task)
-    db.flush()
-    added_keys, _, has_assignees = _sync_task_assignees(
-        db,
-        task=task,
-        tenant_id=current_user.tenant_id,
-        current_user=current_user,
-        assignees_payload=assignees_payload,
-    )
-    _update_assignment_metadata(
-        task=task,
-        current_user=current_user,
-        assignees_changed=bool(added_keys),
-        has_assignees=has_assignees,
-    )
-    db.add(task)
-    db.commit()
-    db.refresh(task)
-    return get_task_or_404(db, task.id, tenant_id=current_user.tenant_id, current_user=current_user), added_keys
+    try:
+        task = Task(
+            tenant_id=current_user.tenant_id,
+            title=_clean_required_title(data.get("title")),
+            description=(data.get("description") or "").strip() or None,
+            status=data.get("status", "todo"),
+            priority=data.get("priority", "medium"),
+            start_at=data.get("start_at"),
+            due_at=data.get("due_at"),
+            completed_at=data.get("completed_at"),
+            source_module_key=(data.get("source_module_key") or "").strip() or None,
+            source_entity_id=str(data.get("source_entity_id")).strip() if data.get("source_entity_id") not in {None, ""} else None,
+            source_label=(data.get("source_label") or "").strip() or None,
+            created_by_user_id=current_user.id,
+            updated_by_user_id=current_user.id,
+        )
+        db.add(task)
+        db.flush()
+        added_keys, _, has_assignees = _sync_task_assignees(
+            db,
+            task=task,
+            tenant_id=current_user.tenant_id,
+            current_user=current_user,
+            assignees_payload=assignees_payload,
+        )
+        _update_assignment_metadata(
+            task=task,
+            current_user=current_user,
+            assignees_changed=bool(added_keys),
+            has_assignees=has_assignees,
+        )
+        db.add(task)
+        task_id = task.id
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return get_task_or_404(db, task_id, tenant_id=current_user.tenant_id, current_user=current_user), added_keys
 
 
 def update_task(db: Session, *, task: Task, payload: dict, current_user) -> tuple[Task, list[str]]:
@@ -559,6 +513,10 @@ def update_task(db: Session, *, task: Task, payload: dict, current_user) -> tupl
         if field not in data:
             continue
         value = data[field]
+        if field == "title":
+            value = _clean_required_title(value)
+            setattr(task, field, value)
+            continue
         if field in {"title", "description", "source_module_key", "source_entity_id", "source_label"} and isinstance(value, str):
             value = value.strip() or None
         setattr(task, field, value)
@@ -567,33 +525,41 @@ def update_task(db: Session, *, task: Task, payload: dict, current_user) -> tupl
 
     added_keys: list[str] = []
     removed_keys: list[str] = []
-    if assignees_payload is not None:
-        added_keys, removed_keys, has_assignees = _sync_task_assignees(
-            db,
-            task=task,
-            tenant_id=current_user.tenant_id,
-            current_user=current_user,
-            assignees_payload=assignees_payload,
-        )
-        _update_assignment_metadata(
-            task=task,
-            current_user=current_user,
-            assignees_changed=bool(added_keys or removed_keys),
-            has_assignees=has_assignees,
-        )
+    try:
+        if assignees_payload is not None:
+            added_keys, removed_keys, has_assignees = _sync_task_assignees(
+                db,
+                task=task,
+                tenant_id=current_user.tenant_id,
+                current_user=current_user,
+                assignees_payload=assignees_payload,
+            )
+            _update_assignment_metadata(
+                task=task,
+                current_user=current_user,
+                assignees_changed=bool(added_keys or removed_keys),
+                has_assignees=has_assignees,
+            )
 
-    db.add(task)
-    db.commit()
-    db.refresh(task)
-    return get_task_or_404(db, task.id, tenant_id=current_user.tenant_id, current_user=current_user), added_keys
+        db.add(task)
+        task_id = task.id
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return get_task_or_404(db, task_id, tenant_id=current_user.tenant_id, current_user=current_user), added_keys
 
 
 def delete_task(db: Session, *, task: Task, current_user) -> Task:
-    task.deleted_at = _utcnow()
-    task.updated_by_user_id = current_user.id
-    db.add(task)
-    db.commit()
-    db.refresh(task)
+    try:
+        task.deleted_at = _utcnow()
+        task.updated_by_user_id = current_user.id
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+    except Exception:
+        db.rollback()
+        raise
     return task
 
 
@@ -601,17 +567,27 @@ def list_deleted_tasks(
     db: Session,
     *,
     tenant_id: int,
+    current_user,
     pagination: Pagination,
 ) -> tuple[Sequence[Task], int]:
-    return tasks_repository.list_deleted_tasks(db, tenant_id=tenant_id, pagination=pagination)
+    return tasks_repository.list_deleted_tasks(
+        db,
+        tenant_id=tenant_id,
+        current_user=current_user,
+        pagination=pagination,
+    )
 
 
 def restore_task(db: Session, *, task: Task, current_user) -> Task:
-    task.deleted_at = None
-    task.updated_by_user_id = current_user.id
-    db.add(task)
-    db.commit()
-    db.refresh(task)
+    try:
+        task.deleted_at = None
+        task.updated_by_user_id = current_user.id
+        db.add(task)
+        db.commit()
+        db.refresh(task)
+    except Exception:
+        db.rollback()
+        raise
     return task
 
 

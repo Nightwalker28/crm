@@ -4,12 +4,14 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from fastapi.security import HTTPAuthorizationCredentials
+from pydantic import ValidationError
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPageAction, CustomerGroup
+from app.modules.platform import models as platform_models  # noqa: F401
 from app.modules.client_portal.routes.client_portal_routes import (
     _optional_client_account,
     _request_metadata,
@@ -17,7 +19,7 @@ from app.modules.client_portal.routes.client_portal_routes import (
     get_client_me,
     login_client_route,
 )
-from app.modules.client_portal.schema import ClientLoginRequest
+from app.modules.client_portal.schema import ClientLoginRequest, ClientPagePricingItemRequest, ClientSetupPasswordRequest
 from app.modules.client_portal.services import client_portal_services
 from app.modules.platform.models import ActivityLog
 from app.modules.sales.models import SalesContact, SalesOrganization, SalesQuote
@@ -252,6 +254,23 @@ class ClientPortalServiceTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 400)
         self.assertIn("Password must be at least", exc.exception.detail)
+
+    def test_client_setup_password_schema_enforces_policy_minimum(self):
+        with self.assertRaises(ValidationError):
+            ClientSetupPasswordRequest(token="x" * 16, password="short")
+
+    def test_client_pricing_schema_rejects_non_finite_decimal(self):
+        with self.assertRaises(ValidationError):
+            ClientPagePricingItemRequest(name="Support", quantity=Decimal("NaN"), currency="USD", public_unit_price=Decimal("100"))
+
+    def test_pricing_item_service_rejects_non_finite_decimal(self):
+        with self.assertRaises(HTTPException) as exc:
+            client_portal_services._normalize_pricing_items(
+                [{"name": "Support", "quantity": "1", "currency": "USD", "public_unit_price": "NaN"}]
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertIn("finite number", exc.exception.detail)
 
     def test_client_password_setup_rejects_tenant_slug_mismatch(self):
         _account, setup_token = client_portal_services.create_client_account(
@@ -1274,6 +1293,46 @@ class ClientPortalServiceTests(unittest.TestCase):
 
         self.assertEqual(payload["pricing_mode"], "personalized")
         self.assertEqual(payload["customer_group"]["group_key"], "vip_special")
+
+    def test_public_client_page_requires_resolvable_customer_group_context_for_matching_account(self):
+        page = ClientPage(
+            id=31,
+            tenant_id=10,
+            contact_id=7,
+            title="Proposal",
+            status="published",
+            pricing_items=[],
+        )
+        account = ClientAccount(
+            id=22,
+            tenant_id=10,
+            contact_id=7,
+            email="buyer3@example.com",
+            status="active",
+        )
+
+        with self.assertRaises(HTTPException) as exc:
+            client_portal_services.serialize_public_client_page(page, account=account)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertIn("customer group context", exc.exception.detail)
+
+    def test_serialize_client_account_does_not_lazy_load_relationships(self):
+        account = ClientAccount(
+            id=23,
+            tenant_id=10,
+            contact_id=7,
+            email="buyer4@example.com",
+            status="active",
+        )
+        self.db.add(account)
+        self.db.commit()
+        account = self.db.query(ClientAccount).filter(ClientAccount.id == 23).first()
+        self.db.expunge(account)
+
+        payload = client_portal_services.serialize_client_account(account)
+
+        self.assertIsNone(payload["contact_name"])
 
     def test_optional_client_account_treats_invalid_token_as_anonymous(self):
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="not-a-valid-token")

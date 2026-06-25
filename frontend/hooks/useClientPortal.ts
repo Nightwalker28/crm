@@ -338,6 +338,21 @@ function detailMessage(body: unknown, fallback: string) {
   return fallback;
 }
 
+const INVALID_CLIENT_SESSION_DETAILS = new Set([
+  "Invalid client token",
+  "Invalid client token type",
+  "Client token tenant mismatch",
+  "Client account is not active",
+]);
+
+function shouldClearClientToken(status: number, body: unknown, hadToken: boolean) {
+  if (status !== 401 || !hadToken || !body || typeof body !== "object" || !("detail" in body)) {
+    return false;
+  }
+  const detail = (body as { detail?: unknown }).detail;
+  return typeof detail === "string" && INVALID_CLIENT_SESSION_DETAILS.has(detail);
+}
+
 async function crmJson<T>(path: string, init: RequestInit = {}, fallback = "Request failed."): Promise<T> {
   const res = await apiFetch(path, {
     ...init,
@@ -364,7 +379,7 @@ async function publicJson<T>(path: string, init: RequestInit = {}, fallback = "R
   });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    if (res.status === 401) clearClientToken();
+    if (shouldClearClientToken(res.status, body, Boolean(token))) clearClientToken();
     throw new Error(detailMessage(body, fallback));
   }
   return body as T;
@@ -382,7 +397,7 @@ async function publicBlob(path: string, init: RequestInit = {}, fallback = "Requ
   });
   if (!res.ok) {
     const body = await readJsonSafely(res);
-    if (res.status === 401) clearClientToken();
+    if (shouldClearClientToken(res.status, body, Boolean(token))) clearClientToken();
     throw new Error(detailMessage(body, fallback));
   }
   return res.blob();

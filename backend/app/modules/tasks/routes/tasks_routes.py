@@ -25,10 +25,13 @@ from app.modules.tasks.services.tasks_services import (
     create_task,
     create_task_assignment_notifications,
     delete_task,
+    get_deleted_task_or_404,
     get_task_or_404,
+    list_deleted_tasks,
     list_task_assignment_options,
     list_tasks_cursor,
     list_tasks,
+    restore_task,
     serialize_task,
     update_task,
 )
@@ -297,6 +300,24 @@ def get_task_assignment_options(
     return list_task_assignment_options(db, tenant_id=current_user.tenant_id)
 
 
+@router.get("/recycle", response_model=TaskListResponse)
+def get_deleted_tasks(
+    pagination: Pagination = Depends(get_pagination),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("tasks")),
+    require_permission=Depends(require_action_access("tasks", "restore")),
+):
+    tasks, total_count = list_deleted_tasks(
+        db,
+        tenant_id=current_user.tenant_id,
+        current_user=current_user,
+        pagination=pagination,
+    )
+    serialized = [TaskResponse.model_validate(serialize_task(task)) for task in tasks]
+    return build_paged_response(serialized, total_count=total_count, pagination=pagination)
+
+
 @router.get("/{task_id}", response_model=TaskResponse)
 def get_task(
     task_id: int,
@@ -440,3 +461,47 @@ def delete_task_route(
         source_context=source_context,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@router.post("/{task_id}/restore", response_model=TaskResponse)
+def restore_task_route(
+    task_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("tasks")),
+    require_permission=Depends(require_action_access("tasks", "restore")),
+):
+    existing = get_deleted_task_or_404(db, task_id, tenant_id=current_user.tenant_id, current_user=current_user)
+    before_state = serialize_task(existing)
+    source_context = _resolve_task_source_context(
+        db,
+        current_user=current_user,
+        source_module_key=existing.source_module_key,
+        source_entity_id=existing.source_entity_id,
+        strict=False,
+    )
+    restored = restore_task(db, task=existing, current_user=current_user)
+    restored_state = serialize_task(restored)
+    log_activity(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        module_key="tasks",
+        entity_type="task",
+        entity_id=str(restored.id),
+        action="restore",
+        description=f"Restored task {restored.title}",
+        before_state=before_state,
+        after_state=restored_state,
+    )
+    _mirror_task_source_activity(
+        db,
+        current_user=current_user,
+        task=restored,
+        action="task.restore",
+        description=f"Restored task {restored.title}",
+        before_state=before_state,
+        after_state=restored_state,
+        source_context=source_context,
+    )
+    return TaskResponse.model_validate(restored_state)

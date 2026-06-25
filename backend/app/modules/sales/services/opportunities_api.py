@@ -19,6 +19,7 @@ async def upload_opportunity_attachments(
     opportunity_id: int,
     tenant_id: int,
     files: list[UploadFile],
+    current_user,
 ) -> SalesOpportunityResponse:
     opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=tenant_id)
 
@@ -48,7 +49,7 @@ async def upload_opportunity_attachments(
     existing_paths = parse_attachment_paths(opportunity.attachments)
     updated = existing_paths + saved_paths
     try:
-        updated_opportunity = update_opportunity(db, opportunity, {"attachments": updated})
+        updated_opportunity = update_opportunity(db, opportunity, {"attachments": updated}, current_user=current_user)
     except Exception:
         for path in saved_files:
             if path.is_file():
@@ -63,6 +64,7 @@ def delete_opportunity_attachments(
     opportunity_id: int,
     tenant_id: int,
     attachments: list[str],
+    current_user,
 ) -> SalesOpportunityResponse:
     opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=tenant_id)
 
@@ -93,7 +95,7 @@ def delete_opportunity_attachments(
             ) from exc
         removable_candidates.append(candidate)
 
-    updated_opportunity = update_opportunity(db, opportunity, {"attachments": remaining_paths})
+    updated_opportunity = update_opportunity(db, opportunity, {"attachments": remaining_paths}, current_user=current_user)
     for candidate in removable_candidates:
         if candidate.is_file():
             candidate.unlink()

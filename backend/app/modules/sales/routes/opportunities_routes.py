@@ -56,6 +56,7 @@ from app.modules.sales.services.opportunities_services import (
     summarize_opportunity_pipeline,
     update_opportunity,
     update_opportunity_stage,
+    get_deleted_opportunity_or_404,
 )
 
 router = APIRouter(prefix="/opportunities", tags=["Sales"])
@@ -364,6 +365,9 @@ def create_sales_opportunity(
     require_module = Depends(require_module_access("sales_opportunities")),
     require_permission = Depends(require_action_access("sales_opportunities", "create")),
 ):
+    data = payload.model_dump()
+    if not data.get("assigned_to"):
+        data["assigned_to"] = current_user.id
     reject_disabled_field_writes(
         db,
         tenant_id=current_user.tenant_id,
@@ -374,10 +378,8 @@ def create_sales_opportunity(
         db,
         tenant_id=current_user.tenant_id,
         module_key="sales_opportunities",
-        payload=payload.model_dump(),
+        payload=data,
     )
-    if not data.get("assigned_to"):
-        data["assigned_to"] = current_user.id
     opportunity = create_opportunity(db, data, current_user=current_user)
     log_activity(
         db,
@@ -408,6 +410,7 @@ async def upload_opportunity_attachments(
         opportunity_id=opportunity_id,
         tenant_id=current_user.tenant_id,
         files=files,
+        current_user=current_user,
     )
 
 
@@ -425,6 +428,7 @@ def delete_opportunity_attachments(
         opportunity_id=opportunity_id,
         tenant_id=current_user.tenant_id,
         attachments=attachments,
+        current_user=current_user,
     )
 
 
@@ -610,9 +614,7 @@ def restore_sales_opportunity(
     require_module = Depends(require_module_access("sales_opportunities")),
     require_permission = Depends(require_action_access("sales_opportunities", "restore")),
 ):
-    opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id, include_deleted=True)
-    if opportunity.deleted_at is None:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Opportunity is not in recycle bin")
+    opportunity = get_deleted_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
     restored = restore_opportunity(db, opportunity)
     log_activity(
         db,

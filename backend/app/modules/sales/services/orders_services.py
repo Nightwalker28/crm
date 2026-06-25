@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from typing import Sequence
 
@@ -10,6 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.module_filters import apply_filter_conditions
+from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.sales.models import SalesOrder, SalesOrderItem, SalesQuote
 from app.modules.sales.repositories import quotes_repository
 from app.modules.sales.services.quotes_services import get_quote_or_404
@@ -59,13 +59,7 @@ def _validate_status(value: str | None) -> str:
 
 
 def _generate_order_number(db: Session, *, tenant_id: int) -> str:
-    prefix = f"SO-{datetime.utcnow():%Y%m%d}"
-    count = (
-        db.query(SalesOrder.id)
-        .filter(SalesOrder.tenant_id == tenant_id, SalesOrder.order_number.like(f"{prefix}-%"))
-        .count()
-    )
-    return f"{prefix}-{count + 1:04d}"
+    return allocate_business_number(db, tenant_id=tenant_id, scope="sales_orders", prefix="SO")
 
 
 def _ensure_linked_records(db: Session, data: dict, *, tenant_id: int) -> None:

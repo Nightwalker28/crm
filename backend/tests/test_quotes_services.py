@@ -11,6 +11,7 @@ from app.core.database import Base
 from app.core.pagination import create_pagination
 from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.documents import models as document_models  # noqa: F401
+from app.modules.platform import models as platform_models  # noqa: F401
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
 from app.modules.sales.services import quotes_services
 from app.modules.user_management import models as user_management_models  # noqa: F401
@@ -30,7 +31,9 @@ class QuoteOpportunityLinkTests(unittest.TestCase):
                 User(id=1, tenant_id=10, email="owner@example.com", first_name="Owner", last_name="User", is_active=UserStatus.active),
                 User(id=2, tenant_id=99, email="other@example.com", first_name="Other", last_name="User", is_active=UserStatus.active),
                 SalesOrganization(org_id=20, tenant_id=10, org_name="Acme", primary_email="hello@acme.test"),
+                SalesOrganization(org_id=21, tenant_id=99, org_name="Other Co", primary_email="hello@other.test"),
                 SalesContact(contact_id=30, tenant_id=10, first_name="Ada", primary_email="ada@acme.test", assigned_to=1, organization_id=20),
+                SalesContact(contact_id=31, tenant_id=99, first_name="Other", primary_email="other@other.test", assigned_to=2, organization_id=21),
                 SalesOpportunity(
                     opportunity_id=40,
                     tenant_id=10,
@@ -106,13 +109,13 @@ class QuoteOpportunityLinkTests(unittest.TestCase):
             currency="USD",
             total_amount=Decimal("100.00"),
         )
-        other_contact = SalesContact(contact_id=31, tenant_id=10, first_name="Grace", primary_email="grace@acme.test", assigned_to=1, organization_id=20)
+        other_contact = SalesContact(contact_id=32, tenant_id=10, first_name="Grace", primary_email="grace@acme.test", assigned_to=1, organization_id=20)
         self.db.add_all([quote, other_contact])
         self.db.commit()
 
         with patch.object(quotes_services, "hydrate_custom_field_record", side_effect=lambda *args, **kwargs: kwargs["record"]):
             with self.assertRaises(HTTPException) as exc:
-                quotes_services.update_sales_quote(self.db, quote, {"opportunity_id": 40, "contact_id": 31})
+                quotes_services.update_sales_quote(self.db, quote, {"opportunity_id": 40, "contact_id": 32})
 
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "Quote contact must match the linked opportunity")
@@ -164,6 +167,48 @@ class QuoteOpportunityLinkTests(unittest.TestCase):
 
         self.assertEqual(total_count, 3)
         self.assertEqual([quote.quote_number for quote in quotes], ["Q-101", "Q-102"])
+
+    def test_import_quote_rejects_cross_tenant_linked_ids(self):
+        result = quotes_services.import_quotes_from_csv(
+            self.db,
+            (
+                "quote_number,customer_name,contact_id,organization_id,opportunity_id\n"
+                "Q-200,Other,31,21,41\n"
+            ).encode("utf-8"),
+            tenant_id=10,
+            default_assigned_to=1,
+        )
+
+        self.assertEqual(result["new_rows"], 0)
+        self.assertEqual(result["failures"][0]["row_number"], 2)
+        self.assertEqual(result["failures"][0]["reason"], "Opportunity not found")
+        self.assertIsNone(
+            self.db.query(SalesQuote)
+            .filter(SalesQuote.tenant_id == 10, SalesQuote.quote_number == "Q-200")
+            .first()
+        )
+
+    def test_import_quote_persists_tenant_scoped_linked_ids(self):
+        result = quotes_services.import_quotes_from_csv(
+            self.db,
+            (
+                "quote_number,customer_name,contact_id,organization_id,opportunity_id\n"
+                "Q-201,Acme,30,20,40\n"
+            ).encode("utf-8"),
+            tenant_id=10,
+            default_assigned_to=1,
+        )
+
+        self.assertEqual(result["new_rows"], 1)
+        self.assertEqual(result["failures"], [])
+        quote = (
+            self.db.query(SalesQuote)
+            .filter(SalesQuote.tenant_id == 10, SalesQuote.quote_number == "Q-201")
+            .one()
+        )
+        self.assertEqual(quote.contact_id, 30)
+        self.assertEqual(quote.organization_id, 20)
+        self.assertEqual(quote.opportunity_id, 40)
 
 
 if __name__ == "__main__":

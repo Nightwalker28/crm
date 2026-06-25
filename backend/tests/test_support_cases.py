@@ -1,14 +1,18 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.modules.documents import models as document_models  # noqa: F401
+from app.modules.platform import models as platform_models  # noqa: F401
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.support.models import SupportCase
+from app.modules.support.services import cases_services
 from app.modules.support.services.cases_services import (
     add_case_comment,
     add_client_support_case_comment,
@@ -81,6 +85,29 @@ class SupportCaseTests(unittest.TestCase):
         self.assertEqual(len(item.events), 1)
         self.assertEqual(item.events[0].event_type, "created")
 
+    def test_create_case_retries_generated_number_collision(self):
+        self.db.add(
+            SupportCase(
+                tenant_id=10,
+                case_number="CASE-DUP",
+                subject="Existing case",
+                status="new",
+                priority="medium",
+            )
+        )
+        self.db.commit()
+
+        with patch.object(
+            cases_services,
+            "_generate_case_number",
+            side_effect=["CASE-DUP", "CASE-NEXT"],
+        ):
+            item = create_support_case(self.db, {"subject": "Retry me"}, self.user)
+
+        self.assertEqual(item.case_number, "CASE-NEXT")
+        self.assertEqual(self.db.query(SupportCase).filter(SupportCase.tenant_id == 10).count(), 2)
+        self.assertEqual(item.events[0].event_type, "created")
+
     def test_create_case_rejects_cross_tenant_link(self):
         with self.assertRaises(HTTPException) as exc:
             create_support_case(
@@ -110,6 +137,32 @@ class SupportCaseTests(unittest.TestCase):
         self.assertEqual(comment.body, "We are checking this.")
         self.assertIsNotNone(reloaded.first_response_at)
         self.assertEqual(len(reloaded.comments), 1)
+
+    def test_comment_rolls_back_on_integrity_failure(self):
+        item = create_support_case(self.db, {"subject": "Needs response"}, self.user)
+        failure = IntegrityError("INSERT", {}, Exception("comment failed"))
+
+        with patch.object(self.db, "commit", side_effect=failure):
+            with self.assertRaises(HTTPException) as exc:
+                add_case_comment(self.db, item, {"body": "This should roll back"}, self.user)
+
+        self.assertEqual(exc.exception.status_code, 409)
+        self.assertEqual(exc.exception.detail, "Support case comment could not be created")
+        self.assertEqual(get_case_or_404(self.db, tenant_id=10, case_id=item.id).comments, [])
+
+    def test_status_update_rolls_back_on_integrity_failure(self):
+        item = create_support_case(self.db, {"subject": "Resolve me"}, self.user)
+        failure = IntegrityError("UPDATE", {}, Exception("status failed"))
+
+        with patch.object(self.db, "commit", side_effect=failure):
+            with self.assertRaises(HTTPException) as exc:
+                update_support_case(self.db, item, {"status": "resolved"}, self.user)
+
+        self.assertEqual(exc.exception.status_code, 409)
+        self.assertEqual(exc.exception.detail, "Support case could not be updated")
+        reloaded = get_case_or_404(self.db, tenant_id=10, case_id=item.id)
+        self.assertEqual(reloaded.status, "new")
+        self.assertIsNone(reloaded.resolved_at)
 
     def test_get_case_scopes_by_tenant(self):
         item = create_support_case(self.db, {"subject": "Tenant scoped"}, self.user)
@@ -179,7 +232,7 @@ class SupportCaseTests(unittest.TestCase):
             contact_id=30,
             organization_id=20,
             payload={"subject": "Quick question", "description": "Can you confirm this?", "category": "question"},
-            source="client_portal_message",
+            source="CLIENT_PORTAL_MESSAGE",
             event_type="client_message_created",
         )
 
@@ -189,9 +242,51 @@ class SupportCaseTests(unittest.TestCase):
         self.assertEqual([case.id for case in tickets], [ticket.id])
         self.assertEqual([case.id for case in messages], [question.id])
         self.assertEqual(question.source, "client_portal_message")
+        self.assertEqual(
+            get_client_support_case_or_404(
+                self.db,
+                tenant_id=10,
+                contact_id=30,
+                organization_id=20,
+                case_id=question.id,
+                source="CLIENT_PORTAL_MESSAGE",
+            ).id,
+            question.id,
+        )
         with self.assertRaises(HTTPException) as exc:
             get_client_support_case_or_404(self.db, tenant_id=10, contact_id=30, organization_id=20, case_id=ticket.id, source="client_portal_message")
         self.assertEqual(exc.exception.status_code, 404)
+
+    def test_client_create_retries_generated_number_collision(self):
+        self.db.add(
+            SupportCase(
+                tenant_id=10,
+                case_number="CASE-CLIENT-DUP",
+                subject="Existing client case",
+                status="new",
+                priority="medium",
+                source="client_portal",
+                contact_id=30,
+                organization_id=20,
+            )
+        )
+        self.db.commit()
+
+        with patch.object(
+            cases_services,
+            "_generate_case_number",
+            side_effect=["CASE-CLIENT-DUP", "CASE-CLIENT-NEXT"],
+        ):
+            item = create_client_support_case(
+                self.db,
+                tenant_id=10,
+                contact_id=30,
+                organization_id=20,
+                payload={"subject": "Retry portal case"},
+            )
+
+        self.assertEqual(item.case_number, "CASE-CLIENT-NEXT")
+        self.assertEqual(item.source, "client_portal")
 
     def test_client_can_close_and_reopen_own_case(self):
         item = create_client_support_case(

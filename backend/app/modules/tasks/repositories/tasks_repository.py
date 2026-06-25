@@ -159,21 +159,40 @@ def get_task(
             db,
             tenant_id=tenant_id,
             current_user=current_user,
-            only_deleted=include_deleted,
+            include_deleted=include_deleted,
         )
         .filter(Task.id == task_id)
         .first()
     )
 
 
-def list_deleted_tasks(db: Session, *, tenant_id: int, pagination):
-    query = (
-        db.query(Task)
-        .options(
-            selectinload(Task.assignees).selectinload(TaskAssignee.user),
-            selectinload(Task.assignees).selectinload(TaskAssignee.team),
+def get_deleted_task(
+    db: Session,
+    *,
+    tenant_id: int,
+    current_user,
+    task_id: int,
+) -> Task | None:
+    return (
+        build_task_query(
+            db,
+            tenant_id=tenant_id,
+            current_user=current_user,
+            only_deleted=True,
         )
-        .filter(Task.tenant_id == tenant_id, Task.deleted_at.is_not(None))
+        .filter(Task.id == task_id)
+        .first()
+    )
+
+
+def list_deleted_tasks(db: Session, *, tenant_id: int, current_user, pagination):
+    query = (
+        build_task_query(
+            db,
+            tenant_id=tenant_id,
+            current_user=current_user,
+            only_deleted=True,
+        )
     )
     total_count = query.count()
     tasks = query.order_by(Task.deleted_at.desc(), Task.updated_at.desc()).offset(pagination.offset).limit(pagination.limit).all()

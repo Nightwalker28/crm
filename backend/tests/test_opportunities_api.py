@@ -18,17 +18,22 @@ class OpportunityAttachmentTests(unittest.IsolatedAsyncioTestCase):
             opportunity = SimpleNamespace(attachments=None)
             with patch.object(opportunities_api, "OPPORTUNITY_ATTACHMENTS_DIR", attachments_dir), \
                  patch.object(opportunities_api, "get_opportunity_or_404", return_value=opportunity), \
-                 patch.object(opportunities_api, "update_opportunity", side_effect=RuntimeError("db failed")):
+                 patch.object(opportunities_api, "update_opportunity", side_effect=RuntimeError("db failed")) as update_mock:
                 upload = UploadFile(file=io.BytesIO(b"hello"), filename="spec.pdf")
+                user = SimpleNamespace(id=7, tenant_id=42)
 
                 with self.assertRaises(RuntimeError):
                     await opportunities_api.upload_opportunity_attachments(
                         None,
                         opportunity_id=9,
+                        tenant_id=42,
                         files=[upload],
+                        current_user=user,
                     )
 
             self.assertEqual(list(attachments_dir.iterdir()), [])
+            update_mock.assert_called_once()
+            self.assertIs(update_mock.call_args.kwargs["current_user"], user)
 
     def test_delete_rejects_path_traversal_before_file_removal(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -46,7 +51,9 @@ class OpportunityAttachmentTests(unittest.IsolatedAsyncioTestCase):
                     opportunities_api.delete_opportunity_attachments(
                         None,
                         opportunity_id=9,
+                        tenant_id=42,
                         attachments=[relative_escape],
+                        current_user=SimpleNamespace(id=7, tenant_id=42),
                     )
 
             self.assertEqual(exc.exception.status_code, 400)
