@@ -2,7 +2,7 @@
 
 _Last updated: 2026-06-22_
 
-This is the consolidated implementation backlog for the production-readiness audit across Core Backend, Contracts, Calendar, Catalog, Client Portal, Documents, Platform, and Finance.
+This is the consolidated implementation backlog for the production-readiness audit across Core Backend, Contracts, Calendar, Catalog, Client Portal, Documents, Platform, Finance, Sales, Support, and Tasks.
 
 Use this document as a routing layer for Codex work. Each item is intentionally scoped so an agent can pick one task, inspect the current code, implement the smallest safe fix, and run focused verification.
 
@@ -32,12 +32,12 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 
 ## Recommended PR Order
 
-1. **Critical security and startup safety:** CP-SEC.
-2. **Concurrency and transaction correctness:** CON-CONC, CAL-CONC, CAT-MEDIA, CP-SEED, DOC-STORAGE, FIN-TXN, PLAT-RESTORE.
-3. **External side effects and background work:** CAL-SYNC, DOC-STORAGE, PLAT-EVENTS, PLAT-RESTORE.
-4. **Query scalability and indexes:** SEARCH-IDX, LIST-PERF, PLAT-QUERY.
+1. **Critical security and startup safety:** CP-SEC, SALES-SEC, TASKS-CORE, SUPPORT-CASES.
+2. **Concurrency and transaction correctness:** CRM-NUMBERS, CON-CONC, CAL-CONC, CAT-MEDIA, CP-SEED, DOC-STORAGE, FIN-TXN, SALES-TXN, TASKS-CORE, SUPPORT-SLA, PLAT-RESTORE.
+3. **External side effects and background work:** CAL-SYNC, DOC-STORAGE, TASKS-EVENTS, PLAT-EVENTS, PLAT-RESTORE.
+4. **Query scalability and indexes:** SEARCH-IDX, LIST-PERF, SALES-PERF, SUPPORT-PERF, TASKS-PERF, PLAT-QUERY.
 5. **Frontend cache, validation, and browser reliability:** FE-QUERY, FE-FORMS, FE-BROWSER.
-6. **Cleanup and maintainability:** OPS-MAINT, SERIALIZATION, ROUTES, DUPLICATION.
+6. **Cleanup and maintainability:** SALES-FILES, SALES-MODELS, OPS-MAINT, SERIALIZATION, ROUTES, DUPLICATION.
 
 ---
 
@@ -94,20 +94,20 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 ## SEARCH-IDX — Add intentional text-search and hot-query index strategy
 
 - **Severity:** Medium
-- **Source items:** CORE-11, CORE-12, CORE-25, CON-12, CON-18, CAL-17, CAL-18, CAT-13, CAT-14, DOC-18, FIN-28
+- **Source items:** CORE-11, CORE-12, CORE-25, CON-12, CON-18, CAL-17, CAL-18, CAT-13, CAT-14, DOC-18, FIN-28, SALES-DEEP-08, SALES-DEEP-09, TASK-13, SUP-13, SUP-14, SUP-15, SUP-30
 - **Files:** module filter/search helpers, models, Alembic migrations, tests
-- **Issue:** Contains searches and hot range/lookups lack targeted indexes; some generated SQL is unnecessarily complex; several constraints need active-row semantics.
-- **Fix:** Cap text filter values. Use `pg_trgm` GIN indexes for high-use contains searches while preserving LIKE/ILIKE semantics. Add targeted composite/partial indexes for contract expiration, calendar ranges/participants, document template/active shares, catalog currency constraints, and active POS invoice number uniqueness. Flatten PostgreSQL searchable expressions with `concat_ws` where applicable.
-- **Acceptance:** Hot contains/range/lookup paths have an index strategy; oversized filter values fail before query construction; active-row uniqueness matches soft-delete behavior.
+- **Issue:** Contains searches and hot range/lookups lack targeted indexes; some generated SQL is unnecessarily complex; several constraints need active-row semantics; support search treats `%` and `_` as wildcards; sales/support indexes need query-plan justification.
+- **Fix:** Cap text filter values. Use `pg_trgm` GIN indexes for high-use contains searches while preserving LIKE/ILIKE semantics. Add targeted composite/partial indexes for contract expiration, calendar ranges/participants, document template/active shares, catalog currency constraints, task tenant/status and tenant/due filters, support SLA/open-case predicates, sales quote-open hash columns/search documents, and active POS invoice number uniqueness. Escape LIKE wildcards where literal search is expected. Flatten PostgreSQL searchable expressions with `concat_ws` where applicable.
+- **Acceptance:** Hot contains/range/lookup paths have an index strategy; oversized filter values fail before query construction; active-row uniqueness matches soft-delete behavior; support literal wildcard searches do not over-match.
 
 ## LIST-PERF — Consolidate count/list, pagination, and cursor-query optimizations
 
 - **Severity:** Medium/High
-- **Source items:** CORE-13, CORE-19, CORE-20, CORE-21, CON-11, CAL-13, CAT-15, CP-05, CP-08, CP-14, CP-21, DOC-08, DOC-09, DOC-13, DOC-14, DOC-25, DOC-26, FIN-19, FIN-25, FIN-26, FIN-27, PLAT-10, PLAT-13, PLAT-19, PLAT-38
+- **Source items:** CORE-13, CORE-19, CORE-20, CORE-21, CON-11, CAL-13, CAT-15, CP-05, CP-08, CP-14, CP-21, DOC-08, DOC-09, DOC-13, DOC-14, DOC-25, DOC-26, FIN-19, FIN-25, FIN-26, FIN-27, PLAT-10, PLAT-13, PLAT-19, PLAT-38, SALES-13, SALES-16, SALES-17, SALES-DEEP-23, SALES-DEEP-29, SALES-DEEP-30, SALES-DEEP-31, TASK-11, TASK-14, TASK-16, TASK-28, TASK-34, SUP-10, SUP-11, SUP-12, SUP-21
 - **Files:** shared pagination helpers, module repositories/services/routes, frontend consumers where response contracts change
-- **Issue:** Several endpoints load full lists to count/slice, run duplicate fetches, manually compute offsets, hydrate cursor sentinel rows, churn DB sessions/queries in polling paths, or lack pagination metadata.
-- **Fix:** Add summary/count/latest helpers for overview pages. Use count-specific or window-count queries on hot endpoints. Enforce bounded flat list routes or cursor alternatives, including searchable participant pickers instead of fixed caps. Use `Pagination.offset`/`limit`. Ensure cursor responses strip sentinel rows before serialization/hydration. Remove redundant refresh/refetch paths. Verify and remove duplicate document share-list fetches if present. Reduce SSE/realtime DB session and query churn.
-- **Acceptance:** Pagination contracts are explicit and consistent; overview/list endpoints do not fetch full datasets for summaries; cursor sentinels are not returned or over-hydrated; polling/list paths do not multiply DB work unnecessarily.
+- **Issue:** Several endpoints load full lists to count/slice, run duplicate fetches, manually compute offsets, hydrate cursor sentinel rows, churn DB sessions/queries in polling paths, or lack pagination metadata. Sales/support summaries also over-fetch related records, hydrate unused custom fields, or filter client-visible data in Python. Task assignment options and linked-record task widgets are currently bounded poorly or not searchable.
+- **Fix:** Add summary/count/latest helpers for overview pages. Use count-specific, grouped, conditional aggregate, or window-count queries on hot endpoints. Enforce bounded flat list routes or cursor alternatives, including searchable participant/assignee pickers instead of fixed caps. Use `Pagination.offset`/`limit`. Ensure cursor responses strip sentinel rows before serialization/hydration. Remove redundant refresh/refetch paths. Verify and remove duplicate document/share/proposal/task fetches if present. Reduce SSE/realtime DB session and query churn. Filter client-visible support comments in SQL.
+- **Acceptance:** Pagination contracts are explicit and consistent; overview/list endpoints do not fetch full datasets for summaries; cursor sentinels are not returned or over-hydrated; polling/list paths do not multiply DB work unnecessarily; client-facing list/detail responses avoid loading private/internal rows; task assignment and linked-task views scale beyond small tenants/default page sizes.
 
 ## CON-CONC — Make contract writes atomic, efficient, and constraint-safe
 
@@ -181,6 +181,114 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Fix:** Flush IDs and commit IO/custom fields once. Parse CSV once and use row savepoints instead of broad `expire_all()`. Align service and DB uniqueness on active POS invoices. Add bounded SQLite retry if needed. Diff invoice lines by ID. Write audit logs in the same transaction. Cap tax rates. Remove dead duplicate query helpers. Add PATCH or document/alias PUT semantics. Share cursor/list serializers.
 - **Acceptance:** Record/custom-field and invoice/audit writes commit or roll back together; soft-deleted invoice numbers can be reused while active duplicates fail; invoice line updates preserve unchanged rows; invalid tax rates return 4xx.
 
+## CRM-NUMBERS — Make sales and support number allocation atomic
+
+- **Severity:** Critical
+- **Source items:** SALES-03, SALES-04, SALES-37, SALES-DEEP-25, SUP-01, SUP-02
+- **Files:** sales quote/order services, support case services, models, migrations, tests
+- **Issue:** Quote, order, and support case numbers use date-prefix plus count/LIKE scans. Concurrent requests can generate the same number, and support cases lack a per-tenant DB uniqueness guarantee.
+- **Fix:** Use a shared tenant/date counter table, PostgreSQL sequence, or atomic upsert allocator for generated business numbers. Compute the prefix timestamp once per create. Add/verify unique constraints and clean `IntegrityError` handling/retry paths for generated and manual numbers.
+- **Acceptance:** Concurrent quote/order/support case creation produces unique numbers without generic 500s; database constraints enforce active business-number uniqueness where applicable.
+
+## SALES-SEC — Fix sales tenant boundaries, deleted-row semantics, and field policy bypasses
+
+- **Severity:** Critical/High
+- **Source items:** SALES-01, SALES-02, SALES-05, SALES-23, SALES-40, SALES-DEEP-10, SALES-DEEP-24, SALES-DEEP-38, SALES-DEEP-41
+- **Files:** sales opportunity/organization/contact/quote repositories, services, routes, field-gating tests
+- **Issue:** Opportunity attachment helpers can call update code without `current_user`; opportunity `include_deleted=True` means deleted-only; legacy organization list helpers and import duplicate preloads can miss tenant filters; quote imports can link cross-tenant IDs; contact organization-search may expose organizations through contact permissions; opportunity list/default-assignee logic can bypass disabled-field policy.
+- **Fix:** Pass `current_user` through attachment update paths or add a dedicated safe helper. Correct include-deleted semantics and add deleted-only restore helpers/tests. Remove or tenant-scope legacy list helpers and duplicate preload queries. Batch-validate imported linked IDs by tenant. Require the right organization permission or restrict helper output. Apply defaults before disabled-field sanitization or define explicit exemptions.
+- **Acceptance:** Sales helpers cannot leak cross-tenant data, imports cannot link to foreign records, include-deleted semantics are consistent across sales repositories, and disabled field policy cannot be reintroduced by route defaults.
+
+## SALES-TXN — Make sales writes, imports, follow-ups, and audits atomic
+
+- **Severity:** High/Critical
+- **Source items:** SALES-09, SALES-10, SALES-11, SALES-12, SALES-15, SALES-19, SALES-22, SALES-39, SALES-DEEP-11, SALES-DEEP-12, SALES-DEEP-14, SALES-DEEP-15, SALES-DEEP-16, SALES-DEEP-17, SALES-DEEP-18, SALES-DEEP-21, SALES-DEEP-26, SALES-DEEP-27, SALES-DEEP-28, SALES-DEEP-32, SALES-DEEP-33, SALES-DEEP-35, SALES-DEEP-36
+- **Files:** sales contact/organization/opportunity/lead/quote/order/follow-up/reminder services, import paths, tests
+- **Issue:** Multiple sales create/update/import paths commit parent records before custom fields, imports commit per row or use mixed transaction patterns, follow-up/reminder side effects can split from activity/task creation, quote status changes can split from audit logging, duplicate conversion flags and order transitions need explicit rules, and some duplicate pre-checks have TOCTOU windows.
+- **Fix:** Standardize sales writes on `flush()` plus one commit for parent/custom fields/audit where possible. Use import-specific helpers with batch transactions or row savepoints. Add rollback guards around known conflict paths. Preserve explicit assignees on duplicate replacement. Make follow-up/reminder side effects atomic or explicitly best-effort with durable logging. Define quote follow-up, quote-to-order duplicate, and order transition semantics.
+- **Acceptance:** Sales parent/custom-field/audit writes commit or roll back together; large imports avoid N commits while preserving row summaries; follow-up/reminder task side effects have clear all-or-best-effort behavior; duplicate/order state behavior matches the exposed flags.
+
+## SALES-FILES — Make sales attachments and quote/public-file behavior durable
+
+- **Severity:** High/Medium
+- **Source items:** SALES-06, SALES-07, SALES-18, SALES-DEEP-05, SALES-DEEP-22, SALES-DEEP-43, SALES-DEEP-54
+- **Files:** opportunity attachment services/models, quote proposal services/routes/frontend, export paths, migrations/tests
+- **Issue:** Opportunity attachment files are written before DB commit, delete path containment is fragile, attachment metadata is stored as raw JSON text, quote export behavior is inconsistent, public/internal proposal event types need explicit boundaries, and proposal links may point to the wrong base URL.
+- **Fix:** Stage attachment files and move/delete them only after transaction success, or add cleanup for orphaned staged files. Resolve/delete files against one canonical root and reject symlink escapes. Move attachment metadata to JSON/JSONB or validate strictly. Stream large quote exports or document background-only policy. Separate internal proposal event types from public event constants. Verify public proposal link generation uses the intended frontend route.
+- **Acceptance:** Attachment DB/file state cannot silently diverge, attachment metadata cannot be malformed JSON, quote export/link behavior is intentional, and internal/public proposal events are clearly separated.
+
+## SALES-MODELS — Normalize sales model loading, timestamps, and domain metadata
+
+- **Severity:** Medium
+- **Source items:** SALES-08, SALES-20, SALES-21, SALES-DEEP-01, SALES-DEEP-02, SALES-DEEP-03, SALES-DEEP-04, SALES-DEEP-06, SALES-DEEP-07, SALES-DEEP-13, SALES-DEEP-19, SALES-DEEP-20
+- **Files:** sales models, shared sales utilities, lead score services, relationship query tests, migrations where needed
+- **Issue:** Sales models use list-heavy `lazy="joined"` defaults, timestamp declarations and soft-delete timestamp creation are inconsistent, organizations lack `updated_at`, assigned-contact user deletion behavior is restrictive, custom-field hydration depends on an in-memory cache, duplicate name/timezone/stage behavior is duplicated, and opportunity currency lookups can repeat per row.
+- **Fix:** Prefer `selectin`/explicit eager loading for relationships. Use aware UTC timestamps and a shared timezone normalization helper. Add `updated_at` to organizations if product wants recency display. Change or guard assigned-user delete behavior. Document/test custom-field hydration. Normalize partial-name duplicate handling, stage metadata, lead-score freshness, and per-request currency lookup caching.
+- **Acceptance:** Base sales list queries do not auto-join unrelated tables, sales timestamps and hydration contracts are explicit, and model/domain metadata has one clear update path.
+
+## SALES-PERF — Bound sales summaries, reminders, exports, and board/list queries
+
+- **Severity:** High/Medium
+- **Source items:** SALES-13, SALES-14, SALES-16, SALES-17, SALES-18, SALES-DEEP-23, SALES-DEEP-29, SALES-DEEP-30, SALES-DEEP-31, SALES-DEEP-34, SALES-DEEP-48
+- **Files:** sales summary services, reminder scans, quote exports, opportunity board/list endpoints, tests
+- **Issue:** Opportunity pipeline summary and sales summaries can load or hydrate too much in Python, reminder scans query all tenants, quote proposal/event and related insertion-order paths can over-query, quote export can materialize large result sets, and the opportunity board may show only the current page while looking like a full pipeline.
+- **Fix:** Use grouped SQL aggregation for pipeline/summary metrics. Hydrate custom fields only where response schemas expose them. Scope reminder scans per tenant and chunk/cursor work. Avoid proposal/event queries when no proposal exists. Stream quote exports or route large jobs through background export. Make opportunity board scope explicit or load complete stage data incrementally.
+- **Acceptance:** Sales summaries preserve response shapes with fewer queries, reminders are tenant-scoped and bounded, large exports do not materialize whole datasets, and board scope is clear to users.
+
+## SUPPORT-CASES — Make support case creation, comments, and case numbers safe
+
+- **Severity:** Critical/High
+- **Source items:** SUP-01, SUP-02, SUP-03, SUP-04, SUP-08, SUP-09
+- **Files:** support case services/models/migrations, client support paths, tests
+- **Issue:** Support case numbers are non-atomic and not unique per tenant, create paths re-fetch after commit, comment/status helpers lack rollback guards, source matching is case-sensitive, and operations can compute multiple timestamps.
+- **Fix:** Use the shared atomic number allocator and add per-tenant case-number uniqueness. Create case and initial event in one transaction and return the refreshed object without unnecessary re-fetch. Wrap comment/status commits with rollback/clean 4xx handling. Normalize source values on write/read and compute one timestamp per logical operation.
+- **Acceptance:** Concurrent admin/client case creation gets unique numbers; failed comment/status writes leave no dirty session; source matching is stable regardless of casing.
+
+## SUPPORT-SLA — Protect support SLA lifecycle and linked-record updates
+
+- **Severity:** High/Medium
+- **Source items:** SUP-05, SUP-06, SUP-07, SUP-17, SUP-18, SUP-19, SUP-22, SUP-29
+- **Files:** support schemas/services/routes/models, client portal support tests, frontend display schemas
+- **Issue:** Client update schemas expose service-owned SLA timestamps, generic field assignment can run before transition logic, linked-record validation can re-check every field, category DB/schema constraints differ, comment edit/audit policy is undefined, and client-facing comment privacy/display-name behavior needs tests.
+- **Fix:** Remove/ignore service-owned lifecycle timestamps from public update payloads. Apply status transition timestamp logic after filtering payload fields. Validate only changed linked fields and batch checks where practical. Align category constraints or document schema-only validation. Decide comment immutability/`updated_at`. Expose user display fields and test internal comment privacy.
+- **Acceptance:** SLA timestamps are service-owned, partial updates do not revalidate unrelated links, internal comments never reach client responses, and support UI can show human-readable assignee/comment author names.
+
+## SUPPORT-PERF — Optimize support summaries, comments, search, and projection
+
+- **Severity:** Medium/High
+- **Source items:** SUP-10, SUP-11, SUP-12, SUP-13, SUP-14, SUP-15, SUP-16, SUP-20, SUP-21, SUP-30
+- **Files:** support services/routes/models/migrations/frontend hooks, tests or EXPLAIN notes
+- **Issue:** Support list/summary endpoints use separate count/aggregate queries, client serialization loads then filters internal comments, search wildcard behavior is literal-unsafe, visible columns affect frontend keys without backend projection, and saved-view search routing needs verification.
+- **Fix:** Use count-specific or conditional aggregate queries. Fetch only client-visible comments for client responses. Add or adjust support SLA/open-case indexes after EXPLAIN. Escape LIKE wildcards. Either implement `fields=` projection or keep visible columns UI-only. Verify saved-view search routes through `/search`. Keep list responses on lightweight schemas with regression tests.
+- **Acceptance:** Support list/summary/search responses remain compatible with lower query cost, client endpoints avoid internal-comment over-fetching, and column/search cache behavior matches actual payloads.
+
+## TASKS-CORE — Make task writes and deleted-record access safe
+
+- **Severity:** Critical/High
+- **Source items:** TASK-01, TASK-02, TASK-03, TASK-04, TASK-05, TASK-06, TASK-08, TASK-31, TASK-33
+- **Files:** task services, repository, routes, recycle-bin tests
+- **Issue:** Task create/update paths can commit/refresh/re-query redundantly, create lacks a full rollback guard, `include_deleted=True` maps to deleted-only, deleted-task listing can bypass normal visibility, blank titles can reach DB constraints, source-context errors can surface unintentionally, and dead duplicate query code remains in the service layer.
+- **Fix:** Wrap task write bodies with rollback-safe transaction handling. Use one intentional post-commit load strategy, not refresh plus re-query. Make `include_deleted=True` include active and deleted rows, with explicit deleted-only helpers for restore/recycle-bin paths. Apply active-task visibility to deleted lists or gate them behind admin/restore permission. Reject blank titles before commit. Make source-context failure behavior strict where needed and logged/best-effort elsewhere. Remove dead service query builders.
+- **Acceptance:** Failed task writes leave no dirty session or partial assignee rows; deleted-task access matches explicit visibility/admin policy; include/deleted semantics are clear at every call site.
+
+## TASKS-PERF — Batch task assignees, options, scans, and serialization
+
+- **Severity:** High/Medium
+- **Source items:** TASK-09, TASK-10, TASK-11, TASK-12, TASK-14, TASK-15, TASK-16, TASK-28, TASK-32, TASK-34
+- **Files:** task services, repository, models, task options route, task widgets, tests
+- **Issue:** Assignee validation and notification resolution can run one query per user/team, assignment options load all users/teams, due-scan dedupe checks one task at a time, task base queries join user relationships by default, count queries can inherit ordering/ranking, and task serializers can validate through Pydantic more than once.
+- **Fix:** Batch user/team validation and notification recipient resolution. Add search/pagination and active-principal filtering to assignment options, with selected-assignee resolution if needed. Batch due-alert event lookups per scan window. Change eager user relationships to `selectin`/explicit loads and add query-count tests. Strip ordering from count queries. Serialize/validate task responses once.
+- **Acceptance:** Large-assignee tasks and due scans use bounded query counts; assignment dialogs do not load every tenant principal; list/detail serialization stays query-bounded after loader changes.
+
+## TASKS-EVENTS — Deduplicate task alerts and make notifications observable
+
+- **Severity:** Medium/High
+- **Source items:** TASK-07, TASK-17, TASK-18, TASK-19, TASK-20
+- **Files:** task services/routes, CRM event definitions, notification paths, tests
+- **Issue:** Route-level `task.due_today` emission can duplicate events on every save, scan dedupe must stay tenant-safe, task alert event types can drift from canonical CRM event sets, assignment notification failures can be silent, and due-time notification text can show raw UTC as local time.
+- **Fix:** Reuse a shared due-alert dedupe helper for route and scan emissions. Batch existing alert lookup by tenant/day/task IDs. Assert task event types exist in canonical CRM event and alert sets. Decide whether task notifications are best-effort or queued/outbox-backed; log or persist failures accordingly. Format due-time text in recipient timezone or omit misleading time.
+- **Acceptance:** Saving the same due-today task emits at most one alert per day, scan dedupe is tenant-scoped, task events persist/deliver consistently, and notification failures are observable.
+
 ## PLAT-RESTORE — Protect platform restore, backup, retention, and data-transfer jobs
 
 - **Severity:** Critical/High
@@ -211,29 +319,29 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 ## FE-QUERY — Canonicalize frontend query keys and invalidation behavior
 
 - **Severity:** High/Medium
-- **Source items:** CON-09, CON-20, CAL-19, CAT-08, DOC-20, DOC-21, FIN-39, FIN-40, FIN-41, PLAT-31
+- **Source items:** CON-09, CON-20, CAL-19, CAT-08, DOC-20, DOC-21, FIN-39, FIN-40, FIN-41, PLAT-31, SALES-29, SALES-30, SALES-34, SALES-DEEP-45, SALES-DEEP-46, SALES-DEEP-47, TASK-21, TASK-22, TASK-25, SUP-16, SUP-23, SUP-25, SUP-26
 - **Files:** frontend module hooks and saved-view hooks
-- **Issue:** Several hooks may omit fetch-affecting values, include UI-only values, invalidate too broadly/sequentially, or compare logically equivalent saved-view conditions order-sensitively.
-- **Fix:** Build query keys from the same canonical values used in URLs. Include page, size, sort, filters, search, module kind, and context where they affect fetches. Exclude visible columns unless the API supports projection. Use narrow invalidations, `Promise.all` where multiple invalidations remain, and normalized condition comparisons when order is not semantic.
-- **Acceptance:** Changing fetch-affecting inputs gets fresh data; UI-only preferences do not refetch; saved views do not reset because of non-semantic condition ordering.
+- **Issue:** Several hooks may omit fetch-affecting values, include UI-only values, invalidate too broadly/sequentially, or compare logically equivalent saved-view conditions order-sensitively. Sales/support detail pages still use raw fetch/local state in places, opportunity/support summaries can stay stale after mutations, and task page/query state can diverge when filter/sort keys change.
+- **Fix:** Build query keys from the same canonical values used in URLs. Include page, size, sort, filters, search, module kind, and context where they affect fetches. Exclude visible columns unless the API supports projection. Use narrow invalidations, `Promise.all` where multiple invalidations remain, and normalized condition comparisons when order is not semantic. Migrate high-churn sales/support detail pages to React Query gradually and invalidate list/detail/summary keys after mutations. Use stable task filter/sort key strings in query keys and explicitly reset task page state on filter/sort changes.
+- **Acceptance:** Changing fetch-affecting inputs gets fresh data; UI-only preferences do not refetch; saved views do not reset because of non-semantic condition ordering; sales/support summary widgets do not remain stale after create/update/comment/status changes; task rendered page and internal page state stay aligned.
 
 ## FE-FORMS — Align frontend validation and state with backend contracts
 
 - **Severity:** High/Medium
-- **Source items:** CON-10, CON-15, CON-16, CAL-10, CAL-15, CAL-20, CAL-21, CAL-22, CAL-X2, CAT-09, CAT-10, CAT-11, CAT-17, CAT-18, CAT-19, CAT-21, CAT-22, CAT-24, FIN-43, FIN-44, FIN-46, FIN-47, FIN-48, FIN-49
+- **Source items:** CON-10, CON-15, CON-16, CAL-10, CAL-15, CAL-20, CAL-21, CAL-22, CAL-X2, CAT-09, CAT-10, CAT-11, CAT-17, CAT-18, CAT-19, CAT-21, CAT-22, CAT-24, FIN-43, FIN-44, FIN-46, FIN-47, FIN-48, FIN-49, SALES-24, SALES-25, SALES-26, SALES-28, SALES-32, SALES-33, SALES-35, SALES-36, SALES-DEEP-44, SALES-DEEP-48, SALES-DEEP-49, SALES-DEEP-51, SALES-DEEP-52, SALES-DEEP-53, SALES-DEEP-55, SALES-DEEP-56, SALES-DEEP-57, TASK-23, TASK-24, TASK-26, TASK-27, SUP-24, SUP-27, SUP-28
 - **Files:** frontend contract/calendar/catalog/finance components and hooks
-- **Issue:** Forms/tables can show stale state, submit invalid IDs/dates/line values, render objects as `[object Object]`, mismatch disabled state with submit validation, hide truncation, use browser confirm, double-refresh, or keep stale search/display helpers.
-- **Fix:** Reset dialog state on selected record changes. Safely parse IDs and dates once. Validate date order and numeric lines before submit. Render primitives only in default cells. Share validation helpers between disabled and submit paths. Show truncation/inline validation feedback. Use app confirm dialogs. Send minimal toggle payloads. Clear stale search state on unlink and centralize display-name helpers.
-- **Acceptance:** Frontend cannot submit known-invalid values that backend rejects; dialogs show selected record data; table fallback rendering is intentional; destructive actions use app UI.
+- **Issue:** Forms/tables can show stale state, submit invalid IDs/dates/line values, render objects as `[object Object]`, mismatch disabled state with submit validation, hide truncation, use browser confirm, double-refresh, or keep stale search/display helpers. Sales/support forms also use fixed first-page pickers, can race stage/status changes, can swallow create errors, and can send stale linked IDs. Task dialog state currently depends on forced remount keys and delete/complete semantics need ownership clarity.
+- **Fix:** Reset dialog state on selected record changes. Safely parse IDs and dates once. Validate date order and numeric lines before submit. Render primitives only in default cells. Share validation helpers between disabled and submit paths. Show truncation/inline validation feedback. Use app confirm dialogs. Send minimal toggle payloads. Clear stale search state on unlink and centralize display-name helpers. Prefer searchable linked pickers, serialize stage/status updates, propagate modal mutation errors, track dirty linked fields, and document/normalize cascade clearing. Re-sync task dialog state explicitly on task/open changes, remove `updated_at` from dialog keys, define delete-close ownership, and document completion timestamp behavior.
+- **Acceptance:** Frontend cannot submit known-invalid values that backend rejects; dialogs show selected record data; table fallback rendering is intentional; destructive actions use app UI; sales/support linked pickers scale beyond fixed first-page data; saving a task does not remount the dialog unexpectedly.
 
 ## FE-BROWSER — Guard browser-only APIs and accessibility edge cases
 
 - **Severity:** Medium
-- **Source items:** CAL-16, CP-17, DOC-22, PLAT-27, PLAT-28, PLAT-29, PLAT-30, PLAT-32, PLAT-33, PLAT-34, PLAT-35, PLAT-36, CAT-23, CAL-23, FIN-42, FIN-45
+- **Source items:** CAL-16, CP-17, DOC-22, PLAT-27, PLAT-28, PLAT-29, PLAT-30, PLAT-32, PLAT-33, PLAT-34, PLAT-35, PLAT-36, CAT-23, CAL-23, FIN-42, FIN-45, SALES-27, SALES-31, SALES-DEEP-50, SALES-DEEP-58, TASK-29, TASK-30
 - **Files:** frontend client/document/platform/catalog/calendar/finance components and hooks
-- **Issue:** Browser-only APIs can throw in SSR/private/unsupported contexts, shared filter fields are hardcoded, nested controls can lose keyboard behavior, SSE hooks may duplicate connections, some memoization/comment/test coverage is missing, and error fallbacks can be vague.
-- **Fix:** Guard `window`, `document`, `sessionStorage`, object URLs, and `startViewTransition`. Provide View Transitions type guards. Make shared filter fields module-owned. Preserve keyboard activation for nested controls. Share SSE connections per endpoint/session if duplicate connections are verified. Add comments/tests for double-download guards. Add reasonable `staleTime` or memoization only where useful.
-- **Acceptance:** Unsupported browsers/SSR-like tests do not crash; shared UI is module-correct; nested controls remain keyboard-operable; realtime hooks avoid duplicate connections if verified.
+- **Issue:** Browser-only APIs can throw in SSR/private/unsupported contexts, shared filter fields are hardcoded, nested controls can lose keyboard behavior, SSE hooks may duplicate connections, some memoization/comment/test coverage is missing, and error fallbacks can be vague. Sales WhatsApp launch and stage helper imports also need browser-flow and metadata cleanup.
+- **Fix:** Guard `window`, `document`, `sessionStorage`, object URLs, and `startViewTransition`. Provide View Transitions type guards. Make shared filter fields module-owned. Preserve keyboard activation for nested controls. Share SSE connections per endpoint/session if duplicate connections are verified. Add comments/tests for double-download guards. Add reasonable `staleTime` or memoization only where useful. Use React Query for WhatsApp templates and open popups synchronously before async URL assignment. Canonicalize opportunity stage helper imports. Stabilize empty task assignee option arrays and move/memoize task table cell renderers only where it helps row memoization.
+- **Acceptance:** Unsupported browsers/SSR-like tests do not crash; shared UI is module-correct; nested controls remain keyboard-operable; realtime hooks avoid duplicate connections if verified; WhatsApp launch is not blocked by async popup behavior.
 
 ## OPS-MAINT — Keep low-risk operational cleanup explicit
 
@@ -247,28 +355,28 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 ## SERIALIZATION — Make API serialization contracts explicit
 
 - **Severity:** Medium
-- **Source items:** CORE-24, CORE-26, CON-14, CAT-04, DOC-27, FIN-23, FIN-30, CP-12, CP-15
+- **Source items:** CORE-24, CORE-26, CON-14, CAT-04, DOC-27, FIN-23, FIN-30, CP-12, CP-15, SALES-DEEP-06, SALES-DEEP-07, TASK-10, SUP-18, SUP-21, SUP-22
 - **Files:** serializers, schemas, models/docs, tests
-- **Issue:** Some responses expose misleading nullable/default semantics, aliased mutable sets, missing-media ambiguity, heavy audit states, or implicit tenant inheritance.
-- **Fix:** Return copies/frozen sets for duplicate detection. Define `None` media URL behavior and render placeholders. Clarify auto-generated contract numbers. Keep boolean serialization stable. Use slim audit states. Document inherited tenancy for child rows. Replace hidden dynamic ORM serializer attributes with typed inputs.
-- **Acceptance:** API consumers see intentional null/default/media/boolean behavior, and serializers do not mutate caller-owned state or trigger accidental lazy loads.
+- **Issue:** Some responses expose misleading nullable/default semantics, aliased mutable sets, missing-media ambiguity, heavy audit states, implicit tenant inheritance, hidden sales custom-field hydration contracts, or heavy list response shapes.
+- **Fix:** Return copies/frozen sets for duplicate detection. Define `None` media URL behavior and render placeholders. Clarify auto-generated contract numbers. Keep boolean serialization stable. Use slim audit states. Document inherited tenancy for child rows. Replace hidden dynamic ORM serializer attributes with typed inputs. Document/test sales custom-field cache hydration and support immutable-comment/list-item contracts. Ensure task responses are serialized/validated once, either as plain dicts plus route validation or as response models directly.
+- **Acceptance:** API consumers see intentional null/default/media/boolean behavior, and serializers do not mutate caller-owned state or trigger accidental lazy loads; bulk list schemas stay lightweight; task serialization avoids repeated Pydantic validation.
 
 ## ROUTES — Add route-order and path-boundary regression coverage
 
 - **Severity:** Medium/Low
-- **Source items:** CAL-04, CP-03, FIN-36, PLAT-26, PLAT-43
+- **Source items:** CAL-04, CP-03, FIN-36, PLAT-26, PLAT-43, SALES-38, SALES-DEEP-37, SALES-DEEP-39, SALES-DEEP-40, SALES-DEEP-42, SUP-20
 - **Files:** module route files and route tests
-- **Issue:** Static routes and constrained action/path routes need regression coverage so future dynamic routes do not intercept them.
-- **Fix:** Place static routes before dynamic routes where applicable. Use enum/Literal route params for finite action vocabularies. Add route tests for import/export/task/path-converter behavior.
-- **Acceptance:** Known static/action routes reach intended handlers, and unsupported path/action values fail at route boundary.
+- **Issue:** Static routes and constrained action/path routes need regression coverage so future dynamic routes do not intercept them. Some sales routes have inconsistent shapes, broad `ValueError` catches, or double-fetch update paths; support saved-view search routing needs verification.
+- **Fix:** Place static routes before dynamic routes where applicable. Use enum/Literal route params for finite action vocabularies. Add route tests for import/export/task/path-converter behavior. Normalize organization create/search routes with backward-compatible aliases where needed. Remove broad catches or narrow them to known parse/config errors. Pass already-loaded raw records to update services where practical.
+- **Acceptance:** Known static/action routes reach intended handlers, unsupported path/action values fail at route boundary, and sales/support route helpers do not hide errors or duplicate work.
 
 ## DUPLICATION — Remove low-risk duplication only where it improves clarity
 
 - **Severity:** Low/Medium
-- **Source items:** CON-17, CAT-12, CAT-20, CAT-22, DOC-16, FIN-06, FIN-24, FIN-35, FIN-47
+- **Source items:** CON-17, CAT-12, CAT-20, CAT-22, DOC-16, FIN-06, FIN-24, FIN-35, FIN-47, SALES-DEEP-30, SALES-DEEP-45
 - **Files:** affected module utilities, services, schemas, frontend helpers
-- **Issue:** Some list/search handlers, validators, slug/content-type/formatting/display helpers, and query serializers are duplicated.
-- **Fix:** Extract shared helpers only when behavior is identical and the abstraction reduces complexity. Preserve endpoint response shapes.
+- **Issue:** Some list/search handlers, validators, slug/content-type/formatting/display helpers, query serializers, sales hook fetcher signatures, and related-record matching helpers are duplicated.
+- **Fix:** Extract shared helpers only when behavior is identical and the abstraction reduces complexity. Preserve endpoint response shapes. Standardize sales hook fetcher signatures and API-column filtering around shared utilities.
 - **Acceptance:** Duplicated logic is reduced without broad refactors or behavior drift.
 
 ---
@@ -284,6 +392,9 @@ Create migrations only after inspecting the current schema and data.
 - **Documents:** replace global storage uniqueness with scoped indexes/constraints after duplicate checks; template and active client-share indexes.
 - **Finance:** replace POS invoice tenant/number unique index with partial active-row unique index; add overdue-event suppression column only if using column-based suppression; do not denormalize POS line `tenant_id` unless reporting volume justifies it.
 - **Platform:** optional automation dispatch table/event metadata; optional backup progress fields; optional dashboard summary/materialized table.
+- **Sales:** add quote/order number allocator tables or sequences; add `updated_at` to `sales_organizations` if product wants recency display; change opportunity attachments from `Text` to JSON/JSONB after validating existing rows; consider `String(64)` for quote open-event hash columns; relationship loader changes need query tests but usually no DB migration.
+- **Tasks:** add composite indexes for `(tenant_id, status)` and `(tenant_id, due_at)` after EXPLAIN; relationship loader changes need query tests but no DB migration; include/deleted semantics are repository/service changes only.
+- **Support:** add unique constraint on `(tenant_id, case_number)` after duplicate checks; add tenant/SLA and active-case indexes based on EXPLAIN; optionally align category column type with schema limit; add comment `updated_at` only if comment editing is planned.
 - **Search:** use `CREATE EXTENSION IF NOT EXISTS pg_trgm` or Alembic equivalent before trigram indexes.
 
 Migration rules:
@@ -324,6 +435,21 @@ Run the subset that matches touched areas. For broad or cross-cutting work, use 
 - Finance downloads require tenant match and reject out-of-root paths.
 - Finance IO create/update custom fields commit atomically.
 - POS invoice soft-deleted number reuse works in service and DB.
+- Quote/order/support case concurrent creates generate unique numbers.
+- Sales opportunity attachment upload/delete passes `current_user`, keeps file paths contained, and cleans up staged/orphaned files.
+- Sales include-deleted semantics are consistent across active/detail/restore paths.
+- Sales imports cannot be blocked by cross-tenant duplicate preloads or link to cross-tenant records.
+- Sales parent/custom-field writes roll back together for contacts, organizations, opportunities, leads, and quotes.
+- Sales reminder scans are tenant-scoped and chunked.
+- Task create rolls back task and assignee rows when assignee sync fails.
+- Task include-deleted semantics distinguish include-all from deleted-only restore lookups.
+- Deleted task listing respects normal visibility or explicit admin/restore policy.
+- Task assignee validation and notification recipient resolution use batched user/team queries.
+- Task route-level due-today events are deduped, and scan dedupe remains tenant-scoped.
+- Support case create commits case and initial event atomically.
+- Support comments/status commit failures roll back and return clean 4xx.
+- Support client responses exclude internal comments and source matching is normalized.
+- Support search escapes literal `%` and `_` values.
 - Platform restore destructive apply rolls back all row changes on failure.
 - CRM event enqueue/webhook failures are observable and retryable.
 - Global search statement timeout is reset or transaction-scoped safely.
@@ -342,6 +468,15 @@ Run the subset that matches touched areas. For broad or cross-cutting work, use 
 - Saved views do not reset on non-semantic condition ordering.
 - Nested controls inside clickable rows remain keyboard accessible.
 - Realtime hooks do not open duplicate SSE connections if duplicate hooks are present.
+- Sales create-contact and quote/support linked pickers find records beyond the first page and never submit `NaN` IDs.
+- Sales opportunity stage updates are disabled or serialized while a save/stage mutation is in flight.
+- Sales/support detail saves and comments refresh without full-page skeleton flashes.
+- Opportunity pipeline and support summary widgets refresh after mutations.
+- Quote proposal links open the intended public/frontend route.
+- Convert-lead and support dialogs reset transient state on reopen.
+- Task query keys use stable filter/sort strings and reset page state explicitly on filter/sort changes.
+- Task dialog updates form state when switching tasks without relying on remount, and saving does not remount because of `updated_at`.
+- Linked record task widgets can show more than 10 tasks or link to a full task view.
 
 ---
 
@@ -362,6 +497,18 @@ Keep these corrections in mind when implementing tasks:
 11. Finance `POST /insertion-orders/import` is not confirmed shadowed by a dynamic POST route. Route tests/reordering are future-safety work.
 12. Do not assume `useInsertionOrders` has a broken static key until `usePagedList` is inspected.
 13. POS invoice balance clamping may be valid. Document/test it unless product wants explicit overpayment display.
+14. Sales lead score timezone handling is not fully broken in current notes; centralize and test the behavior instead of rewriting scoring blindly.
+15. Do not require `CreateQuoteModal` to demand `contact_id` unless product/backend rules make contact linking mandatory.
+16. Contact import `bulk_insert_mappings` is not automatically wrong; document or replace it only if ORM events/listeners are required.
+17. Sales organization `customer_group_id` sorting and cursor ordering are already present in current notes; add regression tests if useful instead of duplicate code.
+18. Public quote proposal client-host handling is already guarded in current notes; the cleanup is around event constants and URL/link generation.
+19. `datetime.now(timezone.utc)` is the correct support timestamp pattern. The support cleanup is to compute one timestamp per logical operation.
+20. Do not rewrite `useSupportCases` query keys as if `usePagedList` were static; current notes say `usePagedList` appends page/filter/sort dimensions.
+21. Keep `SupportCaseListItem` separate from heavy detail responses and protect that shape with tests.
+22. Do not assume task refresh alone loads every relationship; remove redundant refresh-plus-requery, but keep one reliable explicit loading strategy.
+23. `TaskDialog` currently avoids stale prop state through a parent key. The fix is to replace that fragile dependency with explicit form synchronization.
+24. `TasksTable.renderCell` is a low-risk performance cleanup, not an immediate correctness bug.
+25. Task due-time notification timezone handling is a UX accuracy improvement, not a storage bug.
 
 ---
 
