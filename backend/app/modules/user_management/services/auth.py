@@ -13,6 +13,7 @@ from jose.exceptions import ExpiredSignatureError
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.core.cache import cache_delete, cache_get_json, cache_set_json
 from app.core.config import settings
 from app.core.microsoft_oauth import MICROSOFT_GRAPH_BASE, microsoft_auth_url, microsoft_scope_string, microsoft_token_url
 from app.core.passwords import (
@@ -47,6 +48,7 @@ GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 GOOGLE_AUTH_REQUEST_TIMEOUT_SECONDS = 20
 logger = logging.getLogger(__name__)
+MANUAL_LOGIN_RATE_LIMIT_PREFIX = "auth:manual_login_failed"
 
 SCOPES = " ".join(
     [
@@ -170,6 +172,42 @@ def get_microsoft_auth_url(*, request: Request, tenant: Tenant | None) -> str:
 
 def _hash_setup_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _manual_login_attempt_keys(*, tenant_id: int, email: str, client_host: str | None) -> list[str]:
+    normalized_email = email.strip().lower()
+    email_hash = hashlib.sha256(normalized_email.encode("utf-8")).hexdigest()
+    keys = [f"{MANUAL_LOGIN_RATE_LIMIT_PREFIX}:tenant:{tenant_id}:email:{email_hash}"]
+    if client_host:
+        host_hash = hashlib.sha256(client_host.strip().lower().encode("utf-8")).hexdigest()
+        keys.append(f"{MANUAL_LOGIN_RATE_LIMIT_PREFIX}:tenant:{tenant_id}:ip:{host_hash}")
+    return keys
+
+
+def check_manual_login_rate_limit(*, tenant_id: int, email: str, client_host: str | None = None) -> None:
+    for key in _manual_login_attempt_keys(tenant_id=tenant_id, email=email, client_host=client_host):
+        payload = cache_get_json(key) or {}
+        if int(payload.get("count") or 0) >= settings.MANUAL_LOGIN_FAILED_ATTEMPT_LIMIT:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed login attempts",
+            )
+
+
+def record_failed_manual_login_attempt(*, tenant_id: int, email: str, client_host: str | None = None) -> None:
+    for key in _manual_login_attempt_keys(tenant_id=tenant_id, email=email, client_host=client_host):
+        payload = cache_get_json(key) or {}
+        count = int(payload.get("count") or 0) + 1
+        cache_set_json(
+            key,
+            {"count": count},
+            ttl_seconds=settings.MANUAL_LOGIN_FAILED_ATTEMPT_WINDOW_SECONDS,
+        )
+
+
+def clear_failed_manual_login_attempts(*, tenant_id: int, email: str, client_host: str | None = None) -> None:
+    for key in _manual_login_attempt_keys(tenant_id=tenant_id, email=email, client_host=client_host):
+        cache_delete(key)
 
 
 # -------------------------------------------------------------------
@@ -584,11 +622,11 @@ def create_user_setup_link(
     return f"{base_origin}/auth/setup-password?{token_query}"
 
 
-def _cleanup_stale_user_setup_tokens(db: Session) -> int:
+def _cleanup_stale_user_setup_tokens(db: Session) -> None:
     retention_days = max(settings.USER_SETUP_TOKEN_RETENTION_DAYS, 1)
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
 
-    return (
+    (
         db.query(UserSetupToken)
         .filter(
             or_(
@@ -674,15 +712,6 @@ def authenticate_manual_user(
                 detail={
                     "code": "password_setup_required",
                     "message": "This account does not have a password set yet",
-                    "setup_link": (
-                        create_user_setup_link(
-                            db,
-                            user,
-                            frontend_origin=frontend_origin,
-                        )
-                        if user.auth_mode in {UserAuthMode.manual_only, UserAuthMode.manual_or_google}
-                        else None
-                    ),
                 },
             )
         raise HTTPException(
@@ -747,14 +776,14 @@ def get_user_accessible_modules(user: User, db: Session):
             .all()
         )
         return [
-            build_module_schema(module, config_map.get(module.id), custom_tab_labels=custom_tab_labels).model_copy(update={"is_enabled": True})
+            build_module_schema(module, config_map.get(module.id), custom_tab_labels=custom_tab_labels)
             for module in modules
             if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
         ]
 
     visible_modules = get_role_visible_modules(user.role_id, db=db)
     return [
-        build_module_schema(module, config_map.get(module.id), custom_tab_labels=custom_tab_labels).model_copy(update={"is_enabled": True})
+        build_module_schema(module, config_map.get(module.id), custom_tab_labels=custom_tab_labels)
         for module in visible_modules
         if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
         and user_has_module_assignment(db, user=user, module=module)

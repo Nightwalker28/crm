@@ -1,10 +1,12 @@
+import asyncio
 import tempfile
 import urllib.parse
 import unittest
+from inspect import iscoroutinefunction
 from datetime import datetime
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import ANY, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 import requests
 from fastapi import HTTPException
@@ -123,6 +125,31 @@ class GoogleAuthModeSession:
         return None
 
 
+class ManualTenantResolutionQuery:
+    def __init__(self, users):
+        self.users = users
+
+    def join(self, *args, **kwargs):
+        return self
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def limit(self, *args, **kwargs):
+        return self
+
+    def all(self):
+        return self.users
+
+
+class ManualTenantResolutionSession:
+    def __init__(self, users):
+        self.users = users
+
+    def query(self, *entities):
+        return ManualTenantResolutionQuery(self.users)
+
+
 class APIRouteTests(unittest.TestCase):
     def setUp(self):
         self.client = TestClient(app)
@@ -221,6 +248,32 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(log_mock.call_args.kwargs["after_state"], {"provider": "manual", "status_code": 401})
         self.assertNotIn("user@example.com", str(log_mock.call_args.kwargs))
         self.assertNotIn("secret123", str(log_mock.call_args.kwargs))
+
+    def test_manual_login_setup_required_records_failed_attempt_without_setup_link(self):
+        detail = {
+            "code": "password_setup_required",
+            "message": "This account does not have a password set yet",
+        }
+        with patch(
+            "app.modules.user_management.routes.signin.authenticate_manual_user",
+            side_effect=HTTPException(status_code=403, detail=detail),
+        ), patch(
+            "app.modules.user_management.routes.signin.check_manual_login_rate_limit",
+        ) as check_mock, patch(
+            "app.modules.user_management.routes.signin.record_failed_manual_login_attempt",
+        ) as record_mock, patch(
+            "app.modules.user_management.routes.signin.safe_log_activity",
+        ):
+            response = self.client.post(
+                "/api/v1/auth/login",
+                json={"email": "user@example.com", "password": "secret123"},
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["detail"], detail)
+        self.assertNotIn("setup_link", response.json()["detail"])
+        check_mock.assert_called_once()
+        record_mock.assert_called_once()
 
     def test_manual_login_returns_mfa_challenge_without_session_cookies(self):
         fake_user = SimpleNamespace(id=7, tenant_id=1, email="user@example.com", mfa_enabled=True)
@@ -387,6 +440,34 @@ class APIRouteTests(unittest.TestCase):
 
         self.assertEqual(tenant_id, 42)
 
+    def test_manual_login_tenant_resolution_rejects_ambiguous_shared_email(self):
+        request = SimpleNamespace(headers={})
+        db = ManualTenantResolutionSession(
+            [
+                SimpleNamespace(tenant_id=10),
+                SimpleNamespace(tenant_id=20),
+            ]
+        )
+
+        with patch(
+            "app.modules.user_management.routes.signin.is_cloud_mode_enabled",
+            return_value=True,
+        ), patch(
+            "app.modules.user_management.routes.signin.is_auth_tenant_resolution_enabled",
+            return_value=True,
+        ), patch(
+            "app.modules.user_management.routes.signin._verified_tenant_from_request_origin",
+            return_value=None,
+        ):
+            tenant_id = signin_routes._resolve_manual_login_tenant_id(
+                db,
+                email="shared@example.net",
+                request=request,
+                request_tenant=None,
+            )
+
+        self.assertIsNone(tenant_id)
+
     def test_microsoft_login_url_uses_configured_calendar_scopes(self):
         with patch("app.modules.user_management.services.auth.settings.MICROSOFT_CLIENT_ID", "client-id"), \
              patch("app.modules.user_management.services.auth.settings.MICROSOFT_CLIENT_SECRET", "client-secret"), \
@@ -420,7 +501,28 @@ class APIRouteTests(unittest.TestCase):
             state = decode_microsoft_oauth_state(params["state"][0])
 
         self.assertEqual(state["tenant_id"], 42)
-        self.assertEqual(state["frontend_origin"], "https://lynk.example.com")
+
+    def test_oidc_callback_endpoint_runs_sync_sso_work_in_threadpool(self):
+        request = SimpleNamespace(headers={}, state=SimpleNamespace(tenant=None))
+        with patch(
+            "app.modules.user_management.routes.signin.run_in_threadpool",
+            new_callable=AsyncMock,
+        ) as threadpool_mock:
+            threadpool_mock.return_value = "response"
+
+            result = asyncio.run(
+                signin_routes.oidc_callback(
+                    request=request,
+                    code="code",
+                    state="state",
+                    db=RouteTestSession(),
+                )
+            )
+
+        self.assertTrue(iscoroutinefunction(signin_routes.oidc_callback))
+        self.assertEqual(result, "response")
+        threadpool_mock.assert_awaited_once()
+        self.assertIs(threadpool_mock.await_args.args[0], signin_routes._oidc_callback_response)
 
     def test_google_callback_resolves_user_by_email_in_auth_tenant_mode(self):
         id_token = jose_jwt.encode(

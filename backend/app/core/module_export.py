@@ -56,20 +56,24 @@ def batched_csv_zip_file(
     batches_written = 0
     batch: list = []
 
-    with zipfile.ZipFile(temp_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zipf:
-        for row in rows:
-            batch.append(row)
-            if len(batch) >= batch_size:
+    try:
+        with zipfile.ZipFile(temp_path, mode="w", compression=zipfile.ZIP_DEFLATED) as zipf:
+            for row in rows:
+                batch.append(row)
+                if len(batch) >= batch_size:
+                    zipf.writestr(f"{file_prefix}_batch_{batch_no}.csv", serialize_row(batch))
+                    total_rows += len(batch)
+                    batches_written += 1
+                    batch_no += 1
+                    batch = []
+
+            if batch:
                 zipf.writestr(f"{file_prefix}_batch_{batch_no}.csv", serialize_row(batch))
                 total_rows += len(batch)
                 batches_written += 1
-                batch_no += 1
-                batch = []
-
-        if batch:
-            zipf.writestr(f"{file_prefix}_batch_{batch_no}.csv", serialize_row(batch))
-            total_rows += len(batch)
-            batches_written += 1
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise
 
     return temp_path, {"batches": batches_written, "rows": total_rows}
 

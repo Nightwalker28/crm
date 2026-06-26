@@ -18,6 +18,7 @@ from app.modules.user_management.schema import (
 )
 from app.modules.user_management.services.auth import create_user_setup_link
 
+USER_UPDATE_OPTIONS_CACHE_SCHEMA_VERSION = 2
 USER_UPDATE_OPTIONS_CACHE_TTL_SECONDS = 300
 UNSET_ASSIGNMENT = object()
 
@@ -287,7 +288,7 @@ def serialize_user_profile(user: User) -> UserProfile:
 
 
 def _user_update_options_cache_key(tenant_id: int) -> str:
-    return f"user-update-options:{tenant_id}"
+    return f"user-update-options-v{USER_UPDATE_OPTIONS_CACHE_SCHEMA_VERSION}:{tenant_id}"
 
 
 def _coerce_user_status(value) -> UserStatus:

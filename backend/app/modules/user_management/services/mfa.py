@@ -10,6 +10,8 @@ from datetime import datetime, timezone
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.cache import cache_delete, cache_get_json, cache_set_json
+from app.core.config import settings
 from app.core.passwords import verify_password
 from app.core.secrets import decrypt_application_secret, encrypt_application_secret
 from app.modules.platform.services.activity_logs import safe_log_activity
@@ -19,6 +21,7 @@ TOTP_PERIOD_SECONDS = 30
 TOTP_DIGITS = 6
 MFA_BACKUP_CODE_COUNT = 10
 MFA_POLICY_VALUES = {"off", "admins_only", "all_users"}
+MFA_CHALLENGE_RATE_LIMIT_PREFIX = "auth:mfa_challenge_failed"
 
 
 def generate_totp_secret() -> str:
@@ -53,7 +56,7 @@ def _decode_totp_secret(secret: str) -> bytes:
 
 def generate_totp_code(secret: str, *, for_time: int | None = None) -> str:
     counter = int((for_time if for_time is not None else time.time()) // TOTP_PERIOD_SECONDS)
-    digest = hmac.new(_decode_totp_secret(secret), struct.pack(">Q", counter), hashlib.sha1).digest()
+    digest = hmac.new(_decode_totp_secret(secret), struct.pack(">Q", counter), digestmod=hashlib.sha1).digest()
     offset = digest[-1] & 0x0F
     value = struct.unpack(">I", digest[offset : offset + 4])[0] & 0x7FFFFFFF
     return str(value % (10**TOTP_DIGITS)).zfill(TOTP_DIGITS)
@@ -73,6 +76,33 @@ def verify_totp_code(secret: str, code: str | None, *, at_time: int | None = Non
 
 def _hash_backup_code(code: str) -> str:
     return hashlib.sha256(code.replace("-", "").strip().upper().encode("utf-8")).hexdigest()
+
+
+def _mfa_challenge_attempt_key(user: User) -> str:
+    return f"{MFA_CHALLENGE_RATE_LIMIT_PREFIX}:tenant:{user.tenant_id}:user:{user.id}"
+
+
+def check_mfa_challenge_rate_limit(user: User) -> None:
+    payload = cache_get_json(_mfa_challenge_attempt_key(user)) or {}
+    if int(payload.get("count") or 0) >= settings.MFA_CHALLENGE_FAILED_ATTEMPT_LIMIT:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed MFA attempts",
+        )
+
+
+def record_failed_mfa_challenge_attempt(user: User) -> None:
+    key = _mfa_challenge_attempt_key(user)
+    payload = cache_get_json(key) or {}
+    cache_set_json(
+        key,
+        {"count": int(payload.get("count") or 0) + 1},
+        ttl_seconds=settings.MFA_CHALLENGE_FAILED_ATTEMPT_WINDOW_SECONDS,
+    )
+
+
+def clear_failed_mfa_challenge_attempts(user: User) -> None:
+    cache_delete(_mfa_challenge_attempt_key(user))
 
 
 def _generate_backup_code() -> str:
@@ -142,22 +172,32 @@ def activate_mfa(db: Session, *, user: User, code: str) -> list[str]:
 def verify_mfa_challenge(db: Session, *, user: User, code: str | None = None, backup_code: str | None = None) -> str:
     if not user.mfa_enabled:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="MFA is not enabled")
+    check_mfa_challenge_rate_limit(user)
     if backup_code:
+        candidate_hash = _hash_backup_code(backup_code)
         backup = (
             db.query(UserMfaBackupCode)
             .filter(
                 UserMfaBackupCode.user_id == user.id,
-                UserMfaBackupCode.code_hash == _hash_backup_code(backup_code),
                 UserMfaBackupCode.consumed_at.is_(None),
             )
-            .first()
+            .all()
         )
-        if backup:
-            backup.consumed_at = datetime.now(timezone.utc)
+        matched_backup = next(
+            (
+                candidate
+                for candidate in backup
+                if hmac.compare_digest(candidate.code_hash, candidate_hash)
+            ),
+            None,
+        )
+        if matched_backup:
+            matched_backup.consumed_at = datetime.now(timezone.utc)
             user.mfa_verified_at = datetime.now(timezone.utc)
-            db.add(backup)
+            db.add(matched_backup)
             db.add(user)
             db.commit()
+            clear_failed_mfa_challenge_attempts(user)
             safe_log_activity(
                 db,
                 tenant_id=user.tenant_id,
@@ -169,6 +209,7 @@ def verify_mfa_challenge(db: Session, *, user: User, code: str | None = None, ba
                 description="MFA backup code used",
             )
             return "backup_code"
+        record_failed_mfa_challenge_attempt(user)
         _log_failed_challenge(db, user=user)
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA code")
 
@@ -176,7 +217,9 @@ def verify_mfa_challenge(db: Session, *, user: User, code: str | None = None, ba
         user.mfa_verified_at = datetime.now(timezone.utc)
         db.add(user)
         db.commit()
+        clear_failed_mfa_challenge_attempts(user)
         return "totp"
+    record_failed_mfa_challenge_attempt(user)
     _log_failed_challenge(db, user=user)
     raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid MFA code")
 

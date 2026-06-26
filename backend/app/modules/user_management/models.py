@@ -17,7 +17,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import relationship
 from app.core.database import Base
-from datetime import datetime
 
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
@@ -31,7 +30,7 @@ class RefreshToken(Base):
     token_jti = Column(String(64), unique=True, index=True, nullable=False)
     expires_at = Column(DateTime(timezone=True), nullable=False)
     last_used_at = Column(DateTime(timezone=True), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
 class UserStatus(enum.Enum):
     pending = "pending"
@@ -254,7 +253,7 @@ class User(Base):
 
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
-    email = Column(String(150), nullable=False, unique=True, index=True)
+    email = Column(String(150), nullable=False, index=True)
     password_hash = Column(Text, nullable=True)
     photo_url = Column(String(500), nullable=True)
     phone_number = Column(String(50), nullable=True)
@@ -470,13 +469,18 @@ class RoleModulePermission(Base):
 
 class UserSetupToken(Base):
     __tablename__ = "user_setup_tokens"
+    __table_args__ = (
+        Index("ix_user_setup_tokens_expires_at", "expires_at"),
+        Index("ix_user_setup_tokens_consumed_expires", "consumed_at", "expires_at"),
+        Index("ix_user_setup_tokens_user_consumed", "user_id", "consumed_at"),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     token_hash = Column(String(64), nullable=False, unique=True, index=True)
     expires_at = Column(DateTime(timezone=True), nullable=False)
-    consumed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    consumed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     user = relationship("User", back_populates="setup_tokens")
 

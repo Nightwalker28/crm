@@ -53,24 +53,27 @@ def build_visible_calendar_events_query(db: Session, *, tenant_id: int, current_
             CalendarEvent.tenant_id == tenant_id,
             CalendarEvent.deleted_at.is_(None),
         )
-        .outerjoin(CalendarEventParticipant, CalendarEventParticipant.event_id == CalendarEvent.id)
     )
     visibility_filters = [
         CalendarEvent.owner_user_id == current_user.id,
-        and_(
-            CalendarEventParticipant.user_id == current_user.id,
-            CalendarEventParticipant.response_status != "declined",
+        CalendarEvent.participants.any(
+            and_(
+                CalendarEventParticipant.user_id == current_user.id,
+                CalendarEventParticipant.response_status != "declined",
+            )
         ),
     ]
     if getattr(current_user, "team_id", None):
         visibility_filters.append(
-            and_(
-                CalendarEventParticipant.team_id == current_user.team_id,
-                CalendarEventParticipant.response_status == "shared",
+            CalendarEvent.participants.any(
+                and_(
+                    CalendarEventParticipant.team_id == current_user.team_id,
+                    CalendarEventParticipant.response_status == "shared",
+                )
             )
         )
 
-    return query.filter(or_(*visibility_filters)).distinct()
+    return query.filter(or_(*visibility_filters))
 
 
 def list_calendar_events_cursor(

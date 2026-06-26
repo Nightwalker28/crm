@@ -184,6 +184,38 @@ class CalendarGoogleSyncTests(unittest.TestCase):
         sync_mock.assert_called_once_with(db, event=event, participant=participant)
         get_mock.assert_not_called()
 
+    def test_calendar_update_rejects_invalid_partial_dates_before_mutating_event(self):
+        db = FakeDB()
+        start_at = calendar_services._utcnow()
+        original_end_at = start_at + timedelta(hours=1)
+        event = SimpleNamespace(
+            id=12,
+            tenant_id=10,
+            owner_user_id=1,
+            title="Planning",
+            description=None,
+            start_at=start_at,
+            end_at=original_end_at,
+            is_all_day=False,
+            location=None,
+            meeting_url=None,
+            participants=[],
+        )
+        current_user = SimpleNamespace(id=1, tenant_id=10)
+
+        with self.assertRaises(HTTPException) as exc:
+            calendar_services.update_calendar_event(
+                db,
+                event=event,
+                payload={"end_at": start_at - timedelta(minutes=5)},
+                current_user=current_user,
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(event.end_at, original_end_at)
+        self.assertEqual(db.added, [])
+        self.assertEqual(db.commits, 0)
+
     def test_calendar_provider_switch_removes_previous_external_event_before_sync(self):
         db = FakeDB()
         participant = SimpleNamespace(

@@ -757,9 +757,12 @@ def process_export_job(*, job_id: int) -> None:
             raise ValueError(f"Unsupported export module '{module_key}'.")
 
         update_job_progress(db, job, progress_percent=90, progress_message="Writing export artifact.")
-        result_path = persist_job_result(job_id=job.id, filename=file_name, content=content)
-        if isinstance(content, Path):
-            content.unlink(missing_ok=True)
+        temp_content_path = content if isinstance(content, Path) else None
+        try:
+            result_path = persist_job_result(job_id=job.id, filename=file_name, content=content)
+        finally:
+            if temp_content_path is not None:
+                temp_content_path.unlink(missing_ok=True)
         summary = {
             "mode": mode,
             "exported_rows": exported_rows,

@@ -1,5 +1,6 @@
 import secrets
 import urllib.parse
+from collections.abc import Callable
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
@@ -7,7 +8,7 @@ import requests
 from fastapi import HTTPException, Request, status
 from jose import JWTError, jwt
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.core.config import settings
 from app.core.secrets import decrypt_application_secret, encrypt_application_secret
@@ -117,10 +118,7 @@ def update_sso_settings(
     if not settings_row.email_claim:
         settings_row.email_claim = "email"
 
-    if "allowed_email_domains" in payload:
-        settings_row.allowed_email_domains = _verified_custom_email_domains_or_legacy(db, settings_row)
-    else:
-        settings_row.allowed_email_domains = _verified_custom_email_domains_or_legacy(db, settings_row)
+    settings_row.allowed_email_domains = _verified_custom_email_domains_or_legacy(db, settings_row)
 
     client_secret = payload.get("client_secret")
     if client_secret:
@@ -181,6 +179,7 @@ def test_sso_settings(
     *,
     tenant_id: int,
     actor_user_id: int,
+    result_session_factory: Callable[[], Session] | None = None,
 ) -> dict[str, Any]:
     settings_row = get_or_create_sso_settings(db, tenant_id=tenant_id)
     checked_at = datetime.now(timezone.utc).isoformat()
@@ -223,29 +222,58 @@ def test_sso_settings(
             "errors": discovery_errors,
         }
 
-    settings_row = db.query(TenantSsoSettings).filter(TenantSsoSettings.tenant_id == tenant_id).first()
-    if settings_row:
-        settings_row.last_test_result = result
-        if result["ok"]:
-            settings_row.status = "enabled" if _settings_enabled(settings_row) else "tested"
-        else:
-            settings_row.status = "error"
-            settings_row.last_failed_login_reason = result["message"]
-        db.add(settings_row)
-        db.commit()
-
-    safe_log_activity(
+    _persist_sso_test_result(
         db,
         tenant_id=tenant_id,
         actor_user_id=actor_user_id,
-        module_key="security",
-        entity_type="tenant_sso_settings",
-        entity_id=tenant_id,
-        action="sso.config.tested",
-        description="OIDC SSO configuration tested",
-        after_state=result,
+        result=result,
+        session_factory=result_session_factory,
     )
     return result
+
+
+def _session_factory_for(db: Session) -> Callable[[], Session]:
+    return sessionmaker(autocommit=False, autoflush=False, bind=db.get_bind())
+
+
+def _persist_sso_test_result(
+    db: Session,
+    *,
+    tenant_id: int,
+    actor_user_id: int,
+    result: dict[str, Any],
+    session_factory: Callable[[], Session] | None = None,
+) -> None:
+    factory = session_factory or _session_factory_for(db)
+    result_db = factory()
+    try:
+        settings_row = result_db.query(TenantSsoSettings).filter(TenantSsoSettings.tenant_id == tenant_id).first()
+        if settings_row:
+            settings_row.last_test_result = result
+            if result["ok"]:
+                settings_row.status = "enabled" if _settings_enabled(settings_row) else "tested"
+            else:
+                settings_row.status = "error"
+                settings_row.last_failed_login_reason = result["message"]
+            result_db.add(settings_row)
+            result_db.commit()
+
+        safe_log_activity(
+            result_db,
+            tenant_id=tenant_id,
+            actor_user_id=actor_user_id,
+            module_key="security",
+            entity_type="tenant_sso_settings",
+            entity_id=tenant_id,
+            action="sso.config.tested",
+            description="OIDC SSO configuration tested",
+            after_state=result,
+        )
+    except Exception:
+        result_db.rollback()
+        raise
+    finally:
+        result_db.close()
 
 
 def build_sso_start_url(db: Session, *, request: Request, email: str | None = None) -> str:
@@ -554,26 +582,39 @@ def _require_team(db: Session, *, tenant_id: int, team_id: int | None) -> Team:
     return team
 
 
-def _record_sso_failure(db: Session, *, settings_row: TenantSsoSettings, reason: str) -> None:
+def _record_sso_failure(
+    db: Session,
+    *,
+    settings_row: TenantSsoSettings,
+    reason: str,
+    session_factory: Callable[[], Session] | None = None,
+) -> None:
     tenant_id = int(settings_row.tenant_id)
     db.rollback()
-    settings_row = db.query(TenantSsoSettings).filter(TenantSsoSettings.tenant_id == tenant_id).first()
-    if settings_row is None:
-        return
-    settings_row.last_failed_login_reason = reason[:500]
-    db.add(settings_row)
-    db.commit()
-    safe_log_activity(
-        db,
-        tenant_id=tenant_id,
-        actor_user_id=None,
-        module_key="security",
-        entity_type="tenant_sso_settings",
-        entity_id=tenant_id,
-        action="sso.login.failed",
-        description="OIDC SSO login failed",
-        after_state={"reason": settings_row.last_failed_login_reason},
-    )
+    failure_db = (session_factory or _session_factory_for(db))()
+    try:
+        settings_row = failure_db.query(TenantSsoSettings).filter(TenantSsoSettings.tenant_id == tenant_id).first()
+        if settings_row is None:
+            return
+        settings_row.last_failed_login_reason = reason[:500]
+        failure_db.add(settings_row)
+        failure_db.commit()
+        safe_log_activity(
+            failure_db,
+            tenant_id=tenant_id,
+            actor_user_id=None,
+            module_key="security",
+            entity_type="tenant_sso_settings",
+            entity_id=tenant_id,
+            action="sso.login.failed",
+            description="OIDC SSO login failed",
+            after_state={"reason": settings_row.last_failed_login_reason},
+        )
+    except Exception:
+        failure_db.rollback()
+        raise
+    finally:
+        failure_db.close()
 
 
 def _safe_settings_state(payload: dict[str, Any]) -> dict[str, Any]:

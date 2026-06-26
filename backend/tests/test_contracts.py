@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
@@ -12,6 +13,8 @@ from app.modules.contracts.models import Contract
 from app.modules.contracts.services import contracts_services
 from app.modules.contracts.services.contracts_services import add_contract_party, add_contract_signer, create_contract, get_contract_or_404, update_contract, update_contract_signer
 from app.modules.documents.models import Document
+from app.modules.platform import models as platform_models  # noqa: F401
+from app.modules.platform.models import CrmNumberCounter
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
@@ -75,6 +78,20 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(item.status, "draft")
         self.assertEqual(item.value_amount, Decimal("1000.00"))
         self.assertEqual(len(item.events), 1)
+        self.assertEqual(
+            self.db.query(CrmNumberCounter).filter(CrmNumberCounter.scope == "contracts").count(),
+            1,
+        )
+
+    def test_create_contract_manual_duplicate_number_returns_conflict(self):
+        create_contract(self.db, {"title": "First", "contract_number": "CTR-MANUAL"}, self.user)
+
+        with self.assertRaises(HTTPException) as exc:
+            create_contract(self.db, {"title": "Duplicate", "contract_number": "CTR-MANUAL"}, self.user)
+
+        self.assertEqual(exc.exception.status_code, 409)
+        self.assertEqual(exc.exception.detail, "Contract could not be created")
+        self.assertEqual(self.db.query(Contract).count(), 1)
 
     def test_create_contract_rejects_cross_tenant_link(self):
         with self.assertRaises(HTTPException) as exc:
@@ -91,6 +108,14 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(updated.status, "sent")
         self.assertEqual(updated.events[-1].event_type, "status_changed")
 
+    def test_update_title_only_does_not_validate_unchanged_links(self):
+        item = create_contract(self.db, {"title": "Linked contract", "organization_id": 20}, self.user)
+
+        with patch.object(contracts_services, "_linked_exists", side_effect=AssertionError("linked check should not run")):
+            updated = update_contract(self.db, item, {"title": "Renamed"}, self.user)
+
+        self.assertEqual(updated.title, "Renamed")
+
     def test_party_and_signer_lifecycle(self):
         item = create_contract(self.db, {"title": "Signer contract"}, self.user)
         party = add_contract_party(self.db, item, {"name": "Acme Ltd", "email": "legal@acme.test", "role": "customer"}, self.user)
@@ -100,6 +125,27 @@ class ContractTests(unittest.TestCase):
 
         self.assertEqual(updated_signer.status, "signed")
         self.assertIsNotNone(updated_signer.signed_at)
+
+    def test_add_signer_rejects_invalid_party_cleanly(self):
+        item = create_contract(self.db, {"title": "Signer contract"}, self.user)
+
+        with self.assertRaises(HTTPException) as exc:
+            add_contract_signer(self.db, item, {"party_id": 999, "name": "Ada", "email": "ada@acme.test"}, self.user)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Contract party not found")
+
+    def test_add_party_rolls_back_integrity_failure_as_conflict(self):
+        item = create_contract(self.db, {"title": "Party contract"}, self.user)
+        error = IntegrityError("insert failed", {}, Exception("constraint"))
+
+        with patch.object(self.db, "commit", side_effect=error), patch.object(self.db, "rollback") as rollback:
+            with self.assertRaises(HTTPException) as exc:
+                add_contract_party(self.db, item, {"name": "Acme Ltd"}, self.user)
+
+        self.assertEqual(exc.exception.status_code, 409)
+        self.assertEqual(exc.exception.detail, "Contract party could not be created")
+        rollback.assert_called_once()
 
     def test_get_contract_scopes_by_tenant(self):
         item = create_contract(self.db, {"title": "Tenant scoped"}, self.user)

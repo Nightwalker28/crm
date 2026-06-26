@@ -132,6 +132,19 @@ class ModuleCsvTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(content, b"name\nAcme\n")
 
+    async def test_read_upload_bytes_rejects_oversized_upload_before_decode(self):
+        upload = UploadFile(
+            file=io.BytesIO(b"name\nAcme\n"),
+            filename="records.csv",
+            headers=Headers({"content-type": "text/csv"}),
+        )
+
+        with self.assertRaises(HTTPException) as exc:
+            await module_csv.read_upload_bytes(upload, allowed_extensions={"csv"}, max_bytes=5)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Upload exceeds the 5 byte file size limit.")
+
     async def test_dict_rows_to_csv_bytes_sanitizes_formula_cells(self):
         content = module_export.dict_rows_to_csv_bytes(
             headers=["name", "amount"],
@@ -166,6 +179,31 @@ class ModuleCsvTests(unittest.IsolatedAsyncioTestCase):
                 )
         finally:
             path.unlink(missing_ok=True)
+
+    async def test_batched_csv_zip_file_removes_temp_file_on_serialize_failure(self):
+        temp_file = tempfile.NamedTemporaryFile(suffix=".zip", delete=False)
+        temp_path = Path(temp_file.name)
+        temp_file.close()
+
+        class FakeTempFile:
+            name = str(temp_path)
+
+            def close(self):
+                pass
+
+        def fail_serialize(rows):
+            raise RuntimeError("serialize failed")
+
+        with patch.object(module_export.tempfile, "NamedTemporaryFile", return_value=FakeTempFile()):
+            with self.assertRaisesRegex(RuntimeError, "serialize failed"):
+                module_export.batched_csv_zip_file(
+                    rows=[{"name": "A"}],
+                    batch_size=1,
+                    file_prefix="records",
+                    serialize_row=fail_serialize,
+                )
+
+        self.assertFalse(temp_path.exists())
 
     async def test_count_csv_rows_bytes_streams_non_blank_rows(self):
         content = b"name\nAcme\n\nBeta\n"

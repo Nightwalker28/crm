@@ -100,6 +100,20 @@ class DocumentUploadValidationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(exc.exception.detail, "Uploaded PDF content is invalid.")
 
+    async def test_read_document_upload_rejects_oversized_file_while_reading(self):
+        upload = UploadFile(
+            file=io.BytesIO(b"%PDF-1.7\ncontent\n%%EOF"),
+            filename="proposal.pdf",
+            headers=Headers({"content-type": "application/pdf"}),
+        )
+
+        with patch.object(document_services.settings, "DOCUMENT_MAX_UPLOAD_BYTES", 5):
+            with self.assertRaises(HTTPException) as exc:
+                await read_document_upload(upload)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Document exceeds the 5 byte upload limit.")
+
     async def test_read_document_upload_rejects_content_type_mismatch(self):
         upload = UploadFile(
             file=io.BytesIO(b"%PDF-1.7\ncontent\n%%EOF"),

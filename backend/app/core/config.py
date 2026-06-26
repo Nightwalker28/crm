@@ -121,6 +121,18 @@ class Settings:
     REFRESH_TOKEN_FAILED_ATTEMPT_WINDOW_SECONDS: int = int(
         os.getenv("REFRESH_TOKEN_FAILED_ATTEMPT_WINDOW_SECONDS", "60")
     )
+    MANUAL_LOGIN_FAILED_ATTEMPT_LIMIT: int = int(
+        os.getenv("MANUAL_LOGIN_FAILED_ATTEMPT_LIMIT", "5")
+    )
+    MANUAL_LOGIN_FAILED_ATTEMPT_WINDOW_SECONDS: int = int(
+        os.getenv("MANUAL_LOGIN_FAILED_ATTEMPT_WINDOW_SECONDS", "300")
+    )
+    MFA_CHALLENGE_FAILED_ATTEMPT_LIMIT: int = int(
+        os.getenv("MFA_CHALLENGE_FAILED_ATTEMPT_LIMIT", "5")
+    )
+    MFA_CHALLENGE_FAILED_ATTEMPT_WINDOW_SECONDS: int = int(
+        os.getenv("MFA_CHALLENGE_FAILED_ATTEMPT_WINDOW_SECONDS", "300")
+    )
     USER_SETUP_TOKEN_EXPIRE_HOURS: int = int(
         os.getenv("USER_SETUP_TOKEN_EXPIRE_HOURS", "72")
     )
@@ -186,6 +198,9 @@ class Settings:
     )
     DATA_TRANSFER_BACKGROUND_FILE_BYTES_THRESHOLD: int = int(
         os.getenv("DATA_TRANSFER_BACKGROUND_FILE_BYTES_THRESHOLD", str(5 * 1024 * 1024))
+    )
+    DATA_TRANSFER_MAX_UPLOAD_BYTES: int = int(
+        os.getenv("DATA_TRANSFER_MAX_UPLOAD_BYTES", str(50 * 1024 * 1024))
     )
     DATA_TRANSFER_RESULT_RETENTION_DAYS: int = int(
         os.getenv("DATA_TRANSFER_RESULT_RETENTION_DAYS", "7")
@@ -287,6 +302,8 @@ def validate_startup_settings() -> None:
             int(getattr(settings, "WEBSITE_INTEGRATION_RATE_LIMIT_COUNT", 0) or 0) > 0
             or int(getattr(settings, "PUBLIC_CLIENT_PAGE_ACTION_LIMIT", 0) or 0) > 0
             or int(getattr(settings, "PUBLIC_BOOKING_SUBMIT_LIMIT", 0) or 0) > 0
+            or int(getattr(settings, "MANUAL_LOGIN_FAILED_ATTEMPT_LIMIT", 0) or 0) > 0
+            or int(getattr(settings, "MFA_CHALLENGE_FAILED_ATTEMPT_LIMIT", 0) or 0) > 0
         )
         and not getattr(settings, "REDIS_URL", None)
     ):

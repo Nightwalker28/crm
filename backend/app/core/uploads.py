@@ -16,6 +16,7 @@ MEDIA_ROOT_DIR.mkdir(parents=True, exist_ok=True)
 
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 ALLOWED_IMAGE_TYPES = {"jpeg": "jpg", "png": "png", "webp": "webp"}
+UPLOAD_READ_CHUNK_BYTES = 1024 * 1024
 
 
 def _detect_image_type(file_bytes: bytes) -> str | None:
@@ -48,6 +49,33 @@ async def read_image_upload(file: UploadFile) -> tuple[bytes, str]:
             detail="Unsupported image extension. Allowed types: .jpg, .jpeg, .png, .webp",
         )
     return file_bytes, normalized_extension
+
+
+async def read_upload_limited(
+    file: UploadFile,
+    *,
+    max_bytes: int,
+    empty_detail: str,
+    oversize_detail: str | None = None,
+) -> bytes:
+    chunks: list[bytes] = []
+    total_bytes = 0
+    while True:
+        chunk = await file.read(UPLOAD_READ_CHUNK_BYTES)
+        if not chunk:
+            break
+        total_bytes += len(chunk)
+        if total_bytes > max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=oversize_detail or f"Upload exceeds the {max_bytes} byte file size limit.",
+            )
+        chunks.append(chunk)
+
+    content = b"".join(chunks)
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=empty_detail)
+    return content
 
 
 def persist_media_file(*, category: str, owner_key: str, extension: str, content: bytes) -> str:

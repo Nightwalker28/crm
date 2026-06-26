@@ -22,6 +22,7 @@ from app.modules.contracts.services.contracts_services import (
     add_contract_party,
     add_contract_signer,
     create_contract,
+    get_contract_for_mutation_or_404,
     get_contract_or_404,
     list_contracts,
     update_contract,
@@ -51,6 +52,10 @@ def _parse_filters(filter_logic: str, filters: str | None, filters_all: str | No
 
 def _serialize_contract(contract) -> dict:
     return ContractResponse.model_validate(contract).model_dump(mode="json")
+
+
+def _serialize_contract_audit_state(contract) -> dict:
+    return ContractListItem.model_validate(contract).model_dump(mode="json")
 
 
 @router.get("/fields")
@@ -135,13 +140,13 @@ def get_contract_record(contract_id: int, db: Session = Depends(get_db), current
 
 @router.patch("/{contract_id}", response_model=ContractResponse)
 def update_contract_record(contract_id: int, payload: ContractUpdateRequest = Body(...), db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access(CONTRACTS_MODULE_KEY)), require_permission=Depends(require_action_access(CONTRACTS_MODULE_KEY, "edit"))):
-    contract = get_contract_or_404(db, tenant_id=current_user.tenant_id, contract_id=contract_id)
-    before_state = _serialize_contract(contract)
+    contract = get_contract_for_mutation_or_404(db, tenant_id=current_user.tenant_id, contract_id=contract_id)
+    before_state = _serialize_contract_audit_state(contract)
     data = payload.model_dump(exclude_unset=True)
     reject_disabled_field_writes(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, field_keys=set(data))
     data = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, payload=data)
     updated = update_contract(db, contract, data, current_user)
-    safe_log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key=CONTRACTS_MODULE_KEY, entity_type="contract", entity_id=updated.id, action="update", description=f"Updated contract {updated.contract_number}", before_state=before_state, after_state=_serialize_contract(updated))
+    safe_log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key=CONTRACTS_MODULE_KEY, entity_type="contract", entity_id=updated.id, action="update", description=f"Updated contract {updated.contract_number}", before_state=before_state, after_state=_serialize_contract_audit_state(updated))
     if before_state["status"] != updated.status:
         safe_publish_crm_event(
             db,
@@ -157,17 +162,17 @@ def update_contract_record(contract_id: int, payload: ContractUpdateRequest = Bo
 
 @router.post("/{contract_id}/parties", response_model=ContractPartyResponse, status_code=status.HTTP_201_CREATED)
 def create_contract_party(contract_id: int, payload: ContractPartyCreateRequest, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access(CONTRACTS_MODULE_KEY)), require_permission=Depends(require_action_access(CONTRACTS_MODULE_KEY, "edit"))):
-    contract = get_contract_or_404(db, tenant_id=current_user.tenant_id, contract_id=contract_id)
+    contract = get_contract_for_mutation_or_404(db, tenant_id=current_user.tenant_id, contract_id=contract_id)
     return add_contract_party(db, contract, payload.model_dump(), current_user)
 
 
 @router.post("/{contract_id}/signers", response_model=ContractSignerResponse, status_code=status.HTTP_201_CREATED)
 def create_contract_signer(contract_id: int, payload: ContractSignerCreateRequest, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access(CONTRACTS_MODULE_KEY)), require_permission=Depends(require_action_access(CONTRACTS_MODULE_KEY, "edit"))):
-    contract = get_contract_or_404(db, tenant_id=current_user.tenant_id, contract_id=contract_id)
+    contract = get_contract_for_mutation_or_404(db, tenant_id=current_user.tenant_id, contract_id=contract_id)
     return add_contract_signer(db, contract, payload.model_dump(), current_user)
 
 
 @router.patch("/{contract_id}/signers/{signer_id}", response_model=ContractSignerResponse)
 def patch_contract_signer(contract_id: int, signer_id: int, payload: ContractSignerUpdateRequest, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access(CONTRACTS_MODULE_KEY)), require_permission=Depends(require_action_access(CONTRACTS_MODULE_KEY, "edit"))):
-    contract = get_contract_or_404(db, tenant_id=current_user.tenant_id, contract_id=contract_id)
+    contract = get_contract_for_mutation_or_404(db, tenant_id=current_user.tenant_id, contract_id=contract_id)
     return update_contract_signer(db, contract, signer_id, payload.model_dump(exclude_unset=True), current_user)

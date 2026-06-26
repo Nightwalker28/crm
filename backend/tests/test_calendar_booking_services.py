@@ -3,11 +3,13 @@ from datetime import date, datetime, time, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.modules.calendar.models import CalendarEvent, MeetingBooking, MeetingBookingType
+from app.modules.calendar.repositories import calendar_repository
 from app.modules.calendar.services import booking_services
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.platform.models import ActivityLog, UserNotification
@@ -70,6 +72,18 @@ class CalendarBookingServiceTests(unittest.TestCase):
 
         self.assertIn("Booking owner not found", str(exc.exception))
 
+    def test_visible_calendar_query_uses_exists_without_distinct(self):
+        query = calendar_repository.build_visible_calendar_events_query(
+            self.db,
+            tenant_id=10,
+            current_user=self.current_user,
+        )
+
+        sql = str(query.statement.compile(compile_kwargs={"literal_binds": True})).upper()
+
+        self.assertIn("EXISTS", sql)
+        self.assertNotIn("SELECT DISTINCT", sql)
+
     def test_public_slots_respect_existing_calendar_events(self):
         self._create_booking_type()
         self.db.add(
@@ -83,15 +97,18 @@ class CalendarBookingServiceTests(unittest.TestCase):
         )
         self.db.commit()
 
-        slots = booking_services.available_slots(
-            self.db,
-            slug="discovery-call",
-            start_date=date(2099, 6, 1),
-            end_date=date(2099, 6, 1),
-        )
+        with patch.object(booking_services, "_event_overlap_ranges", wraps=booking_services._event_overlap_ranges) as ranges_mock, \
+             patch.object(booking_services, "_event_overlap_exists", side_effect=AssertionError("per-slot overlap query should not run")):
+            slots = booking_services.available_slots(
+                self.db,
+                slug="discovery-call",
+                start_date=date(2099, 6, 1),
+                end_date=date(2099, 6, 1),
+            )
 
         self.assertEqual([slot["start_at"].hour for slot in slots], [9])
         self.assertEqual(slots[0]["start_at"].minute, 30)
+        ranges_mock.assert_called_once()
 
     def test_public_booking_creates_calendar_event_and_prevents_duplicate(self):
         booking_type = self._create_booking_type()
@@ -137,6 +154,35 @@ class CalendarBookingServiceTests(unittest.TestCase):
 
         self.assertIn("Selected slot is no longer available", str(exc.exception))
         self.assertEqual(self.db.query(MeetingBookingType).count(), 1)
+
+    def test_public_booking_final_overlap_check_runs_before_side_effects(self):
+        self._create_booking_type()
+        start_at = datetime(2099, 6, 1, 9, 0, tzinfo=timezone.utc)
+
+        with patch.object(
+            booking_services,
+            "available_slots",
+            return_value=[{"start_at": start_at, "end_at": datetime(2099, 6, 1, 9, 30, tzinfo=timezone.utc), "label": "slot"}],
+        ), patch.object(booking_services, "_event_overlap_exists", return_value=True), \
+             patch.object(booking_services, "_resolve_booking_crm_source") as resolve_mock:
+            with self.assertRaises(HTTPException) as exc:
+                booking_services.submit_public_booking(
+                    self.db,
+                    slug="discovery-call",
+                    payload={
+                        "start_at": start_at,
+                        "guest_name": "Grace Hopper",
+                        "guest_email": "grace@example.com",
+                        "answers": {"1": "Acme"},
+                    },
+                )
+
+        self.assertEqual(exc.exception.status_code, 409)
+        self.assertEqual(exc.exception.detail, "Selected slot is no longer available")
+        resolve_mock.assert_not_called()
+        self.assertEqual(self.db.query(CalendarEvent).count(), 0)
+        self.assertEqual(self.db.query(MeetingBooking).count(), 0)
+        self.assertEqual(self.db.query(SalesLead).count(), 0)
 
     def test_public_booking_links_existing_contact_by_guest_email(self):
         self.db.add(

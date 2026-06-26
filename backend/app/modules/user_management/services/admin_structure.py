@@ -31,8 +31,9 @@ def _sync_team_module_permissions_from_department(db: Session, team: Team) -> No
     permission_ids_to_delete: list[int] = []
     for permission in existing_permissions:
         if permission.module_id in existing_by_module_id:
-            permission_ids_to_delete.append(permission.id)
-            continue
+            raise RuntimeError(
+                f"Duplicate team module permission rows detected for team {team.id} and module {permission.module_id}"
+            )
         existing_by_module_id[permission.module_id] = permission
 
     for module_id, permission in existing_by_module_id.items():
@@ -150,16 +151,20 @@ def update_team(db: Session, team_id: int, payload: TeamUpdateRequest, *, tenant
         if duplicate:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Team name already in use")
 
-    for field, value in update_data.items():
-        setattr(team, field, value)
+    try:
+        for field, value in update_data.items():
+            setattr(team, field, value)
 
-    db.add(team)
-    if "department_id" in update_data:
-        _sync_team_module_permissions_from_department(db, team)
-        db.query(User).filter(User.tenant_id == tenant_id, User.team_id == team_id).update(
-            {User.department_id: team.department_id}
-        )
-    db.commit()
+        db.add(team)
+        if "department_id" in update_data:
+            _sync_team_module_permissions_from_department(db, team)
+            db.query(User).filter(User.tenant_id == tenant_id, User.team_id == team_id).update(
+                {User.department_id: team.department_id}
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     db.refresh(team)
     return team
 

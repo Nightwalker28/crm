@@ -20,6 +20,7 @@ from app.core.secrets import decrypt_secret_with_rotation
 from app.core.microsoft_oauth import MICROSOFT_DRIVE_SCOPE, MICROSOFT_GRAPH_BASE, microsoft_auth_url, microsoft_scope_string, microsoft_token_url
 from app.core.access_control import require_role_module_action_access
 from app.core.tenancy import get_frontend_origin_for_request, get_google_redirect_uri_for_request, get_microsoft_redirect_uri_for_request
+from app.core.uploads import read_upload_limited
 from app.modules.documents.models import Document, DocumentClientShare, DocumentLink, DocumentStorageConnection, DocumentVersion
 from app.modules.documents.repositories import documents_repository
 from app.modules.documents.schema import DocumentResponse
@@ -448,14 +449,12 @@ async def read_document_upload(file: UploadFile) -> tuple[bytes, str, str, str]:
             detail="Unsupported document type. Allowed types: .pdf, .doc, .docx, .txt, .rtf, .odt",
         )
 
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded document is empty.")
-    if len(content) > settings.DOCUMENT_MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Document exceeds the {settings.DOCUMENT_MAX_UPLOAD_BYTES} byte upload limit.",
-        )
+    content = await read_upload_limited(
+        file,
+        max_bytes=settings.DOCUMENT_MAX_UPLOAD_BYTES,
+        empty_detail="Uploaded document is empty.",
+        oversize_detail=f"Document exceeds the {settings.DOCUMENT_MAX_UPLOAD_BYTES} byte upload limit.",
+    )
 
     declared_content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
     if declared_content_type and declared_content_type not in ALLOWED_DOCUMENT_CONTENT_TYPES:

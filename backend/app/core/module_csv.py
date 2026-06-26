@@ -8,7 +8,10 @@ from collections.abc import Iterator
 
 from fastapi import HTTPException, UploadFile, status
 from pydantic import BaseModel, Field
+
+from app.core.config import settings
 from app.core.module_export import dict_rows_to_csv_bytes
+from app.core.uploads import read_upload_limited
 
 
 CSV_CONTENT_TYPES = {
@@ -85,6 +88,7 @@ async def read_upload_bytes(
     file: UploadFile,
     *,
     allowed_extensions: set[str],
+    max_bytes: int | None = None,
 ) -> bytes:
     original_filename = file.filename or ""
     filename = original_filename.lower()
@@ -103,13 +107,12 @@ async def read_upload_bytes(
             detail="Invalid file content type.",
         )
 
-    content = await file.read()
-    if not content:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Uploaded file is empty.",
-        )
-    return content
+    max_upload_bytes = max_bytes if max_bytes is not None else settings.DATA_TRANSFER_MAX_UPLOAD_BYTES
+    return await read_upload_limited(
+        file,
+        max_bytes=max_upload_bytes,
+        empty_detail="Uploaded file is empty.",
+    )
 
 
 async def read_csv_upload(file: UploadFile) -> tuple[list[str], list[dict[str, str | None]]]:

@@ -1,6 +1,6 @@
 # User Management Codex Task Plan
 
-_Last updated: 2026-06-25_
+_Last updated: 2026-06-26_
 
 This document converts the user-management audit into Codex-ready implementation tasks after checking the current repository. It covers backend user/auth/SSO/MFA/admin/profile/domain services and frontend users/auth/settings components.
 
@@ -8,17 +8,6 @@ This document converts the user-management audit into Codex-ready implementation
 
 Confirmed in the current codebase:
 
-- `RefreshToken.created_at` and `UserSetupToken.created_at` use naive `datetime.utcnow` defaults while surrounding token/timestamp columns are timezone-aware.
-- `User.email` has both `unique=True` and `UniqueConstraint('tenant_id', 'email')`, which conflicts with multi-tenant same-email semantics.
-- `authenticate_manual_user` creates and returns a setup link when `password_hash` is missing, before any explicit brute-force/rate-limit branch.
-- `create_user_setup_link` calls setup-token cleanup on every generation, and setup-token cleanup has no consumed/expires composite index.
-- OIDC SSO callback/test helpers use blocking `requests` calls in sync service functions used by auth routes; the callback path resolves metadata, exchanges tokens, and loads JWKS synchronously.
-- `test_sso_settings` rolls back on broad exception and then reuses the same session to re-query/write `last_test_result`.
-- `update_sso_settings` calls `_verified_custom_email_domains_or_legacy` in both branches of an if/else.
-- `get_user_accessible_modules` filters to enabled tenant modules, then forces `is_enabled=True` in the returned schema.
-- `update_team` mutates the team, syncs team module permissions, bulk-updates users, then commits without a rollback guard.
-- `_sync_team_module_permissions_from_department` silently dedupes duplicate `TeamModulePermission` rows despite a unique constraint.
-- `list_user_update_options` cache key has no schema/version component.
 - `search_users_cursor` strips search/sort order with `order_by(None).order_by(User.id.desc())`, so cursor search loses relevance/default ordering.
 - `list_saved_views` commits a default system view and re-queries all views when no default exists.
 - `_normalize_saved_view_config` normalizes nested user-provided values but does not cap serialized size or nesting depth.
@@ -29,7 +18,6 @@ Confirmed in the current codebase:
 
 Corrections to the audit:
 
-- `generate_totp_code` already passes SHA-1 as the third positional `hmac.new` argument, which works. The cleanup should make `digestmod=hashlib.sha1` explicit for readability, not fix a confirmed runtime TypeError.
 - Backup-code timing mitigation is a low-priority hardening item. The DB lookup by hash necessarily branches; make the code path less distinguishable, but do not overstate it as a direct exploit.
 - `_verify_dns` uses `subprocess.run([...])` with an argv list, so classic shell injection is not present. The remaining issue is enforcing normalization and avoiding process fallback in constrained runtimes.
 - `fetchUsers` at module scope is stable; no fix is required unless `usePagedList` later starts treating a changing fetcher identity as a dependency.
@@ -37,129 +25,166 @@ Corrections to the audit:
 
 ## Recommended implementation order
 
-1. Security/correctness: UM-01 to UM-09.
-2. Transaction/session/cache reliability: UM-10 to UM-18.
-3. Backend performance/cleanup: UM-19 to UM-26.
+1. Security/correctness: complete.
+2. Transaction/session/cache reliability: UM-14 to UM-18.
+3. Backend performance/cleanup: UM-25 to UM-26.
 4. Frontend state and UX fixes: UM-27 to UM-40.
 
----
+## Completed tasks
 
 ## UM-01 — Fix token timestamp columns to timezone-aware server defaults
 
 - **Severity:** Critical
-- **Assessment:** Valid.
+- **Completed:** 2026-06-26.
 - **Files:** `backend/app/modules/user_management/models.py`, migration.
-- **Issue:** `RefreshToken.created_at` and `UserSetupToken.created_at` use `Column(DateTime, default=datetime.utcnow)`, producing naive datetimes while related token fields use timezone-aware columns.
-- **Fix:** Change to `DateTime(timezone=True), server_default=func.now(), nullable=False`. Also make `UserSetupToken.consumed_at` timezone-aware.
-- **Done when:** Token timestamps are timezone-aware and DB-generated consistently.
+- **Result:** `RefreshToken.created_at` and `UserSetupToken.created_at` now use timezone-aware, non-null, DB-generated `func.now()` defaults. `UserSetupToken.consumed_at` is timezone-aware. Migration `20260711_token_timestamps` converts existing columns as UTC on PostgreSQL.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_auth_setup_tokens`, `docker compose exec -T backend alembic upgrade head`, `docker compose exec -T backend alembic current`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
 
 ## UM-02 — Remove global unique constraint from `User.email`
 
 - **Severity:** Critical
-- **Assessment:** Valid.
-- **Files:** `models.py`, migration, user creation/login tests.
-- **Issue:** `User.email` has `unique=True` plus tenant-scoped unique constraint. The column-level unique index blocks the same email across different tenants.
-- **Fix:** Remove `unique=True`, keep `UniqueConstraint('tenant_id', 'email')`, and migrate/drop the single-column unique index.
-- **Done when:** Same email can exist in different tenants while duplicate email in the same tenant is still rejected.
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/models.py`, `backend/app/modules/user_management/routes/signin.py`, migration, user creation/login tests.
+- **Result:** `User.email` no longer declares global uniqueness in model metadata. Migration `20260712_user_email_scope` defensively removes single-column unique constraints/indexes on `users.email`, preserves the non-unique email lookup index, and keeps `uq_users_tenant_email` as the uniqueness boundary. Tenant-discovery login now refuses ambiguous shared-email matches instead of selecting the first active tenant.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_user_email_uniqueness tests.test_api_routes.APIRouteTests.test_manual_login_tenant_resolution_prefers_verified_custom_domain tests.test_api_routes.APIRouteTests.test_manual_login_tenant_resolution_rejects_ambiguous_shared_email`, `docker compose exec -T backend alembic downgrade 20260711_token_timestamps`, `docker compose exec -T backend alembic upgrade head`, `docker compose exec -T backend alembic current`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
 
 ## UM-03 — Stop generating password setup links on every failed manual login
 
 - **Severity:** Critical
-- **Assessment:** Valid.
-- **Files:** `services/auth.py`, login route/tests.
-- **Issue:** `authenticate_manual_user` creates and embeds a fresh setup link in a 403 response whenever a matching user has no password hash.
-- **Fix:** Do not return setup links from login. Return a generic `password_setup_required` response without token, or require admin-triggered resend. Add brute-force/rate-limiting before any passwordless-account branch if this behavior remains.
-- **Done when:** Failed login cannot generate unlimited setup tokens or enumerate setup state.
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/services/auth.py`, `backend/tests/test_auth_manual_login.py`.
+- **Result:** Passwordless manual-login failures now return only a stable `password_setup_required` code and message. They do not call `create_user_setup_link`, do not include a setup URL, and do not create `UserSetupToken` rows. Admin-created manual users still receive setup links through the explicit admin flow.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_auth_manual_login tests.test_admin_users.CreateUserTests.test_create_user_returns_setup_link_for_manual_users`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
 
 ## UM-04 — Add rate limiting for manual login/setup-link branch
 
 - **Severity:** Critical/High
-- **Assessment:** Valid extension.
-- **Files:** auth routes/services, rate-limit utility/tests.
-- **Issue:** The passwordless-user branch happens before any evident throttling in `authenticate_manual_user`.
-- **Fix:** Apply the same login attempt throttle to invalid credentials and password-setup-required responses. Key by tenant/email/IP as appropriate.
-- **Done when:** Repeated setup-required attempts are throttled and logged.
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/core/config.py`, `backend/app/modules/user_management/services/auth.py`, `backend/app/modules/user_management/routes/signin.py`, `backend/tests/test_auth_manual_login.py`, `backend/tests/test_api_routes.py`, `backend/tests/test_config.py`.
+- **Result:** Manual CRM login now checks a Redis/cache-backed failed-attempt limiter before password verification, records both invalid-credential and `password_setup_required` failures, keys attempts by tenant/email and tenant/IP, and clears attempts after a successful password login. The passwordless branch remains token-free from `UM-03`.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_auth_manual_login tests.test_api_routes.APIRouteTests.test_manual_login_failure_logs_without_secret_payload tests.test_api_routes.APIRouteTests.test_manual_login_setup_required_records_failed_attempt_without_setup_link tests.test_config.ConfigTests.test_startup_validation_requires_redis_for_production_manual_login_rate_limits`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
 
 ## UM-05 — Add setup-token cleanup index or move cleanup to scheduled job
 
 - **Severity:** High/Medium
-- **Assessment:** Valid.
-- **Files:** `models.py`, migration, `services/auth.py`.
-- **Issue:** `_cleanup_stale_user_setup_tokens` runs on every setup link generation and filters by `consumed_at`/`expires_at` without a targeted composite index.
-- **Fix:** Add indexes on `expires_at` and/or `(consumed_at, expires_at)`, or move cleanup to periodic Celery/maintenance job. Consider returning/logging cleanup count or making return type `None`.
-- **Done when:** Setup-link generation does not trigger an expensive table scan under load.
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/models.py`, `backend/alembic/versions/20260713_setup_token_indexes.py`, `backend/tests/test_auth_setup_tokens.py`.
+- **Result:** `user_setup_tokens` now has dedicated indexes for stale cleanup by `expires_at`, cleanup by `(consumed_at, expires_at)`, and active-token replacement by `(user_id, consumed_at)`. Setup-link generation keeps the existing cleanup behavior, but the delete predicates now have targeted indexes instead of scanning the token table under load.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_auth_setup_tokens`, `docker compose exec -T backend alembic downgrade 20260712_user_email_scope`, `docker compose exec -T backend alembic upgrade head`, `docker compose exec -T backend alembic current`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
 
 ## UM-06 — Make OIDC SSO HTTP calls async-safe
 
 - **Severity:** Critical
-- **Assessment:** Valid.
-- **Files:** `services/sso.py`, SSO routes/tests.
-- **Issue:** OIDC metadata, JWKS, and token exchange use blocking `requests.get/post` in callback/test helpers.
-- **Fix:** Use `httpx.AsyncClient` from async routes, or run sync network calls in an executor. Keep timeout behavior and structured errors.
-- **Done when:** SSO callbacks do not block the event loop during external HTTP calls.
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/routes/signin.py`, `backend/tests/test_api_routes.py`.
+- **Result:** The OIDC callback endpoint is now async and offloads the existing synchronous SSO callback flow through `run_in_threadpool`, so provider metadata discovery, token exchange, JWKS loading, sync SQLAlchemy work, token creation, and audit logging cannot block the event loop. The SSO configuration test route remains a sync admin route, so its provider checks continue to execute in FastAPI's worker threadpool.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_api_routes.APIRouteTests.test_oidc_callback_endpoint_runs_sync_sso_work_in_threadpool tests.test_sso`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
 
 ## UM-07 — Isolate SSO test result writes from failed test transactions
 
 - **Severity:** Critical/High
-- **Assessment:** Valid.
-- **Files:** `services/sso.py`, DB session handling/tests.
-- **Issue:** `test_sso_settings` calls `db.rollback()` on broad exception, then reuses the same session to re-query and commit `last_test_result`.
-- **Fix:** Use a fresh session/session factory for result persistence, or restructure test helpers so rollback happens in a contained sub-transaction and result write is separate.
-- **Done when:** SSO test failures reliably record `last_test_result` without depending on a possibly tainted session.
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/services/sso.py`, `backend/tests/test_sso.py`.
+- **Result:** `test_sso_settings` now persists `last_test_result`, status, failed-login reason, and the `sso.config.tested` activity log through a fresh session bound to the same engine after failed test rollback. A test-only injectable session factory verifies failure results no longer depend on reusing the rolled-back request session.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_sso`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
 
 ## UM-08 — Make TOTP HMAC digestmod explicit
 
 - **Severity:** Medium cleanup
-- **Assessment:** Partially valid.
-- **Files:** `services/mfa.py`, MFA tests.
-- **Issue:** `generate_totp_code` passes `hashlib.sha1` as a positional third argument to `hmac.new`, which is valid but less explicit.
-- **Fix:** Rewrite to `hmac.new(key, msg, digestmod=hashlib.sha1).digest()` and keep RFC test vectors.
-- **Done when:** TOTP generation is explicit and covered by tests.
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/services/mfa.py`, `backend/tests/test_mfa.py`.
+- **Result:** `generate_totp_code` now passes `digestmod=hashlib.sha1` explicitly, with an RFC SHA-1 vector locking the generated TOTP value.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_mfa`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
 
 ## UM-09 — Harden MFA backup-code verification path
 
 - **Severity:** Medium
-- **Assessment:** Valid hardening.
-- **Files:** `services/mfa.py`, tests.
-- **Issue:** Valid backup-code path performs an update/commit and invalid path logs failure, so timing may differ.
-- **Fix:** Keep hash comparison constant-time where applicable, avoid detailed timing distinctions as much as practical, and throttle MFA challenges.
-- **Done when:** MFA backup-code attempts are rate-limited and the code path is hardened.
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/core/config.py`, `backend/app/modules/user_management/services/mfa.py`, `backend/tests/test_mfa.py`, `backend/tests/test_config.py`.
+- **Result:** MFA challenges now check a cache-backed failed-attempt limiter before verification, record failed TOTP and backup-code attempts, clear counters on successful challenges, and require Redis in production when challenge throttling is enabled. Backup-code verification now compares candidate hashes with `hmac.compare_digest` across the user's unconsumed backup codes before consuming a match.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_mfa tests.test_config.ConfigTests.test_startup_validation_requires_redis_for_production_mfa_challenge_rate_limits`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
 
 ## UM-10 — Add rollback guard around team update and permission sync
 
 - **Severity:** High
-- **Assessment:** Valid.
-- **Files:** `services/admin_structure.py`, tests.
-- **Issue:** `update_team` mutates team, syncs permissions, bulk-updates users, then commits without rollback guard.
-- **Fix:** Wrap the full mutation in `try/except` with `db.rollback()` and re-raise. Consider moving bulk user update last and using a transaction context.
-- **Done when:** Permission-sync/user-update failures leave no partial team state.
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/services/admin_structure.py`, `backend/tests/test_admin_structure.py`.
+- **Result:** `update_team` now wraps team mutation, permission sync, bulk user department updates, and commit in a rollback guard. Sync or update failures roll the session back before propagating, preventing partial team/user state.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_admin_structure`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
 
 ## UM-11 — Stop silently deduping team module permission duplicates
 
 - **Severity:** Medium
-- **Assessment:** Valid.
-- **Files:** `services/admin_structure.py`.
-- **Issue:** `_sync_team_module_permissions_from_department` loads all team permissions and silently deletes duplicate module IDs despite a unique constraint.
-- **Fix:** Remove dedupe loop or raise/log a data-integrity error if duplicates are detected. Let the unique constraint protect new writes.
-- **Done when:** Unexpected duplicate permission rows are visible, not silently discarded.
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/services/admin_structure.py`, `backend/tests/test_admin_structure.py`.
+- **Result:** `_sync_team_module_permissions_from_department` now raises a data-integrity error when duplicate team/module permission rows are encountered instead of silently deleting extras. The `UM-10` rollback guard keeps team updates atomic when this condition is hit.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_admin_structure`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
 
 ## UM-12 — Version user update options cache key
 
 - **Severity:** High/Medium
-- **Assessment:** Valid.
-- **Files:** `services/admin_users.py`.
-- **Issue:** `list_user_update_options` caches serialized schema payload under `user-update-options:{tenant_id}`. Future schema changes can read stale shape.
-- **Fix:** Add a version prefix such as `user-update-options-v2:{tenant_id}` and bump when payload shape changes.
-- **Done when:** Schema changes safely bust old cache values.
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/services/admin_users.py`, `backend/tests/test_admin_users.py`.
+- **Result:** The user update options cache key now includes a schema version prefix (`user-update-options-v2`) so future payload changes do not read old cached shapes.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_admin_users.CreateUserTests.test_user_update_options_cache_key_is_schema_versioned tests.test_admin_users.CreateUserTests.test_list_user_update_options_uses_cache`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
 
 ## UM-13 — Remove forced `is_enabled=True` from accessible module schemas
 
 - **Severity:** Medium
-- **Assessment:** Valid.
-- **Files:** `services/auth.py`, module access tests.
-- **Issue:** `get_user_accessible_modules` filters by `is_module_enabled_for_tenant`, then forces `is_enabled=True` in the returned schema for admins and non-admins.
-- **Fix:** Return `build_module_schema(...)` as-is after filtering. Do not override state unless the UI specifically needs a separate `accessible` flag.
-- **Done when:** Returned module metadata accurately reflects module config.
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/services/auth.py`, `backend/tests/test_auth_module_access.py`.
+- **Result:** `get_user_accessible_modules` now returns `build_module_schema(...)` as-is after tenant/module-access filtering and no longer forces `is_enabled=True` onto returned schemas.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_auth_module_access`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
+
+## UM-19 — Collapse duplicate allowed-domain assignment in SSO settings update
+
+- **Severity:** Medium
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/services/sso.py`, `backend/tests/test_sso.py`.
+- **Result:** `update_sso_settings` now uses one domain-sync assignment path for allowed email domains while preserving verified custom-domain behavior.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_sso`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
+
+## UM-20 — Clarify setup-token cleanup return value
+
+- **Severity:** Low
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/services/auth.py`, `backend/tests/test_auth_setup_tokens.py`.
+- **Result:** `_cleanup_stale_user_setup_tokens` now returns `None`, matching its actual side-effect-only usage from setup-link generation.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_auth_setup_tokens`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
+
+## UM-21 — Add explicit tests for passwordless setup flow
+
+- **Severity:** High
+- **Completed:** 2026-06-26.
+- **Files:** `backend/tests/test_auth_manual_login.py`, `backend/tests/test_admin_users.py`.
+- **Result:** Passwordless manual-only, manual-or-google, and inactive manual login paths are covered to ensure login does not return setup links or mint setup tokens. The explicit admin-created manual-user setup link remains covered by the admin-user test.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_auth_manual_login tests.test_admin_users.CreateUserTests.test_create_user_returns_setup_link_for_manual_users`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
+
+## UM-22 — Add unique email migration safety checks
+
+- **Severity:** High
+- **Completed:** 2026-06-26.
+- **Files:** `backend/tests/test_user_email_uniqueness.py`, `backend/tests/test_api_routes.py`, `backend/tests/test_sso.py`.
+- **Result:** Same-email cross-tenant behavior is covered at the DB/model layer, manual login is verified to resolve by explicit tenant scope, ambiguous tenant-discovery login refuses shared emails, and SSO resolution remains pinned to the verified custom-domain tenant.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_user_email_uniqueness tests.test_api_routes.APIRouteTests.test_manual_login_tenant_resolution_rejects_ambiguous_shared_email tests.test_sso.SsoServiceTests.test_resolve_sso_settings_for_email_uses_verified_domain_tenant`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
+
+## UM-23 — Improve SSO failure recording transaction boundary
+
+- **Severity:** Medium/High
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/services/sso.py`, `backend/tests/test_sso.py`.
+- **Result:** `_record_sso_failure` now rolls back the failed callback session, then records failure reason and activity through a fresh session bound to the same engine. A regression test verifies callback failure telemetry no longer depends on the rolled-back request session.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_sso`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
+
+## UM-24 — Add index for setup-token active-user lookup if needed
+
+- **Severity:** Medium
+- **Completed:** 2026-06-26.
+- **Files:** `backend/app/modules/user_management/models.py`, `backend/alembic/versions/20260713_setup_token_indexes.py`, `backend/tests/test_auth_setup_tokens.py`.
+- **Result:** The setup-token active-user replacement query is covered by `ix_user_setup_tokens_user_consumed` on `(user_id, consumed_at)`, added with the setup-token index migration.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_auth_setup_tokens`, `docker compose exec -T backend alembic upgrade head`, `docker compose exec -T backend alembic current`, `docker compose exec -T backend python -m compileall app tests`, `git diff --check`.
+
+---
 
 ## UM-14 — Fix cursor user search ordering
 
@@ -205,60 +230,6 @@ Corrections to the audit:
 - **Issue:** `_lookup_txt` shells out to `dig` with an argv list if `dns.resolver` is unavailable. This is not classic shell injection, but it introduces process-level fallback in request flow.
 - **Fix:** Ensure callers always normalize hostnames before `_verify_dns`, add an assertion/guard inside `_lookup_txt`, and optionally disable the `dig` fallback outside explicit dev/runtime setting.
 - **Done when:** DNS verification cannot run unnormalized hostnames and process fallback is intentional.
-
-## UM-19 — Collapse duplicate allowed-domain assignment in SSO settings update
-
-- **Severity:** Medium
-- **Assessment:** Valid.
-- **Files:** `services/sso.py`.
-- **Issue:** `update_sso_settings` calls `_verified_custom_email_domains_or_legacy` in both if/else branches.
-- **Fix:** Replace the branch with one assignment.
-- **Done when:** SSO settings update has one domain sync path.
-
-## UM-20 — Clarify setup-token cleanup return value
-
-- **Severity:** Low
-- **Assessment:** Valid cleanup.
-- **Files:** `services/auth.py`.
-- **Issue:** `_cleanup_stale_user_setup_tokens` returns an int count but callers ignore it.
-- **Fix:** Return `None`, or log/use the count in setup-link generation or maintenance jobs.
-- **Done when:** Function signature reflects actual use.
-
-## UM-21 — Add explicit tests for passwordless setup flow
-
-- **Severity:** High
-- **Assessment:** Valid extension.
-- **Files:** backend auth tests.
-- **Issue:** Passwordless users, auth mode, inactive status, and setup link generation intersect with sensitive login behavior.
-- **Fix:** Add tests covering missing password hash, inactive user, manual-only/manual-or-google modes, no setup token in login response, and admin resend flow.
-- **Done when:** Password setup behavior is locked down by tests.
-
-## UM-22 — Add unique email migration safety checks
-
-- **Severity:** High
-- **Assessment:** Valid extension.
-- **Files:** migration scripts/docs.
-- **Issue:** Dropping global email uniqueness can expose existing code that assumes email globally identifies one user.
-- **Fix:** Audit login and lookup paths. Require tenant context when looking up users by email except explicit global tenant-resolution flows.
-- **Done when:** Multi-tenant same-email support does not break login/SSO resolution.
-
-## UM-23 — Improve SSO failure recording transaction boundary
-
-- **Severity:** Medium/High
-- **Assessment:** Valid extension.
-- **Files:** `services/sso.py`.
-- **Issue:** `_record_sso_failure` rolls back, re-queries, commits failure, then logs activity with the same session.
-- **Fix:** Use dedicated helper/session for failure recording or an outbox/safe log path that cannot mask original SSO error.
-- **Done when:** SSO failure telemetry does not interfere with callback error handling.
-
-## UM-24 — Add index for setup-token active-user lookup if needed
-
-- **Severity:** Medium
-- **Assessment:** Valid extension.
-- **Files:** models/migration.
-- **Issue:** `create_user_setup_link` deletes unconsumed tokens by `user_id` and `consumed_at IS NULL`.
-- **Fix:** Add index `(user_id, consumed_at)` if query plans show it is needed.
-- **Done when:** Setup-token replacement is indexed.
 
 ## UM-25 — Review admin user list field projection
 
@@ -408,21 +379,12 @@ Corrections to the audit:
 
 ## Migration checklist
 
-- Drop global unique index/constraint on `users.email` while preserving `uq_users_tenant_email`.
-- Change token timestamp columns to `DateTime(timezone=True)` with `server_default=func.now()`.
-- Add setup-token cleanup indexes: at minimum `expires_at`; consider `(consumed_at, expires_at)` and `(user_id, consumed_at)`.
+- No pending schema-only checklist items.
 
 ## Test checklist
 
 Backend:
 
-- Same email can exist in two tenants, but not twice in one tenant.
-- Passwordless manual login does not return setup token and is rate-limited.
-- Admin-created user still receives setup link through admin flow.
-- Setup-token cleanup queries use indexes or are moved to scheduled task.
-- SSO callback/test external HTTP calls are async-safe and timeout-tested.
-- SSO failure/test result recording survives exceptions without corrupting session state.
-- Team department change rolls back cleanly if permission sync or user update fails.
 - Saved-view config rejects oversized/deep JSON.
 - User cursor search ordering semantics are tested.
 
@@ -437,7 +399,6 @@ Frontend/manual:
 
 ## Explicit audit corrections
 
-- `hmac.new(..., hashlib.sha1)` is valid today; make it explicit with `digestmod=` for clarity.
 - DNS `dig` fallback uses an argv list, so do not label it shell-string injection. Treat it as normalization/runtime-hardening.
 - Module-scope `fetchUsers` is stable; only change it if `usePagedList` dependency behavior requires it.
 - MFA setup loading issue should be covered by regression tests unless current code proves a stuck state.

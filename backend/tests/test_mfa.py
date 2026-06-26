@@ -52,6 +52,12 @@ class MfaServiceTests(unittest.TestCase):
     def tearDown(self):
         self.db.close()
 
+    def test_totp_generation_matches_rfc_sha1_vector(self):
+        self.assertEqual(
+            mfa.generate_totp_code("GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ", for_time=59),
+            "287082",
+        )
+
     @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mfa-test-secret")
     @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v7")
     def test_setup_encrypts_secret_and_enable_issues_hashed_backup_codes(self):
@@ -83,6 +89,29 @@ class MfaServiceTests(unittest.TestCase):
         self.assertEqual(ctx.exception.status_code, 401)
         self.assertEqual(self.db.query(ActivityLog).filter(ActivityLog.action == "mfa.backup_code.used").count(), 1)
         self.assertEqual(self.db.query(ActivityLog).filter(ActivityLog.action == "mfa.challenge.failed").count(), 1)
+
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mfa-test-secret")
+    def test_mfa_failed_attempts_are_rate_limited_and_cleared_on_success(self):
+        setup = mfa.start_mfa_setup(self.db, user=self.user)
+        backup_code = mfa.activate_mfa(self.db, user=self.user, code=mfa.generate_totp_code(setup["secret"]))[0]
+        mfa.cache_delete(mfa._mfa_challenge_attempt_key(self.user))
+
+        try:
+            for _ in range(mfa.settings.MFA_CHALLENGE_FAILED_ATTEMPT_LIMIT):
+                mfa.record_failed_mfa_challenge_attempt(self.user)
+
+            with self.assertRaises(HTTPException) as ctx:
+                mfa.verify_mfa_challenge(self.db, user=self.user, backup_code="BAD-CODE")
+            self.assertEqual(ctx.exception.status_code, 429)
+
+            mfa.clear_failed_mfa_challenge_attempts(self.user)
+            self.assertEqual(
+                mfa.verify_mfa_challenge(self.db, user=self.user, backup_code=backup_code),
+                "backup_code",
+            )
+            mfa.check_mfa_challenge_rate_limit(self.user)
+        finally:
+            mfa.cache_delete(mfa._mfa_challenge_attempt_key(self.user))
 
     @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "mfa-test-secret")
     def test_disable_requires_password_and_current_mfa(self):

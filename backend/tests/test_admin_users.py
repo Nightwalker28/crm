@@ -75,6 +75,9 @@ class CreateUserTests(unittest.TestCase):
         self.assertEqual(result.roles[0].name, "Admin")
         self.assertEqual(result.teams[0].name, "Revenue")
 
+    def test_user_update_options_cache_key_is_schema_versioned(self):
+        self.assertEqual(admin_users._user_update_options_cache_key(42), "user-update-options-v2:42")
+
     def test_create_user_rejects_missing_role(self):
         db = FakeDB(user=None, role=None, team=SimpleNamespace(id=8))
         payload = SimpleNamespace(

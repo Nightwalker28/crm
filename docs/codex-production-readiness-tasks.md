@@ -1,6 +1,6 @@
 # Codex Production Readiness Backlog
 
-_Last updated: 2026-06-25_
+_Last updated: 2026-06-26_
 
 This is the consolidated implementation backlog for the production-readiness audit across Core Backend, Contracts, Calendar, Catalog, Client Portal, Documents, Platform, Finance, Sales, Support, Tasks, and User Management.
 
@@ -32,9 +32,9 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 
 ## Recommended PR Order
 
-1. **Critical security and startup safety:** UM-AUTH, UM-SSO.
-2. **Concurrency and transaction correctness:** CON-CONC, CAL-CONC, CAT-MEDIA, CP-SEED, DOC-STORAGE, FIN-TXN, SALES-TXN, UM-ADMIN, SUPPORT-SLA, PLAT-RESTORE.
-3. **External side effects and background work:** CAL-SYNC, DOC-STORAGE, TASKS-EVENTS, UM-SSO, PLAT-EVENTS, PLAT-RESTORE.
+1. **Critical security and startup safety:** complete for the user-management auth/SSO backend items.
+2. **Concurrency and transaction correctness:** CON-CONC, CAL-CONC, CAT-MEDIA, CP-SEED, DOC-STORAGE, FIN-TXN, SALES-TXN, SUPPORT-SLA, PLAT-RESTORE.
+3. **External side effects and background work:** CAL-SYNC, DOC-STORAGE, TASKS-EVENTS, PLAT-EVENTS, PLAT-RESTORE.
 4. **Query scalability and indexes:** SEARCH-IDX, LIST-PERF, SALES-PERF, SUPPORT-PERF, TASKS-PERF, UM-PROFILE, PLAT-QUERY.
 5. **Frontend cache, validation, and browser reliability:** FE-QUERY, FE-FORMS, FE-BROWSER, UM-FRONTEND.
 6. **Cleanup and maintainability:** SALES-FILES, SALES-MODELS, UM-MAINT, OPS-MAINT, SERIALIZATION, ROUTES, DUPLICATION.
@@ -113,26 +113,65 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Added a tenant-scoped `crm_number_counters` platform primitive with atomic upsert allocation per tenant, scope, and day. Quote, order, and support case generated numbers now use that allocator instead of date-prefix count scans. The migration backfills counter rows from existing `Q-YYYYMMDD-NNNN`, `SO-YYYYMMDD-NNNN`, and `CASE-YYYYMMDD-NNNN` values so new allocations continue after current data. Existing quote/order/support uniqueness remains the database backstop for manual numbers and race protection.
 - **Verification:** `docker compose exec -T backend python -m unittest tests.test_crm_numbering tests.test_quotes_services tests.test_sales_orders tests.test_support_cases`; `docker compose exec -T backend alembic upgrade head`; `docker compose exec -T backend alembic current`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
 
+## UM-AUTH — Harden user auth, setup tokens, and tenant-scoped email identity
+
+- **Completed:** 2026-06-26
+- **Source items:** UM-01, UM-02, UM-03, UM-04, UM-05, UM-20, UM-21, UM-22, UM-24
+- **Files:** user-management models, auth services/routes, migrations, auth tests
+- **Result:** Refresh/setup token timestamps are timezone-aware DB defaults; `users.email` uniqueness is tenant-scoped; passwordless manual login no longer returns or mints setup tokens; failed manual login/setup-required branches are rate-limited; setup-token cleanup/replacement has targeted indexes; cleanup returns `None`; same-email cross-tenant login paths are covered by tenant-scoped and ambiguous-resolution tests.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_auth_setup_tokens tests.test_auth_manual_login tests.test_user_email_uniqueness tests.test_auth_module_access tests.test_sso`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## UM-SSO-BACKEND — Make SSO and MFA backend failure paths safe
+
+- **Completed:** 2026-06-26
+- **Source items:** UM-06, UM-07, UM-08, UM-09, UM-19, UM-23
+- **Files:** SSO/MFA services, auth routes, focused tests
+- **Result:** OIDC callback work is offloaded from the async route; SSO test and callback failure telemetry persists through fresh sessions after rollback; TOTP HMAC uses explicit `digestmod=hashlib.sha1`; MFA challenge attempts are cache-throttled and backup-code comparisons use constant-time comparison; SSO allowed-domain sync uses one assignment path.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_sso tests.test_mfa tests.test_api_routes.APIRouteTests.test_oidc_callback_endpoint_runs_sync_sso_work_in_threadpool`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## UM-ADMIN — Make admin team/module/user updates transactional and accurate
+
+- **Completed:** 2026-06-26
+- **Source items:** UM-10, UM-11, UM-12, UM-13
+- **Files:** admin structure/user/auth services, cache helpers, tests
+- **Result:** Team update, permission sync, and user department updates roll back as one unit; duplicate team module permission rows now surface as data-integrity errors; user update options cache keys are schema-versioned; accessible-module schemas preserve built module metadata instead of forcing `is_enabled=True`.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_admin_structure tests.test_admin_users tests.test_auth_module_access`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## CORE-EXPORT — Bound import/export memory and cleanup behavior
+
+- **Completed:** 2026-06-26
+- **Source items:** CORE-16, CORE-17, CORE-18, CORE-23, DOC-06, DOC-12, DOC-24, PLAT-07, FIN-13
+- **Files:** `backend/app/core/uploads.py`, `backend/app/core/module_csv.py`, `backend/app/core/module_export.py`, `backend/app/core/config.py`, `.env.sample`, `backend/app/modules/documents/services/document_services.py`, `backend/app/modules/platform/services/data_transfer_jobs.py`, focused backend tests
+- **Result:** CSV/data-transfer uploads now use bounded chunked reads with a hard configured size ceiling before decode/preview/remap work; document uploads reuse the bounded reader while preserving document-specific validation errors; failed batched ZIP exports delete their temp file; export jobs remove temporary Path artifacts even when result persistence fails; data-transfer upload limits are documented in the sample environment.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_core_hardening.ModuleCsvTests`; `docker compose exec -T backend python -m unittest tests.test_documents.DocumentUploadValidationTests`; `docker compose exec -T backend python -m unittest tests.test_data_transfer_job_permissions`
+
+## CON-CONC — Make contract writes atomic, efficient, and constraint-safe
+
+- **Completed:** 2026-06-26
+- **Source items:** CON-01, CON-02, CON-03, CON-04, CON-05, CON-06, CON-07, CON-08, CON-13, CON-19
+- **Files:** `backend/app/modules/contracts/services/contracts_services.py`, `backend/app/modules/contracts/routes/contracts_routes.py`, `backend/alembic/versions/20260714_contract_number_counters.py`, `backend/tests/test_contracts.py`, `backend/tests/test_crm_numbering.py`
+- **Result:** Generated contract numbers now use the shared tenant-scoped `crm_number_counters` allocator with a contract backfill migration; write routes use lightweight mutation loaders and scalar audit snapshots before returning full responses; title-only PATCH avoids unchanged linked-record validation; create/update and party/signer writes translate integrity failures to clean 409 responses while invalid signer party/status/order inputs stay clean 400/404 paths.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_contracts`; `docker compose exec -T backend python -m unittest tests.test_crm_numbering`; `docker compose exec -T backend alembic upgrade head`; `docker compose exec -T backend alembic current`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## CAL-CONC — Make booking and calendar mutation flows race-safe
+
+- **Completed:** 2026-06-26
+- **Source items:** CAL-01, CAL-04, CAL-05, CAL-06, CAL-07, CAL-08, CAL-09, CAL-14, CAL-X1, CAL-X4
+- **Files:** `backend/app/modules/calendar/services/booking_services.py`, `backend/app/modules/calendar/services/calendar_services.py`, `backend/app/modules/calendar/repositories/calendar_repository.py`, `backend/tests/test_calendar_booking_services.py`, `backend/tests/test_calendar_services.py`
+- **Result:** Public booking slot generation now fetches busy ranges once per requested date range instead of querying per candidate slot; booking submission locks the booking type row, performs a final overlap check before CRM/event side effects, and keeps booking uniqueness conflicts as clean 409 responses; visible calendar list queries use `EXISTS` predicates instead of join-plus-distinct row inflation; calendar create/update service paths validate merged start/end times before mutating ORM state. Static `/events/from-task` routes and direct-user response precedence were already correct in the current code.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_calendar_booking_services`; `docker compose exec -T backend python -m unittest tests.test_calendar_services`; `docker compose exec -T backend python -m unittest tests.test_cursor_pagination`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
 ---
 
 # Consolidated Task Backlog
 
-## CORE-EXPORT — Bound import/export memory and cleanup behavior
-
-- **Severity:** Medium
-- **Source items:** CORE-16, CORE-17, CORE-18, CORE-23, DOC-06, DOC-12, DOC-24, PLAT-07, FIN-13
-- **Files:** `backend/app/core/module_export.py`, `backend/app/core/module_csv.py`, document storage/services/routes, backup artifact upload, finance export paths, tests
-- **Issue:** CSV/ZIP/export/upload paths can retain full files in memory, leak temp files, or defer size checks until generators are fully consumed.
-- **Fix:** Add pre-parse file-size gates, stream ZIP/CSV/provider downloads where practical, clean temp files with context managers or `try/finally`, keep strict max-size enforcement for staged upload fixes, and keep upload directory cleanup best-effort/non-fatal.
-- **Acceptance:** Memory scales with current chunk/module where feasible; temp files are removed on success and failure; huge CSVs cannot bypass preview-time limits; missing/concurrently removed upload directories do not fail cleanup.
-
 ## SEARCH-IDX — Add intentional text-search and hot-query index strategy
 
 - **Severity:** Medium
-- **Source items:** CORE-11, CORE-12, CORE-25, CON-12, CON-18, CAL-17, CAL-18, CAT-13, CAT-14, DOC-18, FIN-28, SALES-DEEP-08, SALES-DEEP-09, TASK-13, UM-05, UM-24, SUP-13, SUP-14, SUP-15, SUP-30
+- **Source items:** CORE-11, CORE-12, CORE-25, CON-12, CON-18, CAL-17, CAL-18, CAT-13, CAT-14, DOC-18, FIN-28, SALES-DEEP-08, SALES-DEEP-09, TASK-13, SUP-13, SUP-14, SUP-15, SUP-30
 - **Files:** module filter/search helpers, models, Alembic migrations, tests
-- **Issue:** Contains searches and hot range/lookups lack targeted indexes; some generated SQL is unnecessarily complex; several constraints need active-row semantics; setup-token cleanup/replacement can scan without targeted indexes; support search treats `%` and `_` as wildcards; sales/support indexes need query-plan justification.
-- **Fix:** Cap text filter values. Use `pg_trgm` GIN indexes for high-use contains searches while preserving LIKE/ILIKE semantics. Add targeted composite/partial indexes for contract expiration, calendar ranges/participants, document template/active shares, catalog currency constraints, task tenant/status and tenant/due filters, setup-token cleanup/active-user lookups, support SLA/open-case predicates, sales quote-open hash columns/search documents, and active POS invoice number uniqueness. Escape LIKE wildcards where literal search is expected. Flatten PostgreSQL searchable expressions with `concat_ws` where applicable.
+- **Issue:** Contains searches and hot range/lookups lack targeted indexes; some generated SQL is unnecessarily complex; several constraints need active-row semantics; support search treats `%` and `_` as wildcards; sales/support indexes need query-plan justification.
+- **Fix:** Cap text filter values. Use `pg_trgm` GIN indexes for high-use contains searches while preserving LIKE/ILIKE semantics. Add targeted composite/partial indexes for contract expiration, calendar ranges/participants, document template/active shares, catalog currency constraints, task tenant/status and tenant/due filters, support SLA/open-case predicates, sales quote-open hash columns/search documents, and active POS invoice number uniqueness. Escape LIKE wildcards where literal search is expected. Flatten PostgreSQL searchable expressions with `concat_ws` where applicable.
 - **Acceptance:** Hot contains/range/lookup paths have an index strategy; oversized filter values fail before query construction; active-row uniqueness matches soft-delete behavior; support literal wildcard searches do not over-match.
 
 ## LIST-PERF — Consolidate count/list, pagination, and cursor-query optimizations
@@ -143,24 +182,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Issue:** Several endpoints load full lists to count/slice, run duplicate fetches, manually compute offsets, hydrate cursor sentinel rows, churn DB sessions/queries in polling paths, or lack pagination metadata. Sales/support summaries also over-fetch related records, hydrate unused custom fields, or filter client-visible data in Python. Task assignment options and linked-record task widgets are currently bounded poorly or not searchable. User cursor search can lose relevance/default ordering, and saved-view defaulting can re-query full lists.
 - **Fix:** Add summary/count/latest helpers for overview pages. Use count-specific, grouped, conditional aggregate, or window-count queries on hot endpoints. Enforce bounded flat list routes or cursor alternatives, including searchable participant/assignee pickers instead of fixed caps. Use `Pagination.offset`/`limit`. Ensure cursor responses strip sentinel rows before serialization/hydration. Remove redundant refresh/refetch paths. Verify and remove duplicate document/share/proposal/task/user fetches if present. Reduce SSE/realtime DB session and query churn. Filter client-visible support comments in SQL. Preserve or document cursor search ordering semantics.
 - **Acceptance:** Pagination contracts are explicit and consistent; overview/list endpoints do not fetch full datasets for summaries; cursor sentinels are not returned or over-hydrated; polling/list paths do not multiply DB work unnecessarily; client-facing list/detail responses avoid loading private/internal rows; task assignment and linked-task views scale beyond small tenants/default page sizes.
-
-## CON-CONC — Make contract writes atomic, efficient, and constraint-safe
-
-- **Severity:** Critical/High
-- **Source items:** CON-01, CON-02, CON-03, CON-04, CON-05, CON-06, CON-07, CON-08, CON-13, CON-19
-- **Files:** `backend/app/modules/contracts/services/contracts_services.py`, routes, schemas, models, migrations, tests
-- **Issue:** Contract write paths eager-load too much, double-fetch, generate numbers with race-prone counts, preflight linked FKs with excessive queries, and can surface integrity failures as 500s.
-- **Fix:** Split lightweight mutation loaders from full response loaders. Let service own update fetch/return. Allocate contract numbers atomically with a counter table/upsert/lock or non-sequential collision-resistant scheme. Validate only changed PATCH fields. Prefer DB constraints plus tenant ownership checks and clean `IntegrityError` translation. Guard signer status updates and required title schema. Correct JSON defaults if needed.
-- **Acceptance:** Concurrent contract creates get unique numbers; PATCH title-only does not revalidate unrelated linked records; duplicate/invalid party/signer operations return clean 4xx; write operations avoid unnecessary graph loads.
-
-## CAL-CONC — Make booking and calendar mutation flows race-safe
-
-- **Severity:** Critical/High
-- **Source items:** CAL-01, CAL-04, CAL-05, CAL-06, CAL-07, CAL-08, CAL-09, CAL-14, CAL-X1, CAL-X4
-- **Files:** calendar booking/event services, repositories, routes, tasks, tests
-- **Issue:** Public booking slot creation validates before insert, route order can shadow `/events/from-task`, participant response precedence can be wrong, visibility joins inflate rows, notification side effects share mutation sessions, slot generation has N+1 overlap queries, and partial date updates can validate after mutation.
-- **Fix:** Do final overlap check and insert atomically with row locks or conflict handling. Declare static task routes before dynamic event routes. Prefer direct user responses before team responses. Replace visibility joins with `EXISTS`. Enqueue notifications/side effects after commit with idempotency keys. Fetch overlap data once per range. Validate merged start/end before mutating ORM state.
-- **Acceptance:** Concurrent same-slot bookings produce one success and one clean conflict; task routes resolve correctly; event creation is transaction-safe; slot-generation query count does not grow with candidate count.
 
 ## CAL-SYNC — Make external calendar sync/delete side effects retryable
 
@@ -279,32 +300,14 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Fix:** Reuse a shared due-alert dedupe helper for route and scan emissions. Batch existing alert lookup by tenant/day/task IDs. Assert task event types exist in canonical CRM event and alert sets. Decide whether task notifications are best-effort or queued/outbox-backed; log or persist failures accordingly. Format due-time text in recipient timezone or omit misleading time.
 - **Acceptance:** Saving the same due-today task emits at most one alert per day, scan dedupe is tenant-scoped, task events persist/deliver consistently, and notification failures are observable.
 
-## UM-AUTH — Harden user auth, setup tokens, and tenant-scoped email identity
+## UM-SSO — Finish DNS fallback and login regression guards
 
-- **Severity:** Critical/High
-- **Source items:** UM-01, UM-02, UM-03, UM-04, UM-05, UM-21, UM-22, UM-24
-- **Files:** user-management models, auth services/routes, migrations, auth tests
-- **Issue:** User token timestamps use naive defaults, `User.email` is globally unique despite tenant-scoped uniqueness, manual login can generate setup links for passwordless users, setup-required responses need throttling, setup-token cleanup/replacement can be expensive, and same-email multi-tenant support can expose lookup assumptions.
-- **Fix:** Use timezone-aware DB defaults for refresh/setup token timestamps and consumed timestamps. Drop the global user-email unique index while preserving tenant-scoped uniqueness. Stop returning setup links from failed manual login; use admin-triggered resend and generic setup-required responses. Apply login throttling to invalid and setup-required branches. Add setup-token cleanup/replacement indexes or move cleanup to maintenance. Audit email lookup paths so tenant context is required except explicit tenant-resolution flows.
-- **Acceptance:** Same email can exist across tenants, passwordless login cannot mint unlimited setup tokens or enumerate setup state, token timestamps are aware, and setup-token operations are indexed or scheduled.
-
-## UM-SSO — Make SSO, MFA, DNS, and failure recording safe
-
-- **Severity:** Critical/High
-- **Source items:** UM-06, UM-07, UM-08, UM-09, UM-18, UM-19, UM-23, UM-39
-- **Files:** SSO/MFA/domain services, auth routes, frontend login tests where relevant
-- **Issue:** OIDC metadata/JWKS/token exchange uses blocking HTTP in callback/test flows, SSO test/failure recording can reuse a rolled-back session, TOTP digestmod is implicit, MFA backup-code attempts need hardening/throttling, tenant-domain DNS fallback shells out to `dig` in request flow, and SSO domain sync has duplicate branch logic.
-- **Fix:** Use async HTTP clients from async SSO routes or run sync calls off the event loop with bounded timeouts. Persist SSO test/failure results through an isolated session/helper so telemetry cannot mask original errors. Make TOTP `digestmod=hashlib.sha1` explicit and keep RFC vectors. Harden and throttle backup-code attempts. Normalize hostnames before DNS lookup and make `dig` fallback explicitly configured or dev-only. Collapse duplicate domain sync assignment.
-- **Acceptance:** SSO callbacks do not block the event loop, SSO failures reliably record telemetry without tainting request sessions, MFA paths are throttled/tested, and DNS process fallback is intentional and normalized.
-
-## UM-ADMIN — Make admin team/module/user updates transactional and accurate
-
-- **Severity:** High/Medium
-- **Source items:** UM-10, UM-11, UM-12, UM-13
-- **Files:** admin structure/user/auth services, cache helpers, tests
-- **Issue:** Team update mutates team, permissions, and users without a rollback guard; duplicate team module permission rows can be silently discarded; user update options cache keys have no version; accessible-module schemas force `is_enabled=True` after filtering.
-- **Fix:** Wrap team update/permission sync/user bulk updates in one rollback-safe transaction. Treat duplicate permission rows as visible data-integrity errors instead of silent cleanup. Version user update options cache keys. Return module schemas as built after access filtering instead of overriding enabled state, or add a separate `accessible` field if the UI needs it.
-- **Acceptance:** Failed team updates leave no partial permission/user state, cache shape changes are safe, and returned module metadata reflects real module config.
+- **Severity:** Medium
+- **Source items:** UM-18, UM-39
+- **Files:** tenant-domain services, frontend login tests where relevant
+- **Issue:** Tenant-domain DNS fallback shells out to `dig` in request flow, and MFA setup loading needs a regression guard unless current code proves it already clears reliably.
+- **Fix:** Normalize hostnames before DNS lookup and make `dig` fallback explicitly configured or dev-only. Add tests ensuring failed MFA setup clears all loading flags and shows a recoverable error.
+- **Acceptance:** DNS process fallback is intentional and normalized, and MFA setup errors cannot leave the login page stuck loading.
 
 ## UM-PROFILE — Bound saved-view/user-list payloads and query behavior
 
@@ -318,11 +321,11 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 ## UM-MAINT — Keep low-risk user-management cleanup explicit
 
 - **Severity:** Low/Medium
-- **Source items:** UM-20, UM-38
-- **Files:** auth services, frontend user table hook docs/tests
-- **Issue:** Setup-token cleanup returns a count callers ignore, and the admin users fetcher is stable today only by convention.
-- **Fix:** Make cleanup return `None` or log/use the count in setup generation/maintenance jobs. Document or preserve the module-scoped `fetchUsers` contract unless `usePagedList` later needs a different dependency model.
-- **Acceptance:** Helper signatures match actual use and user fetching does not refetch due to avoidable fetcher identity churn.
+- **Source items:** UM-38
+- **Files:** frontend user table hook docs/tests
+- **Issue:** The admin users fetcher is stable today only by convention.
+- **Fix:** Document or preserve the module-scoped `fetchUsers` contract unless `usePagedList` later needs a different dependency model.
+- **Acceptance:** User fetching does not refetch due to avoidable fetcher identity churn.
 
 ## PLAT-RESTORE — Protect platform restore, backup, retention, and data-transfer jobs
 
@@ -399,10 +402,10 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 ## SERIALIZATION — Make API serialization contracts explicit
 
 - **Severity:** Medium
-- **Source items:** CORE-24, CORE-26, CON-14, CAT-04, DOC-27, FIN-23, FIN-30, CP-12, CP-15, SALES-DEEP-06, SALES-DEEP-07, TASK-10, UM-13, SUP-18, SUP-21, SUP-22
+- **Source items:** CORE-24, CORE-26, CON-14, CAT-04, DOC-27, FIN-23, FIN-30, CP-12, CP-15, SALES-DEEP-06, SALES-DEEP-07, TASK-10, SUP-18, SUP-21, SUP-22
 - **Files:** serializers, schemas, models/docs, tests
 - **Issue:** Some responses expose misleading nullable/default semantics, aliased mutable sets, missing-media ambiguity, heavy audit states, implicit tenant inheritance, hidden sales custom-field hydration contracts, or heavy list response shapes.
-- **Fix:** Return copies/frozen sets for duplicate detection. Define `None` media URL behavior and render placeholders. Clarify auto-generated contract numbers. Keep boolean serialization stable. Use slim audit states. Document inherited tenancy for child rows. Replace hidden dynamic ORM serializer attributes with typed inputs. Document/test sales custom-field cache hydration and support immutable-comment/list-item contracts. Ensure task responses are serialized/validated once, either as plain dicts plus route validation or as response models directly. Do not force accessible module schemas to `is_enabled=True`; return real module metadata or add a separate access flag.
+- **Fix:** Return copies/frozen sets for duplicate detection. Define `None` media URL behavior and render placeholders. Clarify auto-generated contract numbers. Keep boolean serialization stable. Use slim audit states. Document inherited tenancy for child rows. Replace hidden dynamic ORM serializer attributes with typed inputs. Document/test sales custom-field cache hydration and support immutable-comment/list-item contracts. Ensure task responses are serialized/validated once, either as plain dicts plus route validation or as response models directly.
 - **Acceptance:** API consumers see intentional null/default/media/boolean behavior, and serializers do not mutate caller-owned state or trigger accidental lazy loads; bulk list schemas stay lightweight; task serialization avoids repeated Pydantic validation.
 
 ## ROUTES — Add route-order and path-boundary regression coverage
@@ -439,7 +442,7 @@ Create migrations only after inspecting the current schema and data.
 - **Sales:** add quote/order number allocator tables or sequences; add `updated_at` to `sales_organizations` if product wants recency display; change opportunity attachments from `Text` to JSON/JSONB after validating existing rows; consider `String(64)` for quote open-event hash columns; relationship loader changes need query tests but usually no DB migration.
 - **Tasks:** add composite indexes for `(tenant_id, status)` and `(tenant_id, due_at)` after EXPLAIN; relationship loader changes need query tests but no DB migration; include/deleted semantics are repository/service changes only.
 - **Support:** add unique constraint on `(tenant_id, case_number)` after duplicate checks; add tenant/SLA and active-case indexes based on EXPLAIN; optionally align category column type with schema limit; add comment `updated_at` only if comment editing is planned.
-- **User Management:** drop global unique index/constraint on `users.email` while preserving tenant-scoped uniqueness; change refresh/setup token timestamps to `DateTime(timezone=True)` with DB defaults; add setup-token cleanup indexes such as `expires_at`, `(consumed_at, expires_at)`, and `(user_id, consumed_at)` where plans justify them.
+- **User Management:** no pending production-readiness schema items after the user email, token timestamp, and setup-token index migrations.
 - **Search:** use `CREATE EXTENSION IF NOT EXISTS pg_trgm` or Alembic equivalent before trigram indexes.
 
 Migration rules:
@@ -491,11 +494,6 @@ Run the subset that matches touched areas. For broad or cross-cutting work, use 
 - Deleted task listing respects normal visibility or explicit admin/restore policy.
 - Task assignee validation and notification recipient resolution use batched user/team queries.
 - Task route-level due-today events are deduped, and scan dedupe remains tenant-scoped.
-- Same user email can exist in two tenants but not twice in one tenant.
-- Passwordless manual login does not return setup tokens and is rate-limited.
-- SSO callback/test HTTP behavior is async-safe and timeout-tested.
-- SSO test/failure result recording survives exceptions without corrupting session state.
-- Team department/permission updates roll back cleanly on permission sync or user update failure.
 - Saved-view config rejects oversized or deeply nested JSON.
 - User cursor search ordering semantics are tested and documented.
 - Support case create commits case and initial event atomically.

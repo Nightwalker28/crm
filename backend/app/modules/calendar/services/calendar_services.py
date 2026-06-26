@@ -67,6 +67,11 @@ def _coerce_participant_id(value, detail: str) -> int:
     return coerced
 
 
+def _validate_event_time_range(start_at: datetime, end_at: datetime) -> None:
+    if end_at <= start_at:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_at must be after start_at")
+
+
 def _normalize_participants(
     db: Session,
     *,
@@ -915,6 +920,7 @@ def _notify_new_participants(db: Session, *, event: CalendarEvent, actor_name: s
 def create_calendar_event(db: Session, *, payload: dict, current_user) -> tuple[CalendarEvent, list[CalendarEventParticipant]]:
     data = dict(payload)
     participants_payload = data.pop("participants", None)
+    _validate_event_time_range(data["start_at"], data["end_at"])
     event = CalendarEvent(
         tenant_id=current_user.tenant_id,
         owner_user_id=current_user.id,
@@ -948,6 +954,9 @@ def create_calendar_event(db: Session, *, payload: dict, current_user) -> tuple[
 def update_calendar_event(db: Session, *, event: CalendarEvent, payload: dict, current_user) -> tuple[CalendarEvent, list[CalendarEventParticipant]]:
     data = dict(payload)
     participants_payload = data.pop("participants", None)
+    next_start_at = data.get("start_at", event.start_at)
+    next_end_at = data.get("end_at", event.end_at)
+    _validate_event_time_range(next_start_at, next_end_at)
 
     for field in ("title", "description", "start_at", "end_at", "is_all_day", "location", "meeting_url"):
         if field not in data:
@@ -956,9 +965,6 @@ def update_calendar_event(db: Session, *, event: CalendarEvent, payload: dict, c
         if field in {"title", "description", "location", "meeting_url"} and isinstance(value, str):
             value = value.strip() or None
         setattr(event, field, value)
-
-    if event.end_at <= event.start_at:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_at must be after start_at")
 
     added: list[CalendarEventParticipant] = []
     removed: list[CalendarEventParticipant] = []

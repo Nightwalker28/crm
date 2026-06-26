@@ -40,6 +40,12 @@ def _utcnow() -> datetime:
     return datetime.now(timezone.utc)
 
 
+def _as_aware_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)
+
+
 def _display_user_name(user: User | None) -> str | None:
     if not user:
         return None
@@ -139,6 +145,19 @@ def _get_public_booking_type_or_404(db: Session, *, slug: str) -> MeetingBooking
     if not booking_type:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking link not found")
     return booking_type
+
+
+def _get_public_booking_type_for_submit_or_404(db: Session, *, slug: str) -> MeetingBookingType:
+    booking_type_ref = (
+        db.query(MeetingBookingType.id, MeetingBookingType.tenant_id)
+        .filter(MeetingBookingType.slug == slug, MeetingBookingType.enabled.is_(True))
+        .with_for_update()
+        .first()
+    )
+    if not booking_type_ref:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking link not found")
+    booking_type_id, tenant_id = booking_type_ref
+    return _get_booking_type_or_404(db, tenant_id=tenant_id, booking_type_id=booking_type_id)
 
 
 def _replace_availability(db: Session, *, booking_type: MeetingBookingType, availability: list[dict]) -> None:
@@ -380,6 +399,44 @@ def _event_overlap_exists(db: Session, *, booking_type: MeetingBookingType, star
     )
 
 
+def _event_overlap_ranges(
+    db: Session,
+    *,
+    booking_type: MeetingBookingType,
+    range_start: datetime,
+    range_end: datetime,
+) -> list[tuple[datetime, datetime]]:
+    buffered_start = range_start - timedelta(minutes=booking_type.buffer_after_minutes or 0)
+    buffered_end = range_end + timedelta(minutes=booking_type.buffer_before_minutes or 0)
+    return [
+        (_as_aware_utc(start_at), _as_aware_utc(end_at))
+        for start_at, end_at in (
+            db.query(CalendarEvent.start_at, CalendarEvent.end_at)
+            .filter(
+                CalendarEvent.tenant_id == booking_type.tenant_id,
+                CalendarEvent.owner_user_id == booking_type.owner_id,
+                CalendarEvent.deleted_at.is_(None),
+                CalendarEvent.status != "cancelled",
+                CalendarEvent.start_at < buffered_end,
+                CalendarEvent.end_at > buffered_start,
+            )
+            .all()
+        )
+    ]
+
+
+def _slot_overlaps_ranges(
+    *,
+    booking_type: MeetingBookingType,
+    start_at: datetime,
+    end_at: datetime,
+    busy_ranges: list[tuple[datetime, datetime]],
+) -> bool:
+    buffered_start = start_at - timedelta(minutes=booking_type.buffer_before_minutes or 0)
+    buffered_end = end_at + timedelta(minutes=booking_type.buffer_after_minutes or 0)
+    return any(busy_start < buffered_end and busy_end > buffered_start for busy_start, busy_end in busy_ranges)
+
+
 def available_slots(db: Session, *, slug: str, start_date: date, end_date: date) -> list[dict]:
     if end_date < start_date:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be on or after start_date")
@@ -393,6 +450,10 @@ def available_slots(db: Session, *, slug: str, start_date: date, end_date: date)
     for window in booking_type.availability:
         windows_by_weekday.setdefault(window.weekday, []).append(window)
 
+    range_start = datetime.combine(start_date, time.min, tzinfo=tz).astimezone(timezone.utc)
+    range_end = datetime.combine(end_date + timedelta(days=1), time.min, tzinfo=tz).astimezone(timezone.utc)
+    busy_ranges = _event_overlap_ranges(db, booking_type=booking_type, range_start=range_start, range_end=range_end)
+
     current = start_date
     while current <= end_date:
         for window in windows_by_weekday.get(current.weekday(), []):
@@ -404,7 +465,7 @@ def available_slots(db: Session, *, slug: str, start_date: date, end_date: date)
                 candidate_end = candidate + duration
                 start_utc = candidate.astimezone(timezone.utc)
                 end_utc = candidate_end.astimezone(timezone.utc)
-                if start_utc > now and not _event_overlap_exists(db, booking_type=booking_type, start_at=start_utc, end_at=end_utc):
+                if start_utc > now and not _slot_overlaps_ranges(booking_type=booking_type, start_at=start_utc, end_at=end_utc, busy_ranges=busy_ranges):
                     slots.append(
                         {
                             "start_at": start_utc,
@@ -556,7 +617,7 @@ def _record_booking_side_effects(db: Session, *, booking: MeetingBooking, event:
 
 
 def submit_public_booking(db: Session, *, slug: str, payload: dict) -> MeetingBooking:
-    booking_type = _get_public_booking_type_or_404(db, slug=slug)
+    booking_type = _get_public_booking_type_for_submit_or_404(db, slug=slug)
     guest_name = payload["guest_name"].strip()
     guest_email = _validate_guest_email(payload["guest_email"])
     guest_note = (payload.get("guest_note") or "").strip() or None
@@ -570,6 +631,8 @@ def submit_public_booking(db: Session, *, slug: str, payload: dict) -> MeetingBo
     if not any(slot["start_at"] == start_at for slot in valid_slots):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Selected slot is no longer available")
     answers = _validate_answers(booking_type, payload.get("answers") or {})
+    if _event_overlap_exists(db, booking_type=booking_type, start_at=start_at, end_at=end_at):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Selected slot is no longer available")
     crm_source = _resolve_booking_crm_source(
         db,
         booking_type=booking_type,
@@ -628,8 +691,8 @@ def submit_public_booking(db: Session, *, slug: str, payload: dict) -> MeetingBo
         booked_date=start_at.astimezone(_zoneinfo(booking_type.timezone)).date(),
     )
     db.add(booking)
-    db.flush()
     try:
+        db.flush()
         db.commit()
     except IntegrityError as exc:
         db.rollback()

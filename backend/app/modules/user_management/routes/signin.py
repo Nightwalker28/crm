@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse, RedirectResponse
 from jose import JWTError, jwt
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+from starlette.concurrency import run_in_threadpool
 
 from app.core.config import settings
 from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, get_user_role_level
@@ -44,6 +45,8 @@ from app.modules.user_management.schema import (
 )
 from app.modules.user_management.services.auth import (
     authenticate_manual_user,
+    check_manual_login_rate_limit,
+    clear_failed_manual_login_attempts,
     create_access_token,
     create_refresh_token,
     decode_oauth_state,
@@ -53,6 +56,7 @@ from app.modules.user_management.services.auth import (
     get_microsoft_auth_url,
     handle_google_callback,
     handle_microsoft_callback,
+    record_failed_manual_login_attempt,
     rotate_refresh_token,
     set_initial_password,
 )
@@ -102,16 +106,19 @@ def _resolve_manual_login_tenant_id(db: Session, *, email: str, request: Request
     if origin_tenant:
         return int(origin_tenant.id)
 
-    user = (
+    users = (
         db.query(User)
         .join(Tenant, Tenant.id == User.tenant_id)
         .filter(
             func.lower(User.email) == email.strip().lower(),
             Tenant.is_active == 1,
         )
-        .first()
+        .limit(2)
+        .all()
     )
-    return int(user.tenant_id) if user else None
+    if len(users) == 1:
+        return int(users[0].tenant_id)
+    return None
 
 
 def _request_frontend_hostname(request: Request, frontend_origin: str | None = None) -> str | None:
@@ -280,6 +287,14 @@ def _tenant_mfa_policy_requires_setup(db: Session, *, user: User) -> bool:
     return False
 
 
+def _manual_login_client_host(request: Request) -> str | None:
+    forwarded_for = request.headers.get("x-forwarded-for") if hasattr(request, "headers") else None
+    if forwarded_for:
+        return forwarded_for.split(",", 1)[0].strip() or None
+    client = getattr(request, "client", None)
+    return getattr(client, "host", None)
+
+
 @router.post("/login")
 def manual_login(
     payload: ManualLoginRequest,
@@ -291,15 +306,20 @@ def manual_login(
     if tenant_id is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
 
+    email = str(payload.email)
+    client_host = _manual_login_client_host(request)
+    check_manual_login_rate_limit(tenant_id=tenant_id, email=email, client_host=client_host)
     try:
         user = authenticate_manual_user(
             db,
             tenant_id=tenant_id,
-            email=payload.email,
+            email=email,
             password=payload.password,
             frontend_origin=get_frontend_origin_for_request(request),
         )
     except HTTPException as exc:
+        if exc.status_code in {status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN}:
+            record_failed_manual_login_attempt(tenant_id=tenant_id, email=email, client_host=client_host)
         _log_auth_event(
             db,
             action="auth.login.failed",
@@ -308,6 +328,7 @@ def manual_login(
             after_state={"provider": "manual", "status_code": exc.status_code},
         )
         raise
+    clear_failed_manual_login_attempts(tenant_id=tenant_id, email=email, client_host=client_host)
     if getattr(user, "mfa_enabled", False):
         return _mfa_challenge_response(user)
     if _tenant_mfa_policy_requires_setup(db, user=user):
@@ -339,11 +360,20 @@ def start_sso_login(
 
 
 @router.get("/oidc/callback", name="oidc_callback")
-def oidc_callback(
+async def oidc_callback(
     request: Request,
     code: str | None = None,
     state: str | None = None,
     db: Session = Depends(get_db),
+):
+    return await run_in_threadpool(_oidc_callback_response, request, code, state, db)
+
+
+def _oidc_callback_response(
+    request: Request,
+    code: str | None,
+    state: str | None,
+    db: Session,
 ):
     frontend_origin = get_frontend_origin_for_request(request)
     try:

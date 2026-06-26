@@ -151,6 +151,51 @@ class ConfigTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "production public rate limiting"):
                 config.validate_startup_settings()
 
+    def test_startup_validation_requires_redis_for_production_manual_login_rate_limits(self):
+        with patch.object(
+            config,
+            "settings",
+            SimpleNamespace(
+                DEBUG=False,
+                JWT_SECRET="secret",
+                APP_ENCRYPTION_SECRET="app-secret",
+                MAIL_CREDENTIAL_SECRET="mail-secret",
+                DATABASE_URL="postgresql://db/app",
+                ALLOWED_DOMAINS=[],
+                REDIS_URL=None,
+                WEBSITE_INTEGRATION_RATE_LIMIT_COUNT=0,
+                PUBLIC_CLIENT_PAGE_ACTION_LIMIT=0,
+                PUBLIC_BOOKING_SUBMIT_LIMIT=0,
+                MANUAL_LOGIN_FAILED_ATTEMPT_LIMIT=5,
+                TENANT_RESOLUTION_MODE="auth",
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "production public rate limiting"):
+                config.validate_startup_settings()
+
+    def test_startup_validation_requires_redis_for_production_mfa_challenge_rate_limits(self):
+        with patch.object(
+            config,
+            "settings",
+            SimpleNamespace(
+                DEBUG=False,
+                JWT_SECRET="secret",
+                APP_ENCRYPTION_SECRET="app-secret",
+                MAIL_CREDENTIAL_SECRET="mail-secret",
+                DATABASE_URL="postgresql://db/app",
+                ALLOWED_DOMAINS=[],
+                REDIS_URL=None,
+                WEBSITE_INTEGRATION_RATE_LIMIT_COUNT=0,
+                PUBLIC_CLIENT_PAGE_ACTION_LIMIT=0,
+                PUBLIC_BOOKING_SUBMIT_LIMIT=0,
+                MANUAL_LOGIN_FAILED_ATTEMPT_LIMIT=0,
+                MFA_CHALLENGE_FAILED_ATTEMPT_LIMIT=5,
+                TENANT_RESOLUTION_MODE="auth",
+            ),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "production public rate limiting"):
+                config.validate_startup_settings()
+
     def test_startup_validation_requires_redis_for_production_host_tenant_resolution(self):
         with patch.object(
             config,

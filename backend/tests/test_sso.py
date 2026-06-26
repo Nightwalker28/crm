@@ -181,6 +181,101 @@ class SsoServiceTests(unittest.TestCase):
         self.assertNotIn("client-secret", str(result))
         self.assertTrue(settings_row.last_failed_login_reason)
 
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "sso-secret")
+    @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v3")
+    @patch("app.modules.user_management.services.sso._resolve_oidc_metadata", side_effect=RuntimeError("network failed"))
+    def test_sso_configuration_test_persists_failure_with_fresh_session_after_rollback(self, _metadata):
+        sso.update_sso_settings(
+            self.db,
+            tenant_id=1,
+            actor_user_id=1,
+            payload={
+                "issuer_url": "https://idp.example.com",
+                "client_id": "client-id",
+                "client_secret": "client-secret",
+                "allowed_email_domains": ["example.com"],
+            },
+        )
+        rollback_calls = 0
+        original_rollback = self.db.rollback
+
+        def rollback_spy():
+            nonlocal rollback_calls
+            rollback_calls += 1
+            original_rollback()
+
+        self.db.rollback = rollback_spy
+        result_sessions = []
+
+        def result_session_factory():
+            session = self.SessionLocal()
+            result_sessions.append(session)
+            return session
+
+        result = sso.test_sso_settings(
+            self.db,
+            tenant_id=1,
+            actor_user_id=1,
+            result_session_factory=result_session_factory,
+        )
+
+        verify_db = self.SessionLocal()
+        try:
+            settings_row = verify_db.query(TenantSsoSettings).filter(TenantSsoSettings.tenant_id == 1).one()
+            self.assertFalse(result["ok"])
+            self.assertEqual(result["message"], "SSO test failed.")
+            self.assertEqual(settings_row.status, "error")
+            self.assertEqual(settings_row.last_test_result["message"], "SSO test failed.")
+            self.assertEqual(settings_row.last_failed_login_reason, "SSO test failed.")
+            self.assertEqual(verify_db.query(ActivityLog).filter(ActivityLog.action == "sso.config.tested").count(), 1)
+            self.assertEqual(rollback_calls, 1)
+            self.assertEqual(len(result_sessions), 1)
+        finally:
+            verify_db.close()
+
+    def test_record_sso_failure_uses_fresh_session_after_rollback(self):
+        settings_row = TenantSsoSettings(
+            tenant_id=1,
+            enabled=True,
+            issuer_url="https://idp.example.com",
+            client_id="client-id",
+            allowed_email_domains=["example.com"],
+        )
+        self.db.add(settings_row)
+        self.db.commit()
+        rollback_calls = 0
+        original_rollback = self.db.rollback
+
+        def rollback_spy():
+            nonlocal rollback_calls
+            rollback_calls += 1
+            original_rollback()
+
+        self.db.rollback = rollback_spy
+        failure_sessions = []
+
+        def failure_session_factory():
+            session = self.SessionLocal()
+            failure_sessions.append(session)
+            return session
+
+        sso._record_sso_failure(
+            self.db,
+            settings_row=settings_row,
+            reason="callback failed",
+            session_factory=failure_session_factory,
+        )
+
+        verify_db = self.SessionLocal()
+        try:
+            refreshed = verify_db.query(TenantSsoSettings).filter(TenantSsoSettings.tenant_id == 1).one()
+            self.assertEqual(refreshed.last_failed_login_reason, "callback failed")
+            self.assertEqual(verify_db.query(ActivityLog).filter(ActivityLog.action == "sso.login.failed").count(), 1)
+            self.assertEqual(rollback_calls, 1)
+            self.assertEqual(len(failure_sessions), 1)
+        finally:
+            verify_db.close()
+
     def test_resolve_sso_settings_for_email_uses_verified_domain_tenant(self):
         self.db.add_all(
             [

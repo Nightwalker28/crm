@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.module_filters import apply_filter_conditions
 from app.modules.contracts.models import Contract, ContractEvent, ContractParty, ContractSigner
 from app.modules.documents.models import Document
+from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.user_management.models import User
 
@@ -97,13 +98,7 @@ def _ensure_linked_records(db: Session, data: dict, *, tenant_id: int) -> None:
 
 
 def _generate_contract_number(db: Session, *, tenant_id: int) -> str:
-    prefix = f"CTR-{datetime.now(timezone.utc):%Y%m%d}"
-    count = (
-        db.query(Contract.id)
-        .filter(Contract.tenant_id == tenant_id, Contract.contract_number.like(f"{prefix}-%"))
-        .count()
-    )
-    return f"{prefix}-{count + 1:04d}"
+    return allocate_business_number(db, tenant_id=tenant_id, scope="contracts", prefix="CTR")
 
 
 def _normalize_contract_payload(db: Session, payload: dict, *, tenant_id: int, current_user, partial: bool = False) -> dict:
@@ -215,14 +210,21 @@ def get_contract_or_404(db: Session, *, tenant_id: int, contract_id: int) -> Con
     return item
 
 
+def get_contract_for_mutation_or_404(db: Session, *, tenant_id: int, contract_id: int) -> Contract:
+    item = db.query(Contract).filter(Contract.id == contract_id, Contract.tenant_id == tenant_id).first()
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Contract not found")
+    return item
+
+
 def create_contract(db: Session, payload: dict, current_user) -> Contract:
     data = _normalize_contract_payload(db, payload, tenant_id=current_user.tenant_id, current_user=current_user)
     item = Contract(tenant_id=current_user.tenant_id, **data)
     db.add(item)
-    db.flush()
-    contract_id = item.id
-    _record_event(db, item, event_type="created", current_user=current_user)
     try:
+        db.flush()
+        contract_id = item.id
+        _record_event(db, item, event_type="created", current_user=current_user)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -233,6 +235,7 @@ def create_contract(db: Session, payload: dict, current_user) -> Contract:
 def update_contract(db: Session, contract: Contract, payload: dict, current_user) -> Contract:
     data = _normalize_contract_payload(db, payload, tenant_id=contract.tenant_id, current_user=current_user, partial=True)
     before_status = contract.status
+    contract_id = contract.id
     for key, value in data.items():
         setattr(contract, key, value)
     if "status" in data and data["status"] != before_status:
@@ -244,7 +247,7 @@ def update_contract(db: Session, contract: Contract, payload: dict, current_user
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Contract could not be updated") from exc
-    return get_contract_or_404(db, tenant_id=contract.tenant_id, contract_id=contract.id)
+    return get_contract_or_404(db, tenant_id=current_user.tenant_id, contract_id=contract_id)
 
 
 def add_contract_party(db: Session, contract: Contract, payload: dict, current_user) -> ContractParty:
@@ -254,7 +257,11 @@ def add_contract_party(db: Session, contract: Contract, payload: dict, current_u
     party = ContractParty(tenant_id=contract.tenant_id, contract_id=contract.id, name=name, email=_clean_text(payload.get("email")), role=_clean_text(payload.get("role")) or "counterparty")
     db.add(party)
     _record_event(db, contract, event_type="party_added", current_user=current_user, payload={"name": name, "role": party.role})
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Contract party could not be created") from exc
     db.refresh(party)
     return party
 
@@ -269,10 +276,18 @@ def add_contract_signer(db: Session, contract: Contract, payload: dict, current_
         exists = db.query(ContractParty.id).filter(ContractParty.id == party_id, ContractParty.tenant_id == contract.tenant_id, ContractParty.contract_id == contract.id).first()
         if not exists:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contract party not found")
-    signer = ContractSigner(tenant_id=contract.tenant_id, contract_id=contract.id, party_id=party_id, name=name, email=email, signing_order=int(payload.get("signing_order") or 1), status=_validate_choice(payload.get("status"), SIGNER_STATUSES, default="pending", detail="Invalid signer status"))
+    try:
+        signing_order = int(payload.get("signing_order") or 1)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid signing order") from exc
+    signer = ContractSigner(tenant_id=contract.tenant_id, contract_id=contract.id, party_id=party_id, name=name, email=email, signing_order=signing_order, status=_validate_choice(payload.get("status"), SIGNER_STATUSES, default="pending", detail="Invalid signer status"))
     db.add(signer)
     _record_event(db, contract, event_type="signer_added", current_user=current_user, payload={"name": name, "email": email})
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Contract signer could not be created") from exc
     db.refresh(signer)
     return signer
 
@@ -288,6 +303,10 @@ def update_contract_signer(db: Session, contract: Contract, signer_id: int, payl
     if "signed_at" in payload:
         signer.signed_at = payload["signed_at"]
     _record_event(db, contract, event_type="signer_updated", current_user=current_user, payload={"signer_id": signer.id, "status": signer.status})
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Contract signer could not be updated") from exc
     db.refresh(signer)
     return signer
