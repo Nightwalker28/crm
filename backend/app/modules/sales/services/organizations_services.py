@@ -2,6 +2,7 @@ from datetime import datetime
 from pathlib import Path
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
@@ -93,16 +94,23 @@ def create_organization(
             )
         if replace_duplicates:
             _apply_org_payload(existing, payload, current_user)
-            db.commit()
+            try:
+                db.flush()
+                save_custom_field_values(
+                    db,
+                    tenant_id=current_user.tenant_id,
+                    module_key="sales_organizations",
+                    record_id=existing.org_id,
+                    values=payload.custom_fields or {},
+                )
+                db.commit()
+            except IntegrityError as exc:
+                db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Unable to replace organization",
+                ) from exc
             db.refresh(existing)
-            save_custom_field_values(
-                db,
-                tenant_id=current_user.tenant_id,
-                module_key="sales_organizations",
-                record_id=existing.org_id,
-                values=payload.custom_fields or {},
-            )
-            db.commit()
             return hydrate_custom_field_record(
                 db,
                 tenant_id=current_user.tenant_id,
@@ -127,15 +135,22 @@ def create_organization(
     _apply_org_payload(organization, payload, current_user)
 
     db.add(organization)
-    db.flush()
-    save_custom_field_values(
-        db,
-        tenant_id=current_user.tenant_id,
-        module_key="sales_organizations",
-        record_id=organization.org_id,
-        values=payload.custom_fields or {},
-    )
-    db.commit()
+    try:
+        db.flush()
+        save_custom_field_values(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key="sales_organizations",
+            record_id=organization.org_id,
+            values=payload.custom_fields or {},
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unable to create organization",
+        ) from exc
     db.refresh(organization)
     return hydrate_custom_field_record(
         db,
@@ -333,17 +348,24 @@ def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpda
     for field, value in data.items():
         setattr(organization, field, value)
 
-    db.commit()
-    db.refresh(organization)
-    if custom_data_to_save is not None:
-        save_custom_field_values(
-            db,
-            tenant_id=tenant_id,
-            module_key="sales_organizations",
-            record_id=organization.org_id,
-            values=custom_data_to_save,
-        )
+    try:
+        db.flush()
+        if custom_data_to_save is not None:
+            save_custom_field_values(
+                db,
+                tenant_id=tenant_id,
+                module_key="sales_organizations",
+                record_id=organization.org_id,
+                values=custom_data_to_save,
+            )
         db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unable to update organization",
+        ) from exc
+    db.refresh(organization)
     return hydrate_custom_field_record(
         db,
         tenant_id=tenant_id,

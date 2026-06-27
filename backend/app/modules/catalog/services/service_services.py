@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
-from decimal import Decimal
+from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 import re
 
 from fastapi import HTTPException, UploadFile, status
@@ -21,6 +21,37 @@ def _normalize_slug(value: str | None, *, fallback: str) -> str | None:
     source = (value or fallback or "").strip().lower()
     normalized = re.sub(r"[^a-z0-9]+", "-", source).strip("-")
     return normalized[:160] or None
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _normalize_currency(value) -> str:
+    normalized = str(value or "USD").strip().upper()
+    if len(normalized) != 3 or not normalized.isalpha():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="currency must be a 3-letter code")
+    return normalized
+
+
+def _coerce_nonnegative_decimal(value, *, field_name: str) -> Decimal:
+    if value is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} cannot be null")
+    try:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid {field_name}") from exc
+    if not decimal_value.is_finite() or decimal_value < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} must be non-negative")
+    return decimal_value
+
+
+def _coerce_bool(value, *, field_name: str) -> int:
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, int) and value in {0, 1}:
+        return int(value)
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} must be a boolean")
 
 
 def _ensure_slug_available(
@@ -136,10 +167,10 @@ def create_service(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
         name=str(payload["name"]).strip(),
         slug=slug,
         description=(payload.get("description") or "").strip() or None,
-        currency=str(payload.get("currency") or "USD").strip().upper(),
-        public_unit_price=Decimal(str(payload.get("public_unit_price", 0))),
-        is_public=1 if payload.get("is_public", False) else 0,
-        is_active=1 if payload.get("is_active", True) else 0,
+        currency=_normalize_currency(payload.get("currency")),
+        public_unit_price=_coerce_nonnegative_decimal(payload.get("public_unit_price", 0), field_name="public_unit_price"),
+        is_public=_coerce_bool(payload.get("is_public", False), field_name="is_public"),
+        is_active=_coerce_bool(payload.get("is_active", True), field_name="is_active"),
         created_by_user_id=actor_user_id,
         updated_by_user_id=actor_user_id,
     )
@@ -187,11 +218,11 @@ def update_service(
         elif field == "name" and value is not None:
             value = str(value).strip()
         elif field == "currency" and value is not None:
-            value = str(value).strip().upper()
+            value = _normalize_currency(value)
         elif field == "public_unit_price" and value is not None:
-            value = Decimal(str(value))
+            value = _coerce_nonnegative_decimal(value, field_name="public_unit_price")
         elif field in {"is_public", "is_active"} and value is not None:
-            value = 1 if value else 0
+            value = _coerce_bool(value, field_name=field)
         setattr(service, field, value)
     service.updated_by_user_id = actor_user_id
     db.add(service)
@@ -226,17 +257,23 @@ async def upload_service_media(
     before_state = _service_state(service)
     content, extension = await read_image_upload(file)
     previous_media_path = service.media_path
-    service.media_path = persist_media_file(
+    new_media_path = persist_media_file(
         category="catalog-services",
         owner_key=f"tenant-{service.tenant_id}/service-{service.id}",
         extension=extension,
         content=content,
     )
+    service.media_path = new_media_path
     service.media_content_type = file.content_type
     service.media_original_filename = (file.filename or "service-image")[:255]
     service.updated_by_user_id = actor_user_id
     db.add(service)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        delete_local_media_file(new_media_path)
+        raise
     db.refresh(service)
     delete_local_media_file(previous_media_path)
     log_activity(
@@ -262,7 +299,7 @@ def soft_delete_service(
 ) -> CatalogService:
     if service.deleted_at is None:
         before_state = _service_state(service)
-        service.deleted_at = datetime.utcnow()
+        service.deleted_at = _utcnow()
         service.updated_by_user_id = actor_user_id
         db.add(service)
         db.commit()
@@ -289,6 +326,7 @@ def restore_service(
     actor_user_id: int | None,
 ) -> CatalogService:
     if service.deleted_at is not None:
+        _ensure_slug_available(db, tenant_id=service.tenant_id, slug=service.slug, service_id=service.id)
         service.deleted_at = None
         service.updated_by_user_id = actor_user_id
         db.add(service)

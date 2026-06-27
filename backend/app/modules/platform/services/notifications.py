@@ -16,6 +16,7 @@ def create_notification(
     message: str,
     link_url: str | None = None,
     metadata: dict | None = None,
+    commit: bool = True,
 ) -> UserNotification:
     notification = UserNotification(
         tenant_id=tenant_id,
@@ -28,8 +29,9 @@ def create_notification(
         status="unread",
     )
     db.add(notification)
-    db.commit()
-    db.refresh(notification)
+    if commit:
+        db.commit()
+        db.refresh(notification)
     return notification
 
 

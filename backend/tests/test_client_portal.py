@@ -85,6 +85,9 @@ class ClientPortalServiceTests(unittest.TestCase):
         self.assertIn("default", {group.group_key for group in groups})
         self.assertIn("wholesale", {group.group_key for group in groups})
         self.assertEqual(sum(1 for group in groups if group.is_default), 1)
+        placeholders = [group for group in groups if group.group_key != "default"]
+        self.assertTrue(placeholders)
+        self.assertTrue(all(group.discount_type == "none" and group.discount_value is None for group in placeholders))
 
     def test_assign_contact_customer_group_rejects_cross_tenant_group(self):
         other_group = CustomerGroup(
@@ -236,6 +239,24 @@ class ClientPortalServiceTests(unittest.TestCase):
         )
 
         self.assertEqual([page.title for page in pages], ["Alpha Proposal", "Zeta Proposal"])
+        self.assertFalse(any(hasattr(page, "_action_summary") for page in pages))
+
+    def test_client_pages_flat_list_is_bounded(self):
+        for index in range(3):
+            client_portal_services.create_client_page(
+                self.db,
+                tenant_id=10,
+                actor_user_id=1,
+                payload={
+                    "title": f"Proposal {index}",
+                    "contact_id": 7,
+                    "pricing_items": [{"name": "Implementation", "quantity": 1, "currency": "USD", "public_unit_price": 100}],
+                },
+            )
+
+        pages = client_portal_services.list_client_pages(self.db, tenant_id=10, limit=2)
+
+        self.assertEqual(len(pages), 2)
 
     def test_client_password_setup_enforces_main_password_policy(self):
         _account, setup_token = client_portal_services.create_client_account(
@@ -1185,6 +1206,53 @@ class ClientPortalServiceTests(unittest.TestCase):
         self.assertEqual(second.id, first.id)
         self.assertNotEqual(changed.id, first.id)
         self.assertEqual(self.db.query(ClientPageAction).count(), 2)
+
+    def test_client_page_action_alias_stores_canonical_value(self):
+        page = client_portal_services.create_client_page(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "title": "Proposal A",
+                "contact_id": 7,
+                "pricing_items": [{"name": "Implementation", "quantity": 1, "currency": "USD", "public_unit_price": 100}],
+            },
+        )
+
+        action = client_portal_services.record_client_page_action(
+            self.db,
+            page=page,
+            action="request-changes",
+            payload={"message": "Please revise scope"},
+        )
+
+        self.assertEqual(action.action, "request_changes")
+
+    def test_client_page_action_summaries_are_bounded(self):
+        page = client_portal_services.create_client_page(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "title": "Proposal A",
+                "contact_id": 7,
+                "pricing_items": [{"name": "Implementation", "quantity": 1, "currency": "USD", "public_unit_price": 100}],
+            },
+        )
+        for index in range(5):
+            client_portal_services.record_client_page_action(
+                self.db,
+                page=page,
+                action="accept" if index % 2 == 0 else "request_changes",
+                payload={"message": f"Response {index}"},
+            )
+
+        summaries = client_portal_services.client_page_action_summaries(self.db, [page])
+        summary = summaries[page.id]
+
+        self.assertEqual(summary.action_count, 5)
+        self.assertEqual(len(summary.recent_actions), 3)
+        self.assertEqual(summary.latest_action["message"], "Response 4")
 
     def test_client_page_brand_proposal_and_actions_are_serialized(self):
         page = client_portal_services.create_client_page(

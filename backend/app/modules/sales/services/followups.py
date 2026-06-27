@@ -80,8 +80,9 @@ def _create_follow_up_task(
             "assignees": [{"assignee_type": "user", "user_id": current_user.id}],
         },
         current_user=current_user,
+        commit=False,
     )
-    create_task_assignment_notifications(db, task=task, current_user=current_user, assignee_keys=added_keys)
+    create_task_assignment_notifications(db, task=task, current_user=current_user, assignee_keys=added_keys, commit=False)
     task_state = serialize_task(task)
     log_activity(
         db,
@@ -93,6 +94,7 @@ def _create_follow_up_task(
         action="create",
         description=f"Created follow-up task for {source_label}",
         after_state=task_state,
+        commit=False,
     )
     log_activity(
         db,
@@ -109,6 +111,7 @@ def _create_follow_up_task(
         action="task.follow_up_created",
         description=f"Created follow-up task: {task.title}",
         after_state=task_state,
+        commit=False,
     )
     return task
 
@@ -124,39 +127,43 @@ def log_contact_follow_up(db: Session, *, contact, payload: dict, current_user) 
     if channel == "whatsapp":
         contact.whatsapp_last_contacted_at = contacted_at
     db.add(contact)
-    db.commit()
-    db.refresh(contact)
 
     source_label = _display_contact_name(contact)
     note = (payload.get("note") or "").strip() or None
-    log_activity(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id,
-        module_key="sales_contacts",
-        entity_type="sales_contact",
-        entity_id=str(contact.contact_id),
-        action=f"follow_up.{channel}",
-        description=f"Logged {CHANNEL_LABELS[channel]} follow-up for {source_label}",
-        after_state={
-            "channel": channel,
-            "note": note,
-            "last_contacted_at": contacted_at.isoformat(),
-        },
-    )
-
     task = None
-    if payload.get("create_follow_up_task"):
-        task = _create_follow_up_task(
+    try:
+        log_activity(
             db,
-            current_user=current_user,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id,
             module_key="sales_contacts",
+            entity_type="sales_contact",
             entity_id=str(contact.contact_id),
-            source_label=source_label,
-            channel=channel,
-            due_at=payload.get("follow_up_due_at"),
-            note=note,
+            action=f"follow_up.{channel}",
+            description=f"Logged {CHANNEL_LABELS[channel]} follow-up for {source_label}",
+            after_state={
+                "channel": channel,
+                "note": note,
+                "last_contacted_at": contacted_at.isoformat(),
+            },
+            commit=False,
         )
+        if payload.get("create_follow_up_task"):
+            task = _create_follow_up_task(
+                db,
+                current_user=current_user,
+                module_key="sales_contacts",
+                entity_id=str(contact.contact_id),
+                source_label=source_label,
+                channel=channel,
+                due_at=payload.get("follow_up_due_at"),
+                note=note,
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(contact)
 
     return {
         "module_key": "sales_contacts",
@@ -176,39 +183,43 @@ def log_lead_follow_up(db: Session, *, lead, payload: dict, current_user) -> dic
     lead.last_contacted_channel = channel
     lead.last_contacted_by_user_id = current_user.id
     db.add(lead)
-    db.commit()
-    db.refresh(lead)
 
     source_label = _display_lead_name(lead)
     note = (payload.get("note") or "").strip() or None
-    log_activity(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id,
-        module_key="sales_leads",
-        entity_type="sales_lead",
-        entity_id=str(lead.lead_id),
-        action=f"follow_up.{channel}",
-        description=f"Logged {CHANNEL_LABELS[channel]} follow-up for {source_label}",
-        after_state={
-            "channel": channel,
-            "note": note,
-            "last_contacted_at": contacted_at.isoformat(),
-        },
-    )
-
     task = None
-    if payload.get("create_follow_up_task"):
-        task = _create_follow_up_task(
+    try:
+        log_activity(
             db,
-            current_user=current_user,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id,
             module_key="sales_leads",
+            entity_type="sales_lead",
             entity_id=str(lead.lead_id),
-            source_label=source_label,
-            channel=channel,
-            due_at=payload.get("follow_up_due_at"),
-            note=note,
+            action=f"follow_up.{channel}",
+            description=f"Logged {CHANNEL_LABELS[channel]} follow-up for {source_label}",
+            after_state={
+                "channel": channel,
+                "note": note,
+                "last_contacted_at": contacted_at.isoformat(),
+            },
+            commit=False,
         )
+        if payload.get("create_follow_up_task"):
+            task = _create_follow_up_task(
+                db,
+                current_user=current_user,
+                module_key="sales_leads",
+                entity_id=str(lead.lead_id),
+                source_label=source_label,
+                channel=channel,
+                due_at=payload.get("follow_up_due_at"),
+                note=note,
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(lead)
 
     return {
         "module_key": "sales_leads",
@@ -228,39 +239,43 @@ def log_opportunity_follow_up(db: Session, *, opportunity, payload: dict, curren
     opportunity.last_contacted_channel = channel
     opportunity.last_contacted_by_user_id = current_user.id
     db.add(opportunity)
-    db.commit()
-    db.refresh(opportunity)
 
     source_label = _display_opportunity_name(opportunity)
     note = (payload.get("note") or "").strip() or None
-    log_activity(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id,
-        module_key="sales_opportunities",
-        entity_type="sales_opportunity",
-        entity_id=str(opportunity.opportunity_id),
-        action=f"follow_up.{channel}",
-        description=f"Logged {CHANNEL_LABELS[channel]} follow-up for {source_label}",
-        after_state={
-            "channel": channel,
-            "note": note,
-            "last_contacted_at": contacted_at.isoformat(),
-        },
-    )
-
     task = None
-    if payload.get("create_follow_up_task"):
-        task = _create_follow_up_task(
+    try:
+        log_activity(
             db,
-            current_user=current_user,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id,
             module_key="sales_opportunities",
+            entity_type="sales_opportunity",
             entity_id=str(opportunity.opportunity_id),
-            source_label=source_label,
-            channel=channel,
-            due_at=payload.get("follow_up_due_at"),
-            note=note,
+            action=f"follow_up.{channel}",
+            description=f"Logged {CHANNEL_LABELS[channel]} follow-up for {source_label}",
+            after_state={
+                "channel": channel,
+                "note": note,
+                "last_contacted_at": contacted_at.isoformat(),
+            },
+            commit=False,
         )
+        if payload.get("create_follow_up_task"):
+            task = _create_follow_up_task(
+                db,
+                current_user=current_user,
+                module_key="sales_opportunities",
+                entity_id=str(opportunity.opportunity_id),
+                source_label=source_label,
+                channel=channel,
+                due_at=payload.get("follow_up_due_at"),
+                note=note,
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(opportunity)
 
     return {
         "module_key": "sales_opportunities",
@@ -279,34 +294,39 @@ def log_quote_follow_up(db: Session, *, quote, payload: dict, current_user) -> d
     source_label = _display_quote_name(quote)
     note = (payload.get("note") or "").strip() or None
 
-    log_activity(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id,
-        module_key="sales_quotes",
-        entity_type="sales_quote",
-        entity_id=str(quote.quote_id),
-        action=f"follow_up.{channel}",
-        description=f"Logged {CHANNEL_LABELS[channel]} follow-up for {source_label}",
-        after_state={
-            "channel": channel,
-            "note": note,
-            "last_contacted_at": contacted_at.isoformat(),
-        },
-    )
-
     task = None
-    if payload.get("create_follow_up_task"):
-        task = _create_follow_up_task(
+    try:
+        log_activity(
             db,
-            current_user=current_user,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id,
             module_key="sales_quotes",
+            entity_type="sales_quote",
             entity_id=str(quote.quote_id),
-            source_label=source_label,
-            channel=channel,
-            due_at=payload.get("follow_up_due_at"),
-            note=note,
+            action=f"follow_up.{channel}",
+            description=f"Logged {CHANNEL_LABELS[channel]} follow-up for {source_label}",
+            after_state={
+                "channel": channel,
+                "note": note,
+                "last_contacted_at": contacted_at.isoformat(),
+            },
+            commit=False,
         )
+        if payload.get("create_follow_up_task"):
+            task = _create_follow_up_task(
+                db,
+                current_user=current_user,
+                module_key="sales_quotes",
+                entity_id=str(quote.quote_id),
+                source_label=source_label,
+                channel=channel,
+                due_at=payload.get("follow_up_due_at"),
+                note=note,
+            )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     return {
         "module_key": "sales_quotes",

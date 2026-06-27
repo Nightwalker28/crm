@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import hashlib
 import re
 import secrets
@@ -10,6 +11,7 @@ from urllib.parse import quote
 from fastapi.encoders import jsonable_encoder
 from fastapi import HTTPException, status
 from jose import jwt, JWTError
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.cache import cache_delete, cache_get_json, cache_set_json
@@ -30,15 +32,27 @@ CLIENT_PAGE_STATUSES = {"draft", "published", "archived"}
 DISCOUNT_TYPES = {"none", "percent", "fixed"}
 DEFAULT_CUSTOMER_GROUPS = [
     {"group_key": "default", "name": "Default", "discount_type": "none", "discount_value": None, "is_default": 1},
-    {"group_key": "wholesale", "name": "Wholesale", "discount_type": "percent", "discount_value": Decimal("0"), "is_default": 0},
-    {"group_key": "retailer", "name": "Retailer", "discount_type": "percent", "discount_value": Decimal("0"), "is_default": 0},
-    {"group_key": "vip", "name": "VIP", "discount_type": "percent", "discount_value": Decimal("0"), "is_default": 0},
-    {"group_key": "friends_family", "name": "Friends & Family", "discount_type": "percent", "discount_value": Decimal("0"), "is_default": 0},
+    {"group_key": "wholesale", "name": "Wholesale", "discount_type": "none", "discount_value": None, "is_default": 0},
+    {"group_key": "retailer", "name": "Retailer", "discount_type": "none", "discount_value": None, "is_default": 0},
+    {"group_key": "vip", "name": "VIP", "discount_type": "none", "discount_value": None, "is_default": 0},
+    {"group_key": "friends_family", "name": "Friends & Family", "discount_type": "none", "discount_value": None, "is_default": 0},
 ]
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 CLIENT_LOGIN_RATE_LIMIT_PREFIX = "client_auth:login_failed"
 PUBLIC_CLIENT_PAGE_ACTION_RATE_LIMIT_PREFIX = "client_pages:actions"
 CUSTOMER_GROUP_SEEDED_CACHE_PREFIX = "client_portal:customer_groups_seeded"
+CLIENT_PAGE_ACTION_ALIASES = {
+    "accept": "accept",
+    "request_changes": "request_changes",
+    "request-changes": "request_changes",
+}
+
+
+@dataclass(frozen=True)
+class ClientPageActionSummaryData:
+    action_count: int
+    latest_action: dict | None
+    recent_actions: list[dict]
 
 
 def _utcnow() -> datetime:
@@ -555,35 +569,65 @@ def _serialize_client_page_action(action: ClientPageAction) -> dict:
     }
 
 
-def _client_page_action_summary(db: Session | None, page: ClientPage) -> dict:
+def _empty_client_page_action_summary() -> ClientPageActionSummaryData:
+    return ClientPageActionSummaryData(action_count=0, latest_action=None, recent_actions=[])
+
+
+def _client_page_action_summary(db: Session | None, page: ClientPage) -> ClientPageActionSummaryData:
     if not db:
-        return {"action_count": 0, "latest_action": None, "recent_actions": []}
+        return _empty_client_page_action_summary()
     recent, count = client_portal_repository.action_summary(db, tenant_id=page.tenant_id, page_id=page.id)
-    return {
-        "action_count": count,
-        "latest_action": _serialize_client_page_action(recent[0]) if recent else None,
-        "recent_actions": [_serialize_client_page_action(action) for action in recent],
-    }
+    return ClientPageActionSummaryData(
+        action_count=count,
+        latest_action=_serialize_client_page_action(recent[0]) if recent else None,
+        recent_actions=[_serialize_client_page_action(action) for action in recent],
+    )
 
 
-def _client_page_action_summaries(db: Session, pages: list[ClientPage]) -> dict[int, dict]:
+def client_page_action_summaries(db: Session, pages: list[ClientPage]) -> dict[int, ClientPageActionSummaryData]:
     page_ids = [page.id for page in pages]
     if not page_ids:
         return {}
-    counts, recent_actions = client_portal_repository.action_summaries(db, tenant_id=pages[0].tenant_id, page_ids=page_ids)
-    recent_by_page: dict[int, list[ClientPageAction]] = {page_id: [] for page_id in page_ids}
-    for action in recent_actions:
-        bucket = recent_by_page.setdefault(action.client_page_id, [])
-        if len(bucket) < 3:
-            bucket.append(action)
+    counts, recent_by_page = client_portal_repository.action_summaries(db, tenant_id=pages[0].tenant_id, page_ids=page_ids)
     return {
-        page_id: {
-            "action_count": int(counts.get(page_id, 0)),
-            "latest_action": _serialize_client_page_action(recent_by_page.get(page_id, [])[0]) if recent_by_page.get(page_id) else None,
-            "recent_actions": [_serialize_client_page_action(action) for action in recent_by_page.get(page_id, [])],
-        }
+        page_id: ClientPageActionSummaryData(
+            action_count=int(counts.get(page_id, 0)),
+            latest_action=_serialize_client_page_action(recent_by_page.get(page_id, [])[0]) if recent_by_page.get(page_id) else None,
+            recent_actions=[_serialize_client_page_action(action) for action in recent_by_page.get(page_id, [])],
+        )
         for page_id in page_ids
     }
+
+
+def _default_customer_group_from_seed(*, tenant_id: int, item: dict) -> CustomerGroup:
+    return CustomerGroup(
+        tenant_id=tenant_id,
+        group_key=item["group_key"],
+        name=item["name"],
+        discount_type=item["discount_type"],
+        discount_value=item["discount_value"],
+        is_default=item["is_default"],
+        is_active=1,
+    )
+
+
+def _add_missing_default_customer_groups(db: Session, *, tenant_id: int) -> None:
+    existing_keys = client_portal_repository.customer_group_keys(db, tenant_id=tenant_id)
+    for item in DEFAULT_CUSTOMER_GROUPS:
+        if item["group_key"] in existing_keys:
+            continue
+        db.add(_default_customer_group_from_seed(tenant_id=tenant_id, item=item))
+
+
+def _retry_missing_default_customer_groups(db: Session, *, tenant_id: int) -> None:
+    for item in DEFAULT_CUSTOMER_GROUPS:
+        if client_portal_repository.customer_group_exists(db, tenant_id=tenant_id, group_key=item["group_key"]):
+            continue
+        db.add(_default_customer_group_from_seed(tenant_id=tenant_id, item=item))
+        try:
+            db.commit()
+        except IntegrityError:
+            db.rollback()
 
 
 def ensure_default_customer_groups(db: Session, *, tenant_id: int) -> None:
@@ -591,22 +635,14 @@ def ensure_default_customer_groups(db: Session, *, tenant_id: int) -> None:
     if cache_get_json(cache_key):
         if client_portal_repository.has_default_customer_group(db, tenant_id=tenant_id):
             return
-    existing_keys = client_portal_repository.customer_group_keys(db, tenant_id=tenant_id)
-    for item in DEFAULT_CUSTOMER_GROUPS:
-        if item["group_key"] in existing_keys:
-            continue
-        db.add(
-            CustomerGroup(
-                tenant_id=tenant_id,
-                group_key=item["group_key"],
-                name=item["name"],
-                discount_type=item["discount_type"],
-                discount_value=item["discount_value"],
-                is_default=item["is_default"],
-                is_active=1,
-            )
-        )
-    db.commit()
+    _add_missing_default_customer_groups(db, tenant_id=tenant_id)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        _retry_missing_default_customer_groups(db, tenant_id=tenant_id)
+    if not client_portal_repository.has_default_customer_group(db, tenant_id=tenant_id):
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Default customer group could not be initialized")
     cache_set_json(cache_key, {"seeded": True}, ttl_seconds=24 * 60 * 60)
 
 
@@ -868,9 +904,16 @@ def serialize_client_account(account: ClientAccount, *, setup_token: str | None 
     }
 
 
-def serialize_client_page(page: ClientPage, *, group: CustomerGroup | None = None, public_token: str | None = None, db: Session | None = None) -> dict:
+def serialize_client_page(
+    page: ClientPage,
+    *,
+    group: CustomerGroup | None = None,
+    public_token: str | None = None,
+    db: Session | None = None,
+    action_summary: ClientPageActionSummaryData | None = None,
+) -> dict:
     personalized = group is not None
-    action_summary = getattr(page, "_action_summary", None) or _client_page_action_summary(db, page)
+    action_summary = action_summary or _client_page_action_summary(db, page)
     contact = _loaded_relationship(page, "contact")
     organization = _loaded_relationship(page, "organization")
     return {
@@ -891,9 +934,9 @@ def serialize_client_page(page: ClientPage, *, group: CustomerGroup | None = Non
         "pricing_items": _serialize_pricing_items(page.pricing_items or [], group),
         "customer_group": serialize_customer_group(group),
         "pricing_mode": "personalized" if personalized else "public",
-        "action_count": action_summary["action_count"],
-        "latest_action": action_summary["latest_action"],
-        "recent_actions": action_summary["recent_actions"],
+        "action_count": action_summary.action_count,
+        "latest_action": action_summary.latest_action,
+        "recent_actions": action_summary.recent_actions,
         "public_link": _client_page_link(public_token) if public_token else None,
         "public_token_expires_at": page.public_token_expires_at,
         "published_at": page.published_at,
@@ -940,8 +983,21 @@ def create_client_account(db: Session, *, tenant_id: int, actor_user_id: int | N
     return account, setup_token
 
 
-def list_client_accounts(db: Session, *, tenant_id: int, sort_by: str | None = None, sort_direction: str | None = None) -> list[ClientAccount]:
-    return client_portal_repository.list_client_accounts(db, tenant_id=tenant_id, sort_by=sort_by, sort_direction=sort_direction)
+def list_client_accounts(
+    db: Session,
+    *,
+    tenant_id: int,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+    limit: int = 100,
+) -> list[ClientAccount]:
+    return client_portal_repository.list_client_accounts(
+        db,
+        tenant_id=tenant_id,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+        limit=max(1, min(limit, 200)),
+    )
 
 
 def list_client_accounts_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[ClientAccount]:
@@ -1198,12 +1254,21 @@ def update_client_account_status(db: Session, *, account: ClientAccount, status_
     return account
 
 
-def list_client_pages(db: Session, *, tenant_id: int, sort_by: str | None = None, sort_direction: str | None = None) -> list[ClientPage]:
-    pages = client_portal_repository.list_client_pages(db, tenant_id=tenant_id, sort_by=sort_by, sort_direction=sort_direction)
-    action_summaries = _client_page_action_summaries(db, pages)
-    for page in pages:
-        page._action_summary = action_summaries.get(page.id, {"action_count": 0, "latest_action": None, "recent_actions": []})
-    return pages
+def list_client_pages(
+    db: Session,
+    *,
+    tenant_id: int,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+    limit: int = 100,
+) -> list[ClientPage]:
+    return client_portal_repository.list_client_pages(
+        db,
+        tenant_id=tenant_id,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+        limit=max(1, min(limit, 200)),
+    )
 
 
 def list_client_pages_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[ClientPage]:
@@ -1213,9 +1278,6 @@ def list_client_pages_cursor(db: Session, *, tenant_id: int, limit: int, cursor:
         limit=limit,
         cursor=cursor,
     )
-    action_summaries = _client_page_action_summaries(db, pages)
-    for page in pages:
-        page._action_summary = action_summaries.get(page.id, {"action_count": 0, "latest_action": None, "recent_actions": []})
     return pages
 
 
@@ -1393,8 +1455,8 @@ def record_client_page_action(
     payload: dict | None = None,
     request_metadata: dict | None = None,
 ) -> ClientPageAction:
-    action = action.strip().lower()
-    if action not in {"accept", "request_changes"}:
+    action = CLIENT_PAGE_ACTION_ALIASES.get(action.strip().lower())
+    if not action:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported client page action")
     if account and not _validate_client_account_matches_page(account, page):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Client account cannot act on this page")

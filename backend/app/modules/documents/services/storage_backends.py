@@ -75,6 +75,13 @@ class LocalDocumentStorage:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document file not found.")
         return path
 
+    def delete(self, storage_path: str) -> None:
+        try:
+            path = self.resolve_path(storage_path)
+        except HTTPException:
+            return
+        path.unlink(missing_ok=True)
+
 
 class GoogleDriveDocumentStorage:
     provider = "google_drive"
@@ -116,6 +123,18 @@ class GoogleDriveDocumentStorage:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document file not found in Google Drive.")
         return response.content
 
+    def delete(self, storage_path: str) -> None:
+        response = requests.delete(
+            f"{self.api_url}/{storage_path}",
+            headers={"Authorization": f"Bearer {self.access_token}"},
+            timeout=30,
+        )
+        if response.status_code not in {200, 202, 204, 404}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=_provider_error_detail(response, provider_name="Google Drive"),
+            )
+
 
 class MicrosoftOneDriveDocumentStorage:
     provider = "microsoft_onedrive"
@@ -148,6 +167,18 @@ class MicrosoftOneDriveDocumentStorage:
         if not response.ok:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document file not found in Microsoft OneDrive.")
         return response.content
+
+    def delete(self, storage_path: str) -> None:
+        response = requests.delete(
+            f"{MICROSOFT_GRAPH_BASE}/me/drive/items/{storage_path}",
+            headers={"Authorization": f"Bearer {self.access_token}"},
+            timeout=30,
+        )
+        if response.status_code not in {200, 202, 204, 404}:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=_provider_error_detail(response, provider_name="Microsoft OneDrive"),
+            )
 
 
 def get_document_storage_backend(provider: str = "local", *, access_token: str | None = None):

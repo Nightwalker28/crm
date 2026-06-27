@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization
 from app.modules.sales.services.leads_services import convert_sales_lead
 from app.modules.user_management import models as user_management_models  # noqa: F401

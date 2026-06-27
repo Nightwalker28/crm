@@ -96,7 +96,14 @@ class FinancePosInvoice(Base):
         ),
         Index("ix_finance_pos_invoices_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_finance_pos_invoices_tenant_status_active", "tenant_id", "status", postgresql_where=text("deleted_at IS NULL")),
-        Index("ix_finance_pos_invoices_tenant_number", "tenant_id", "invoice_number", unique=True),
+        Index(
+            "uq_finance_pos_invoices_active_tenant_number",
+            "tenant_id",
+            "invoice_number",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
+        ),
     )
 
     id = Column(BigInteger, primary_key=True, index=True)

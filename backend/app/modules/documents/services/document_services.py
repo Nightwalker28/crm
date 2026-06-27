@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import hashlib
+import logging
 import time
 import urllib.parse
 import zipfile
@@ -10,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 import requests
 from fastapi import HTTPException, Request, UploadFile, status
 from jose import JWTError, jwt
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
 
@@ -20,7 +22,7 @@ from app.core.secrets import decrypt_secret_with_rotation
 from app.core.microsoft_oauth import MICROSOFT_DRIVE_SCOPE, MICROSOFT_GRAPH_BASE, microsoft_auth_url, microsoft_scope_string, microsoft_token_url
 from app.core.access_control import require_role_module_action_access
 from app.core.tenancy import get_frontend_origin_for_request, get_google_redirect_uri_for_request, get_microsoft_redirect_uri_for_request
-from app.core.uploads import read_upload_limited
+from app.core.uploads import UPLOAD_READ_CHUNK_BYTES, read_upload_limited
 from app.modules.documents.models import Document, DocumentClientShare, DocumentLink, DocumentStorageConnection, DocumentVersion
 from app.modules.documents.repositories import documents_repository
 from app.modules.documents.schema import DocumentResponse
@@ -30,16 +32,6 @@ from app.modules.platform.services.record_comments import get_record_comment_mod
 from app.modules.sales.models import SalesContact, SalesOrganization
 from app.modules.user_management.models import Tenant, User, UserStatus
 
-ALLOWED_DOCUMENT_EXTENSIONS = {"pdf", "doc", "docx", "txt", "rtf", "odt"}
-ALLOWED_DOCUMENT_CONTENT_TYPES = {
-    "application/pdf",
-    "application/msword",
-    "application/rtf",
-    "application/vnd.oasis.opendocument.text",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "text/plain",
-    "text/rtf",
-}
 DOCUMENT_CONTENT_TYPES_BY_EXTENSION = {
     "pdf": {"application/pdf"},
     "doc": {"application/msword"},
@@ -48,6 +40,8 @@ DOCUMENT_CONTENT_TYPES_BY_EXTENSION = {
     "rtf": {"application/rtf", "text/rtf"},
     "txt": {"text/plain"},
 }
+ALLOWED_DOCUMENT_EXTENSIONS = set(DOCUMENT_CONTENT_TYPES_BY_EXTENSION)
+ALLOWED_DOCUMENT_CONTENT_TYPES = {content_type for values in DOCUMENT_CONTENT_TYPES_BY_EXTENSION.values() for content_type in values}
 DOCUMENT_MAGIC_TYPES = {
     "pdf": b"%PDF-",
     "doc": b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1",
@@ -63,6 +57,8 @@ MICROSOFT_ONEDRIVE_CONNECT_STATE_TYPE = "microsoft_onedrive_document_storage_sta
 DOCUMENT_PROVIDER_LOCAL = "local"
 DOCUMENT_PROVIDER_GOOGLE_DRIVE = "google_drive"
 DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE = "microsoft_onedrive"
+
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -440,7 +436,7 @@ def disconnect_document_storage_connection(
     return connection
 
 
-async def read_document_upload(file: UploadFile) -> tuple[bytes, str, str, str]:
+def _validate_document_upload_content(file: UploadFile, content: bytes) -> tuple[bytes, str, str, str]:
     filename = (file.filename or "").strip()
     extension = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if extension not in ALLOWED_DOCUMENT_EXTENSIONS:
@@ -448,13 +444,6 @@ async def read_document_upload(file: UploadFile) -> tuple[bytes, str, str, str]:
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unsupported document type. Allowed types: .pdf, .doc, .docx, .txt, .rtf, .odt",
         )
-
-    content = await read_upload_limited(
-        file,
-        max_bytes=settings.DOCUMENT_MAX_UPLOAD_BYTES,
-        empty_detail="Uploaded document is empty.",
-        oversize_detail=f"Document exceeds the {settings.DOCUMENT_MAX_UPLOAD_BYTES} byte upload limit.",
-    )
 
     declared_content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
     if declared_content_type and declared_content_type not in ALLOWED_DOCUMENT_CONTENT_TYPES:
@@ -464,6 +453,36 @@ async def read_document_upload(file: UploadFile) -> tuple[bytes, str, str, str]:
     if declared_content_type and declared_content_type not in DOCUMENT_CONTENT_TYPES_BY_EXTENSION[extension]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document content type does not match file extension.")
     return content, extension, declared_content_type or detected_content_type, filename
+
+
+async def read_document_upload(file: UploadFile) -> tuple[bytes, str, str, str]:
+    content = await read_upload_limited(
+        file,
+        max_bytes=settings.DOCUMENT_MAX_UPLOAD_BYTES,
+        empty_detail="Uploaded document is empty.",
+        oversize_detail=f"Document exceeds the {settings.DOCUMENT_MAX_UPLOAD_BYTES} byte upload limit.",
+    )
+    return _validate_document_upload_content(file, content)
+
+
+def read_document_upload_sync(file: UploadFile) -> tuple[bytes, str, str, str]:
+    chunks: list[bytes] = []
+    total_bytes = 0
+    while True:
+        chunk = file.file.read(UPLOAD_READ_CHUNK_BYTES)
+        if not chunk:
+            break
+        total_bytes += len(chunk)
+        if total_bytes > settings.DOCUMENT_MAX_UPLOAD_BYTES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Document exceeds the {settings.DOCUMENT_MAX_UPLOAD_BYTES} byte upload limit.",
+            )
+        chunks.append(chunk)
+    content = b"".join(chunks)
+    if not content:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded document is empty.")
+    return _validate_document_upload_content(file, content)
 
 
 def _validate_document_signature(content: bytes, extension: str) -> str:
@@ -785,6 +804,17 @@ def _serialize_version(version: DocumentVersion) -> dict:
     }
 
 
+def _document_audit_ref(document: Document) -> dict:
+    return {
+        "document_id": document.id,
+        "title": document.title,
+        "storage_provider": document.storage_provider,
+        "content_type": document.content_type,
+        "file_size_bytes": document.file_size_bytes,
+        "current_version_id": document.current_version_id,
+    }
+
+
 def resolve_document_storage_path(document: Document):
     backend = get_document_storage_backend(document.storage_provider)
     return backend.resolve_path(document.storage_path)
@@ -844,6 +874,42 @@ def _store_document_content(
         backend = _microsoft_onedrive_backend_for_user(db, tenant_id=tenant_id, user_id=current_user.id)
         return backend.save(tenant_id=tenant_id, extension=extension, content=content, filename=original_filename, content_type=content_type)
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported document storage provider.")
+
+
+def _delete_document_storage_key(
+    db: Session,
+    *,
+    tenant_id: int,
+    storage_provider: str,
+    storage_key: str,
+    current_user=None,
+) -> None:
+    if not storage_key:
+        return
+    normalized_provider = (storage_provider or DOCUMENT_PROVIDER_LOCAL).strip().lower()
+    try:
+        if normalized_provider == DOCUMENT_PROVIDER_LOCAL:
+            get_document_storage_backend(DOCUMENT_PROVIDER_LOCAL).delete(storage_key)
+            return
+        if normalized_provider == DOCUMENT_PROVIDER_GOOGLE_DRIVE:
+            if current_user is None:
+                return
+            _google_drive_backend_for_user(db, tenant_id=tenant_id, user_id=current_user.id).delete(storage_key)
+            return
+        if normalized_provider == DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE:
+            if current_user is None:
+                return
+            _microsoft_onedrive_backend_for_user(db, tenant_id=tenant_id, user_id=current_user.id).delete(storage_key)
+    except Exception as cleanup_error:
+        logger.warning(
+            "Failed to clean up document storage object after write failure",
+            extra={"tenant_id": tenant_id, "storage_provider": normalized_provider, "storage_key": storage_key},
+            exc_info=cleanup_error,
+        )
+
+
+def _document_write_conflict() -> HTTPException:
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Document write conflict.")
 
 
 def list_documents(
@@ -1138,7 +1204,7 @@ def get_document_version_or_404(
     return version
 
 
-async def upload_document_version(
+def upload_document_version(
     db: Session,
     *,
     tenant_id: int,
@@ -1148,7 +1214,7 @@ async def upload_document_version(
 ) -> Document:
     document = get_document_or_404(db, tenant_id=tenant_id, document_id=document_id)
     require_document_link_access(db, user=current_user, document=document, action="edit")
-    content, extension, content_type, original_filename = await read_document_upload(file)
+    content, extension, content_type, original_filename = read_document_upload_sync(file)
     if _tenant_storage_used(db, tenant_id=tenant_id) + len(content) > settings.DOCUMENT_TENANT_STORAGE_LIMIT_BYTES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant document storage limit exceeded.")
     stored = _store_document_content(
@@ -1161,33 +1227,54 @@ async def upload_document_version(
         storage_provider=document.storage_provider,
         current_user=current_user,
     )
-    latest_version = (
-        db.query(func.coalesce(func.max(DocumentVersion.version_number), 0))
-        .filter(DocumentVersion.tenant_id == tenant_id, DocumentVersion.document_id == document.id)
-        .scalar()
-    )
-    before_state = _serialize_document(document)
-    version = DocumentVersion(
-        tenant_id=tenant_id,
-        document_id=document.id,
-        version_number=int(latest_version or 0) + 1,
-        storage_key=stored.storage_path,
-        file_name=original_filename[:255],
-        mime_type=content_type,
-        size_bytes=len(content),
-        checksum=hashlib.sha256(content).hexdigest(),
-        uploaded_by_id=getattr(current_user, "id", None),
-    )
-    db.add(version)
-    db.flush()
-    document.original_filename = original_filename[:255]
-    document.content_type = content_type
-    document.extension = extension
-    document.file_size_bytes = len(content)
-    document.storage_path = stored.storage_path
-    document.current_version_id = version.id
-    db.add(document)
-    db.commit()
+    try:
+        latest_version = (
+            db.query(func.coalesce(func.max(DocumentVersion.version_number), 0))
+            .filter(DocumentVersion.tenant_id == tenant_id, DocumentVersion.document_id == document.id)
+            .scalar()
+        )
+        before_state = _serialize_document(document)
+        version = DocumentVersion(
+            tenant_id=tenant_id,
+            document_id=document.id,
+            version_number=int(latest_version or 0) + 1,
+            storage_key=stored.storage_path,
+            file_name=original_filename[:255],
+            mime_type=content_type,
+            size_bytes=len(content),
+            checksum=hashlib.sha256(content).hexdigest(),
+            uploaded_by_id=getattr(current_user, "id", None),
+        )
+        db.add(version)
+        db.flush()
+        document.original_filename = original_filename[:255]
+        document.content_type = content_type
+        document.extension = extension
+        document.file_size_bytes = len(content)
+        document.storage_path = stored.storage_path
+        document.current_version_id = version.id
+        db.add(document)
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        _delete_document_storage_key(
+            db,
+            tenant_id=tenant_id,
+            storage_provider=stored.provider,
+            storage_key=stored.storage_path,
+            current_user=current_user,
+        )
+        raise _document_write_conflict() from exc
+    except Exception:
+        db.rollback()
+        _delete_document_storage_key(
+            db,
+            tenant_id=tenant_id,
+            storage_provider=stored.provider,
+            storage_key=stored.storage_path,
+            current_user=current_user,
+        )
+        raise
     db.refresh(document)
     document = get_document_or_404(db, tenant_id=tenant_id, document_id=document.id)
     log_activity(
@@ -1239,7 +1326,7 @@ def update_document_template_status(
     return document
 
 
-async def create_document(
+def create_document(
     db: Session,
     *,
     tenant_id: int,
@@ -1252,7 +1339,7 @@ async def create_document(
     storage_provider: str = DOCUMENT_PROVIDER_LOCAL,
     current_user=None,
 ) -> Document:
-    content, extension, content_type, original_filename = await read_document_upload(file)
+    content, extension, content_type, original_filename = read_document_upload_sync(file)
     if _tenant_storage_used(db, tenant_id=tenant_id) + len(content) > settings.DOCUMENT_TENANT_STORAGE_LIMIT_BYTES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant document storage limit exceeded.")
 
@@ -1295,35 +1382,56 @@ async def create_document(
         storage_provider=stored.provider,
         storage_path=stored.storage_path,
     )
-    db.add(document)
-    db.flush()
-    version = DocumentVersion(
-        tenant_id=tenant_id,
-        document_id=document.id,
-        version_number=1,
-        storage_key=stored.storage_path,
-        file_name=original_filename[:255],
-        mime_type=content_type,
-        size_bytes=len(content),
-        checksum=hashlib.sha256(content).hexdigest(),
-        uploaded_by_id=user_id,
-    )
-    db.add(version)
-    db.flush()
-    document.current_version_id = version.id
-    db.add(document)
-
-    if linked_module_key and linked_entity_id is not None:
-        db.add(
-            DocumentLink(
-                tenant_id=tenant_id,
-                document_id=document.id,
-                module_key=linked_module_key,
-                entity_id=str(linked_entity_id),
-                created_by_user_id=user_id,
-            )
+    try:
+        db.add(document)
+        db.flush()
+        version = DocumentVersion(
+            tenant_id=tenant_id,
+            document_id=document.id,
+            version_number=1,
+            storage_key=stored.storage_path,
+            file_name=original_filename[:255],
+            mime_type=content_type,
+            size_bytes=len(content),
+            checksum=hashlib.sha256(content).hexdigest(),
+            uploaded_by_id=user_id,
         )
-    db.commit()
+        db.add(version)
+        db.flush()
+        document.current_version_id = version.id
+        db.add(document)
+
+        if linked_module_key and linked_entity_id is not None:
+            db.add(
+                DocumentLink(
+                    tenant_id=tenant_id,
+                    document_id=document.id,
+                    module_key=linked_module_key,
+                    entity_id=str(linked_entity_id),
+                    created_by_user_id=user_id,
+                )
+            )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        _delete_document_storage_key(
+            db,
+            tenant_id=tenant_id,
+            storage_provider=stored.provider,
+            storage_key=stored.storage_path,
+            current_user=current_user,
+        )
+        raise _document_write_conflict() from exc
+    except Exception:
+        db.rollback()
+        _delete_document_storage_key(
+            db,
+            tenant_id=tenant_id,
+            storage_provider=stored.provider,
+            storage_key=stored.storage_path,
+            current_user=current_user,
+        )
+        raise
     db.refresh(document)
     document = get_document_or_404(db, tenant_id=tenant_id, document_id=document.id)
     serialized = _serialize_document(document)
@@ -1363,7 +1471,7 @@ def soft_delete_document(db: Session, *, tenant_id: int, document_id: int, curre
     if current_user is not None:
         _require_any_linked_record_access(db, user=current_user, document=document, action="edit")
     before_state = _serialize_document(document)
-    document.deleted_at = func.now()
+    document.deleted_at = _utcnow()
     db.add(document)
     db.commit()
     db.refresh(document)
@@ -1414,7 +1522,7 @@ def log_document_download(db: Session, *, document: Document, current_user) -> N
         entity_id=document.id,
         action="download",
         description=f"Downloaded document {document.title}",
-        after_state=_serialize_document(document),
+        after_state=_document_audit_ref(document),
     )
 
 

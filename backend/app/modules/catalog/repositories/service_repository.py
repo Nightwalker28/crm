@@ -35,12 +35,24 @@ def slug_exists(
     slug: str,
     service_id: int | None = None,
 ) -> bool:
-    query = db.query(CatalogService.id).filter(CatalogService.tenant_id == tenant_id, CatalogService.slug == slug)
+    query = db.query(CatalogService.id).filter(
+        CatalogService.tenant_id == tenant_id,
+        CatalogService.slug == slug,
+        CatalogService.deleted_at.is_(None),
+    )
     if service_id is not None:
         query = query.filter(CatalogService.id != service_id)
     if query.first():
         return True
-    return bool(db.query(CatalogProduct.id).filter(CatalogProduct.tenant_id == tenant_id, CatalogProduct.slug == slug).first())
+    return bool(
+        db.query(CatalogProduct.id)
+        .filter(
+            CatalogProduct.tenant_id == tenant_id,
+            CatalogProduct.slug == slug,
+            CatalogProduct.deleted_at.is_(None),
+        )
+        .first()
+    )
 
 
 def list_services(

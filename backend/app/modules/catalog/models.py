@@ -22,7 +22,6 @@ from app.core.database import Base
 class CatalogProduct(Base):
     __tablename__ = "catalog_products"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "slug", name="uq_catalog_products_tenant_slug"),
         UniqueConstraint("tenant_id", "sku", name="uq_catalog_products_tenant_sku"),
         CheckConstraint(
             "stock_status IN ('untracked', 'in_stock', 'out_of_stock', 'preorder')",
@@ -32,6 +31,14 @@ class CatalogProduct(Base):
         CheckConstraint("stock_quantity IS NULL OR stock_quantity >= 0", name="ck_catalog_products_stock_nonnegative"),
         Index("ix_catalog_products_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_catalog_products_tenant_active", "tenant_id", "is_active", postgresql_where=text("deleted_at IS NULL")),
+        Index(
+            "uq_catalog_products_active_tenant_slug",
+            "tenant_id",
+            "slug",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL AND slug IS NOT NULL"),
+            sqlite_where=text("deleted_at IS NULL AND slug IS NOT NULL"),
+        ),
     )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
@@ -63,10 +70,17 @@ class CatalogProduct(Base):
 class CatalogService(Base):
     __tablename__ = "catalog_services"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "slug", name="uq_catalog_services_tenant_slug"),
         CheckConstraint("public_unit_price >= 0", name="ck_catalog_services_public_price_nonnegative"),
         Index("ix_catalog_services_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_catalog_services_tenant_active", "tenant_id", "is_active", postgresql_where=text("deleted_at IS NULL")),
+        Index(
+            "uq_catalog_services_active_tenant_slug",
+            "tenant_id",
+            "slug",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL AND slug IS NOT NULL"),
+            sqlite_where=text("deleted_at IS NULL AND slug IS NOT NULL"),
+        ),
     )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)

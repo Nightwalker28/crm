@@ -7,6 +7,7 @@ from typing import Any
 
 from fastapi import HTTPException, status
 from sqlalchemy import func, or_, text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.access_control import get_finance_user_scope
@@ -16,7 +17,7 @@ from app.core.postgres_search import searchable_text
 from app.modules.finance.models import FinancePosInvoice, FinancePosInvoiceLine
 from app.modules.finance.repositories import pos_invoice_repository
 from app.modules.finance.services.io_search_services import _normalize_allowed_currency, parse_human_date
-from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.models import ActivityLog
 from app.modules.sales.models import SalesContact, SalesOrganization
 
 POS_INVOICE_PREFIX = "POS"
@@ -25,6 +26,7 @@ POS_MODULE_KEY = "finance_pos"
 VALID_STATUSES = {"draft", "issued", "paid", "void"}
 VALID_PAYMENT_STATUSES = {"unpaid", "partial", "paid", "refunded"}
 VALID_TEMPLATES = {"modern", "classic", "compact"}
+MAX_TAX_RATE = Decimal("100")
 
 
 def _normalize_text(value: Any) -> str | None:
@@ -47,6 +49,10 @@ def _to_decimal(value: Any, *, default: Decimal = Decimal("0")) -> Decimal:
 
 def _money(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _invoice_conflict(exc: IntegrityError) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Invoice number already exists")
 
 
 def _date_to_iso(value: date | datetime | None) -> str | None:
@@ -81,6 +87,7 @@ def _validate_invoice_number(db: Session, tenant_id: int, invoice_number: str, i
     query = db.query(FinancePosInvoice).filter(
         FinancePosInvoice.tenant_id == tenant_id,
         func.lower(FinancePosInvoice.invoice_number) == normalized.lower(),
+        FinancePosInvoice.deleted_at.is_(None),
     )
     if invoice_id is not None:
         query = query.filter(FinancePosInvoice.id != invoice_id)
@@ -178,7 +185,8 @@ def _resolve_organization(
 def _apply_lines(invoice: FinancePosInvoice, lines: list[dict[str, Any]]) -> Decimal:
     if not lines:
         raise HTTPException(status_code=400, detail="At least one line item is required")
-    invoice.lines = []
+    existing_by_id = {line.id: line for line in invoice.lines if line.id is not None}
+    updated_lines: list[FinancePosInvoiceLine] = []
     subtotal = Decimal("0")
     for index, line in enumerate(lines):
         description = _normalize_text(line.get("description"))
@@ -192,23 +200,27 @@ def _apply_lines(invoice: FinancePosInvoice, lines: list[dict[str, Any]]) -> Dec
             raise HTTPException(status_code=400, detail="Line unit price cannot be negative")
         line_total = _money(quantity * unit_price)
         subtotal += line_total
-        invoice.lines.append(
-            FinancePosInvoiceLine(
-                catalog_product_id=line.get("catalog_product_id"),
-                catalog_service_id=line.get("catalog_service_id"),
-                description=description,
-                quantity=quantity,
-                unit_price=unit_price,
-                line_total=line_total,
-                sort_order=index,
-            )
-        )
+        line_id = line.get("id")
+        invoice_line = existing_by_id.pop(int(line_id), None) if line_id is not None else None
+        if invoice_line is None:
+            invoice_line = FinancePosInvoiceLine()
+        invoice_line.catalog_product_id = line.get("catalog_product_id")
+        invoice_line.catalog_service_id = line.get("catalog_service_id")
+        invoice_line.description = description
+        invoice_line.quantity = quantity
+        invoice_line.unit_price = unit_price
+        invoice_line.line_total = line_total
+        invoice_line.sort_order = index
+        updated_lines.append(invoice_line)
+    invoice.lines = updated_lines
     return _money(subtotal)
 
 
 def _apply_totals(invoice: FinancePosInvoice, subtotal: Decimal, data: dict[str, Any]) -> None:
     discount = _money(max(Decimal("0"), _to_decimal(data.get("discount_amount"))))
     tax_rate = max(Decimal("0"), _to_decimal(data.get("tax_rate")))
+    if tax_rate > MAX_TAX_RATE:
+        raise HTTPException(status_code=400, detail="Tax rate cannot exceed 100")
     taxable = max(Decimal("0"), subtotal - discount)
     tax = _money(taxable * tax_rate / Decimal("100"))
     total = _money(taxable + tax)
@@ -219,6 +231,31 @@ def _apply_totals(invoice: FinancePosInvoice, subtotal: Decimal, data: dict[str,
     invoice.tax_amount = tax
     invoice.total_amount = total
     invoice.amount_paid = amount_paid
+
+
+def _add_invoice_activity(
+    db: Session,
+    *,
+    current_user,
+    invoice: FinancePosInvoice,
+    action: str,
+    description: str,
+    before_state: dict[str, Any] | None = None,
+    after_state: dict[str, Any] | None = None,
+) -> None:
+    db.add(
+        ActivityLog(
+            tenant_id=invoice.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            module_key=POS_MODULE_KEY,
+            entity_type="finance_pos_invoice",
+            entity_id=invoice.id,
+            action=action,
+            description=description,
+            before_state=before_state,
+            after_state=after_state,
+        )
+    )
 
 
 def _serialize_line(line: FinancePosInvoiceLine) -> dict[str, Any]:
@@ -405,19 +442,21 @@ def create_invoice(db: Session, current_user, payload: dict[str, Any]) -> Financ
     _apply_totals(invoice, subtotal, payload)
     _assign_sqlite_test_ids(db, invoice)
     db.add(invoice)
-    db.commit()
+    try:
+        db.flush()
+        _add_invoice_activity(
+            db,
+            current_user=current_user,
+            invoice=invoice,
+            action="create",
+            description=f"Created POS invoice {invoice.invoice_number}",
+            after_state=serialize_invoice(invoice, current_user=current_user),
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise _invoice_conflict(exc) from exc
     db.refresh(invoice)
-    log_activity(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        module_key=POS_MODULE_KEY,
-        entity_type="finance_pos_invoice",
-        entity_id=invoice.id,
-        action="create",
-        description=f"Created POS invoice {invoice.invoice_number}",
-        after_state=serialize_invoice(invoice, current_user=current_user),
-    )
     return invoice
 
 
@@ -479,20 +518,22 @@ def update_invoice(db: Session, current_user, invoice_id: int, payload: dict[str
             if line.id is None:
                 line.id = next_line_id + offset
     db.add(invoice)
-    db.commit()
+    try:
+        db.flush()
+        _add_invoice_activity(
+            db,
+            current_user=current_user,
+            invoice=invoice,
+            action="update",
+            description=f"Updated POS invoice {invoice.invoice_number}",
+            before_state=before_state,
+            after_state=serialize_invoice(invoice, current_user=current_user),
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise _invoice_conflict(exc) from exc
     db.refresh(invoice)
-    log_activity(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        module_key=POS_MODULE_KEY,
-        entity_type="finance_pos_invoice",
-        entity_id=invoice.id,
-        action="update",
-        description=f"Updated POS invoice {invoice.invoice_number}",
-        before_state=before_state,
-        after_state=serialize_invoice(invoice, current_user=current_user),
-    )
     return invoice
 
 
@@ -501,15 +542,12 @@ def soft_delete_invoice(db: Session, current_user, invoice_id: int) -> None:
     before_state = serialize_invoice(invoice, current_user=current_user)
     invoice.deleted_at = datetime.now(timezone.utc)
     db.add(invoice)
-    db.commit()
-    log_activity(
+    _add_invoice_activity(
         db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        module_key=POS_MODULE_KEY,
-        entity_type="finance_pos_invoice",
-        entity_id=invoice.id,
+        current_user=current_user,
+        invoice=invoice,
         action="soft_delete",
         description=f"Moved POS invoice {invoice.invoice_number} to recycle bin",
         before_state=before_state,
     )
+    db.commit()

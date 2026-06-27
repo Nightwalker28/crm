@@ -58,6 +58,9 @@ class FakeDB:
             value.contact_id = 99
         self.added.append(value)
 
+    def flush(self):
+        return None
+
     def commit(self):
         self.committed = True
 
@@ -74,6 +77,9 @@ class IntegrityErrorDB(FakeDB):
         self.rolled_back = False
 
     def commit(self):
+        self.committed = True
+
+    def flush(self):
         raise IntegrityError("update sales_contacts", {}, Exception("duplicate email"))
 
     def rollback(self):
@@ -119,6 +125,59 @@ class CreateSalesContactDuplicateFilterTests(unittest.TestCase):
         )
 
         self.assertEqual(predicate_count, 2)
+
+
+class CreateSalesContactTransactionTests(unittest.TestCase):
+    def test_create_sales_contact_flushes_custom_fields_before_single_commit(self):
+        db = FakeDB()
+        db.events = []
+        db.commits = 0
+        current_user = SimpleNamespace(id=7, tenant_id=1)
+        payload = {
+            "first_name": "Ada",
+            "last_name": "Lovelace",
+            "primary_email": "ada@example.com",
+            "custom_fields": {"tier": "enterprise"},
+        }
+        saved_calls = []
+
+        def add_with_event(value):
+            db.events.append("add")
+            if isinstance(value, SalesContact) and value.contact_id is None:
+                value.contact_id = 99
+            db.added.append(value)
+
+        def flush_with_event():
+            db.events.append("flush")
+
+        def commit_with_event():
+            db.events.append("commit")
+            db.commits += 1
+            db.committed = True
+
+        def refresh_with_event(_value):
+            db.events.append("refresh")
+
+        def fake_save_custom_field_values(*args, **kwargs):
+            db.events.append("save_custom_fields")
+            saved_calls.append(kwargs)
+
+        db.add = add_with_event
+        db.flush = flush_with_event
+        db.commit = commit_with_event
+        db.refresh = refresh_with_event
+
+        with patch.object(contacts_services, "validate_custom_field_payload", return_value={"tier": "enterprise"}), \
+             patch.object(contacts_services, "save_custom_field_values", side_effect=fake_save_custom_field_values), \
+             patch.object(contacts_services, "hydrate_custom_field_record", side_effect=lambda *args, **kwargs: kwargs["record"]):
+            contact = contacts_services.create_sales_contact(db, payload, current_user)
+
+        self.assertEqual(contact.contact_id, 99)
+        self.assertEqual(db.events, ["add", "flush", "save_custom_fields", "commit", "refresh"])
+        self.assertEqual(db.commits, 1)
+        self.assertEqual(saved_calls[0]["tenant_id"], 1)
+        self.assertEqual(saved_calls[0]["record_id"], 99)
+        self.assertEqual(saved_calls[0]["values"], {"tier": "enterprise"})
 
 
 class ImportContactsBulkInsertTests(unittest.TestCase):

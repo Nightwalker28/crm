@@ -1,5 +1,4 @@
 import io
-import asyncio
 import tempfile
 import unittest
 import zipfile
@@ -20,6 +19,7 @@ from app.modules.documents.services import storage_backends
 from app.modules.documents.services.storage_backends import LocalDocumentStorage, MicrosoftOneDriveDocumentStorage
 from app.modules.documents.services import document_services
 from app.modules.documents.services.document_services import (
+    create_document,
     _create_drive_oauth_state,
     _refresh_google_drive_access_token,
     get_client_document_share_or_404,
@@ -477,14 +477,12 @@ class DocumentServiceTests(unittest.TestCase):
             docs_root = upload_root / "documents"
             with patch.object(storage_backends, "UPLOADS_DIR", upload_root), \
                  patch.object(storage_backends, "DOCUMENT_STORAGE_DIR", docs_root):
-                document = asyncio.run(
-                    upload_document_version(
-                        self.db,
-                        tenant_id=10,
-                        document_id=3,
-                        file=upload,
-                        current_user=user,
-                    )
+                document = upload_document_version(
+                    self.db,
+                    tenant_id=10,
+                    document_id=3,
+                    file=upload,
+                    current_user=user,
                 )
 
         versions = list_document_versions(self.db, document=document)
@@ -494,6 +492,91 @@ class DocumentServiceTests(unittest.TestCase):
         self.assertEqual([version.version_number for version in versions], [2, 1])
         self.assertEqual(document.current_version_id, versions[0].id)
         self.assertEqual(versions[1].storage_key, "tenant-10/contract-v1.pdf")
+
+    def test_create_document_deletes_storage_when_database_write_fails(self):
+        upload = UploadFile(
+            file=io.BytesIO(b"%PDF-1.7\ncontent\n%%EOF"),
+            filename="proposal.pdf",
+            headers=Headers({"content-type": "application/pdf"}),
+        )
+        user = SimpleNamespace(id=1, tenant_id=10)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            upload_root = Path(tmpdir)
+            docs_root = upload_root / "documents"
+            with patch.object(storage_backends, "UPLOADS_DIR", upload_root), \
+                 patch.object(storage_backends, "DOCUMENT_STORAGE_DIR", docs_root), \
+                 patch.object(self.db, "flush", side_effect=RuntimeError("boom")):
+                with self.assertRaisesRegex(RuntimeError, "boom"):
+                    create_document(
+                        self.db,
+                        tenant_id=10,
+                        user_id=1,
+                        file=upload,
+                        current_user=user,
+                    )
+            remaining_files = list(docs_root.rglob("*")) if docs_root.exists() else []
+
+        self.assertEqual([path for path in remaining_files if path.is_file()], [])
+
+    def test_upload_document_version_deletes_new_storage_when_database_write_fails(self):
+        unlinked = Document(
+            id=3,
+            tenant_id=10,
+            uploaded_by_user_id=1,
+            title="Contract",
+            original_filename="contract-v1.pdf",
+            content_type="application/pdf",
+            extension="pdf",
+            file_size_bytes=19,
+            storage_provider="local",
+            storage_path="tenant-10/contract-v1.pdf",
+        )
+        self.db.add(unlinked)
+        self.db.add(
+            DocumentVersion(
+                id=10,
+                tenant_id=10,
+                document_id=3,
+                version_number=1,
+                storage_key="tenant-10/contract-v1.pdf",
+                file_name="contract-v1.pdf",
+                mime_type="application/pdf",
+                size_bytes=19,
+                uploaded_by_id=1,
+            )
+        )
+        self.db.commit()
+        unlinked.current_version_id = 10
+        self.db.add(unlinked)
+        self.db.commit()
+        upload = UploadFile(
+            file=io.BytesIO(b"%PDF-1.7\nupdated\n%%EOF"),
+            filename="contract-v2.pdf",
+            headers=Headers({"content-type": "application/pdf"}),
+        )
+        user = SimpleNamespace(id=1, tenant_id=10)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            upload_root = Path(tmpdir)
+            docs_root = upload_root / "documents"
+            old_file = docs_root / "tenant-10" / "contract-v1.pdf"
+            old_file.parent.mkdir(parents=True)
+            old_file.write_bytes(b"%PDF-1.7\nold\n%%EOF")
+            with patch.object(storage_backends, "UPLOADS_DIR", upload_root), \
+                 patch.object(storage_backends, "DOCUMENT_STORAGE_DIR", docs_root), \
+                 patch.object(self.db, "flush", side_effect=RuntimeError("boom")):
+                with self.assertRaisesRegex(RuntimeError, "boom"):
+                    upload_document_version(
+                        self.db,
+                        tenant_id=10,
+                        document_id=3,
+                        file=upload,
+                        current_user=user,
+                    )
+            remaining_files = sorted(path.relative_to(docs_root).as_posix() for path in docs_root.rglob("*") if path.is_file())
+
+        self.assertEqual(remaining_files, ["tenant-10/contract-v1.pdf"])
 
     def test_client_document_share_scopes_lists_and_revokes(self):
         share = share_document_with_client(
@@ -556,6 +639,16 @@ class DocumentServiceTests(unittest.TestCase):
             self.assertEqual(entry.tenant_id, 10)
             self.assertEqual(entry.entity_id, "1")
             self.assertEqual(entry.after_state["client_account_id"], 22)
+
+    def test_document_download_audit_uses_slim_state(self):
+        document = documents_repository.get_document(self.db, tenant_id=10, document_id=1)
+
+        document_services.log_document_download(self.db, document=document, current_user=SimpleNamespace(id=1))
+
+        entry = self.db.query(ActivityLog).filter(ActivityLog.action == "download").one()
+        self.assertEqual(entry.after_state["document_id"], 1)
+        self.assertNotIn("links", entry.after_state)
+        self.assertNotIn("client_shares", entry.after_state)
 
 
 class MicrosoftOneDriveStorageTests(unittest.TestCase):

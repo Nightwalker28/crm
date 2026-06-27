@@ -249,6 +249,7 @@ def create_sales_contact(
     )
 
     data = dict(payload)
+    explicit_assigned_to = "assigned_to" in data and data.get("assigned_to") is not None
     custom_data = validate_custom_field_payload(
         db,
         tenant_id=current_user.tenant_id,
@@ -301,18 +302,27 @@ def create_sales_contact(
                 record_id=existing.contact_id,
             )
         if replace_duplicates:
+            if not explicit_assigned_to:
+                data.pop("assigned_to", None)
             _apply_sales_contact_payload(existing, data)
             db.add(existing)
-            db.commit()
+            try:
+                db.flush()
+                save_custom_field_values(
+                    db,
+                    tenant_id=current_user.tenant_id,
+                    module_key="sales_contacts",
+                    record_id=existing.contact_id,
+                    values=custom_data,
+                )
+                db.commit()
+            except IntegrityError as exc:
+                db.rollback()
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Unable to replace contact",
+                ) from exc
             db.refresh(existing)
-            save_custom_field_values(
-                db,
-                tenant_id=current_user.tenant_id,
-                module_key="sales_contacts",
-                record_id=existing.contact_id,
-                values=custom_data,
-            )
-            db.commit()
             return hydrate_custom_field_record(
                 db,
                 tenant_id=current_user.tenant_id,
@@ -333,16 +343,23 @@ def create_sales_contact(
     data["tenant_id"] = current_user.tenant_id
     contact = SalesContact(**data)
     db.add(contact)
-    db.commit()
+    try:
+        db.flush()
+        save_custom_field_values(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key="sales_contacts",
+            record_id=contact.contact_id,
+            values=custom_data,
+        )
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unable to create contact",
+        ) from exc
     db.refresh(contact)
-    save_custom_field_values(
-        db,
-        tenant_id=current_user.tenant_id,
-        module_key="sales_contacts",
-        record_id=contact.contact_id,
-        values=custom_data,
-    )
-    db.commit()
     return hydrate_custom_field_record(
         db,
         tenant_id=current_user.tenant_id,
@@ -403,6 +420,15 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
 
     db.add(contact)
     try:
+        db.flush()
+        if custom_data_to_save is not None:
+            save_custom_field_values(
+                db,
+                tenant_id=contact.tenant_id,
+                module_key="sales_contacts",
+                record_id=contact.contact_id,
+                values=custom_data_to_save,
+            )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -411,15 +437,6 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
             detail="Another contact already uses this email",
         ) from exc
     db.refresh(contact)
-    if custom_data_to_save is not None:
-        save_custom_field_values(
-            db,
-            tenant_id=contact.tenant_id,
-            module_key="sales_contacts",
-            record_id=contact.contact_id,
-            values=custom_data_to_save,
-        )
-        db.commit()
     return hydrate_custom_field_record(
         db,
         tenant_id=contact.tenant_id,

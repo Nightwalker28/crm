@@ -349,32 +349,38 @@ def respond_to_client_quote(db: Session, *, quote: SalesQuote, action: str, clie
     before_status = quote.status
     quote.status = "accepted" if action == "approve" else "declined"
     db.add(quote)
-    db.commit()
-    db.refresh(quote)
     action_label = "approved" if action == "approve" else "rejected"
     audit_action = "portal.quote.approved" if action == "approve" else "portal.quote.rejected"
-    log_activity(
-        db,
-        tenant_id=quote.tenant_id,
-        actor_user_id=None,
-        module_key="sales_quotes",
-        entity_type="sales_quote",
-        entity_id=quote.quote_id,
-        action=audit_action,
-        description=f"Client {action_label} quote {quote.quote_number}",
-        before_state={"status": before_status},
-        after_state={
-            "status": quote.status,
-            "client_account_id": client_account_id,
-            "message": (message or "").strip() or None,
-        },
-    )
+    try:
+        log_activity(
+            db,
+            tenant_id=quote.tenant_id,
+            actor_user_id=None,
+            module_key="sales_quotes",
+            entity_type="sales_quote",
+            entity_id=quote.quote_id,
+            action=audit_action,
+            description=f"Client {action_label} quote {quote.quote_number}",
+            before_state={"status": before_status},
+            after_state={
+                "status": quote.status,
+                "client_account_id": client_account_id,
+                "message": (message or "").strip() or None,
+            },
+            commit=False,
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    db.refresh(quote)
     return quote
 
 
 def create_sales_quote(db: Session, payload: dict, current_user, replace_duplicates: bool = False, skip_duplicates: bool = False, create_new_records: bool = False) -> SalesQuote:
     ensure_single_duplicate_action(replace_duplicates=replace_duplicates, skip_duplicates=skip_duplicates, create_new_records=create_new_records)
     data = dict(payload)
+    explicit_assigned_to = "assigned_to" in data and data.get("assigned_to") is not None
     custom_data = validate_custom_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=data.pop("custom_fields", None))
     data = _normalize_quote_payload(data)
     data["custom_data"] = custom_data
@@ -393,25 +399,31 @@ def create_sales_quote(db: Session, payload: dict, current_user, replace_duplica
         if skip_duplicates and existing:
             return hydrate_custom_field_record(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", record=existing, record_id=existing.quote_id)
         if replace_duplicates and existing:
+            if not explicit_assigned_to:
+                data.pop("assigned_to", None)
             _apply_quote_payload(existing, data)
             db.add(existing)
-            db.commit()
+            try:
+                db.flush()
+                save_custom_field_values(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", record_id=existing.quote_id, values=custom_data)
+                db.commit()
+            except IntegrityError as exc:
+                db.rollback()
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to replace quote") from exc
             db.refresh(existing)
-            save_custom_field_values(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", record_id=existing.quote_id, values=custom_data)
-            db.commit()
             return hydrate_custom_field_record(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", record=existing, record_id=existing.quote_id)
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Quote number already exists")
 
     quote = SalesQuote(tenant_id=current_user.tenant_id, **data)
     db.add(quote)
     try:
+        db.flush()
+        save_custom_field_values(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", record_id=quote.quote_id, values=custom_data)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to create quote") from exc
     db.refresh(quote)
-    save_custom_field_values(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", record_id=quote.quote_id, values=custom_data)
-    db.commit()
     return hydrate_custom_field_record(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", record=quote, record_id=quote.quote_id)
 
 
@@ -427,11 +439,15 @@ def update_sales_quote(db: Session, quote: SalesQuote, data: dict) -> SalesQuote
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Another quote already uses this number")
     _apply_quote_payload(quote, data)
     db.add(quote)
-    db.commit()
-    db.refresh(quote)
-    if custom_data_to_save is not None:
-        save_custom_field_values(db, tenant_id=quote.tenant_id, module_key="sales_quotes", record_id=quote.quote_id, values=custom_data_to_save)
+    try:
+        db.flush()
+        if custom_data_to_save is not None:
+            save_custom_field_values(db, tenant_id=quote.tenant_id, module_key="sales_quotes", record_id=quote.quote_id, values=custom_data_to_save)
         db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to update quote") from exc
+    db.refresh(quote)
     return hydrate_custom_field_record(db, tenant_id=quote.tenant_id, module_key="sales_quotes", record=quote, record_id=quote.quote_id)
 
 

@@ -41,11 +41,17 @@ class SalesFollowUpTests(unittest.TestCase):
         self.assertEqual(task_payload["source_entity_id"], "42")
         self.assertEqual(task_payload["source_label"], "Q-1042")
         notify.assert_called_once()
+        self.assertFalse(create_task.call_args.kwargs["commit"])
+        self.assertFalse(notify.call_args.kwargs["commit"])
+        db.commit.assert_called_once()
+        db.rollback.assert_not_called()
         self.assertEqual(log_activity.call_args_list[0].kwargs["module_key"], "sales_quotes")
         self.assertEqual(log_activity.call_args_list[0].kwargs["action"], "follow_up.email")
+        self.assertFalse(log_activity.call_args_list[0].kwargs["commit"])
         self.assertEqual(log_activity.call_args_list[2].kwargs["module_key"], "sales_quotes")
         self.assertEqual(log_activity.call_args_list[2].kwargs["entity_type"], "sales_quote")
         self.assertEqual(log_activity.call_args_list[2].kwargs["action"], "task.follow_up_created")
+        self.assertFalse(log_activity.call_args_list[2].kwargs["commit"])
 
 
 if __name__ == "__main__":

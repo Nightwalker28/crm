@@ -402,6 +402,7 @@ def _notify_task_assignees(
     tenant_id: int,
     assignee_keys: list[str],
     actor_name: str | None,
+    commit: bool = True,
 ) -> None:
     if not assignee_keys:
         return
@@ -422,6 +423,7 @@ def _notify_task_assignees(
                 "task_status": task.status,
                 "task_priority": task.priority,
             },
+            commit=commit,
         )
 
 
@@ -462,7 +464,7 @@ def serialize_task(task: Task) -> dict:
     ).model_dump(mode="json")
 
 
-def create_task(db: Session, *, payload: dict, current_user) -> tuple[Task, list[str]]:
+def create_task(db: Session, *, payload: dict, current_user, commit: bool = True) -> tuple[Task, list[str]]:
     data = dict(payload)
     assignees_payload = data.pop("assignees", None)
     try:
@@ -498,10 +500,15 @@ def create_task(db: Session, *, payload: dict, current_user) -> tuple[Task, list
         )
         db.add(task)
         task_id = task.id
-        db.commit()
+        if commit:
+            db.commit()
+        else:
+            db.flush()
     except Exception:
         db.rollback()
         raise
+    if not commit:
+        return task, added_keys
     return get_task_or_404(db, task_id, tenant_id=current_user.tenant_id, current_user=current_user), added_keys
 
 
@@ -591,13 +598,14 @@ def restore_task(db: Session, *, task: Task, current_user) -> Task:
     return task
 
 
-def create_task_assignment_notifications(db: Session, *, task: Task, current_user, assignee_keys: list[str]) -> None:
+def create_task_assignment_notifications(db: Session, *, task: Task, current_user, assignee_keys: list[str], commit: bool = True) -> None:
     _notify_task_assignees(
         db,
         task=task,
         tenant_id=current_user.tenant_id,
         assignee_keys=assignee_keys,
         actor_name=_display_user_name(current_user),
+        commit=commit,
     )
 
 

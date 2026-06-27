@@ -229,7 +229,7 @@ def get_document_templates(
 
 
 @router.post("", response_model=DocumentResponse)
-async def upload_document(
+def upload_document(
     file: UploadFile = File(...),
     title: str | None = Form(default=None, max_length=255),
     description: str | None = Form(default=None, max_length=1000),
@@ -241,7 +241,7 @@ async def upload_document(
     require_module=Depends(require_module_access("documents")),
     require_permission=Depends(require_action_access("documents", "create")),
 ):
-    document = await create_document(
+    document = create_document(
         db,
         tenant_id=current_user.tenant_id,
         user_id=current_user.id,
@@ -321,7 +321,7 @@ def delete_document_client_share(
 
 
 @router.post("/{document_id}/versions", response_model=DocumentResponse)
-async def upload_new_document_version(
+def upload_new_document_version(
     document_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -329,7 +329,7 @@ async def upload_new_document_version(
     require_module=Depends(require_module_access("documents")),
     require_permission=Depends(require_action_access("documents", "edit")),
 ):
-    document = await upload_document_version(
+    document = upload_document_version(
         db,
         tenant_id=current_user.tenant_id,
         document_id=document_id,

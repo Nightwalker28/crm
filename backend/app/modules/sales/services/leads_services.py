@@ -311,6 +311,7 @@ def create_sales_lead(
         create_new_records=create_new_records,
     )
     data = dict(payload)
+    explicit_assigned_to = "assigned_to" in data and data.get("assigned_to") is not None
     custom_data = validate_custom_field_payload(
         db,
         tenant_id=current_user.tenant_id,
@@ -340,13 +341,19 @@ def create_sales_lead(
         if skip_duplicates:
             return hydrate_custom_field_record(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record=existing, record_id=existing.lead_id)
         if replace_duplicates:
+            if not explicit_assigned_to:
+                data.pop("assigned_to", None)
             _apply_lead_payload(existing, data)
             db.add(existing)
-            recalculate_lead_score(db, existing)
-            db.commit()
+            try:
+                db.flush()
+                recalculate_lead_score(db, existing)
+                save_custom_field_values(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record_id=existing.lead_id, values=custom_data)
+                db.commit()
+            except IntegrityError as exc:
+                db.rollback()
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to replace lead") from exc
             db.refresh(existing)
-            save_custom_field_values(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record_id=existing.lead_id, values=custom_data)
-            db.commit()
             return hydrate_custom_field_record(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record=existing, record_id=existing.lead_id)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
@@ -363,13 +370,12 @@ def create_sales_lead(
     try:
         db.flush()
         recalculate_lead_score(db, lead)
+        save_custom_field_values(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record_id=lead.lead_id, values=custom_data)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to create lead") from exc
     db.refresh(lead)
-    save_custom_field_values(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record_id=lead.lead_id, values=custom_data)
-    db.commit()
     return hydrate_custom_field_record(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record=lead, record_id=lead.lead_id)
 
 
@@ -409,12 +415,16 @@ def update_sales_lead(db: Session, lead: SalesLead, data: dict) -> SalesLead:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Another lead already uses this email")
     _apply_lead_payload(lead, data)
     db.add(lead)
-    recalculate_lead_score(db, lead)
-    db.commit()
-    db.refresh(lead)
-    if custom_data_to_save is not None:
-        save_custom_field_values(db, tenant_id=lead.tenant_id, module_key="sales_leads", record_id=lead.lead_id, values=custom_data_to_save)
+    try:
+        db.flush()
+        recalculate_lead_score(db, lead)
+        if custom_data_to_save is not None:
+            save_custom_field_values(db, tenant_id=lead.tenant_id, module_key="sales_leads", record_id=lead.lead_id, values=custom_data_to_save)
         db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to update lead") from exc
+    db.refresh(lead)
     return hydrate_custom_field_record(db, tenant_id=lead.tenant_id, module_key="sales_leads", record=lead, record_id=lead.lead_id)
 
 

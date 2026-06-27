@@ -160,7 +160,7 @@ class PosInvoiceBase(BaseModel):
     accent_color: str = "#14b8a6"
     currency: str = "USD"
     discount_amount: float = Field(default=0, ge=0)
-    tax_rate: float = Field(default=0, ge=0)
+    tax_rate: float = Field(default=0, ge=0, le=100)
     amount_paid: float = Field(default=0, ge=0)
     payment_terms: Optional[str] = None
     notes: Optional[str] = None
@@ -187,7 +187,7 @@ class PosInvoiceUpdateRequest(BaseModel):
     accent_color: Optional[str] = None
     currency: Optional[str] = None
     discount_amount: Optional[float] = Field(default=None, ge=0)
-    tax_rate: Optional[float] = Field(default=None, ge=0)
+    tax_rate: Optional[float] = Field(default=None, ge=0, le=100)
     amount_paid: Optional[float] = Field(default=None, ge=0)
     payment_terms: Optional[str] = None
     notes: Optional[str] = None

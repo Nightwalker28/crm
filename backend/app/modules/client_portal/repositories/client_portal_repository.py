@@ -80,9 +80,9 @@ def action_summary(db: Session, *, tenant_id: int, page_id: int) -> tuple[list[C
     return recent, query.count()
 
 
-def action_summaries(db: Session, *, tenant_id: int, page_ids: list[int]) -> tuple[dict[int, int], list[ClientPageAction]]:
+def action_summaries(db: Session, *, tenant_id: int, page_ids: list[int]) -> tuple[dict[int, int], dict[int, list[ClientPageAction]]]:
     if not page_ids:
-        return {}, []
+        return {}, {}
     counts = {
         page_id: count
         for page_id, count in db.query(ClientPageAction.client_page_id, func.count(ClientPageAction.id))
@@ -90,13 +90,31 @@ def action_summaries(db: Session, *, tenant_id: int, page_ids: list[int]) -> tup
         .group_by(ClientPageAction.client_page_id)
         .all()
     }
+    ranked_action_ids = (
+        db.query(
+            ClientPageAction.id.label("id"),
+            func.row_number()
+            .over(
+                partition_by=ClientPageAction.client_page_id,
+                order_by=(ClientPageAction.created_at.desc(), ClientPageAction.id.desc()),
+            )
+            .label("rank"),
+        )
+        .filter(ClientPageAction.tenant_id == tenant_id, ClientPageAction.client_page_id.in_(page_ids))
+        .subquery()
+    )
     recent_actions = (
         db.query(ClientPageAction)
+        .join(ranked_action_ids, ClientPageAction.id == ranked_action_ids.c.id)
+        .filter(ranked_action_ids.c.rank <= 3)
         .filter(ClientPageAction.tenant_id == tenant_id, ClientPageAction.client_page_id.in_(page_ids))
         .order_by(ClientPageAction.client_page_id.asc(), ClientPageAction.created_at.desc(), ClientPageAction.id.desc())
         .all()
     )
-    return counts, recent_actions
+    recent_by_page: dict[int, list[ClientPageAction]] = {page_id: [] for page_id in page_ids}
+    for action in recent_actions:
+        recent_by_page.setdefault(action.client_page_id, []).append(action)
+    return counts, recent_by_page
 
 
 def find_matching_page_action(
@@ -194,13 +212,20 @@ def client_email_exists(db: Session, *, tenant_id: int, email: str) -> bool:
     return bool(db.query(ClientAccount.id).filter(ClientAccount.tenant_id == tenant_id, ClientAccount.email == email).first())
 
 
-def list_client_accounts(db: Session, *, tenant_id: int, sort_by: str | None = None, sort_direction: str | None = None) -> list[ClientAccount]:
+def list_client_accounts(
+    db: Session,
+    *,
+    tenant_id: int,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+    limit: int = 100,
+) -> list[ClientAccount]:
     query = (
         db.query(ClientAccount)
         .options(joinedload(ClientAccount.contact), joinedload(ClientAccount.organization))
         .filter(ClientAccount.tenant_id == tenant_id)
     )
-    return apply_client_account_sort(query, sort_by=sort_by, sort_direction=sort_direction).all()
+    return apply_client_account_sort(query, sort_by=sort_by, sort_direction=sort_direction).limit(limit).all()
 
 
 def list_client_accounts_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[ClientAccount]:
@@ -223,13 +248,20 @@ def get_client_account(db: Session, *, tenant_id: int, account_id: int) -> Clien
     )
 
 
-def list_client_pages(db: Session, *, tenant_id: int, sort_by: str | None = None, sort_direction: str | None = None) -> list[ClientPage]:
+def list_client_pages(
+    db: Session,
+    *,
+    tenant_id: int,
+    sort_by: str | None = None,
+    sort_direction: str | None = None,
+    limit: int = 100,
+) -> list[ClientPage]:
     query = (
         db.query(ClientPage)
         .options(joinedload(ClientPage.contact), joinedload(ClientPage.organization))
         .filter(ClientPage.tenant_id == tenant_id)
     )
-    return apply_client_page_sort(query, sort_by=sort_by, sort_direction=sort_direction).all()
+    return apply_client_page_sort(query, sort_by=sort_by, sort_direction=sort_direction).limit(limit).all()
 
 
 def list_client_pages_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[ClientPage]:

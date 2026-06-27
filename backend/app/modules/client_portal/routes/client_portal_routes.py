@@ -56,6 +56,7 @@ from app.modules.client_portal.services.client_portal_services import (
     authenticate_client_account,
     check_client_login_rate_limit,
     check_public_client_page_action_rate_limit,
+    client_page_action_summaries,
     client_account_from_token,
     clear_failed_client_login_attempts,
     create_client_account,
@@ -355,12 +356,13 @@ def assign_organization_group_route(
 def get_client_accounts(
     sort_by: str | None = Query(default=None, max_length=80),
     sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
+    limit: int = Query(default=100, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("sales_contacts")),
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
-    accounts = list_client_accounts(db, tenant_id=current_user.tenant_id, sort_by=sort_by, sort_direction=sort_direction)
+    accounts = list_client_accounts(db, tenant_id=current_user.tenant_id, sort_by=sort_by, sort_direction=sort_direction, limit=limit)
     return [ClientAccountResponse.model_validate(serialize_client_account(account)) for account in accounts]
 
 
@@ -453,13 +455,15 @@ def update_client_account_status_route(
 def get_client_pages(
     sort_by: str | None = Query(default=None, max_length=80),
     sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
+    limit: int = Query(default=100, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("sales_contacts")),
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
-    pages = list_client_pages(db, tenant_id=current_user.tenant_id, sort_by=sort_by, sort_direction=sort_direction)
-    return [ClientPageResponse.model_validate(serialize_client_page(page, db=db)) for page in pages]
+    pages = list_client_pages(db, tenant_id=current_user.tenant_id, sort_by=sort_by, sort_direction=sort_direction, limit=limit)
+    summaries = client_page_action_summaries(db, pages)
+    return [ClientPageResponse.model_validate(serialize_client_page(page, db=db, action_summary=summaries.get(page.id))) for page in pages]
 
 
 @router.get("/pages/cursor", response_model=dict)
@@ -476,8 +480,14 @@ def get_client_pages_cursor(
         limit=pagination.limit,
         cursor=pagination.cursor,
     )
+    summaries = client_page_action_summaries(db, pages)
     return build_cursor_response(
-        [ClientPageResponse.model_validate(serialize_client_page(page, db=db)).model_dump(mode="json") for page in pages],
+        [
+            ClientPageResponse.model_validate(serialize_client_page(page, db=db, action_summary=summaries.get(page.id))).model_dump(
+                mode="json"
+            )
+            for page in pages
+        ],
         limit=pagination.limit,
         id_attr="id",
     )

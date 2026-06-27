@@ -22,6 +22,7 @@ def log_activity(
     description: str | None = None,
     before_state: dict[str, Any] | None = None,
     after_state: dict[str, Any] | None = None,
+    commit: bool = True,
 ) -> ActivityLog:
     entry = ActivityLog(
         tenant_id=tenant_id,
@@ -35,8 +36,9 @@ def log_activity(
         after_state=jsonable_encoder(after_state) if after_state is not None else None,
     )
     db.add(entry)
-    db.commit()
-    db.refresh(entry)
+    if commit:
+        db.commit()
+        db.refresh(entry)
     return entry
 
 

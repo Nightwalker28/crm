@@ -83,7 +83,7 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Completed:** 2026-06-25
 - **Files:** `backend/app/modules/client_portal/schema.py`, `backend/app/modules/client_portal/services/client_portal_services.py`, `backend/tests/test_client_portal.py`, `frontend/hooks/useClientPortal.ts`, `frontend/app/client/setup/page.tsx`
 - **Result:** Client setup passwords now share the core password-policy minimum at schema, service, and setup UI boundaries; client pricing and discount Decimal handling rejects non-finite values with clean 400/422 responses; public personalized pricing fails closed when a matching client account lacks a resolvable DB/session context; client account/page serializers avoid lazy relationship loads; public/client frontend requests only clear stored client tokens for explicit invalid-session responses; client setup UI mirrors the shared password policy before submit.
-- **Verification:** `docker compose exec -T backend python -m unittest tests.test_client_portal`; `docker compose exec -T backend python -m compileall app tests`; `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_client_portal`; `docker compose exec -T backend python -m compileall app tests`; `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
 
 ## SALES-SEC — Fix sales tenant boundaries, deleted-row semantics, and field policy bypasses
 
@@ -161,6 +161,46 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Public booking slot generation now fetches busy ranges once per requested date range instead of querying per candidate slot; booking submission locks the booking type row, performs a final overlap check before CRM/event side effects, and keeps booking uniqueness conflicts as clean 409 responses; visible calendar list queries use `EXISTS` predicates instead of join-plus-distinct row inflation; calendar create/update service paths validate merged start/end times before mutating ORM state. Static `/events/from-task` routes and direct-user response precedence were already correct in the current code.
 - **Verification:** `docker compose exec -T backend python -m unittest tests.test_calendar_booking_services`; `docker compose exec -T backend python -m unittest tests.test_calendar_services`; `docker compose exec -T backend python -m unittest tests.test_cursor_pagination`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
 
+## CAT-MEDIA — Stabilize catalog media, slug, enum, and boolean behavior
+
+- **Completed:** 2026-06-27
+- **Source items:** CAT-01, CAT-02, CAT-03, CAT-04, CAT-05, CAT-06, CAT-07, CAT-12, CAT-16, CAT-20
+- **Files:** `backend/app/modules/catalog/models.py`, `backend/app/modules/catalog/repositories/product_repository.py`, `backend/app/modules/catalog/repositories/service_repository.py`, `backend/app/modules/catalog/services/product_services.py`, `backend/app/modules/catalog/services/service_services.py`, `backend/alembic/versions/20260715_catalog_active_slug.py`, focused catalog tests
+- **Result:** Catalog slug uniqueness is now active-row scoped through partial unique indexes so soft-deleted product/service slugs can be reused while active collisions still fail; service-layer writes reject invalid direct enum, currency, price, and boolean values before hitting database constraints; media uploads delete newly persisted media when DB commit fails and only remove previous media after a successful commit; catalog soft deletes use aware UTC timestamps and restore checks reject active slug conflicts cleanly.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_catalog_products`; `docker compose exec -T backend python -m unittest tests.test_catalog_services`; `docker compose exec -T backend alembic upgrade head`; `docker compose exec -T backend alembic current`; `docker compose exec -T backend python -m unittest tests.test_catalog_module_foundation`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## CP-SEED — Make client portal seed/action/list flows bounded and canonical
+
+- **Completed:** 2026-06-27
+- **Source items:** CP-02, CP-03, CP-04, CP-07, CP-11, CP-12, CP-13, CP-16, CP-17, CP-18, CP-20, CP-21, CP-22
+- **Files:** `backend/app/modules/client_portal/repositories/client_portal_repository.py`, `backend/app/modules/client_portal/services/client_portal_services.py`, `backend/app/modules/client_portal/routes/client_portal_routes.py`, `frontend/hooks/useClientPortal.ts`, `backend/tests/test_client_portal.py`
+- **Result:** Default customer-group seeding now treats uniqueness races as clean read-after-conflict paths and placeholder groups no longer imply fake 0% discounts; public page action aliases store canonical `request_changes`; client page action summaries use bounded windowed queries and typed summary data instead of dynamic ORM attributes; flat CRM client account/page list routes have explicit limits while cursor routes remain available; client document/proposal download helpers guard browser-only APIs and clean up object URLs.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_client_portal`; `docker compose exec -T backend python -m compileall app tests`; `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`
+
+## DOC-STORAGE — Make document upload/write side effects recoverable
+
+- **Completed:** 2026-06-27
+- **Source items:** DOC-07, DOC-11, DOC-16, DOC-17, DOC-27, DOC-28, DOC-29
+- **Files:** `backend/app/modules/documents/services/document_services.py`, `backend/app/modules/documents/services/storage_backends.py`, `backend/app/modules/documents/routes/document_routes.py`, `backend/tests/test_documents.py`
+- **Result:** Document upload/version routes now run as sync handlers with bounded sync upload reads so provider I/O does not block an async route; content-type allow-lists derive from the extension policy map; local, Google Drive, and OneDrive storage backends expose cleanup hooks; create/version writes delete newly stored objects if DB persistence fails and translate integrity failures to clean conflicts; soft delete uses application UTC timestamps; document download audit logs now store slim document references instead of serializing relationship-heavy document state.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_documents`; `docker compose exec -T backend python -m unittest tests.test_api_routes.APIRouteTests.test_document_templates_route_calls_service_before_dynamic_document_route tests.test_api_routes.APIRouteTests.test_document_template_update_route_calls_service`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## FIN-TXN — Make finance writes, imports, invoices, and audits atomic
+
+- **Completed:** 2026-06-27
+- **Source items:** FIN-04, FIN-05, FIN-11, FIN-12, FIN-16, FIN-17, FIN-20, FIN-21, FIN-22, FIN-24, FIN-29, FIN-34, FIN-35
+- **Files:** `backend/app/modules/finance/models.py`, `backend/app/modules/finance/schema.py`, `backend/app/modules/finance/services/pos_invoice_services.py`, `backend/alembic/versions/20260716_finance_pos_active_number.py`, `backend/tests/test_finance_pos_invoices.py`
+- **Result:** POS invoice number uniqueness now matches soft-delete semantics through an active-row partial unique index; duplicate checks ignore deleted invoices while database conflicts return clean `409` responses; tax rates are capped at 100 in API schemas and service validation; POS invoice line updates preserve existing line rows by ID and remove only omitted rows; create/update/delete activity rows are inserted in the same transaction as the invoice mutation instead of committing after the mutation.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_finance_pos_invoices`; `docker compose exec -T backend python -m unittest tests.test_finance_io_api`; `docker compose exec -T backend alembic upgrade head`; `docker compose exec -T backend alembic current`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SALES-TXN — Make sales writes, imports, follow-ups, and audits atomic
+
+- **Completed:** 2026-06-27
+- **Source items:** SALES-09, SALES-10, SALES-11, SALES-12, SALES-15, SALES-19, SALES-22, SALES-39, SALES-DEEP-11, SALES-DEEP-12, SALES-DEEP-14, SALES-DEEP-15, SALES-DEEP-16, SALES-DEEP-17, SALES-DEEP-18, SALES-DEEP-21, SALES-DEEP-26, SALES-DEEP-27, SALES-DEEP-28, SALES-DEEP-32, SALES-DEEP-33, SALES-DEEP-35, SALES-DEEP-36
+- **Files:** `backend/app/modules/sales/services/contacts_services.py`, `backend/app/modules/sales/services/organizations_services.py`, `backend/app/modules/sales/services/leads_services.py`, `backend/app/modules/sales/services/quotes_services.py`, `backend/app/modules/sales/services/followups.py`, shared task/activity/notification helpers, focused sales/task tests
+- **Result:** Sales contact, organization, lead, and quote create/update/duplicate-replacement paths now flush parent rows, save custom fields, and commit once with rollback guards on integrity failures; duplicate replacement preserves existing assignees unless an assignee is explicitly supplied; portal quote responses commit status and audit together; sales follow-up actions create source audit rows, optional task records, task notifications, and linked task activity in one transaction using opt-in no-commit helper modes while existing task/activity/notification callers keep default committing behavior.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_contacts_services tests.test_organizations_services`; `docker compose exec -T backend python -m unittest tests.test_quotes_services tests.test_sales_orders`; `docker compose exec -T backend python -m unittest tests.test_leads_conversion`; `docker compose exec -T backend python -m unittest tests.test_sales_followups`; `docker compose exec -T backend python -m unittest tests.test_task_source_activity tests.test_task_reminders tests.test_activity_logs`
+
 ---
 
 # Consolidated Task Backlog
@@ -191,51 +231,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Issue:** Provider sync/delete paths can block workers or leave ghost external events, and enqueue failures are weakly observable.
 - **Fix:** Move provider sync/delete to bounded Celery tasks with retry/backoff, primitive IDs, idempotency state, and durable warning/status for enqueue failures. Remove repeated connection refreshes inside loops unless required.
 - **Acceptance:** Provider slowness/failure does not block entire request/worker paths indefinitely and remains retryable/observable.
-
-## CAT-MEDIA — Stabilize catalog media, slug, enum, and boolean behavior
-
-- **Severity:** Critical/High
-- **Source items:** CAT-01, CAT-02, CAT-03, CAT-04, CAT-05, CAT-06, CAT-07, CAT-12, CAT-16, CAT-20
-- **Files:** catalog product/service services, schemas, repositories, models/migrations if needed, tests
-- **Issue:** Catalog soft deletes use naive timestamps, media files can orphan or delete incorrectly on commit failure, slug reuse/update semantics are unclear, booleans are stored as small integers, and service boundaries can accept invalid raw enum/null values.
-- **Fix:** Use aware UTC timestamps. Track new and previous media paths separately; delete new media on rollback and old media only after commit. Define slug/null/update contracts explicitly. Cast booleans in serializers and validate service inputs before writing. Extract shared slug/validator helpers only where it reduces duplication.
-- **Acceptance:** Media and DB state remain consistent on failures; active slug collisions fail while intended soft-deleted reuse works; API returns booleans; direct service calls cannot write invalid enum-like values.
-
-## CP-SEED — Make client portal seed/action/list flows bounded and canonical
-
-- **Severity:** Critical/High
-- **Source items:** CP-02, CP-03, CP-04, CP-07, CP-11, CP-12, CP-13, CP-16, CP-17, CP-18, CP-20, CP-21, CP-22
-- **Files:** client portal services/repositories/routes/models, frontend hooks/pages, tests
-- **Issue:** Default customer-group seeding can race, support/page action names are inconsistent, action summaries and flat lists are unbounded, dynamic ORM attributes hide data shape, browser helpers can fail in DOM-light contexts, and placeholder groups imply fake 0% personalization.
-- **Fix:** Seed with `INSERT ... ON CONFLICT DO NOTHING` or clean IntegrityError retry/read. Constrain support actions at route/path boundary. Keep canonical stored action values with documented URL aliases. Limit action summaries with window functions and flat list routes with cursor/limit paths. Return typed action-summary data instead of `_action_summary`. Guard download/window/document access. Correct placeholder discount seed/data semantics.
-- **Acceptance:** Concurrent first access never 500s; unsupported support actions do not reach arbitrary service logic; `/request-changes` stores canonical `request_changes`; list/action summary queries are bounded.
-
-## DOC-STORAGE — Make document upload/write side effects recoverable
-
-- **Severity:** High/Medium
-- **Source items:** DOC-07, DOC-11, DOC-16, DOC-17, DOC-27, DOC-28, DOC-29
-- **Files:** document services/storage backends/routes/activity logging, tests
-- **Issue:** Async routes can call blocking provider HTTP, soft-delete audit can serialize expression state, content-type policy maps can drift, share dedup semantics are unclear, download audit state is too heavy, and DB failures after storage writes can leak provider objects or bubble integrity errors.
-- **Fix:** Use async provider clients or sync FastAPI route functions consistently. Use application UTC timestamps before commit. Derive content-type policy from one map. Name and test share dedup semantics. Log slim download audit state. Add cleanup/compensation metadata for storage-written-then-DB-failed paths. Wrap write conflicts as clean 4xx.
-- **Acceptance:** Provider I/O does not block the async event loop; document mutation/audit states are clear; storage write conflicts and cleanup failures are handled intentionally.
-
-## FIN-TXN — Make finance writes, imports, invoices, and audits atomic
-
-- **Severity:** High/Critical
-- **Source items:** FIN-04, FIN-05, FIN-11, FIN-12, FIN-16, FIN-17, FIN-20, FIN-21, FIN-22, FIN-24, FIN-29, FIN-34, FIN-35
-- **Files:** finance IO/POS services, repositories, routes, models/migrations, tests
-- **Issue:** IO custom fields commit separately from records, CSV import parses twice and expires full session inside row errors, POS invoice uniqueness ignores soft deletes while DB index does not, SQLite number generation can race, line updates churn all rows, audit logs commit after mutations, tax rates are unbounded, and update route semantics are PATCH-like on PUT.
-- **Fix:** Flush IDs and commit IO/custom fields once. Parse CSV once and use row savepoints instead of broad `expire_all()`. Align service and DB uniqueness on active POS invoices. Add bounded SQLite retry if needed. Diff invoice lines by ID. Write audit logs in the same transaction. Cap tax rates. Remove dead duplicate query helpers. Add PATCH or document/alias PUT semantics. Share cursor/list serializers.
-- **Acceptance:** Record/custom-field and invoice/audit writes commit or roll back together; soft-deleted invoice numbers can be reused while active duplicates fail; invoice line updates preserve unchanged rows; invalid tax rates return 4xx.
-
-## SALES-TXN — Make sales writes, imports, follow-ups, and audits atomic
-
-- **Severity:** High/Critical
-- **Source items:** SALES-09, SALES-10, SALES-11, SALES-12, SALES-15, SALES-19, SALES-22, SALES-39, SALES-DEEP-11, SALES-DEEP-12, SALES-DEEP-14, SALES-DEEP-15, SALES-DEEP-16, SALES-DEEP-17, SALES-DEEP-18, SALES-DEEP-21, SALES-DEEP-26, SALES-DEEP-27, SALES-DEEP-28, SALES-DEEP-32, SALES-DEEP-33, SALES-DEEP-35, SALES-DEEP-36
-- **Files:** sales contact/organization/opportunity/lead/quote/order/follow-up/reminder services, import paths, tests
-- **Issue:** Multiple sales create/update/import paths commit parent records before custom fields, imports commit per row or use mixed transaction patterns, follow-up/reminder side effects can split from activity/task creation, quote status changes can split from audit logging, duplicate conversion flags and order transitions need explicit rules, and some duplicate pre-checks have TOCTOU windows.
-- **Fix:** Standardize sales writes on `flush()` plus one commit for parent/custom fields/audit where possible. Use import-specific helpers with batch transactions or row savepoints. Add rollback guards around known conflict paths. Preserve explicit assignees on duplicate replacement. Make follow-up/reminder side effects atomic or explicitly best-effort with durable logging. Define quote follow-up, quote-to-order duplicate, and order transition semantics.
-- **Acceptance:** Sales parent/custom-field/audit writes commit or roll back together; large imports avoid N commits while preserving row summaries; follow-up/reminder task side effects have clear all-or-best-effort behavior; duplicate/order state behavior matches the exposed flags.
 
 ## SALES-FILES — Make sales attachments and quote/public-file behavior durable
 

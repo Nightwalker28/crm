@@ -38,12 +38,24 @@ def slug_exists(
     slug: str,
     product_id: int | None = None,
 ) -> bool:
-    query = db.query(CatalogProduct.id).filter(CatalogProduct.tenant_id == tenant_id, CatalogProduct.slug == slug)
+    query = db.query(CatalogProduct.id).filter(
+        CatalogProduct.tenant_id == tenant_id,
+        CatalogProduct.slug == slug,
+        CatalogProduct.deleted_at.is_(None),
+    )
     if product_id is not None:
         query = query.filter(CatalogProduct.id != product_id)
     if query.first():
         return True
-    return bool(db.query(CatalogService.id).filter(CatalogService.tenant_id == tenant_id, CatalogService.slug == slug).first())
+    return bool(
+        db.query(CatalogService.id)
+        .filter(
+            CatalogService.tenant_id == tenant_id,
+            CatalogService.slug == slug,
+            CatalogService.deleted_at.is_(None),
+        )
+        .first()
+    )
 
 
 def list_products(

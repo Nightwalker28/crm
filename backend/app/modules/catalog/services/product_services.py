@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
-from decimal import Decimal
+from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 import re
 
 from fastapi import HTTPException, UploadFile, status
@@ -15,12 +15,53 @@ from app.modules.catalog.schema import CatalogProductResponse
 from app.modules.platform.services.activity_logs import log_activity
 
 CATALOG_PRODUCTS_MODULE = "catalog_products"
+PRODUCT_STOCK_STATUSES = {"untracked", "in_stock", "out_of_stock", "preorder"}
 
 
 def _normalize_slug(value: str | None, *, fallback: str) -> str | None:
     source = (value or fallback or "").strip().lower()
     normalized = re.sub(r"[^a-z0-9]+", "-", source).strip("-")
     return normalized[:160] or None
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _normalize_currency(value) -> str:
+    normalized = str(value or "USD").strip().upper()
+    if len(normalized) != 3 or not normalized.isalpha():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="currency must be a 3-letter code")
+    return normalized
+
+
+def _coerce_nonnegative_decimal(value, *, field_name: str, required: bool = True) -> Decimal | None:
+    if value is None:
+        if required:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} cannot be null")
+        return None
+    try:
+        decimal_value = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid {field_name}") from exc
+    if not decimal_value.is_finite() or decimal_value < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} must be non-negative")
+    return decimal_value
+
+
+def _coerce_bool(value, *, field_name: str) -> int:
+    if isinstance(value, bool):
+        return 1 if value else 0
+    if isinstance(value, int) and value in {0, 1}:
+        return int(value)
+    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} must be a boolean")
+
+
+def _normalize_stock_status(value) -> str:
+    normalized = str(value or "untracked").strip().lower()
+    if normalized not in PRODUCT_STOCK_STATUSES:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid stock status")
+    return normalized
 
 
 def _ensure_slug_available(
@@ -140,12 +181,12 @@ def create_product(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
         slug=slug,
         description=(payload.get("description") or "").strip() or None,
         sku=(payload.get("sku") or "").strip() or None,
-        currency=str(payload.get("currency") or "USD").strip().upper(),
-        public_unit_price=Decimal(str(payload.get("public_unit_price", 0))),
-        stock_status=payload.get("stock_status") or "untracked",
-        stock_quantity=Decimal(str(payload["stock_quantity"])) if payload.get("stock_quantity") is not None else None,
-        is_public=1 if payload.get("is_public", False) else 0,
-        is_active=1 if payload.get("is_active", True) else 0,
+        currency=_normalize_currency(payload.get("currency")),
+        public_unit_price=_coerce_nonnegative_decimal(payload.get("public_unit_price", 0), field_name="public_unit_price"),
+        stock_status=_normalize_stock_status(payload.get("stock_status")),
+        stock_quantity=_coerce_nonnegative_decimal(payload.get("stock_quantity"), field_name="stock_quantity", required=False),
+        is_public=_coerce_bool(payload.get("is_public", False), field_name="is_public"),
+        is_active=_coerce_bool(payload.get("is_active", True), field_name="is_active"),
         created_by_user_id=actor_user_id,
         updated_by_user_id=actor_user_id,
     )
@@ -204,11 +245,13 @@ def update_product(
         elif field == "name" and value is not None:
             value = str(value).strip()
         elif field == "currency" and value is not None:
-            value = str(value).strip().upper()
+            value = _normalize_currency(value)
         elif field in {"public_unit_price", "stock_quantity"} and value is not None:
-            value = Decimal(str(value))
+            value = _coerce_nonnegative_decimal(value, field_name=field, required=field in required_fields)
+        elif field == "stock_status" and value is not None:
+            value = _normalize_stock_status(value)
         elif field in {"is_public", "is_active"} and value is not None:
-            value = 1 if value else 0
+            value = _coerce_bool(value, field_name=field)
         setattr(product, field, value)
     product.updated_by_user_id = actor_user_id
     db.add(product)
@@ -243,17 +286,23 @@ async def upload_product_media(
     before_state = _product_state(product)
     content, extension = await read_image_upload(file)
     previous_media_path = product.media_path
-    product.media_path = persist_media_file(
+    new_media_path = persist_media_file(
         category="catalog-products",
         owner_key=f"tenant-{product.tenant_id}/product-{product.id}",
         extension=extension,
         content=content,
     )
+    product.media_path = new_media_path
     product.media_content_type = file.content_type
     product.media_original_filename = (file.filename or "product-image")[:255]
     product.updated_by_user_id = actor_user_id
     db.add(product)
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        delete_local_media_file(new_media_path)
+        raise
     db.refresh(product)
     delete_local_media_file(previous_media_path)
     log_activity(
@@ -279,7 +328,7 @@ def soft_delete_product(
 ) -> CatalogProduct:
     if product.deleted_at is None:
         before_state = _product_state(product)
-        product.deleted_at = datetime.utcnow()
+        product.deleted_at = _utcnow()
         product.updated_by_user_id = actor_user_id
         db.add(product)
         db.commit()
@@ -306,6 +355,7 @@ def restore_product(
     actor_user_id: int | None,
 ) -> CatalogProduct:
     if product.deleted_at is not None:
+        _ensure_slug_available(db, tenant_id=product.tenant_id, slug=product.slug, product_id=product.id)
         product.deleted_at = None
         product.updated_by_user_id = actor_user_id
         db.add(product)
