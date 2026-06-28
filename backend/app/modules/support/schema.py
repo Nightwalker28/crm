@@ -17,7 +17,6 @@ class SupportCaseBase(BaseModel):
     quote_id: int | None = None
     order_id: int | None = None
     assigned_to_id: int | None = None
-    sla_due_at: datetime | None = None
 
 
 class SupportCaseCreateRequest(SupportCaseBase):
@@ -37,8 +36,6 @@ class SupportCaseUpdateRequest(BaseModel):
     quote_id: int | None = None
     order_id: int | None = None
     assigned_to_id: int | None = None
-    sla_due_at: datetime | None = None
-    first_response_at: datetime | None = None
 
 
 class SupportCaseCommentCreateRequest(BaseModel):
@@ -50,6 +47,7 @@ class SupportCaseCommentResponse(BaseModel):
     id: int
     case_id: int
     author_id: int | None = None
+    author_name: str | None = None
     body: str
     is_internal: bool
     created_at: datetime
@@ -73,6 +71,9 @@ class SupportCaseResponse(SupportCaseBase):
     tenant_id: int
     case_number: str
     created_by_id: int | None = None
+    created_by_name: str | None = None
+    assigned_to_name: str | None = None
+    sla_due_at: datetime | None = None
     first_response_at: datetime | None = None
     resolved_at: datetime | None = None
     closed_at: datetime | None = None
@@ -98,6 +99,7 @@ class SupportCaseListItem(BaseModel):
     quote_id: int | None = None
     order_id: int | None = None
     assigned_to_id: int | None = None
+    assigned_to_name: str | None = None
     sla_due_at: datetime | None = None
     first_response_at: datetime | None = None
     resolved_at: datetime | None = None

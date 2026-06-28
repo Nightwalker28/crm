@@ -127,7 +127,10 @@ def _coerce_column_value(column: Any, value: Any) -> Any:
     if value is None:
         return None
     if isinstance(column.type, DateTime) and isinstance(value, str):
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            return parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
     if isinstance(column.type, Date) and not isinstance(column.type, DateTime) and isinstance(value, str):
         return date.fromisoformat(value)
     if isinstance(column.type, Numeric) and not isinstance(value, Decimal):
@@ -316,7 +319,9 @@ def execute_tenant_module_restore(
         with zipfile.ZipFile(artifact_path) as zipf:
             _metadata, rows, model = _module_payload(zipf, tenant_id=tenant_id, module_key=module_key)
         preview_summary = _restore_summary(db, tenant_id=tenant_id, model=model, rows=rows)
-        result = _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode=mode)
+        with db.begin_nested():
+            result = _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode=mode)
+            db.flush()
         summary = {**preview_summary, **result}
         run.status = "completed"
         run.summary = summary
@@ -468,7 +473,9 @@ def execute_whole_tenant_restore(
                 _validate_module_enabled(db, tenant_id=tenant_id, module_key=module_key)
                 _module_metadata, rows, model = _module_payload(zipf, tenant_id=tenant_id, module_key=module_key)
                 preview_summary = _restore_summary(db, tenant_id=tenant_id, model=model, rows=rows)
-                result = _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode="replace_module_data")
+                with db.begin_nested():
+                    result = _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode="replace_module_data")
+                    db.flush()
                 module_summary = {**preview_summary, **result}
                 module_summaries[module_key] = module_summary
                 total_rows += int(preview_summary["total_rows"])

@@ -11,6 +11,7 @@ export type SupportCaseComment = {
   id: number;
   case_id: number;
   author_id: number | null;
+  author_name: string | null;
   body: string;
   is_internal: boolean;
   created_at: string;
@@ -41,6 +42,8 @@ export type SupportCase = {
   quote_id: number | null;
   order_id: number | null;
   assigned_to_id: number | null;
+  assigned_to_name: string | null;
+  created_by_name?: string | null;
   created_by_id?: number | null;
   sla_due_at: string | null;
   first_response_at: string | null;

@@ -167,7 +167,7 @@ class CalendarGoogleSyncTests(unittest.TestCase):
         )
         event = SimpleNamespace(id=12, owner_user_id=2, participants=[participant])
 
-        with patch.object(calendar_services, "_sync_google_participant_event") as sync_mock, \
+        with patch.object(calendar_services, "_enqueue_external_events_for_event") as enqueue_mock, \
              patch.object(calendar_services, "get_calendar_event_or_404") as get_mock:
             result = calendar_services.respond_to_calendar_invite(
                 db,
@@ -181,8 +181,67 @@ class CalendarGoogleSyncTests(unittest.TestCase):
         self.assertIsNotNone(participant.responded_at)
         self.assertEqual(db.added, [participant])
         self.assertEqual(db.commits, 1)
-        sync_mock.assert_called_once_with(db, event=event, participant=participant)
+        enqueue_mock.assert_called_once_with(db, event)
         get_mock.assert_not_called()
+
+    def test_calendar_decline_queues_external_delete_without_inline_provider_call(self):
+        db = FakeDB()
+        current_user = SimpleNamespace(id=1, tenant_id=10)
+        participant = SimpleNamespace(
+            tenant_id=10,
+            participant_type="user",
+            user_id=1,
+            user=SimpleNamespace(last_login_provider="google"),
+            is_owner=False,
+            response_status="pending",
+            responded_at=None,
+            external_provider="google",
+            external_event_id="external-1",
+        )
+        event = SimpleNamespace(id=12, tenant_id=10, owner_user_id=2, participants=[participant])
+
+        with patch.object(calendar_services, "_enqueue_external_event_delete", return_value=True) as enqueue_mock, \
+             patch.object(calendar_services, "_delete_participant_event") as delete_mock:
+            result = calendar_services.respond_to_calendar_invite(
+                db,
+                event=event,
+                current_user=current_user,
+                response_status="declined",
+            )
+
+        self.assertIs(result, event)
+        self.assertEqual(participant.response_status, "declined")
+        enqueue_mock.assert_called_once_with(
+            {
+                "tenant_id": 10,
+                "user_id": 1,
+                "provider": "google",
+                "external_event_id": "external-1",
+            },
+            event_id=12,
+            db=db,
+            participant=participant,
+        )
+        delete_mock.assert_not_called()
+
+    def test_calendar_external_sync_enqueue_failure_marks_participant_status(self):
+        db = FakeDB()
+        participant = SimpleNamespace(
+            id=5,
+            tenant_id=10,
+            participant_type="user",
+            response_status="accepted",
+            last_sync_error=None,
+        )
+        event = SimpleNamespace(id=12, tenant_id=10, participants=[participant])
+
+        with patch("builtins.__import__", side_effect=ImportError("celery missing")), \
+             patch.object(calendar_services.logger, "warning"):
+            calendar_services._enqueue_external_events_for_event(db, event)
+
+        self.assertEqual(participant.last_sync_error, "Calendar external sync could not be queued.")
+        self.assertEqual(db.added, [participant])
+        self.assertEqual(db.commits, 1)
 
     def test_calendar_update_rejects_invalid_partial_dates_before_mutating_event(self):
         db = FakeDB()
@@ -233,6 +292,37 @@ class CalendarGoogleSyncTests(unittest.TestCase):
         self.assertIsNone(participant.external_provider)
         self.assertIsNone(participant.external_event_id)
         microsoft_sync_mock.assert_called_once_with(db, event=event, participant=participant)
+
+    def test_delete_calendar_event_queues_external_deletes_after_soft_delete(self):
+        db = FakeDB()
+        participant = SimpleNamespace(
+            tenant_id=10,
+            user_id=1,
+            external_provider="microsoft",
+            external_event_id="external-2",
+        )
+        event = SimpleNamespace(id=12, tenant_id=10, deleted_at=None, participants=[participant])
+
+        with patch.object(calendar_services, "_enqueue_external_event_delete", return_value=True) as enqueue_mock, \
+             patch.object(calendar_services, "_delete_participant_event") as delete_mock:
+            deleted = calendar_services.delete_calendar_event(db, event=event)
+
+        self.assertIs(deleted, event)
+        self.assertIsNotNone(event.deleted_at)
+        self.assertEqual(db.added, [event])
+        self.assertEqual(db.commits, 1)
+        enqueue_mock.assert_called_once_with(
+            {
+                "tenant_id": 10,
+                "user_id": 1,
+                "provider": "microsoft",
+                "external_event_id": "external-2",
+            },
+            event_id=12,
+            db=db,
+            participant=participant,
+        )
+        delete_mock.assert_not_called()
 
     def test_calendar_participant_notification_failure_is_non_fatal(self):
         db = FakeDB()

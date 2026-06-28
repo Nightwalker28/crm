@@ -3,13 +3,22 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.modules.documents import models as documents_models  # noqa: F401
 from app.modules.platform.models import ActivityLog, AutomationRuleDeadLetter, AutomationRuleRun, CrmEvent, UserNotification
 from app.modules.platform.services.automation_registry import actions_for_trigger, grouped_trigger_registry
-from app.modules.platform.services.automation_rules import create_automation_rule, list_automation_rule_runs, preview_automation_rule, process_crm_event_automations, serialize_automation_rule_run, update_automation_rule
+from app.modules.platform.services.automation_rules import (
+    create_automation_rule,
+    execute_rule_for_event,
+    list_automation_rule_runs,
+    preview_automation_rule,
+    process_crm_event_automations,
+    serialize_automation_rule_run,
+    update_automation_rule,
+)
 from app.modules.platform.services.crm_events import emit_crm_event
 from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.support.models import SupportCase, SupportCaseEvent
@@ -463,6 +472,76 @@ class AutomationRuleTests(unittest.TestCase):
         self.assertEqual(first_runs[0].id, second_runs[0].id)
         self.assertEqual(self.db.query(AutomationRuleRun).count(), 1)
         self.assertEqual(self.db.query(Task).count(), 1)
+
+    def test_duplicate_run_integrity_race_returns_existing_run(self):
+        rule = create_automation_rule(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "name": "Lead task",
+                "trigger_event": "lead.created",
+                "actions_json": [{"type": "create_task", "title": "Lead task"}],
+            },
+        )
+        event = CrmEvent(
+            id=500,
+            tenant_id=10,
+            actor_user_id=1,
+            event_type="lead.created",
+            entity_type="sales_lead",
+            entity_id="123",
+            payload={},
+        )
+        existing_run = AutomationRuleRun(
+            id=600,
+            tenant_id=10,
+            rule_id=rule.id,
+            event_id=500,
+            trigger_event_key="lead.created",
+            source_module_key="sales_lead",
+            source_record_id="123",
+            status="succeeded",
+        )
+        self.db.add_all([event, existing_run])
+        self.db.commit()
+        self.db.refresh(rule)
+        self.db.refresh(event)
+        self.db.refresh(existing_run)
+
+        with patch(
+            "app.modules.platform.services.automation_rules._existing_run_for_rule_event",
+            side_effect=[None, existing_run],
+        ), patch.object(self.db, "flush", side_effect=IntegrityError("insert", {}, Exception("duplicate"))):
+            run = execute_rule_for_event(self.db, rule=rule, event=event)
+
+        self.assertEqual(run.id, existing_run.id)
+        self.assertEqual(self.db.query(AutomationRuleRun).count(), 1)
+        self.assertEqual(self.db.query(Task).count(), 0)
+
+    def test_template_substitution_is_single_pass(self):
+        create_automation_rule(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "name": "Lead task",
+                "trigger_event": "lead.created",
+                "actions_json": [{"type": "create_task", "title": "Call {{payload.lead_name}}"}],
+            },
+        )
+
+        self._emit_and_process(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            event_type="lead.created",
+            entity_type="sales_lead",
+            entity_id=123,
+            payload={"lead_name": "{{payload.source}}", "source": "Referral"},
+        )
+
+        self.assertEqual(self.db.query(Task).one().title, "Call {{payload.source}}")
 
     def test_run_history_serializer_includes_debug_summary_and_redacts_sensitive_values(self):
         create_automation_rule(

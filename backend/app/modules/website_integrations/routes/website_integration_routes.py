@@ -234,7 +234,7 @@ def create_website_order_pos_invoice(
 @public_router.get("/catalog", response_model=PublicWebsiteCatalogListResponse)
 def get_public_catalog(
     request: Request,
-    search: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=100),
     item_type: str | None = Query(default=None),
     limit: int = Query(default=50, ge=1, le=100),
     offset: int = Query(default=0, ge=0),

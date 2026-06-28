@@ -7,10 +7,12 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.platform.models import CrmEvent
 from app.modules.sales.models import SalesContact, SalesOpportunity
 from app.modules.sales.services import reminder_scans
 from app.modules.tasks.models import Task, TaskAssignee
+from app.modules.tasks.routes import tasks_routes
 from app.modules.tasks.services import tasks_services
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import User, UserStatus
@@ -127,6 +129,56 @@ class TaskDueAlertScanTests(unittest.TestCase):
         self.assertEqual(result["notifications_created"], 0)
         event_mock.assert_not_called()
         notification_mock.assert_not_called()
+
+    def test_route_due_today_alert_emits_once_per_task_per_day(self):
+        task = self.db.query(Task).filter(Task.id == 1).one()
+        current_user = SimpleNamespace(id=1, tenant_id=10, timezone="UTC")
+
+        with patch.object(tasks_routes, "_is_due_today", return_value=True):
+            tasks_routes._emit_task_alert_events(self.db, current_user=current_user, task=task, added_keys=[])
+            tasks_routes._emit_task_alert_events(self.db, current_user=current_user, task=task, added_keys=[])
+
+        events = (
+            self.db.query(CrmEvent)
+            .filter(
+                CrmEvent.tenant_id == 10,
+                CrmEvent.event_type == "task.due_today",
+                CrmEvent.entity_type == "task",
+                CrmEvent.entity_id == "1",
+            )
+            .all()
+        )
+        self.assertEqual(len(events), 1)
+
+    def test_scan_due_task_alerts_logs_notification_failures(self):
+        with patch.object(tasks_services, "safe_emit_crm_event", return_value=SimpleNamespace(id=10)), \
+             patch.object(tasks_services, "create_notification", side_effect=RuntimeError("notify failed")), \
+             patch.object(tasks_services.logger, "exception") as exception_mock:
+            result = tasks_services.scan_due_task_alerts(self.db, now=self.now)
+
+        self.assertEqual(result["due_tasks"], 1)
+        self.assertEqual(result["alerts_created"], 1)
+        self.assertEqual(result["notifications_created"], 0)
+        exception_mock.assert_called_once()
+        self.assertEqual(exception_mock.call_args.kwargs["extra"]["task_id"], 1)
+        self.assertEqual(exception_mock.call_args.kwargs["extra"]["category"], tasks_services.TASK_DUE_TODAY_NOTIFICATION_CATEGORY)
+
+    def test_assignment_notification_failure_is_observable_and_non_fatal(self):
+        task = self.db.query(Task).filter(Task.id == 1).one()
+        current_user = SimpleNamespace(id=1, tenant_id=10, first_name="Casey", last_name="Creator", email="creator@example.com")
+
+        with patch.object(tasks_services, "create_notification", side_effect=RuntimeError("notify failed")), \
+             patch.object(tasks_services.logger, "exception") as exception_mock:
+            tasks_services.create_task_assignment_notifications(
+                self.db,
+                task=task,
+                current_user=current_user,
+                assignee_keys=["user:2"],
+            )
+
+        exception_mock.assert_called_once()
+        self.assertEqual(exception_mock.call_args.kwargs["extra"]["task_id"], 1)
+        self.assertEqual(exception_mock.call_args.kwargs["extra"]["category"], tasks_services.TASK_ASSIGNMENT_NOTIFICATION_CATEGORY)
 
 
 class FollowUpReminderScanTests(unittest.TestCase):

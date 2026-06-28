@@ -1,6 +1,6 @@
 # Codex Production Readiness Backlog
 
-_Last updated: 2026-06-26_
+_Last updated: 2026-06-28_
 
 This is the consolidated implementation backlog for the production-readiness audit across Core Backend, Contracts, Calendar, Catalog, Client Portal, Documents, Platform, Finance, Sales, Support, Tasks, and User Management.
 
@@ -33,9 +33,9 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 ## Recommended PR Order
 
 1. **Critical security and startup safety:** complete for the user-management auth/SSO backend items.
-2. **Concurrency and transaction correctness:** CON-CONC, CAL-CONC, CAT-MEDIA, CP-SEED, DOC-STORAGE, FIN-TXN, SALES-TXN, SUPPORT-SLA, PLAT-RESTORE.
-3. **External side effects and background work:** CAL-SYNC, DOC-STORAGE, TASKS-EVENTS, PLAT-EVENTS, PLAT-RESTORE.
-4. **Query scalability and indexes:** SEARCH-IDX, LIST-PERF, SALES-PERF, SUPPORT-PERF, TASKS-PERF, UM-PROFILE, PLAT-QUERY.
+2. **Concurrency and transaction correctness:** complete.
+3. **External side effects and background work:** complete.
+4. **Query scalability and indexes:** complete for SEARCH-IDX; remaining LIST-PERF, SALES-PERF, SUPPORT-PERF, TASKS-PERF, UM-PROFILE, PLAT-QUERY.
 5. **Frontend cache, validation, and browser reliability:** FE-QUERY, FE-FORMS, FE-BROWSER, UM-FRONTEND.
 6. **Cleanup and maintainability:** SALES-FILES, SALES-MODELS, UM-MAINT, OPS-MAINT, SERIALIZATION, ROUTES, DUPLICATION.
 
@@ -201,18 +201,57 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Sales contact, organization, lead, and quote create/update/duplicate-replacement paths now flush parent rows, save custom fields, and commit once with rollback guards on integrity failures; duplicate replacement preserves existing assignees unless an assignee is explicitly supplied; portal quote responses commit status and audit together; sales follow-up actions create source audit rows, optional task records, task notifications, and linked task activity in one transaction using opt-in no-commit helper modes while existing task/activity/notification callers keep default committing behavior.
 - **Verification:** `docker compose exec -T backend python -m unittest tests.test_contacts_services tests.test_organizations_services`; `docker compose exec -T backend python -m unittest tests.test_quotes_services tests.test_sales_orders`; `docker compose exec -T backend python -m unittest tests.test_leads_conversion`; `docker compose exec -T backend python -m unittest tests.test_sales_followups`; `docker compose exec -T backend python -m unittest tests.test_task_source_activity tests.test_task_reminders tests.test_activity_logs`
 
----
+## SUPPORT-SLA — Protect support SLA lifecycle and linked-record updates
 
-# Consolidated Task Backlog
+- **Completed:** 2026-06-28
+- **Source items:** SUP-05, SUP-06, SUP-07, SUP-17, SUP-18, SUP-19, SUP-22, SUP-29
+- **Files:** `backend/app/modules/support/models.py`, `backend/app/modules/support/schema.py`, `backend/app/modules/support/services/cases_services.py`, `backend/app/modules/support/routes/cases_routes.py`, client portal support schemas/routes, support frontend types/views, focused support/client tests
+- **Result:** Support create/update payloads no longer expose or honor service-owned SLA/lifecycle timestamps; service normalization whitelists mutable fields before status transition logic and category validation; partial updates validate only changed linked fields; support case/detail/list responses expose assignee and comment author display names; client support serialization continues to hide internal comments while returning client/team author display labels for visible comments.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_support_cases`; `docker compose exec -T backend python -m unittest tests.test_client_portal`
+
+## PLAT-RESTORE — Protect platform restore, backup, retention, and data-transfer jobs
+
+- **Completed:** 2026-06-28
+- **Source items:** PLAT-02, PLAT-06, PLAT-08, PLAT-12, PLAT-14, PLAT-20, PLAT-42
+- **Files:** `backend/app/modules/platform/services/tenant_restore_runs.py`, `backend/app/modules/platform/services/tenant_backup_runs.py`, `backend/app/modules/platform/routes/tenant_backup_runs.py`, `backend/app/tasks/tenant_backup_tasks.py`, `backend/app/modules/platform/services/data_transfer_jobs.py`, custom module import route/service, focused platform tests
+- **Result:** Restore row application now runs inside nested transactions and normalizes restored datetime strings to UTC while failure status is recorded outside the savepoint; manual tenant backup requests create pending runs and enqueue Celery processing; tenant backup retention and data-transfer export cleanup select only IDs/file paths before clearing artifacts; data-transfer job sessions use context-managed sessions while preserving import temp-file cleanup; custom module import execution validates mapping from target headers without running the preview parser over the uploaded CSV.
+- **Verification:** `docker compose exec -T backend python -m compileall app tests`; `docker compose exec -T backend python -m unittest tests.test_tenant_backup_settings`; `docker compose exec -T backend python -m unittest tests.test_custom_modules`; `docker compose exec -T backend python -m unittest tests.test_data_transfer_job_permissions`
+
+## CAL-SYNC — Make external calendar sync/delete side effects retryable
+
+- **Completed:** 2026-06-28
+- **Source items:** CAL-03, CAL-11, CAL-12, CAL-X3
+- **Files:** `backend/app/modules/calendar/services/calendar_services.py`, `backend/app/tasks/calendar_tasks.py`, focused calendar tests
+- **Result:** Calendar event sync and external-event deletion now run through bounded Celery tasks with retry/backoff/time limits and primitive payloads. Invite accept/decline, event delete, and participant-removal cleanup enqueue provider work after the local transaction commits, so request paths no longer call Google/Microsoft delete or sync APIs inline. Enqueue failures are logged with tenant/event/user/provider context and recorded on participant sync status when the local row still exists.
+- **Verification:** `docker compose exec -T backend python -m compileall app tests`; `docker compose exec -T backend python -m unittest tests.test_calendar_services`; `docker compose exec -T backend python -m unittest tests.test_calendar_booking_services`
+
+## TASKS-EVENTS — Deduplicate task alerts and make notifications observable
+
+- **Completed:** 2026-06-28
+- **Source items:** TASK-07, TASK-17, TASK-18, TASK-19, TASK-20
+- **Files:** `backend/app/modules/tasks/services/tasks_services.py`, `backend/app/modules/tasks/routes/tasks_routes.py`, `backend/app/modules/platform/services/crm_events.py`, focused task/event tests
+- **Result:** Route-level and scheduled `task.due_today` emissions now share a tenant/day dedupe helper, while scheduled scans batch existing alert lookup by tenant and task IDs. Task alert event types are included in canonical CRM event definitions and asserted against alert event sets. Task assignment and due-today notification failures are logged with tenant/task/user/category context and no longer show raw UTC due-time text in assignment notifications.
+- **Verification:** `docker compose exec -T backend python -m compileall app tests`; `docker compose exec -T backend python -m unittest tests.test_task_reminders`; `docker compose exec -T backend python -m unittest tests.test_crm_events`; `docker compose exec -T backend python -m unittest tests.test_task_source_activity`; `docker compose exec -T backend python -m unittest tests.test_sales_followups`; `docker compose exec -T backend python -m unittest tests.test_api_routes.APIRouteTests.test_task_recycle_route_passes_current_user_to_visibility_filtered_service tests.test_api_routes.APIRouteTests.test_task_restore_route_uses_deleted_only_lookup`
+
+## PLAT-EVENTS — Move CRM event delivery/automation failures into observable retry paths
+
+- **Completed:** 2026-06-28
+- **Source items:** PLAT-03, PLAT-04, PLAT-05, PLAT-09, PLAT-16, PLAT-24, PLAT-25, PLAT-39
+- **Files:** `backend/app/modules/platform/services/crm_events.py`, `backend/app/modules/platform/services/automation_rules.py`, `backend/app/modules/platform/models.py`, `backend/app/tasks/automation_tasks.py`, focused CRM event/automation tests
+- **Result:** CRM alert events now persist pending Slack/Teams delivery rows and enqueue retryable Celery delivery work after commit instead of posting webhooks inline. Delivery enqueue failures are recorded on delivery rows, automation enqueue failures are logged and persisted on the event payload, alert event sets are asserted as canonical CRM event types, template rendering is single-pass, automation actors use a typed context, duplicate automation-run races recover using cached IDs after rollback, and the `payload`/`payload_json` alias is documented in the model.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_crm_events`; `docker compose exec -T backend python -m unittest tests.test_automation_rules`
 
 ## SEARCH-IDX — Add intentional text-search and hot-query index strategy
 
-- **Severity:** Medium
+- **Completed:** 2026-06-28
 - **Source items:** CORE-11, CORE-12, CORE-25, CON-12, CON-18, CAL-17, CAL-18, CAT-13, CAT-14, DOC-18, FIN-28, SALES-DEEP-08, SALES-DEEP-09, TASK-13, SUP-13, SUP-14, SUP-15, SUP-30
-- **Files:** module filter/search helpers, models, Alembic migrations, tests
-- **Issue:** Contains searches and hot range/lookups lack targeted indexes; some generated SQL is unnecessarily complex; several constraints need active-row semantics; support search treats `%` and `_` as wildcards; sales/support indexes need query-plan justification.
-- **Fix:** Cap text filter values. Use `pg_trgm` GIN indexes for high-use contains searches while preserving LIKE/ILIKE semantics. Add targeted composite/partial indexes for contract expiration, calendar ranges/participants, document template/active shares, catalog currency constraints, task tenant/status and tenant/due filters, support SLA/open-case predicates, sales quote-open hash columns/search documents, and active POS invoice number uniqueness. Escape LIKE wildcards where literal search is expected. Flatten PostgreSQL searchable expressions with `concat_ws` where applicable.
-- **Acceptance:** Hot contains/range/lookup paths have an index strategy; oversized filter values fail before query construction; active-row uniqueness matches soft-delete behavior; support literal wildcard searches do not over-match.
+- **Files:** `backend/app/core/like_patterns.py`, `backend/app/core/module_filters.py`, `backend/app/core/postgres_search.py`, support/contract services and routes, search route caps, `backend/alembic/versions/20260717_search_hot_indexes.py`, focused support/contract tests
+- **Result:** Shared `LIKE`/`ILIKE` search patterns now escape `%`, `_`, and backslashes so literal wildcard searches do not over-match. Text filter values are capped before query construction, uncapped search route params are bounded to 100 characters, support and contract hand-built searches use escaped patterns, and PostgreSQL gets targeted trigram search indexes plus partial support SLA and contract expiration hot-path indexes.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_support_cases tests.test_contracts`; `docker compose exec -T backend alembic upgrade head`; `docker compose exec -T backend alembic current`; `docker compose exec -T backend python -m compileall app tests`
+
+---
+
+# Consolidated Task Backlog
 
 ## LIST-PERF — Consolidate count/list, pagination, and cursor-query optimizations
 
@@ -222,15 +261,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Issue:** Several endpoints load full lists to count/slice, run duplicate fetches, manually compute offsets, hydrate cursor sentinel rows, churn DB sessions/queries in polling paths, or lack pagination metadata. Sales/support summaries also over-fetch related records, hydrate unused custom fields, or filter client-visible data in Python. Task assignment options and linked-record task widgets are currently bounded poorly or not searchable. User cursor search can lose relevance/default ordering, and saved-view defaulting can re-query full lists.
 - **Fix:** Add summary/count/latest helpers for overview pages. Use count-specific, grouped, conditional aggregate, or window-count queries on hot endpoints. Enforce bounded flat list routes or cursor alternatives, including searchable participant/assignee pickers instead of fixed caps. Use `Pagination.offset`/`limit`. Ensure cursor responses strip sentinel rows before serialization/hydration. Remove redundant refresh/refetch paths. Verify and remove duplicate document/share/proposal/task/user fetches if present. Reduce SSE/realtime DB session and query churn. Filter client-visible support comments in SQL. Preserve or document cursor search ordering semantics.
 - **Acceptance:** Pagination contracts are explicit and consistent; overview/list endpoints do not fetch full datasets for summaries; cursor sentinels are not returned or over-hydrated; polling/list paths do not multiply DB work unnecessarily; client-facing list/detail responses avoid loading private/internal rows; task assignment and linked-task views scale beyond small tenants/default page sizes.
-
-## CAL-SYNC — Make external calendar sync/delete side effects retryable
-
-- **Severity:** Critical/Medium
-- **Source items:** CAL-03, CAL-11, CAL-12, CAL-X3
-- **Files:** calendar services, Celery tasks, provider connection code, tests
-- **Issue:** Provider sync/delete paths can block workers or leave ghost external events, and enqueue failures are weakly observable.
-- **Fix:** Move provider sync/delete to bounded Celery tasks with retry/backoff, primitive IDs, idempotency state, and durable warning/status for enqueue failures. Remove repeated connection refreshes inside loops unless required.
-- **Acceptance:** Provider slowness/failure does not block entire request/worker paths indefinitely and remains retryable/observable.
 
 ## SALES-FILES — Make sales attachments and quote/public-file behavior durable
 
@@ -259,15 +289,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Fix:** Use grouped SQL aggregation for pipeline/summary metrics. Hydrate custom fields only where response schemas expose them. Scope reminder scans per tenant and chunk/cursor work. Avoid proposal/event queries when no proposal exists. Stream quote exports or route large jobs through background export. Make opportunity board scope explicit or load complete stage data incrementally.
 - **Acceptance:** Sales summaries preserve response shapes with fewer queries, reminders are tenant-scoped and bounded, large exports do not materialize whole datasets, and board scope is clear to users.
 
-## SUPPORT-SLA — Protect support SLA lifecycle and linked-record updates
-
-- **Severity:** High/Medium
-- **Source items:** SUP-05, SUP-06, SUP-07, SUP-17, SUP-18, SUP-19, SUP-22, SUP-29
-- **Files:** support schemas/services/routes/models, client portal support tests, frontend display schemas
-- **Issue:** Client update schemas expose service-owned SLA timestamps, generic field assignment can run before transition logic, linked-record validation can re-check every field, category DB/schema constraints differ, comment edit/audit policy is undefined, and client-facing comment privacy/display-name behavior needs tests.
-- **Fix:** Remove/ignore service-owned lifecycle timestamps from public update payloads. Apply status transition timestamp logic after filtering payload fields. Validate only changed linked fields and batch checks where practical. Align category constraints or document schema-only validation. Decide comment immutability/`updated_at`. Expose user display fields and test internal comment privacy.
-- **Acceptance:** SLA timestamps are service-owned, partial updates do not revalidate unrelated links, internal comments never reach client responses, and support UI can show human-readable assignee/comment author names.
-
 ## SUPPORT-PERF — Optimize support summaries, comments, search, and projection
 
 - **Severity:** Medium/High
@@ -285,15 +306,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Issue:** Assignee validation and notification resolution can run one query per user/team, assignment options load all users/teams, due-scan dedupe checks one task at a time, task base queries join user relationships by default, count queries can inherit ordering/ranking, and task serializers can validate through Pydantic more than once.
 - **Fix:** Batch user/team validation and notification recipient resolution. Add search/pagination and active-principal filtering to assignment options, with selected-assignee resolution if needed. Batch due-alert event lookups per scan window. Change eager user relationships to `selectin`/explicit loads and add query-count tests. Strip ordering from count queries. Serialize/validate task responses once.
 - **Acceptance:** Large-assignee tasks and due scans use bounded query counts; assignment dialogs do not load every tenant principal; list/detail serialization stays query-bounded after loader changes.
-
-## TASKS-EVENTS — Deduplicate task alerts and make notifications observable
-
-- **Severity:** Medium/High
-- **Source items:** TASK-07, TASK-17, TASK-18, TASK-19, TASK-20
-- **Files:** task services/routes, CRM event definitions, notification paths, tests
-- **Issue:** Route-level `task.due_today` emission can duplicate events on every save, scan dedupe must stay tenant-safe, task alert event types can drift from canonical CRM event sets, assignment notification failures can be silent, and due-time notification text can show raw UTC as local time.
-- **Fix:** Reuse a shared due-alert dedupe helper for route and scan emissions. Batch existing alert lookup by tenant/day/task IDs. Assert task event types exist in canonical CRM event and alert sets. Decide whether task notifications are best-effort or queued/outbox-backed; log or persist failures accordingly. Format due-time text in recipient timezone or omit misleading time.
-- **Acceptance:** Saving the same due-today task emits at most one alert per day, scan dedupe is tenant-scoped, task events persist/deliver consistently, and notification failures are observable.
 
 ## UM-SSO — Finish DNS fallback and login regression guards
 
@@ -321,24 +333,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Issue:** The admin users fetcher is stable today only by convention.
 - **Fix:** Document or preserve the module-scoped `fetchUsers` contract unless `usePagedList` later needs a different dependency model.
 - **Acceptance:** User fetching does not refetch due to avoidable fetcher identity churn.
-
-## PLAT-RESTORE — Protect platform restore, backup, retention, and data-transfer jobs
-
-- **Severity:** Critical/High
-- **Source items:** PLAT-02, PLAT-06, PLAT-08, PLAT-12, PLAT-14, PLAT-20, PLAT-42
-- **Files:** platform backup/restore/data-transfer/custom-module import services, Celery tasks, tests
-- **Issue:** Restore row application needs an explicit destructive-operation savepoint, manual backups run synchronously, datetime parsing needs normalization, data-transfer sessions are manually closed, retention cleanup loads full ORM rows, and custom module import preview may parse twice.
-- **Fix:** Wrap destructive restore apply in `begin_nested()` or equivalent while recording failed status outside the savepoint. Queue manual backups and run export/upload/retention in Celery. Normalize restore datetimes to UTC. Convert data-transfer sessions to context managers. Select only retention IDs/file paths for cleanup. Reuse import preview data.
-- **Acceptance:** Restore failure leaves module data unchanged and records failure; backup routes return queued runs quickly; retention cleanup scales with selected columns; import preview/execute avoids duplicate parsing.
-
-## PLAT-EVENTS — Move CRM event delivery/automation failures into observable retry paths
-
-- **Severity:** Critical/High
-- **Source items:** PLAT-03, PLAT-04, PLAT-05, PLAT-09, PLAT-16, PLAT-24, PLAT-25, PLAT-39
-- **Files:** platform CRM event/automation services, Celery tasks, models/docs, tests
-- **Issue:** Automation enqueue failures can be swallowed, Slack/Teams delivery runs synchronously before commit, alert event types drift from persisted event types, automation duplicate-run races need regression coverage, and payload/actor conventions are implicit.
-- **Fix:** Log and preferably persist automation dispatch failures for retry. Persist pending delivery rows and send webhooks through Celery. Align Slack alert event types with `CRM_EVENT_TYPES` and assert subset consistency. Add duplicate run race tests. Make template substitution single-pass. Replace `SimpleNamespace` automation actor with a typed context. Document `payload`/`payload_json` alias.
-- **Acceptance:** Broker/webhook failures are observable and retryable; CRM route handlers are not blocked by slow webhooks; alert event type drift fails fast.
 
 ## PLAT-QUERY — Reduce platform over-fetching and harden raw-query helpers
 

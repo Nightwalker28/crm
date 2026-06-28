@@ -154,7 +154,7 @@ def _download_media_type(file_name: str) -> str:
 def list_insertion_orders(
     pagination: Pagination = Depends(get_pagination),
     request: Request = None,
-    search: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=100),
     status_filter: str | None = Query(default=None, alias="status"),
     fields: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
@@ -195,7 +195,7 @@ def list_insertion_orders(
 def list_insertion_orders_cursor_route(
     pagination: CursorPagination = Depends(get_cursor_pagination),
     request: Request = None,
-    search: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=100),
     status_filter: str | None = Query(default=None, alias="status"),
     fields: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),

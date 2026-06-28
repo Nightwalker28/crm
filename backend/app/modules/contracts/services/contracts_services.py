@@ -9,6 +9,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.like_patterns import LIKE_ESCAPE, contains_pattern
 from app.core.module_filters import apply_filter_conditions
 from app.modules.contracts.models import Contract, ContractEvent, ContractParty, ContractSigner
 from app.modules.documents.models import Document
@@ -166,8 +167,14 @@ def build_contracts_query(db: Session, *, tenant_id: int, search: str | None = N
     query = apply_filter_conditions(query, conditions=all_filter_conditions, logic="all", field_map=field_map)
     query = apply_filter_conditions(query, conditions=any_filter_conditions, logic="any", field_map=field_map)
     if search:
-        pattern = f"%{search.strip().lower()}%"
-        query = query.filter(or_(func.lower(Contract.contract_number).like(pattern), func.lower(Contract.title).like(pattern), func.lower(Contract.status).like(pattern)))
+        pattern = contains_pattern(search.strip().lower())
+        query = query.filter(
+            or_(
+                func.lower(Contract.contract_number).like(pattern, escape=LIKE_ESCAPE),
+                func.lower(Contract.title).like(pattern, escape=LIKE_ESCAPE),
+                func.lower(Contract.status).like(pattern, escape=LIKE_ESCAPE),
+            )
+        )
     return query
 
 

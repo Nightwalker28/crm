@@ -156,6 +156,7 @@ export const SUPPORT_CASE_COLUMNS: TableColumnOption[] = [
   { key: "quote_id", label: "Quote ID" },
   { key: "order_id", label: "Order ID" },
   { key: "assigned_to_id", label: "Assignee ID" },
+  { key: "assigned_to_name", label: "Assignee" },
   { key: "sla_due_at", label: "SLA Due" },
   { key: "updated_at", label: "Updated" },
 ];
@@ -259,7 +260,7 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
     sort: null,
   },
   support_cases: {
-    visible_columns: ["case_number", "subject", "category", "status", "priority", "assigned_to_id", "sla_due_at", "updated_at"],
+    visible_columns: ["case_number", "subject", "category", "status", "priority", "assigned_to_name", "sla_due_at", "updated_at"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },

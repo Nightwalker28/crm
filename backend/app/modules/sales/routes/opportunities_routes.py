@@ -244,7 +244,7 @@ def list_sales_opportunities(
 
 @router.get("/cursor")
 def list_sales_opportunities_cursor(
-    query: str | None = Query(default=None, min_length=1),
+    query: str | None = Query(default=None, min_length=1, max_length=100),
     fields: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
@@ -279,7 +279,7 @@ def list_sales_opportunities_cursor(
 
 @router.get("/search", response_model=SalesOpportunityListResponse)
 def search_sales_opportunities(
-    query: str = Query(..., min_length=1, description="Search by opportunity fields"),
+    query: str = Query(..., min_length=1, max_length=100, description="Search by opportunity fields"),
     fields: str | None = Query(default=None),
     sort_by: str | None = Query(default=None),
     sort_direction: str | None = Query(default=None),
@@ -317,7 +317,7 @@ def search_sales_opportunities(
 
 @router.get("/pipeline-summary", response_model=OpportunityPipelineSummaryResponse)
 def get_sales_opportunity_pipeline_summary(
-    query: str | None = Query(default=None),
+    query: str | None = Query(default=None, max_length=100),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),

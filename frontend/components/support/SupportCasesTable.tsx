@@ -85,6 +85,8 @@ export default function SupportCasesTable({ cases, isLoading, isRefreshing = fal
         const style = PRIORITY_STYLES[item.priority] ?? PRIORITY_STYLES.medium;
         return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
       }
+      case "assigned_to_name":
+        return <TableCell><span className="text-sm text-neutral-300">{item.assigned_to_name || <span className="text-neutral-600">Unassigned</span>}</span></TableCell>;
       case "created_at":
       case "updated_at":
       case "sla_due_at":

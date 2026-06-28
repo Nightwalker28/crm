@@ -104,7 +104,7 @@ export default function ClientSupportDetailPage() {
                 {item.comments.length ? item.comments.map((comment) => (
                   <div key={comment.id} className="rounded-md border border-neutral-800 bg-neutral-950 p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
-                      <span>{comment.author_type === "team" ? "Support team" : "You"}</span>
+                      <span>{comment.author_display_name || (comment.author_type === "team" ? "Support team" : "You")}</span>
                       <span>{formatDateTime(comment.created_at)}</span>
                     </div>
                     <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-200">{comment.body}</div>

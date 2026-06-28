@@ -94,7 +94,7 @@ def list_contract_records(
 
 @router.get("/search", response_model=ContractListResponse)
 def search_contract_records(
-    query: str = Query(..., min_length=1),
+    query: str = Query(..., min_length=1, max_length=100),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),

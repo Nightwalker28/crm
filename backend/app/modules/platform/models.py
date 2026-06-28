@@ -324,6 +324,7 @@ class CrmEvent(Base):
     event_type = Column(String(100), nullable=False, index=True)
     entity_type = Column(String(100), nullable=False, index=True)
     entity_id = Column(String(100), nullable=False, index=True)
+    # ORM callers use event.payload; the persisted column remains payload_json.
     payload = Column("payload_json", JSON, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
@@ -351,7 +352,7 @@ class NotificationChannel(Base):
 class CrmEventDelivery(Base):
     __tablename__ = "crm_event_deliveries"
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     event_id = Column(BigInteger, ForeignKey("crm_events.id", ondelete="CASCADE"), nullable=False, index=True)
     channel_id = Column(BigInteger, ForeignKey("notification_channels.id", ondelete="CASCADE"), nullable=False, index=True)

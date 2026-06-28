@@ -4,6 +4,13 @@ from sqlalchemy.orm import relationship
 from app.core.database import Base
 
 
+def _display_user_name(user) -> str | None:
+    if user is None:
+        return None
+    full_name = " ".join(part for part in [getattr(user, "first_name", None), getattr(user, "last_name", None)] if part).strip()
+    return full_name or getattr(user, "email", None)
+
+
 class SupportCase(Base):
     __tablename__ = "support_cases"
     __table_args__ = (
@@ -14,6 +21,7 @@ class SupportCase(Base):
         Index("ix_support_cases_tenant_status", "tenant_id", "status"),
         Index("ix_support_cases_tenant_priority", "tenant_id", "priority"),
         Index("ix_support_cases_tenant_assignee", "tenant_id", "assigned_to_id"),
+        Index("ix_support_cases_open_sla_due", "tenant_id", "sla_due_at", postgresql_where=text("closed_at IS NULL AND sla_due_at IS NOT NULL"), sqlite_where=text("closed_at IS NULL AND sla_due_at IS NOT NULL")),
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -49,6 +57,14 @@ class SupportCase(Base):
     comments = relationship("SupportCaseComment", back_populates="case", cascade="all, delete-orphan", order_by="SupportCaseComment.created_at")
     events = relationship("SupportCaseEvent", back_populates="case", cascade="all, delete-orphan", order_by="SupportCaseEvent.created_at")
 
+    @property
+    def assigned_to_name(self) -> str | None:
+        return _display_user_name(self.assigned_user)
+
+    @property
+    def created_by_name(self) -> str | None:
+        return _display_user_name(self.created_by)
+
 
 class SupportCaseComment(Base):
     __tablename__ = "support_case_comments"
@@ -66,6 +82,10 @@ class SupportCaseComment(Base):
 
     case = relationship("SupportCase", back_populates="comments")
     author = relationship("User", lazy="select")
+
+    @property
+    def author_name(self) -> str | None:
+        return _display_user_name(self.author)
 
 
 class SupportCaseEvent(Base):

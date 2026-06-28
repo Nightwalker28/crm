@@ -190,7 +190,7 @@ def create_sales_organization(
 # read all
 @router.get("", response_model=SalesOrganizationListResponse)
 def get_sales_organizations(
-    search: str | None = Query(default=None, min_length=1),
+    search: str | None = Query(default=None, min_length=1, max_length=100),
     fields: str | None = Query(default=None),
     sort_by: str | None = Query(default=None),
     sort_direction: str | None = Query(default=None),
@@ -241,7 +241,7 @@ def get_sales_organizations(
 
 @router.get("/cursor")
 def get_sales_organizations_cursor(
-    search: str | None = Query(default=None, min_length=1),
+    search: str | None = Query(default=None, min_length=1, max_length=100),
     fields: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),

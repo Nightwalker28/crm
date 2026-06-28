@@ -230,6 +230,7 @@ def search_contacts(
     query: str = Query(
         ...,
         min_length=1,
+        max_length=100,
         description="Search by name, email, title, region, country, or LinkedIn URL",
     ),
     fields: str | None = Query(default=None),

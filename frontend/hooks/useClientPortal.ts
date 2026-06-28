@@ -121,6 +121,7 @@ export type ClientSupportCaseComment = {
   body: string;
   is_internal: boolean;
   author_type: "client" | "team";
+  author_display_name?: string | null;
   created_at: string;
 };
 

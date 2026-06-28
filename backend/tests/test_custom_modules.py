@@ -290,6 +290,41 @@ class CustomModuleFieldTests(unittest.TestCase):
         self.assertTrue(fields["name"].is_protected)
         self.assertFalse(fields["serial_number"].is_protected)
 
+    def test_import_target_headers_do_not_parse_uploaded_csv(self):
+        definition = CustomModuleDefinition(id=1, tenant_id=7, key="assets", name="Assets")
+        definition.fields.extend(
+            [
+                CustomModuleFieldDefinition(
+                    id=2,
+                    tenant_id=7,
+                    custom_module_id=1,
+                    key="serial_number",
+                    label="Serial Number",
+                    field_type="text",
+                    sort_order=2,
+                    is_active=True,
+                ),
+                CustomModuleFieldDefinition(
+                    id=1,
+                    tenant_id=7,
+                    custom_module_id=1,
+                    key="asset_tag",
+                    label="Asset Tag",
+                    field_type="text",
+                    sort_order=1,
+                    is_active=True,
+                ),
+            ]
+        )
+        user = SimpleNamespace(id=9, tenant_id=7)
+
+        with patch("app.modules.platform.services.custom_modules._get_module_definition", return_value=definition):
+            with patch("app.modules.platform.services.custom_modules._require_module_action"):
+                with patch("app.modules.platform.services.custom_modules.rows_from_csv_bytes", side_effect=AssertionError("csv parsed")):
+                    headers = custom_modules.import_target_headers(FakeDB(), module_key="assets", current_user=user)
+
+        self.assertEqual(headers, ["title", "asset_tag", "serial_number"])
+
     def test_module_field_config_rejects_disabled_identifier(self):
         with self.assertRaises(HTTPException) as exc:
             module_fields.update_module_field_config(

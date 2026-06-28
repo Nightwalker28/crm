@@ -244,14 +244,13 @@ async def import_custom_module_records(
     current_user=Depends(require_user),
 ):
     file_bytes = await read_upload_bytes(file, allowed_extensions={"csv"})
-    preview = custom_modules.preview_import(
+    target_headers = custom_modules.import_target_headers(
         db,
         module_key=module_key,
         current_user=current_user,
-        file_bytes=file_bytes,
     )
-    mapping = parse_mapping_json(mapping_json, target_headers=preview["target_headers"])
-    remapped_bytes = remap_csv_bytes(file_bytes, target_headers=preview["target_headers"], mapping=mapping)
+    mapping = parse_mapping_json(mapping_json, target_headers=target_headers)
+    remapped_bytes = remap_csv_bytes(file_bytes, target_headers=target_headers, mapping=mapping)
     summary = custom_modules.import_records_from_csv_bytes(
         db,
         module_key=module_key,

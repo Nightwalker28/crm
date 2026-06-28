@@ -902,9 +902,8 @@ def import_preview_for_csv_bytes(
     file_bytes: bytes,
 ) -> dict:
     source_headers, _ = rows_from_csv_bytes(file_bytes)
-    fields = [field for field in sorted(definition.fields, key=lambda item: (item.sort_order, item.id)) if field.deleted_at is None and field.is_active]
-    target_headers = ["title", *[field.key for field in fields]]
-    required_headers = [field.key for field in fields if field.is_required]
+    target_headers = import_target_headers_for_definition(definition)
+    required_headers = import_required_headers_for_definition(definition)
     normalized_source = {header.strip().lower(): header for header in source_headers}
     suggested_mapping = {
         target: normalized_source.get(target.lower())
@@ -919,6 +918,27 @@ def import_preview_for_csv_bytes(
         "default_duplicate_mode": "skip",
         "suggested_mapping": suggested_mapping,
     }
+
+
+def import_target_headers_for_definition(definition: CustomModuleDefinition) -> list[str]:
+    fields = [field for field in sorted(definition.fields, key=lambda item: (item.sort_order, item.id)) if field.deleted_at is None and field.is_active]
+    return ["title", *[field.key for field in fields]]
+
+
+def import_required_headers_for_definition(definition: CustomModuleDefinition) -> list[str]:
+    fields = [field for field in sorted(definition.fields, key=lambda item: (item.sort_order, item.id)) if field.deleted_at is None and field.is_active]
+    return [field.key for field in fields if field.is_required]
+
+
+def import_target_headers(
+    db: Session,
+    *,
+    module_key: str,
+    current_user: User,
+) -> list[str]:
+    definition = _get_module_definition(db, tenant_id=current_user.tenant_id, key=module_key)
+    _require_module_action(db, user=current_user, definition=definition, action="create")
+    return import_target_headers_for_definition(definition)
 
 
 def preview_import(

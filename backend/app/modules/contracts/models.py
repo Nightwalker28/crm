@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -12,6 +12,7 @@ class Contract(Base):
         Index("ix_contracts_tenant_status", "tenant_id", "status"),
         Index("ix_contracts_tenant_owner", "tenant_id", "owner_id"),
         Index("ix_contracts_tenant_updated", "tenant_id", "updated_at"),
+        Index("ix_contracts_tenant_expiration_open", "tenant_id", "expiration_date", postgresql_where=text("expiration_date IS NOT NULL AND status NOT IN ('expired', 'cancelled')"), sqlite_where=text("expiration_date IS NOT NULL AND status NOT IN ('expired', 'cancelled')")),
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)

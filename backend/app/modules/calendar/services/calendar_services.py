@@ -823,6 +823,95 @@ def _delete_microsoft_participant_event(db: Session, participant: CalendarEventP
         )
 
 
+def delete_external_participant_event(
+    db: Session,
+    *,
+    tenant_id: int,
+    user_id: int,
+    provider: str,
+    external_event_id: str,
+) -> bool:
+    participant = CalendarEventParticipant(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        external_provider=provider,
+        external_event_id=external_event_id,
+    )
+    if provider == CalendarProvider.google.value:
+        _delete_google_participant_event(db, participant)
+        return True
+    if provider == CalendarProvider.microsoft.value:
+        _delete_microsoft_participant_event(db, participant)
+        return True
+    return False
+
+
+def _external_delete_payload(participant: CalendarEventParticipant) -> dict | None:
+    if not participant.user_id or not participant.external_provider or not participant.external_event_id:
+        return None
+    return {
+        "tenant_id": int(participant.tenant_id),
+        "user_id": int(participant.user_id),
+        "provider": str(participant.external_provider),
+        "external_event_id": str(participant.external_event_id),
+    }
+
+
+def _mark_participant_sync_enqueue_failed(
+    db: Session,
+    *,
+    participant: CalendarEventParticipant,
+    message: str,
+    event_id: int | None = None,
+) -> None:
+    try:
+        participant.last_sync_error = message
+        db.add(participant)
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "Calendar sync enqueue failure status update failed",
+            extra={"tenant_id": participant.tenant_id, "event_id": event_id, "participant_id": getattr(participant, "id", None)},
+            exc_info=True,
+        )
+
+
+def _enqueue_external_event_delete(
+    payload: dict | None,
+    *,
+    event_id: int | None = None,
+    db: Session | None = None,
+    participant: CalendarEventParticipant | None = None,
+) -> bool:
+    if not payload:
+        return False
+    try:
+        from app.tasks.calendar_tasks import delete_external_calendar_event_task
+
+        delete_external_calendar_event_task.delay(**payload)
+        return True
+    except Exception:
+        logger.warning(
+            "Calendar external delete enqueue failed",
+            extra={
+                "tenant_id": payload.get("tenant_id"),
+                "user_id": payload.get("user_id"),
+                "provider": payload.get("provider"),
+                "event_id": event_id,
+            },
+            exc_info=True,
+        )
+        if db is not None and participant is not None:
+            _mark_participant_sync_enqueue_failed(
+                db,
+                participant=participant,
+                message="Calendar external delete could not be queued.",
+                event_id=event_id,
+            )
+        return False
+
+
 def _sync_participant_event(db: Session, *, event: CalendarEvent, participant: CalendarEventParticipant) -> None:
     participant_user = getattr(participant, "user", None)
     provider = getattr(participant_user, "last_login_provider", None)
@@ -869,6 +958,14 @@ def _enqueue_external_events_for_event(db: Session, event: CalendarEvent) -> Non
             extra={"tenant_id": event.tenant_id, "event_id": event.id},
             exc_info=True,
         )
+        for participant in getattr(event, "participants", []):
+            if participant.participant_type == "user" and participant.response_status == "accepted":
+                _mark_participant_sync_enqueue_failed(
+                    db,
+                    participant=participant,
+                    message="Calendar external sync could not be queued.",
+                    event_id=event.id,
+                )
 
 
 def _notify_new_participants(db: Session, *, event: CalendarEvent, actor_name: str | None, participants: list[CalendarEventParticipant]) -> None:
@@ -968,6 +1065,7 @@ def update_calendar_event(db: Session, *, event: CalendarEvent, payload: dict, c
 
     added: list[CalendarEventParticipant] = []
     removed: list[CalendarEventParticipant] = []
+    removed_delete_payloads: list[dict] = []
     if participants_payload is not None:
         added, removed, _ = _apply_event_participants(
             db,
@@ -976,13 +1074,14 @@ def update_calendar_event(db: Session, *, event: CalendarEvent, payload: dict, c
             owner_user_id=event.owner_user_id,
             participants_payload=participants_payload,
         )
+        removed_delete_payloads = [payload for participant in removed if (payload := _external_delete_payload(participant))]
 
     db.add(event)
     db.commit()
     db.refresh(event)
 
-    for participant in removed:
-        _delete_participant_event(db, participant)
+    for payload in removed_delete_payloads:
+        _enqueue_external_event_delete(payload, event_id=event.id)
     _notify_new_participants(db, event=event, actor_name=_display_user_name(current_user), participants=added)
     _enqueue_external_events_for_event(db, event)
     return event, added
@@ -1017,20 +1116,21 @@ def respond_to_calendar_invite(
     db.refresh(event)
 
     if response_status == "accepted":
-        _sync_participant_event(db, event=event, participant=participant)
+        _enqueue_external_events_for_event(db, event)
     elif response_status == "declined":
-        _delete_participant_event(db, participant)
+        _enqueue_external_event_delete(_external_delete_payload(participant), event_id=event.id, db=db, participant=participant)
 
     return event
 
 
 def delete_calendar_event(db: Session, *, event: CalendarEvent) -> CalendarEvent:
+    delete_targets = [(payload, participant) for participant in event.participants if (payload := _external_delete_payload(participant))]
     event.deleted_at = _utcnow()
     db.add(event)
     db.commit()
     db.refresh(event)
-    for participant in event.participants:
-        _delete_participant_event(db, participant)
+    for payload, participant in delete_targets:
+        _enqueue_external_event_delete(payload, event_id=event.id, db=db, participant=participant)
     return event
 
 
@@ -1237,8 +1337,7 @@ def process_calendar_sync_job(*, job_id: int) -> None:
         update_job_progress,
     )
 
-    db = SessionLocal()
-    try:
+    with SessionLocal() as db:
         job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
         mark_job_running(db, job)
         update_job_progress(db, job, progress_percent=10, progress_message="Preparing calendar sync.")
@@ -1259,8 +1358,6 @@ def process_calendar_sync_job(*, job_id: int) -> None:
         summary = sync_current_user_calendar(db, current_user=current_user, progress_callback=progress_callback)
         update_job_progress(db, job, progress_percent=95, progress_message="Finalizing calendar sync.")
         mark_job_completed(db, job, summary=summary)
-    finally:
-        db.close()
 
 
 def create_calendar_event_from_task(db: Session, *, task_id: int, current_user) -> tuple[CalendarEvent, bool]:

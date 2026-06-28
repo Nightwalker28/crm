@@ -8,6 +8,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.like_patterns import LIKE_ESCAPE, contains_pattern
 from app.core.module_filters import apply_filter_conditions
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
@@ -19,6 +20,21 @@ CASE_STATUSES = {"new", "open", "pending", "resolved", "closed"}
 CASE_PRIORITIES = {"low", "medium", "high", "urgent"}
 CLOSED_STATUSES = {"resolved", "closed"}
 CASE_NUMBER_RETRY_LIMIT = 3
+CASE_CATEGORY_MAX_LENGTH = 80
+CASE_MUTABLE_FIELDS = {
+    "subject",
+    "description",
+    "category",
+    "status",
+    "priority",
+    "source",
+    "contact_id",
+    "organization_id",
+    "opportunity_id",
+    "quote_id",
+    "order_id",
+    "assigned_to_id",
+}
 SUPPORT_CASE_SORT_FIELDS = {
     "case_number": SupportCase.case_number,
     "subject": SupportCase.subject,
@@ -46,6 +62,16 @@ def _clean_text(value) -> str | None:
         return None
     cleaned = str(value).strip()
     return cleaned or None
+
+
+def _normalize_category(value) -> str | None:
+    cleaned = _clean_text(value)
+    if cleaned and len(cleaned) > CASE_CATEGORY_MAX_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Category must be {CASE_CATEGORY_MAX_LENGTH} characters or fewer",
+        )
+    return cleaned
 
 
 def _normalize_source(value) -> str | None:
@@ -93,7 +119,7 @@ def _ensure_linked_records(db: Session, data: dict, *, tenant_id: int) -> None:
 
 
 def _normalize_payload(db: Session, payload: dict, *, tenant_id: int, current_user, partial: bool = False) -> dict:
-    data = dict(payload)
+    data = {key: value for key, value in dict(payload).items() if key in CASE_MUTABLE_FIELDS}
     for field in {"contact_id", "organization_id", "opportunity_id", "quote_id", "order_id", "assigned_to_id"}:
         if data.get(field) == "":
             data[field] = None
@@ -103,9 +129,10 @@ def _normalize_payload(db: Session, payload: dict, *, tenant_id: int, current_us
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subject is required")
     elif not partial:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Subject is required")
-    for field in {"description", "category"}:
-        if field in data:
-            data[field] = _clean_text(data[field])
+    if "description" in data:
+        data["description"] = _clean_text(data["description"])
+    if "category" in data:
+        data["category"] = _normalize_category(data["category"])
     if "source" in data:
         data["source"] = _normalize_source(data["source"])
     if "status" in data:
@@ -151,7 +178,7 @@ def build_cases_query(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ):
-    query = db.query(SupportCase).filter(SupportCase.tenant_id == tenant_id)
+    query = db.query(SupportCase).options(selectinload(SupportCase.assigned_user)).filter(SupportCase.tenant_id == tenant_id)
     field_map = {
         "case_number": {"expression": SupportCase.case_number, "type": "text"},
         "subject": {"expression": SupportCase.subject, "type": "text"},
@@ -172,14 +199,14 @@ def build_cases_query(
     query = apply_filter_conditions(query, conditions=all_filter_conditions, logic="all", field_map=field_map)
     query = apply_filter_conditions(query, conditions=any_filter_conditions, logic="any", field_map=field_map)
     if search:
-        pattern = f"%{search.strip().lower()}%"
+        pattern = contains_pattern(search.strip().lower())
         query = query.filter(
             or_(
-                func.lower(SupportCase.case_number).like(pattern),
-                func.lower(SupportCase.subject).like(pattern),
-                func.lower(func.coalesce(SupportCase.description, "")).like(pattern),
-                func.lower(func.coalesce(SupportCase.category, "")).like(pattern),
-                func.lower(func.coalesce(SupportCase.source, "")).like(pattern),
+                func.lower(SupportCase.case_number).like(pattern, escape=LIKE_ESCAPE),
+                func.lower(SupportCase.subject).like(pattern, escape=LIKE_ESCAPE),
+                func.lower(func.coalesce(SupportCase.description, "")).like(pattern, escape=LIKE_ESCAPE),
+                func.lower(func.coalesce(SupportCase.category, "")).like(pattern, escape=LIKE_ESCAPE),
+                func.lower(func.coalesce(SupportCase.source, "")).like(pattern, escape=LIKE_ESCAPE),
             )
         )
     return query
@@ -221,7 +248,12 @@ def list_support_cases(
 def get_case_or_404(db: Session, *, tenant_id: int, case_id: int) -> SupportCase:
     item = (
         db.query(SupportCase)
-        .options(selectinload(SupportCase.comments), selectinload(SupportCase.events))
+        .options(
+            selectinload(SupportCase.assigned_user),
+            selectinload(SupportCase.created_by),
+            selectinload(SupportCase.comments).selectinload(SupportCaseComment.author),
+            selectinload(SupportCase.events),
+        )
         .filter(SupportCase.id == case_id, SupportCase.tenant_id == tenant_id)
         .first()
     )
@@ -254,7 +286,10 @@ def _client_case_or_404(
 ) -> SupportCase:
     item = (
         _client_scope_filter(
-            db.query(SupportCase).options(selectinload(SupportCase.comments), selectinload(SupportCase.events)),
+            db.query(SupportCase).options(
+                selectinload(SupportCase.comments).selectinload(SupportCaseComment.author),
+                selectinload(SupportCase.events),
+            ),
             tenant_id=tenant_id,
             contact_id=contact_id,
             organization_id=organization_id,
@@ -324,7 +359,7 @@ def create_client_support_case(
     data = {
         "subject": _clean_text(payload.get("subject")),
         "description": _clean_text(payload.get("description")),
-        "category": _clean_text(payload.get("category")),
+        "category": _normalize_category(payload.get("category")),
         "priority": _validate_choice(payload.get("priority"), CASE_PRIORITIES, default="medium", detail="Invalid case priority"),
         "status": "new",
         "source": normalized_source,
@@ -441,6 +476,7 @@ def serialize_client_support_case(case: SupportCase) -> dict:
                 "body": comment.body,
                 "is_internal": comment.is_internal,
                 "author_type": "team" if comment.author_id else "client",
+                "author_display_name": comment.author_name if comment.author_id else "Client",
                 "created_at": comment.created_at,
             }
             for comment in getattr(case, "comments", []) or []

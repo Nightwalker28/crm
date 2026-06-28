@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import func, literal
 
 from app.core.config import settings
+from app.core.like_patterns import LIKE_ESCAPE, contains_pattern
 
 TRIGRAM_SIMILARITY_THRESHOLD = settings.POSTGRES_TRIGRAM_SIMILARITY_THRESHOLD
 TRIGRAM_MIN_SEARCH_LENGTH = settings.POSTGRES_TRIGRAM_MIN_SEARCH_LENGTH
@@ -27,10 +28,9 @@ def apply_trigram_search(query, *, search: str | None, document):
         return query, None
 
     rank = func.similarity(document, normalized)
+    pattern = contains_pattern(normalized)
     if len(normalized) < TRIGRAM_MIN_SEARCH_LENGTH:
-        pattern = f"%{normalized}%"
-        return query.filter(document.ilike(pattern)), None
+        return query.filter(document.ilike(pattern, escape=LIKE_ESCAPE)), None
 
-    pattern = f"%{normalized}%"
-    filtered_query = query.filter((rank >= TRIGRAM_SIMILARITY_THRESHOLD) | document.ilike(pattern))
+    filtered_query = query.filter((rank >= TRIGRAM_SIMILARITY_THRESHOLD) | document.ilike(pattern, escape=LIKE_ESCAPE))
     return filtered_query, rank

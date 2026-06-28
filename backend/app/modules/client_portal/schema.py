@@ -228,6 +228,7 @@ class ClientSupportCaseCommentResponse(BaseModel):
     body: str
     is_internal: bool
     author_type: Literal["client", "team"]
+    author_display_name: str | None = None
     created_at: datetime
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
@@ -18,6 +19,7 @@ from app.modules.user_management.models import Team, User
 
 TASK_ASSIGNMENT_NOTIFICATION_CATEGORY = "task_assignment"
 TASK_DUE_TODAY_NOTIFICATION_CATEGORY = "task_due_today"
+logger = logging.getLogger(__name__)
 
 
 def _utcnow() -> datetime:
@@ -282,19 +284,38 @@ def _resolve_notification_user_ids(db: Session, *, tenant_id: int, assignee_keys
     return sorted(user_ids)
 
 
-def _task_due_alert_exists(db: Session, *, tenant_id: int, task_id: int, day_start: datetime, day_end: datetime) -> bool:
-    return (
-        db.query(CrmEvent.id)
+def _existing_task_due_alert_ids(
+    db: Session,
+    *,
+    tenant_id: int,
+    task_ids: Sequence[int],
+    day_start: datetime,
+    day_end: datetime,
+) -> set[int]:
+    if not task_ids:
+        return set()
+    rows = (
+        db.query(CrmEvent.entity_id)
         .filter(
             CrmEvent.tenant_id == tenant_id,
             CrmEvent.event_type == "task.due_today",
             CrmEvent.entity_type == "task",
-            CrmEvent.entity_id == str(task_id),
+            CrmEvent.entity_id.in_([str(task_id) for task_id in task_ids]),
             CrmEvent.created_at >= day_start,
             CrmEvent.created_at < day_end,
         )
-        .first()
-        is not None
+        .all()
+    )
+    return {int(entity_id) for (entity_id,) in rows if str(entity_id).isdigit()}
+
+
+def _task_due_alert_exists(db: Session, *, tenant_id: int, task_id: int, day_start: datetime, day_end: datetime) -> bool:
+    return task_id in _existing_task_due_alert_ids(
+        db,
+        tenant_id=tenant_id,
+        task_ids=[task_id],
+        day_start=day_start,
+        day_end=day_end,
     )
 
 
@@ -317,6 +338,86 @@ def _task_due_notification_user_ids(db: Session, *, task: Task) -> list[int]:
     if not user_ids and task.created_by_user_id:
         user_ids.add(int(task.created_by_user_id))
     return sorted(user_ids)
+
+
+def _safe_create_task_notification(db: Session, *, task: Task, user_id: int, category: str, title: str, message: str, link_url: str, metadata: dict, commit: bool = True) -> bool:
+    try:
+        create_notification(
+            db,
+            tenant_id=task.tenant_id,
+            user_id=user_id,
+            category=category,
+            title=title,
+            message=message,
+            link_url=link_url,
+            metadata=metadata,
+            commit=commit,
+        )
+        return True
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Task notification creation failed",
+            extra={
+                "tenant_id": task.tenant_id,
+                "task_id": task.id,
+                "user_id": user_id,
+                "category": category,
+            },
+        )
+        return False
+
+
+def emit_task_due_today_alert(
+    db: Session,
+    *,
+    task: Task,
+    actor_user_id: int | None,
+    day_start: datetime,
+    day_end: datetime,
+    payload: dict | None = None,
+    notify_assignees: bool = True,
+) -> tuple[bool, int]:
+    if _task_due_alert_exists(
+        db,
+        tenant_id=task.tenant_id,
+        task_id=task.id,
+        day_start=day_start,
+        day_end=day_end,
+    ):
+        return False, 0
+
+    event = safe_emit_crm_event(
+        db,
+        tenant_id=task.tenant_id,
+        actor_user_id=actor_user_id,
+        event_type="task.due_today",
+        entity_type="task",
+        entity_id=task.id,
+        payload=payload or _task_due_alert_payload(task),
+    )
+    if event is None:
+        return False, 0
+
+    notifications_created = 0
+    if notify_assignees:
+        for user_id in _task_due_notification_user_ids(db, task=task):
+            if _safe_create_task_notification(
+                db,
+                task=task,
+                user_id=user_id,
+                category=TASK_DUE_TODAY_NOTIFICATION_CATEGORY,
+                title=f"Task due today: {task.title}",
+                message="A task assigned to you or your team is due today.",
+                link_url=f"/dashboard/tasks?taskId={task.id}",
+                metadata={
+                    "task_id": task.id,
+                    "due_at": _serialize_datetime(task.due_at),
+                    "alert_date": day_start.date().isoformat(),
+                },
+            ):
+                notifications_created += 1
+    return True, notifications_created
 
 
 def scan_due_task_alerts(db: Session, *, now: datetime | None = None) -> dict:
@@ -346,46 +447,36 @@ def scan_due_task_alerts(db: Session, *, now: datetime | None = None) -> dict:
 
     alerts_created = 0
     notifications_created = 0
+    alerted_by_tenant: dict[int, set[int]] = {}
     for task in due_tasks:
-        if _task_due_alert_exists(
+        alerted_by_tenant.setdefault(task.tenant_id, set())
+    for tenant_id, task_ids in {
+        tenant_id: [task.id for task in due_tasks if task.tenant_id == tenant_id]
+        for tenant_id in alerted_by_tenant
+    }.items():
+        alerted_by_tenant[tenant_id] = _existing_task_due_alert_ids(
             db,
-            tenant_id=task.tenant_id,
-            task_id=task.id,
+            tenant_id=tenant_id,
+            task_ids=task_ids,
             day_start=day_start,
             day_end=day_end,
-        ):
+        )
+
+    for task in due_tasks:
+        if task.id in alerted_by_tenant.get(task.tenant_id, set()):
             continue
 
-        payload = _task_due_alert_payload(task)
-        event = safe_emit_crm_event(
+        emitted, notification_count = emit_task_due_today_alert(
             db,
-            tenant_id=task.tenant_id,
+            task=task,
             actor_user_id=task.assigned_by_user_id or task.updated_by_user_id or task.created_by_user_id,
-            event_type="task.due_today",
-            entity_type="task",
-            entity_id=task.id,
-            payload=payload,
+            day_start=day_start,
+            day_end=day_end,
         )
-        if event is None:
+        if not emitted:
             continue
         alerts_created += 1
-
-        for user_id in _task_due_notification_user_ids(db, task=task):
-            create_notification(
-                db,
-                tenant_id=task.tenant_id,
-                user_id=user_id,
-                category=TASK_DUE_TODAY_NOTIFICATION_CATEGORY,
-                title=f"Task due today: {task.title}",
-                message="A task assigned to you or your team is due today.",
-                link_url=f"/dashboard/tasks?taskId={task.id}",
-                metadata={
-                    "task_id": task.id,
-                    "due_at": _serialize_datetime(task.due_at),
-                    "alert_date": day_start.date().isoformat(),
-                },
-            )
-            notifications_created += 1
+        notifications_created += notification_count
 
     return {
         "scan_date": day_start.date().isoformat(),
@@ -408,15 +499,14 @@ def _notify_task_assignees(
         return
 
     user_ids = _resolve_notification_user_ids(db, tenant_id=tenant_id, assignee_keys=assignee_keys)
-    due_suffix = f" Due {task.due_at.strftime('%b %d, %Y %H:%M')}" if task.due_at else ""
     for user_id in user_ids:
-        create_notification(
+        _safe_create_task_notification(
             db,
-            tenant_id=tenant_id,
+            task=task,
             user_id=user_id,
             category=TASK_ASSIGNMENT_NOTIFICATION_CATEGORY,
             title=f"Task assigned: {task.title}",
-            message=f"{actor_name or 'A teammate'} assigned a task to you or your team.{due_suffix}".strip(),
+            message=f"{actor_name or 'A teammate'} assigned a task to you or your team.",
             link_url=f"/dashboard/tasks?taskId={task.id}",
             metadata={
                 "task_id": task.id,

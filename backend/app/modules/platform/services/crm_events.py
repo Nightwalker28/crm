@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timezone
 from typing import Any
 
@@ -12,18 +13,24 @@ from app.core.pagination import Pagination
 from app.modules.platform.models import CrmEvent, CrmEventDelivery, NotificationChannel
 
 
+logger = logging.getLogger(__name__)
+
 SUPPORTED_CHANNEL_PROVIDERS = {"slack", "teams"}
 CRM_EVENT_TYPES = {
     "lead.created",
     "lead.updated",
     "lead.converted",
+    "deal.assigned",
     "opportunity.stage_changed",
+    "invoice.overdue",
     "quote.created",
     "quote.status_changed",
     "order.created",
     "case.created",
     "case.status_changed",
     "contract.status_changed",
+    "task.due_today",
+    "task.assigned",
 }
 SLACK_ALERT_EVENT_TYPES = {
     "lead.created",
@@ -152,8 +159,7 @@ def format_event_message(event_type: str, payload: dict[str, Any]) -> str:
 
 def _post_slack_webhook(webhook_url: str, text: str) -> None:
     response = requests.post(webhook_url, json={"text": text}, timeout=5)
-    if response.status_code >= 400:
-        raise RuntimeError(f"Slack webhook failed with status {response.status_code}: {response.text[:200]}")
+    response.raise_for_status()
 
 
 def send_channel_message(channel: NotificationChannel, text: str) -> None:
@@ -162,8 +168,7 @@ def send_channel_message(channel: NotificationChannel, text: str) -> None:
         return
     if channel.provider == "teams":
         response = requests.post(channel.webhook_url, json={"text": text}, timeout=5)
-        if response.status_code >= 400:
-            raise RuntimeError(f"Teams webhook failed with status {response.status_code}: {response.text[:200]}")
+        response.raise_for_status()
         return
     raise RuntimeError(f"Unsupported provider {channel.provider}")
 
@@ -408,17 +413,17 @@ def emit_crm_event(
     db.add(event)
     db.flush()
 
+    deliveries: list[CrmEventDelivery] = []
     if event_type in SLACK_ALERT_EVENT_TYPES:
         channels = (
             db.query(NotificationChannel)
             .filter(
                 NotificationChannel.tenant_id == tenant_id,
-                NotificationChannel.provider == "slack",
+                NotificationChannel.provider.in_(SUPPORTED_CHANNEL_PROVIDERS),
                 NotificationChannel.is_active.is_(True),
             )
             .all()
         )
-        message = format_event_message(event_type, encoded_payload)
         for channel in channels:
             delivery = CrmEventDelivery(
                 tenant_id=tenant_id,
@@ -429,24 +434,86 @@ def emit_crm_event(
             )
             db.add(delivery)
             db.flush()
-            try:
-                send_channel_message(channel, message)
-            except Exception as exc:  # Slack must not break CRM writes.
-                delivery.status = "failed"
-                delivery.error_message = str(exc)[:1000]
-            else:
-                delivery.status = "delivered"
-                delivery.delivered_at = _utcnow()
-            db.add(delivery)
+            deliveries.append(delivery)
 
     db.commit()
     db.refresh(event)
+    for delivery in deliveries:
+        try:
+            enqueue_crm_event_delivery(delivery.id)
+        except Exception as exc:
+            logger.exception("Failed to enqueue CRM event delivery", extra={"delivery_id": delivery.id, "event_id": event.id})
+            delivery.status = "failed"
+            delivery.error_message = f"Delivery could not be queued: {str(exc)[:900]}"
+            db.add(delivery)
+    if deliveries:
+        db.commit()
+
     try:
         enqueue_crm_event_automation(event.id)
-    except Exception:
-        # Automation dispatch must not break the originating CRM write.
-        pass
+    except Exception as exc:
+        logger.exception("Failed to enqueue CRM event automation", extra={"event_id": event.id})
+        persisted_payload = dict(event.payload or {})
+        persisted_payload["_automation_dispatch"] = {
+            "status": "failed",
+            "error_message": str(exc)[:1000],
+            "failed_at": _utcnow().isoformat(),
+        }
+        event.payload = jsonable_encoder(persisted_payload)
+        db.add(event)
+        db.commit()
+        db.refresh(event)
     return event
+
+
+def process_crm_event_delivery(db: Session, *, delivery_id: int) -> CrmEventDelivery | None:
+    delivery = (
+        db.query(CrmEventDelivery)
+        .options(joinedload(CrmEventDelivery.event), joinedload(CrmEventDelivery.channel))
+        .filter(CrmEventDelivery.id == delivery_id)
+        .first()
+    )
+    if delivery is None:
+        return None
+    if delivery.status == "delivered":
+        return delivery
+    if not delivery.event or not delivery.channel:
+        delivery.status = "failed"
+        delivery.error_message = "Delivery is missing its event or notification channel"
+        db.add(delivery)
+        db.commit()
+        db.refresh(delivery)
+        return delivery
+
+    delivery.status = "running"
+    delivery.error_message = None
+    db.add(delivery)
+    db.commit()
+
+    try:
+        message = format_event_message(delivery.event.event_type, delivery.event.payload or {})
+        send_channel_message(delivery.channel, message)
+    except Exception as exc:
+        delivery.status = "failed"
+        delivery.error_message = str(exc)[:1000]
+        db.add(delivery)
+        db.commit()
+        db.refresh(delivery)
+        raise
+
+    delivery.status = "delivered"
+    delivery.delivered_at = _utcnow()
+    delivery.error_message = None
+    db.add(delivery)
+    db.commit()
+    db.refresh(delivery)
+    return delivery
+
+
+def enqueue_crm_event_delivery(delivery_id: int) -> None:
+    from app.tasks.automation_tasks import process_crm_event_delivery_task
+
+    process_crm_event_delivery_task.delay(delivery_id)
 
 
 def enqueue_crm_event_automation(event_id: int) -> None:

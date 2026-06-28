@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import re
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from types import SimpleNamespace
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -48,6 +49,13 @@ CONDITION_OPERATOR_ALIASES = {
 }
 AUTOMATION_CONTEXT_KEY = "_automation"
 SENSITIVE_DEBUG_KEYS = ("authorization", "cookie", "password", "secret", "token", "api_key", "webhook", "credential")
+TEMPLATE_TOKEN_PATTERN = re.compile(r"{{\s*([A-Za-z0-9_.]+)\s*}}")
+
+
+@dataclass(frozen=True)
+class AutomationActor:
+    id: int | None
+    tenant_id: int
 
 
 def _utcnow() -> datetime:
@@ -529,14 +537,20 @@ def serialize_automation_rule_run(run: AutomationRuleRun) -> dict[str, Any]:
 def _template(value: Any, data: dict[str, Any]) -> Any:
     if not isinstance(value, str):
         return value
-    result = value
-    for key in ("event_type", "entity_type", "entity_id", "actor_user_id"):
-        result = result.replace("{{" + key + "}}", str(data.get(key) or ""))
-    payload = data.get("payload") or {}
-    for key, payload_value in payload.items():
-        if isinstance(payload_value, (str, int, float, bool)) or payload_value is None:
-            result = result.replace("{{payload." + key + "}}", str(payload_value or ""))
-    return result
+
+    def replace_token(match: re.Match[str]) -> str:
+        key = match.group(1)
+        if key in {"event_type", "entity_type", "entity_id", "actor_user_id"}:
+            return str(data.get(key) or "")
+        if key.startswith("payload."):
+            payload = data.get("payload") or {}
+            payload_key = key.removeprefix("payload.")
+            payload_value = payload.get(payload_key)
+            if isinstance(payload_value, (str, int, float, bool)) or payload_value is None:
+                return str(payload_value or "")
+        return match.group(0)
+
+    return TEMPLATE_TOKEN_PATTERN.sub(replace_token, value)
 
 
 def _resolve_user_id(action: dict[str, Any], data: dict[str, Any]) -> int | None:
@@ -835,7 +849,9 @@ def _execute_action(db: Session, *, tenant_id: int, actor_user_id: int | None, a
 def execute_rule_for_event(db: Session, *, rule: AutomationRule, event: CrmEvent) -> AutomationRuleRun | None:
     if not rule.enabled or rule.tenant_id != event.tenant_id or rule.trigger_event != event.event_type:
         return None
-    existing = _existing_run_for_rule_event(db, rule_id=rule.id, event_id=event.id)
+    rule_id = rule.id
+    event_id = event.id
+    existing = _existing_run_for_rule_event(db, rule_id=rule_id, event_id=event_id)
     if existing is not None:
         return existing
     if not _conditions_match(rule, event):
@@ -858,7 +874,7 @@ def execute_rule_for_event(db: Session, *, rule: AutomationRule, event: CrmEvent
         db.flush()
     except IntegrityError:
         db.rollback()
-        return _existing_run_for_rule_event(db, rule_id=rule.id, event_id=event.id)
+        return _existing_run_for_rule_event(db, rule_id=rule_id, event_id=event_id)
     action_results = []
     try:
         for index, action in enumerate(rule.actions_json or []):
@@ -939,5 +955,5 @@ def process_crm_event_automations(db: Session, *, event_id: int) -> list[Automat
     return runs
 
 
-def automation_actor(user_id: int | None, tenant_id: int) -> SimpleNamespace:
-    return SimpleNamespace(id=user_id, tenant_id=tenant_id)
+def automation_actor(user_id: int | None, tenant_id: int) -> AutomationActor:
+    return AutomationActor(id=user_id, tenant_id=tenant_id)

@@ -62,7 +62,7 @@ def list_orders(
 
 @router.get("/search", response_model=SalesOrderListResponse)
 def search_orders(
-    query: str = Query(..., min_length=1),
+    query: str = Query(..., min_length=1, max_length=100),
     sort_by: str | None = Query(default=None),
     sort_direction: str | None = Query(default=None),
     filter_logic: str = Query(default="all"),

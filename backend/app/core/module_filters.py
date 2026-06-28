@@ -7,6 +7,8 @@ from typing import Any
 
 from sqlalchemy import Date, DateTime, Float, Integer, Numeric, Text, and_, cast, func, not_, or_
 
+from app.core.like_patterns import LIKE_ESCAPE, MAX_TEXT_FILTER_VALUE_LENGTH, contains_pattern
+
 FILTER_OPERATORS = {
     "is",
     "is_not",
@@ -123,11 +125,11 @@ def _build_text_expression(expression, operator: str, value: Any, values: Any):
     if operator == "contains":
         if normalized_value is None:
             return None
-        return lowered.like(f"%{normalized_value.lower()}%")
+        return lowered.like(contains_pattern(normalized_value.lower()), escape=LIKE_ESCAPE)
     if operator == "not_contains":
         if normalized_value is None:
             return None
-        return not_(lowered.like(f"%{normalized_value.lower()}%"))
+        return not_(lowered.like(contains_pattern(normalized_value.lower()), escape=LIKE_ESCAPE))
     if operator == "in":
         if not normalized_values:
             return None
@@ -221,7 +223,7 @@ def _build_date_expression(expression, operator: str, value: Any, values: Any):
     if operator == "contains":
         if comparable is None:
             return None
-        return cast(expression, DateTime).like(f"%{comparable.isoformat()}%")
+        return cast(expression, DateTime).like(contains_pattern(comparable.isoformat()), escape=LIKE_ESCAPE)
     return None
 
 
@@ -252,6 +254,8 @@ def _normalize_text(value: Any) -> str | None:
     if value is None:
         return None
     text = str(value).strip()
+    if len(text) > MAX_TEXT_FILTER_VALUE_LENGTH:
+        raise ValueError(f"Filter text value must be {MAX_TEXT_FILTER_VALUE_LENGTH} characters or fewer")
     return text or None
 
 

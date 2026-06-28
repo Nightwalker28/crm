@@ -834,6 +834,7 @@ def create_client_support_case_comment_route(
             "body": comment.body,
             "is_internal": comment.is_internal,
             "author_type": "client",
+            "author_display_name": "Client",
             "created_at": comment.created_at,
         }
     )
@@ -977,6 +978,7 @@ def create_client_message_comment_route(
             "body": comment.body,
             "is_internal": comment.is_internal,
             "author_type": "client",
+            "author_display_name": "Client",
             "created_at": comment.created_at,
         }
     )

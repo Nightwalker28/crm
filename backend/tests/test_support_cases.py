@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -128,6 +129,60 @@ class SupportCaseTests(unittest.TestCase):
         self.assertIsNotNone(updated.resolved_at)
         self.assertEqual(updated.events[-1].event_type, "status_changed")
 
+    def test_service_owned_lifecycle_fields_are_ignored_on_create_and_update(self):
+        supplied = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        item = create_support_case(
+            self.db,
+            {
+                "subject": "Lifecycle ownership",
+                "sla_due_at": supplied,
+                "first_response_at": supplied,
+                "resolved_at": supplied,
+                "closed_at": supplied,
+            },
+            self.user,
+        )
+
+        self.assertIsNone(item.sla_due_at)
+        self.assertIsNone(item.first_response_at)
+        self.assertIsNone(item.resolved_at)
+        self.assertIsNone(item.closed_at)
+
+        updated = update_support_case(
+            self.db,
+            item,
+            {
+                "priority": "high",
+                "sla_due_at": supplied,
+                "first_response_at": supplied,
+                "resolved_at": supplied,
+                "closed_at": supplied,
+            },
+            self.user,
+        )
+
+        self.assertEqual(updated.priority, "high")
+        self.assertIsNone(updated.sla_due_at)
+        self.assertIsNone(updated.first_response_at)
+        self.assertIsNone(updated.resolved_at)
+        self.assertIsNone(updated.closed_at)
+
+    def test_partial_update_does_not_revalidate_unchanged_linked_records(self):
+        item = create_support_case(self.db, {"subject": "Linked update", "contact_id": 30}, self.user)
+
+        with patch.object(cases_services, "_linked_exists", side_effect=AssertionError("unchanged links were revalidated")):
+            updated = update_support_case(self.db, item, {"priority": "urgent"}, self.user)
+
+        self.assertEqual(updated.priority, "urgent")
+        self.assertEqual(updated.contact_id, 30)
+
+    def test_category_length_is_enforced_at_service_boundary(self):
+        with self.assertRaises(HTTPException) as exc:
+            create_support_case(self.db, {"subject": "Bad category", "category": "x" * 81}, self.user)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Category must be 80 characters or fewer")
+
     def test_comment_sets_first_response_once(self):
         item = create_support_case(self.db, {"subject": "Needs response"}, self.user)
 
@@ -189,6 +244,51 @@ class SupportCaseTests(unittest.TestCase):
         self.assertEqual(total_count, 3)
         self.assertEqual([case.subject for case in cases], ["Major issue"])
 
+    def test_support_search_treats_like_wildcards_as_literal_text(self):
+        create_support_case(self.db, {"subject": "Invoice is 100% blocked"}, self.user)
+        create_support_case(self.db, {"subject": "Invoice is 1000 blocked"}, self.user)
+        create_support_case(self.db, {"subject": "Alpha_Beta error"}, self.user)
+        create_support_case(self.db, {"subject": "AlphaXBeta error"}, self.user)
+
+        percent_cases, percent_total = list_support_cases(
+            self.db,
+            tenant_id=10,
+            pagination=SimpleNamespace(offset=0, limit=10),
+            search="100%",
+        )
+        underscore_cases, underscore_total = list_support_cases(
+            self.db,
+            tenant_id=10,
+            pagination=SimpleNamespace(offset=0, limit=10),
+            search="alpha_",
+        )
+
+        self.assertEqual(percent_total, 1)
+        self.assertEqual([case.subject for case in percent_cases], ["Invoice is 100% blocked"])
+        self.assertEqual(underscore_total, 1)
+        self.assertEqual([case.subject for case in underscore_cases], ["Alpha_Beta error"])
+
+    def test_text_contains_filter_treats_like_wildcards_as_literal_text_and_caps_value(self):
+        create_support_case(self.db, {"subject": "Filter value has 100% match"}, self.user)
+        create_support_case(self.db, {"subject": "Filter value has 1000 match"}, self.user)
+
+        cases, total_count = list_support_cases(
+            self.db,
+            tenant_id=10,
+            pagination=SimpleNamespace(offset=0, limit=10),
+            all_filter_conditions=[{"field": "subject", "operator": "contains", "value": "100%"}],
+        )
+
+        self.assertEqual(total_count, 1)
+        self.assertEqual([case.subject for case in cases], ["Filter value has 100% match"])
+        with self.assertRaises(ValueError):
+            list_support_cases(
+                self.db,
+                tenant_id=10,
+                pagination=SimpleNamespace(offset=0, limit=10),
+                all_filter_conditions=[{"field": "subject", "operator": "contains", "value": "x" * 257}],
+            )
+
     def test_client_support_case_is_scoped_and_hides_internal_comments(self):
         first = create_client_support_case(
             self.db,
@@ -210,13 +310,25 @@ class SupportCaseTests(unittest.TestCase):
 
         cases = list_client_support_cases(self.db, tenant_id=10, contact_id=30, organization_id=20)
         serialized = serialize_client_support_case(get_client_support_case_or_404(self.db, tenant_id=10, contact_id=30, organization_id=20, case_id=first.id))
+        detail = get_case_or_404(self.db, tenant_id=10, case_id=first.id)
 
         self.assertEqual([case.id for case in cases], [first.id])
         self.assertEqual(serialized["category"], "technical")
         self.assertEqual([comment["body"] for comment in serialized["comments"]], ["Client reply", "Public team reply"])
+        self.assertEqual([comment["author_display_name"] for comment in serialized["comments"]], ["Client", "Owner User"])
+        self.assertEqual([comment.author_name for comment in detail.comments], [None, "Owner User", "Owner User"])
         with self.assertRaises(HTTPException) as exc:
             get_client_support_case_or_404(self.db, tenant_id=10, contact_id=30, organization_id=20, case_id=second.id)
         self.assertEqual(exc.exception.status_code, 404)
+
+    def test_support_case_responses_include_assignee_display_name(self):
+        item = create_support_case(self.db, {"subject": "Assigned case", "assigned_to_id": 2}, self.user)
+
+        detail = get_case_or_404(self.db, tenant_id=10, case_id=item.id)
+        cases, _ = list_support_cases(self.db, tenant_id=10, pagination=SimpleNamespace(offset=0, limit=10))
+
+        self.assertEqual(detail.assigned_to_name, "Agent User")
+        self.assertEqual(next(case.assigned_to_name for case in cases if case.id == item.id), "Agent User")
 
     def test_client_quick_questions_are_source_scoped(self):
         ticket = create_client_support_case(

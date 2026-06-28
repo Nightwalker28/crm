@@ -237,7 +237,7 @@ def list_leads_cursor(
 
 @router.get("/search", response_model=SalesLeadListResponse)
 def search_leads(
-    query: str = Query(..., min_length=1),
+    query: str = Query(..., min_length=1, max_length=100),
     fields: str | None = Query(default=None),
     sort_by: str | None = Query(default=None),
     sort_direction: str | None = Query(default=None),

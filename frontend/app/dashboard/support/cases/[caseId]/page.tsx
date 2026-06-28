@@ -166,7 +166,7 @@ export default function SupportCaseDetailPage() {
                 </Select>
               </Field>
               <SummaryTile label="Source" value={item.source || "-"} />
-              <SummaryTile label="Assignee" value={item.assigned_to_id ? `User #${item.assigned_to_id}` : "Unassigned"} />
+              <SummaryTile label="Assignee" value={item.assigned_to_name || "Unassigned"} />
               <SummaryTile label="SLA Due" value={item.sla_due_at ? formatDateTime(item.sla_due_at) : "-"} />
               <SummaryTile label="Updated" value={formatDateTime(item.updated_at)} />
             </FieldGroup>
@@ -189,7 +189,9 @@ export default function SupportCaseDetailPage() {
             <div className="mt-4 grid gap-3">
               {(item.comments ?? []).length ? item.comments?.map((entry) => (
                 <div key={entry.id} className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-3">
-                  <div className="text-xs text-neutral-500">{formatDateTime(entry.created_at)}{entry.author_id ? ` · User #${entry.author_id}` : ""}</div>
+                  <div className="text-xs text-neutral-500">
+                    {formatDateTime(entry.created_at)}{entry.author_name ? ` · ${entry.author_name}` : entry.author_id ? ` · User #${entry.author_id}` : ""}
+                  </div>
                   <div className="mt-2 whitespace-pre-wrap text-sm text-neutral-200">{entry.body}</div>
                 </div>
               )) : <div className="text-sm text-neutral-500">No comments yet.</div>}

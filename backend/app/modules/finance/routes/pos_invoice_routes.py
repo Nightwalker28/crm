@@ -20,7 +20,7 @@ router = APIRouter(tags=["Finance POS"])
 @router.get("/pos-invoices", response_model=PosInvoiceListResponse)
 def list_pos_invoices(
     pagination: Pagination = Depends(get_pagination),
-    search: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=100),
     status_filter: str | None = Query(default=None, alias="status"),
     sort_by: str | None = Query(default=None),
     sort_direction: str | None = Query(default=None),
@@ -42,7 +42,7 @@ def list_pos_invoices(
 @router.get("/pos-invoices/cursor")
 def list_pos_invoices_cursor(
     pagination: CursorPagination = Depends(get_cursor_pagination),
-    search: str | None = Query(default=None),
+    search: str | None = Query(default=None, max_length=100),
     status_filter: str | None = Query(default=None, alias="status"),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),

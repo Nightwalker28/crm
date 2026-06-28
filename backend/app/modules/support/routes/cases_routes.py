@@ -39,7 +39,7 @@ router = APIRouter(prefix="/support/cases", tags=["Support"])
 SUPPORT_CASES_MODULE_KEY = "support_cases"
 CASE_LIST_FIELDS = {
     "case_number", "subject", "category", "status", "priority", "source", "contact_id", "organization_id",
-    "opportunity_id", "quote_id", "order_id", "assigned_to_id", "sla_due_at", "first_response_at",
+    "opportunity_id", "quote_id", "order_id", "assigned_to_id", "assigned_to_name", "sla_due_at", "first_response_at",
     "resolved_at", "closed_at", "created_at", "updated_at",
 }
 
@@ -98,7 +98,7 @@ def list_cases(
 
 @router.get("/search", response_model=SupportCaseListResponse)
 def search_cases(
-    query: str = Query(..., min_length=1),
+    query: str = Query(..., min_length=1, max_length=100),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),

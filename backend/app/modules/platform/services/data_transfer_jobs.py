@@ -266,12 +266,9 @@ def mark_job_failed(db: Session, job: DataTransferJob, *, error_message: str, su
 
 
 def mark_data_transfer_job_failed_by_id(*, job_id: int, error_message: str) -> None:
-    db = SessionLocal()
-    try:
+    with SessionLocal() as db:
         job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
         mark_job_failed(db, job, error_message=error_message)
-    finally:
-        db.close()
 
 
 def list_data_transfer_jobs(
@@ -391,7 +388,7 @@ def cleanup_expired_data_transfer_results(db: Session) -> int:
     retention_days = max(settings.DATA_TRANSFER_RESULT_RETENTION_DAYS, 1)
     cutoff = datetime.now(timezone.utc) - timedelta(days=retention_days)
     jobs = (
-        db.query(DataTransferJob)
+        db.query(DataTransferJob.id, DataTransferJob.result_file_path)
         .filter(
             DataTransferJob.operation_type == "export",
             DataTransferJob.status == "completed",
@@ -406,129 +403,134 @@ def cleanup_expired_data_transfer_results(db: Session) -> int:
         path = Path(job.result_file_path)
         if _delete_data_transfer_file(path):
             cleaned += 1
-        job.result_file_path = None
-        job.result_file_name = None
-        job.result_media_type = None
-        db.add(job)
+        (
+            db.query(DataTransferJob)
+            .filter(DataTransferJob.id == job.id)
+            .update(
+                {
+                    DataTransferJob.result_file_path: None,
+                    DataTransferJob.result_file_name: None,
+                    DataTransferJob.result_media_type: None,
+                },
+                synchronize_session=False,
+            )
+        )
     if jobs:
         db.commit()
     return cleaned
 
 
 def cleanup_expired_data_transfer_results_job() -> int:
-    db = SessionLocal()
-    try:
+    with SessionLocal() as db:
         return cleanup_expired_data_transfer_results(db)
-    finally:
-        db.close()
 
 
 def process_import_job(*, job_id: int) -> None:
-    db = SessionLocal()
     path: Path | None = None
     try:
-        job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
-        mark_job_running(db, job)
-        update_job_progress(db, job, progress_percent=10, progress_message="Preparing import payload.")
+        with SessionLocal() as db:
+            job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
+            mark_job_running(db, job)
+            update_job_progress(db, job, progress_percent=10, progress_message="Preparing import payload.")
 
-        payload = job.payload or {}
-        module_key = job.module_key
-        actor_user_id = job.actor_user_id
-        duplicate_mode = payload.get("duplicate_mode")
-        file_path = payload.get("source_file_path")
-        if not file_path:
-            raise ValueError("Job source file path is missing.")
-        path = Path(file_path)
+            payload = job.payload or {}
+            module_key = job.module_key
+            actor_user_id = job.actor_user_id
+            duplicate_mode = payload.get("duplicate_mode")
+            file_path = payload.get("source_file_path")
+            if not file_path:
+                raise ValueError("Job source file path is missing.")
+            path = Path(file_path)
 
-        current_user = _get_job_actor(db, job=job)
-        if actor_user_id is not None and current_user is None:
-            raise ValueError("Job actor was not found in the job tenant.")
-        file_bytes = path.read_bytes()
-        update_job_progress(db, job, progress_percent=25, progress_message="Validating import file.")
+            current_user = _get_job_actor(db, job=job)
+            if actor_user_id is not None and current_user is None:
+                raise ValueError("Job actor was not found in the job tenant.")
+            file_bytes = path.read_bytes()
+            update_job_progress(db, job, progress_percent=25, progress_message="Validating import file.")
 
-        if module_key == "sales_leads":
-            from app.modules.sales.services.leads_services import import_leads_from_csv
-            from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
+            if module_key == "sales_leads":
+                from app.modules.sales.services.leads_services import import_leads_from_csv
+                from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
 
-            update_job_progress(db, job, progress_percent=65, progress_message="Importing leads.")
-            summary = import_leads_from_csv(
-                db,
-                file_bytes,
-                tenant_id=job.tenant_id,
-                default_assigned_to=actor_user_id,
-                duplicate_mode=duplicate_mode,
-                default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
-            )
-        elif module_key == "sales_contacts":
-            from app.modules.sales.services.contacts_import_service import import_contacts_from_csv
-            from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
+                update_job_progress(db, job, progress_percent=65, progress_message="Importing leads.")
+                summary = import_leads_from_csv(
+                    db,
+                    file_bytes,
+                    tenant_id=job.tenant_id,
+                    default_assigned_to=actor_user_id,
+                    duplicate_mode=duplicate_mode,
+                    default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                )
+            elif module_key == "sales_contacts":
+                from app.modules.sales.services.contacts_import_service import import_contacts_from_csv
+                from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
 
-            update_job_progress(db, job, progress_percent=65, progress_message="Importing contacts.")
-            summary = import_contacts_from_csv(
-                db,
-                file_bytes,
-                tenant_id=job.tenant_id,
-                default_assigned_to=actor_user_id or 0,
-                duplicate_mode=duplicate_mode,
-                default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
-            )
-        elif module_key == "sales_organizations":
-            from app.modules.sales.services.organizations_services import import_organizations_from_csv
-            from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
+                update_job_progress(db, job, progress_percent=65, progress_message="Importing contacts.")
+                summary = import_contacts_from_csv(
+                    db,
+                    file_bytes,
+                    tenant_id=job.tenant_id,
+                    default_assigned_to=actor_user_id or 0,
+                    duplicate_mode=duplicate_mode,
+                    default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                )
+            elif module_key == "sales_organizations":
+                from app.modules.sales.services.organizations_services import import_organizations_from_csv
+                from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
 
-            update_job_progress(db, job, progress_percent=65, progress_message="Importing organizations.")
-            summary = import_organizations_from_csv(
-                db=db,
-                file_bytes=file_bytes,
-                current_user=current_user,
-                duplicate_mode=duplicate_mode,
-                default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
-            )
-        elif module_key == "sales_opportunities":
-            from app.modules.sales.services.opportunities_services import import_opportunities_from_csv
-            from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
+                update_job_progress(db, job, progress_percent=65, progress_message="Importing organizations.")
+                summary = import_organizations_from_csv(
+                    db=db,
+                    file_bytes=file_bytes,
+                    current_user=current_user,
+                    duplicate_mode=duplicate_mode,
+                    default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                )
+            elif module_key == "sales_opportunities":
+                from app.modules.sales.services.opportunities_services import import_opportunities_from_csv
+                from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
 
-            update_job_progress(db, job, progress_percent=65, progress_message="Importing opportunities.")
-            summary = import_opportunities_from_csv(
-                db=db,
-                file_bytes=file_bytes,
-                current_user=current_user,
-                duplicate_mode=duplicate_mode,
-                default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
-            )
-        elif module_key == "sales_quotes":
-            from app.modules.sales.services.quotes_services import import_quotes_from_csv
-            from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
+                update_job_progress(db, job, progress_percent=65, progress_message="Importing opportunities.")
+                summary = import_opportunities_from_csv(
+                    db=db,
+                    file_bytes=file_bytes,
+                    current_user=current_user,
+                    duplicate_mode=duplicate_mode,
+                    default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                )
+            elif module_key == "sales_quotes":
+                from app.modules.sales.services.quotes_services import import_quotes_from_csv
+                from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
 
-            update_job_progress(db, job, progress_percent=65, progress_message="Importing quotes.")
-            summary = import_quotes_from_csv(
-                db,
-                file_bytes,
-                tenant_id=job.tenant_id,
-                default_assigned_to=actor_user_id,
-                duplicate_mode=duplicate_mode,
-                default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
-            )
-        elif module_key == "finance_io":
-            from app.modules.finance.services import io_search_api
-            from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
+                update_job_progress(db, job, progress_percent=65, progress_message="Importing quotes.")
+                summary = import_quotes_from_csv(
+                    db,
+                    file_bytes,
+                    tenant_id=job.tenant_id,
+                    default_assigned_to=actor_user_id,
+                    duplicate_mode=duplicate_mode,
+                    default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                )
+            elif module_key == "finance_io":
+                from app.modules.finance.services import io_search_api
+                from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
 
-            update_job_progress(db, job, progress_percent=65, progress_message="Importing insertion orders.")
-            summary = io_search_api.import_insertion_orders_csv_bytes(
-                db=db,
-                current_user=current_user,
-                file_bytes=file_bytes,
-                duplicate_mode=duplicate_mode,
-                default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
-                replace_duplicates=False,
-                skip_duplicates=False,
-                create_new_records=False,
-            )
-        else:
-            raise ValueError(f"Unsupported import module '{module_key}'.")
+                update_job_progress(db, job, progress_percent=65, progress_message="Importing insertion orders.")
+                summary = io_search_api.import_insertion_orders_csv_bytes(
+                    db=db,
+                    current_user=current_user,
+                    file_bytes=file_bytes,
+                    duplicate_mode=duplicate_mode,
+                    default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                    replace_duplicates=False,
+                    skip_duplicates=False,
+                    create_new_records=False,
+                )
+            else:
+                raise ValueError(f"Unsupported import module '{module_key}'.")
 
-        update_job_progress(db, job, progress_percent=90, progress_message="Finalizing import summary.")
-        mark_job_completed(db, job, summary=summary)
+            update_job_progress(db, job, progress_percent=90, progress_message="Finalizing import summary.")
+            mark_job_completed(db, job, summary=summary)
     finally:
         try:
             if path and path.exists():
@@ -537,12 +539,10 @@ def process_import_job(*, job_id: int) -> None:
                 path.parent.rmdir()
         except OSError:
             pass
-        db.close()
 
 
 def process_export_job(*, job_id: int) -> None:
-    db = SessionLocal()
-    try:
+    with SessionLocal() as db:
         job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
         mark_job_running(db, job)
         update_job_progress(db, job, progress_percent=10, progress_message="Preparing export job.")
@@ -776,5 +776,3 @@ def process_export_job(*, job_id: int) -> None:
             result_file_name=file_name,
             result_media_type=media_type,
         )
-    finally:
-        db.close()

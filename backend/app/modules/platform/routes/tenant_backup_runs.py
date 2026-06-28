@@ -12,7 +12,7 @@ from app.modules.platform.schema import (
     TenantBackupRunResponse,
 )
 from app.modules.platform.services.tenant_backup_runs import (
-    create_manual_tenant_backup_run,
+    create_queued_manual_tenant_backup_run,
     delete_tenant_backup_artifact,
     get_tenant_backup_artifact_path,
     get_tenant_backup_run_or_404,
@@ -34,8 +34,13 @@ def get_runs(pagination: Pagination = Depends(get_pagination), db: Session = Dep
 
 @router.post("/manual", response_model=TenantBackupRunCreateResponse)
 def create_manual_run(db: Session = Depends(get_db), admin=Depends(require_admin)):
-    run = create_manual_tenant_backup_run(db, tenant_id=admin.tenant_id, actor_user_id=admin.id)
-    message = "Tenant backup completed." if run.status == "completed" else "Tenant backup failed."
+    run = create_queued_manual_tenant_backup_run(db, tenant_id=admin.tenant_id, actor_user_id=admin.id)
+    if run.status in {"pending", "running"}:
+        message = "Tenant backup queued."
+    elif run.status == "completed":
+        message = "Tenant backup completed."
+    else:
+        message = "Tenant backup could not be queued."
     return {
         "run": TenantBackupRunResponse.model_validate(serialize_tenant_backup_run(run)),
         "message": message,

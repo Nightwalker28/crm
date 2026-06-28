@@ -4,6 +4,7 @@ import tempfile
 import zipfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -13,8 +14,10 @@ from app.core.database import Base
 from app.modules.documents.models import DocumentStorageConnection
 from app.modules.platform.models import ActivityLog, TenantBackupRun, TenantBackupSettings, TenantRestoreRun
 from app.modules.platform.services import tenant_backup_runs as tenant_backup_runs_service
+from app.modules.platform.services import tenant_restore_runs as tenant_restore_runs_service
 from app.modules.platform.services.tenant_backup_runs import (
     create_manual_tenant_backup_run,
+    create_queued_manual_tenant_backup_run,
     delete_tenant_backup_artifact,
     run_due_tenant_backup_schedules,
 )
@@ -277,6 +280,29 @@ class TenantBackupSettingsTests(unittest.TestCase):
         self.assertEqual(metadata["record_counts"]["sales_contacts"], 1)
         self.assertEqual([row["contact_id"] for row in contacts], [1])
         self.assertEqual(self.db.query(TenantBackupSettings).filter(TenantBackupSettings.tenant_id == 10).one().last_run_at, run.completed_at)
+
+    def test_queued_manual_backup_run_records_pending_run_without_running_export(self):
+        update_tenant_backup_settings(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "scope": "selected_modules",
+                "selected_modules": ["sales_contacts"],
+                "retention_count": 3,
+                "include_documents": False,
+            },
+        )
+
+        with patch.object(tenant_backup_runs_service, "enqueue_tenant_backup_run") as enqueue:
+            run = create_queued_manual_tenant_backup_run(self.db, tenant_id=10, actor_user_id=1)
+
+        self.assertEqual(run.status, "pending")
+        self.assertEqual(run.backup_type, "tenant")
+        self.assertEqual(run.modules_included, ["sales_contacts"])
+        self.assertIsNone(run.file_path)
+        self.assertIsNone(run.started_at)
+        enqueue.assert_called_once_with(run.id)
 
     def test_manual_backup_run_uploads_to_connected_cloud_destination(self):
         self.db.add_all(
@@ -545,6 +571,63 @@ class TenantBackupSettingsTests(unittest.TestCase):
         self.assertEqual(restore_run.summary["updated"], 1)
         self.assertEqual(restored.first_name, "Backup")
         self.assertEqual(other.first_name, "Other")
+
+    def test_restore_failure_rolls_back_module_changes_and_records_failure(self):
+        self.db.add(SalesContact(contact_id=1, tenant_id=10, first_name="Backup", last_name="Contact", primary_email="backup-fail@example.com", assigned_to=1))
+        self.db.commit()
+        update_tenant_backup_settings(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={"scope": "selected_modules", "selected_modules": ["sales_contacts"], "include_documents": False},
+        )
+        backup_run = create_manual_tenant_backup_run(self.db, tenant_id=10, actor_user_id=1)
+        contact = self.db.query(SalesContact).filter(SalesContact.tenant_id == 10, SalesContact.contact_id == 1).one()
+        contact.first_name = "Changed"
+        self.db.commit()
+
+        original_assign = tenant_restore_runs_service._assign_row_values
+
+        def failing_assign(instance, row, *, tenant_id):
+            original_assign(instance, row, tenant_id=tenant_id)
+            raise RuntimeError("restore failed after mutation")
+
+        restore_run = execute_tenant_module_restore(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            source_backup_run_id=backup_run.id,
+            module_key="sales_contacts",
+            mode="update_existing",
+        )
+        self.assertEqual(restore_run.status, "completed")
+
+        contact.first_name = "Changed"
+        self.db.commit()
+        with patch.object(tenant_restore_runs_service, "_assign_row_values", side_effect=failing_assign):
+            failed_run = execute_tenant_module_restore(
+                self.db,
+                tenant_id=10,
+                actor_user_id=1,
+                source_backup_run_id=backup_run.id,
+                module_key="sales_contacts",
+                mode="update_existing",
+            )
+
+        self.db.expire_all()
+        unchanged = self.db.query(SalesContact).filter(SalesContact.tenant_id == 10, SalesContact.contact_id == 1).one()
+        self.assertEqual(failed_run.status, "failed")
+        self.assertIn("restore failed after mutation", failed_run.error_message)
+        self.assertEqual(unchanged.first_name, "Changed")
+
+    def test_restore_datetime_strings_are_normalized_to_utc(self):
+        value = tenant_restore_runs_service._coerce_column_value(
+            SalesContact.__table__.c.created_time,
+            "2026-01-01T08:00:00+05:30",
+        )
+
+        self.assertEqual(value.tzinfo, timezone.utc)
+        self.assertEqual(value.isoformat(), "2026-01-01T02:30:00+00:00")
 
     def test_replace_restore_requires_confirmation(self):
         self.db.add(SalesContact(contact_id=1, tenant_id=10, first_name="Backup", last_name="Contact", primary_email="backup@example.com", assigned_to=1))

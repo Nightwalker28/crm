@@ -172,7 +172,7 @@ def _delete_artifact(path_value: str | None) -> bool:
 def _cleanup_retention(db: Session, *, tenant_id: int, retention_count: int) -> int:
     keep = max(int(retention_count), 1)
     old_runs = (
-        db.query(TenantBackupRun)
+        db.query(TenantBackupRun.id, TenantBackupRun.file_path)
         .filter(
             TenantBackupRun.tenant_id == tenant_id,
             TenantBackupRun.backup_type == "tenant",
@@ -187,10 +187,18 @@ def _cleanup_retention(db: Session, *, tenant_id: int, retention_count: int) -> 
     for run in old_runs:
         if _delete_artifact(run.file_path):
             cleaned += 1
-        run.file_path = None
-        run.storage_ref = None
-        run.destination_upload_status = "expired"
-        db.add(run)
+        (
+            db.query(TenantBackupRun)
+            .filter(TenantBackupRun.id == run.id, TenantBackupRun.tenant_id == tenant_id)
+            .update(
+                {
+                    TenantBackupRun.file_path: None,
+                    TenantBackupRun.storage_ref: None,
+                    TenantBackupRun.destination_upload_status: "expired",
+                },
+                synchronize_session=False,
+            )
+        )
     if old_runs:
         db.commit()
     return cleaned
@@ -315,14 +323,13 @@ def delete_tenant_backup_artifact(db: Session, *, tenant_id: int, actor_user_id:
     return run
 
 
-def create_manual_tenant_backup_run(
+def _create_pending_tenant_backup_run(
     db: Session,
     *,
     tenant_id: int,
     actor_user_id: int,
     force_full_tenant: bool = False,
     destination_override: str | None = None,
-    skip_retention_cleanup: bool = False,
 ) -> TenantBackupRun:
     settings = get_or_create_tenant_backup_settings(db, tenant_id=tenant_id, actor_user_id=actor_user_id)
     modules_included = (
@@ -349,7 +356,17 @@ def create_manual_tenant_backup_run(
     db.add(run)
     db.commit()
     db.refresh(run)
+    return run
 
+
+def _execute_tenant_backup_run(db: Session, *, run: TenantBackupRun, skip_retention_cleanup: bool = False) -> TenantBackupRun:
+    tenant_id = int(run.tenant_id)
+    actor_user_id = int(run.requested_by_user_id) if run.requested_by_user_id is not None else None
+    if actor_user_id is None:
+        raise HTTPException(status_code=422, detail="Tenant backup run is missing an actor.")
+    settings = run.settings or get_or_create_tenant_backup_settings(db, tenant_id=tenant_id, actor_user_id=actor_user_id)
+    modules_included = list(run.modules_included or [])
+    destination = run.destination
     safe_log_activity(
         db,
         tenant_id=tenant_id,
@@ -365,6 +382,7 @@ def create_manual_tenant_backup_run(
     started_at = _utc_now()
     run.status = "running"
     run.started_at = started_at
+    db.add(run)
     db.commit()
     db.refresh(run)
 
@@ -481,6 +499,67 @@ def create_manual_tenant_backup_run(
             after_state=serialize_tenant_backup_run(run),
         )
         return run
+
+
+def process_tenant_backup_run(db: Session, *, run_id: int) -> TenantBackupRun:
+    run = db.query(TenantBackupRun).filter(TenantBackupRun.id == run_id, TenantBackupRun.backup_type == "tenant").first()
+    if not run:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant backup run not found.")
+    if run.status not in {"pending", "failed"}:
+        return run
+    return _execute_tenant_backup_run(db, run=run)
+
+
+def enqueue_tenant_backup_run(run_id: int) -> None:
+    from app.tasks.tenant_backup_tasks import process_tenant_backup_run_task
+
+    process_tenant_backup_run_task.delay(run_id)
+
+
+def create_queued_manual_tenant_backup_run(
+    db: Session,
+    *,
+    tenant_id: int,
+    actor_user_id: int,
+    force_full_tenant: bool = False,
+    destination_override: str | None = None,
+) -> TenantBackupRun:
+    run = _create_pending_tenant_backup_run(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        force_full_tenant=force_full_tenant,
+        destination_override=destination_override,
+    )
+    try:
+        enqueue_tenant_backup_run(int(run.id))
+    except Exception as exc:
+        run.status = "failed"
+        run.completed_at = _utc_now()
+        run.error_message = f"Backup could not be queued: {str(exc)[:900]}"
+        db.add(run)
+        db.commit()
+        db.refresh(run)
+    return run
+
+
+def create_manual_tenant_backup_run(
+    db: Session,
+    *,
+    tenant_id: int,
+    actor_user_id: int,
+    force_full_tenant: bool = False,
+    destination_override: str | None = None,
+    skip_retention_cleanup: bool = False,
+) -> TenantBackupRun:
+    run = _create_pending_tenant_backup_run(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        force_full_tenant=force_full_tenant,
+        destination_override=destination_override,
+    )
+    return _execute_tenant_backup_run(db, run=run, skip_retention_cleanup=skip_retention_cleanup)
 
 
 def create_safety_tenant_backup_run(db: Session, *, tenant_id: int, actor_user_id: int) -> TenantBackupRun:

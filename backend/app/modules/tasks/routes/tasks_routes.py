@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
@@ -25,6 +25,7 @@ from app.modules.tasks.services.tasks_services import (
     create_task,
     create_task_assignment_notifications,
     delete_task,
+    emit_task_due_today_alert,
     get_deleted_task_or_404,
     get_task_or_404,
     list_deleted_tasks,
@@ -47,6 +48,18 @@ def _user_today(current_user) -> object:
     except ZoneInfoNotFoundError:
         tzinfo = timezone.utc
     return datetime.now(tzinfo).date()
+
+
+def _user_day_bounds_utc(current_user) -> tuple[datetime, datetime]:
+    timezone_name = getattr(current_user, "timezone", None) or "UTC"
+    try:
+        tzinfo = ZoneInfo(timezone_name)
+    except ZoneInfoNotFoundError:
+        tzinfo = timezone.utc
+    today = datetime.now(tzinfo).date()
+    day_start = datetime.combine(today, datetime.min.time(), tzinfo=tzinfo)
+    day_end = datetime.combine(today + timedelta(days=1), datetime.min.time(), tzinfo=tzinfo)
+    return day_start.astimezone(timezone.utc), day_end.astimezone(timezone.utc)
 
 
 def _is_due_today(task, current_user) -> bool:
@@ -91,14 +104,15 @@ def _emit_task_alert_events(db: Session, *, current_user, task, added_keys: list
             payload=payload,
         )
     if _is_due_today(task, current_user):
-        safe_emit_crm_event(
+        day_start, day_end = _user_day_bounds_utc(current_user)
+        emit_task_due_today_alert(
             db,
-            tenant_id=current_user.tenant_id,
+            task=task,
             actor_user_id=current_user.id if current_user else None,
-            event_type="task.due_today",
-            entity_type="task",
-            entity_id=task.id,
+            day_start=day_start,
+            day_end=day_end,
             payload=payload,
+            notify_assignees=False,
         )
 
 
@@ -216,7 +230,7 @@ def _mirror_task_source_activity(
 
 @router.get("", response_model=TaskListResponse)
 def get_tasks(
-    query: str | None = Query(default=None),
+    query: str | None = Query(default=None, max_length=100),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
@@ -256,7 +270,7 @@ def get_tasks(
 
 @router.get("/cursor")
 def get_tasks_cursor(
-    query: str | None = Query(default=None),
+    query: str | None = Query(default=None, max_length=100),
     filter_logic: str = Query(default="all"),
     filters: str | None = Query(default=None),
     filters_all: str | None = Query(default=None),
