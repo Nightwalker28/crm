@@ -122,6 +122,7 @@ def list_users_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | 
     query = build_user_query(db, tenant_id=tenant_id)
     if cursor is not None:
         query = query.filter(User.id < cursor)
+    # Cursor endpoints intentionally use strict id-desc ordering so the cursor remains stable.
     return query.order_by(None).order_by(User.id.desc()).limit(limit + 1).all()
 
 
@@ -183,4 +184,5 @@ def search_users_cursor(
     )
     if cursor is not None:
         query = query.filter(User.id < cursor)
+    # Cursor endpoints intentionally use strict id-desc ordering so the cursor remains stable.
     return query.order_by(None).order_by(User.id.desc()).limit(limit + 1).all()

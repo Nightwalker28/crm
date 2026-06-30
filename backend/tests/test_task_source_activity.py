@@ -339,6 +339,64 @@ class TaskSourceActivityTests(unittest.TestCase):
         self.assertEqual(persisted.title, "Original title")
         self.assertEqual(self.db.query(TaskAssignee).count(), 0)
 
+    def test_assignee_validation_batches_user_and_team_lookup(self):
+        payload = [
+            {"assignee_type": "user", "user_id": 2},
+            {"assignee_type": "user", "user_id": 3},
+            {"assignee_type": "team", "team_id": 3},
+            {"assignee_type": "team", "team_id": 3},
+        ]
+
+        with patch.object(self.db, "query", wraps=self.db.query) as query_mock:
+            normalized = tasks_services._normalize_assignees(
+                self.db,
+                tenant_id=10,
+                assignees_payload=payload,
+                current_user=self.current_user,
+            )
+
+        self.assertEqual([item["assignee_key"] for item in normalized], ["user:2", "user:3", "team:3"])
+        self.assertEqual(query_mock.call_count, 2)
+
+    def test_notification_recipient_resolution_batches_team_members(self):
+        self.db.add_all(
+            [
+                Team(id=4, tenant_id=10, name="Delivery"),
+                User(id=4, tenant_id=10, email="delivery@example.com", first_name="Dee", last_name="Livery", role_id=2, team_id=4, is_active=UserStatus.active),
+            ]
+        )
+        self.db.commit()
+
+        with patch.object(self.db, "query", wraps=self.db.query) as query_mock:
+            user_ids = tasks_services._resolve_notification_user_ids(
+                self.db,
+                tenant_id=10,
+                assignee_keys=["user:3", "team:3", "team:4"],
+            )
+
+        self.assertEqual(user_ids, [2, 3, 4])
+        query_mock.assert_called_once()
+
+    def test_assignment_options_are_bounded_searchable_and_include_selected(self):
+        self.db.add_all(
+            [
+                User(id=4, tenant_id=10, email="inactive@example.com", first_name="Inactive", last_name="User", role_id=2, is_active=UserStatus.inactive),
+                User(id=5, tenant_id=10, email="zoe@example.com", first_name="Zoe", last_name="Active", role_id=2, is_active=UserStatus.active),
+                Team(id=4, tenant_id=10, name="Delivery"),
+            ]
+        )
+        self.db.commit()
+
+        limited = tasks_services.list_task_assignment_options(self.db, tenant_id=10, limit=1)
+        searched = tasks_services.list_task_assignment_options(self.db, tenant_id=10, query="mia", limit=100)
+        selected = tasks_services.list_task_assignment_options(self.db, tenant_id=10, limit=1, selected_user_ids=[4], selected_team_ids=[4])
+
+        self.assertEqual(len(limited["users"]), 1)
+        self.assertEqual([user["email"] for user in searched["users"]], ["member@example.com"])
+        self.assertNotIn("inactive@example.com", {user["email"] for user in limited["users"]})
+        self.assertIn("inactive@example.com", {user["email"] for user in selected["users"]})
+        self.assertIn("Delivery", {team["name"] for team in selected["teams"]})
+
 
 if __name__ == "__main__":
     unittest.main()

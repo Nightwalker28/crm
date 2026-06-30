@@ -90,8 +90,12 @@ def get_mail_messages_cursor(
         limit=pagination.limit,
         cursor=pagination.cursor,
     )
-    serialized = [MailMessageResponse.model_validate(serialize_mail_message(message)) for message in messages]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    return build_cursor_response(
+        messages,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda message: MailMessageResponse.model_validate(serialize_mail_message(message)),
+    )
 
 
 @router.get("/messages/{message_id}", response_model=MailMessageResponse)

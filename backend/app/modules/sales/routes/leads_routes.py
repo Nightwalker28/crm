@@ -232,7 +232,12 @@ def list_leads_cursor(
         any_filter_conditions=any_conditions,
     )
     selected_fields = _parse_list_fields(fields, _enabled_lead_list_fields(db, current_user.tenant_id))
-    return build_cursor_response([_serialize_lead_list_item(lead, selected_fields) for lead in leads], limit=pagination.limit, id_attr="lead_id")
+    return build_cursor_response(
+        leads,
+        limit=pagination.limit,
+        id_attr="lead_id",
+        serializer=lambda lead: _serialize_lead_list_item(lead, selected_fields),
+    )
 
 
 @router.get("/search", response_model=SalesLeadListResponse)

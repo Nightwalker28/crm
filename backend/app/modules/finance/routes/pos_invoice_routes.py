@@ -56,8 +56,12 @@ def list_pos_invoices_cursor(
         search=search,
         status_filter=status_filter,
     )
-    serialized = [pos_invoice_services.serialize_invoice(invoice, current_user=current_user, include_lines=False) for invoice in invoices]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    return build_cursor_response(
+        invoices,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda invoice: pos_invoice_services.serialize_invoice(invoice, current_user=current_user, include_lines=False),
+    )
 
 
 @router.post("/pos-invoices", response_model=PosInvoiceResponse, status_code=status.HTTP_201_CREATED)

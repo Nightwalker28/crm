@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime
+from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -147,6 +148,88 @@ class OpportunityListTests(unittest.TestCase):
             [opportunity.opportunity_name for opportunity in opportunities],
             ["Ada renewal", "Mia expansion"],
         )
+
+    def test_pipeline_summary_uses_grouped_sql_and_ignores_deleted_and_other_tenant_rows(self):
+        self.db.add_all(
+            [
+                SalesOpportunity(
+                    opportunity_id=301,
+                    tenant_id=10,
+                    opportunity_name="Lead deal",
+                    client="Ada",
+                    sales_stage="lead",
+                    total_cost_of_project="1,200.50",
+                    assigned_to=1,
+                ),
+                SalesOpportunity(
+                    opportunity_id=302,
+                    tenant_id=10,
+                    opportunity_name="Won deal",
+                    client="Ada",
+                    sales_stage="closed_won",
+                    total_cost_of_project="300",
+                    assigned_to=1,
+                ),
+                SalesOpportunity(
+                    opportunity_id=303,
+                    tenant_id=10,
+                    opportunity_name="No stage deal",
+                    client="Ada",
+                    sales_stage=None,
+                    total_cost_of_project="not a number",
+                    assigned_to=1,
+                ),
+                SalesOpportunity(
+                    opportunity_id=304,
+                    tenant_id=10,
+                    opportunity_name="Deleted deal",
+                    client="Ada",
+                    sales_stage="lead",
+                    total_cost_of_project="900",
+                    deleted_at=datetime.utcnow(),
+                    assigned_to=1,
+                ),
+                SalesOpportunity(
+                    opportunity_id=305,
+                    tenant_id=99,
+                    opportunity_name="Other tenant deal",
+                    client="Other",
+                    sales_stage="lead",
+                    total_cost_of_project="700",
+                    assigned_to=1,
+                ),
+            ]
+        )
+        self.db.commit()
+
+        with patch.object(
+            opportunities_repository,
+            "build_opportunity_query",
+            wraps=opportunities_repository.build_opportunity_query,
+        ) as build_query:
+            summary = opportunities_services.summarize_opportunity_pipeline(self.db, tenant_id=10)
+
+        stages = {stage["stage_key"]: stage for stage in summary["stages"]}
+        self.assertEqual(summary["total_count"], 3)
+        self.assertEqual(stages["lead"]["count"], 1)
+        self.assertEqual(stages["lead"]["total_value"], 1200.5)
+        self.assertEqual(stages["closed_won"]["count"], 1)
+        self.assertEqual(stages["closed_won"]["total_value"], 300.0)
+        self.assertEqual(stages["unstaged"]["count"], 1)
+        self.assertEqual(stages["unstaged"]["total_value"], 0.0)
+        build_query.assert_called_once()
+
+    def test_pipeline_summary_does_not_load_full_opportunity_rows(self):
+        with patch.object(
+            opportunities_repository,
+            "summarize_pipeline",
+            return_value=[("lead", 2, Decimal("15.50"))],
+        ) as summarize:
+            summary = opportunities_services.summarize_opportunity_pipeline(self.db, tenant_id=10)
+
+        summarize.assert_called_once()
+        self.assertEqual(summary["total_count"], 2)
+        self.assertEqual(next(stage for stage in summary["stages"] if stage["stage_key"] == "lead")["total_value"], 15.5)
 
     def test_get_opportunity_include_deleted_returns_active_and_deleted_rows(self):
         active = SalesOpportunity(

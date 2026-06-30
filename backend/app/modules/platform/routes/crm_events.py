@@ -60,10 +60,11 @@ def get_crm_events_cursor(
         delivery_provider=delivery_provider,
         delivery_status=delivery_status,
     )
-    serialized = [
-        CrmEventResponse.model_validate(
+    return build_cursor_response(
+        events,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda event: CrmEventResponse.model_validate(
             serialize_crm_event(event, deliveries_by_event_id.get(event.id, []))
-        ).model_dump(mode="json")
-        for event in events
-    ]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+        ).model_dump(mode="json"),
+    )

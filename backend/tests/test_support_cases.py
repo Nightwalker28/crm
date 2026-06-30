@@ -20,6 +20,7 @@ from app.modules.support.services.cases_services import (
     create_client_support_case,
     create_support_case,
     get_case_or_404,
+    get_case_summary,
     get_client_support_case_or_404,
     list_client_support_cases,
     list_support_cases,
@@ -289,6 +290,27 @@ class SupportCaseTests(unittest.TestCase):
                 all_filter_conditions=[{"field": "subject", "operator": "contains", "value": "x" * 257}],
             )
 
+    def test_case_summary_uses_single_grouped_aggregate(self):
+        overdue_at = datetime(2020, 1, 1, tzinfo=timezone.utc)
+        self.db.add_all(
+            [
+                SupportCase(tenant_id=10, case_number="CASE-SUM-1", subject="Urgent overdue", status="new", priority="urgent", sla_due_at=overdue_at),
+                SupportCase(tenant_id=10, case_number="CASE-SUM-2", subject="Open normal", status="open", priority="medium"),
+                SupportCase(tenant_id=10, case_number="CASE-SUM-3", subject="Resolved urgent", status="resolved", priority="urgent", sla_due_at=overdue_at),
+                SupportCase(tenant_id=99, case_number="CASE-SUM-4", subject="Other tenant", status="new", priority="urgent", sla_due_at=overdue_at),
+            ]
+        )
+        self.db.commit()
+
+        with patch.object(self.db, "query", wraps=self.db.query) as query_mock:
+            summary = get_case_summary(self.db, tenant_id=10)
+
+        self.assertEqual(summary["total_open"], 2)
+        self.assertEqual(summary["urgent_open"], 1)
+        self.assertEqual(summary["overdue"], 1)
+        self.assertEqual(summary["by_status"], {"new": 1, "open": 1, "resolved": 1})
+        query_mock.assert_called_once()
+
     def test_client_support_case_is_scoped_and_hides_internal_comments(self):
         first = create_client_support_case(
             self.db,
@@ -309,11 +331,14 @@ class SupportCaseTests(unittest.TestCase):
         add_case_comment(self.db, first, {"body": "Internal note", "is_internal": True}, self.user)
 
         cases = list_client_support_cases(self.db, tenant_id=10, contact_id=30, organization_id=20)
-        serialized = serialize_client_support_case(get_client_support_case_or_404(self.db, tenant_id=10, contact_id=30, organization_id=20, case_id=first.id))
+        client_detail = get_client_support_case_or_404(self.db, tenant_id=10, contact_id=30, organization_id=20, case_id=first.id)
+        client_comment_bodies = [comment.body for comment in client_detail.comments]
+        serialized = serialize_client_support_case(client_detail)
         detail = get_case_or_404(self.db, tenant_id=10, case_id=first.id)
 
         self.assertEqual([case.id for case in cases], [first.id])
         self.assertEqual(serialized["category"], "technical")
+        self.assertEqual(client_comment_bodies, ["Client reply", "Public team reply"])
         self.assertEqual([comment["body"] for comment in serialized["comments"]], ["Client reply", "Public team reply"])
         self.assertEqual([comment["author_display_name"] for comment in serialized["comments"]], ["Client", "Owner User"])
         self.assertEqual([comment.author_name for comment in detail.comments], [None, "Owner User", "Owner User"])

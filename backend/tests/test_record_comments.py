@@ -98,6 +98,17 @@ class RecordCommentMentionTests(unittest.TestCase):
 
         self.assertEqual(users, [{"id": 1, "label": "Ava Admin", "email": "admin@example.com"}])
 
+    def test_list_mentionable_record_users_escapes_literal_search_wildcards(self):
+        users = list_mentionable_record_users(
+            self.db,
+            tenant_id=10,
+            module_key="sales_contacts",
+            entity_id=7,
+            query="%",
+        )
+
+        self.assertEqual(users, [])
+
     def test_validate_record_mentions_rejects_users_without_view_access(self):
         with self.assertRaises(Exception) as context:
             validate_record_mentions(

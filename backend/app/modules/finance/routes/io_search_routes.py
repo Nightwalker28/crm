@@ -225,8 +225,12 @@ def list_insertion_orders_cursor_route(
         any_filter_conditions=any_conditions,
     )
     selected_fields = _parse_list_fields(fields, _enabled_insertion_order_list_fields(db, current_user.tenant_id))
-    serialized = [_serialize_insertion_order_list_item(item, selected_fields) for item in records]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    return build_cursor_response(
+        records,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda item: _serialize_insertion_order_list_item(item, selected_fields),
+    )
 
 
 @router.post("/insertion-orders", response_model=InsertionOrderResponse, status_code=status.HTTP_201_CREATED)

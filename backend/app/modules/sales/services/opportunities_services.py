@@ -322,15 +322,6 @@ def summarize_opportunity_pipeline(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> dict:
-    query = opportunities_repository.build_opportunity_query(
-        db,
-        tenant_id=tenant_id,
-        search=search,
-        all_filter_conditions=all_filter_conditions,
-        any_filter_conditions=any_filter_conditions,
-    )
-    items = query.all()
-
     summary = {
         stage: {"stage_key": stage, "label": OPPORTUNITY_STAGE_LABELS[stage], "count": 0, "total_value": Decimal("0")}
         for stage in OPPORTUNITY_STAGE_ORDER
@@ -342,11 +333,19 @@ def summarize_opportunity_pipeline(
         "total_value": Decimal("0"),
     }
 
-    for item in items:
-        stage_key = _normalize_stage(item.sales_stage)
+    total_count = 0
+    for sales_stage, count, total_value in opportunities_repository.summarize_pipeline(
+        db,
+        tenant_id=tenant_id,
+        search=search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    ):
+        stage_key = _normalize_stage(sales_stage)
         bucket = summary.get(stage_key) or summary["unstaged"]
-        bucket["count"] += 1
-        bucket["total_value"] += _parse_numeric_value(item.total_cost_of_project)
+        bucket["count"] += int(count or 0)
+        bucket["total_value"] += Decimal(str(total_value or 0))
+        total_count += int(count or 0)
 
     ordered_keys = [*OPPORTUNITY_STAGE_ORDER, "unstaged"]
     stages = [
@@ -359,7 +358,7 @@ def summarize_opportunity_pipeline(
         for key in ordered_keys
     ]
     return {
-        "total_count": len(items),
+        "total_count": total_count,
         "stages": stages,
     }
 

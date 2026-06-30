@@ -52,8 +52,12 @@ def get_notifications_cursor(
         cursor=pagination.cursor,
         status_filter=status_filter,
     )
-    serialized = [UserNotificationResponse.model_validate(item).model_dump(mode="json") for item in items]
-    response = build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    response = build_cursor_response(
+        items,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda item: UserNotificationResponse.model_validate(item).model_dump(mode="json"),
+    )
     response["unread_count"] = unread_count
     return response
 

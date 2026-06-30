@@ -1,3 +1,5 @@
+import json
+
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -19,9 +21,16 @@ TABLE_PREFERENCE_MODULES = {
     "finance_io",
 }
 
-SAVED_VIEW_MODULES = TABLE_PREFERENCE_MODULES
+SAVED_VIEW_MODULES = set(TABLE_PREFERENCE_MODULES)
 SYSTEM_DEFAULT_VIEW_NAME = "Default View"
 COMPANY_OPERATING_CURRENCIES_CACHE_TTL_SECONDS = 300
+SAVED_VIEW_MAX_CONFIG_BYTES = 64_000
+SAVED_VIEW_MAX_DEPTH = 8
+SAVED_VIEW_MAX_LIST_ITEMS = 100
+SAVED_VIEW_MAX_OBJECT_KEYS = 100
+SAVED_VIEW_MAX_STRING_BYTES = 2_000
+SAVED_VIEW_MAX_COLUMNS = 80
+SAVED_VIEW_MAX_FILTER_CONDITIONS = 50
 DASHBOARD_WIDGET_TYPES = {
     "crm_snapshot",
     "module_entry_points",
@@ -316,12 +325,46 @@ def _ensure_supported_saved_view_module(db: Session, user: User, module_key: str
         raise ValueError("Unsupported saved-view module")
 
 
+def _assert_saved_view_json_bounds(value, *, depth: int = 0) -> None:
+    if depth > SAVED_VIEW_MAX_DEPTH:
+        raise ValueError("Saved view config is too deeply nested")
+    if isinstance(value, dict):
+        if len(value) > SAVED_VIEW_MAX_OBJECT_KEYS:
+            raise ValueError("Saved view config has too many keys")
+        for key, item in value.items():
+            if len(str(key).encode("utf-8")) > SAVED_VIEW_MAX_STRING_BYTES:
+                raise ValueError("Saved view config key is too large")
+            _assert_saved_view_json_bounds(item, depth=depth + 1)
+        return
+    if isinstance(value, list):
+        if len(value) > SAVED_VIEW_MAX_LIST_ITEMS:
+            raise ValueError("Saved view config list is too large")
+        for item in value:
+            _assert_saved_view_json_bounds(item, depth=depth + 1)
+        return
+    if isinstance(value, str) and len(value.encode("utf-8")) > SAVED_VIEW_MAX_STRING_BYTES:
+        raise ValueError("Saved view config value is too large")
+    if value is not None and not isinstance(value, (str, int, float, bool)):
+        raise ValueError("Saved view config contains unsupported values")
+
+
+def _assert_saved_view_config_size(config: dict) -> None:
+    _assert_saved_view_json_bounds(config)
+    if len(json.dumps(config, sort_keys=True, separators=(",", ":")).encode("utf-8")) > SAVED_VIEW_MAX_CONFIG_BYTES:
+        raise ValueError("Saved view config is too large")
+
+
 def _normalize_saved_view_config(module_key: str, config: dict | None) -> dict:
+    if config is not None and not isinstance(config, dict):
+        raise ValueError("Saved view config must be an object")
+    _assert_saved_view_config_size(config or {})
     config = dict(config or {})
     visible_columns = config.get("visible_columns")
     if not isinstance(visible_columns, list):
         visible_columns = []
     normalized_columns = [str(column).strip() for column in visible_columns if str(column).strip()]
+    if len(normalized_columns) > SAVED_VIEW_MAX_COLUMNS:
+        raise ValueError("Saved view has too many visible columns")
     filters = config.get("filters")
     normalized_filters = dict(filters) if isinstance(filters, dict) else {}
     legacy_conditions = normalized_filters.get("conditions")
@@ -331,6 +374,8 @@ def _normalize_saved_view_config(module_key: str, config: dict | None) -> dict:
     def _normalize_conditions(raw_conditions):
         if not isinstance(raw_conditions, list):
             raw_conditions = []
+        if len(raw_conditions) > SAVED_VIEW_MAX_FILTER_CONDITIONS:
+            raise ValueError("Saved view has too many filter conditions")
         normalized_conditions = []
         for item in raw_conditions:
             if not isinstance(item, dict):
@@ -374,6 +419,17 @@ def _normalize_saved_view_config(module_key: str, config: dict | None) -> dict:
         "filters": normalized_filters,
         "sort": normalized_sort,
     }
+
+
+def _sort_saved_views_for_response(saved_views: list[UserSavedView]) -> list[UserSavedView]:
+    return sorted(
+        saved_views,
+        key=lambda view: (
+            not bool(view.is_default),
+            (view.name or "").lower(),
+            view.id or 0,
+        ),
+    )
 
 
 def _get_config_meta(config: dict | None) -> dict:
@@ -505,12 +561,9 @@ def list_saved_views(
         system_view.is_default = 1
         db.add(system_view)
         db.commit()
-        saved_views = (
-            db.query(UserSavedView)
-            .filter(UserSavedView.user_id == user.id, UserSavedView.module_key == module_key)
-            .order_by(UserSavedView.is_default.desc(), UserSavedView.name.asc(), UserSavedView.id.asc())
-            .all()
-        )
+        if all(view.id != system_view.id for view in saved_views):
+            saved_views.append(system_view)
+        saved_views = _sort_saved_views_for_response(saved_views)
 
     return [_serialize_saved_view(module_key, view) for view in saved_views]
 

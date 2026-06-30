@@ -61,8 +61,12 @@ def get_data_transfer_jobs_cursor(
         module_key=module_key,
         operation_type=operation_type,
     )
-    serialized = [DataTransferJobResponse.model_validate(item).model_dump(mode="json") for item in items]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    return build_cursor_response(
+        items,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda item: DataTransferJobResponse.model_validate(item).model_dump(mode="json"),
+    )
 
 
 @router.get("/{job_id}", response_model=DataTransferJobResponse)

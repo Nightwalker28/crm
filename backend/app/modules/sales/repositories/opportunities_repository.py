@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
+from sqlalchemy import Numeric, case, cast, func, literal
 from sqlalchemy.orm import Session
 
 from app.core.module_filters import apply_filter_conditions
@@ -186,6 +189,48 @@ def list_cursor(
     if cursor is not None:
         query = query.filter(SalesOpportunity.opportunity_id < cursor)
     return query.order_by(None).order_by(SalesOpportunity.opportunity_id.desc()).limit(limit + 1).all()
+
+
+def _opportunity_value_expression(db: Session):
+    value = func.coalesce(SalesOpportunity.total_cost_of_project, "")
+    if db.bind is not None and db.bind.dialect.name == "postgresql":
+        trimmed = func.trim(value)
+        numeric_text = func.replace(trimmed, ",", "")
+        return case(
+            (
+                trimmed.op("~")(r"^\s*-?[0-9][0-9,]*(\.[0-9]+)?\s*$"),
+                cast(numeric_text, Numeric(18, 2)),
+            ),
+            else_=literal(0),
+        )
+    return cast(func.replace(value, ",", ""), Numeric(18, 2))
+
+
+def summarize_pipeline(
+    db: Session,
+    *,
+    tenant_id: int,
+    search: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+) -> list[tuple[str | None, int, Decimal | None]]:
+    query = build_opportunity_query(
+        db,
+        tenant_id=tenant_id,
+        search=search,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
+    )
+    return (
+        query.order_by(None)
+        .with_entities(
+            SalesOpportunity.sales_stage,
+            func.count(SalesOpportunity.opportunity_id),
+            func.coalesce(func.sum(_opportunity_value_expression(db)), 0),
+        )
+        .group_by(SalesOpportunity.sales_stage)
+        .all()
+    )
 
 
 def list_deleted(db: Session, *, tenant_id: int, pagination) -> tuple[list[SalesOpportunity], int]:

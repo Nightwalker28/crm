@@ -78,6 +78,25 @@ class CursorPaginationContractTests(unittest.TestCase):
         self.assertEqual([item.record_id for item in response["results"]], [3, 2])
         self.assertEqual(response["next_cursor"], "2")
 
+    def test_build_cursor_response_serializes_only_visible_page_items(self):
+        serialized_ids = []
+
+        def serialize(item):
+            serialized_ids.append(item.id)
+            return {"id": item.id, "label": f"Item {item.id}"}
+
+        response = build_cursor_response(
+            [SimpleNamespace(id=3), SimpleNamespace(id=2), SimpleNamespace(id=1)],
+            limit=2,
+            id_attr="id",
+            serializer=serialize,
+        )
+
+        self.assertEqual(response["results"], [{"id": 3, "label": "Item 3"}, {"id": 2, "label": "Item 2"}])
+        self.assertEqual(response["next_cursor"], "2")
+        self.assertTrue(response["has_more"])
+        self.assertEqual(serialized_ids, [3, 2])
+
 
 class CursorRepositoryOrderingTests(unittest.TestCase):
     def _assert_strict_id_cursor_order(self, query):

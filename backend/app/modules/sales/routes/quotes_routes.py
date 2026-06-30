@@ -137,7 +137,12 @@ def list_quotes_cursor(fields: str | None = Query(default=None), filter_logic: s
     all_conditions, any_conditions = _parse_filters(db, current_user.tenant_id, filter_logic, filters, filters_all, filters_any)
     quotes = list_sales_quotes_cursor(db, current_user.tenant_id, limit=pagination.limit, cursor=pagination.cursor, all_filter_conditions=all_conditions, any_filter_conditions=any_conditions)
     selected_fields = _parse_list_fields(fields, _enabled_quote_list_fields(db, current_user.tenant_id))
-    return build_cursor_response([_serialize_quote_list_item(quote, selected_fields) for quote in quotes], limit=pagination.limit, id_attr="quote_id")
+    return build_cursor_response(
+        quotes,
+        limit=pagination.limit,
+        id_attr="quote_id",
+        serializer=lambda quote: _serialize_quote_list_item(quote, selected_fields),
+    )
 
 
 @router.get("/search", response_model=SalesQuoteListResponse)

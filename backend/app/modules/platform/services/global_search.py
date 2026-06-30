@@ -367,29 +367,37 @@ def list_global_search_results(
     if not normalized_query:
         return []
 
-    if getattr(getattr(db, "bind", None), "dialect", None) and db.bind.dialect.name == "postgresql":
+    uses_statement_timeout = bool(
+        getattr(getattr(db, "bind", None), "dialect", None)
+        and db.bind.dialect.name == "postgresql"
+    )
+    if uses_statement_timeout:
         db.execute(text(f"SET LOCAL statement_timeout = {GLOBAL_SEARCH_STATEMENT_TIMEOUT_MS}"))
 
-    total_limit = max(1, limit_per_module) * len(GLOBAL_SEARCH_MODULES)
-    results: list[dict] = []
-    for module in GLOBAL_SEARCH_MODULES:
-        if len(results) >= total_limit:
-            break
-        module_key = module["module_key"]
-        try:
-            require_department_module_access(db, user=current_user, module_key=module_key)
-            require_role_module_action_access(db, user=current_user, module_key=module_key, action="view")
-        except PermissionError:
-            continue
-        builder = SEARCH_BUILDERS[module_key]
-        remaining = total_limit - len(results)
-        results.extend(
-            builder(
-                db,
-                tenant_id=current_user.tenant_id,
-                current_user=current_user,
-                query=normalized_query,
-                limit=min(limit_per_module, remaining),
+    try:
+        total_limit = max(1, limit_per_module) * len(GLOBAL_SEARCH_MODULES)
+        results: list[dict] = []
+        for module in GLOBAL_SEARCH_MODULES:
+            if len(results) >= total_limit:
+                break
+            module_key = module["module_key"]
+            try:
+                require_department_module_access(db, user=current_user, module_key=module_key)
+                require_role_module_action_access(db, user=current_user, module_key=module_key, action="view")
+            except PermissionError:
+                continue
+            builder = SEARCH_BUILDERS[module_key]
+            remaining = total_limit - len(results)
+            results.extend(
+                builder(
+                    db,
+                    tenant_id=current_user.tenant_id,
+                    current_user=current_user,
+                    query=normalized_query,
+                    limit=min(limit_per_module, remaining),
+                )
             )
-        )
-    return results
+        return results
+    finally:
+        if uses_statement_timeout:
+            db.execute(text("RESET LOCAL statement_timeout"))

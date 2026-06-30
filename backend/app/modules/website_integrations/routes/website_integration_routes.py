@@ -190,9 +190,10 @@ def get_website_orders_cursor(
         cursor=pagination.cursor,
     )
     return build_cursor_response(
-        [WebsiteOrderResponse.model_validate(serialize_order(order)).model_dump(mode="json") for order in orders],
+        orders,
         limit=pagination.limit,
         id_attr="id",
+        serializer=lambda order: WebsiteOrderResponse.model_validate(serialize_order(order)).model_dump(mode="json"),
     )
 
 

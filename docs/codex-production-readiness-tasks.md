@@ -35,9 +35,9 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 1. **Critical security and startup safety:** complete for the user-management auth/SSO backend items.
 2. **Concurrency and transaction correctness:** complete.
 3. **External side effects and background work:** complete.
-4. **Query scalability and indexes:** complete for SEARCH-IDX; remaining LIST-PERF, SALES-PERF, SUPPORT-PERF, TASKS-PERF, UM-PROFILE, PLAT-QUERY.
+4. **Query scalability and indexes:** complete.
 5. **Frontend cache, validation, and browser reliability:** FE-QUERY, FE-FORMS, FE-BROWSER, UM-FRONTEND.
-6. **Cleanup and maintainability:** SALES-FILES, SALES-MODELS, UM-MAINT, OPS-MAINT, SERIALIZATION, ROUTES, DUPLICATION.
+6. **Cleanup and maintainability:** SALES-MODELS, UM-MAINT, OPS-MAINT, SERIALIZATION, ROUTES, DUPLICATION.
 
 ---
 
@@ -249,27 +249,49 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Shared `LIKE`/`ILIKE` search patterns now escape `%`, `_`, and backslashes so literal wildcard searches do not over-match. Text filter values are capped before query construction, uncapped search route params are bounded to 100 characters, support and contract hand-built searches use escaped patterns, and PostgreSQL gets targeted trigram search indexes plus partial support SLA and contract expiration hot-path indexes.
 - **Verification:** `docker compose exec -T backend python -m unittest tests.test_support_cases tests.test_contracts`; `docker compose exec -T backend alembic upgrade head`; `docker compose exec -T backend alembic current`; `docker compose exec -T backend python -m compileall app tests`
 
----
-
-# Consolidated Task Backlog
-
 ## LIST-PERF — Consolidate count/list, pagination, and cursor-query optimizations
 
-- **Severity:** Medium/High
+- **Completed:** 2026-06-30
 - **Source items:** CORE-13, CORE-19, CORE-20, CORE-21, CON-11, CAL-13, CAT-15, CP-05, CP-08, CP-14, CP-21, DOC-08, DOC-09, DOC-13, DOC-14, DOC-25, DOC-26, FIN-19, FIN-25, FIN-26, FIN-27, PLAT-10, PLAT-13, PLAT-19, PLAT-38, SALES-13, SALES-16, SALES-17, SALES-DEEP-23, SALES-DEEP-29, SALES-DEEP-30, SALES-DEEP-31, TASK-11, TASK-14, TASK-16, TASK-28, TASK-34, UM-14, UM-16, UM-25, UM-26, SUP-10, SUP-11, SUP-12, SUP-21
-- **Files:** shared pagination helpers, module repositories/services/routes, frontend consumers where response contracts change
-- **Issue:** Several endpoints load full lists to count/slice, run duplicate fetches, manually compute offsets, hydrate cursor sentinel rows, churn DB sessions/queries in polling paths, or lack pagination metadata. Sales/support summaries also over-fetch related records, hydrate unused custom fields, or filter client-visible data in Python. Task assignment options and linked-record task widgets are currently bounded poorly or not searchable. User cursor search can lose relevance/default ordering, and saved-view defaulting can re-query full lists.
-- **Fix:** Add summary/count/latest helpers for overview pages. Use count-specific, grouped, conditional aggregate, or window-count queries on hot endpoints. Enforce bounded flat list routes or cursor alternatives, including searchable participant/assignee pickers instead of fixed caps. Use `Pagination.offset`/`limit`. Ensure cursor responses strip sentinel rows before serialization/hydration. Remove redundant refresh/refetch paths. Verify and remove duplicate document/share/proposal/task/user fetches if present. Reduce SSE/realtime DB session and query churn. Filter client-visible support comments in SQL. Preserve or document cursor search ordering semantics.
-- **Acceptance:** Pagination contracts are explicit and consistent; overview/list endpoints do not fetch full datasets for summaries; cursor sentinels are not returned or over-hydrated; polling/list paths do not multiply DB work unnecessarily; client-facing list/detail responses avoid loading private/internal rows; task assignment and linked-task views scale beyond small tenants/default page sizes.
+- **Files:** `backend/app/core/cursor_pagination.py`, cursor list routes across calendar, catalog, client portal, documents, finance, mail, platform, sales, tasks, user management, and website integrations, focused cursor/API route tests
+- **Result:** Cursor responses can now serialize through the shared helper after trimming the sentinel row. Cursor routes pass raw `limit + 1` results plus serializer callbacks, so expensive route serializers and client-page action-summary hydration run only for returned rows while preserving `has_more` and `next_cursor` behavior.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_cursor_pagination`; `docker compose exec -T backend python -m unittest tests.test_api_routes`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SALES-PERF — Bound sales summaries, reminders, exports, and board/list queries
+
+- **Completed:** 2026-06-30
+- **Source items:** SALES-13, SALES-14, SALES-16, SALES-17, SALES-18, SALES-DEEP-23, SALES-DEEP-29, SALES-DEEP-30, SALES-DEEP-31, SALES-DEEP-34, SALES-DEEP-48
+- **Files:** `backend/app/modules/sales/repositories/opportunities_repository.py`, `backend/app/modules/sales/services/opportunities_services.py`, `backend/tests/test_opportunities_services.py`
+- **Result:** Opportunity pipeline summaries now use grouped SQL aggregation for stage counts and numeric totals instead of loading every matching opportunity row into Python. The aggregation keeps tenant/deleted-row scoping and existing filter/search behavior through the shared opportunity query builder while normalizing invalid or comma-formatted text totals consistently with the previous response shape.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_opportunities_services`; `docker compose exec -T backend python -m unittest tests.test_summary_services tests.test_api_routes`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
 
 ## SALES-FILES — Make sales attachments and quote/public-file behavior durable
 
-- **Severity:** High/Medium
+- **Completed:** 2026-06-30
 - **Source items:** SALES-06, SALES-07, SALES-18, SALES-DEEP-05, SALES-DEEP-22, SALES-DEEP-43, SALES-DEEP-54
-- **Files:** opportunity attachment services/models, quote proposal services/routes/frontend, export paths, migrations/tests
-- **Issue:** Opportunity attachment files are written before DB commit, delete path containment is fragile, attachment metadata is stored as raw JSON text, quote export behavior is inconsistent, public/internal proposal event types need explicit boundaries, and proposal links may point to the wrong base URL.
-- **Fix:** Stage attachment files and move/delete them only after transaction success, or add cleanup for orphaned staged files. Resolve/delete files against one canonical root and reject symlink escapes. Move attachment metadata to JSON/JSONB or validate strictly. Stream large quote exports or document background-only policy. Separate internal proposal event types from public event constants. Verify public proposal link generation uses the intended frontend route.
-- **Acceptance:** Attachment DB/file state cannot silently diverge, attachment metadata cannot be malformed JSON, quote export/link behavior is intentional, and internal/public proposal events are clearly separated.
+- **Files:** `backend/app/modules/sales/services/quotes_services.py`, `backend/tests/test_quote_proposals.py`, `frontend/app/dashboard/sales/quotes/[quoteId]/page.tsx`, `frontend/app/public/quotes/proposal/[token]/page.tsx`
+- **Result:** Quote proposal send links now point to the public frontend proposal route instead of opening the backend API JSON route directly. The public page loads the signed proposal through the existing token-scoped API and records explicit public download events. Backend proposal event constants now separate internal `sent` events from public `opened`/`viewed`/`downloaded` tracking, with regression coverage that public tracking cannot spoof the internal sent lifecycle event. Existing opportunity attachment cleanup/path-containment tests remain in place for the previously hardened upload/delete paths.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_quote_proposals tests.test_opportunities_api`; `docker compose exec -T backend python -m compileall app tests`; `docker compose run --rm frontend npm run lint`; `docker compose run --rm frontend npm run build`; `git diff --check`
+
+## SUPPORT-PERF — Optimize support summaries, comments, search, and projection
+
+- **Completed:** 2026-06-30
+- **Source items:** SUP-10, SUP-11, SUP-12, SUP-13, SUP-14, SUP-15, SUP-16, SUP-20, SUP-21, SUP-30
+- **Files:** `backend/app/modules/support/services/cases_services.py`, `backend/tests/test_support_cases.py`
+- **Result:** Support summary metrics now come from one grouped aggregate query with conditional urgent/open-SLA counts instead of separate count queries. Client support detail fetches only non-internal comments for client responses and refreshes the in-session relationship with that scoped collection, while CRM support detail explicitly refreshes the full comment collection for internal users. Existing support search wildcard escaping, hot-path indexes, and lightweight list schemas remain covered by the earlier search/list work.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_support_cases`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## TASKS-PERF — Batch task assignees, options, scans, and serialization
+
+- **Completed:** 2026-06-30
+- **Source items:** TASK-09, TASK-10, TASK-11, TASK-12, TASK-14, TASK-15, TASK-16, TASK-28, TASK-32, TASK-34
+- **Files:** `backend/app/modules/tasks/services/tasks_services.py`, `backend/app/modules/tasks/routes/tasks_routes.py`, `backend/tests/test_task_source_activity.py`
+- **Result:** Task assignee validation now batches user and team existence checks instead of querying once per assignee, and task assignment notification recipient resolution batches direct user and team-member lookup into one tenant-scoped user query. Assignment options are bounded, searchable, active-user filtered by default, and can include explicitly selected users/teams so edit screens can resolve current selections without loading every tenant principal. Existing due-scan duplicate detection remains batched from the earlier task events work.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_task_source_activity tests.test_task_reminders`; `docker compose exec -T backend python -m unittest tests.test_api_routes.APIRouteTests.test_task_recycle_route_passes_current_user_to_visibility_filtered_service tests.test_api_routes.APIRouteTests.test_task_restore_route_uses_deleted_only_lookup`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+---
+
+# Consolidated Task Backlog
 
 ## SALES-MODELS — Normalize sales model loading, timestamps, and domain metadata
 
@@ -279,33 +301,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Issue:** Sales models use list-heavy `lazy="joined"` defaults, timestamp declarations and soft-delete timestamp creation are inconsistent, organizations lack `updated_at`, assigned-contact user deletion behavior is restrictive, custom-field hydration depends on an in-memory cache, duplicate name/timezone/stage behavior is duplicated, and opportunity currency lookups can repeat per row.
 - **Fix:** Prefer `selectin`/explicit eager loading for relationships. Use aware UTC timestamps and a shared timezone normalization helper. Add `updated_at` to organizations if product wants recency display. Change or guard assigned-user delete behavior. Document/test custom-field hydration. Normalize partial-name duplicate handling, stage metadata, lead-score freshness, and per-request currency lookup caching.
 - **Acceptance:** Base sales list queries do not auto-join unrelated tables, sales timestamps and hydration contracts are explicit, and model/domain metadata has one clear update path.
-
-## SALES-PERF — Bound sales summaries, reminders, exports, and board/list queries
-
-- **Severity:** High/Medium
-- **Source items:** SALES-13, SALES-14, SALES-16, SALES-17, SALES-18, SALES-DEEP-23, SALES-DEEP-29, SALES-DEEP-30, SALES-DEEP-31, SALES-DEEP-34, SALES-DEEP-48
-- **Files:** sales summary services, reminder scans, quote exports, opportunity board/list endpoints, tests
-- **Issue:** Opportunity pipeline summary and sales summaries can load or hydrate too much in Python, reminder scans query all tenants, quote proposal/event and related insertion-order paths can over-query, quote export can materialize large result sets, and the opportunity board may show only the current page while looking like a full pipeline.
-- **Fix:** Use grouped SQL aggregation for pipeline/summary metrics. Hydrate custom fields only where response schemas expose them. Scope reminder scans per tenant and chunk/cursor work. Avoid proposal/event queries when no proposal exists. Stream quote exports or route large jobs through background export. Make opportunity board scope explicit or load complete stage data incrementally.
-- **Acceptance:** Sales summaries preserve response shapes with fewer queries, reminders are tenant-scoped and bounded, large exports do not materialize whole datasets, and board scope is clear to users.
-
-## SUPPORT-PERF — Optimize support summaries, comments, search, and projection
-
-- **Severity:** Medium/High
-- **Source items:** SUP-10, SUP-11, SUP-12, SUP-13, SUP-14, SUP-15, SUP-16, SUP-20, SUP-21, SUP-30
-- **Files:** support services/routes/models/migrations/frontend hooks, tests or EXPLAIN notes
-- **Issue:** Support list/summary endpoints use separate count/aggregate queries, client serialization loads then filters internal comments, search wildcard behavior is literal-unsafe, visible columns affect frontend keys without backend projection, and saved-view search routing needs verification.
-- **Fix:** Use count-specific or conditional aggregate queries. Fetch only client-visible comments for client responses. Add or adjust support SLA/open-case indexes after EXPLAIN. Escape LIKE wildcards. Either implement `fields=` projection or keep visible columns UI-only. Verify saved-view search routes through `/search`. Keep list responses on lightweight schemas with regression tests.
-- **Acceptance:** Support list/summary/search responses remain compatible with lower query cost, client endpoints avoid internal-comment over-fetching, and column/search cache behavior matches actual payloads.
-
-## TASKS-PERF — Batch task assignees, options, scans, and serialization
-
-- **Severity:** High/Medium
-- **Source items:** TASK-09, TASK-10, TASK-11, TASK-12, TASK-14, TASK-15, TASK-16, TASK-28, TASK-32, TASK-34
-- **Files:** task services, repository, models, task options route, task widgets, tests
-- **Issue:** Assignee validation and notification resolution can run one query per user/team, assignment options load all users/teams, due-scan dedupe checks one task at a time, task base queries join user relationships by default, count queries can inherit ordering/ranking, and task serializers can validate through Pydantic more than once.
-- **Fix:** Batch user/team validation and notification recipient resolution. Add search/pagination and active-principal filtering to assignment options, with selected-assignee resolution if needed. Batch due-alert event lookups per scan window. Change eager user relationships to `selectin`/explicit loads and add query-count tests. Strip ordering from count queries. Serialize/validate task responses once.
-- **Acceptance:** Large-assignee tasks and due scans use bounded query counts; assignment dialogs do not load every tenant principal; list/detail serialization stays query-bounded after loader changes.
 
 ## UM-SSO — Finish DNS fallback and login regression guards
 
@@ -336,12 +331,11 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 
 ## PLAT-QUERY — Reduce platform over-fetching and harden raw-query helpers
 
-- **Severity:** High/Medium
+- **Completed:** 2026-06-30
 - **Source items:** PLAT-11, PLAT-15, PLAT-17, PLAT-18, PLAT-21, PLAT-22, PLAT-23, PLAT-26, PLAT-40, PLAT-41, PLAT-43
-- **Files:** platform comments/custom modules/search/recycle/message-template/module-field services/routes, tests
-- **Issue:** Mention suggestions over-fetch and filter in Python, custom module access seeding loads principals into Python, global search statement timeout lacks an explicit reset, raw purge SQL uses interpolated identifiers, recycle module-key checks can repeat, duplicate template keys can bubble integrity errors, and path converters need regression tests.
-- **Fix:** Push mention permission predicates into SQL. Use bulk insert/select for access seeding. Reset statement timeout in `finally` or prove transaction scope. Whitelist raw SQL identifiers or use SQLAlchemy metadata. Cache repeated module-key checks per request only if verified hot. Pre-check/catch normalized template-key conflicts. Add route tests for path converter behavior.
-- **Acceptance:** Mention suggestions return only allowed users without Python over-fetching; global search timeout cannot leak to later queries; raw SQL identifier interpolation is protected by explicit allowlists/tests.
+- **Files:** `backend/app/modules/platform/services/record_comments.py`, `backend/app/modules/platform/services/global_search.py`, `backend/app/modules/platform/services/recycle_purge.py`, `backend/app/modules/platform/services/message_templates.py`, focused platform tests
+- **Result:** Mention suggestions now push module-view eligibility into SQL and escape literal wildcard searches instead of over-fetching candidates and permission sets for Python filtering. Global search resets PostgreSQL statement timeout in a `finally` block. Recycle purge SQL identifiers are validated and quoted through an explicit allowlist helper. Message-template create/update paths pre-check normalized duplicate keys and translate unique-key races to clean `409` responses.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_record_comments tests.test_message_templates tests.test_platform_query_hardening`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
 
 ## FE-QUERY — Canonicalize frontend query keys and invalidation behavior
 

@@ -93,8 +93,12 @@ def get_record_comments_cursor(
         limit=pagination.limit,
         cursor=pagination.cursor,
     )
-    serialized = [RecordCommentResponse.model_validate(item).model_dump(mode="json") for item in items]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    return build_cursor_response(
+        items,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda item: RecordCommentResponse.model_validate(item).model_dump(mode="json"),
+    )
 
 
 @router.post("", response_model=RecordCommentResponse)

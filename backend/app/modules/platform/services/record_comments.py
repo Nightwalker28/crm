@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, require_role_module_action_access
+from app.core.like_patterns import LIKE_ESCAPE, contains_pattern
 from app.core.pagination import Pagination
 from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.platform.models import RecordComment
@@ -17,6 +18,7 @@ from app.modules.user_management.models import (
     Module,
     Role,
     RoleModulePermission,
+    Team,
     TeamModulePermission,
     User,
     UserStatus,
@@ -208,6 +210,41 @@ def _user_can_view_record_module(db: Session, *, user: User, module_key: str) ->
     return True
 
 
+def _mentionable_user_query(db: Session, *, tenant_id: int, module_id: int):
+    role_ids_with_view = (
+        select(RoleModulePermission.role_id)
+        .where(RoleModulePermission.module_id == module_id, RoleModulePermission.can_view == 1)
+    )
+    team_ids_with_access = (
+        select(TeamModulePermission.team_id)
+        .where(TeamModulePermission.module_id == module_id)
+    )
+    department_ids_with_access = (
+        select(DepartmentModulePermission.department_id)
+        .where(DepartmentModulePermission.module_id == module_id)
+    )
+    department_id = func.coalesce(User.department_id, Team.department_id)
+    return (
+        db.query(User)
+        .outerjoin(Role, Role.id == User.role_id)
+        .outerjoin(Team, Team.id == User.team_id)
+        .filter(
+            User.tenant_id == tenant_id,
+            User.is_active == UserStatus.active,
+            or_(
+                Role.level >= ADMIN_MIN_ROLE_LEVEL,
+                (
+                    User.role_id.in_(role_ids_with_view)
+                    & (
+                        User.team_id.in_(team_ids_with_access)
+                        | department_id.in_(department_ids_with_access)
+                    )
+                ),
+            ),
+        )
+    )
+
+
 def list_mentionable_record_users(
     db: Session,
     *,
@@ -223,64 +260,23 @@ def list_mentionable_record_users(
     if not module:
         return []
 
-    users_query = (
-        db.query(User)
-        .options(joinedload(User.role), joinedload(User.team))
-        .filter(
-            User.tenant_id == tenant_id,
-            User.is_active == UserStatus.active,
-        )
-    )
+    users_query = _mentionable_user_query(db, tenant_id=tenant_id, module_id=module.id)
     if normalized_query:
-        like_query = f"%{normalized_query}%"
+        like_query = contains_pattern(normalized_query)
         users_query = users_query.filter(
             or_(
-                func.lower(User.first_name).like(like_query),
-                func.lower(User.last_name).like(like_query),
-                func.lower(User.email).like(like_query),
-                func.lower(func.coalesce(User.first_name, "") + " " + func.coalesce(User.last_name, "")).like(like_query),
+                func.lower(User.first_name).like(like_query, escape=LIKE_ESCAPE),
+                func.lower(User.last_name).like(like_query, escape=LIKE_ESCAPE),
+                func.lower(User.email).like(like_query, escape=LIKE_ESCAPE),
+                func.lower(func.coalesce(User.first_name, "") + " " + func.coalesce(User.last_name, "")).like(
+                    like_query,
+                    escape=LIKE_ESCAPE,
+                ),
             )
         )
 
-    users = users_query.order_by(User.first_name.asc(), User.last_name.asc(), User.email.asc()).limit(max(limit * 5, limit)).all()
-    role_ids_with_view = {
-        role_id
-        for (role_id,) in db.query(RoleModulePermission.role_id)
-        .filter(RoleModulePermission.module_id == module.id, RoleModulePermission.can_view == 1)
-        .all()
-    }
-    team_ids_with_access = {
-        team_id
-        for (team_id,) in db.query(TeamModulePermission.team_id)
-        .filter(TeamModulePermission.module_id == module.id)
-        .all()
-    }
-    department_ids_with_access = {
-        department_id
-        for (department_id,) in db.query(DepartmentModulePermission.department_id)
-        .filter(DepartmentModulePermission.module_id == module.id)
-        .all()
-    }
-
-    results: list[dict] = []
-    for user in users:
-        label = _display_user_name(user)
-        role_level = getattr(getattr(user, "role", None), "level", None)
-        is_admin = role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL
-        department_id = user.department_id or getattr(getattr(user, "team", None), "department_id", None)
-        can_view = is_admin or (
-            bool(user.role_id and user.role_id in role_ids_with_view)
-            and bool(
-                (user.team_id and user.team_id in team_ids_with_access)
-                or (department_id and department_id in department_ids_with_access)
-            )
-        )
-        if not can_view:
-            continue
-        results.append({"id": user.id, "label": label, "email": user.email})
-        if len(results) >= limit:
-            break
-    return results
+    users = users_query.order_by(User.first_name.asc(), User.last_name.asc(), User.email.asc()).limit(limit).all()
+    return [{"id": user.id, "label": _display_user_name(user), "email": user.email} for user in users]
 
 
 def validate_record_mentions(

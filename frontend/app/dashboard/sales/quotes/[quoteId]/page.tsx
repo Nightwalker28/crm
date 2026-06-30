@@ -22,7 +22,6 @@ import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { apiUrl } from "@/lib/runtime-config";
 
 type QuoteProposal = {
   id: number;
@@ -579,7 +578,7 @@ export default function QuoteDetailPage() {
                   <SummaryTile label="Sent" value={summary.latest_proposal?.sent_at ? formatDateTime(summary.latest_proposal.sent_at) : "Not sent"} />
                 </div>
                 {proposalLinkPath ? (
-                  <a className="inline-flex w-fit items-center gap-2 text-sm text-sky-300 hover:text-sky-200" href={apiUrl(proposalLinkPath)} target="_blank" rel="noreferrer">
+                  <a className="inline-flex w-fit items-center gap-2 text-sm text-sky-300 hover:text-sky-200" href={proposalLinkPath} target="_blank" rel="noreferrer">
                     <ExternalLink className="h-4 w-4" />Open signed proposal link
                   </a>
                 ) : null}

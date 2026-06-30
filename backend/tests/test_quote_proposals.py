@@ -6,6 +6,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesQuote, SalesQuoteDocument, SalesQuoteOpenEvent
 from app.modules.sales.services.quotes_services import (
@@ -95,6 +96,7 @@ class QuoteProposalTests(unittest.TestCase):
         self.assertEqual(proposal.status, "sent")
         self.assertEqual(proposal.sent_to, "buyer@example.com")
         self.assertIsNotNone(proposal.public_token_hash)
+        self.assertTrue(public_url_path.startswith("/public/quotes/proposal/"))
         self.assertNotIn(public_url_path.rsplit("/", 1)[-1], proposal.public_token_hash)
         self.assertGreater(expires_at, datetime.now(timezone.utc))
         events = list_quote_proposal_events(self.db, quote)
@@ -125,6 +127,27 @@ class QuoteProposalTests(unittest.TestCase):
         self.assertNotEqual(event.ip_hash, "203.0.113.5")
         self.assertNotEqual(event.user_agent_hash, "UnitTest/1.0")
         self.assertEqual(self.db.query(SalesQuoteOpenEvent).filter(SalesQuoteOpenEvent.tenant_id == 99).count(), 0)
+
+    def test_public_tracking_rejects_internal_sent_event(self):
+        quote = self.db.query(SalesQuote).filter(SalesQuote.quote_id == 100).one()
+        proposal, public_url_path, _expires_at = send_quote_proposal(
+            self.db,
+            quote,
+            sent_to="buyer@example.com",
+            current_user=self.user,
+        )
+        public_proposal, _public_quote = get_public_quote_proposal_or_404(self.db, public_url_path.rsplit("/", 1)[-1])
+
+        with self.assertRaises(HTTPException) as exc:
+            record_quote_proposal_event(
+                self.db,
+                proposal=public_proposal,
+                event_type="sent",
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Invalid proposal event type")
+        self.assertEqual([event.event_type for event in list_quote_proposal_events(self.db, proposal.quote)], ["sent"])
 
     def test_expired_public_link_is_not_resolved(self):
         quote = self.db.query(SalesQuote).filter(SalesQuote.quote_id == 100).one()

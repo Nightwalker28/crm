@@ -76,7 +76,7 @@ def get_products_cursor(
         limit=pagination.limit,
         cursor=pagination.cursor,
     )
-    return build_cursor_response([_response(product) for product in products], limit=pagination.limit, id_attr="id")
+    return build_cursor_response(products, limit=pagination.limit, id_attr="id", serializer=_response)
 
 
 @router.get("/recycle", response_model=CatalogProductListResponse)

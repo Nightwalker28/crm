@@ -112,8 +112,12 @@ def list_all_users_cursor(
         cursor=pagination.cursor,
     )
     selected_fields = _parse_list_fields(fields)
-    serialized = [_serialize_user_list_item(user, selected_fields).model_dump(mode="json") for user in users]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    return build_cursor_response(
+        users,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda user: _serialize_user_list_item(user, selected_fields).model_dump(mode="json"),
+    )
 
 
 @router.get("/search", response_model=UserListResponse)
@@ -189,8 +193,12 @@ def search_users_cursor(
         any_filter_conditions=any_conditions,
     )
     selected_fields = _parse_list_fields(fields)
-    serialized = [_serialize_user_list_item(user, selected_fields).model_dump(mode="json") for user in users]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    return build_cursor_response(
+        users,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda user: _serialize_user_list_item(user, selected_fields).model_dump(mode="json"),
+    )
 
 
 @router.get("/options", response_model=UserUpdateOptions)

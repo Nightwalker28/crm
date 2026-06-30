@@ -52,8 +52,10 @@ EXPORT_COLUMNS = [
 ]
 PROPOSAL_TOKEN_BYTES = 32
 PROPOSAL_LINK_TTL_DAYS = 30
-PROPOSAL_EVENT_TYPES = {"opened", "viewed", "downloaded"}
-CLIENT_QUOTE_RESPONDABLE_STATUSES = {"sent"}
+PROPOSAL_SENT_EVENT_TYPE = "sent"
+INTERNAL_PROPOSAL_EVENT_TYPES = {PROPOSAL_SENT_EVENT_TYPE}
+PUBLIC_PROPOSAL_EVENT_TYPES = {"opened", "viewed", "downloaded"}
+CLIENT_QUOTE_RESPONDABLE_STATUSES = {PROPOSAL_SENT_EVENT_TYPE}
 
 
 def _coerce_optional(value) -> str | None:
@@ -234,7 +236,7 @@ def serialize_client_quote(db: Session, quote: SalesQuote) -> dict:
 
 
 def _proposal_public_url_path(raw_token: str) -> str:
-    return f"/sales/quotes/proposal/public/{raw_token}"
+    return f"/public/quotes/proposal/{raw_token}"
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -517,7 +519,7 @@ def send_quote_proposal(db: Session, quote: SalesQuote, *, sent_to: str | None, 
         tenant_id=quote.tenant_id,
         quote_id=quote.quote_id,
         quote_document_id=proposal.id,
-        event_type="sent",
+        event_type=PROPOSAL_SENT_EVENT_TYPE,
         recipient_email=sent_to,
     )
     db.add_all([proposal, event])
@@ -555,7 +557,7 @@ def record_quote_proposal_event(
     ip_address: str | None = None,
     user_agent: str | None = None,
 ) -> SalesQuoteOpenEvent:
-    if event_type not in PROPOSAL_EVENT_TYPES:
+    if event_type not in PUBLIC_PROPOSAL_EVENT_TYPES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid proposal event type")
     event = SalesQuoteOpenEvent(
         tenant_id=proposal.tenant_id,

@@ -5,6 +5,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.modules.platform.models import MessageTemplate
@@ -24,6 +25,48 @@ def _normalize_key(value: str) -> str:
     if not key:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Template key is required")
     return key
+
+
+def _raise_duplicate_template_key() -> None:
+    raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Template key already exists")
+
+
+def _ensure_template_key_available(
+    db: Session,
+    *,
+    tenant_id: int,
+    template_key: str,
+    exclude_template_id: int | None = None,
+) -> None:
+    query = db.query(MessageTemplate.id).filter(
+        MessageTemplate.tenant_id == tenant_id,
+        MessageTemplate.template_key == template_key,
+    )
+    if exclude_template_id is not None:
+        query = query.filter(MessageTemplate.id != exclude_template_id)
+    if query.first():
+        _raise_duplicate_template_key()
+
+
+def _is_duplicate_template_key_integrity_error(exc: IntegrityError) -> bool:
+    error_text = f"{exc.orig} {exc}".lower()
+    return (
+        "uq_message_templates_tenant_key" in error_text
+        or "message_templates.tenant_id, message_templates.template_key" in error_text
+        or ("duplicate key" in error_text and "message_templates" in error_text and "template_key" in error_text)
+    )
+
+
+def _commit_template(db: Session, template: MessageTemplate) -> MessageTemplate:
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        if _is_duplicate_template_key_integrity_error(exc):
+            _raise_duplicate_template_key()
+        raise
+    db.refresh(template)
+    return template
 
 
 def extract_template_variables(body: str) -> list[str]:
@@ -153,9 +196,11 @@ def create_message_template(db: Session, *, tenant_id: int, actor_user_id: int |
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Template body is required")
     variables = sorted(set(payload.get("variables") or extract_template_variables(body)))
     validate_template_body(body, variables)
+    template_key = _normalize_key(payload.get("template_key") or payload["name"])
+    _ensure_template_key_available(db, tenant_id=tenant_id, template_key=template_key)
     template = MessageTemplate(
         tenant_id=tenant_id,
-        template_key=_normalize_key(payload.get("template_key") or payload["name"]),
+        template_key=template_key,
         name=payload["name"].strip(),
         description=(payload.get("description") or "").strip() or None,
         channel=payload["channel"].strip().lower(),
@@ -168,14 +213,19 @@ def create_message_template(db: Session, *, tenant_id: int, actor_user_id: int |
         updated_by_user_id=actor_user_id,
     )
     db.add(template)
-    db.commit()
-    db.refresh(template)
-    return template
+    return _commit_template(db, template)
 
 
 def update_message_template(db: Session, *, template: MessageTemplate, actor_user_id: int | None, payload: dict[str, Any]) -> MessageTemplate:
     if "template_key" in payload and payload["template_key"]:
-        template.template_key = _normalize_key(payload["template_key"])
+        next_template_key = _normalize_key(payload["template_key"])
+        _ensure_template_key_available(
+            db,
+            tenant_id=template.tenant_id,
+            template_key=next_template_key,
+            exclude_template_id=template.id,
+        )
+        template.template_key = next_template_key
     for field in ("name", "description", "channel", "module_key"):
         if field not in payload:
             continue
@@ -198,9 +248,7 @@ def update_message_template(db: Session, *, template: MessageTemplate, actor_use
     template.variables = variables
     template.updated_by_user_id = actor_user_id
     db.add(template)
-    db.commit()
-    db.refresh(template)
-    return template
+    return _commit_template(db, template)
 
 
 def soft_delete_message_template(db: Session, *, template: MessageTemplate, actor_user_id: int | None) -> MessageTemplate:

@@ -381,9 +381,10 @@ def get_client_accounts_cursor(
         cursor=pagination.cursor,
     )
     return build_cursor_response(
-        [ClientAccountResponse.model_validate(serialize_client_account(account)).model_dump(mode="json") for account in accounts],
+        accounts,
         limit=pagination.limit,
         id_attr="id",
+        serializer=lambda account: ClientAccountResponse.model_validate(serialize_client_account(account)).model_dump(mode="json"),
     )
 
 
@@ -480,16 +481,14 @@ def get_client_pages_cursor(
         limit=pagination.limit,
         cursor=pagination.cursor,
     )
-    summaries = client_page_action_summaries(db, pages)
+    summaries = client_page_action_summaries(db, pages[:pagination.limit])
     return build_cursor_response(
-        [
-            ClientPageResponse.model_validate(serialize_client_page(page, db=db, action_summary=summaries.get(page.id))).model_dump(
-                mode="json"
-            )
-            for page in pages
-        ],
+        pages,
         limit=pagination.limit,
         id_attr="id",
+        serializer=lambda page: ClientPageResponse.model_validate(
+            serialize_client_page(page, db=db, action_summary=summaries.get(page.id))
+        ).model_dump(mode="json"),
     )
 
 

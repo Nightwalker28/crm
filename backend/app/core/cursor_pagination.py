@@ -18,7 +18,7 @@ def get_cursor_pagination(
     return CursorPagination(limit=limit, cursor=cursor)
 
 
-def build_cursor_response(items, *, limit: int, id_attr: str):
+def build_cursor_response(items, *, limit: int, id_attr: str, serializer=None):
     has_more = len(items) > limit
     page_items = items[:limit]
     next_cursor = None
@@ -26,8 +26,9 @@ def build_cursor_response(items, *, limit: int, id_attr: str):
         last_item = page_items[-1]
         value = last_item.get(id_attr) if isinstance(last_item, dict) else getattr(last_item, id_attr)
         next_cursor = str(value)
+    results = [serializer(item) for item in page_items] if serializer is not None else page_items
     return {
-        "results": page_items,
+        "results": results,
         "next_cursor": next_cursor,
         "has_more": has_more,
         "limit": limit,

@@ -205,8 +205,12 @@ def get_documents_cursor(
         cursor=pagination.cursor,
         current_user=current_user,
     )
-    serialized = [DocumentResponse.model_validate(document) for document in documents]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    return build_cursor_response(
+        documents,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=DocumentResponse.model_validate,
+    )
 
 
 @router.get("/templates", response_model=DocumentListResponse)

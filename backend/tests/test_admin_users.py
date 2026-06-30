@@ -6,6 +6,7 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 from app.modules.user_management.models import Role, Team, User, UserAuthMode, UserStatus
+from app.modules.user_management.repositories import admin_users_repository
 from app.modules.user_management.schema import UpdateUserRequest
 from app.modules.user_management.services import admin_users
 
@@ -52,6 +53,45 @@ class FakeDB:
 
     def refresh(self, _value):
         return None
+
+
+class CountSourceQuery:
+    def __init__(self):
+        self.order_by_calls = []
+        self.with_entities_args = None
+        self.subquery_called = False
+
+    def order_by(self, *args):
+        self.order_by_calls.append(args)
+        return self
+
+    def with_entities(self, *args):
+        self.with_entities_args = args
+        return self
+
+    def subquery(self):
+        self.subquery_called = True
+        return "count-source"
+
+
+class CountResultQuery:
+    def __init__(self):
+        self.select_from_arg = None
+
+    def select_from(self, value):
+        self.select_from_arg = value
+        return self
+
+    def scalar(self):
+        return 7
+
+
+class CountDB:
+    def __init__(self):
+        self.count_query = CountResultQuery()
+
+    def query(self, *_args):
+        return self.count_query
 
 
 class CreateUserTests(unittest.TestCase):
@@ -171,6 +211,20 @@ class CreateUserTests(unittest.TestCase):
 
         self.assertTrue(db.committed)
         self.assertEqual(response.setup_link, "http://localhost:3000/auth/setup-password?token=abc")
+
+
+class AdminUserRepositoryTests(unittest.TestCase):
+    def test_count_user_query_strips_ordering_before_counting_ids(self):
+        db = CountDB()
+        query = CountSourceQuery()
+
+        total = admin_users_repository.count_user_query(db, query)
+
+        self.assertEqual(total, 7)
+        self.assertIn((None,), query.order_by_calls)
+        self.assertEqual(query.with_entities_args, (User.id,))
+        self.assertTrue(query.subquery_called)
+        self.assertEqual(db.count_query.select_from_arg, "count-source")
 
 
 class UserSerializationTests(unittest.TestCase):

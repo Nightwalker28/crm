@@ -221,8 +221,12 @@ def list_contacts_cursor(
         any_filter_conditions=any_conditions,
     )
     selected_fields = _parse_list_fields(fields, _enabled_contact_list_fields(db, current_user.tenant_id))
-    serialized = [_serialize_contact_list_item(contact, selected_fields) for contact in contacts]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="contact_id")
+    return build_cursor_response(
+        contacts,
+        limit=pagination.limit,
+        id_attr="contact_id",
+        serializer=lambda contact: _serialize_contact_list_item(contact, selected_fields),
+    )
 
 
 @router.get("/search", response_model=SalesContactListResponse)

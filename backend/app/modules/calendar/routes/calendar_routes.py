@@ -95,8 +95,12 @@ def get_calendar_events_cursor(
         start_at=start_at,
         end_at=end_at,
     )
-    serialized = [CalendarEventResponse.model_validate(serialize_calendar_event(event, current_user=current_user)) for event in events]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    return build_cursor_response(
+        events,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda event: CalendarEventResponse.model_validate(serialize_calendar_event(event, current_user=current_user)),
+    )
 
 
 @router.post("/events", response_model=CalendarEventResponse, status_code=status.HTTP_201_CREATED)

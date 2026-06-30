@@ -5,8 +5,10 @@ from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
 from fastapi import HTTPException, status
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.like_patterns import LIKE_ESCAPE, contains_pattern
 from app.core.pagination import Pagination
 from app.modules.platform.models import CrmEvent
 from app.modules.platform.services.crm_events import safe_emit_crm_event
@@ -14,11 +16,12 @@ from app.modules.platform.services.notifications import create_notification
 from app.modules.tasks.models import Task, TaskAssignee
 from app.modules.tasks.repositories import tasks_repository
 from app.modules.tasks.schema import TaskResponse
-from app.modules.user_management.models import Team, User
+from app.modules.user_management.models import Team, User, UserStatus
 
 
 TASK_ASSIGNMENT_NOTIFICATION_CATEGORY = "task_assignment"
 TASK_DUE_TODAY_NOTIFICATION_CATEGORY = "task_due_today"
+TASK_ASSIGNMENT_OPTION_LIMIT = 100
 logger = logging.getLogger(__name__)
 
 
@@ -44,6 +47,16 @@ def _task_assignee_labels(task: Task) -> str:
 
 def _assignee_key(assignee_type: str, target_id: int) -> str:
     return f"{assignee_type}:{target_id}"
+
+
+def _coerce_assignee_target_id(value, *, detail: str) -> int:
+    try:
+        target_id = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail) from exc
+    if target_id <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+    return target_id
 
 
 def _clean_required_title(value) -> str:
@@ -149,26 +162,23 @@ def _normalize_assignees(
 ) -> list[dict]:
     raw_assignees = assignees_payload or []
 
+    user_ids: set[int] = set()
+    team_ids: set[int] = set()
     normalized: list[dict] = []
     seen_keys: set[str] = set()
 
     for item in raw_assignees:
         assignee_type = item.get("assignee_type")
         if assignee_type == "user":
-            user_id = item.get("user_id")
-            if not user_id:
+            raw_user_id = item.get("user_id")
+            if not raw_user_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="User assignee requires user_id")
-            user = (
-                db.query(User)
-                .filter(User.id == user_id, User.tenant_id == tenant_id)
-                .first()
-            )
-            if not user:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee user not found")
+            user_id = _coerce_assignee_target_id(raw_user_id, detail="User assignee requires user_id")
             key = _assignee_key("user", user_id)
             if key in seen_keys:
                 continue
             seen_keys.add(key)
+            user_ids.add(user_id)
             normalized.append(
                 {
                     "assignee_type": "user",
@@ -180,20 +190,15 @@ def _normalize_assignees(
             continue
 
         if assignee_type == "team":
-            team_id = item.get("team_id")
-            if not team_id:
+            raw_team_id = item.get("team_id")
+            if not raw_team_id:
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Team assignee requires team_id")
-            team = (
-                db.query(Team)
-                .filter(Team.id == team_id, Team.tenant_id == tenant_id)
-                .first()
-            )
-            if not team:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee team not found")
+            team_id = _coerce_assignee_target_id(raw_team_id, detail="Team assignee requires team_id")
             key = _assignee_key("team", team_id)
             if key in seen_keys:
                 continue
             seen_keys.add(key)
+            team_ids.add(team_id)
             normalized.append(
                 {
                     "assignee_type": "team",
@@ -205,6 +210,26 @@ def _normalize_assignees(
             continue
 
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported assignee type")
+
+    if user_ids:
+        existing_user_ids = {
+            user_id
+            for (user_id,) in db.query(User.id)
+            .filter(User.tenant_id == tenant_id, User.id.in_(user_ids))
+            .all()
+        }
+        if missing_user_ids := (user_ids - existing_user_ids):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee user not found")
+
+    if team_ids:
+        existing_team_ids = {
+            team_id
+            for (team_id,) in db.query(Team.id)
+            .filter(Team.tenant_id == tenant_id, Team.id.in_(team_ids))
+            .all()
+        }
+        if missing_team_ids := (team_ids - existing_team_ids):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assignee team not found")
 
     return normalized
 
@@ -266,21 +291,27 @@ def _update_assignment_metadata(
 
 def _resolve_notification_user_ids(db: Session, *, tenant_id: int, assignee_keys: list[str]) -> list[int]:
     user_ids: set[int] = set()
+    team_ids: set[int] = set()
     for key in assignee_keys:
         assignee_type, _, raw_id = key.partition(":")
         if assignee_type == "user" and raw_id.isdigit():
             user_ids.add(int(raw_id))
             continue
         if assignee_type == "team" and raw_id.isdigit():
-            members = (
-                db.query(User.id)
-                .filter(
-                    User.tenant_id == tenant_id,
-                    User.team_id == int(raw_id),
-                )
-                .all()
-            )
-            user_ids.update(user_id for (user_id,) in members)
+            team_ids.add(int(raw_id))
+    if not user_ids and not team_ids:
+        return []
+    filters = []
+    if user_ids:
+        filters.append(User.id.in_(user_ids))
+    if team_ids:
+        filters.append(User.team_id.in_(team_ids))
+    rows = (
+        db.query(User.id)
+        .filter(User.tenant_id == tenant_id, or_(*filters))
+        .all()
+    )
+    user_ids.update(user_id for (user_id,) in rows)
     return sorted(user_ids)
 
 
@@ -699,15 +730,62 @@ def create_task_assignment_notifications(db: Session, *, task: Task, current_use
     )
 
 
-def list_task_assignment_options(db: Session, *, tenant_id: int) -> dict:
-    users = (
+def list_task_assignment_options(
+    db: Session,
+    *,
+    tenant_id: int,
+    query: str | None = None,
+    limit: int = TASK_ASSIGNMENT_OPTION_LIMIT,
+    selected_user_ids: Sequence[int] | None = None,
+    selected_team_ids: Sequence[int] | None = None,
+) -> dict:
+    bounded_limit = max(1, min(limit, TASK_ASSIGNMENT_OPTION_LIMIT))
+    selected_user_ids = {int(user_id) for user_id in selected_user_ids or []}
+    selected_team_ids = {int(team_id) for team_id in selected_team_ids or []}
+    normalized_query = (query or "").strip().lower()
+
+    users_query = (
         db.query(User)
         .options(selectinload(User.team))
-        .filter(User.tenant_id == tenant_id)
-        .order_by(User.first_name.asc(), User.last_name.asc(), User.email.asc())
+        .filter(User.tenant_id == tenant_id, User.is_active == UserStatus.active)
+    )
+    teams_query = db.query(Team).filter(Team.tenant_id == tenant_id)
+    if normalized_query:
+        pattern = contains_pattern(normalized_query)
+        users_query = users_query.filter(
+            or_(
+                func.lower(func.coalesce(User.first_name, "")).like(pattern, escape=LIKE_ESCAPE),
+                func.lower(func.coalesce(User.last_name, "")).like(pattern, escape=LIKE_ESCAPE),
+                func.lower(func.coalesce(User.email, "")).like(pattern, escape=LIKE_ESCAPE),
+            )
+        )
+        teams_query = teams_query.filter(func.lower(Team.name).like(pattern, escape=LIKE_ESCAPE))
+
+    users = (
+        users_query.order_by(User.first_name.asc(), User.last_name.asc(), User.email.asc())
+        .limit(bounded_limit)
         .all()
     )
-    teams = db.query(Team).filter(Team.tenant_id == tenant_id).order_by(Team.name.asc()).all()
+    teams = teams_query.order_by(Team.name.asc()).limit(bounded_limit).all()
+
+    missing_user_ids = selected_user_ids - {user.id for user in users}
+    if missing_user_ids:
+        users.extend(
+            db.query(User)
+            .options(selectinload(User.team))
+            .filter(User.tenant_id == tenant_id, User.id.in_(missing_user_ids))
+            .all()
+        )
+    missing_team_ids = selected_team_ids - {team.id for team in teams}
+    if missing_team_ids:
+        teams.extend(
+            db.query(Team)
+            .filter(Team.tenant_id == tenant_id, Team.id.in_(missing_team_ids))
+            .all()
+        )
+
+    users = sorted(users, key=lambda user: ((_display_user_name(user) or "").lower(), user.email or "", user.id))
+    teams = sorted(teams, key=lambda team: (team.name.lower(), team.id))
 
     return {
         "users": [

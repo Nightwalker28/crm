@@ -82,8 +82,12 @@ def get_record_activity_logs_cursor(
         module_key=module_key,
         entity_id=entity_id,
     )
-    serialized = [ActivityLogResponse.model_validate(item).model_dump(mode="json") for item in items]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    return build_cursor_response(
+        items,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda item: ActivityLogResponse.model_validate(item).model_dump(mode="json"),
+    )
 
 
 @router.get("", response_model=ActivityLogListResponse)
@@ -129,5 +133,9 @@ def get_activity_logs_cursor(
         entity_id=entity_id,
         action=action,
     )
-    serialized = [ActivityLogResponse.model_validate(item).model_dump(mode="json") for item in items]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    return build_cursor_response(
+        items,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda item: ActivityLogResponse.model_validate(item).model_dump(mode="json"),
+    )

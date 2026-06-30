@@ -270,8 +270,12 @@ def get_sales_organizations_cursor(
         any_filter_conditions=any_conditions,
     )
     selected_fields = _parse_list_fields(fields, _enabled_organization_list_fields(db, current_user.tenant_id))
-    serialized = [_serialize_organization_list_item(item, selected_fields) for item in items]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="org_id")
+    return build_cursor_response(
+        items,
+        limit=pagination.limit,
+        id_attr="org_id",
+        serializer=lambda item: _serialize_organization_list_item(item, selected_fields),
+    )
 
 
 @router.get("/recycle", response_model=SalesOrganizationListResponse)

@@ -76,7 +76,7 @@ def get_services_cursor(
         limit=pagination.limit,
         cursor=pagination.cursor,
     )
-    return build_cursor_response([_response(service) for service in services], limit=pagination.limit, id_attr="id")
+    return build_cursor_response(services, limit=pagination.limit, id_attr="id", serializer=_response)
 
 
 @router.get("/recycle", response_model=CatalogServiceListResponse)

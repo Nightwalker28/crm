@@ -4,9 +4,10 @@ from datetime import datetime, timezone
 from typing import Sequence
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_
+from sqlalchemy import case as sql_case, func, or_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import set_committed_value
 
 from app.core.like_patterns import LIKE_ESCAPE, contains_pattern
 from app.core.module_filters import apply_filter_conditions
@@ -255,6 +256,7 @@ def get_case_or_404(db: Session, *, tenant_id: int, case_id: int) -> SupportCase
             selectinload(SupportCase.events),
         )
         .filter(SupportCase.id == case_id, SupportCase.tenant_id == tenant_id)
+        .populate_existing()
         .first()
     )
     if not item:
@@ -287,7 +289,6 @@ def _client_case_or_404(
     item = (
         _client_scope_filter(
             db.query(SupportCase).options(
-                selectinload(SupportCase.comments).selectinload(SupportCaseComment.author),
                 selectinload(SupportCase.events),
             ),
             tenant_id=tenant_id,
@@ -296,10 +297,23 @@ def _client_case_or_404(
             source=source,
         )
         .filter(SupportCase.id == case_id)
+        .populate_existing()
         .first()
     )
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Support case not found")
+    public_comments = (
+        db.query(SupportCaseComment)
+        .options(selectinload(SupportCaseComment.author))
+        .filter(
+            SupportCaseComment.tenant_id == tenant_id,
+            SupportCaseComment.case_id == item.id,
+            SupportCaseComment.is_internal.is_(False),
+        )
+        .order_by(SupportCaseComment.created_at)
+        .all()
+    )
+    set_committed_value(item, "comments", public_comments)
     return item
 
 
@@ -571,21 +585,42 @@ def add_case_comment(db: Session, case: SupportCase, payload: dict, current_user
 def get_case_summary(db: Session, *, tenant_id: int) -> dict:
     now = datetime.now(timezone.utc)
     rows = (
-        db.query(SupportCase.status, func.count(SupportCase.id))
+        db.query(
+            SupportCase.status,
+            func.count(SupportCase.id),
+            func.coalesce(
+                func.sum(
+                    sql_case(
+                        (
+                            (SupportCase.priority == "urgent") & SupportCase.status.notin_(CLOSED_STATUSES),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+            func.coalesce(
+                func.sum(
+                    sql_case(
+                        (
+                            SupportCase.sla_due_at.isnot(None)
+                            & (SupportCase.sla_due_at < now)
+                            & SupportCase.status.notin_(CLOSED_STATUSES),
+                            1,
+                        ),
+                        else_=0,
+                    )
+                ),
+                0,
+            ),
+        )
         .filter(SupportCase.tenant_id == tenant_id)
         .group_by(SupportCase.status)
         .all()
     )
-    by_status = {status: int(count) for status, count in rows}
+    by_status = {status: int(count) for status, count, _urgent, _overdue in rows}
     total_open = sum(count for status, count in by_status.items() if status not in CLOSED_STATUSES)
-    urgent_open = (
-        db.query(SupportCase.id)
-        .filter(SupportCase.tenant_id == tenant_id, SupportCase.priority == "urgent", SupportCase.status.notin_(CLOSED_STATUSES))
-        .count()
-    )
-    overdue = (
-        db.query(SupportCase.id)
-        .filter(SupportCase.tenant_id == tenant_id, SupportCase.sla_due_at.isnot(None), SupportCase.sla_due_at < now, SupportCase.status.notin_(CLOSED_STATUSES))
-        .count()
-    )
+    urgent_open = sum(int(urgent or 0) for _status, _count, urgent, _overdue in rows)
+    overdue = sum(int(overdue or 0) for _status, _count, _urgent, overdue in rows)
     return {"total_open": total_open, "urgent_open": urgent_open, "overdue": overdue, "by_status": by_status}

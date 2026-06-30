@@ -300,18 +300,33 @@ def get_tasks_cursor(
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
     )
-    serialized = [TaskResponse.model_validate(serialize_task(task)) for task in tasks]
-    return build_cursor_response(serialized, limit=pagination.limit, id_attr="id")
+    return build_cursor_response(
+        tasks,
+        limit=pagination.limit,
+        id_attr="id",
+        serializer=lambda task: TaskResponse.model_validate(serialize_task(task)),
+    )
 
 
 @router.get("/options", response_model=TaskAssignmentOptionsResponse)
 def get_task_assignment_options(
+    query: str | None = Query(default=None, max_length=100),
+    limit: int = Query(default=100, ge=1, le=100),
+    selected_user_ids: list[int] = Query(default_factory=list),
+    selected_team_ids: list[int] = Query(default_factory=list),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("tasks")),
     require_permission=Depends(require_action_access("tasks", "view")),
 ):
-    return list_task_assignment_options(db, tenant_id=current_user.tenant_id)
+    return list_task_assignment_options(
+        db,
+        tenant_id=current_user.tenant_id,
+        query=query,
+        limit=limit,
+        selected_user_ids=selected_user_ids,
+        selected_team_ids=selected_team_ids,
+    )
 
 
 @router.get("/recycle", response_model=TaskListResponse)
