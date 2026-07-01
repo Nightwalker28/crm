@@ -13,7 +13,12 @@ import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { SupportCase } from "@/hooks/support/useCases";
+import {
+  SUPPORT_CASES_QUERY_KEY,
+  SUPPORT_CASES_SUMMARY_QUERY_KEY,
+  supportCaseQueryKey,
+  useSupportCase,
+} from "@/hooks/support/useCases";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -43,43 +48,24 @@ const CATEGORIES = [
 export default function SupportCaseDetailPage() {
   const params = useParams<{ caseId: string }>();
   const queryClient = useQueryClient();
-  const [item, setItem] = useState<SupportCase | null>(null);
+  const caseQuery = useSupportCase(params.caseId);
+  const item = caseQuery.data ?? null;
   const [status, setStatus] = useState("new");
   const [priority, setPriority] = useState("medium");
   const [category, setCategory] = useState("general");
   const [comment, setComment] = useState("");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [commenting, setCommenting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function loadCase(signal?: { cancelled: boolean }) {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await apiFetch(`/support/cases/${params.caseId}`);
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      if (signal?.cancelled) return;
-      setItem(body);
-      setStatus(body.status ?? "new");
-      setPriority(body.priority ?? "medium");
-      setCategory(body.category ?? "general");
-    } catch (loadError) {
-      if (!signal?.cancelled) setError(loadError instanceof Error ? loadError.message : "Failed to load support case");
-    } finally {
-      if (!signal?.cancelled) setLoading(false);
-    }
-  }
-
   useEffect(() => {
-    const signal = { cancelled: false };
-    void loadCase(signal);
-    return () => {
-      signal.cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.caseId]);
+    if (!item || saving) return;
+    setStatus(item.status ?? "new");
+    setPriority(item.priority ?? "medium");
+    setCategory(item.category ?? "general");
+  }, [item, saving]);
+
+  const loadErrorMessage = caseQuery.error instanceof Error ? caseQuery.error.message : caseQuery.error ? "Failed to load support case" : null;
 
   async function handleSave() {
     try {
@@ -92,8 +78,12 @@ export default function SupportCaseDetailPage() {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      setItem(body);
-      await queryClient.invalidateQueries({ queryKey: ["support-cases"] });
+      queryClient.setQueryData(supportCaseQueryKey(params.caseId), body);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_SUMMARY_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: supportCaseQueryKey(params.caseId) }),
+      ]);
       toast.success("Support case updated.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to update support case");
@@ -115,7 +105,11 @@ export default function SupportCaseDetailPage() {
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
       setComment("");
-      await loadCase();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_SUMMARY_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: supportCaseQueryKey(params.caseId) }),
+      ]);
       toast.success("Comment added.");
     } catch (commentError) {
       setError(commentError instanceof Error ? commentError.message : "Failed to add comment");
@@ -131,12 +125,12 @@ export default function SupportCaseDetailPage() {
         backLabel="Back to Support Cases"
         title={item ? item.case_number : "Support Case"}
         description={item?.subject ?? "Review ownership, SLA, customer links, and case activity."}
-        primaryAction={<Button onClick={handleSave} disabled={saving || loading}>{saving ? "Saving..." : "Save Case"}</Button>}
+        primaryAction={<Button onClick={handleSave} disabled={saving || caseQuery.isLoading}>{saving ? "Saving..." : "Save Case"}</Button>}
       />
 
-      {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}
+      {error || loadErrorMessage ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error ?? loadErrorMessage}</div> : null}
 
-      {loading || !item ? (
+      {caseQuery.isLoading || !item ? (
         <Card className="px-5 py-5 text-sm text-neutral-500">Loading support case...</Card>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1fr_0.8fr]">

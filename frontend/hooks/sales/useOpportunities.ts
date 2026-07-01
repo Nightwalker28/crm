@@ -132,6 +132,7 @@ export function useOpportunities(
     queryKey: ["sales-opportunities"],
     fetcher: fetchOpportunities,
     visibleColumns,
+    visibleColumnsAffectQuery: true,
     filters: viewFilters,
     sort,
     initialPage,
@@ -139,7 +140,10 @@ export function useOpportunities(
   });
 
   const refreshLists = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] });
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
+      queryClient.invalidateQueries({ queryKey: ["sales-opportunities-pipeline-summary"] }),
+    ]);
   };
 
   const createMutation = useMutation({

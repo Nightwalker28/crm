@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,6 +52,13 @@ export default function ApproveUserDialog({
 }: Props) {
   const [role, setRole] = useState<number | "">("");
   const [team, setTeam] = useState<number | "">("");
+
+  useEffect(() => {
+    if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setRole("");
+    setTeam("");
+  }, [open, user.id]);
 
   return (
     <Dialog open={open} onClose={onClose}>

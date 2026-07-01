@@ -71,6 +71,7 @@ export function useQuotes(
     queryKey: ["sales-quotes"],
     fetcher: (page, pageSize, filters, columns, sortState) => fetchQuotes(page, pageSize, columns, filters, sortState),
     visibleColumns,
+    visibleColumnsAffectQuery: true,
     filters: viewFilters,
     sort,
     initialPage,

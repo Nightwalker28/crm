@@ -13,13 +13,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { UserManagementTable, type SortDirection, type SortKey } from "@/components/users/userManagementTable";
 import CreateUserDialog from "@/components/users/createUserDialog";
 import EditUserDialog from "@/components/users/editUserDialog";
-import { useUserManagement, type MfaPolicy } from "@/hooks/admin/useUserManagement";
+import { useUserManagement, type MfaPolicy, type SsoSettings } from "@/hooks/admin/useUserManagement";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { formatDateTime } from "@/lib/datetime";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
+import { canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
 import type { UserFiltersValue } from "@/components/users/userFilters";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type SsoDraft = {
   enabled: boolean;
@@ -54,6 +55,25 @@ const emptySsoDraft: SsoDraft = {
   first_name_claim: "given_name",
   last_name_claim: "family_name",
 };
+
+function draftFromSsoSettings(settings: SsoSettings): SsoDraft {
+  return {
+    enabled: settings.enabled,
+    issuer_url: settings.issuer_url ?? "",
+    authorization_endpoint: settings.authorization_endpoint ?? "",
+    token_endpoint: settings.token_endpoint ?? "",
+    userinfo_endpoint: settings.userinfo_endpoint ?? "",
+    jwks_uri: settings.jwks_uri ?? "",
+    client_id: settings.client_id ?? "",
+    client_secret: "",
+    auto_provision_users: settings.auto_provision_users,
+    default_role_id: settings.default_role_id ? String(settings.default_role_id) : "",
+    default_team_id: settings.default_team_id ? String(settings.default_team_id) : "",
+    email_claim: settings.email_claim || "email",
+    first_name_claim: settings.first_name_claim ?? "given_name",
+    last_name_claim: settings.last_name_claim ?? "family_name",
+  };
+}
 
 export default function UserManagementPage() {
   const { fields: moduleFields } = useModuleFieldConfigs("admin_users");
@@ -93,6 +113,7 @@ export default function UserManagementPage() {
     deleteTenantDomain,
   } = useUserManagement();
   const [ssoDraft, setSsoDraft] = useState<SsoDraft>(emptySsoDraft);
+  const isSsoDraftDirtyRef = useRef(false);
   const [domainDraft, setDomainDraft] = useState("");
   const {
     views,
@@ -127,24 +148,15 @@ export default function UserManagementPage() {
 
   useEffect(() => {
     if (!ssoSettings) return;
+    if (isSsoDraftDirtyRef.current) return;
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSsoDraft({
-      enabled: ssoSettings.enabled,
-      issuer_url: ssoSettings.issuer_url ?? "",
-      authorization_endpoint: ssoSettings.authorization_endpoint ?? "",
-      token_endpoint: ssoSettings.token_endpoint ?? "",
-      userinfo_endpoint: ssoSettings.userinfo_endpoint ?? "",
-      jwks_uri: ssoSettings.jwks_uri ?? "",
-      client_id: ssoSettings.client_id ?? "",
-      client_secret: "",
-      auto_provision_users: ssoSettings.auto_provision_users,
-      default_role_id: ssoSettings.default_role_id ? String(ssoSettings.default_role_id) : "",
-      default_team_id: ssoSettings.default_team_id ? String(ssoSettings.default_team_id) : "",
-      email_claim: ssoSettings.email_claim || "email",
-      first_name_claim: ssoSettings.first_name_claim ?? "given_name",
-      last_name_claim: ssoSettings.last_name_claim ?? "family_name",
-    });
+    setSsoDraft(draftFromSsoSettings(ssoSettings));
   }, [ssoSettings]);
+
+  const updateSsoDraftField = <Key extends keyof SsoDraft>(field: Key, value: SsoDraft[Key]) => {
+    isSsoDraftDirtyRef.current = true;
+    setSsoDraft((current) => ({ ...current, [field]: value }));
+  };
 
   const saveSsoSettings = async () => {
     await updateSsoSettings({
@@ -163,6 +175,7 @@ export default function UserManagementPage() {
       first_name_claim: ssoDraft.first_name_claim || null,
       last_name_claim: ssoDraft.last_name_claim || null,
     });
+    isSsoDraftDirtyRef.current = false;
     setSsoDraft((current) => ({ ...current, client_secret: "" }));
   };
 
@@ -312,7 +325,7 @@ export default function UserManagementPage() {
                 type="checkbox"
                 checked={ssoDraft.enabled}
                 disabled={isSsoSettingsLoading || isSsoSettingsSaving}
-                onChange={(event) => setSsoDraft((current) => ({ ...current, enabled: event.target.checked }))}
+                onChange={(event) => updateSsoDraftField("enabled", event.target.checked)}
               />
               Enabled
             </label>
@@ -321,18 +334,18 @@ export default function UserManagementPage() {
           <div className="grid gap-3 md:grid-cols-2">
             <Field>
               <FieldLabel>Issuer URL</FieldLabel>
-              <Input value={ssoDraft.issuer_url} onChange={(event) => setSsoDraft((current) => ({ ...current, issuer_url: event.target.value }))} placeholder="https://idp.example.com" />
+              <Input value={ssoDraft.issuer_url} onChange={(event) => updateSsoDraftField("issuer_url", event.target.value)} placeholder="https://idp.example.com" />
             </Field>
             <Field>
               <FieldLabel>Client ID</FieldLabel>
-              <Input value={ssoDraft.client_id} onChange={(event) => setSsoDraft((current) => ({ ...current, client_id: event.target.value }))} />
+              <Input value={ssoDraft.client_id} onChange={(event) => updateSsoDraftField("client_id", event.target.value)} />
             </Field>
             <Field>
               <FieldLabel>Client Secret</FieldLabel>
               <Input
                 type="password"
                 value={ssoDraft.client_secret}
-                onChange={(event) => setSsoDraft((current) => ({ ...current, client_secret: event.target.value }))}
+                onChange={(event) => updateSsoDraftField("client_secret", event.target.value)}
                 placeholder={ssoSettings?.has_client_secret ? "Stored secret" : ""}
               />
             </Field>
@@ -343,38 +356,38 @@ export default function UserManagementPage() {
             </Field>
             <Field>
               <FieldLabel>Authorization Endpoint</FieldLabel>
-              <Input value={ssoDraft.authorization_endpoint} onChange={(event) => setSsoDraft((current) => ({ ...current, authorization_endpoint: event.target.value }))} />
+              <Input value={ssoDraft.authorization_endpoint} onChange={(event) => updateSsoDraftField("authorization_endpoint", event.target.value)} />
               <FieldDescription>Optional when discovery is available.</FieldDescription>
             </Field>
             <Field>
               <FieldLabel>Token Endpoint</FieldLabel>
-              <Input value={ssoDraft.token_endpoint} onChange={(event) => setSsoDraft((current) => ({ ...current, token_endpoint: event.target.value }))} />
+              <Input value={ssoDraft.token_endpoint} onChange={(event) => updateSsoDraftField("token_endpoint", event.target.value)} />
               <FieldDescription>Optional when discovery is available.</FieldDescription>
             </Field>
             <Field>
               <FieldLabel>UserInfo Endpoint</FieldLabel>
-              <Input value={ssoDraft.userinfo_endpoint} onChange={(event) => setSsoDraft((current) => ({ ...current, userinfo_endpoint: event.target.value }))} />
+              <Input value={ssoDraft.userinfo_endpoint} onChange={(event) => updateSsoDraftField("userinfo_endpoint", event.target.value)} />
             </Field>
             <Field>
               <FieldLabel>JWKS URI</FieldLabel>
-              <Input value={ssoDraft.jwks_uri} onChange={(event) => setSsoDraft((current) => ({ ...current, jwks_uri: event.target.value }))} />
+              <Input value={ssoDraft.jwks_uri} onChange={(event) => updateSsoDraftField("jwks_uri", event.target.value)} />
               <FieldDescription>Optional when discovery is available.</FieldDescription>
             </Field>
             <Field>
               <FieldLabel>Email Claim</FieldLabel>
-              <Input value={ssoDraft.email_claim} onChange={(event) => setSsoDraft((current) => ({ ...current, email_claim: event.target.value }))} />
+              <Input value={ssoDraft.email_claim} onChange={(event) => updateSsoDraftField("email_claim", event.target.value)} />
             </Field>
             <Field>
               <FieldLabel>First Name Claim</FieldLabel>
-              <Input value={ssoDraft.first_name_claim} onChange={(event) => setSsoDraft((current) => ({ ...current, first_name_claim: event.target.value }))} />
+              <Input value={ssoDraft.first_name_claim} onChange={(event) => updateSsoDraftField("first_name_claim", event.target.value)} />
             </Field>
             <Field>
               <FieldLabel>Last Name Claim</FieldLabel>
-              <Input value={ssoDraft.last_name_claim} onChange={(event) => setSsoDraft((current) => ({ ...current, last_name_claim: event.target.value }))} />
+              <Input value={ssoDraft.last_name_claim} onChange={(event) => updateSsoDraftField("last_name_claim", event.target.value)} />
             </Field>
             <Field>
               <FieldLabel>Default Role</FieldLabel>
-              <Select value={ssoDraft.default_role_id || "__none__"} onValueChange={(value) => setSsoDraft((current) => ({ ...current, default_role_id: value === "__none__" ? "" : value }))}>
+              <Select value={ssoDraft.default_role_id || "__none__"} onValueChange={(value) => updateSsoDraftField("default_role_id", value === "__none__" ? "" : value)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">None</SelectItem>
@@ -384,7 +397,7 @@ export default function UserManagementPage() {
             </Field>
             <Field>
               <FieldLabel>Default Team</FieldLabel>
-              <Select value={ssoDraft.default_team_id || "__none__"} onValueChange={(value) => setSsoDraft((current) => ({ ...current, default_team_id: value === "__none__" ? "" : value }))}>
+              <Select value={ssoDraft.default_team_id || "__none__"} onValueChange={(value) => updateSsoDraftField("default_team_id", value === "__none__" ? "" : value)}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="__none__">None</SelectItem>
@@ -399,7 +412,7 @@ export default function UserManagementPage() {
               <input
                 type="checkbox"
                 checked={ssoDraft.auto_provision_users}
-                onChange={(event) => setSsoDraft((current) => ({ ...current, auto_provision_users: event.target.checked }))}
+                onChange={(event) => updateSsoDraftField("auto_provision_users", event.target.checked)}
               />
               Auto-provision users
             </label>
@@ -465,7 +478,7 @@ export default function UserManagementPage() {
               any_conditions: Array.isArray(activeFilters.any_conditions) ? activeFilters.any_conditions : [],
             };
             const sameFilters =
-              JSON.stringify(current.filters ?? {}) === JSON.stringify(nextFilters);
+              canonicalSavedViewFiltersKey(current.filters ?? {}) === canonicalSavedViewFiltersKey(nextFilters);
             const sameSort =
               JSON.stringify(current.sort ?? null) === JSON.stringify(nextSort);
             if (sameFilters && sameSort) {
@@ -490,7 +503,6 @@ export default function UserManagementPage() {
 
       {editUserData && (
         <EditUserDialog
-          key={editUserData.id}
           open={isEditOpen}
           user={editUserData}
           roles={roles}

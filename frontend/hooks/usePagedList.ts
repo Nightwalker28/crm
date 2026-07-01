@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
+import { canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
 
 export type PagedListSort = { key: string; direction: "asc" | "desc" } | null;
 
@@ -20,6 +21,7 @@ type UsePagedListOptions<T, Response extends PagedListResponse<T>> = {
   queryKey: readonly unknown[];
   fetcher: (page: number, pageSize: number, filters: SavedViewFilters, visibleColumns: string[], sort: PagedListSort) => Promise<Response>;
   visibleColumns: string[];
+  visibleColumnsAffectQuery?: boolean;
   filters: SavedViewFilters;
   sort?: PagedListSort;
   initialPage?: number;
@@ -33,6 +35,7 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
   queryKey,
   fetcher,
   visibleColumns,
+  visibleColumnsAffectQuery = false,
   filters,
   sort = null,
   initialPage = 1,
@@ -42,14 +45,15 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
   fallbackErrorMessage = "Failed to load records",
 }: UsePagedListOptions<T, Response>) {
   const [pageSize, setPageSize] = useState(initialPageSize);
-  const filtersKey = useMemo(() => JSON.stringify(filters), [filters]);
+  const filtersKey = useMemo(() => canonicalSavedViewFiltersKey(filters), [filters]);
   const sortKey = useMemo(() => JSON.stringify(sort), [sort]);
   const [pageState, setPageState] = useState({ page: initialPage, filtersKey, sortKey });
   const page = pageState.filtersKey === filtersKey && pageState.sortKey === sortKey ? pageState.page : 1;
   const visibleColumnsKey = useMemo(() => [...visibleColumns].sort().join(","), [visibleColumns]);
+  const projectionKey = visibleColumnsAffectQuery ? visibleColumnsKey : "";
 
   const query = useQuery<Response>({
-    queryKey: [...queryKey, page, pageSize, filters, visibleColumnsKey, sortKey],
+    queryKey: [...queryKey, page, pageSize, filtersKey, projectionKey, sortKey],
     queryFn: () => fetcher(page, pageSize, filters, visibleColumns, sort),
     placeholderData: keepPreviousData,
     refetchOnWindowFocus,

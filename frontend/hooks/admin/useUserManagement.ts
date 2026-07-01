@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -104,16 +104,13 @@ function parseStoredUser(raw: string | null): number | null {
 export function useUserManagement() {
   const queryClient = useQueryClient();
 
-  const [currentUserId, setCurrentUserId] = useState<number | null>(null);
+  const [currentUserId] = useState<number | null>(() => {
+    if (typeof window === "undefined") return null;
+    return parseStoredUser(window.sessionStorage.getItem("lynk_user"));
+  });
   const [editUserData, setEditUserData] = useState<User | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setCurrentUserId(parseStoredUser(sessionStorage.getItem("lynk_user")));
-  }, []);
 
   const optionsQuery = useQuery<UserOptionsData>({
     queryKey: ["user-options"],
@@ -317,8 +314,6 @@ export function useUserManagement() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["users-paged"] }),
       queryClient.invalidateQueries({ queryKey: ["user-options"] }),
-      queryClient.refetchQueries({ queryKey: ["users-paged"], type: "active" }),
-      queryClient.refetchQueries({ queryKey: ["user-options"], type: "active" }),
     ]);
   }
 

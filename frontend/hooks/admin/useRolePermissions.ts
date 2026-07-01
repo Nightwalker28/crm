@@ -61,20 +61,23 @@ export function useRolePermissions() {
     queryFn: fetchOverview,
   });
 
+  const roles = useMemo(() => overviewQuery.data?.roles ?? [], [overviewQuery.data?.roles]);
+  const templates = useMemo(() => overviewQuery.data?.templates ?? [], [overviewQuery.data?.templates]);
+
   useEffect(() => {
-    if (selectedRoleId == null && overviewQuery.data?.roles?.length) {
+    if (!roles.length) return;
+    const selectedRoleExists = selectedRoleId != null && roles.some((role) => role.id === selectedRoleId);
+    if (selectedRoleId == null || !selectedRoleExists) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setSelectedRoleId(overviewQuery.data.roles[0].id);
+      setSelectedRoleId(roles[0].id);
     }
-  }, [overviewQuery.data, selectedRoleId]);
+  }, [roles, selectedRoleId]);
 
   const permissionsQuery = useQuery({
     queryKey: ["role-permissions", selectedRoleId],
     queryFn: () => fetchRolePermissions(selectedRoleId as number),
     enabled: selectedRoleId != null,
   });
-  const roles = useMemo(() => overviewQuery.data?.roles ?? [], [overviewQuery.data?.roles]);
-  const templates = useMemo(() => overviewQuery.data?.templates ?? [], [overviewQuery.data?.templates]);
   const permissions = useMemo(() => permissionsQuery.data ?? [], [permissionsQuery.data]);
 
   async function createRole(payload: { name: string; description?: string; level?: number; template_key: string }) {

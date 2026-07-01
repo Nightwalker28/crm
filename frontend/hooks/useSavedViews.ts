@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
+import { canonicalSavedViewConditionsKey } from "@/lib/savedViewQuery";
 
 export type SavedViewConfig = {
   visible_columns: string[];
@@ -73,7 +74,7 @@ function sameSort(left: SavedViewConfig["sort"], right: SavedViewConfig["sort"])
 }
 
 function sameConditions(left: SavedViewCondition[] = [], right: SavedViewCondition[] = []) {
-  return JSON.stringify(left) === JSON.stringify(right);
+  return canonicalSavedViewConditionsKey(left) === canonicalSavedViewConditionsKey(right);
 }
 
 function sameAppliedConfig(left: SavedViewConfig, right: SavedViewConfig) {

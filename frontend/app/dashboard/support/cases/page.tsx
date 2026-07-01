@@ -9,7 +9,7 @@ import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
-import { useSupportCases, type SupportCaseSortState } from "@/hooks/support/useCases";
+import { useSupportCases, useSupportCaseSummary, type SupportCaseSortState } from "@/hooks/support/useCases";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
@@ -30,6 +30,8 @@ export default function SupportCasesPage() {
     };
   }, [draftConfig.sort]);
   const { cases, page, totalPages, totalCount, rangeStart, rangeEnd, pageSize, onPageSizeChange, isLoading, isFetching, error, goToPage, refresh } = useSupportCases(visibleColumns, activeFilters, activeSort);
+  const summaryQuery = useSupportCaseSummary();
+  const summary = summaryQuery.data;
 
   return (
     <div className="flex flex-col gap-6">
@@ -39,6 +41,11 @@ export default function SupportCasesPage() {
       />
       <SearchBar value={typeof activeFilters?.search === "string" ? activeFilters.search : ""} onChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: value } }))} placeholder="Search cases" />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} />
+      <div className="grid gap-3 sm:grid-cols-3">
+        <SupportMetric label="Open" value={summary?.total_open ?? 0} loading={summaryQuery.isLoading} />
+        <SupportMetric label="Urgent" value={summary?.urgent_open ?? 0} loading={summaryQuery.isLoading} tone="urgent" />
+        <SupportMetric label="Overdue" value={summary?.overdue ?? 0} loading={summaryQuery.isLoading} tone="overdue" />
+      </div>
       {error ? (
         <div className="flex justify-between rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">
           <span>{error}</span>
@@ -60,6 +67,17 @@ export default function SupportCasesPage() {
         }
       />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
+    </div>
+  );
+}
+
+function SupportMetric({ label, value, loading, tone = "default" }: { label: string; value: number; loading: boolean; tone?: "default" | "urgent" | "overdue" }) {
+  const valueClass = tone === "urgent" ? "text-amber-200" : tone === "overdue" ? "text-red-200" : "text-neutral-100";
+
+  return (
+    <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-3">
+      <div className="text-xs uppercase tracking-wide text-neutral-500">{label}</div>
+      <div className={`mt-2 text-2xl font-semibold ${valueClass}`}>{loading ? "..." : value}</div>
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
+import { canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
 
 export type TaskStatus = "todo" | "in_progress" | "blocked" | "completed";
 export type TaskPriority = "high" | "medium" | "low";
@@ -202,13 +203,13 @@ export async function fetchRecordTasks(moduleKey: string, entityId: string | num
 export function useTasks(filters?: SavedViewFilters, sort: TaskSortState = null) {
   const queryClient = useQueryClient();
   const [pageSize, setPageSize] = useState(10);
-  const filtersKey = useMemo(() => JSON.stringify(filters ?? {}), [filters]);
+  const filtersKey = useMemo(() => canonicalSavedViewFiltersKey(filters), [filters]);
   const sortKey = useMemo(() => JSON.stringify(sort), [sort]);
   const [pageState, setPageState] = useState({ page: 1, filtersKey, sortKey });
   const page = pageState.filtersKey === filtersKey && pageState.sortKey === sortKey ? pageState.page : 1;
 
   const query = useQuery({
-    queryKey: ["tasks", page, pageSize, filters, sort],
+    queryKey: ["tasks", page, pageSize, filtersKey, sortKey],
     queryFn: () => fetchTasks(page, pageSize, filters, sort),
     staleTime: 30_000,
   });
@@ -216,8 +217,10 @@ export function useTasks(filters?: SavedViewFilters, sort: TaskSortState = null)
   const createMutation = useMutation({
     mutationFn: createTask,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      await queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["user-notifications"] }),
+      ]);
     },
   });
 
@@ -225,19 +228,23 @@ export function useTasks(filters?: SavedViewFilters, sort: TaskSortState = null)
     mutationFn: ({ taskId, payload }: { taskId: number; payload: TaskPayload }) =>
       updateTask(taskId, payload),
     onSuccess: async (_, variables) => {
-      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      await queryClient.invalidateQueries({ queryKey: ["task", variables.taskId] });
-      await queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["task", variables.taskId] }),
+        queryClient.invalidateQueries({ queryKey: ["user-notifications"] }),
+      ]);
     },
   });
 
   const deleteMutation = useMutation({
     mutationFn: deleteTask,
     onSuccess: async (_, taskId) => {
-      await queryClient.invalidateQueries({ queryKey: ["tasks"] });
-      await queryClient.invalidateQueries({ queryKey: ["task", taskId] });
-      await queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
-      await queryClient.invalidateQueries({ queryKey: ["recycle-bin"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["task", taskId] }),
+        queryClient.invalidateQueries({ queryKey: ["user-notifications"] }),
+        queryClient.invalidateQueries({ queryKey: ["recycle-bin"] }),
+      ]);
     },
   });
 

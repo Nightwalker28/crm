@@ -67,6 +67,7 @@ export function useContacts(
     queryKey: ["sales-contacts"],
     fetcher: (page, pageSize, filters, columns, sortState) => fetchContacts(page, pageSize, columns, filters, sortState),
     visibleColumns,
+    visibleColumnsAffectQuery: true,
     filters: viewFilters,
     sort,
     initialPage,

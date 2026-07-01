@@ -84,6 +84,7 @@ export function useOrganizations(
     queryKey: ["sales-organizations"],
     fetcher: fetchOrganizations,
     visibleColumns,
+    visibleColumnsAffectQuery: true,
     filters: viewFilters,
     sort,
     initialPage,

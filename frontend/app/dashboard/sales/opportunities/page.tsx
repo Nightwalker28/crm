@@ -13,7 +13,7 @@ import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import Pagination from "@/components/ui/Pagination";
 import { Button } from "@/components/ui/button";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
-import { buildSavedViewExportPayload } from "@/lib/savedViewQuery";
+import { buildSavedViewExportPayload, canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
@@ -95,13 +95,14 @@ export default function OpportunitiesPage() {
   );
   const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
   const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
+  const activeFiltersKey = useMemo(() => canonicalSavedViewFiltersKey(activeFilters), [activeFilters]);
   const activeSort = useMemo<OpportunitySortState>(() => {
     const sort = draftConfig.sort;
     if (!sort || typeof sort.key !== "string") return null;
     return { key: sort.key, direction: sort.direction === "desc" ? "desc" : "asc" };
   }, [draftConfig.sort]);
   const pipelineSummaryQuery = useQuery({
-    queryKey: ["sales-opportunities-pipeline-summary", activeFilters],
+    queryKey: ["sales-opportunities-pipeline-summary", activeFiltersKey],
     queryFn: () => fetchPipelineSummary(activeFilters),
     staleTime: 30000,
   });
@@ -317,7 +318,6 @@ export default function OpportunitiesPage() {
           onStageChange={async (opportunity, salesStage) => {
             if (opportunity.sales_stage === salesStage) return;
             await updateOpportunityStage(opportunity.opportunity_id, salesStage);
-            await pipelineSummaryQuery.refetch();
             toast.success("Deal stage updated.");
           }}
         />

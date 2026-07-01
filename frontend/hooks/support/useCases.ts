@@ -1,9 +1,15 @@
 "use client";
 
+import { useQuery } from "@tanstack/react-query";
+
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
+
+export const SUPPORT_CASES_QUERY_KEY = ["support-cases"] as const;
+export const SUPPORT_CASES_SUMMARY_QUERY_KEY = ["support-cases-summary"] as const;
+export const supportCaseQueryKey = (caseId: string | number) => ["support-case", String(caseId)] as const;
 
 export type SupportCaseSortState = PagedListSort;
 
@@ -64,6 +70,27 @@ export type SupportCasesResponse = {
   page: number;
 };
 
+export type SupportCaseSummary = {
+  total_open: number;
+  urgent_open: number;
+  overdue: number;
+  by_status: Record<string, number>;
+};
+
+async function fetchSupportCase(caseId: string | number): Promise<SupportCase> {
+  const res = await apiFetch(`/support/cases/${caseId}`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return body;
+}
+
+async function fetchSupportCaseSummary(): Promise<SupportCaseSummary> {
+  const res = await apiFetch("/support/cases/summary");
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return body;
+}
+
 async function fetchCases(page: number, pageSize: number, _visibleColumns: string[], filters: SavedViewFilters, sort: SupportCaseSortState): Promise<SupportCasesResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   if (sort) {
@@ -80,7 +107,7 @@ async function fetchCases(page: number, pageSize: number, _visibleColumns: strin
 
 export function useSupportCases(visibleColumns: string[], viewFilters: SavedViewFilters, sort: SupportCaseSortState = null, initialPage = 1, initialPageSize = 10) {
   const paged = usePagedList<SupportCase, SupportCasesResponse>({
-    queryKey: ["support-cases"],
+    queryKey: SUPPORT_CASES_QUERY_KEY,
     fetcher: (page, pageSize, filters, columns, sortState) => fetchCases(page, pageSize, columns, filters, sortState),
     visibleColumns,
     filters: viewFilters,
@@ -105,4 +132,20 @@ export function useSupportCases(visibleColumns: string[], viewFilters: SavedView
     onPageSizeChange: paged.onPageSizeChange,
     refresh: paged.refresh,
   };
+}
+
+export function useSupportCase(caseId: string | number | null | undefined) {
+  return useQuery({
+    queryKey: caseId ? supportCaseQueryKey(caseId) : ["support-case", "missing"],
+    queryFn: () => fetchSupportCase(caseId as string | number),
+    enabled: caseId != null && String(caseId).trim() !== "",
+  });
+}
+
+export function useSupportCaseSummary() {
+  return useQuery({
+    queryKey: SUPPORT_CASES_SUMMARY_QUERY_KEY,
+    queryFn: fetchSupportCaseSummary,
+    staleTime: 30_000,
+  });
 }

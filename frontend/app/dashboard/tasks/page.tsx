@@ -87,7 +87,7 @@ export default function TasksPage() {
   }, [taskDetailQuery.error, taskId, router]);
 
   const isDialogOpen = taskId ? Boolean(activeTask) : dialogOpen;
-  const dialogKey = `${isDialogOpen ? "open" : "closed"}-${activeTask?.id ?? "new"}-${activeTask?.updated_at ?? "none"}`;
+  const dialogKey = `${isDialogOpen ? "open" : "closed"}-${activeTask?.id ?? "new"}`;
 
   function openCreateDialog() {
     setSelectedTask(null);

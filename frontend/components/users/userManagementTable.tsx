@@ -206,10 +206,15 @@ export function UserManagementTable({
     selectedRoles: initialFilters?.selectedRoles ?? [],
     selectedStatuses: initialFilters?.selectedStatuses ?? [],
   }));
+  const currentStateRef = useRef({ filters, sortKey, sortDirection });
 
   useEffect(() => {
     onStateChangeRef.current = onStateChange;
   }, [onStateChange]);
+
+  useEffect(() => {
+    currentStateRef.current = { filters, sortKey, sortDirection };
+  }, [filters, sortDirection, sortKey]);
 
   const { teamIdsByName, roleIdsByName } = useMemo(() => {
     const teamMap = new Map<string, number>();
@@ -261,6 +266,7 @@ export function UserManagementTable({
       visibleColumns: columns,
     }),
     visibleColumns,
+    visibleColumnsAffectQuery: true,
     filters: userListFilters,
     initialPage: 1,
     initialPageSize: 10,
@@ -502,17 +508,18 @@ export function UserManagementTable({
       selectedRoles: initialFilters?.selectedRoles ?? [],
       selectedStatuses: initialFilters?.selectedStatuses ?? [],
     };
+    const currentState = currentStateRef.current;
     suppressNextStateChangeRef.current = (
-      !filtersEqual(filters, nextFilters) ||
-      sortKey !== initialSortKey ||
-      sortDirection !== initialSortDirection
+      !filtersEqual(currentState.filters, nextFilters) ||
+      currentState.sortKey !== initialSortKey ||
+      currentState.sortDirection !== initialSortDirection
     );
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setFilters((current) => (filtersEqual(current, nextFilters) ? current : nextFilters));
     setSortKey((current) => (current === initialSortKey ? current : initialSortKey));
     setSortDirection((current) => (current === initialSortDirection ? current : initialSortDirection));
     goToUserPage(1);
-  }, [stateKey, filters, initialFilters, initialSortDirection, initialSortKey, sortDirection, sortKey, goToUserPage]);
+  }, [stateKey, initialFilters, initialSortDirection, initialSortKey, goToUserPage]);
 
   useEffect(() => {
     if (!isMountedRef.current) {

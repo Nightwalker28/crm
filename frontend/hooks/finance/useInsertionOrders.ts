@@ -182,6 +182,7 @@ export function useInsertionOrders(
     queryKey: ["insertion-orders"],
     fetcher: (page, pageSize, filters, columns, sortState) => fetchInsertionOrders(page, pageSize, filters, columns, sortState),
     visibleColumns,
+    visibleColumnsAffectQuery: true,
     filters: viewFilters,
     sort,
     initialPage: 1,
@@ -195,7 +196,6 @@ export function useInsertionOrders(
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["insertion-orders"] }),
-        queryClient.refetchQueries({ queryKey: ["insertion-orders"], type: "active" }),
         queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
       ]);
     },
@@ -206,7 +206,6 @@ export function useInsertionOrders(
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["insertion-orders"] }),
-        queryClient.refetchQueries({ queryKey: ["insertion-orders"], type: "active" }),
         queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
       ]);
     },
@@ -215,10 +214,7 @@ export function useInsertionOrders(
   const deleteMutation = useMutation({
     mutationFn: deleteInsertionOrder,
     onSuccess: async () => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["insertion-orders"] }),
-        queryClient.refetchQueries({ queryKey: ["insertion-orders"], type: "active" }),
-      ]);
+      await queryClient.invalidateQueries({ queryKey: ["insertion-orders"] });
     },
   });
 

@@ -1,6 +1,6 @@
 # Codex Production Readiness Backlog
 
-_Last updated: 2026-06-28_
+_Last updated: 2026-07-01_
 
 This is the consolidated implementation backlog for the production-readiness audit across Core Backend, Contracts, Calendar, Catalog, Client Portal, Documents, Platform, Finance, Sales, Support, Tasks, and User Management.
 
@@ -36,8 +36,8 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 2. **Concurrency and transaction correctness:** complete.
 3. **External side effects and background work:** complete.
 4. **Query scalability and indexes:** complete.
-5. **Frontend cache, validation, and browser reliability:** FE-QUERY, FE-FORMS, FE-BROWSER, UM-FRONTEND.
-6. **Cleanup and maintainability:** SALES-MODELS, UM-MAINT, OPS-MAINT, SERIALIZATION, ROUTES, DUPLICATION.
+5. **Frontend cache, validation, and browser reliability:** FE-QUERY remaining items, FE-FORMS, FE-BROWSER, UM-FRONTEND.
+6. **Cleanup and maintainability:** SALES-MODELS, OPS-MAINT, SERIALIZATION, ROUTES, DUPLICATION.
 
 ---
 
@@ -289,6 +289,30 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Task assignee validation now batches user and team existence checks instead of querying once per assignee, and task assignment notification recipient resolution batches direct user and team-member lookup into one tenant-scoped user query. Assignment options are bounded, searchable, active-user filtered by default, and can include explicitly selected users/teams so edit screens can resolve current selections without loading every tenant principal. Existing due-scan duplicate detection remains batched from the earlier task events work.
 - **Verification:** `docker compose exec -T backend python -m unittest tests.test_task_source_activity tests.test_task_reminders`; `docker compose exec -T backend python -m unittest tests.test_api_routes.APIRouteTests.test_task_recycle_route_passes_current_user_to_visibility_filtered_service tests.test_api_routes.APIRouteTests.test_task_restore_route_uses_deleted_only_lookup`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
 
+## FE-QUERY-KEYS — Canonicalize high-churn frontend query keys and user-management state
+
+- **Completed:** 2026-07-01
+- **Source items:** SUP-16, SALES-29, SALES-30, TASK-21, FIN-39, FIN-40, FIN-41, UM-27, UM-28, UM-29, UM-30, UM-32, UM-33, UM-34, UM-35, UM-38
+- **Files:** shared paged-list/query helpers, task/opportunity/finance hooks, user-management hooks/dialogs/settings
+- **Result:** Saved-view filters now have canonical serialized query keys that ignore non-semantic condition ordering. Shared paged lists include visible columns in the cache key only when the fetcher sends a `fields` projection, so support/contracts/catalog/orders column changes stay UI-only while sales, finance, and user lists still refetch for projected payloads. Task lists use stable filter/sort strings in their query keys. Opportunity pipeline summaries use canonical filter keys and are invalidated with opportunity list mutations. Finance insertion-order mutations avoid duplicate invalidate-plus-refetch calls. User-management self state now initializes from session storage on the first client render, table saved-view resets are gated by state-key changes, SSO drafts preserve dirty client-secret edits during background refetch, role permission refetches preserve the selected role unless it disappears, and approve/edit dialogs use explicit reset ownership.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-QUERY-SUPPORT — Move support case detail and summary refresh onto React Query
+
+- **Completed:** 2026-07-01
+- **Source items:** SUP-23, SUP-25, SUP-26
+- **Files:** `frontend/hooks/support/useCases.ts`, support case list/detail pages, create-support dialog
+- **Result:** Support case list, detail, and summary queries now use explicit shared query keys. The support list renders the existing backend summary metrics, and create/update/comment mutations invalidate the list, active detail, and summary keys together. The support detail page no longer owns fetched case data in local state, so comments and lifecycle updates refresh without forcing a full-page loading reset.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-QUERY-TASKS — Stabilize task page query state and dialog refresh behavior
+
+- **Completed:** 2026-07-01
+- **Source items:** TASK-22, TASK-25
+- **Files:** `frontend/hooks/useTasks.ts`, `frontend/app/dashboard/tasks/page.tsx`, `frontend/components/tasks/TaskDialog.tsx`
+- **Result:** Task lists use stable canonical filter/sort strings in query keys and reset page state when fetch-affecting filters or sort change. The task dialog remount boundary now tracks only open state and selected task identity, no longer `updated_at`, so switching tasks still gets fresh form state while saving a task does not remount the dialog unexpectedly.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
 ---
 
 # Consolidated Task Backlog
@@ -320,15 +344,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Fix:** Preserve or explicitly document cursor search ordering. Cap saved-view serialized size and nesting depth. Mark default saved views in memory or use a one-query/update-returning path. Split or document shared module sets. Verify admin user list field projection and add query-count tests for list/search/cursor paths.
 - **Acceptance:** Saved-view payloads cannot grow unbounded, first saved-view load avoids unnecessary full re-query, user search ordering is intentional, and admin user list performance stays bounded.
 
-## UM-MAINT — Keep low-risk user-management cleanup explicit
-
-- **Severity:** Low/Medium
-- **Source items:** UM-38
-- **Files:** frontend user table hook docs/tests
-- **Issue:** The admin users fetcher is stable today only by convention.
-- **Fix:** Document or preserve the module-scoped `fetchUsers` contract unless `usePagedList` later needs a different dependency model.
-- **Acceptance:** User fetching does not refetch due to avoidable fetcher identity churn.
-
 ## PLAT-QUERY — Reduce platform over-fetching and harden raw-query helpers
 
 - **Completed:** 2026-06-30
@@ -340,19 +355,19 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 ## FE-QUERY — Canonicalize frontend query keys and invalidation behavior
 
 - **Severity:** High/Medium
-- **Source items:** CON-09, CON-20, CAL-19, CAT-08, DOC-20, DOC-21, FIN-39, FIN-40, FIN-41, PLAT-31, SALES-29, SALES-30, SALES-34, SALES-DEEP-45, SALES-DEEP-46, SALES-DEEP-47, TASK-21, TASK-22, TASK-25, UM-29, UM-35, UM-38, SUP-16, SUP-23, SUP-25, SUP-26
+- **Source items:** CON-09, CON-20, CAL-19, CAT-08, DOC-20, DOC-21, PLAT-31, SALES-34, SALES-DEEP-45, SALES-DEEP-46, SALES-DEEP-47
 - **Files:** frontend module hooks and saved-view hooks
-- **Issue:** Several hooks may omit fetch-affecting values, include UI-only values, invalidate too broadly/sequentially, or compare logically equivalent saved-view conditions order-sensitively. Sales/support detail pages still use raw fetch/local state in places, opportunity/support summaries can stay stale after mutations, task page/query state can diverge when filter/sort keys change, and user-management saved-view/filter refreshes can churn or double-refetch.
-- **Fix:** Build query keys from the same canonical values used in URLs. Include page, size, sort, filters, search, module kind, and context where they affect fetches. Exclude visible columns unless the API supports projection. Use narrow invalidations, `Promise.all` where multiple invalidations remain, and normalized condition comparisons when order is not semantic. Migrate high-churn sales/support detail pages to React Query gradually and invalidate list/detail/summary keys after mutations. Use stable task filter/sort key strings in query keys and explicitly reset task page state on filter/sort changes. Avoid duplicate invalidate+refetch calls and memoize user saved-view filters by stable serialized config.
-- **Acceptance:** Changing fetch-affecting inputs gets fresh data; UI-only preferences do not refetch; saved views do not reset because of non-semantic condition ordering; sales/support summary widgets do not remain stale after create/update/comment/status changes; task rendered page and internal page state stay aligned.
+- **Issue:** Several hooks may omit fetch-affecting values, invalidate too broadly/sequentially, or still use raw fetch/local state in high-churn sales detail pages. Some remaining saved-view state paths still need explicit reset/refresh ownership.
+- **Fix:** Build remaining query keys from the same canonical values used in URLs. Include page, size, sort, filters, search, module kind, and context where they affect fetches. Use narrow invalidations and `Promise.all` where multiple invalidations remain. Migrate high-churn sales detail pages to React Query gradually and invalidate list/detail/summary keys after mutations. Avoid duplicate invalidate+refetch calls and memoize user saved-view filters by stable serialized config where the shared list key does not already cover it.
+- **Acceptance:** Changing fetch-affecting inputs gets fresh data; remaining sales summary widgets do not stay stale after create/update/comment/status changes.
 
 ## FE-FORMS — Align frontend validation and state with backend contracts
 
 - **Severity:** High/Medium
-- **Source items:** CON-10, CON-15, CON-16, CAL-10, CAL-15, CAL-20, CAL-21, CAL-22, CAL-X2, CAT-09, CAT-10, CAT-11, CAT-17, CAT-18, CAT-19, CAT-21, CAT-22, CAT-24, FIN-43, FIN-44, FIN-46, FIN-47, FIN-48, FIN-49, SALES-24, SALES-25, SALES-26, SALES-28, SALES-32, SALES-33, SALES-35, SALES-36, SALES-DEEP-44, SALES-DEEP-48, SALES-DEEP-49, SALES-DEEP-51, SALES-DEEP-52, SALES-DEEP-53, SALES-DEEP-55, SALES-DEEP-56, SALES-DEEP-57, TASK-23, TASK-24, TASK-26, TASK-27, UM-30, UM-32, UM-33, UM-34, UM-40, SUP-24, SUP-27, SUP-28
+- **Source items:** CON-10, CON-15, CON-16, CAL-10, CAL-15, CAL-20, CAL-21, CAL-22, CAL-X2, CAT-09, CAT-10, CAT-11, CAT-17, CAT-18, CAT-19, CAT-21, CAT-22, CAT-24, FIN-43, FIN-44, FIN-46, FIN-47, FIN-48, FIN-49, SALES-24, SALES-25, SALES-26, SALES-28, SALES-32, SALES-33, SALES-35, SALES-36, SALES-DEEP-44, SALES-DEEP-48, SALES-DEEP-49, SALES-DEEP-51, SALES-DEEP-52, SALES-DEEP-53, SALES-DEEP-55, SALES-DEEP-56, SALES-DEEP-57, TASK-23, TASK-24, TASK-26, TASK-27, SUP-24, SUP-27, SUP-28
 - **Files:** frontend contract/calendar/catalog/finance components and hooks
-- **Issue:** Forms/tables can show stale state, submit invalid IDs/dates/line values, render objects as `[object Object]`, mismatch disabled state with submit validation, hide truncation, use browser confirm, double-refresh, or keep stale search/display helpers. Sales/support forms also use fixed first-page pickers, can race stage/status changes, can swallow create errors, and can send stale linked IDs. Task dialog state currently depends on forced remount keys and delete/complete semantics need ownership clarity. User-management dialogs and SSO drafts can reset incorrectly on refetch/open/user changes.
-- **Fix:** Reset dialog state on selected record changes. Safely parse IDs and dates once. Validate date order and numeric lines before submit. Render primitives only in default cells. Share validation helpers between disabled and submit paths. Show truncation/inline validation feedback. Use app confirm dialogs. Send minimal toggle payloads. Clear stale search state on unlink and centralize display-name helpers. Prefer searchable linked pickers, serialize stage/status updates, propagate modal mutation errors, track dirty linked fields, and document/normalize cascade clearing. Re-sync task dialog state explicitly on task/open changes, remove `updated_at` from dialog keys, define delete-close ownership, and document completion timestamp behavior. Make SSO draft sync dirty-aware, preserve typed client secrets, and choose one reset strategy for approve/edit user dialogs.
+- **Issue:** Forms/tables can show stale state, submit invalid IDs/dates/line values, render objects as `[object Object]`, mismatch disabled state with submit validation, hide truncation, use browser confirm, double-refresh, or keep stale search/display helpers. Sales/support forms also use fixed first-page pickers, can race stage/status changes, can swallow create errors, and can send stale linked IDs. Task dialog state currently depends on forced remount keys and delete/complete semantics need ownership clarity.
+- **Fix:** Reset dialog state on selected record changes. Safely parse IDs and dates once. Validate date order and numeric lines before submit. Render primitives only in default cells. Share validation helpers between disabled and submit paths. Show truncation/inline validation feedback. Use app confirm dialogs. Send minimal toggle payloads. Clear stale search state on unlink and centralize display-name helpers. Prefer searchable linked pickers, serialize stage/status updates, propagate modal mutation errors, track dirty linked fields, and document/normalize cascade clearing. Re-sync task dialog state explicitly on task/open changes, remove `updated_at` from dialog keys, define delete-close ownership, and document completion timestamp behavior.
 - **Acceptance:** Frontend cannot submit known-invalid values that backend rejects; dialogs show selected record data; table fallback rendering is intentional; destructive actions use app UI; sales/support linked pickers scale beyond fixed first-page data; saving a task does not remount the dialog unexpectedly.
 
 ## FE-BROWSER — Guard browser-only APIs and accessibility edge cases
@@ -367,11 +382,11 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 ## UM-FRONTEND — Stabilize user-management table, self state, and settings forms
 
 - **Severity:** Critical/High
-- **Source items:** UM-27, UM-28, UM-30, UM-32, UM-33, UM-34, UM-35, UM-40
+- **Source items:** UM-40
 - **Files:** user-management table/hooks/dialogs, settings users page, role-permission hooks
-- **Issue:** The user table state-key sync effect can loop or reset excessively, current user ID loads after first render so self-actions can be wrong initially, SSO settings refetches can wipe dirty client-secret edits, role permission refetch can jump selected role, and approve/edit dialogs have unclear reset ownership.
-- **Fix:** Gate table state reset only on state-key changes using refs for current state. Initialize current user ID lazily from session storage on the first client render. Make SSO draft sync dirty-aware and preserve typed secrets across background refetch. Auto-select a role only before initial selection or when the selected role no longer exists. Reset approve/edit dialogs on open/user change through one explicit strategy.
-- **Acceptance:** Saved-view changes reset user table state once, self rows/actions are correct on first client render, SSO edits are not wiped by refetch, and user/role dialogs do not carry stale local state.
+- **Issue:** The remaining user-management frontend readiness item is the still-open UM-40 dialog/settings edge case.
+- **Fix:** Inspect the exact UM-40 surface before editing and keep the reset/dirty-state behavior consistent with the completed user-management cleanup.
+- **Acceptance:** User-management dialogs and settings forms do not carry stale local state.
 
 ## OPS-MAINT — Keep low-risk operational cleanup explicit
 

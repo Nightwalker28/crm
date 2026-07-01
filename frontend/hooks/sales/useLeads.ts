@@ -79,6 +79,7 @@ export function useLeads(
     queryKey: ["sales-leads"],
     fetcher: (page, pageSize, filters, columns, sortState) => fetchLeads(page, pageSize, columns, filters, sortState),
     visibleColumns,
+    visibleColumnsAffectQuery: true,
     filters: viewFilters,
     sort,
     initialPage,

@@ -15,6 +15,7 @@ import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
+import { SUPPORT_CASES_QUERY_KEY, SUPPORT_CASES_SUMMARY_QUERY_KEY } from "@/hooks/support/useCases";
 
 const PRIORITIES = [
   { value: "low", label: "Low" },
@@ -108,7 +109,10 @@ export default function CreateSupportCaseDialog() {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      await queryClient.invalidateQueries({ queryKey: ["support-cases"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_SUMMARY_QUERY_KEY }),
+      ]);
       toast.success("Support case created.");
       setOpen(false);
       reset();

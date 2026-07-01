@@ -123,10 +123,6 @@ export function useTeamsAndDepartments() {
       queryClient.invalidateQueries({ queryKey: ["admin-teams"] }),
       queryClient.invalidateQueries({ queryKey: ["user-options"] }),
       queryClient.invalidateQueries({ queryKey: ["users-paged"] }),
-      queryClient.refetchQueries({ queryKey: ["admin-departments"], type: "active" }),
-      queryClient.refetchQueries({ queryKey: ["admin-teams"], type: "active" }),
-      queryClient.refetchQueries({ queryKey: ["user-options"], type: "active" }),
-      queryClient.refetchQueries({ queryKey: ["users-paged"], type: "active" }),
     ]);
   }
 
