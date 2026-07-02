@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
+import { getSalesApiColumns } from "@/hooks/sales/listColumns";
 
 export type Organization = {
   org_id?: number;
@@ -53,7 +54,7 @@ async function fetchOrganizations(
     params.set("sort_by", sort.key);
     params.set("sort_direction", sort.direction);
   }
-  const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
+  const baseVisibleColumns = getSalesApiColumns(visibleColumns);
   if (baseVisibleColumns.length) {
     params.append("fields", baseVisibleColumns.join(","));
   }
@@ -112,6 +113,7 @@ export function useOrganizations(
     } catch (error) {
       console.error(error);
       toast.error("Failed to create organization.");
+      throw error;
     } finally {
       setIsCreating(false);
     }

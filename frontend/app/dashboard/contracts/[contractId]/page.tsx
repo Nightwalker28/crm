@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
@@ -40,12 +40,17 @@ const SIGNER_STATUSES = [
 const INITIAL_PARTY_FORM = { name: "", email: "", role: "counterparty" };
 const INITIAL_SIGNER_FORM = { party_id: "none", name: "", email: "", signing_order: "1", status: "pending" };
 
+async function fetchContract(contractId: string) {
+  const res = await apiFetch(`/contracts/${contractId}`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return body as Contract;
+}
+
 export default function ContractDetailPage() {
   const params = useParams<{ contractId: string }>();
   const queryClient = useQueryClient();
-  const [item, setItem] = useState<Contract | null>(null);
   const [status, setStatus] = useState("draft");
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [partySaving, setPartySaving] = useState(false);
   const [signerSaving, setSignerSaving] = useState(false);
@@ -54,32 +59,21 @@ export default function ContractDetailPage() {
   const [signerForm, setSignerForm] = useState(INITIAL_SIGNER_FORM);
   const [signerStatusDrafts, setSignerStatusDrafts] = useState<Record<number, string>>({});
 
-  async function loadContract(signal?: { cancelled: boolean }) {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await apiFetch(`/contracts/${params.contractId}`);
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      if (signal?.cancelled) return;
-      setItem(body);
-      setStatus(body.status ?? "draft");
-      setSignerStatusDrafts(Object.fromEntries((body.signers ?? []).map((signer: { id: number; status: string }) => [signer.id, signer.status])));
-    } catch (loadError) {
-      if (!signal?.cancelled) setError(loadError instanceof Error ? loadError.message : "Failed to load contract");
-    } finally {
-      if (!signal?.cancelled) setLoading(false);
-    }
-  }
+  const contractQuery = useQuery({
+    queryKey: ["contract", params.contractId],
+    queryFn: () => fetchContract(params.contractId),
+    enabled: Boolean(params.contractId),
+    refetchOnWindowFocus: false,
+  });
+  const item = contractQuery.data ?? null;
+  const loadError = contractQuery.error instanceof Error ? contractQuery.error.message : null;
 
   useEffect(() => {
-    const signal = { cancelled: false };
-    void loadContract(signal);
-    return () => {
-      signal.cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.contractId]);
+    if (!item) return;
+    setError(null);
+    setStatus(item.status ?? "draft");
+    setSignerStatusDrafts(Object.fromEntries((item.signers ?? []).map((signer) => [signer.id, signer.status])));
+  }, [item]);
 
   async function handleSave() {
     try {
@@ -92,8 +86,10 @@ export default function ContractDetailPage() {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      setItem(body);
-      await queryClient.invalidateQueries({ queryKey: ["contracts"] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+        contractQuery.refetch(),
+      ]);
       toast.success("Contract updated.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to update contract");
@@ -119,7 +115,7 @@ export default function ContractDetailPage() {
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
       setPartyForm(INITIAL_PARTY_FORM);
-      await loadContract();
+      await contractQuery.refetch();
       toast.success("Contract party added.");
     } catch (partyError) {
       setError(partyError instanceof Error ? partyError.message : "Failed to add party");
@@ -147,7 +143,7 @@ export default function ContractDetailPage() {
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
       setSignerForm(INITIAL_SIGNER_FORM);
-      await loadContract();
+      await contractQuery.refetch();
       toast.success("Signer added.");
     } catch (signerError) {
       setError(signerError instanceof Error ? signerError.message : "Failed to add signer");
@@ -169,7 +165,7 @@ export default function ContractDetailPage() {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      await loadContract();
+      await contractQuery.refetch();
       toast.success("Signer updated.");
     } catch (signerError) {
       setError(signerError instanceof Error ? signerError.message : "Failed to update signer");
@@ -185,12 +181,12 @@ export default function ContractDetailPage() {
         backLabel="Back to Contracts"
         title={item ? item.contract_number : "Contract"}
         description={item?.title ?? "Review contract lifecycle, related CRM records, parties, signers, and events."}
-        primaryAction={<Button onClick={handleSave} disabled={saving || loading}>{saving ? "Saving..." : "Save Contract"}</Button>}
+        primaryAction={<Button onClick={handleSave} disabled={saving || contractQuery.isLoading}>{saving ? "Saving..." : "Save Contract"}</Button>}
       />
 
-      {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}
+      {error || loadError ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error || loadError}</div> : null}
 
-      {loading || !item ? (
+      {contractQuery.isLoading || !item ? (
         <Card className="px-5 py-5 text-sm text-neutral-500">Loading contract...</Card>
       ) : (
         <div className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">

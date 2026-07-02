@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
+import { getSalesApiColumns } from "@/hooks/sales/listColumns";
 
 export type Lead = {
   lead_id: number;
@@ -47,12 +48,12 @@ export type LeadSortState = PagedListSort;
 async function fetchLeads(
   page: number,
   pageSize: number,
-  visibleColumns: string[],
   filters: SavedViewFilters,
+  visibleColumns: string[],
   sort: LeadSortState,
 ): Promise<LeadsResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
-  const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
+  const baseVisibleColumns = getSalesApiColumns(visibleColumns);
   if (baseVisibleColumns.length) {
     params.append("fields", baseVisibleColumns.join(","));
   }
@@ -77,7 +78,7 @@ export function useLeads(
 ) {
   const paged = usePagedList<Lead, LeadsResponse>({
     queryKey: ["sales-leads"],
-    fetcher: (page, pageSize, filters, columns, sortState) => fetchLeads(page, pageSize, columns, filters, sortState),
+    fetcher: fetchLeads,
     visibleColumns,
     visibleColumnsAffectQuery: true,
     filters: viewFilters,

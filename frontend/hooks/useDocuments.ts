@@ -274,6 +274,7 @@ export function useDocuments(params: { search?: string; moduleKey?: string; enti
   return useQuery({
     queryKey: [
       "documents",
+      "list",
       params.moduleKey ?? "all",
       params.entityId == null ? "all" : String(params.entityId),
       params.isTemplate === undefined ? "all" : String(params.isTemplate),
@@ -315,12 +316,15 @@ export function useDocumentStorageConnections() {
 export function useDocumentActions(scope?: { moduleKey?: string; entityId?: string | number }) {
   const queryClient = useQueryClient();
   const invalidate = async () => {
-    await queryClient.invalidateQueries({ queryKey: ["documents"] });
-    await queryClient.invalidateQueries({ queryKey: ["documents", "storage-usage"] });
-    await queryClient.invalidateQueries({ queryKey: ["documents", "storage-connections"] });
+    const invalidations = [
+      queryClient.invalidateQueries({ queryKey: ["documents", "list"] }),
+      queryClient.invalidateQueries({ queryKey: ["documents", "storage-usage"] }),
+      queryClient.invalidateQueries({ queryKey: ["documents", "storage-connections"] }),
+    ];
     if (scope?.moduleKey && scope.entityId !== undefined) {
-      await queryClient.invalidateQueries({ queryKey: ["documents", scope.moduleKey, String(scope.entityId)] });
+      invalidations.push(queryClient.invalidateQueries({ queryKey: ["documents", "list", scope.moduleKey, String(scope.entityId)] }));
     }
+    await Promise.all(invalidations);
   };
   const uploadMutation = useMutation({
     mutationFn: uploadDocument,
@@ -333,8 +337,10 @@ export function useDocumentActions(scope?: { moduleKey?: string; entityId?: stri
   const uploadVersionMutation = useMutation({
     mutationFn: ({ documentId, file }: { documentId: number; file: File }) => uploadDocumentVersion(documentId, file),
     onSuccess: async (_result, variables) => {
-      await invalidate();
-      await queryClient.invalidateQueries({ queryKey: ["documents", "versions", variables.documentId] });
+      await Promise.all([
+        invalidate(),
+        queryClient.invalidateQueries({ queryKey: ["documents", "versions", variables.documentId] }),
+      ]);
     },
   });
   const templateMutation = useMutation({

@@ -54,6 +54,7 @@ export default function CreateOrganizationModal({
 }: Props) {
   const [form, setForm] = useState<OrganizationForm>(emptyForm);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const customFieldsQuery = useModuleCustomFields("sales_organizations", isOpen);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_organizations", false, isOpen);
   const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
@@ -61,6 +62,7 @@ export default function CreateOrganizationModal({
   function closeAndReset() {
     setForm(emptyForm);
     setCustomFieldValues({});
+    setSubmitError(null);
     onClose();
   }
 
@@ -75,16 +77,21 @@ export default function CreateOrganizationModal({
       annual_revenue: form.annual_revenue.trim(),
     };
 
-    await onCreate({
-      ...pickEnabledModulePayload(
-        Object.fromEntries(Object.entries(payload).filter(([, value]) => value.length > 0)),
-        moduleFields,
-        ["org_name", "primary_email"],
-      ),
-      custom_fields: customFieldValues,
-    });
-    setForm(emptyForm);
-    setCustomFieldValues({});
+    try {
+      setSubmitError(null);
+      await onCreate({
+        ...pickEnabledModulePayload(
+          Object.fromEntries(Object.entries(payload).filter(([, value]) => value.length > 0)),
+          moduleFields,
+          ["org_name", "primary_email"],
+        ),
+        custom_fields: customFieldValues,
+      });
+      setForm(emptyForm);
+      setCustomFieldValues({});
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "Failed to create account.");
+    }
   }
 
   return (
@@ -96,6 +103,12 @@ export default function CreateOrganizationModal({
             <DialogTitle>Create Account</DialogTitle>
             <DialogIconClose />
           </DialogHeader>
+
+          {submitError ? (
+            <div className="mt-4 rounded-md border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-200">
+              {submitError}
+            </div>
+          ) : null}
 
           <FieldGroup className="mt-4 grid gap-4 sm:grid-cols-2">
             {fieldEnabled("org_name") ? (

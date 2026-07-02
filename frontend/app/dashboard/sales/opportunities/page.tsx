@@ -13,10 +13,11 @@ import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import Pagination from "@/components/ui/Pagination";
 import { Button } from "@/components/ui/button";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
-import { buildSavedViewExportPayload, canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
+import { appendSavedViewFilterParams, buildSavedViewExportPayload, canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
+import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
@@ -49,20 +50,9 @@ const DEFAULT_STAGE_SUMMARY: OpportunityPipelineSummaryResponse["stages"] = [
   { stage_key: "unstaged", label: "Unstaged", count: 0, total_value: 0 },
 ];
 
-async function fetchPipelineSummary(filters: unknown) {
+async function fetchPipelineSummary(filters: SavedViewFilters) {
   const params = new URLSearchParams();
-  if (filters && typeof filters === "object") {
-    const typedFilters = filters as Record<string, unknown>;
-    if (typeof typedFilters.search === "string" && typedFilters.search.trim()) {
-      params.set("query", typedFilters.search.trim());
-    }
-    if (Array.isArray(typedFilters.all_conditions) && typedFilters.all_conditions.length) {
-      params.set("filters_all", JSON.stringify(typedFilters.all_conditions));
-    }
-    if (Array.isArray(typedFilters.any_conditions) && typedFilters.any_conditions.length) {
-      params.set("filters_any", JSON.stringify(typedFilters.any_conditions));
-    }
-  }
+  appendSavedViewFilterParams(params, filters);
   const res = await apiFetch(`/sales/opportunities/pipeline-summary?${params.toString()}`);
   const body = await res.json().catch(() => null);
   if (!res.ok) {
@@ -308,19 +298,24 @@ export default function OpportunitiesPage() {
           }}
         />
       ) : (
-        <OpportunitiesPipelineBoard
-          opportunities={opportunities}
-          isLoading={isLoading}
-          isRefreshing={isFetching && !isLoading}
-          onEdit={(opportunity) => {
-            router.push(`/dashboard/sales/opportunities/${opportunity.opportunity_id}`);
-          }}
-          onStageChange={async (opportunity, salesStage) => {
-            if (opportunity.sales_stage === salesStage) return;
-            await updateOpportunityStage(opportunity.opportunity_id, salesStage);
-            toast.success("Deal stage updated.");
-          }}
-        />
+        <div className="space-y-3">
+          <div className="rounded-lg border border-neutral-800 bg-neutral-950/60 px-4 py-3 text-sm text-neutral-400">
+            Pipeline board showing records {rangeStart}-{rangeEnd} of {totalCount} for the current filters. Stage totals above include all matching deals.
+          </div>
+          <OpportunitiesPipelineBoard
+            opportunities={opportunities}
+            isLoading={isLoading}
+            isRefreshing={isFetching && !isLoading}
+            onEdit={(opportunity) => {
+              router.push(`/dashboard/sales/opportunities/${opportunity.opportunity_id}`);
+            }}
+            onStageChange={async (opportunity, salesStage) => {
+              if (opportunity.sales_stage === salesStage) return;
+              await updateOpportunityStage(opportunity.opportunity_id, salesStage);
+              toast.success("Deal stage updated.");
+            }}
+          />
+        </div>
       )}
 
       <Pagination

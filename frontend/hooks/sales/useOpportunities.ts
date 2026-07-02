@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
+import { getSalesApiColumns } from "@/hooks/sales/listColumns";
 
 export type Opportunity = {
   opportunity_id: number;
@@ -55,7 +56,7 @@ async function fetchOpportunities(
 ) {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
   appendSavedViewFilterParams(params, filters);
-  const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
+  const baseVisibleColumns = getSalesApiColumns(visibleColumns);
   if (baseVisibleColumns.length) {
     params.set("fields", baseVisibleColumns.join(","));
   }

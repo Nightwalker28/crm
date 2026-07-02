@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
+import { getSalesApiColumns } from "@/hooks/sales/listColumns";
 
 export type Contact = {
   contact_id: number;
@@ -35,12 +36,12 @@ export type ContactSortState = PagedListSort;
 async function fetchContacts(
   page: number,
   pageSize: number,
-  visibleColumns: string[],
   filters: SavedViewFilters,
+  visibleColumns: string[],
   sort: ContactSortState,
 ): Promise<ContactsResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
-  const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
+  const baseVisibleColumns = getSalesApiColumns(visibleColumns);
   if (baseVisibleColumns.length) {
     params.append("fields", baseVisibleColumns.join(","));
   }
@@ -65,7 +66,7 @@ export function useContacts(
 ) {
   const paged = usePagedList<Contact, ContactsResponse>({
     queryKey: ["sales-contacts"],
-    fetcher: (page, pageSize, filters, columns, sortState) => fetchContacts(page, pageSize, columns, filters, sortState),
+    fetcher: fetchContacts,
     visibleColumns,
     visibleColumnsAffectQuery: true,
     filters: viewFilters,

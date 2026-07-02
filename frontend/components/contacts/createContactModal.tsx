@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select";
 import { COUNTRIES } from "@/lib/countries";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
+import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useCreateContact } from "@/hooks/sales/useCreateContact";
 import { isModuleFieldEnabled, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
@@ -47,14 +48,8 @@ export default function CreateContactModal({
     error,
     isSubmitting,
     canSubmit,
-    orgRef,
-    orgSearch,
-    setOrgSearch,
-    selectedOrgName,
-    setSelectedOrgName,
-    orgOpen,
-    setOrgOpen,
-    filteredOrgs,
+    organizationDisplay,
+    setOrganizationDisplay,
     closeModal,
     submit,
   } = useCreateContact({
@@ -215,55 +210,26 @@ export default function CreateContactModal({
             {/* ORGANIZATION (SEARCHABLE INPUT) */}
             {fieldEnabled("organization_id") ? (
             <Field label="Organization">
-              <div ref={orgRef} className="relative">
-                <Input
-                  placeholder="Search organization..."
-                  value={orgOpen ? orgSearch : selectedOrgName}
-                  onFocus={() => {
-                    setOrgOpen(true);
-                    setOrgSearch("");
-                  }}
-                  onChange={(e) => {
-                    setOrgSearch(e.target.value);
-                    setOrgOpen(true);
-                    setSelectedOrgName("");
-                    setForm({ ...form, organization_id: "" });
-                  }}
-                />
-
-                {orgOpen && (
-                  <div className="absolute z-50 mt-1 w-full rounded-md border border-zinc-800 bg-neutral-900 shadow-lg">
-                    <div className="max-h-48 overflow-y-auto">
-                      {filteredOrgs.length === 0 ? (
-                        <div
-                          key="no-orgs"
-                          className="px-3 py-2 text-sm text-zinc-400"
-                        >
-                          No accounts found
-                        </div>
-                      ) : (
-                        filteredOrgs.map((o) => (
-                          <div
-                            key={o.id}
-                            onMouseDown={() => {
-                              setForm({
-                                ...form,
-                                organization_id: o.id,
-                              });
-                              setSelectedOrgName(o.name);
-                              setOrgSearch("");
-                              setOrgOpen(false);
-                            }}
-                            className="px-3 py-2 text-sm cursor-pointer hover:bg-neutral-800"
-                          >
-                            {o.name}
-                          </div>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
+              <LinkedRecordPicker
+                recordType="organization"
+                valueId={form.organization_id}
+                displayValue={organizationDisplay}
+                onDisplayValueChange={(value) => {
+                  setOrganizationDisplay(value);
+                  setForm({ ...form, organization_id: null });
+                }}
+                onSelect={(option) => {
+                  setOrganizationDisplay(option.label);
+                  setForm({ ...form, organization_id: option.id });
+                }}
+                onClear={() => {
+                  setOrganizationDisplay("");
+                  setForm({ ...form, organization_id: null });
+                }}
+                placeholder="Search accounts"
+                queryKeyPrefix="contact-create-account"
+                noResultsText="No accounts matched this search."
+              />
             </Field>
             ) : null}
 

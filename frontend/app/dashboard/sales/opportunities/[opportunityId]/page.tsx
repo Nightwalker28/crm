@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckCircle2, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -105,6 +105,13 @@ type OpportunityForm = {
   custom_fields: Record<string, unknown>;
 };
 
+async function fetchOpportunitySummary(opportunityId: string) {
+  const res = await apiFetch(`/sales/opportunities/${opportunityId}/summary`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return body as OpportunitySummary;
+}
+
 const emptyForm: OpportunityForm = {
   opportunity_name: "",
   client: "",
@@ -142,68 +149,54 @@ function formatMoney(value?: number | string | null, currency?: string | null) {
 export default function OpportunityDetailPage() {
   const params = useParams<{ opportunityId: string }>();
   const queryClient = useQueryClient();
-  const [summary, setSummary] = useState<OpportunitySummary | null>(null);
   const [form, setForm] = useState<OpportunityForm>(emptyForm);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [stageSaving, setStageSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [contactSearch, setContactSearch] = useState("");
+  const stageChangeInFlightRef = useRef(false);
+  const queuedStageRef = useRef<string | null>(null);
   const customFieldsQuery = useModuleCustomFields("sales_opportunities", true);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_opportunities");
   const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
   const currenciesQuery = useCompanyCurrencies(true);
-
-  async function loadSummary(signal?: { cancelled: boolean }) {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await apiFetch(`/sales/opportunities/${params.opportunityId}/summary`);
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      if (signal?.cancelled) return;
-      const data = body as OpportunitySummary;
-      setSummary(data);
-      setForm({
-        opportunity_name: data.opportunity.opportunity_name ?? "",
-        client: data.opportunity.client ?? "",
-        sales_stage: data.opportunity.sales_stage ?? "",
-        contact_id: data.opportunity.contact_id ?? null,
-        organization_id: data.opportunity.organization_id ?? null,
-        assigned_to: data.opportunity.assigned_to ?? null,
-        start_date: data.opportunity.start_date ?? "",
-        expected_close_date: data.opportunity.expected_close_date ?? "",
-        probability_percent: data.opportunity.probability_percent?.toString() ?? "",
-        campaign_type: data.opportunity.campaign_type ?? "",
-        total_leads: data.opportunity.total_leads ?? "",
-        cpl: data.opportunity.cpl ?? "",
-        total_cost_of_project: data.opportunity.total_cost_of_project ?? "",
-        currency_type: data.opportunity.currency_type ?? "USD",
-        target_geography: data.opportunity.target_geography ?? "",
-        target_audience: data.opportunity.target_audience ?? "",
-        domain_cap: data.opportunity.domain_cap ?? "",
-        tactics: data.opportunity.tactics ?? "",
-        delivery_format: data.opportunity.delivery_format ?? "",
-        attachments: data.opportunity.attachments ?? [],
-        custom_fields: data.opportunity.custom_fields ?? {},
-      });
-      setContactSearch(data.opportunity.client ?? "");
-    } catch (loadError) {
-      if (!signal?.cancelled) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load opportunity");
-      }
-    } finally {
-      if (!signal?.cancelled) setLoading(false);
-    }
-  }
+  const summaryQuery = useQuery({
+    queryKey: ["sales-opportunity-summary", params.opportunityId],
+    queryFn: () => fetchOpportunitySummary(params.opportunityId),
+    enabled: Boolean(params.opportunityId),
+    refetchOnWindowFocus: false,
+  });
+  const summary = summaryQuery.data ?? null;
+  const loadError = summaryQuery.error instanceof Error ? summaryQuery.error.message : null;
 
   useEffect(() => {
-    const signal = { cancelled: false };
-    void loadSummary(signal);
-    return () => {
-      signal.cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.opportunityId]);
+    if (!summary) return;
+    setError(null);
+    setForm({
+      opportunity_name: summary.opportunity.opportunity_name ?? "",
+      client: summary.opportunity.client ?? "",
+      sales_stage: summary.opportunity.sales_stage ?? "",
+      contact_id: summary.opportunity.contact_id ?? null,
+      organization_id: summary.opportunity.organization_id ?? null,
+      assigned_to: summary.opportunity.assigned_to ?? null,
+      start_date: summary.opportunity.start_date ?? "",
+      expected_close_date: summary.opportunity.expected_close_date ?? "",
+      probability_percent: summary.opportunity.probability_percent?.toString() ?? "",
+      campaign_type: summary.opportunity.campaign_type ?? "",
+      total_leads: summary.opportunity.total_leads ?? "",
+      cpl: summary.opportunity.cpl ?? "",
+      total_cost_of_project: summary.opportunity.total_cost_of_project ?? "",
+      currency_type: summary.opportunity.currency_type ?? "USD",
+      target_geography: summary.opportunity.target_geography ?? "",
+      target_audience: summary.opportunity.target_audience ?? "",
+      domain_cap: summary.opportunity.domain_cap ?? "",
+      tactics: summary.opportunity.tactics ?? "",
+      delivery_format: summary.opportunity.delivery_format ?? "",
+      attachments: summary.opportunity.attachments ?? [],
+      custom_fields: summary.opportunity.custom_fields ?? {},
+    });
+    setContactSearch(summary.opportunity.client ?? "");
+  }, [summary]);
 
   async function handleSave() {
     try {
@@ -243,7 +236,7 @@ export default function OpportunityDetailPage() {
         queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
         queryClient.invalidateQueries({ queryKey: ["sales-opportunities-pipeline-summary"] }),
       ]);
-      await loadSummary();
+      await summaryQuery.refetch();
       toast.success("Opportunity updated.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save opportunity");
@@ -253,26 +246,41 @@ export default function OpportunityDetailPage() {
   }
 
   async function handleStageChange(salesStage: string) {
+    if (saving) return;
+    if (stageChangeInFlightRef.current) {
+      queuedStageRef.current = salesStage;
+      return;
+    }
+
+    stageChangeInFlightRef.current = true;
+    setStageSaving(true);
+    let nextStage: string | null = salesStage;
     try {
-      setSaving(true);
       setError(null);
-      const res = await apiFetch(`/sales/opportunities/${params.opportunityId}/stage`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sales_stage: salesStage }),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
-        queryClient.invalidateQueries({ queryKey: ["sales-opportunities-pipeline-summary"] }),
-      ]);
-      await loadSummary();
-      toast.success(salesStage === "closed_won" || salesStage === "closed_lost" ? "Deal closed." : "Deal stage updated.");
+      while (nextStage) {
+        const stageToSave = nextStage;
+        queuedStageRef.current = null;
+        const res = await apiFetch(`/sales/opportunities/${params.opportunityId}/stage`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sales_stage: stageToSave }),
+        });
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
+          queryClient.invalidateQueries({ queryKey: ["sales-opportunities-pipeline-summary"] }),
+        ]);
+        await summaryQuery.refetch();
+        toast.success(stageToSave === "closed_won" || stageToSave === "closed_lost" ? "Deal closed." : "Deal stage updated.");
+        nextStage = queuedStageRef.current;
+      }
     } catch (stageError) {
       setError(stageError instanceof Error ? stageError.message : "Failed to update deal stage");
     } finally {
-      setSaving(false);
+      queuedStageRef.current = null;
+      stageChangeInFlightRef.current = false;
+      setStageSaving(false);
     }
   }
 
@@ -292,16 +300,16 @@ export default function OpportunityDetailPage() {
               redirectHref="/dashboard/sales/opportunities"
               queryKeys={["sales-opportunities", "sales-opportunities-pipeline-summary"]}
             />
-            <Button onClick={handleSave} disabled={saving || !form.opportunity_name.trim() || !form.contact_id}>
+            <Button onClick={handleSave} disabled={saving || stageSaving || !form.opportunity_name.trim() || !form.contact_id}>
               {saving ? "Saving..." : "Save Deal"}
             </Button>
           </>
         )}
       />
 
-      {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}
+      {error || loadError ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error ?? loadError}</div> : null}
 
-      {loading || !summary ? (
+      {summaryQuery.isLoading || !summary ? (
         <Card className="px-5 py-5 text-sm text-neutral-500">Loading opportunity…</Card>
       ) : (
         <>
@@ -363,6 +371,7 @@ export default function OpportunityDetailPage() {
                       setForm((current) => ({ ...current, sales_stage: value }));
                       void handleStageChange(value);
                     }}
+                    disabled={saving || stageSaving}
                   >
                     <SelectTrigger className="w-full">
                       <SelectValue placeholder="Select stage" />
@@ -533,7 +542,7 @@ export default function OpportunityDetailPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => void handleStageChange("closed_won")}
-                        disabled={saving || summary.opportunity.sales_stage === "closed_won"}
+                        disabled={saving || stageSaving || summary.opportunity.sales_stage === "closed_won"}
                         className="border-emerald-800/60 bg-emerald-950/20 text-emerald-300 hover:bg-emerald-950/40 hover:text-emerald-200"
                       >
                         <CheckCircle2 className="h-4 w-4" />
@@ -544,7 +553,7 @@ export default function OpportunityDetailPage() {
                         variant="outline"
                         size="sm"
                         onClick={() => void handleStageChange("closed_lost")}
-                        disabled={saving || summary.opportunity.sales_stage === "closed_lost"}
+                        disabled={saving || stageSaving || summary.opportunity.sales_stage === "closed_lost"}
                         className="border-red-800/60 bg-red-950/20 text-red-300 hover:bg-red-950/40 hover:text-red-200"
                       >
                         <XCircle className="h-4 w-4" />
@@ -598,7 +607,9 @@ export default function OpportunityDetailPage() {
                 lastContactedChannel: summary.opportunity.last_contacted_channel,
                 email: summary.contact?.primary_email,
                 phone: summary.contact?.contact_telephone,
-                onLogged: () => loadSummary(),
+                onLogged: () => {
+                  void summaryQuery.refetch();
+                },
               }}
             />
           </div>

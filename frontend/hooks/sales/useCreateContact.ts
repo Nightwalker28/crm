@@ -1,15 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMemo, useState } from "react";
 
 import { apiFetch } from "@/lib/api";
 import { pickEnabledModulePayload, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
-
-type OrgOption = {
-  id: number;
-  name: string;
-};
 
 export type ContactForm = {
   first_name: string;
@@ -20,7 +14,7 @@ export type ContactForm = {
   current_title: string;
   region: string;
   country: string;
-  organization_id: string | number;
+  organization_id: number | null;
   custom_fields?: Record<string, unknown>;
 };
 
@@ -33,11 +27,9 @@ const emptyForm: ContactForm = {
   current_title: "",
   region: "",
   country: "",
-  organization_id: "",
+  organization_id: null,
   custom_fields: {},
 };
-
-const emptyOrganizations: OrgOption[] = [];
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) {
@@ -48,7 +40,6 @@ function getErrorMessage(error: unknown) {
 }
 
 export function useCreateContact({
-  isOpen,
   onClose,
   onSuccess,
 }: {
@@ -59,57 +50,16 @@ export function useCreateContact({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<ContactForm>(emptyForm);
-  const [orgSearch, setOrgSearch] = useState("");
-  const [selectedOrgName, setSelectedOrgName] = useState("");
-  const [orgOpen, setOrgOpen] = useState(false);
-  const orgRef = useRef<HTMLDivElement>(null);
+  const [organizationDisplay, setOrganizationDisplay] = useState("");
 
   const canSubmit = useMemo(
     () => Boolean(form.primary_email.trim()),
     [form.primary_email],
   );
 
-  const orgsQuery = useQuery({
-    queryKey: ["contact-org-options"],
-    queryFn: async () => {
-      const res = await apiFetch("/sales/organizations?page=1&page_size=50");
-      if (!res.ok) throw new Error("Failed to load organizations");
-      const json = await res.json();
-      return (json.results ?? []).map((organization: { org_id?: number; id?: number; org_name: string }) => ({
-        id: organization.org_id ?? organization.id ?? 0,
-        name: organization.org_name,
-      })) as OrgOption[];
-    },
-    enabled: isOpen,
-    staleTime: 5 * 60_000,
-  });
-
-  const orgs = orgsQuery.data ?? emptyOrganizations;
-
-  const filteredOrgs = useMemo(
-    () => orgs.filter((org) => org.name.toLowerCase().includes(orgSearch.toLowerCase())),
-    [orgSearch, orgs],
-  );
-
-  useEffect(() => {
-    if (!orgOpen) return;
-
-    const handleClickOutside = (event: MouseEvent) => {
-      if (orgRef.current && !orgRef.current.contains(event.target as Node)) {
-        setOrgOpen(false);
-        setOrgSearch("");
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [orgOpen]);
-
   function resetForm() {
     setForm(emptyForm);
-    setSelectedOrgName("");
-    setOrgSearch("");
-    setOrgOpen(false);
+    setOrganizationDisplay("");
     setError(null);
   }
 
@@ -126,7 +76,7 @@ export function useCreateContact({
       const payload = {
         ...form,
         ...overrides,
-        organization_id: form.organization_id ? Number(form.organization_id) : null,
+        organization_id: form.organization_id,
       };
       const requestPayload = moduleFields
         ? pickEnabledModulePayload(payload, moduleFields, ["primary_email", "custom_fields"])
@@ -163,14 +113,8 @@ export function useCreateContact({
     error,
     isSubmitting,
     canSubmit,
-    orgRef,
-    orgSearch,
-    setOrgSearch,
-    selectedOrgName,
-    setSelectedOrgName,
-    orgOpen,
-    setOrgOpen,
-    filteredOrgs,
+    organizationDisplay,
+    setOrganizationDisplay,
     closeModal,
     submit,
   };

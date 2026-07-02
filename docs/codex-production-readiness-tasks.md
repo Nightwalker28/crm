@@ -36,7 +36,7 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 2. **Concurrency and transaction correctness:** complete.
 3. **External side effects and background work:** complete.
 4. **Query scalability and indexes:** complete.
-5. **Frontend cache, validation, and browser reliability:** FE-QUERY remaining items, FE-FORMS, FE-BROWSER, UM-FRONTEND.
+5. **Frontend cache, validation, and browser reliability:** FE-FORMS, FE-BROWSER, UM-FRONTEND.
 6. **Cleanup and maintainability:** SALES-MODELS, OPS-MAINT, SERIALIZATION, ROUTES, DUPLICATION.
 
 ---
@@ -260,7 +260,7 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 ## SALES-PERF — Bound sales summaries, reminders, exports, and board/list queries
 
 - **Completed:** 2026-06-30
-- **Source items:** SALES-13, SALES-14, SALES-16, SALES-17, SALES-18, SALES-DEEP-23, SALES-DEEP-29, SALES-DEEP-30, SALES-DEEP-31, SALES-DEEP-34, SALES-DEEP-48
+- **Source items:** SALES-13, SALES-14, SALES-16, SALES-17, SALES-18, SALES-DEEP-23, SALES-DEEP-29, SALES-DEEP-30, SALES-DEEP-31, SALES-DEEP-34
 - **Files:** `backend/app/modules/sales/repositories/opportunities_repository.py`, `backend/app/modules/sales/services/opportunities_services.py`, `backend/tests/test_opportunities_services.py`
 - **Result:** Opportunity pipeline summaries now use grouped SQL aggregation for stage counts and numeric totals instead of loading every matching opportunity row into Python. The aggregation keeps tenant/deleted-row scoping and existing filter/search behavior through the shared opportunity query builder while normalizing invalid or comma-formatted text totals consistently with the previous response shape.
 - **Verification:** `docker compose exec -T backend python -m unittest tests.test_opportunities_services`; `docker compose exec -T backend python -m unittest tests.test_summary_services tests.test_api_routes`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
@@ -313,6 +313,78 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Task lists use stable canonical filter/sort strings in query keys and reset page state when fetch-affecting filters or sort change. The task dialog remount boundary now tracks only open state and selected task identity, no longer `updated_at`, so switching tasks still gets fresh form state while saving a task does not remount the dialog unexpectedly.
 - **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
 
+## FE-QUERY-SALES-LISTS — Standardize sales list query helpers and pipeline summary typing
+
+- **Completed:** 2026-07-02
+- **Source items:** SALES-DEEP-45, SALES-DEEP-46, SALES-DEEP-47
+- **Files:** `frontend/hooks/sales/*`, `frontend/app/dashboard/sales/opportunities/page.tsx`
+- **Result:** Sales list hooks now share one API-column helper for stripping custom-only columns before `fields` projection and use fetcher signatures that match `usePagedList`. Orders remain UI-column-only because the backend sales-orders list/search routes do not expose a `fields` projection. Opportunity pipeline summary invalidation stays centralized in opportunity hook mutations, and the pipeline summary fetcher now uses the saved-view filter type plus the shared saved-view query param serializer instead of accepting `unknown`.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-QUERY-SALES-DETAIL-OPPORTUNITY — Move opportunity detail summary loading to React Query
+
+- **Completed:** 2026-07-02
+- **Source items:** SALES-34 partial
+- **Files:** `frontend/app/dashboard/sales/opportunities/[opportunityId]/page.tsx`
+- **Result:** Opportunity detail summary data now loads through a React Query detail key instead of manual `apiFetch` state. Save, stage-change, and follow-up activity refresh the detail query while list and pipeline-summary invalidation stay narrow, so successful mutations no longer force a full-page loading reset.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-QUERY-SALES-DETAIL-CONTACT — Move contact detail summary loading to React Query
+
+- **Completed:** 2026-07-02
+- **Source items:** SALES-34 partial
+- **Files:** `frontend/app/dashboard/sales/contacts/[contactId]/page.tsx`
+- **Result:** Contact detail summary data now loads through a React Query detail key instead of manual `apiFetch` state. Save, WhatsApp, customer-group, and follow-up activity refresh the detail query while contact list invalidation stays narrow, so successful mutations no longer force a full-page loading reset or duplicate list refetch.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-QUERY-SALES-DETAIL-LEAD — Move lead detail summary loading to React Query
+
+- **Completed:** 2026-07-02
+- **Source items:** SALES-34 partial
+- **Files:** `frontend/app/dashboard/sales/leads/[leadId]/page.tsx`
+- **Result:** Lead detail summary data now loads through a React Query detail key instead of manual `apiFetch` state. Save, conversion, and follow-up activity refresh the detail query while related list invalidations stay narrow, so successful mutations no longer force a full-page loading reset or duplicate list refetch.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-QUERY-SALES-DETAIL-REMAINING — Finish sales detail summary query migration
+
+- **Completed:** 2026-07-02
+- **Source items:** SALES-34
+- **Files:** `frontend/app/dashboard/sales/organizations/[orgId]/page.tsx`, `frontend/app/dashboard/sales/quotes/[quoteId]/page.tsx`
+- **Result:** Organization and quote detail summary data now load through React Query detail keys instead of manual `apiFetch` state. Save, customer-group, proposal, conversion, and follow-up flows refresh the affected detail query while list invalidations stay narrow, completing the sales summary-detail migration started for opportunities, contacts, and leads.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-QUERY-CONTRACT-DETAIL — Move contract detail loading to React Query
+
+- **Completed:** 2026-07-02
+- **Source items:** CON-20
+- **Files:** `frontend/app/dashboard/contracts/[contractId]/page.tsx`
+- **Result:** Contract detail data now loads through a React Query detail key instead of manual `apiFetch` state. Status updates invalidate the contract list and refresh the active detail query, while party and signer mutations refresh only the active detail record without forcing a full-page loading reset.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-QUERY-REMAINING — Finish non-sales frontend query cleanup
+
+- **Completed:** 2026-07-02
+- **Source items:** CON-09, CAL-19, CAT-08, DOC-20, DOC-21, PLAT-31
+- **Files:** `frontend/hooks/useCalendar.ts`, `frontend/hooks/useDocuments.ts`, `frontend/hooks/contracts/useContracts.ts`, `frontend/components/catalog/CatalogRecordDetailPage.tsx`, `frontend/app/dashboard/settings/integrations/page.tsx`
+- **Result:** Contract lists already use the shared paged-list query key that includes page, size, canonical filters, and sort while keeping visible columns UI-only because the endpoint does not project by `fields`. Document list queries are namespaced under `["documents", "list", ...]`, so list invalidation no longer catches versions/storage queries by accident; document and calendar mutation invalidations now run as scoped `Promise.all` batches instead of sequential cache work. Catalog detail updates no longer force a duplicate refetch after action hooks invalidate the exact record query. Integration event history now uses a stable primitive filter key instead of an object identity in the React Query key.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-FORMS-SALES-RELIABILITY — Harden sales form refresh, errors, and stage updates
+
+- **Completed:** 2026-07-02
+- **Source items:** SALES-25, SALES-26, SALES-33, SALES-35, SALES-DEEP-44, SALES-DEEP-48, SALES-DEEP-49, SALES-DEEP-51, SALES-DEEP-55
+- **Files:** `frontend/app/dashboard/sales/opportunities/page.tsx`, `frontend/app/dashboard/sales/opportunities/[opportunityId]/page.tsx`, `frontend/app/dashboard/sales/contacts/[contactId]/page.tsx`, `frontend/hooks/sales/useOrganizations.ts`, `frontend/components/organizations/createOrganizationModal.tsx`, `frontend/components/leads/ConvertLeadDialog.tsx`
+- **Result:** Opportunity detail no longer uses full-page reload state for post-mutation refreshes, and stage changes are serialized with a dedicated in-flight guard so rapid stage actions cannot overlap with saves or each other. The opportunity pipeline board now explicitly states that it shows the current paginated record slice while stage totals cover all matching deals. Contact detail saves no longer resend a loaded organization id for unrelated field edits. Organization creation errors now rethrow from the hook and stay visible inline in the create-account modal instead of resetting the form as if creation succeeded. Convert-lead dialog transient state resets on reopen.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-FORMS-SALES-PICKERS — Standardize sales creation pickers and quote linked IDs
+
+- **Completed:** 2026-07-02
+- **Source items:** SALES-24, SALES-32, SALES-36, SALES-DEEP-56, SALES-DEEP-57
+- **Files:** `frontend/components/contacts/createContactModal.tsx`, `frontend/hooks/sales/useCreateContact.ts`, `frontend/components/quotes/CreateQuoteModal.tsx`
+- **Result:** Contact creation now uses the shared server-backed `LinkedRecordPicker` for accounts instead of fetching and filtering the first 50 organizations in the modal. Quote creation keeps backend-aligned required validation at customer name, safely parses optional deal IDs so corrupted state cannot submit `NaN`, and shows relationship labels like "Linked via deal" or "Linked via contact" instead of raw contact/account ID placeholders when the search result only exposes linked IDs.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
 ---
 
 # Consolidated Task Backlog
@@ -352,19 +424,10 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Mention suggestions now push module-view eligibility into SQL and escape literal wildcard searches instead of over-fetching candidates and permission sets for Python filtering. Global search resets PostgreSQL statement timeout in a `finally` block. Recycle purge SQL identifiers are validated and quoted through an explicit allowlist helper. Message-template create/update paths pre-check normalized duplicate keys and translate unique-key races to clean `409` responses.
 - **Verification:** `docker compose exec -T backend python -m unittest tests.test_record_comments tests.test_message_templates tests.test_platform_query_hardening`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
 
-## FE-QUERY — Canonicalize frontend query keys and invalidation behavior
-
-- **Severity:** High/Medium
-- **Source items:** CON-09, CON-20, CAL-19, CAT-08, DOC-20, DOC-21, PLAT-31, SALES-34, SALES-DEEP-45, SALES-DEEP-46, SALES-DEEP-47
-- **Files:** frontend module hooks and saved-view hooks
-- **Issue:** Several hooks may omit fetch-affecting values, invalidate too broadly/sequentially, or still use raw fetch/local state in high-churn sales detail pages. Some remaining saved-view state paths still need explicit reset/refresh ownership.
-- **Fix:** Build remaining query keys from the same canonical values used in URLs. Include page, size, sort, filters, search, module kind, and context where they affect fetches. Use narrow invalidations and `Promise.all` where multiple invalidations remain. Migrate high-churn sales detail pages to React Query gradually and invalidate list/detail/summary keys after mutations. Avoid duplicate invalidate+refetch calls and memoize user saved-view filters by stable serialized config where the shared list key does not already cover it.
-- **Acceptance:** Changing fetch-affecting inputs gets fresh data; remaining sales summary widgets do not stay stale after create/update/comment/status changes.
-
 ## FE-FORMS — Align frontend validation and state with backend contracts
 
 - **Severity:** High/Medium
-- **Source items:** CON-10, CON-15, CON-16, CAL-10, CAL-15, CAL-20, CAL-21, CAL-22, CAL-X2, CAT-09, CAT-10, CAT-11, CAT-17, CAT-18, CAT-19, CAT-21, CAT-22, CAT-24, FIN-43, FIN-44, FIN-46, FIN-47, FIN-48, FIN-49, SALES-24, SALES-25, SALES-26, SALES-28, SALES-32, SALES-33, SALES-35, SALES-36, SALES-DEEP-44, SALES-DEEP-48, SALES-DEEP-49, SALES-DEEP-51, SALES-DEEP-52, SALES-DEEP-53, SALES-DEEP-55, SALES-DEEP-56, SALES-DEEP-57, TASK-23, TASK-24, TASK-26, TASK-27, SUP-24, SUP-27, SUP-28
+- **Source items:** CON-10, CON-15, CON-16, CAL-10, CAL-15, CAL-20, CAL-21, CAL-22, CAL-X2, CAT-09, CAT-10, CAT-11, CAT-17, CAT-18, CAT-19, CAT-21, CAT-22, CAT-24, FIN-43, FIN-44, FIN-46, FIN-47, FIN-48, FIN-49, SALES-28, SALES-DEEP-52, SALES-DEEP-53, TASK-23, TASK-24, TASK-26, TASK-27, SUP-24, SUP-27, SUP-28
 - **Files:** frontend contract/calendar/catalog/finance components and hooks
 - **Issue:** Forms/tables can show stale state, submit invalid IDs/dates/line values, render objects as `[object Object]`, mismatch disabled state with submit validation, hide truncation, use browser confirm, double-refresh, or keep stale search/display helpers. Sales/support forms also use fixed first-page pickers, can race stage/status changes, can swallow create errors, and can send stale linked IDs. Task dialog state currently depends on forced remount keys and delete/complete semantics need ownership clarity.
 - **Fix:** Reset dialog state on selected record changes. Safely parse IDs and dates once. Validate date order and numeric lines before submit. Render primitives only in default cells. Share validation helpers between disabled and submit paths. Show truncation/inline validation feedback. Use app confirm dialogs. Send minimal toggle payloads. Clear stale search state on unlink and centralize display-name helpers. Prefer searchable linked pickers, serialize stage/status updates, propagate modal mutation errors, track dirty linked fields, and document/normalize cascade clearing. Re-sync task dialog state explicitly on task/open changes, remove `updated_at` from dialog keys, define delete-close ownership, and document completion timestamp behavior.
@@ -418,7 +481,7 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 ## DUPLICATION — Remove low-risk duplication only where it improves clarity
 
 - **Severity:** Low/Medium
-- **Source items:** CON-17, CAT-12, CAT-20, CAT-22, DOC-16, FIN-06, FIN-24, FIN-35, FIN-47, SALES-DEEP-30, SALES-DEEP-45
+- **Source items:** CON-17, CAT-12, CAT-20, CAT-22, DOC-16, FIN-06, FIN-24, FIN-35, FIN-47, SALES-DEEP-30
 - **Files:** affected module utilities, services, schemas, frontend helpers
 - **Issue:** Some list/search handlers, validators, slug/content-type/formatting/display helpers, query serializers, sales hook fetcher signatures, and related-record matching helpers are duplicated.
 - **Fix:** Extract shared helpers only when behavior is identical and the abstraction reduces complexity. Preserve endpoint response shapes. Standardize sales hook fetcher signatures and API-column filtering around shared utilities.

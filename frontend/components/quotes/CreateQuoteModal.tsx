@@ -59,6 +59,13 @@ const STATUSES = [
   { value: "expired", label: "Expired" },
 ];
 
+function parseOptionalId(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed);
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+}
+
 type Props = {
   isOpen: boolean;
   onClose: () => void;
@@ -102,13 +109,17 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
     try {
       setIsSubmitting(true);
       setError(null);
+      const opportunityId = parseOptionalId(form.opportunity_id);
+      if (form.opportunity_id.trim() && opportunityId == null) {
+        throw new Error("Select a valid deal before creating the quote.");
+      }
       const payload = pickEnabledModulePayload({
         quote_number: form.quote_number.trim() || null,
         title: form.title.trim() || null,
         customer_name: form.customer_name.trim(),
         contact_id: form.contact_id,
         organization_id: form.organization_id,
-        opportunity_id: form.opportunity_id.trim() ? Number(form.opportunity_id) : null,
+        opportunity_id: opportunityId,
         status: form.status,
         issue_date: form.issue_date || null,
         expiry_date: form.expiry_date || null,
@@ -172,7 +183,7 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
                         customer_name: current.customer_name.trim() ? current.customer_name : option.label,
                       }));
                       if (option.organization_id) {
-                        setAccountSearch(option.organization_name || `Account #${option.organization_id}`);
+                        setAccountSearch(option.organization_name || "Linked via contact");
                       }
                     }}
                     onClear={() => {
@@ -224,7 +235,7 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
                 <Field label="Deal">
                   <LinkedRecordPicker
                     recordType="opportunity"
-                    valueId={form.opportunity_id ? Number(form.opportunity_id) : null}
+                    valueId={parseOptionalId(form.opportunity_id)}
                     displayValue={dealSearch}
                     onDisplayValueChange={(value) => {
                       setDealSearch(value);
@@ -233,10 +244,10 @@ export default function CreateQuoteModal({ isOpen, onClose, onSuccess }: Props) 
                     onSelect={(option) => {
                       setDealSearch(option.label);
                       if (option.contact_id) {
-                        setContactSearch(`Contact #${option.contact_id}`);
+                        setContactSearch("Linked via deal");
                       }
                       if (option.organization_id) {
-                        setAccountSearch(`Account #${option.organization_id}`);
+                        setAccountSearch(option.organization_name || "Linked via deal");
                       }
                       setForm((current) => ({
                         ...current,

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRightLeft, CheckSquare, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 
@@ -89,13 +89,18 @@ const SCORE_GRADE_STYLES: Record<string, string> = {
   cold: "border-neutral-800 bg-neutral-950/60 text-neutral-300",
 };
 
+async function fetchLeadSummary(leadId: string) {
+  const res = await apiFetch(`/sales/leads/${leadId}/summary`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return body as LeadSummary;
+}
+
 export default function LeadDetailPage() {
   const params = useParams<{ leadId: string }>();
   const queryClient = useQueryClient();
-  const [summary, setSummary] = useState<LeadSummary | null>(null);
   const [form, setForm] = useState<LeadForm>(emptyForm);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [convertOpen, setConvertOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -103,43 +108,31 @@ export default function LeadDetailPage() {
   const { fields: moduleFields } = useModuleFieldConfigs("sales_leads");
   const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
 
-  async function loadSummary(signal?: { cancelled: boolean }) {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await apiFetch(`/sales/leads/${params.leadId}/summary`);
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      if (signal?.cancelled) return;
-      const data = body as LeadSummary;
-      setSummary(data);
-      setForm({
-        first_name: data.lead.first_name ?? "",
-        last_name: data.lead.last_name ?? "",
-        company: data.lead.company ?? "",
-        primary_email: data.lead.primary_email ?? "",
-        phone: data.lead.phone ?? "",
-        title: data.lead.title ?? "",
-        source: data.lead.source ?? "",
-        status: data.lead.status ?? "new",
-        notes: data.lead.notes ?? "",
-      });
-      setCustomFieldValues(data.lead.custom_fields ?? {});
-    } catch (loadError) {
-      if (!signal?.cancelled) setError(loadError instanceof Error ? loadError.message : "Failed to load lead");
-    } finally {
-      if (!signal?.cancelled) setLoading(false);
-    }
-  }
+  const summaryQuery = useQuery({
+    queryKey: ["sales-lead-summary", params.leadId],
+    queryFn: () => fetchLeadSummary(params.leadId),
+    enabled: Boolean(params.leadId),
+    refetchOnWindowFocus: false,
+  });
+  const summary = summaryQuery.data ?? null;
+  const loadError = summaryQuery.error instanceof Error ? summaryQuery.error.message : null;
 
   useEffect(() => {
-    const signal = { cancelled: false };
-    void loadSummary(signal);
-    return () => {
-      signal.cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.leadId]);
+    if (!summary) return;
+    setError(null);
+    setForm({
+      first_name: summary.lead.first_name ?? "",
+      last_name: summary.lead.last_name ?? "",
+      company: summary.lead.company ?? "",
+      primary_email: summary.lead.primary_email ?? "",
+      phone: summary.lead.phone ?? "",
+      title: summary.lead.title ?? "",
+      source: summary.lead.source ?? "",
+      status: summary.lead.status ?? "new",
+      notes: summary.lead.notes ?? "",
+    });
+    setCustomFieldValues(summary.lead.custom_fields ?? {});
+  }, [summary]);
 
   async function handleSave() {
     try {
@@ -166,9 +159,8 @@ export default function LeadDetailPage() {
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-leads"] }),
-        queryClient.refetchQueries({ queryKey: ["sales-leads"], type: "all" }),
+        summaryQuery.refetch(),
       ]);
-      await loadSummary();
       toast.success("Lead updated.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save lead");
@@ -183,8 +175,8 @@ export default function LeadDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["sales-contacts"] }),
       queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
       queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
+      summaryQuery.refetch(),
     ]);
-    await loadSummary();
   }
 
   return (
@@ -208,9 +200,9 @@ export default function LeadDetailPage() {
         )}
       />
 
-      {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}
+      {error || loadError ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error || loadError}</div> : null}
 
-      {loading || !summary ? (
+      {summaryQuery.isLoading || !summary ? (
         <Card className="px-5 py-5 text-sm text-neutral-500">Loading lead...</Card>
       ) : (
         <>
@@ -304,7 +296,9 @@ export default function LeadDetailPage() {
                 lastContactedChannel: summary.lead.last_contacted_channel,
                 email: summary.lead.primary_email,
                 phone: summary.lead.phone,
-                onLogged: () => loadSummary(),
+                onLogged: () => {
+                  void summaryQuery.refetch();
+                },
               }}
             />
           </div>

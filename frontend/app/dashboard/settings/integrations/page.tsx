@@ -321,6 +321,7 @@ export default function IntegrationsPage() {
   const [saving, setSaving] = useState(false);
   const [websiteSaving, setWebsiteSaving] = useState(false);
   const [connectingProvider, setConnectingProvider] = useState<string | null>(null);
+  const eventFiltersKey = `${eventFilters.event_type}:${eventFilters.delivery_status}`;
 
   const websiteQuery = useQuery({
     queryKey: ["integrations", "website"],
@@ -335,7 +336,7 @@ export default function IntegrationsPage() {
     queryFn: fetchNotificationChannels,
   });
   const eventsQuery = useQuery({
-    queryKey: ["integrations", "crm-events", eventFilters],
+    queryKey: ["integrations", "crm-events", eventFiltersKey],
     queryFn: () => fetchCrmEvents(eventFilters),
   });
 

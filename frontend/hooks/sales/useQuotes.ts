@@ -4,6 +4,7 @@ import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
+import { getSalesApiColumns } from "@/hooks/sales/listColumns";
 
 export type Quote = {
   quote_id: number;
@@ -41,12 +42,12 @@ export type QuoteSortState = PagedListSort;
 async function fetchQuotes(
   page: number,
   pageSize: number,
-  visibleColumns: string[],
   filters: SavedViewFilters,
+  visibleColumns: string[],
   sort: QuoteSortState,
 ): Promise<QuotesResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
-  const baseVisibleColumns = visibleColumns.filter((column) => !column.startsWith("custom:"));
+  const baseVisibleColumns = getSalesApiColumns(visibleColumns);
   if (baseVisibleColumns.length) params.append("fields", baseVisibleColumns.join(","));
   if (sort) {
     params.set("sort_by", sort.key);
@@ -69,7 +70,7 @@ export function useQuotes(
 ) {
   const paged = usePagedList<Quote, QuotesResponse>({
     queryKey: ["sales-quotes"],
-    fetcher: (page, pageSize, filters, columns, sortState) => fetchQuotes(page, pageSize, columns, filters, sortState),
+    fetcher: fetchQuotes,
     visibleColumns,
     visibleColumnsAffectQuery: true,
     filters: viewFilters,

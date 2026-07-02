@@ -289,15 +289,18 @@ export function useCalendarActions() {
     includeNotifications = false,
     includeRecycleBin = false,
   }: { includeNotifications?: boolean; includeRecycleBin?: boolean } = {}) => {
-    await queryClient.invalidateQueries({ queryKey: ["calendar-events"] });
-    await queryClient.invalidateQueries({ queryKey: ["calendar-event"] });
-    await queryClient.invalidateQueries({ queryKey: ["calendar-context"] });
+    const invalidations = [
+      queryClient.invalidateQueries({ queryKey: ["calendar-events"] }),
+      queryClient.invalidateQueries({ queryKey: ["calendar-event"] }),
+      queryClient.invalidateQueries({ queryKey: ["calendar-context"] }),
+    ];
     if (includeNotifications) {
-      await queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
+      invalidations.push(queryClient.invalidateQueries({ queryKey: ["user-notifications"] }));
     }
     if (includeRecycleBin) {
-      await queryClient.invalidateQueries({ queryKey: ["recycle-bin"] });
+      invalidations.push(queryClient.invalidateQueries({ queryKey: ["recycle-bin"] }));
     }
+    await Promise.all(invalidations);
   };
 
   const createMutation = useMutation({
@@ -315,8 +318,10 @@ export function useCalendarActions() {
     mutationFn: ({ eventId, responseStatus }: { eventId: number; responseStatus: "accepted" | "declined" }) =>
       respondToInvite(eventId, responseStatus),
     onSuccess: async (_, variables) => {
-      await invalidateCalendar({ includeNotifications: true });
-      await queryClient.invalidateQueries({ queryKey: ["calendar-event", variables.eventId] });
+      await Promise.all([
+        invalidateCalendar({ includeNotifications: true }),
+        queryClient.invalidateQueries({ queryKey: ["calendar-event", variables.eventId] }),
+      ]);
     },
   });
 
@@ -328,16 +333,20 @@ export function useCalendarActions() {
   const createFromTaskMutation = useMutation({
     mutationFn: createEventFromTask,
     onSuccess: async (result) => {
-      await invalidateCalendar({ includeNotifications: true });
-      await queryClient.invalidateQueries({ queryKey: ["task-calendar-event", result.created_from_task_id] });
+      await Promise.all([
+        invalidateCalendar({ includeNotifications: true }),
+        queryClient.invalidateQueries({ queryKey: ["task-calendar-event", result.created_from_task_id] }),
+      ]);
     },
   });
 
   const deleteFromTaskMutation = useMutation({
     mutationFn: deleteTaskCalendarEvent,
     onSuccess: async (_, taskId) => {
-      await invalidateCalendar({ includeRecycleBin: true });
-      await queryClient.invalidateQueries({ queryKey: ["task-calendar-event", taskId] });
+      await Promise.all([
+        invalidateCalendar({ includeRecycleBin: true }),
+        queryClient.invalidateQueries({ queryKey: ["task-calendar-event", taskId] }),
+      ]);
     },
   });
 

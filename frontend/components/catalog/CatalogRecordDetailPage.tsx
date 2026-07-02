@@ -61,7 +61,6 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
     if (mediaFile) {
       await uploadMedia(recordId, mediaFile);
     }
-    await recordQuery.refetch();
     toast.success(`${noun} updated.`);
   }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRightLeft } from "lucide-react";
 import { toast } from "sonner";
@@ -57,6 +57,22 @@ export default function ConvertLeadDialog({ leadId, leadName, company, isOpen, o
 
   const defaultDealName = useMemo(() => `${company || leadName} opportunity`, [company, leadName]);
   const canSubmit = !submitting && (createContact || contactId || !createDeal);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setCreateAccount(true);
+    setAccountId(null);
+    setAccountSearch("");
+    setCreateContact(true);
+    setContactId(null);
+    setContactSearch("");
+    setCreateDeal(false);
+    setDealName("");
+    setDealStage("qualified");
+    setError(null);
+    setSubmitting(false);
+    setResult(null);
+  }, [isOpen, leadId]);
 
   function resetAndClose() {
     setError(null);

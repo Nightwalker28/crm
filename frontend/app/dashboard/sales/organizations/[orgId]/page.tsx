@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
@@ -121,12 +121,17 @@ function formatMoney(value?: number | string | null, currency?: string | null) {
   }).format(amount);
 }
 
+async function fetchOrganizationSummary(orgId: string) {
+  const res = await apiFetch(`/sales/organizations/${orgId}/summary`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return body as OrganizationSummary;
+}
+
 export default function OrganizationDetailPage() {
   const params = useParams<{ orgId: string }>();
   const queryClient = useQueryClient();
-  const [summary, setSummary] = useState<OrganizationSummary | null>(null);
   const [form, setForm] = useState<OrganizationForm>(emptyForm);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
@@ -136,49 +141,35 @@ export default function OrganizationDetailPage() {
   const customerGroupsQuery = useCustomerGroups();
   const { assignOrganizationGroup, isAssigningCustomerGroup } = useClientPortalActions();
 
-  async function loadSummary(signal?: { cancelled: boolean }) {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await apiFetch(`/sales/organizations/${params.orgId}/summary`);
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      if (signal?.cancelled) return;
-      const data = body as OrganizationSummary;
-      setSummary(data);
-      setForm({
-        org_name: data.organization.org_name ?? "",
-        primary_email: data.organization.primary_email ?? "",
-        secondary_email: data.organization.secondary_email ?? "",
-        website: data.organization.website ?? "",
-        primary_phone: data.organization.primary_phone ?? "",
-        secondary_phone: data.organization.secondary_phone ?? "",
-        industry: data.organization.industry ?? "",
-        annual_revenue: data.organization.annual_revenue ?? "",
-        billing_address: data.organization.billing_address ?? "",
-        billing_city: data.organization.billing_city ?? "",
-        billing_state: data.organization.billing_state ?? "",
-        billing_postal_code: data.organization.billing_postal_code ?? "",
-        billing_country: data.organization.billing_country ?? "",
-      });
-      setCustomFieldValues(data.organization.custom_fields ?? {});
-    } catch (loadError) {
-      if (!signal?.cancelled) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load organization");
-      }
-    } finally {
-      if (!signal?.cancelled) setLoading(false);
-    }
-  }
+  const summaryQuery = useQuery({
+    queryKey: ["sales-organization-summary", params.orgId],
+    queryFn: () => fetchOrganizationSummary(params.orgId),
+    enabled: Boolean(params.orgId),
+    refetchOnWindowFocus: false,
+  });
+  const summary = summaryQuery.data ?? null;
+  const loadError = summaryQuery.error instanceof Error ? summaryQuery.error.message : null;
 
   useEffect(() => {
-    const signal = { cancelled: false };
-    void loadSummary(signal);
-    return () => {
-      signal.cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.orgId]);
+    if (!summary) return;
+    setError(null);
+    setForm({
+      org_name: summary.organization.org_name ?? "",
+      primary_email: summary.organization.primary_email ?? "",
+      secondary_email: summary.organization.secondary_email ?? "",
+      website: summary.organization.website ?? "",
+      primary_phone: summary.organization.primary_phone ?? "",
+      secondary_phone: summary.organization.secondary_phone ?? "",
+      industry: summary.organization.industry ?? "",
+      annual_revenue: summary.organization.annual_revenue ?? "",
+      billing_address: summary.organization.billing_address ?? "",
+      billing_city: summary.organization.billing_city ?? "",
+      billing_state: summary.organization.billing_state ?? "",
+      billing_postal_code: summary.organization.billing_postal_code ?? "",
+      billing_country: summary.organization.billing_country ?? "",
+    });
+    setCustomFieldValues(summary.organization.custom_fields ?? {});
+  }, [summary]);
 
   async function handleSave() {
     try {
@@ -200,9 +191,8 @@ export default function OrganizationDetailPage() {
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
-        queryClient.refetchQueries({ queryKey: ["sales-organizations"], type: "all" }),
+        summaryQuery.refetch(),
       ]);
-      await loadSummary();
       toast.success("Organization updated.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save organization");
@@ -219,7 +209,7 @@ export default function OrganizationDetailPage() {
         organizationId: summary.organization.org_id,
         customerGroupId: Number.isInteger(parsedGroupId) ? parsedGroupId : null,
       });
-      await loadSummary();
+      await summaryQuery.refetch();
       toast.success("Customer group updated.");
     } catch (assignError) {
       toast.error(assignError instanceof Error ? assignError.message : "Failed to update customer group.");
@@ -249,9 +239,9 @@ export default function OrganizationDetailPage() {
         )}
       />
 
-      {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}
+      {error || loadError ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error || loadError}</div> : null}
 
-      {loading || !summary ? (
+      {summaryQuery.isLoading || !summary ? (
         <Card className="px-5 py-5 text-sm text-neutral-500">Loading organization…</Card>
       ) : (
         <>

@@ -52,8 +52,8 @@ export type OrderSortState = PagedListSort;
 async function fetchOrders(
   page: number,
   pageSize: number,
-  _visibleColumns: string[],
   filters: SavedViewFilters,
+  _visibleColumns: string[],
   sort: OrderSortState,
 ): Promise<OrdersResponse> {
   const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
@@ -78,7 +78,7 @@ export function useOrders(
 ) {
   const paged = usePagedList<Order, OrdersResponse>({
     queryKey: ["sales-orders"],
-    fetcher: (page, pageSize, filters, columns, sortState) => fetchOrders(page, pageSize, columns, filters, sortState),
+    fetcher: fetchOrders,
     visibleColumns,
     filters: viewFilters,
     sort,

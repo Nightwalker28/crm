@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckSquare, ExternalLink, FileText, RefreshCw, Send, ShoppingCart, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 
@@ -166,16 +166,21 @@ function getContactLabel(contact: QuoteSummary["contact"]) {
   return `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() || contact.primary_email || `Contact #${contact.contact_id}`;
 }
 
+async function fetchQuoteSummary(quoteId: string) {
+  const res = await apiFetch(`/sales/quotes/${quoteId}/summary`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return body as QuoteSummary;
+}
+
 export default function QuoteDetailPage() {
   const params = useParams<{ quoteId: string }>();
   const queryClient = useQueryClient();
-  const [summary, setSummary] = useState<QuoteSummary | null>(null);
   const [form, setForm] = useState<QuoteForm>(emptyForm);
   const [contactSearch, setContactSearch] = useState("");
   const [accountSearch, setAccountSearch] = useState("");
   const [dealSearch, setDealSearch] = useState("");
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [proposalSendingTo, setProposalSendingTo] = useState("");
   const [proposalBusy, setProposalBusy] = useState<"generate" | "send" | null>(null);
@@ -186,53 +191,41 @@ export default function QuoteDetailPage() {
   const { fields: moduleFields } = useModuleFieldConfigs("sales_quotes");
   const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
 
-  async function loadSummary(signal?: { cancelled: boolean }) {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await apiFetch(`/sales/quotes/${params.quoteId}/summary`);
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      if (signal?.cancelled) return;
-      const data = body as QuoteSummary;
-      setSummary(data);
-      setForm({
-        quote_number: data.quote.quote_number ?? "",
-        title: data.quote.title ?? "",
-        customer_name: data.quote.customer_name ?? "",
-        contact_id: data.quote.contact_id ?? null,
-        organization_id: data.quote.organization_id ?? null,
-        opportunity_id: data.quote.opportunity_id ? String(data.quote.opportunity_id) : "",
-        status: data.quote.status ?? "draft",
-        issue_date: data.quote.issue_date ?? "",
-        expiry_date: data.quote.expiry_date ?? "",
-        currency: data.quote.currency ?? "USD",
-        subtotal_amount: asInputValue(data.quote.subtotal_amount),
-        discount_amount: asInputValue(data.quote.discount_amount),
-        tax_amount: asInputValue(data.quote.tax_amount),
-        total_amount: asInputValue(data.quote.total_amount),
-        notes: data.quote.notes ?? "",
-      });
-      setContactSearch(getContactLabel(data.contact));
-      setAccountSearch(data.organization?.org_name ?? (data.quote.organization_id ? `Account #${data.quote.organization_id}` : ""));
-      setDealSearch(data.opportunity?.opportunity_name ?? (data.quote.opportunity_id ? `Deal #${data.quote.opportunity_id}` : ""));
-      setCustomFieldValues(data.quote.custom_fields ?? {});
-      setProposalSendingTo(data.latest_proposal?.sent_to ?? data.contact?.primary_email ?? "");
-    } catch (loadError) {
-      if (!signal?.cancelled) setError(loadError instanceof Error ? loadError.message : "Failed to load quote");
-    } finally {
-      if (!signal?.cancelled) setLoading(false);
-    }
-  }
+  const summaryQuery = useQuery({
+    queryKey: ["sales-quote-summary", params.quoteId],
+    queryFn: () => fetchQuoteSummary(params.quoteId),
+    enabled: Boolean(params.quoteId),
+    refetchOnWindowFocus: false,
+  });
+  const summary = summaryQuery.data ?? null;
+  const loadError = summaryQuery.error instanceof Error ? summaryQuery.error.message : null;
 
   useEffect(() => {
-    const signal = { cancelled: false };
-    void loadSummary(signal);
-    return () => {
-      signal.cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.quoteId]);
+    if (!summary) return;
+    setError(null);
+    setForm({
+      quote_number: summary.quote.quote_number ?? "",
+      title: summary.quote.title ?? "",
+      customer_name: summary.quote.customer_name ?? "",
+      contact_id: summary.quote.contact_id ?? null,
+      organization_id: summary.quote.organization_id ?? null,
+      opportunity_id: summary.quote.opportunity_id ? String(summary.quote.opportunity_id) : "",
+      status: summary.quote.status ?? "draft",
+      issue_date: summary.quote.issue_date ?? "",
+      expiry_date: summary.quote.expiry_date ?? "",
+      currency: summary.quote.currency ?? "USD",
+      subtotal_amount: asInputValue(summary.quote.subtotal_amount),
+      discount_amount: asInputValue(summary.quote.discount_amount),
+      tax_amount: asInputValue(summary.quote.tax_amount),
+      total_amount: asInputValue(summary.quote.total_amount),
+      notes: summary.quote.notes ?? "",
+    });
+    setContactSearch(getContactLabel(summary.contact));
+    setAccountSearch(summary.organization?.org_name ?? (summary.quote.organization_id ? `Account #${summary.quote.organization_id}` : ""));
+    setDealSearch(summary.opportunity?.opportunity_name ?? (summary.quote.opportunity_id ? `Deal #${summary.quote.opportunity_id}` : ""));
+    setCustomFieldValues(summary.quote.custom_fields ?? {});
+    setProposalSendingTo(summary.latest_proposal?.sent_to ?? summary.contact?.primary_email ?? "");
+  }, [summary]);
 
   async function handleSave() {
     try {
@@ -265,9 +258,8 @@ export default function QuoteDetailPage() {
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-quotes"] }),
-        queryClient.refetchQueries({ queryKey: ["sales-quotes"], type: "all" }),
+        summaryQuery.refetch(),
       ]);
-      await loadSummary();
       toast.success("Quote updated.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save quote");
@@ -284,7 +276,7 @@ export default function QuoteDetailPage() {
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
       setProposalLinkPath(null);
-      await loadSummary();
+      await summaryQuery.refetch();
       toast.success("Proposal generated.");
     } catch (proposalError) {
       setError(proposalError instanceof Error ? proposalError.message : "Failed to generate proposal");
@@ -305,7 +297,7 @@ export default function QuoteDetailPage() {
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
       setProposalLinkPath(body.public_url_path ?? null);
-      await loadSummary();
+      await summaryQuery.refetch();
       toast.success("Proposal marked sent.");
     } catch (proposalError) {
       setError(proposalError instanceof Error ? proposalError.message : "Failed to send proposal");
@@ -325,7 +317,10 @@ export default function QuoteDetailPage() {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      await loadSummary();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["sales-orders"] }),
+        summaryQuery.refetch(),
+      ]);
       toast.success("Quote converted to order.");
     } catch (convertError) {
       setError(convertError instanceof Error ? convertError.message : "Failed to convert quote to order");
@@ -355,9 +350,9 @@ export default function QuoteDetailPage() {
         )}
       />
 
-      {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}
+      {error || loadError ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error || loadError}</div> : null}
 
-      {loading || !summary ? (
+      {summaryQuery.isLoading || !summary ? (
         <Card className="px-5 py-5 text-sm text-neutral-500">Loading quote...</Card>
       ) : (
         <>
@@ -634,7 +629,9 @@ export default function QuoteDetailPage() {
                 endpoint: `/sales/quotes/${summary.quote.quote_id}/follow-up`,
                 email: summary.contact?.primary_email,
                 phone: summary.contact?.contact_telephone,
-                onLogged: loadSummary,
+                onLogged: () => {
+                  void summaryQuery.refetch();
+                },
               }}
             />
           </div>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckSquare, MessageCircle, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 
@@ -117,12 +117,17 @@ function formatMoney(value?: number | string | null, currency?: string | null) {
   }).format(amount);
 }
 
+async function fetchContactSummary(contactId: string) {
+  const res = await apiFetch(`/sales/contacts/${contactId}/summary`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return body as ContactSummary;
+}
+
 export default function ContactDetailPage() {
   const params = useParams<{ contactId: string }>();
   const queryClient = useQueryClient();
-  const [summary, setSummary] = useState<ContactSummary | null>(null);
   const [form, setForm] = useState<ContactForm>(emptyForm);
-  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [whatsAppSending, setWhatsAppSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -137,44 +142,30 @@ export default function ContactDetailPage() {
   const customerGroupsQuery = useCustomerGroups();
   const { assignContactGroup, isAssigningCustomerGroup } = useClientPortalActions();
 
-  async function loadSummary(signal?: { cancelled: boolean }) {
-    try {
-      setLoading(true);
-      setError(null);
-      const res = await apiFetch(`/sales/contacts/${params.contactId}/summary`);
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      if (signal?.cancelled) return;
-      const data = body as ContactSummary;
-      setSummary(data);
-      setForm({
-        first_name: data.contact.first_name ?? "",
-        last_name: data.contact.last_name ?? "",
-        primary_email: data.contact.primary_email ?? "",
-        contact_telephone: data.contact.contact_telephone ?? "",
-        linkedin_url: data.contact.linkedin_url ?? "",
-        current_title: data.contact.current_title ?? "",
-        region: data.contact.region ?? "",
-        country: data.contact.country ?? "",
-      });
-      setCustomFieldValues(data.contact.custom_fields ?? {});
-    } catch (loadError) {
-      if (!signal?.cancelled) {
-        setError(loadError instanceof Error ? loadError.message : "Failed to load contact");
-      }
-    } finally {
-      if (!signal?.cancelled) setLoading(false);
-    }
-  }
+  const summaryQuery = useQuery({
+    queryKey: ["sales-contact-summary", params.contactId],
+    queryFn: () => fetchContactSummary(params.contactId),
+    enabled: Boolean(params.contactId),
+    refetchOnWindowFocus: false,
+  });
+  const summary = summaryQuery.data ?? null;
+  const loadError = summaryQuery.error instanceof Error ? summaryQuery.error.message : null;
 
   useEffect(() => {
-    const signal = { cancelled: false };
-    void loadSummary(signal);
-    return () => {
-      signal.cancelled = true;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.contactId]);
+    if (!summary) return;
+    setError(null);
+    setForm({
+      first_name: summary.contact.first_name ?? "",
+      last_name: summary.contact.last_name ?? "",
+      primary_email: summary.contact.primary_email ?? "",
+      contact_telephone: summary.contact.contact_telephone ?? "",
+      linkedin_url: summary.contact.linkedin_url ?? "",
+      current_title: summary.contact.current_title ?? "",
+      region: summary.contact.region ?? "",
+      country: summary.contact.country ?? "",
+    });
+    setCustomFieldValues(summary.contact.custom_fields ?? {});
+  }, [summary]);
 
   useEffect(() => {
     let cancelled = false;
@@ -210,7 +201,6 @@ export default function ContactDetailPage() {
         current_title: form.current_title.trim() || null,
         region: form.region.trim() || null,
         country: form.country.trim() || null,
-        organization_id: summary?.organization?.org_id ?? summary?.contact.organization_id ?? null,
         custom_fields: customFieldValues,
       }, moduleFields, ["primary_email", "custom_fields"]);
       const res = await apiFetch(`/sales/contacts/${params.contactId}`, {
@@ -222,9 +212,8 @@ export default function ContactDetailPage() {
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-contacts"] }),
-        queryClient.refetchQueries({ queryKey: ["sales-contacts"], type: "all" }),
+        summaryQuery.refetch(),
       ]);
-      await loadSummary();
       toast.success("Contact updated.");
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : "Failed to save contact");
@@ -253,7 +242,7 @@ export default function ContactDetailPage() {
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
       window.open(body.whatsapp_url, "_blank", "noopener,noreferrer");
       toast.success(body.follow_up_task ? "WhatsApp chat opened and follow-up task created." : "WhatsApp chat opened.");
-      await loadSummary();
+      await summaryQuery.refetch();
     } catch (sendError) {
       toast.error(sendError instanceof Error ? sendError.message : "Failed to start WhatsApp chat.");
     } finally {
@@ -269,7 +258,7 @@ export default function ContactDetailPage() {
         contactId: summary.contact.contact_id,
         customerGroupId: Number.isInteger(parsedGroupId) ? parsedGroupId : null,
       });
-      await loadSummary();
+      await summaryQuery.refetch();
       toast.success("Customer group updated.");
     } catch (assignError) {
       toast.error(assignError instanceof Error ? assignError.message : "Failed to update customer group.");
@@ -299,9 +288,9 @@ export default function ContactDetailPage() {
         )}
       />
 
-      {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}
+      {error || loadError ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error || loadError}</div> : null}
 
-      {loading || !summary ? (
+      {summaryQuery.isLoading || !summary ? (
         <Card className="px-5 py-5 text-sm text-neutral-500">Loading contact…</Card>
       ) : (
         <>
@@ -564,7 +553,9 @@ export default function ContactDetailPage() {
                 lastContactedChannel: summary.contact.last_contacted_channel,
                 email: summary.contact.primary_email,
                 phone: summary.contact.contact_telephone,
-                onLogged: () => loadSummary(),
+                onLogged: () => {
+                  void summaryQuery.refetch();
+                },
               }}
             />
           </div>
