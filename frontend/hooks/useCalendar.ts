@@ -317,12 +317,7 @@ export function useCalendarActions() {
   const respondMutation = useMutation({
     mutationFn: ({ eventId, responseStatus }: { eventId: number; responseStatus: "accepted" | "declined" }) =>
       respondToInvite(eventId, responseStatus),
-    onSuccess: async (_, variables) => {
-      await Promise.all([
-        invalidateCalendar({ includeNotifications: true }),
-        queryClient.invalidateQueries({ queryKey: ["calendar-event", variables.eventId] }),
-      ]);
-    },
+    onSuccess: () => invalidateCalendar({ includeNotifications: true }),
   });
 
   const deleteMutation = useMutation({

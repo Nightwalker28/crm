@@ -49,6 +49,34 @@ function toggleParticipant(
   ];
 }
 
+function participantEntry(
+  participant: CalendarParticipantInput,
+  users: CalendarAssignmentUserOption[],
+  teams: CalendarAssignmentTeamOption[],
+) {
+  if (participant.participant_type === "user" && participant.user_id) {
+    const user = users.find((candidate) => candidate.id === participant.user_id);
+    return {
+      key: `user-${participant.user_id}`,
+      type: "user" as const,
+      id: participant.user_id,
+      label: user?.name ?? `User #${participant.user_id}`,
+      typeLabel: "User Invite",
+    };
+  }
+  if (participant.participant_type === "team" && participant.team_id) {
+    const team = teams.find((candidate) => candidate.id === participant.team_id);
+    return {
+      key: `team-${participant.team_id}`,
+      type: "team" as const,
+      id: participant.team_id,
+      label: team?.name ?? `Team #${participant.team_id}`,
+      typeLabel: "Team Share",
+    };
+  }
+  return null;
+}
+
 export default function CalendarParticipantPicker({
   users,
   teams,
@@ -58,19 +86,7 @@ export default function CalendarParticipantPicker({
 }: Props) {
   const selectedEntries = useMemo(() => {
     return value
-      .map((participant) => {
-        if (participant.participant_type === "user" && participant.user_id) {
-          const user = users.find((candidate) => candidate.id === participant.user_id);
-          if (!user) return null;
-          return { key: `user-${user.id}`, type: "user" as const, id: user.id, label: user.name, typeLabel: "User Invite" };
-        }
-        if (participant.participant_type === "team" && participant.team_id) {
-          const team = teams.find((candidate) => candidate.id === participant.team_id);
-          if (!team) return null;
-          return { key: `team-${team.id}`, type: "team" as const, id: team.id, label: team.name, typeLabel: "Team Share" };
-        }
-        return null;
-      })
+      .map((participant) => participantEntry(participant, users, teams))
       .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
   }, [teams, users, value]);
 

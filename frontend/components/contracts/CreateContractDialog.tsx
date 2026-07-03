@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -9,7 +9,7 @@ import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/Li
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBackdrop, DialogFooter, DialogHeader, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -60,6 +60,30 @@ const INITIAL_FORM: ContractForm = {
   owner_id: "",
 };
 
+function optionalDecimal(value: string): number | null | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const numeric = Number(trimmed);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function optionalId(value: string): number | null | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  const numeric = Number(trimmed);
+  return Number.isInteger(numeric) && numeric > 0 ? numeric : null;
+}
+
+function validateContractForm(form: ContractForm) {
+  if (!form.title.trim()) return "Title is required.";
+  if (optionalDecimal(form.value_amount) === null) return "Value must be zero or greater.";
+  if (optionalId(form.quote_id) === null) return "Quote must be a valid linked record.";
+  if (optionalId(form.order_id) === null) return "Order must be a valid linked record.";
+  if (optionalId(form.document_id) === null) return "Document must be a valid linked record.";
+  if (optionalId(form.owner_id) === null) return "Owner must be a valid linked user.";
+  return null;
+}
+
 export default function CreateContractDialog() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
@@ -73,6 +97,8 @@ export default function CreateContractDialog() {
   const [orderDisplay, setOrderDisplay] = useState("");
   const [documentDisplay, setDocumentDisplay] = useState("");
   const [ownerDisplay, setOwnerDisplay] = useState("");
+  const validationError = useMemo(() => validateContractForm(form), [form]);
+  const canSubmit = !validationError;
 
   function reset() {
     setForm(INITIAL_FORM);
@@ -101,14 +127,19 @@ export default function CreateContractDialog() {
   }
 
   async function handleSubmit() {
-    if (!form.title.trim() || saving) return;
+    if (saving) return;
+    const nextValidationError = validateContractForm(form);
+    if (nextValidationError) {
+      setError(nextValidationError);
+      return;
+    }
     try {
       setSaving(true);
       setError(null);
       const payload = {
         title: form.title.trim(),
         status: form.status,
-        value_amount: form.value_amount ? Number(form.value_amount) : null,
+        value_amount: optionalDecimal(form.value_amount) ?? null,
         currency: form.currency.trim() || null,
         effective_date: form.effective_date || null,
         expiration_date: form.expiration_date || null,
@@ -116,10 +147,10 @@ export default function CreateContractDialog() {
         contact_id: form.contact_id,
         organization_id: form.organization_id,
         opportunity_id: form.opportunity_id,
-        quote_id: form.quote_id ? Number(form.quote_id) : null,
-        order_id: form.order_id ? Number(form.order_id) : null,
-        document_id: form.document_id ? Number(form.document_id) : null,
-        owner_id: form.owner_id ? Number(form.owner_id) : null,
+        quote_id: optionalId(form.quote_id) ?? null,
+        order_id: optionalId(form.order_id) ?? null,
+        document_id: optionalId(form.document_id) ?? null,
+        owner_id: optionalId(form.owner_id) ?? null,
       };
       const res = await apiFetch("/contracts", {
         method: "POST",
@@ -168,6 +199,9 @@ export default function CreateContractDialog() {
                 <Field>
                   <FieldLabel>Value</FieldLabel>
                   <Input type="number" min="0" step="0.01" value={form.value_amount} onChange={(event) => setForm((current) => ({ ...current, value_amount: event.target.value }))} />
+                  {form.value_amount.trim() && optionalDecimal(form.value_amount) === null ? (
+                    <FieldError>Enter a value of zero or greater.</FieldError>
+                  ) : null}
                 </Field>
                 <Field>
                   <FieldLabel>Owner</FieldLabel>
@@ -213,7 +247,7 @@ export default function CreateContractDialog() {
             </div>
             <DialogFooter className="mt-5">
               <Button variant="outline" onClick={() => { setOpen(false); reset(); }} disabled={saving}>Cancel</Button>
-              <Button onClick={handleSubmit} disabled={!form.title.trim() || saving}>{saving ? "Creating..." : "Create Contract"}</Button>
+              <Button onClick={handleSubmit} disabled={!canSubmit || saving}>{saving ? "Creating..." : "Create Contract"}</Button>
             </DialogFooter>
           </DialogPanel>
         </div>

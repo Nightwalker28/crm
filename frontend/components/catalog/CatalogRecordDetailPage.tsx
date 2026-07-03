@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
 import type { CatalogKind, CatalogRecordPayload } from "@/hooks/catalog/useCatalogRecords";
 import { useCatalogRecord, useCatalogRecordActions } from "@/hooks/catalog/useCatalogRecords";
+import { useConfirm } from "@/hooks/useConfirm";
 import { resolveMediaUrl } from "@/lib/media";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -41,6 +42,7 @@ function stockLabel(value?: string | null) {
 
 export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
   const router = useRouter();
+  const { confirm } = useConfirm();
   const [dialogOpen, setDialogOpen] = useState(false);
   const isProduct = kind === "products";
   const noun = isProduct ? "Product" : "Service";
@@ -65,9 +67,13 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
   }
 
   async function handleDelete() {
-    if (!window.confirm(`Delete this ${noun.toLowerCase()}?`)) {
-      return;
-    }
+    const confirmed = await confirm({
+      title: `Delete ${noun.toLowerCase()}?`,
+      description: record?.name ? `Delete "${record.name}" from the catalog?` : undefined,
+      confirmLabel: "Delete",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
 
     try {
       await deleteRecord(recordId);
@@ -199,7 +205,9 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
                   className="aspect-[4/3] w-full rounded-md object-cover"
                 />
                 {record.media_original_filename ? (
-                  <p className="mt-2 truncate text-xs text-neutral-500">{record.media_original_filename}</p>
+                  <p className="mt-2 truncate text-xs text-neutral-500" title={record.media_original_filename}>
+                    {record.media_original_filename}
+                  </p>
                 ) : null}
               </div>
             ) : (

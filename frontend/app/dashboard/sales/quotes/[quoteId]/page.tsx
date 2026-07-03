@@ -151,6 +151,8 @@ const STATUSES = [
   { value: "expired", label: "Expired" },
 ];
 
+const QUOTE_ALWAYS_INCLUDED_FIELDS = ["quote_number", "customer_name", "contact_id", "organization_id", "opportunity_id", "custom_fields"];
+
 function asInputValue(value: string | number | null | undefined) {
   return value == null ? "" : String(value);
 }
@@ -248,7 +250,7 @@ export default function QuoteDetailPage() {
         total_amount: form.total_amount || "0",
         notes: form.notes.trim() || null,
         custom_fields: customFieldValues,
-      }, moduleFields, ["quote_number", "customer_name", "contact_id", "organization_id", "opportunity_id", "custom_fields"]);
+      }, moduleFields, QUOTE_ALWAYS_INCLUDED_FIELDS);
       const res = await apiFetch(`/sales/quotes/${params.quoteId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -380,7 +382,7 @@ export default function QuoteDetailPage() {
                 <FieldDescription className="mt-1">Edit the record directly on the page.</FieldDescription>
               </div>
               <FieldGroup className="grid gap-4 md:grid-cols-2">
-                {fieldEnabled("quote_number") ? <Field><FieldLabel>Quote Number</FieldLabel><Input value={form.quote_number} onChange={(event) => setForm((current) => ({ ...current, quote_number: event.target.value }))} /></Field> : null}
+                <Field><FieldLabel>Quote Number</FieldLabel><Input value={form.quote_number} onChange={(event) => setForm((current) => ({ ...current, quote_number: event.target.value }))} /></Field>
                 {fieldEnabled("customer_name") ? <Field><FieldLabel>Customer</FieldLabel><Input value={form.customer_name} onChange={(event) => setForm((current) => ({ ...current, customer_name: event.target.value }))} /></Field> : null}
                 {fieldEnabled("contact_id") ? (
                 <Field>

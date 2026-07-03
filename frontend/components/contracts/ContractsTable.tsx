@@ -48,6 +48,12 @@ function nextSort(current: ContractSortState, column: string): ContractSortState
     : { key: column, direction: "asc" };
 }
 
+function renderPrimitive(value: unknown) {
+  if (value == null || value === "") return "-";
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
+  return "-";
+}
+
 export default function ContractsTable({ contracts, isLoading, isRefreshing = false, visibleColumns, columnOptions = [], sort = null, onSortChange }: ContractsTableProps) {
   const router = useRouter();
 
@@ -71,7 +77,7 @@ export default function ContractsTable({ contracts, isLoading, isRefreshing = fa
       case "renewal_date":
         return <TableCell><span className="text-sm text-neutral-400">{item[column] ?? "-"}</span></TableCell>;
       default:
-        return <TableCell><span className="text-sm text-neutral-300">{String(item[column as keyof Contract] ?? "") || <span className="text-neutral-600">-</span>}</span></TableCell>;
+        return <TableCell><span className="text-sm text-neutral-300">{renderPrimitive(item[column as keyof Contract])}</span></TableCell>;
     }
   }
 

@@ -23,8 +23,7 @@ import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getOpportunityStageLabel } from "@/components/opportunities/opportunityStages";
-import { getOpportunityStageStyle } from "@/lib/statusStyles";
+import { getOpportunityStageLabel, getOpportunityStageStyle } from "@/components/opportunities/opportunityStages";
 
 type SortState = { column: string; direction: "asc" | "desc" } | null;
 

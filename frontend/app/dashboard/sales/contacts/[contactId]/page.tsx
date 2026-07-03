@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { CheckSquare, MessageCircle, StickyNote } from "lucide-react";
@@ -107,6 +107,8 @@ const emptyForm: ContactForm = {
   country: "",
 };
 
+const EMPTY_MESSAGE_TEMPLATES: MessageTemplate[] = [];
+
 function formatMoney(value?: number | string | null, currency?: string | null) {
   const amount = typeof value === "string" ? Number(value) : value;
   if (typeof amount !== "number" || Number.isNaN(amount)) return "Unspecified";
@@ -124,6 +126,22 @@ async function fetchContactSummary(contactId: string) {
   return body as ContactSummary;
 }
 
+async function fetchWhatsAppTemplates() {
+  const res = await apiFetch("/message-templates?channel=whatsapp&module_key=sales_contacts");
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? "Failed to load WhatsApp templates.");
+  return (body?.results ?? []) as MessageTemplate[];
+}
+
+function openPendingWhatsAppWindow() {
+  if (typeof window === "undefined" || typeof window.open !== "function") return null;
+  const popup = window.open("about:blank", "_blank");
+  if (popup) {
+    popup.opener = null;
+  }
+  return popup;
+}
+
 export default function ContactDetailPage() {
   const params = useParams<{ contactId: string }>();
   const queryClient = useQueryClient();
@@ -132,7 +150,6 @@ export default function ContactDetailPage() {
   const [whatsAppSending, setWhatsAppSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
-  const [whatsAppTemplates, setWhatsAppTemplates] = useState<MessageTemplate[]>([]);
   const [selectedWhatsAppTemplateId, setSelectedWhatsAppTemplateId] = useState<string>("");
   const [createWhatsAppReminder, setCreateWhatsAppReminder] = useState(true);
   const [whatsAppReminderDueAt, setWhatsAppReminderDueAt] = useState("");
@@ -150,6 +167,20 @@ export default function ContactDetailPage() {
   });
   const summary = summaryQuery.data ?? null;
   const loadError = summaryQuery.error instanceof Error ? summaryQuery.error.message : null;
+  const whatsAppTemplatesQuery = useQuery({
+    queryKey: ["message-templates", "whatsapp", "sales_contacts"],
+    queryFn: fetchWhatsAppTemplates,
+    staleTime: 5 * 60_000,
+  });
+  const whatsAppTemplates = whatsAppTemplatesQuery.data ?? EMPTY_MESSAGE_TEMPLATES;
+  const selectedWhatsAppTemplate = useMemo(
+    () =>
+      whatsAppTemplates.find((template) => String(template.id) === selectedWhatsAppTemplateId) ??
+      whatsAppTemplates[0] ??
+      null,
+    [selectedWhatsAppTemplateId, whatsAppTemplates],
+  );
+  const activeWhatsAppTemplateId = selectedWhatsAppTemplate ? String(selectedWhatsAppTemplate.id) : "";
 
   useEffect(() => {
     if (!summary) return;
@@ -166,27 +197,6 @@ export default function ContactDetailPage() {
     });
     setCustomFieldValues(summary.contact.custom_fields ?? {});
   }, [summary]);
-
-  useEffect(() => {
-    let cancelled = false;
-    async function loadWhatsAppTemplates() {
-      try {
-        const res = await apiFetch("/message-templates?channel=whatsapp&module_key=sales_contacts");
-        const body = await res.json().catch(() => null);
-        if (!res.ok) return;
-        if (cancelled) return;
-        const templates = (body?.results ?? []) as MessageTemplate[];
-        setWhatsAppTemplates(templates);
-        setSelectedWhatsAppTemplateId((current) => current || (templates[0]?.id ? String(templates[0].id) : ""));
-      } catch {
-        if (!cancelled) setWhatsAppTemplates([]);
-      }
-    }
-    void loadWhatsAppTemplates();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   async function handleSave() {
     try {
@@ -227,23 +237,29 @@ export default function ContactDetailPage() {
       toast.error("Add a phone number before starting WhatsApp chat.");
       return;
     }
+    const pendingPopup = openPendingWhatsAppWindow();
     try {
       setWhatsAppSending(true);
       const res = await apiFetch(`/whatsapp/contacts/${summary.contact.contact_id}/click`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          template_id: selectedWhatsAppTemplateId ? Number(selectedWhatsAppTemplateId) : null,
+          template_id: activeWhatsAppTemplateId ? Number(activeWhatsAppTemplateId) : null,
           create_follow_up_task: createWhatsAppReminder,
           follow_up_due_at: createWhatsAppReminder && whatsAppReminderDueAt ? new Date(whatsAppReminderDueAt).toISOString() : null,
         }),
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      window.open(body.whatsapp_url, "_blank", "noopener,noreferrer");
+      if (pendingPopup) {
+        pendingPopup.location.href = body.whatsapp_url;
+      } else if (typeof window !== "undefined" && typeof window.open === "function") {
+        window.open(body.whatsapp_url, "_blank", "noopener,noreferrer");
+      }
       toast.success(body.follow_up_task ? "WhatsApp chat opened and follow-up task created." : "WhatsApp chat opened.");
       await summaryQuery.refetch();
     } catch (sendError) {
+      pendingPopup?.close();
       toast.error(sendError instanceof Error ? sendError.message : "Failed to start WhatsApp chat.");
     } finally {
       setWhatsAppSending(false);
@@ -301,7 +317,7 @@ export default function ContactDetailPage() {
                 phone={fieldEnabled("contact_telephone") ? summary.contact.contact_telephone : null}
                 emailOptOut={Boolean(summary.contact.email_opt_out)}
                 whatsAppBusy={whatsAppSending}
-                whatsAppDisabled={!whatsAppTemplates.length}
+                whatsAppDisabled={!whatsAppTemplates.length || whatsAppTemplatesQuery.isLoading}
                 onWhatsAppClick={handleWhatsAppClick}
                 followUpTargetId="contact-record-tools"
               />
@@ -465,9 +481,9 @@ export default function ContactDetailPage() {
                     <MessageCircle className="h-5 w-5 text-emerald-400" />
                   </div>
                   <div className="mt-4 grid gap-3">
-                    <Select value={selectedWhatsAppTemplateId} onValueChange={setSelectedWhatsAppTemplateId} disabled={!whatsAppTemplates.length}>
+                    <Select value={activeWhatsAppTemplateId} onValueChange={setSelectedWhatsAppTemplateId} disabled={!whatsAppTemplates.length || whatsAppTemplatesQuery.isLoading}>
                       <SelectTrigger className="w-full">
-                        <SelectValue placeholder={whatsAppTemplates.length ? "Select template" : "No templates available"} />
+                        <SelectValue placeholder={whatsAppTemplatesQuery.isLoading ? "Loading templates" : whatsAppTemplates.length ? "Select template" : "No templates available"} />
                       </SelectTrigger>
                       <SelectContent>
                         {whatsAppTemplates.map((template) => (
@@ -496,7 +512,7 @@ export default function ContactDetailPage() {
                     <Button
                       type="button"
                       onClick={handleWhatsAppClick}
-                      disabled={whatsAppSending || !summary.contact.contact_telephone || !whatsAppTemplates.length}
+                      disabled={whatsAppSending || !summary.contact.contact_telephone || !whatsAppTemplates.length || whatsAppTemplatesQuery.isLoading}
                     >
                       <MessageCircle />
                       {whatsAppSending ? "Opening..." : "Open WhatsApp"}

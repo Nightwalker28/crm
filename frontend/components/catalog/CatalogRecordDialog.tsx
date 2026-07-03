@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { RequiredMark } from "@/components/ui/RequiredMark";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -77,12 +77,25 @@ function optionalDecimal(value: string): number | null | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
   const numeric = Number(trimmed);
-  return Number.isFinite(numeric) ? numeric : null;
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
 }
 
 function requiredDecimal(value: string): number | null {
-  const numeric = Number(value.trim());
-  return Number.isFinite(numeric) ? numeric : null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const numeric = Number(trimmed);
+  return Number.isFinite(numeric) && numeric >= 0 ? numeric : null;
+}
+
+function validateCatalogForm(form: FormState, isProduct: boolean) {
+  const currency = form.currency.trim().toUpperCase();
+  if (!form.name.trim()) return "Name is required.";
+  if (!/^[A-Z]{3}$/.test(currency)) return "Currency must be a 3-letter code.";
+  if (requiredDecimal(form.public_unit_price) == null) return "Public unit price must be zero or greater.";
+  if (isProduct && optionalDecimal(form.stock_quantity) === null) {
+    return "Stock quantity must be blank or zero or greater.";
+  }
+  return null;
 }
 
 export default function CatalogRecordDialog({
@@ -108,9 +121,8 @@ export default function CatalogRecordDialog({
     }
   }, [open, record]);
 
-  const canSubmit = useMemo(() => {
-    return Boolean(form.name.trim()) && requiredDecimal(form.public_unit_price) != null && form.currency.trim().length === 3;
-  }, [form.currency, form.name, form.public_unit_price]);
+  const validationError = useMemo(() => validateCatalogForm(form, isProduct), [form, isProduct]);
+  const canSubmit = !validationError;
 
   function handleClose() {
     setForm(emptyForm);
@@ -122,8 +134,9 @@ export default function CatalogRecordDialog({
   async function handleSubmit() {
     const price = requiredDecimal(form.public_unit_price);
     const stockQuantity = optionalDecimal(form.stock_quantity);
-    if (!form.name.trim() || price == null || stockQuantity === null) {
-      setError("Name, currency, price, and stock quantity must be valid.");
+    const nextValidationError = validateCatalogForm(form, isProduct);
+    if (nextValidationError || price == null || stockQuantity === null) {
+      setError(nextValidationError ?? "Name, currency, price, and stock quantity must be valid.");
       return;
     }
 
@@ -212,6 +225,9 @@ export default function CatalogRecordDialog({
                   onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value.toUpperCase() }))}
                   placeholder="USD"
                 />
+                {form.currency.trim() && !/^[A-Z]{3}$/.test(form.currency.trim().toUpperCase()) ? (
+                  <FieldError>Use a 3-letter currency code.</FieldError>
+                ) : null}
               </Field>
 
               <Field>
@@ -223,6 +239,9 @@ export default function CatalogRecordDialog({
                   inputMode="decimal"
                   onChange={(event) => setForm((current) => ({ ...current, public_unit_price: event.target.value }))}
                 />
+                {form.public_unit_price.trim() && requiredDecimal(form.public_unit_price) == null ? (
+                  <FieldError>Enter a price of zero or greater.</FieldError>
+                ) : null}
               </Field>
 
               {isProduct ? (
@@ -252,6 +271,9 @@ export default function CatalogRecordDialog({
                       onChange={(event) => setForm((current) => ({ ...current, stock_quantity: event.target.value }))}
                       placeholder="Blank for untracked"
                     />
+                    {form.stock_quantity.trim() && optionalDecimal(form.stock_quantity) === null ? (
+                      <FieldError>Enter a quantity of zero or greater, or leave it blank.</FieldError>
+                    ) : null}
                   </Field>
                 </>
               ) : null}

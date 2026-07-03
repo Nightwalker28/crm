@@ -385,6 +385,78 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Contact creation now uses the shared server-backed `LinkedRecordPicker` for accounts instead of fetching and filtering the first 50 organizations in the modal. Quote creation keeps backend-aligned required validation at customer name, safely parses optional deal IDs so corrupted state cannot submit `NaN`, and shows relationship labels like "Linked via deal" or "Linked via contact" instead of raw contact/account ID placeholders when the search result only exposes linked IDs.
 - **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
 
+## FE-FORMS-TASK-DIALOG — Make task dialog state ownership explicit
+
+- **Completed:** 2026-07-03
+- **Source items:** TASK-23, TASK-24, TASK-26, TASK-27
+- **Files:** `frontend/components/tasks/TaskDialog.tsx`, `frontend/app/dashboard/tasks/page.tsx`
+- **Result:** Task dialog form state now resets from the open/task/update boundary directly, so the task page no longer needs a keyed remount to keep selected task data fresh. The dialog owns the post-delete close path after a successful delete, while the parent mutation only deletes and shows the toast. Completed timestamps now preserve an existing completion timestamp while a task remains completed and stamp a fresh value only when status transitions into completed.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-FORMS-SUPPORT-LINKS — Normalize support case linked-record state
+
+- **Completed:** 2026-07-03
+- **Source items:** SUP-24, SUP-27, SUP-28
+- **Files:** `frontend/components/support/CreateSupportCaseDialog.tsx`, support case detail query path
+- **Result:** Support case creation now stores quote, order, and assignee IDs as `number | null` like the other linked records, so submit payloads no longer rely on per-field string parsing. Parent linked-record edits intentionally clear narrower child selections and document that cascade behavior beside the picker group. Support comments were already covered by the React Query detail path from `FE-QUERY-SUPPORT`: adding a comment invalidates the active detail query while preserving the currently rendered case data, avoiding the old full-page reload behavior.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-FORMS-CATALOG-FINANCE-VALIDATION — Match form validation to backend contracts
+
+- **Completed:** 2026-07-03
+- **Source items:** CAT-09, CAT-10, CAT-11, CAT-17, CAT-18, CAT-19, FIN-43, FIN-44, FIN-46, FIN-48, FIN-49
+- **Files:** `frontend/components/catalog/CatalogRecordDialog.tsx`, `frontend/components/finance/insertionOrderDialog.tsx`
+- **Result:** Catalog create/edit now shares a single validation path for disabled state and submit, matching backend constraints for required name, 3-letter uppercase currency, non-negative public unit price, and blank-or-non-negative stock quantity. Insertion orders now validate required customer context, optional numeric totals, effective/due date order, and service start/end date order before submit, with inline field errors using the same helpers as the submit guard.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-FORMS-CATALOG-TABLE-ACTIONS — Finish catalog table rendering and delete confirmation
+
+- **Completed:** 2026-07-03
+- **Source items:** CAT-21, CAT-22, CAT-24
+- **Files:** `frontend/components/catalog/CatalogRecordDetailPage.tsx`, `frontend/components/catalog/CatalogRecordsTable.tsx`
+- **Result:** Catalog detail delete now uses the shared confirmation dialog instead of a browser confirm. Catalog tables now render configured catalog columns intentionally, including description, currency, stock quantity, created date, and updated date, so saved-view columns no longer fall into the generic empty fallback. Truncated catalog descriptions and media filenames expose their full value through native titles.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-FORMS-CONTRACT-CALENDAR-DIALOGS — Align dialog validation and reset ownership
+
+- **Completed:** 2026-07-03
+- **Source items:** CON-10, CON-15, CON-16, CAL-10, CAL-15
+- **Files:** `frontend/components/contracts/CreateContractDialog.tsx`, `frontend/components/contracts/ContractsTable.tsx`, `frontend/components/calendar/CalendarEventDialog.tsx`, `frontend/app/dashboard/calendar/page.tsx`
+- **Result:** Contract creation now validates the same parsed amount and optional linked IDs that submit sends, preventing invalid optional fields from becoming `NaN`; the contracts table fallback now renders only primitive values so unexpected configured fields cannot show `[object Object]`. Calendar event dialogs now reset from open/event/draft inputs directly instead of relying on a parent key remount, and they block end times that are not after start times with inline feedback matching the backend contract.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-FORMS-SALES-DISPLAY-POLICY — Normalize website labels and quote-number policy
+
+- **Completed:** 2026-07-03
+- **Source items:** SALES-28, SALES-DEEP-53
+- **Files:** `frontend/lib/urlDisplay.ts`, `frontend/components/organizations/organizationCard.tsx`, `frontend/components/organizations/OrganizationsTable.tsx`, `frontend/app/dashboard/sales/quotes/[quoteId]/page.tsx`
+- **Result:** Organization website display now uses a shared URL helper so `http://`, `https://`, and bare domains render consistently while outbound links get a usable protocol. Quote detail now treats quote number as the protected field that backend module-field config already enforces: it is always rendered and included in save payloads alongside the other required relationship/custom-field values.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-FORMS-SALES-ORG-DETAIL — Stabilize account detail refresh and assignment context
+
+- **Completed:** 2026-07-03
+- **Source items:** SALES-DEEP-52
+- **Files:** `frontend/app/dashboard/sales/organizations/[orgId]/page.tsx`
+- **Result:** Account detail now distinguishes initial loading from background refresh so save flows keep the current record visible while the summary query refreshes. Customer-group assignment rejects invalid or missing group values instead of silently converting them to no group. The page now surfaces the current owner and states that detail edits preserve account ownership, matching the current backend update contract where `assigned_to` is not accepted on organization detail updates.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-FORMS-CALENDAR-INVALIDATION — Normalize calendar invite refresh and participant labels
+
+- **Completed:** 2026-07-03
+- **Source items:** CAL-20, CAL-21, CAL-22
+- **Files:** `frontend/hooks/useCalendar.ts`, `frontend/components/calendar/CalendarParticipantPicker.tsx`
+- **Result:** Calendar invite responses now use the shared calendar invalidation path once instead of invalidating the event detail query separately after the broad calendar-event invalidation already covers it. Participant display construction is centralized and keeps selected user/team entries visible with stable fallback labels when the current option list does not include the selected ID.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-BROWSER-SALES — Stabilize sales WhatsApp browser flow and stage helper imports
+
+- **Completed:** 2026-07-03
+- **Source items:** SALES-27, SALES-31, SALES-DEEP-50, SALES-DEEP-58
+- **Files:** `frontend/app/dashboard/sales/contacts/[contactId]/page.tsx`, `frontend/components/opportunities/OpportunitiesTable.tsx`
+- **Result:** Contact WhatsApp templates now load through React Query with a stable key and `staleTime`, and the selected template is derived without an effect-driven state sync. WhatsApp launch opens a pending browser window synchronously from the click handler, then navigates it after the API returns so popup blockers are less likely to block the flow. Opportunity tables now import stage labels and styles from the domain stage helper instead of mixing the domain helper with the shared status-style module.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
 ---
 
 # Consolidated Task Backlog
@@ -426,21 +498,36 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 
 ## FE-FORMS — Align frontend validation and state with backend contracts
 
-- **Severity:** High/Medium
-- **Source items:** CON-10, CON-15, CON-16, CAL-10, CAL-15, CAL-20, CAL-21, CAL-22, CAL-X2, CAT-09, CAT-10, CAT-11, CAT-17, CAT-18, CAT-19, CAT-21, CAT-22, CAT-24, FIN-43, FIN-44, FIN-46, FIN-47, FIN-48, FIN-49, SALES-28, SALES-DEEP-52, SALES-DEEP-53, TASK-23, TASK-24, TASK-26, TASK-27, SUP-24, SUP-27, SUP-28
+- **Completed:** 2026-07-03
+- **Source items:** Completed across the FE-FORMS sections below.
 - **Files:** frontend contract/calendar/catalog/finance components and hooks
-- **Issue:** Forms/tables can show stale state, submit invalid IDs/dates/line values, render objects as `[object Object]`, mismatch disabled state with submit validation, hide truncation, use browser confirm, double-refresh, or keep stale search/display helpers. Sales/support forms also use fixed first-page pickers, can race stage/status changes, can swallow create errors, and can send stale linked IDs. Task dialog state currently depends on forced remount keys and delete/complete semantics need ownership clarity.
-- **Fix:** Reset dialog state on selected record changes. Safely parse IDs and dates once. Validate date order and numeric lines before submit. Render primitives only in default cells. Share validation helpers between disabled and submit paths. Show truncation/inline validation feedback. Use app confirm dialogs. Send minimal toggle payloads. Clear stale search state on unlink and centralize display-name helpers. Prefer searchable linked pickers, serialize stage/status updates, propagate modal mutation errors, track dirty linked fields, and document/normalize cascade clearing. Re-sync task dialog state explicitly on task/open changes, remove `updated_at` from dialog keys, define delete-close ownership, and document completion timestamp behavior.
-- **Acceptance:** Frontend cannot submit known-invalid values that backend rejects; dialogs show selected record data; table fallback rendering is intentional; destructive actions use app UI; sales/support linked pickers scale beyond fixed first-page data; saving a task does not remount the dialog unexpectedly.
+- **Result:** All consolidated FE-FORMS source items have been implemented, verified, or retired into completed FE-FORMS slices. The final pass closed the finance fallback-rendering duplication and confirmed the extra calendar marker was already covered by the calendar dialog, participant-label, and invalidation slices.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-FORMS-FINANCE-DUPLICATION — Deduplicate insertion-order list display helpers
+
+- **Completed:** 2026-07-03
+- **Source items:** FIN-47
+- **Files:** `frontend/components/finance/insertionOrderList.tsx`
+- **Result:** Insertion-order table rendering now shares local empty/date/text cell helpers across date, due-date, owner, and reference-style fallback cells, reducing repeated fallback formatting without changing table behavior.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
+
+## FE-FORMS-CALENDAR-X2 — Retire duplicate calendar readiness marker
+
+- **Completed:** 2026-07-03
+- **Source items:** CAL-X2
+- **Files:** `frontend/app/dashboard/calendar/page.tsx`, `frontend/components/calendar/CalendarEventDialog.tsx`, `frontend/components/calendar/CalendarParticipantPicker.tsx`, `frontend/hooks/useCalendar.ts`
+- **Result:** Final calendar audit found the extra marker covered by the earlier calendar slices: dialog state resets and date validation, stable participant display labels, and centralized calendar invite invalidation. No separate calendar code path remained.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
 
 ## FE-BROWSER — Guard browser-only APIs and accessibility edge cases
 
 - **Severity:** Medium
-- **Source items:** CAL-16, CP-17, DOC-22, PLAT-27, PLAT-28, PLAT-29, PLAT-30, PLAT-32, PLAT-33, PLAT-34, PLAT-35, PLAT-36, CAT-23, CAL-23, FIN-42, FIN-45, SALES-27, SALES-31, SALES-DEEP-50, SALES-DEEP-58, TASK-29, TASK-30, UM-31, UM-36, UM-37, UM-39
+- **Source items:** CAL-16, CP-17, DOC-22, PLAT-27, PLAT-28, PLAT-29, PLAT-30, PLAT-32, PLAT-33, PLAT-34, PLAT-35, PLAT-36, CAT-23, CAL-23, FIN-42, FIN-45, TASK-29, TASK-30, UM-31, UM-36, UM-37, UM-39
 - **Files:** frontend client/document/platform/catalog/calendar/finance components and hooks
-- **Issue:** Browser-only APIs can throw in SSR/private/unsupported contexts, shared filter fields are hardcoded, nested controls can lose keyboard behavior, SSE hooks may duplicate connections, some memoization/comment/test coverage is missing, and error fallbacks can be vague. Sales WhatsApp launch and stage helper imports also need browser-flow and metadata cleanup. User-management auth callback/setup/login flows need redirect, abort, and loading regression guards.
-- **Fix:** Guard `window`, `document`, `sessionStorage`, object URLs, and `startViewTransition`. Provide View Transitions type guards. Make shared filter fields module-owned. Preserve keyboard activation for nested controls. Share SSE connections per endpoint/session if duplicate connections are verified. Add comments/tests for double-download guards. Add reasonable `staleTime` or memoization only where useful. Use React Query for WhatsApp templates and open popups synchronously before async URL assignment. Canonicalize opportunity stage helper imports. Stabilize empty task assignee option arrays and move/memoize task table cell renderers only where it helps row memoization. Add redirect-once guard to auth callback, abortable setup-password policy loading, and MFA setup loading regression tests.
-- **Acceptance:** Unsupported browsers/SSR-like tests do not crash; shared UI is module-correct; nested controls remain keyboard-operable; realtime hooks avoid duplicate connections if verified; WhatsApp launch is not blocked by async popup behavior.
+- **Issue:** Browser-only APIs can throw in SSR/private/unsupported contexts, shared filter fields are hardcoded, nested controls can lose keyboard behavior, SSE hooks may duplicate connections, some memoization/comment/test coverage is missing, and error fallbacks can be vague. User-management auth callback/setup/login flows need redirect, abort, and loading regression guards.
+- **Fix:** Guard `window`, `document`, `sessionStorage`, object URLs, and `startViewTransition`. Provide View Transitions type guards. Make shared filter fields module-owned. Preserve keyboard activation for nested controls. Share SSE connections per endpoint/session if duplicate connections are verified. Add comments/tests for double-download guards. Add reasonable `staleTime` or memoization only where useful. Stabilize empty task assignee option arrays and move/memoize task table cell renderers only where it helps row memoization. Add redirect-once guard to auth callback, abortable setup-password policy loading, and MFA setup loading regression tests.
+- **Acceptance:** Unsupported browsers/SSR-like tests do not crash; shared UI is module-correct; nested controls remain keyboard-operable; realtime hooks avoid duplicate connections if verified.
 
 ## UM-FRONTEND — Stabilize user-management table, self state, and settings forms
 
@@ -481,7 +568,7 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 ## DUPLICATION — Remove low-risk duplication only where it improves clarity
 
 - **Severity:** Low/Medium
-- **Source items:** CON-17, CAT-12, CAT-20, CAT-22, DOC-16, FIN-06, FIN-24, FIN-35, FIN-47, SALES-DEEP-30
+- **Source items:** CON-17, CAT-12, CAT-20, CAT-22, DOC-16, FIN-06, FIN-24, FIN-35, SALES-DEEP-30
 - **Files:** affected module utilities, services, schemas, frontend helpers
 - **Issue:** Some list/search handlers, validators, slug/content-type/formatting/display helpers, query serializers, sales hook fetcher signatures, and related-record matching helpers are duplicated.
 - **Fix:** Extract shared helpers only when behavior is identical and the abstraction reduces complexity. Preserve endpoint response shapes. Standardize sales hook fetcher signatures and API-column filtering around shared utilities.

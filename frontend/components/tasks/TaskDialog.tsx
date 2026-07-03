@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import TaskAssigneePicker from "@/components/tasks/TaskAssigneePicker";
@@ -110,12 +110,22 @@ export default function TaskDialog({
   const { confirm } = useConfirm();
   const [form, setForm] = useState<FormState>(() => buildFormState(task));
   const [error, setError] = useState<string | null>(null);
+  const formResetKey = useMemo(
+    () => `${open ? "open" : "closed"}:${task?.id ?? "new"}:${task?.updated_at ?? ""}`,
+    [open, task?.id, task?.updated_at],
+  );
   const optionsQuery = useQuery({
     queryKey: ["task-assignment-options"],
     queryFn: fetchTaskAssignmentOptions,
     enabled: open,
     staleTime: 5 * 60_000,
   });
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setForm(buildFormState(open ? task : null));
+    setError(null);
+  }, [formResetKey, open, task]);
 
   const selectedAssigneeCount = form.assignees.length;
 
@@ -196,9 +206,13 @@ export default function TaskDialog({
                     setForm((current) => ({
                       ...current,
                       status: value as FormState["status"],
+                      // Preserve existing completion timestamps while a task remains completed;
+                      // stamp a fresh value only on the transition into completed.
                       completed_at:
                         value === "completed"
-                          ? current.completed_at ?? new Date().toISOString()
+                          ? current.status === "completed"
+                            ? current.completed_at ?? new Date().toISOString()
+                            : new Date().toISOString()
                           : null,
                     }))
                   }

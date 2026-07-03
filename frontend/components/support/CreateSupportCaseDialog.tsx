@@ -32,25 +32,42 @@ const CATEGORIES = [
   { value: "account", label: "Account" },
 ];
 
+type SupportCaseFormState = {
+  subject: string;
+  description: string;
+  category: string;
+  priority: string;
+  source: string;
+  contact_id: number | null;
+  organization_id: number | null;
+  opportunity_id: number | null;
+  quote_id: number | null;
+  order_id: number | null;
+  assigned_to_id: number | null;
+  sla_due_at: string;
+};
+
+const EMPTY_FORM: SupportCaseFormState = {
+  subject: "",
+  description: "",
+  category: "general",
+  priority: "medium",
+  source: "",
+  contact_id: null,
+  organization_id: null,
+  opportunity_id: null,
+  quote_id: null,
+  order_id: null,
+  assigned_to_id: null,
+  sla_due_at: "",
+};
+
 export default function CreateSupportCaseDialog() {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [form, setForm] = useState({
-    subject: "",
-    description: "",
-    category: "general",
-    priority: "medium",
-    source: "",
-    contact_id: null as number | null,
-    organization_id: null as number | null,
-    opportunity_id: null as number | null,
-    quote_id: "",
-    order_id: "",
-    assigned_to_id: "",
-    sla_due_at: "",
-  });
+  const [form, setForm] = useState<SupportCaseFormState>(EMPTY_FORM);
   const [contactDisplay, setContactDisplay] = useState("");
   const [organizationDisplay, setOrganizationDisplay] = useState("");
   const [opportunityDisplay, setOpportunityDisplay] = useState("");
@@ -59,7 +76,7 @@ export default function CreateSupportCaseDialog() {
   const [assigneeDisplay, setAssigneeDisplay] = useState("");
 
   function reset() {
-    setForm({ subject: "", description: "", category: "general", priority: "medium", source: "", contact_id: null, organization_id: null, opportunity_id: null, quote_id: "", order_id: "", assigned_to_id: "", sla_due_at: "" });
+    setForm(EMPTY_FORM);
     setContactDisplay("");
     setOrganizationDisplay("");
     setOpportunityDisplay("");
@@ -97,9 +114,9 @@ export default function CreateSupportCaseDialog() {
         contact_id: form.contact_id,
         organization_id: form.organization_id,
         opportunity_id: form.opportunity_id,
-        quote_id: form.quote_id ? Number(form.quote_id) : null,
-        order_id: form.order_id ? Number(form.order_id) : null,
-        assigned_to_id: form.assigned_to_id ? Number(form.assigned_to_id) : null,
+        quote_id: form.quote_id,
+        order_id: form.order_id,
+        assigned_to_id: form.assigned_to_id,
         sla_due_at: form.sla_due_at ? new Date(form.sla_due_at).toISOString() : null,
       };
       const res = await apiFetch("/support/cases", {
@@ -156,17 +173,18 @@ export default function CreateSupportCaseDialog() {
               <FieldLabel>Source</FieldLabel>
               <Input value={form.source} onChange={(event) => setForm((current) => ({ ...current, source: event.target.value }))} placeholder="email, portal, phone" />
             </Field>
+            {/* Parent link edits clear narrower child links so the submitted IDs cannot contradict the picker filters. */}
             <Field>
               <FieldLabel>Contact</FieldLabel>
-              <LinkedRecordPicker recordType="contact" valueId={form.contact_id} displayValue={contactDisplay} onDisplayValueChange={(value) => { setContactDisplay(value); setForm((current) => ({ ...current, contact_id: null, opportunity_id: null, quote_id: "", order_id: "" })); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); }} onSelect={(option) => selectLinked("contact", option)} onClear={() => { setForm((current) => ({ ...current, contact_id: null, opportunity_id: null, quote_id: "", order_id: "" })); setContactDisplay(""); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); }} placeholder="Search contacts" queryKeyPrefix="support-case-contact" filters={{ organizationId: form.organization_id }} />
+              <LinkedRecordPicker recordType="contact" valueId={form.contact_id} displayValue={contactDisplay} onDisplayValueChange={(value) => { setContactDisplay(value); setForm((current) => ({ ...current, contact_id: null, opportunity_id: null, quote_id: null, order_id: null })); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); }} onSelect={(option) => selectLinked("contact", option)} onClear={() => { setForm((current) => ({ ...current, contact_id: null, opportunity_id: null, quote_id: null, order_id: null })); setContactDisplay(""); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); }} placeholder="Search contacts" queryKeyPrefix="support-case-contact" filters={{ organizationId: form.organization_id }} />
             </Field>
             <Field>
               <FieldLabel>Account</FieldLabel>
-              <LinkedRecordPicker recordType="organization" valueId={form.organization_id} displayValue={organizationDisplay} onDisplayValueChange={(value) => { setOrganizationDisplay(value); setForm((current) => ({ ...current, organization_id: null, contact_id: null, opportunity_id: null, quote_id: "", order_id: "" })); setContactDisplay(""); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); }} onSelect={(option) => { setContactDisplay(""); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); setForm((current) => ({ ...current, contact_id: null, opportunity_id: null, quote_id: "", order_id: "" })); selectLinked("organization", option); }} onClear={() => { setForm((current) => ({ ...current, organization_id: null, contact_id: null, opportunity_id: null, quote_id: "", order_id: "" })); setOrganizationDisplay(""); setContactDisplay(""); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); }} placeholder="Search accounts" queryKeyPrefix="support-case-account" />
+              <LinkedRecordPicker recordType="organization" valueId={form.organization_id} displayValue={organizationDisplay} onDisplayValueChange={(value) => { setOrganizationDisplay(value); setForm((current) => ({ ...current, organization_id: null, contact_id: null, opportunity_id: null, quote_id: null, order_id: null })); setContactDisplay(""); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); }} onSelect={(option) => { setContactDisplay(""); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); setForm((current) => ({ ...current, contact_id: null, opportunity_id: null, quote_id: null, order_id: null })); selectLinked("organization", option); }} onClear={() => { setForm((current) => ({ ...current, organization_id: null, contact_id: null, opportunity_id: null, quote_id: null, order_id: null })); setOrganizationDisplay(""); setContactDisplay(""); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); }} placeholder="Search accounts" queryKeyPrefix="support-case-account" />
             </Field>
             <Field>
               <FieldLabel>Deal</FieldLabel>
-              <LinkedRecordPicker recordType="opportunity" valueId={form.opportunity_id} displayValue={opportunityDisplay} onDisplayValueChange={(value) => { setOpportunityDisplay(value); setForm((current) => ({ ...current, opportunity_id: null, quote_id: "", order_id: "" })); setQuoteDisplay(""); setOrderDisplay(""); }} onSelect={(option) => selectLinked("opportunity", option)} onClear={() => { setForm((current) => ({ ...current, opportunity_id: null, quote_id: "", order_id: "" })); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); }} placeholder="Search deals" queryKeyPrefix="support-case-deal" filters={{ contactId: form.contact_id, organizationId: form.organization_id }} />
+              <LinkedRecordPicker recordType="opportunity" valueId={form.opportunity_id} displayValue={opportunityDisplay} onDisplayValueChange={(value) => { setOpportunityDisplay(value); setForm((current) => ({ ...current, opportunity_id: null, quote_id: null, order_id: null })); setQuoteDisplay(""); setOrderDisplay(""); }} onSelect={(option) => selectLinked("opportunity", option)} onClear={() => { setForm((current) => ({ ...current, opportunity_id: null, quote_id: null, order_id: null })); setOpportunityDisplay(""); setQuoteDisplay(""); setOrderDisplay(""); }} placeholder="Search deals" queryKeyPrefix="support-case-deal" filters={{ contactId: form.contact_id, organizationId: form.organization_id }} />
             </Field>
             <Field>
               <FieldLabel>SLA Due</FieldLabel>
@@ -174,15 +192,15 @@ export default function CreateSupportCaseDialog() {
             </Field>
             <Field>
               <FieldLabel>Quote</FieldLabel>
-              <LinkedRecordPicker recordType="quote" valueId={form.quote_id ? Number(form.quote_id) : null} displayValue={quoteDisplay} onDisplayValueChange={(value) => { setQuoteDisplay(value); setForm((current) => ({ ...current, quote_id: "", order_id: "" })); setOrderDisplay(""); }} onSelect={(option) => { setQuoteDisplay(option.label); setForm((current) => ({ ...current, quote_id: String(option.id), order_id: "" })); setOrderDisplay(""); }} onClear={() => { setQuoteDisplay(""); setOrderDisplay(""); setForm((current) => ({ ...current, quote_id: "", order_id: "" })); }} placeholder="Search quotes" queryKeyPrefix="support-case-quote" filters={{ contactId: form.contact_id, organizationId: form.organization_id, opportunityId: form.opportunity_id }} />
+              <LinkedRecordPicker recordType="quote" valueId={form.quote_id} displayValue={quoteDisplay} onDisplayValueChange={(value) => { setQuoteDisplay(value); setForm((current) => ({ ...current, quote_id: null, order_id: null })); setOrderDisplay(""); }} onSelect={(option) => { setQuoteDisplay(option.label); setForm((current) => ({ ...current, quote_id: option.id, order_id: null })); setOrderDisplay(""); }} onClear={() => { setQuoteDisplay(""); setOrderDisplay(""); setForm((current) => ({ ...current, quote_id: null, order_id: null })); }} placeholder="Search quotes" queryKeyPrefix="support-case-quote" filters={{ contactId: form.contact_id, organizationId: form.organization_id, opportunityId: form.opportunity_id }} />
             </Field>
             <Field>
               <FieldLabel>Order</FieldLabel>
-              <LinkedRecordPicker recordType="order" valueId={form.order_id ? Number(form.order_id) : null} displayValue={orderDisplay} onDisplayValueChange={(value) => { setOrderDisplay(value); setForm((current) => ({ ...current, order_id: "" })); }} onSelect={(option) => { setOrderDisplay(option.label); setForm((current) => ({ ...current, order_id: String(option.id) })); }} onClear={() => { setOrderDisplay(""); setForm((current) => ({ ...current, order_id: "" })); }} placeholder="Search orders" queryKeyPrefix="support-case-order" filters={{ contactId: form.contact_id, organizationId: form.organization_id, opportunityId: form.opportunity_id, quoteId: form.quote_id ? Number(form.quote_id) : null }} />
+              <LinkedRecordPicker recordType="order" valueId={form.order_id} displayValue={orderDisplay} onDisplayValueChange={(value) => { setOrderDisplay(value); setForm((current) => ({ ...current, order_id: null })); }} onSelect={(option) => { setOrderDisplay(option.label); setForm((current) => ({ ...current, order_id: option.id })); }} onClear={() => { setOrderDisplay(""); setForm((current) => ({ ...current, order_id: null })); }} placeholder="Search orders" queryKeyPrefix="support-case-order" filters={{ contactId: form.contact_id, organizationId: form.organization_id, opportunityId: form.opportunity_id, quoteId: form.quote_id }} />
             </Field>
             <Field>
               <FieldLabel>Assignee</FieldLabel>
-              <LinkedRecordPicker recordType="user" valueId={form.assigned_to_id ? Number(form.assigned_to_id) : null} displayValue={assigneeDisplay} onDisplayValueChange={(value) => { setAssigneeDisplay(value); setForm((current) => ({ ...current, assigned_to_id: "" })); }} onSelect={(option) => { setAssigneeDisplay(option.label); setForm((current) => ({ ...current, assigned_to_id: String(option.id) })); }} onClear={() => { setAssigneeDisplay(""); setForm((current) => ({ ...current, assigned_to_id: "" })); }} placeholder="Search assignees" queryKeyPrefix="support-case-assignee" sourceModuleKey="support_cases" />
+              <LinkedRecordPicker recordType="user" valueId={form.assigned_to_id} displayValue={assigneeDisplay} onDisplayValueChange={(value) => { setAssigneeDisplay(value); setForm((current) => ({ ...current, assigned_to_id: null })); }} onSelect={(option) => { setAssigneeDisplay(option.label); setForm((current) => ({ ...current, assigned_to_id: option.id })); }} onClear={() => { setAssigneeDisplay(""); setForm((current) => ({ ...current, assigned_to_id: null })); }} placeholder="Search assignees" queryKeyPrefix="support-case-assignee" sourceModuleKey="support_cases" />
             </Field>
             <Field className="md:col-span-2">
               <FieldLabel>Description</FieldLabel>

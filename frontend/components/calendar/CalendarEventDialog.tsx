@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 import CalendarParticipantPicker from "@/components/calendar/CalendarParticipantPicker";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
@@ -13,7 +13,7 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import type {
@@ -51,6 +51,21 @@ function toIsoOrNull(value: string) {
   if (!value.trim()) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
+function calendarTimeRangeInvalid(form: CalendarEventPayload) {
+  const startAt = toIsoOrNull(toDatetimeLocalValue(form.start_at));
+  const endAt = toIsoOrNull(toDatetimeLocalValue(form.end_at));
+  return Boolean(startAt && endAt && new Date(endAt).getTime() <= new Date(startAt).getTime());
+}
+
+function validateCalendarEventForm(form: CalendarEventPayload) {
+  if (!form.title.trim()) return "Event title is required.";
+  const startAt = toIsoOrNull(toDatetimeLocalValue(form.start_at));
+  const endAt = toIsoOrNull(toDatetimeLocalValue(form.end_at));
+  if (!startAt || !endAt) return "Start and end time are required.";
+  if (calendarTimeRangeInvalid(form)) return "End time must be after the start time.";
+  return null;
 }
 
 function buildInitialState(event: CalendarEvent | null, draftStartAt: string, draftEndAt: string): CalendarEventPayload {
@@ -107,15 +122,28 @@ export default function CalendarEventDialog({
   const { confirm } = useConfirm();
   const [form, setForm] = useState<CalendarEventPayload>(() => buildInitialState(event, draftStartAt, draftEndAt));
   const [error, setError] = useState<string | null>(null);
+  const validationError = useMemo(() => validateCalendarEventForm(form), [form]);
+  const canSubmit = !validationError;
+
+  useEffect(() => {
+    if (open) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setForm(buildInitialState(event, draftStartAt, draftEndAt));
+      setError(null);
+    }
+  }, [open, event, draftStartAt, draftEndAt]);
 
   async function handleSubmit() {
     try {
       setError(null);
+      const nextValidationError = validateCalendarEventForm(form);
+      if (nextValidationError) {
+        setError(nextValidationError);
+        return;
+      }
       const startAt = toIsoOrNull(toDatetimeLocalValue(form.start_at));
       const endAt = toIsoOrNull(toDatetimeLocalValue(form.end_at));
-      if (!startAt || !endAt) {
-        throw new Error("Start and end time are required.");
-      }
+      if (!startAt || !endAt) return;
       await onSubmit({
         ...form,
         title: form.title.trim(),
@@ -212,6 +240,9 @@ export default function CalendarEventDialog({
                     }))
                   }
                 />
+                {calendarTimeRangeInvalid(form) ? (
+                  <FieldError>End time must be after the start time.</FieldError>
+                ) : null}
               </Field>
 
               <Field>
@@ -269,7 +300,7 @@ export default function CalendarEventDialog({
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleSubmit()} disabled={isSubmitting || isDeleting || !form.title.trim()}>
+            <Button type="button" onClick={() => void handleSubmit()} disabled={isSubmitting || isDeleting || !canSubmit}>
               {event ? "Save Event" : "Create Event"}
             </Button>
           </DialogFooter>

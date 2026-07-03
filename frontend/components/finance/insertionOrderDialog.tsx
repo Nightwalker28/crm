@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { RequiredMark } from "@/components/ui/RequiredMark";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -135,6 +135,43 @@ function toOptionalNumber(value: string): number | null | undefined {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function dateValue(value: string) {
+  if (!value) return null;
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed.getTime();
+}
+
+function amountError(value: string, label: string) {
+  if (!value.trim()) return null;
+  return toOptionalNumber(value) === null ? `${label} must be a valid number.` : null;
+}
+
+function isDateRangeInvalid(start: string, end: string) {
+  const startValue = dateValue(start);
+  const endValue = dateValue(end);
+  return startValue != null && endValue != null && startValue > endValue;
+}
+
+function validateInsertionOrderForm(form: FormState) {
+  if (!form.customer_name.trim()) return "Customer name is required.";
+  if (form.customer_contact_id == null && form.create_customer_if_missing && !form.customer_email.trim()) {
+    return "Customer email is required when creating a new contact.";
+  }
+  const invalidAmount =
+    amountError(form.subtotal_amount, "Subtotal") ??
+    amountError(form.tax_amount, "Tax") ??
+    amountError(form.total_amount, "Total");
+  if (invalidAmount) return invalidAmount;
+
+  if (isDateRangeInvalid(form.effective_date, form.due_date)) {
+    return "Due date must be on or after the effective date.";
+  }
+  if (isDateRangeInvalid(form.start_date, form.end_date)) {
+    return "End date must be on or after the start date.";
+  }
+  return null;
+}
+
 export default function InsertionOrderDialog({ open, order, isSubmitting = false, onClose, onSubmit }: Props) {
   const [form, setForm] = useState<FormState>(emptyForm);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
@@ -164,13 +201,8 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
   }, [open, order]);
 
   const isEditMode = Boolean(order);
-  const canSubmit = useMemo(() => {
-    if (!form.customer_name.trim()) return false;
-    if (form.customer_contact_id == null && form.create_customer_if_missing) {
-      return form.customer_email.trim().length > 0;
-    }
-    return true;
-  }, [form.create_customer_if_missing, form.customer_contact_id, form.customer_email, form.customer_name]);
+  const validationError = useMemo(() => validateInsertionOrderForm(form), [form]);
+  const canSubmit = !validationError;
   const customerOptions = customerQuery.data ?? [];
   const hasExactCustomerMatch = customerOptions.some(
     (option) => {
@@ -190,6 +222,11 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
   }
 
   async function handleSubmit() {
+    const nextValidationError = validateInsertionOrderForm(form);
+    if (nextValidationError) {
+      setError(nextValidationError);
+      return;
+    }
     try {
       setError(null);
       await onSubmit(pickEnabledModulePayload({
@@ -361,6 +398,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                       }
                       placeholder="customer@company.com"
                     />
+                    {!form.customer_email.trim() ? (
+                      <FieldError>Customer email is required for a new contact.</FieldError>
+                    ) : null}
                     <FieldDescription>
                       This is the minimum extra detail needed to create a new contact while saving the insertion order.
                     </FieldDescription>
@@ -461,6 +501,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   value={form.due_date}
                   onChange={(event) => setForm((current) => ({ ...current, due_date: event.target.value }))}
                 />
+                {isDateRangeInvalid(form.effective_date, form.due_date) ? (
+                  <FieldError>Due date must be on or after the effective date.</FieldError>
+                ) : null}
               </Field>
               ) : null}
 
@@ -483,6 +526,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   value={form.end_date}
                   onChange={(event) => setForm((current) => ({ ...current, end_date: event.target.value }))}
                 />
+                {isDateRangeInvalid(form.start_date, form.end_date) ? (
+                  <FieldError>End date must be on or after the start date.</FieldError>
+                ) : null}
               </Field>
               ) : null}
 
@@ -496,6 +542,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   onChange={(event) => setForm((current) => ({ ...current, subtotal_amount: event.target.value }))}
                   placeholder="0.00"
                 />
+                {amountError(form.subtotal_amount, "Subtotal") ? (
+                  <FieldError>{amountError(form.subtotal_amount, "Subtotal")}</FieldError>
+                ) : null}
               </Field>
               ) : null}
 
@@ -509,6 +558,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   onChange={(event) => setForm((current) => ({ ...current, tax_amount: event.target.value }))}
                   placeholder="0.00"
                 />
+                {amountError(form.tax_amount, "Tax") ? (
+                  <FieldError>{amountError(form.tax_amount, "Tax")}</FieldError>
+                ) : null}
               </Field>
               ) : null}
 
@@ -522,6 +574,9 @@ export default function InsertionOrderDialog({ open, order, isSubmitting = false
                   onChange={(event) => setForm((current) => ({ ...current, total_amount: event.target.value }))}
                   placeholder="0.00"
                 />
+                {amountError(form.total_amount, "Total") ? (
+                  <FieldError>{amountError(form.total_amount, "Total")}</FieldError>
+                ) : null}
                 <FieldDescription>Leave blank if the total is still being finalized.</FieldDescription>
               </Field>
               ) : null}

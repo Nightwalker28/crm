@@ -103,6 +103,30 @@ function getStringValue(order: InsertionOrder, column: keyof InsertionOrder) {
   return typeof value === "string" ? value : null;
 }
 
+function renderEmptyText(className = "text-neutral-600 text-sm") {
+  return <span className={className}>—</span>;
+}
+
+function renderDateCell(value: string | null | undefined, className = "text-sm text-neutral-400 tabular-nums") {
+  return (
+    <TableCell>
+      {value ? (
+        <span className={className}>{formatDateOnly(value)}</span>
+      ) : (
+        renderEmptyText("text-neutral-600")
+      )}
+    </TableCell>
+  );
+}
+
+function renderTextCell(value: string | null | undefined, className = "text-sm text-neutral-400") {
+  return (
+    <TableCell>
+      {value ? <span className={className}>{value}</span> : renderEmptyText("text-neutral-600")}
+    </TableCell>
+  );
+}
+
 export default function InsertionOrdersList({
   orders,
   isLoading,
@@ -212,50 +236,27 @@ export default function InsertionOrdersList({
       case "effective_date":
       case "start_date":
       case "end_date": {
-        const dateValue = getStringValue(order, column);
-        return (
-          <TableCell>
-            <span className="text-sm text-neutral-400 tabular-nums">
-              {dateValue ? formatDateOnly(dateValue) : <span className="text-neutral-600">—</span>}
-            </span>
-          </TableCell>
-        );
+        return renderDateCell(getStringValue(order, column));
       }
       case "due_date":
-        return (
-          <TableCell>
-            {order.due_date ? (
-              <span className={`text-sm font-medium tabular-nums ${
-                isDuePast(order.due_date) && order.status !== "completed" && order.status !== "cancelled"
-                  ? "text-red-400"
-                  : "text-neutral-300"
-              }`}>
-                {formatDateOnly(order.due_date)}
-              </span>
-            ) : (
-              <span className="text-neutral-600 text-sm">—</span>
-            )}
-          </TableCell>
+        return renderDateCell(
+          order.due_date,
+          `text-sm font-medium tabular-nums ${
+            isDuePast(order.due_date) && order.status !== "completed" && order.status !== "cancelled"
+              ? "text-red-400"
+              : "text-neutral-300"
+          }`,
         );
       case "external_reference":
       case "counterparty_reference": {
         const textValue = getStringValue(order, column);
-        return (
-          <TableCell>
-            <span className="text-sm text-neutral-400 font-mono tracking-tight truncate block max-w-[140px]">
-              {textValue || <span className="text-neutral-600">—</span>}
-            </span>
-          </TableCell>
+        return renderTextCell(
+          textValue,
+          "text-sm text-neutral-400 font-mono tracking-tight truncate block max-w-[140px]",
         );
       }
       case "user_name":
-        return (
-          <TableCell>
-            <span className="text-sm text-neutral-400">
-              {order.user_name || <span className="text-neutral-600">—</span>}
-            </span>
-          </TableCell>
-        );
+        return renderTextCell(order.user_name);
       case "updated_at": {
         const dateTimeValue = getStringValue(order, column);
         return (

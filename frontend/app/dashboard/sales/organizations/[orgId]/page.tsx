@@ -54,6 +54,7 @@ type OrganizationSummary = {
   organization: {
     org_id: number;
     org_name: string;
+    assigned_to?: number | null;
     primary_email?: string | null;
     secondary_email?: string | null;
     website?: string | null;
@@ -149,6 +150,8 @@ export default function OrganizationDetailPage() {
   });
   const summary = summaryQuery.data ?? null;
   const loadError = summaryQuery.error instanceof Error ? summaryQuery.error.message : null;
+  const isInitialLoading = summaryQuery.isLoading && !summary;
+  const isRefreshing = summaryQuery.isFetching && Boolean(summary);
 
   useEffect(() => {
     if (!summary) return;
@@ -191,7 +194,7 @@ export default function OrganizationDetailPage() {
       if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
-        summaryQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["sales-organization-summary", params.orgId] }),
       ]);
       toast.success("Organization updated.");
     } catch (saveError) {
@@ -205,9 +208,13 @@ export default function OrganizationDetailPage() {
     if (!summary) return;
     try {
       const parsedGroupId = value === "none" ? null : Number(value);
+      const groupExists = parsedGroupId === null || (customerGroupsQuery.data ?? []).some((group) => group.id === parsedGroupId);
+      if (parsedGroupId !== null && (!Number.isInteger(parsedGroupId) || parsedGroupId <= 0 || !groupExists)) {
+        throw new Error("Select a valid customer group.");
+      }
       await assignOrganizationGroup({
         organizationId: summary.organization.org_id,
-        customerGroupId: Number.isInteger(parsedGroupId) ? parsedGroupId : null,
+        customerGroupId: parsedGroupId,
       });
       await summaryQuery.refetch();
       toast.success("Customer group updated.");
@@ -233,7 +240,7 @@ export default function OrganizationDetailPage() {
               queryKeys={["sales-organizations"]}
             />
             <Button onClick={handleSave} disabled={saving || !form.org_name.trim()}>
-              {saving ? "Saving..." : "Save Account"}
+              {saving ? "Saving..." : isRefreshing ? "Refreshing..." : "Save Account"}
             </Button>
           </>
         )}
@@ -241,9 +248,9 @@ export default function OrganizationDetailPage() {
 
       {error || loadError ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error || loadError}</div> : null}
 
-      {summaryQuery.isLoading || !summary ? (
+      {isInitialLoading ? (
         <Card className="px-5 py-5 text-sm text-neutral-500">Loading organization…</Card>
-      ) : (
+      ) : summary ? (
         <>
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <Card className="px-5 py-5">
@@ -381,6 +388,15 @@ export default function OrganizationDetailPage() {
                   </div>
                 </div>
                 <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+                  <div className="text-xs uppercase tracking-wide text-neutral-500">Owner</div>
+                  <div className="mt-2 text-sm text-neutral-200">
+                    {summary.organization.assigned_to ? `User #${summary.organization.assigned_to}` : "Unassigned"}
+                  </div>
+                  <div className="mt-2 text-xs text-neutral-500">
+                    Account ownership is assigned through create/import flows. Detail edits preserve the current owner.
+                  </div>
+                </div>
+                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
                   <div className="text-xs uppercase tracking-wide text-neutral-500">Customer Group</div>
                   <div className="mt-2">
                     <Select
@@ -459,7 +475,7 @@ export default function OrganizationDetailPage() {
             taskSourceLabel={summary.organization.org_name}
           />
         </>
-      )}
+      ) : null}
     </div>
   );
 }

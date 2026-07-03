@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Organization } from "@/hooks/sales/useOrganizations";
 import { Building2, Globe, Mail, Phone } from "lucide-react";
+import { formatWebsiteDisplay, normalizeWebsiteHref } from "@/lib/urlDisplay";
 
 export default function OrganizationCard({
   org,
@@ -49,12 +50,12 @@ export default function OrganizationCard({
           <div className="flex items-center gap-2">
             <Globe className="w-4 h-4 text-zinc-400" />
             <a
-              href={org.website}
+              href={normalizeWebsiteHref(org.website)}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-400 hover:underline"
             >
-              {org.website.replace("https://", "")}
+              {formatWebsiteDisplay(org.website)}
             </a>
           </div>
         )}

@@ -23,6 +23,7 @@ import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { Organization } from "@/hooks/sales/useOrganizations";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
+import { formatWebsiteDisplay, normalizeWebsiteHref } from "@/lib/urlDisplay";
 
 type SortState = { column: string; direction: "asc" | "desc" } | null;
 
@@ -139,12 +140,12 @@ export default function OrganizationsTable({
           <TableCell>
             {org.website ? (
               <a
-                href={org.website}
+                href={normalizeWebsiteHref(org.website)}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-sky-400 hover:text-sky-300 transition-colors truncate block max-w-[200px]"
               >
-                {org.website.replace(/^https?:\/\//, "")}
+                {formatWebsiteDisplay(org.website)}
               </a>
             ) : (
               <span className="text-neutral-600 text-sm">—</span>

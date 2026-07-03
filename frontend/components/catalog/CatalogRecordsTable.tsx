@@ -146,12 +146,26 @@ export default function CatalogRecordsTable({
             <span className="font-mono text-xs text-neutral-400">{record.slug || "-"}</span>
           </TableCell>
         );
+      case "description":
+        return (
+          <TableCell>
+            <span className="block max-w-[360px] truncate text-sm text-neutral-400" title={record.description ?? undefined}>
+              {record.description || "-"}
+            </span>
+          </TableCell>
+        );
       case "public_unit_price":
         return (
           <TableCell>
             <span className="text-sm font-semibold tabular-nums text-emerald-300">
               {formatAmount(record.public_unit_price, record.currency)}
             </span>
+          </TableCell>
+        );
+      case "currency":
+        return (
+          <TableCell>
+            <span className="font-mono text-xs text-neutral-400">{record.currency || "-"}</span>
           </TableCell>
         );
       case "stock_status":
@@ -166,6 +180,14 @@ export default function CatalogRecordsTable({
                 {record.stock_quantity == null ? "Quantity untracked" : `${record.stock_quantity} units`}
               </span>
             </div>
+          </TableCell>
+        ) : null;
+      case "stock_quantity":
+        return isProduct ? (
+          <TableCell>
+            <span className="text-sm tabular-nums text-neutral-300">
+              {record.stock_quantity == null ? "Untracked" : record.stock_quantity}
+            </span>
           </TableCell>
         ) : null;
       case "is_active":
@@ -220,6 +242,14 @@ export default function CatalogRecordsTable({
           <TableCell>
             <span className="text-sm tabular-nums text-neutral-500">
               {record.updated_at ? formatDateTime(record.updated_at, { hour: "numeric", minute: "2-digit" }) : "-"}
+            </span>
+          </TableCell>
+        );
+      case "created_at":
+        return (
+          <TableCell>
+            <span className="text-sm tabular-nums text-neutral-500">
+              {record.created_at ? formatDateTime(record.created_at, { hour: "numeric", minute: "2-digit" }) : "-"}
             </span>
           </TableCell>
         );
