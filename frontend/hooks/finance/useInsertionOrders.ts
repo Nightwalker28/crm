@@ -70,6 +70,7 @@ type InsertionOrdersResponse = {
 };
 
 const DEFAULT_ERROR = "Something went wrong while loading insertion orders";
+const INSERTION_ORDER_LIST_STALE_TIME_MS = 30_000;
 
 function toApiErrorMessage(body: unknown, fallback: string) {
   if (body && typeof body === "object") {
@@ -110,7 +111,7 @@ async function fetchInsertionOrders(
   const res = await apiFetch(`/finance/insertion-orders?${params.toString()}`);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error(toApiErrorMessage(body, `Failed with ${res.status}`));
+    throw new Error(toApiErrorMessage(body, `Failed to load insertion orders (${res.status})`));
   }
   return res.json();
 }
@@ -124,7 +125,7 @@ async function createInsertionOrder(payload: InsertionOrderPayload): Promise<Ins
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error(toApiErrorMessage(body, `Failed with ${res.status}`));
+    throw new Error(toApiErrorMessage(body, `Failed to create insertion order (${res.status})`));
   }
 
   return res.json();
@@ -139,7 +140,7 @@ export async function updateInsertionOrder(id: number, payload: InsertionOrderPa
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error(toApiErrorMessage(body, `Failed with ${res.status}`));
+    throw new Error(toApiErrorMessage(body, `Failed to update insertion order (${res.status})`));
   }
 
   return res.json();
@@ -149,7 +150,7 @@ async function fetchInsertionOrder(id: number | string): Promise<InsertionOrder>
   const res = await apiFetch(`/finance/insertion-orders/${id}`);
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error(toApiErrorMessage(body, `Failed with ${res.status}`));
+    throw new Error(toApiErrorMessage(body, `Failed to load insertion order (${res.status})`));
   }
   return res.json();
 }
@@ -161,7 +162,7 @@ async function deleteInsertionOrder(id: number): Promise<void> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => null);
-    throw new Error(toApiErrorMessage(body, `Failed with ${res.status}`));
+    throw new Error(toApiErrorMessage(body, `Failed to delete insertion order (${res.status})`));
   }
 }
 
@@ -188,6 +189,7 @@ export function useInsertionOrders(
     initialPage: 1,
     initialPageSize: 10,
     refetchOnWindowFocus: false,
+    staleTime: INSERTION_ORDER_LIST_STALE_TIME_MS,
     errorMessage: getErrorMessage,
   });
 

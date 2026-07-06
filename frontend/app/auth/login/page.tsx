@@ -170,6 +170,11 @@ export default function LoginPage() {
       setMfaRecoveryCodes([]);
       setLoginStep("mfa_setup");
     } catch (setupError) {
+      setLoginStep("login");
+      setMfaSecret("");
+      setMfaOtpAuthUri("");
+      setMfaCode("");
+      setMfaRecoveryCodes([]);
       setError(getErrorMessage(setupError, "Failed to start MFA setup"));
     } finally {
       setMfaLoading(false);

@@ -64,7 +64,7 @@ export default function UserFilters({ value, options, isLoading = false, onChang
       value.selectedRoles.length > 0 ||
       value.selectedStatuses.length > 0
     );
-  }, [value]);
+  }, [value.search, value.selectedRoles, value.selectedStatuses, value.selectedTeams]);
 
   const activeCount = 
     value.selectedTeams.length + 

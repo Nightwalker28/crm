@@ -113,6 +113,7 @@ export default function UserManagementPage() {
     deleteTenantDomain,
   } = useUserManagement();
   const [ssoDraft, setSsoDraft] = useState<SsoDraft>(emptySsoDraft);
+  const [isSsoDraftDirty, setIsSsoDraftDirty] = useState(false);
   const isSsoDraftDirtyRef = useRef(false);
   const [domainDraft, setDomainDraft] = useState("");
   const {
@@ -155,7 +156,15 @@ export default function UserManagementPage() {
 
   const updateSsoDraftField = <Key extends keyof SsoDraft>(field: Key, value: SsoDraft[Key]) => {
     isSsoDraftDirtyRef.current = true;
+    setIsSsoDraftDirty(true);
     setSsoDraft((current) => ({ ...current, [field]: value }));
+  };
+
+  const resetSsoDraft = () => {
+    if (!ssoSettings) return;
+    isSsoDraftDirtyRef.current = false;
+    setIsSsoDraftDirty(false);
+    setSsoDraft(draftFromSsoSettings(ssoSettings));
   };
 
   const saveSsoSettings = async () => {
@@ -176,6 +185,7 @@ export default function UserManagementPage() {
       last_name_claim: ssoDraft.last_name_claim || null,
     });
     isSsoDraftDirtyRef.current = false;
+    setIsSsoDraftDirty(false);
     setSsoDraft((current) => ({ ...current, client_secret: "" }));
   };
 
@@ -417,6 +427,9 @@ export default function UserManagementPage() {
               Auto-provision users
             </label>
             <div className="flex flex-col gap-2 sm:flex-row">
+              <Button type="button" variant="ghost" onClick={resetSsoDraft} disabled={!isSsoDraftDirty || isSsoSettingsLoading || isSsoSettingsSaving || isSsoSettingsTesting}>
+                Discard Changes
+              </Button>
               <Button type="button" variant="secondary" onClick={() => void testSsoSettings()} disabled={isSsoSettingsLoading || isSsoSettingsSaving || isSsoSettingsTesting}>
                 {isSsoSettingsTesting ? "Testing..." : "Test Connection"}
               </Button>

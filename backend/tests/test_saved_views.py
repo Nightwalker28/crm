@@ -113,6 +113,15 @@ class SavedViewConfigTests(unittest.TestCase):
                 {"filters": {"all_conditions": [{"field": "status", "operator": "is", "value": nested}]}},
             )
 
+    def test_normalize_saved_view_config_rejects_oversized_serialized_json(self):
+        oversized_columns = [
+            f"column_{index:03d}_{'x' * 900}"
+            for index in range(profile.SAVED_VIEW_MAX_COLUMNS)
+        ]
+
+        with self.assertRaisesRegex(ValueError, "config is too large"):
+            profile._normalize_saved_view_config("tasks", {"visible_columns": oversized_columns})
+
     def test_normalize_saved_view_config_rejects_unbounded_conditions(self):
         conditions = [
             {"field": "status", "operator": "is", "value": f"open-{index}"}

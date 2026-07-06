@@ -52,6 +52,7 @@ type CatalogRecordsResponse = {
 };
 
 const DEFAULT_ERROR = "Something went wrong while loading catalog records";
+const CATALOG_LIST_STALE_TIME_MS = 30_000;
 
 function toApiErrorMessage(body: unknown, fallback: string) {
   if (body && typeof body === "object") {
@@ -72,6 +73,10 @@ function getErrorMessage(error: unknown) {
 
 function pathFor(kind: CatalogKind, suffix = "") {
   return `/catalog/${kind}${suffix}`;
+}
+
+function catalogLabel(kind: CatalogKind) {
+  return kind === "products" ? "products" : "services";
 }
 
 async function parseJsonResponse<T>(res: Response, fallback: string): Promise<T> {
@@ -105,12 +110,12 @@ async function fetchCatalogRecords(
   }
 
   const res = await apiFetch(`${pathFor(kind)}?${params.toString()}`);
-  return parseJsonResponse<CatalogRecordsResponse>(res, `Failed with ${res.status}`);
+  return parseJsonResponse<CatalogRecordsResponse>(res, `Failed to load catalog ${catalogLabel(kind)} (${res.status})`);
 }
 
 async function fetchCatalogRecord(kind: CatalogKind, id: number): Promise<CatalogRecord> {
   const res = await apiFetch(pathFor(kind, `/${id}`));
-  return parseJsonResponse<CatalogRecord>(res, `Failed with ${res.status}`);
+  return parseJsonResponse<CatalogRecord>(res, `Failed to load catalog ${catalogLabel(kind)} (${res.status})`);
 }
 
 async function createCatalogRecord(kind: CatalogKind, payload: CatalogRecordPayload): Promise<CatalogRecord> {
@@ -119,7 +124,7 @@ async function createCatalogRecord(kind: CatalogKind, payload: CatalogRecordPayl
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return parseJsonResponse<CatalogRecord>(res, `Failed with ${res.status}`);
+  return parseJsonResponse<CatalogRecord>(res, `Failed to create catalog ${kind === "products" ? "product" : "service"} (${res.status})`);
 }
 
 async function updateCatalogRecord(kind: CatalogKind, id: number, payload: CatalogRecordPayload): Promise<CatalogRecord> {
@@ -128,7 +133,7 @@ async function updateCatalogRecord(kind: CatalogKind, id: number, payload: Catal
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return parseJsonResponse<CatalogRecord>(res, `Failed with ${res.status}`);
+  return parseJsonResponse<CatalogRecord>(res, `Failed to update catalog ${kind === "products" ? "product" : "service"} (${res.status})`);
 }
 
 async function uploadCatalogRecordMedia(kind: CatalogKind, id: number, file: File): Promise<CatalogRecord> {
@@ -139,14 +144,14 @@ async function uploadCatalogRecordMedia(kind: CatalogKind, id: number, file: Fil
     method: "PUT",
     body: form,
   });
-  return parseJsonResponse<CatalogRecord>(res, `Failed with ${res.status}`);
+  return parseJsonResponse<CatalogRecord>(res, `Failed to upload catalog media (${res.status})`);
 }
 
 async function deleteCatalogRecord(kind: CatalogKind, id: number): Promise<CatalogRecord> {
   const res = await apiFetch(pathFor(kind, `/${id}`), {
     method: "DELETE",
   });
-  return parseJsonResponse<CatalogRecord>(res, `Failed with ${res.status}`);
+  return parseJsonResponse<CatalogRecord>(res, `Failed to delete catalog ${kind === "products" ? "product" : "service"} (${res.status})`);
 }
 
 export function useCatalogRecords(
@@ -168,6 +173,7 @@ export function useCatalogRecords(
     initialPage,
     initialPageSize,
     refetchOnWindowFocus: false,
+    staleTime: CATALOG_LIST_STALE_TIME_MS,
     errorMessage: getErrorMessage,
   });
 

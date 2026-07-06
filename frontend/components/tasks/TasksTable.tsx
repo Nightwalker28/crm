@@ -55,6 +55,108 @@ function nextSort(current: TaskSortState, column: string): TaskSortState {
     : { key: column, direction: "asc" };
 }
 
+function renderCell(task: Task, column: string) {
+  switch (column) {
+    case "title":
+      return (
+        <TableCell>
+          <div className="min-w-0">
+            <div className="truncate text-sm font-semibold text-neutral-100">{task.title}</div>
+            <div className="mt-1 line-clamp-2 text-xs leading-5 text-neutral-500">
+              {task.description || "No additional task notes yet."}
+            </div>
+          </div>
+        </TableCell>
+      );
+    case "priority": {
+      const pill = getTaskPriorityStyle(task.priority);
+      return (
+        <TableCell>
+          <Pill bg={pill.bg} text={pill.text} border={pill.border} className="w-20">
+            {pill.label}
+          </Pill>
+        </TableCell>
+      );
+    }
+    case "status": {
+      const pill = getTaskStatusStyle(task.status);
+      return (
+        <TableCell>
+          <Pill bg={pill.bg} text={pill.text} border={pill.border} className="w-28">
+            {pill.label}
+          </Pill>
+        </TableCell>
+      );
+    }
+    case "assigned_by_name":
+      return (
+        <TableCell>
+          <span className="text-sm text-neutral-300">
+            {task.assigned_by_name || <span className="text-neutral-600">Unassigned</span>}
+          </span>
+        </TableCell>
+      );
+    case "assigned_at":
+      return (
+        <TableCell>
+          <span className="text-sm text-neutral-400">
+            {task.assigned_at ? formatDateTime(task.assigned_at) : <span className="text-neutral-600">—</span>}
+          </span>
+        </TableCell>
+      );
+    case "due_at":
+      return (
+        <TableCell>
+          <span className="text-sm text-neutral-300">
+            {task.due_at ? formatDateTime(task.due_at) : <span className="text-neutral-600">No due date</span>}
+          </span>
+        </TableCell>
+      );
+    case "start_at":
+      return (
+        <TableCell>
+          <span className="text-sm text-neutral-400">
+            {task.start_at ? formatDateTime(task.start_at) : <span className="text-neutral-600">—</span>}
+          </span>
+        </TableCell>
+      );
+    case "assignees":
+      return (
+        <TableCell>
+          {task.assignees.length ? (
+            <div className="flex flex-wrap gap-1.5">
+              {task.assignees.slice(0, 3).map((assignee) => (
+                <span
+                  key={assignee.assignee_key}
+                  className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-300"
+                >
+                  {assignee.label}
+                </span>
+              ))}
+              {task.assignees.length > 3 ? (
+                <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-500">
+                  +{task.assignees.length - 3}
+                </span>
+              ) : null}
+            </div>
+          ) : (
+            <span className="text-neutral-600">Unassigned</span>
+          )}
+        </TableCell>
+      );
+    case "updated_at":
+      return (
+        <TableCell>
+          <span className="text-sm text-neutral-500">
+            {task.updated_at ? formatDateTime(task.updated_at) : <span className="text-neutral-600">—</span>}
+          </span>
+        </TableCell>
+      );
+    default:
+      return <TableCell><span className="text-neutral-600">—</span></TableCell>;
+  }
+}
+
 export default function TasksTable({
   tasks,
   isLoading,
@@ -65,108 +167,6 @@ export default function TasksTable({
   onSortChange,
 }: Props) {
   const columnCount = visibleColumns.length;
-
-  function renderCell(task: Task, column: string) {
-    switch (column) {
-      case "title":
-        return (
-          <TableCell>
-            <div className="min-w-0">
-              <div className="truncate text-sm font-semibold text-neutral-100">{task.title}</div>
-              <div className="mt-1 line-clamp-2 text-xs leading-5 text-neutral-500">
-                {task.description || "No additional task notes yet."}
-              </div>
-            </div>
-          </TableCell>
-        );
-      case "priority": {
-        const pill = getTaskPriorityStyle(task.priority);
-        return (
-          <TableCell>
-            <Pill bg={pill.bg} text={pill.text} border={pill.border} className="w-20">
-              {pill.label}
-            </Pill>
-          </TableCell>
-        );
-      }
-      case "status": {
-        const pill = getTaskStatusStyle(task.status);
-        return (
-          <TableCell>
-            <Pill bg={pill.bg} text={pill.text} border={pill.border} className="w-28">
-              {pill.label}
-            </Pill>
-          </TableCell>
-        );
-      }
-      case "assigned_by_name":
-        return (
-          <TableCell>
-            <span className="text-sm text-neutral-300">
-              {task.assigned_by_name || <span className="text-neutral-600">Unassigned</span>}
-            </span>
-          </TableCell>
-        );
-      case "assigned_at":
-        return (
-          <TableCell>
-            <span className="text-sm text-neutral-400">
-              {task.assigned_at ? formatDateTime(task.assigned_at) : <span className="text-neutral-600">—</span>}
-            </span>
-          </TableCell>
-        );
-      case "due_at":
-        return (
-          <TableCell>
-            <span className="text-sm text-neutral-300">
-              {task.due_at ? formatDateTime(task.due_at) : <span className="text-neutral-600">No due date</span>}
-            </span>
-          </TableCell>
-        );
-      case "start_at":
-        return (
-          <TableCell>
-            <span className="text-sm text-neutral-400">
-              {task.start_at ? formatDateTime(task.start_at) : <span className="text-neutral-600">—</span>}
-            </span>
-          </TableCell>
-        );
-      case "assignees":
-        return (
-          <TableCell>
-            {task.assignees.length ? (
-              <div className="flex flex-wrap gap-1.5">
-                {task.assignees.slice(0, 3).map((assignee) => (
-                  <span
-                    key={assignee.assignee_key}
-                    className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-300"
-                  >
-                    {assignee.label}
-                  </span>
-                ))}
-                {task.assignees.length > 3 ? (
-                  <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-500">
-                    +{task.assignees.length - 3}
-                  </span>
-                ) : null}
-              </div>
-            ) : (
-              <span className="text-neutral-600">Unassigned</span>
-            )}
-          </TableCell>
-        );
-      case "updated_at":
-        return (
-          <TableCell>
-            <span className="text-sm text-neutral-500">
-              {task.updated_at ? formatDateTime(task.updated_at) : <span className="text-neutral-600">—</span>}
-            </span>
-          </TableCell>
-        );
-      default:
-        return <TableCell><span className="text-neutral-600">—</span></TableCell>;
-    }
-  }
 
   return (
     <ModuleTableShell isRefreshing={isRefreshing}>

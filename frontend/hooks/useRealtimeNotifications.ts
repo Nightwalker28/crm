@@ -3,39 +3,25 @@
 import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { apiUrl } from "@/lib/runtime-config";
-
-type RealtimeStatus = "idle" | "connected" | "reconnecting" | "unsupported";
+import { realtimeInitialStatus, subscribeRealtimeStream } from "@/lib/realtime";
 
 export function useRealtimeNotifications(enabled = true) {
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState<RealtimeStatus>(() => (
-    typeof window !== "undefined" && !("EventSource" in window) ? "unsupported" : "idle"
-  ));
+  const [status, setStatus] = useState(realtimeInitialStatus);
 
   useEffect(() => {
-    if (!enabled || typeof window === "undefined") {
-      return;
-    }
-    if (!("EventSource" in window)) {
+    if (!enabled) {
       return;
     }
 
-    const source = new EventSource(apiUrl("/platform/realtime/stream"), { withCredentials: true });
     const refreshNotifications = () => {
       void queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
     };
 
-    source.addEventListener("open", () => setStatus("connected"));
-    source.addEventListener("error", () => setStatus("reconnecting"));
-    source.addEventListener("notification.created", refreshNotifications);
-    source.addEventListener("notification.updated", refreshNotifications);
-
-    return () => {
-      source.removeEventListener("notification.created", refreshNotifications);
-      source.removeEventListener("notification.updated", refreshNotifications);
-      source.close();
-    };
+    return subscribeRealtimeStream({
+      "notification.created": refreshNotifications,
+      "notification.updated": refreshNotifications,
+    }, setStatus);
   }, [enabled, queryClient]);
 
   return { status };

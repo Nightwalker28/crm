@@ -21,6 +21,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   fetchTaskAssignmentOptions,
   type Task,
+  type TaskAssignmentTeamOption,
+  type TaskAssignmentUserOption,
   type TaskPayload,
 } from "@/hooks/useTasks";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -55,6 +57,8 @@ const emptyForm: FormState = {
   completed_at: null,
   assignees: [],
 };
+const EMPTY_USERS: TaskAssignmentUserOption[] = [];
+const EMPTY_TEAMS: TaskAssignmentTeamOption[] = [];
 
 function buildFormState(task: Task | null): FormState {
   if (!task) {
@@ -295,8 +299,8 @@ export default function TaskDialog({
               ) : (
                 <div className="mt-4 space-y-3">
                   <TaskAssigneePicker
-                    users={optionsQuery.data?.users ?? []}
-                    teams={optionsQuery.data?.teams ?? []}
+                    users={optionsQuery.data?.users ?? EMPTY_USERS}
+                    teams={optionsQuery.data?.teams ?? EMPTY_TEAMS}
                     value={form.assignees}
                     onChange={(assignees) => setForm((current) => ({ ...current, assignees }))}
                     disabled={isSubmitting || isDeleting}

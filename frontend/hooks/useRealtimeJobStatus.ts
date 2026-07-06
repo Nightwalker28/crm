@@ -4,9 +4,7 @@ import { useEffect, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { DataTransferJobResponse } from "@/hooks/useJobPoller";
-import { apiUrl } from "@/lib/runtime-config";
-
-type RealtimeStatus = "idle" | "connected" | "reconnecting" | "unsupported";
+import { realtimeInitialStatus, subscribeRealtimeStream } from "@/lib/realtime";
 
 export function useRealtimeJobStatus<TSummary>(
   jobId: number | null,
@@ -14,19 +12,13 @@ export function useRealtimeJobStatus<TSummary>(
   enabled = true,
 ) {
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState<RealtimeStatus>(() => (
-    typeof window !== "undefined" && !("EventSource" in window) ? "unsupported" : "idle"
-  ));
+  const [status, setStatus] = useState(realtimeInitialStatus);
 
   useEffect(() => {
-    if (!enabled || !jobId || typeof window === "undefined") {
-      return;
-    }
-    if (!("EventSource" in window)) {
+    if (!enabled || !jobId) {
       return;
     }
 
-    const source = new EventSource(apiUrl("/platform/realtime/stream"), { withCredentials: true });
     const handleJobUpdate = (event: MessageEvent) => {
       let payload: DataTransferJobResponse<TSummary>;
       try {
@@ -39,14 +31,9 @@ export function useRealtimeJobStatus<TSummary>(
       void queryClient.invalidateQueries({ queryKey: ["data-transfer-jobs"] });
     };
 
-    source.addEventListener("open", () => setStatus("connected"));
-    source.addEventListener("error", () => setStatus("reconnecting"));
-    source.addEventListener("job.updated", handleJobUpdate as EventListener);
-
-    return () => {
-      source.removeEventListener("job.updated", handleJobUpdate as EventListener);
-      source.close();
-    };
+    return subscribeRealtimeStream({
+      "job.updated": handleJobUpdate as EventListener,
+    }, setStatus);
   }, [enabled, jobId, onUpdate, queryClient]);
 
   return { status };

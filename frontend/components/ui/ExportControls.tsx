@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/importExportUtils";
 import { useJobPoller } from "@/hooks/useJobPoller";
 import { apiFetch } from "@/lib/api";
+import { downloadBlob } from "@/lib/browser";
 
 type Props = {
   exportEndpoint: string;
@@ -77,18 +78,14 @@ export function ExportControls({
     }
     const blob = await res.blob();
     const filename = getFilenameFromDisposition(res.headers.get("Content-Disposition"), "export.csv");
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    downloadBlob(blob, filename);
   }
 
   useEffect(() => {
     if (!exportJobId || exportJob.status !== "completed") return;
     if (downloadedExportJobRef.current === exportJobId) return;
 
+    // Polling can re-render the completed job state more than once; keep the browser download one-shot per job.
     downloadedExportJobRef.current = exportJobId;
     void downloadExportJobResult(exportJobId).catch((error) => {
       toast.error(error instanceof Error ? error.message : "Failed to download export.");

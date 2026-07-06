@@ -1,5 +1,6 @@
 "use client";
 
+import type { KeyboardEvent } from "react";
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -83,6 +84,10 @@ function connectionStatusTone(connection: CalendarConnectionSummary) {
     return "border-amber-800/70 bg-amber-950/20 text-amber-200";
   }
   return "border-red-800/70 bg-red-950/20 text-red-200";
+}
+
+function isActivationKey(event: KeyboardEvent) {
+  return event.key === "Enter" || event.key === " ";
 }
 
 function syncJobLabel(job: CalendarSyncJob) {
@@ -301,13 +306,23 @@ export default function CalendarPage() {
                 const dayEvents = eventsByDay.get(dayKey(day)) ?? [];
                 const isCurrentMonth = day.getMonth() === month.getMonth();
                 const isSelected = sameDay(day, selectedDay);
+                const dayLabel = formatDateOnly(dayKey(day));
                 return (
-                  <button
+                  <div
                     key={day.toISOString()}
-                    type="button"
+                    role="button"
+                    tabIndex={0}
+                    aria-pressed={isSelected}
+                    aria-label={`Select ${dayLabel}`}
                     onClick={() => setSelectedDay(day)}
+                    onKeyDown={(keyEvent) => {
+                      if (isActivationKey(keyEvent)) {
+                        keyEvent.preventDefault();
+                        setSelectedDay(day);
+                      }
+                    }}
                     className={
-                      "min-h-[132px] border-b border-r border-neutral-800 px-3 py-3 text-left align-top transition-colors " +
+                      "min-h-[132px] cursor-pointer border-b border-r border-neutral-800 px-3 py-3 text-left align-top transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white/20 " +
                       (isSelected ? "bg-white/[0.04]" : "hover:bg-white/[0.02]")
                     }
                   >
@@ -315,33 +330,40 @@ export default function CalendarPage() {
                       <span className={"text-sm font-semibold " + (isCurrentMonth ? "text-neutral-100" : "text-neutral-600")}>
                         {day.getDate()}
                       </span>
-                      <span
-                        role="button"
-                        tabIndex={0}
+                      <button
+                        type="button"
+                        aria-label={`Create event on ${dayLabel}`}
                         onClick={(clickEvent) => {
                           clickEvent.stopPropagation();
                           openCreateDialog(day);
                         }}
                         onKeyDown={(keyEvent) => {
-                          if (keyEvent.key === "Enter" || keyEvent.key === " ") {
-                            keyEvent.preventDefault();
+                          if (isActivationKey(keyEvent)) {
                             keyEvent.stopPropagation();
-                            openCreateDialog(day);
                           }
                         }}
                         className="rounded-full p-1 text-neutral-600 transition-colors hover:bg-white/8 hover:text-neutral-200"
                       >
                         <Plus className="h-3.5 w-3.5" />
-                      </span>
+                      </button>
                     </div>
 
                     <div className="mt-3 space-y-2">
                       {dayEvents.slice(0, 3).map((event) => (
                         <div
                           key={event.id}
+                          role="button"
+                          tabIndex={0}
                           onClick={(clickEvent) => {
                             clickEvent.stopPropagation();
                             openEditDialog(event);
+                          }}
+                          onKeyDown={(keyEvent) => {
+                            if (isActivationKey(keyEvent)) {
+                              keyEvent.preventDefault();
+                              keyEvent.stopPropagation();
+                              openEditDialog(event);
+                            }
                           }}
                           className={"rounded-lg border px-2.5 py-2 text-xs " + getEventTone(event)}
                         >
@@ -361,7 +383,7 @@ export default function CalendarPage() {
                         <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">+{dayEvents.length - 3} more</div>
                       ) : null}
                     </div>
-                  </button>
+                  </div>
                 );
               })}
             </div>

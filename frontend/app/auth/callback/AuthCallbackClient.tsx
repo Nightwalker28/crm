@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 
 export default function AuthCallbackClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const redirectedRef = useRef(false);
 
   const status = useMemo(() => {
     const statusRaw = searchParams.get("status");
@@ -14,7 +15,8 @@ export default function AuthCallbackClient() {
   }, [searchParams]);
 
   useEffect(() => {
-    if (status === "active") {
+    if (status === "active" && !redirectedRef.current) {
+      redirectedRef.current = true;
       router.replace("/dashboard");
     }
   }, [router, status]);

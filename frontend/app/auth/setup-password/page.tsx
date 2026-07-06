@@ -30,26 +30,27 @@ function SetupPasswordPageContent() {
   const [passwordPolicy, setPasswordPolicy] = useState<PasswordPolicy | null>(null);
 
   useEffect(() => {
-    let isMounted = true;
+    const controller = new AbortController();
 
     async function loadPasswordPolicy() {
       try {
-        const res = await apiFetch("/auth/password-policy");
+        const res = await apiFetch("/auth/password-policy", { signal: controller.signal });
         if (!res.ok) {
           return;
         }
         const data = (await res.json()) as PasswordPolicy;
-        if (isMounted && Array.isArray(data.requirements)) {
+        if (!controller.signal.aborted && Array.isArray(data.requirements)) {
           setPasswordPolicy(data);
         }
       } catch {
+        if (controller.signal.aborted) return;
         // Keep generic copy if the policy endpoint is unavailable.
       }
     }
 
     loadPasswordPolicy();
     return () => {
-      isMounted = false;
+      controller.abort();
     };
   }, []);
 

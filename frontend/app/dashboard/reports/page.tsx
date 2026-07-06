@@ -16,6 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { apiFetch } from "@/lib/api";
+import { downloadBlob } from "@/lib/browser";
 import { formatDateTime } from "@/lib/datetime";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
@@ -301,17 +302,6 @@ function isoDateOffset(days: number) {
   const date = new Date();
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
-}
-
-function downloadBlob(blob: Blob, fileName: string) {
-  const url = window.URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  window.URL.revokeObjectURL(url);
 }
 
 export default function ReportsPage() {

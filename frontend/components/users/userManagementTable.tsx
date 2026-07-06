@@ -90,7 +90,6 @@ function filtersEqual(a: UserFiltersValue, b: UserFiltersValue) {
 
   return (
     a.search === b.search &&
-    a.filtersOpen === b.filtersOpen &&
     sameSet(a.selectedTeams, b.selectedTeams) &&
     sameSet(a.selectedRoles, b.selectedRoles) &&
     sameSet(a.selectedStatuses, b.selectedStatuses)

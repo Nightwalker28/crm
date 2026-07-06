@@ -457,6 +457,78 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Contact WhatsApp templates now load through React Query with a stable key and `staleTime`, and the selected template is derived without an effect-driven state sync. WhatsApp launch opens a pending browser window synchronously from the click handler, then navigates it after the API returns so popup blockers are less likely to block the flow. Opportunity tables now import stage labels and styles from the domain stage helper instead of mixing the domain helper with the shared status-style module.
 - **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
 
+## FE-BROWSER-DOWNLOADS — Guard blob downloads and View Transition fallback
+
+- **Completed:** 2026-07-06
+- **Source items:** CP-17, DOC-22, PLAT-27, PLAT-28, FIN-42
+- **Files:** `frontend/lib/browser.ts`, client portal download helpers, export/report/backup/public quote download paths, `frontend/components/ui/AnimatedThemeToggler.tsx`
+- **Result:** Blob download and open-in-new-tab behavior now runs through a shared browser helper that checks for the required DOM/URL APIs and cleans up object URLs consistently. Client portal documents, public client page documents, quote proposals, background exports, reports, and backup downloads reuse the helper instead of duplicating unguarded `URL.createObjectURL` and `document.createElement` calls. Theme toggling now falls back when View Transitions are unsupported and still toggles when local storage is unavailable.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`
+
+## FE-BROWSER-REALTIME — Share the dashboard realtime SSE connection
+
+- **Completed:** 2026-07-06
+- **Source items:** PLAT-29
+- **Files:** `frontend/lib/realtime.ts`, `frontend/hooks/useRealtimeNotifications.ts`, `frontend/hooks/useRealtimeJobStatus.ts`
+- **Result:** Notification and data-transfer job realtime hooks now subscribe through one shared `/platform/realtime/stream` manager instead of opening separate `EventSource` connections for each hook. The shared manager broadcasts connection status, keeps per-event listener cleanup scoped to each subscriber, closes the stream when the last subscriber unmounts, and still reports unsupported browsers cleanly.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`
+
+## FE-BROWSER-TASKS — Stabilize task assignee and table render references
+
+- **Completed:** 2026-07-06
+- **Source items:** TASK-29, TASK-30
+- **Files:** `frontend/components/tasks/TaskDialog.tsx`, `frontend/components/tasks/TasksTable.tsx`
+- **Result:** Task assignee picker fallback option arrays are now module-level typed constants instead of fresh empty arrays on every loading render, so selected-entry memoization only changes when actual option or value data changes. Task table cell rendering now lives at module scope instead of being recreated inside the table component, keeping future row memoization viable without changing table output.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`
+
+## FE-BROWSER-UM-AUTH — Guard auth redirects, setup loading, and filter UI memo state
+
+- **Completed:** 2026-07-06
+- **Source items:** UM-31, UM-36, UM-37
+- **Files:** `frontend/app/auth/callback/AuthCallbackClient.tsx`, `frontend/app/auth/setup-password/page.tsx`, `frontend/components/users/userFilters.tsx`, `frontend/components/users/userManagementTable.tsx`
+- **Result:** Auth callback success redirects are guarded so `router.replace` can run at most once even if search params change. Setup-password policy loading now uses `AbortController` and passes the signal through `apiFetch`, cancelling the request on unmount instead of only suppressing state updates. User filter active-state memoization and saved-view filter equality no longer treat opening or closing the filter drawer as a fetch-affecting filter change.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`
+
+## FE-BROWSER-MFA-SETUP — Cover required MFA setup failure recovery
+
+- **Completed:** 2026-07-06
+- **Source items:** UM-39
+- **Files:** `frontend/app/auth/login/page.tsx`, `frontend/tests/e2e/auth-dashboard.spec.ts`
+- **Result:** Required MFA setup failures now explicitly reset the login page back to the manual sign-in step, clear partial MFA setup state, and surface the recoverable setup error. The auth Playwright suite now mocks the `mfa_setup_required` login response and failed setup endpoint, asserting that the login and SSO buttons are usable after the failure.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `docker compose exec -T frontend npx playwright test auth-dashboard.spec.ts -g "failed required MFA setup" --list`; browser execution attempted but blocked because the current e2e image mount lacks `@playwright/test` and the frontend container lacks the Playwright Chromium binary.
+
+## UM-FRONTEND-SSO-DRAFT — Keep SSO settings drafts dirty-aware
+
+- **Completed:** 2026-07-06
+- **Source items:** UM-40
+- **Files:** `frontend/app/dashboard/settings/users/page.tsx`
+- **Result:** SSO settings now track draft dirtiness separately from the query refresh guard, so background SSO settings refetches continue to skip active edits while the UI exposes a `Discard Changes` action that intentionally resyncs the draft from the latest server settings. Saving clears the dirty state without reopening the background overwrite race.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`
+
+## FE-BROWSER-CALENDAR-A11Y — Preserve keyboard access in calendar day cells
+
+- **Completed:** 2026-07-06
+- **Source items:** CAL-16, CAL-23
+- **Files:** `frontend/app/dashboard/calendar/page.tsx`
+- **Result:** Calendar month cells no longer render an interactive button containing another interactive add control. Day cells are now keyboard-selectable containers, the add affordance is a real labeled button, and event chips can be opened with keyboard activation without bubbling into day selection.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`
+
+## FE-BROWSER-FINAL — Close remaining browser-readiness list and fallback cleanup
+
+- **Completed:** 2026-07-06
+- **Source items:** PLAT-30, PLAT-32, PLAT-33, PLAT-34, PLAT-35, PLAT-36, CAT-23, FIN-45
+- **Files:** `frontend/hooks/usePagedList.ts`, `frontend/hooks/catalog/useCatalogRecords.ts`, `frontend/hooks/finance/useInsertionOrders.ts`, `frontend/components/ui/ExportControls.tsx`, `frontend/lib/moduleViewConfigs.ts`
+- **Result:** Shared paged-list queries now support an explicit `staleTime`, and catalog plus insertion-order lists use a short freshness window to avoid unnecessary browser refetch churn while preserving manual refresh/invalidation. Catalog and insertion-order fallbacks now identify the failing module/action instead of surfacing generic status text. The background export auto-download guard is documented as one-shot per completed job. Final audit found finance filter fields already module-owned, and catalog remains search/sort-only because the current catalog list API does not support saved-view condition filters.
+- **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`
+
+## UM-PROFILE-SAVED-VIEW-BOUNDS — Bound saved-view configs and split module sets
+
+- **Completed:** 2026-07-06
+- **Source items:** UM-15, UM-17
+- **Files:** `backend/app/modules/user_management/services/profile.py`, `backend/tests/test_saved_views.py`
+- **Result:** Saved-view config normalization now has explicit total serialized-size, nesting-depth, list/object-size, string-size, visible-column, and condition-count caps before persistence. Saved-view modules are a separate set from table-preference modules, with regression coverage so future additions cannot accidentally alias the same mutable set. Added the missing total serialized-size regression to the existing saved-view bounds tests.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_saved_views`; `docker compose exec -T backend python -m compileall app tests`
+
 ---
 
 # Consolidated Task Backlog
@@ -473,20 +545,20 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 ## UM-SSO — Finish DNS fallback and login regression guards
 
 - **Severity:** Medium
-- **Source items:** UM-18, UM-39
+- **Source items:** UM-18
 - **Files:** tenant-domain services, frontend login tests where relevant
-- **Issue:** Tenant-domain DNS fallback shells out to `dig` in request flow, and MFA setup loading needs a regression guard unless current code proves it already clears reliably.
-- **Fix:** Normalize hostnames before DNS lookup and make `dig` fallback explicitly configured or dev-only. Add tests ensuring failed MFA setup clears all loading flags and shows a recoverable error.
-- **Acceptance:** DNS process fallback is intentional and normalized, and MFA setup errors cannot leave the login page stuck loading.
+- **Issue:** Tenant-domain DNS fallback shells out to `dig` in request flow.
+- **Fix:** Normalize hostnames before DNS lookup and make `dig` fallback explicitly configured or dev-only.
+- **Acceptance:** DNS process fallback is intentional and normalized.
 
 ## UM-PROFILE — Bound saved-view/user-list payloads and query behavior
 
 - **Severity:** High/Medium
-- **Source items:** UM-14, UM-15, UM-16, UM-17, UM-25, UM-26
+- **Source items:** UM-14, UM-16, UM-25, UM-26
 - **Files:** admin user repositories/routes, profile services, saved-view tests
-- **Issue:** Cursor user search can strip relevance/default sort, saved-view config accepts unbounded nested JSON, default saved-view assignment commits and re-queries all views, saved-view and table-preference module sets alias the same mutable set, and admin user projection/query counts need verification.
-- **Fix:** Preserve or explicitly document cursor search ordering. Cap saved-view serialized size and nesting depth. Mark default saved views in memory or use a one-query/update-returning path. Split or document shared module sets. Verify admin user list field projection and add query-count tests for list/search/cursor paths.
-- **Acceptance:** Saved-view payloads cannot grow unbounded, first saved-view load avoids unnecessary full re-query, user search ordering is intentional, and admin user list performance stays bounded.
+- **Issue:** Cursor user search can strip relevance/default sort, default saved-view assignment commits and re-queries all views, and admin user projection/query counts need verification.
+- **Fix:** Preserve or explicitly document cursor search ordering. Mark default saved views in memory or use a one-query/update-returning path. Verify admin user list field projection and add query-count tests for list/search/cursor paths.
+- **Acceptance:** First saved-view load avoids unnecessary full re-query, user search ordering is intentional, and admin user list performance stays bounded.
 
 ## PLAT-QUERY — Reduce platform over-fetching and harden raw-query helpers
 
@@ -519,24 +591,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Files:** `frontend/app/dashboard/calendar/page.tsx`, `frontend/components/calendar/CalendarEventDialog.tsx`, `frontend/components/calendar/CalendarParticipantPicker.tsx`, `frontend/hooks/useCalendar.ts`
 - **Result:** Final calendar audit found the extra marker covered by the earlier calendar slices: dialog state resets and date validation, stable participant display labels, and centralized calendar invite invalidation. No separate calendar code path remained.
 - **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
-
-## FE-BROWSER — Guard browser-only APIs and accessibility edge cases
-
-- **Severity:** Medium
-- **Source items:** CAL-16, CP-17, DOC-22, PLAT-27, PLAT-28, PLAT-29, PLAT-30, PLAT-32, PLAT-33, PLAT-34, PLAT-35, PLAT-36, CAT-23, CAL-23, FIN-42, FIN-45, TASK-29, TASK-30, UM-31, UM-36, UM-37, UM-39
-- **Files:** frontend client/document/platform/catalog/calendar/finance components and hooks
-- **Issue:** Browser-only APIs can throw in SSR/private/unsupported contexts, shared filter fields are hardcoded, nested controls can lose keyboard behavior, SSE hooks may duplicate connections, some memoization/comment/test coverage is missing, and error fallbacks can be vague. User-management auth callback/setup/login flows need redirect, abort, and loading regression guards.
-- **Fix:** Guard `window`, `document`, `sessionStorage`, object URLs, and `startViewTransition`. Provide View Transitions type guards. Make shared filter fields module-owned. Preserve keyboard activation for nested controls. Share SSE connections per endpoint/session if duplicate connections are verified. Add comments/tests for double-download guards. Add reasonable `staleTime` or memoization only where useful. Stabilize empty task assignee option arrays and move/memoize task table cell renderers only where it helps row memoization. Add redirect-once guard to auth callback, abortable setup-password policy loading, and MFA setup loading regression tests.
-- **Acceptance:** Unsupported browsers/SSR-like tests do not crash; shared UI is module-correct; nested controls remain keyboard-operable; realtime hooks avoid duplicate connections if verified.
-
-## UM-FRONTEND — Stabilize user-management table, self state, and settings forms
-
-- **Severity:** Critical/High
-- **Source items:** UM-40
-- **Files:** user-management table/hooks/dialogs, settings users page, role-permission hooks
-- **Issue:** The remaining user-management frontend readiness item is the still-open UM-40 dialog/settings edge case.
-- **Fix:** Inspect the exact UM-40 surface before editing and keep the reset/dirty-state behavior consistent with the completed user-management cleanup.
-- **Acceptance:** User-management dialogs and settings forms do not carry stale local state.
 
 ## OPS-MAINT — Keep low-risk operational cleanup explicit
 

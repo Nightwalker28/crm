@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
+import { downloadBlob, openBlobInNewTab } from "@/lib/browser";
 import { apiUrl } from "@/lib/runtime-config";
 
 export const CLIENT_TOKEN_STORAGE_KEY = "lynk:client-access-token";
@@ -694,41 +695,13 @@ export function clientDocumentDownloadUrl(documentId: number) {
   return apiUrl(`/client-documents/${documentId}/download`);
 }
 
-function requireBrowserDownloadApis() {
-  if (
-    typeof window === "undefined" ||
-    typeof window.URL?.createObjectURL !== "function" ||
-    typeof window.URL?.revokeObjectURL !== "function" ||
-    typeof window.document?.createElement !== "function" ||
-    !window.document.body
-  ) {
-    throw new Error("Downloads require a browser window.");
-  }
-}
-
-function triggerBrowserDownload(blob: Blob, filename: string) {
-  requireBrowserDownloadApis();
-  const url = window.URL.createObjectURL(blob);
-  try {
-    const anchor = window.document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.rel = "noopener";
-    window.document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-  } finally {
-    window.URL.revokeObjectURL(url);
-  }
-}
-
 export async function downloadClientDocument(document: ClientDocument) {
   const blob = await publicBlob(
     `/client-documents/${document.id}/download`,
     {},
     "Failed to download document.",
   );
-  triggerBrowserDownload(blob, document.original_filename || document.title);
+  downloadBlob(blob, document.original_filename || document.title);
 }
 
 export async function downloadClientQuoteProposal(quote: ClientQuote) {
@@ -737,7 +710,7 @@ export async function downloadClientQuoteProposal(quote: ClientQuote) {
     {},
     "Failed to download quote proposal.",
   );
-  triggerBrowserDownload(blob, `${quote.quote_number || "quote"}-proposal.txt`);
+  downloadBlob(blob, `${quote.quote_number || "quote"}-proposal.txt`);
 }
 
 export function useClientQuoteActions() {
@@ -930,14 +903,5 @@ export async function downloadPublicClientPageDocument(token: string, document: 
     {},
     "Sign in to open this document.",
   );
-  requireBrowserDownloadApis();
-  const url = window.URL.createObjectURL(blob);
-  try {
-    const opened = typeof window.open === "function" ? window.open(url, "_blank", "noopener,noreferrer") : null;
-    if (!opened) {
-      triggerBrowserDownload(blob, document.original_filename || document.title);
-    }
-  } finally {
-    window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
-  }
+  openBlobInNewTab(blob, document.original_filename || document.title);
 }

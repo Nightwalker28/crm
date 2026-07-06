@@ -27,6 +27,7 @@ type UsePagedListOptions<T, Response extends PagedListResponse<T>> = {
   initialPage?: number;
   initialPageSize?: number;
   refetchOnWindowFocus?: boolean;
+  staleTime?: number;
   errorMessage?: (error: unknown) => string | null;
   fallbackErrorMessage?: string;
 };
@@ -41,6 +42,7 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
   initialPage = 1,
   initialPageSize = 10,
   refetchOnWindowFocus,
+  staleTime,
   errorMessage,
   fallbackErrorMessage = "Failed to load records",
 }: UsePagedListOptions<T, Response>) {
@@ -57,6 +59,7 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
     queryFn: () => fetcher(page, pageSize, filters, visibleColumns, sort),
     placeholderData: keepPreviousData,
     refetchOnWindowFocus,
+    staleTime,
   });
 
   const data = query.data;

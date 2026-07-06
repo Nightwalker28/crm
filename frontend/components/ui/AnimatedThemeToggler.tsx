@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react"
 import { Moon, Sun } from "lucide-react"
 import { flushSync } from "react-dom"
 
+import { runViewTransition } from "@/lib/browser"
 import { cn } from "@/lib/utils"
 
 interface AnimatedThemeTogglerProps
@@ -38,14 +39,19 @@ export const AnimatedThemeToggler = ({
   const toggleTheme = useCallback(async () => {
     if (!buttonRef.current) return
 
-    await document.startViewTransition(() => {
+    const didTransition = await runViewTransition(() => {
       flushSync(() => {
         const newTheme = !isDark
         setIsDark(newTheme)
         document.documentElement.classList.toggle("dark")
-        localStorage.setItem("theme", newTheme ? "dark" : "light")
+        try {
+          window.localStorage.setItem("theme", newTheme ? "dark" : "light")
+        } catch {
+          // Theme still toggles even when localStorage is unavailable.
+        }
       })
-    }).ready
+    })
+    if (!didTransition) return
 
     const { top, left, width, height } =
       buttonRef.current.getBoundingClientRect()
