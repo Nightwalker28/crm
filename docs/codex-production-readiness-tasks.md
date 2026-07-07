@@ -529,18 +529,97 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Saved-view config normalization now has explicit total serialized-size, nesting-depth, list/object-size, string-size, visible-column, and condition-count caps before persistence. Saved-view modules are a separate set from table-preference modules, with regression coverage so future additions cannot accidentally alias the same mutable set. Added the missing total serialized-size regression to the existing saved-view bounds tests.
 - **Verification:** `docker compose exec -T backend python -m unittest tests.test_saved_views`; `docker compose exec -T backend python -m compileall app tests`
 
+## SALES-MODELS-LOADERS — Normalize sales relationship loading and soft-delete timestamps
+
+- **Completed:** 2026-07-07
+- **Source items:** SALES-08, SALES-DEEP-01, SALES-DEEP-13
+- **Files:** `backend/app/modules/sales/models.py`, sales soft-delete services, focused sales model/opportunity tests
+- **Result:** Sales contacts, leads, quotes, quote-open events, orders, opportunities, and organization customer-group relationships now use `selectin` relationship loading instead of joined eager defaults, so base sales model queries no longer compile with relationship joins. Sales contact, organization, opportunity, lead, and quote soft-delete paths now stamp aware UTC datetimes with `datetime.now(timezone.utc)`.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_sales_models tests.test_opportunities_services`; `docker compose exec -T backend python -m unittest tests.test_contacts_services tests.test_organizations_services tests.test_lead_scoring tests.test_quotes_services tests.test_sales_orders`; `docker compose exec -T backend python -m compileall app tests`
+
+## SALES-MODELS-DOMAIN-UTILS — Centralize sales UTC handling and partial-name duplicate checks
+
+- **Completed:** 2026-07-07
+- **Source items:** SALES-20, SALES-21
+- **Files:** `backend/app/modules/sales/services/time_utils.py`, sales contact/lead/reminder/quote services, focused contact/lead tests
+- **Result:** Sales services now share `utc_now()` and `as_utc()` helpers for naive-to-UTC normalization and current UTC timestamps. Lead scoring, reminder scans, quote proposal expiry checks, proposal send timestamps, and sales soft-delete paths use the shared helper. Contact duplicate detection now normalizes whichever name parts exist, so first-only or last-only contacts participate in duplicate detection instead of falling back to email-only matching.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_contacts_services tests.test_lead_scoring tests.test_task_reminders tests.test_quotes_services tests.test_opportunities_services tests.test_sales_models`; `docker compose exec -T backend python -m compileall app tests`
+
+## SALES-MODELS-STAGES — Single-source opportunity stage metadata
+
+- **Completed:** 2026-07-07
+- **Source items:** SALES-DEEP-20
+- **Files:** `backend/app/modules/sales/opportunity_stages.py`, opportunity model/schema/service/route paths, `scripts/check-opportunity-stages.py`, focused opportunity tests
+- **Result:** Opportunity stage order, labels, closed-stage membership, schema pattern, and model check SQL now come from one backend metadata module. Opportunity services, lead conversion validation, reminder scans, and stage-route close activity classification all consume the shared metadata. A lightweight repo script checks the frontend opportunity stage helper against the backend source so backend/frontend drift is visible during readiness verification.
+- **Verification:** `python3 scripts/check-opportunity-stages.py`; `docker compose exec -T backend python -m unittest tests.test_opportunities_services tests.test_leads_conversion tests.test_task_reminders`; `docker compose exec -T backend python -m unittest tests.test_api_routes.APIRouteTests.test_sales_opportunity_stage_route_logs_close_activity`; `docker compose exec -T backend python -m compileall app tests`
+
+## SALES-MODELS-CURRENCY-CACHE — Cache opportunity currency metadata per session
+
+- **Completed:** 2026-07-07
+- **Source items:** SALES-DEEP-19
+- **Files:** `backend/app/modules/sales/services/opportunities_services.py`, `backend/tests/test_opportunities_services.py`
+- **Result:** Opportunity currency validation now caches the tenant operating-currency list on the active SQLAlchemy session, avoiding repeated profile-setting lookups across create/update/import loops while preserving the same 400 response for unsupported currencies. Test doubles without session metadata still fall back to a direct profile lookup.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_opportunities_services tests.test_sales_models`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SALES-MODELS-CUSTOM-FIELDS — Document sales custom-field hydration fallback
+
+- **Completed:** 2026-07-07
+- **Source items:** SALES-DEEP-06
+- **Files:** `backend/app/modules/sales/models.py`, `backend/app/modules/platform/services/custom_fields.py`, `backend/tests/test_custom_fields.py`
+- **Result:** Sales model custom-field properties are now documented as transient response hydration only; persisted `CustomFieldValue` rows remain the source of truth. Regression tests cover that persisted values override stale in-memory fallback data and that fallback cache values are pruned consistently when no persisted rows exist.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_custom_fields`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SALES-MODELS-ORG-UPDATED-AT — Add organization recency timestamp
+
+- **Completed:** 2026-07-07
+- **Source items:** SALES-DEEP-03
+- **Files:** `backend/app/modules/sales/models.py`, `backend/app/modules/sales/schema.py`, `backend/alembic/versions/20260718_sales_org_updated_at.py`, focused sales organization/model tests
+- **Result:** Sales organizations now have a persisted non-null `updated_at` timestamp with server defaults and ORM update behavior. The migration backfills existing rows from `created_time` when present, falling back to the current timestamp only when needed. Organization detail and list response schemas expose `updated_at` for recency display.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_sales_models tests.test_organizations_services`; `docker compose exec -T backend alembic upgrade head`; `docker compose exec -T backend alembic current`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SALES-MODELS-CONTACT-ASSIGNEE — Allow user deletion without blocking contacts
+
+- **Completed:** 2026-07-07
+- **Source items:** SALES-DEEP-02
+- **Files:** `backend/app/modules/sales/models.py`, `backend/app/modules/sales/schema.py`, `backend/alembic/versions/20260719_contact_assignee.py`, focused sales contact/model tests
+- **Result:** Sales contact assignees now use nullable `ON DELETE SET NULL` foreign-key behavior so deleting a user does not fail on historical contact ownership. Contact create/update service validation still requires a valid assignee for normal writes, and response schemas tolerate null assignees after user deletion.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_sales_models tests.test_contacts_services`; `docker compose exec -T backend alembic upgrade head`; `docker compose exec -T backend alembic current`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SALES-MODELS-TIMESTAMPS — Normalize sales timestamp contracts
+
+- **Completed:** 2026-07-07
+- **Source items:** SALES-DEEP-04, SALES-DEEP-07
+- **Files:** `backend/app/modules/sales/models.py`, `backend/alembic/versions/20260720_sales_timestamp_contracts.py`, `backend/tests/test_sales_models.py`
+- **Result:** Sales model timestamp declarations now consistently use timezone-aware `DateTime` columns for primary creation and soft-delete timestamps. Sales organization and opportunity `created_time` values are non-null at the model level, with a guarded migration that backfills existing nulls before enforcing the contract. Model tests now cover primary creation timestamp defaults and nullable soft-delete timestamp semantics across sales records.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_sales_models`; `docker compose exec -T backend alembic upgrade head`; `docker compose exec -T backend alembic current`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## UM-PROFILE-SAVED-VIEW-DEFAULT — Avoid redundant saved-view default scans
+
+- **Completed:** 2026-07-07
+- **Source items:** UM-16
+- **Files:** `backend/app/modules/user_management/services/profile.py`, `backend/tests/test_saved_views.py`
+- **Result:** Saved-view listing now uses the already-loaded response rows to find the system default view, so first-load default assignment no longer performs a second full saved-view query when the system view already exists. Existing duplicate-create race recovery remains in the create fallback path.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_saved_views`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## UM-PROFILE-USER-LIST-PROJECTION — Make admin user field projection explicit
+
+- **Completed:** 2026-07-07
+- **Source items:** UM-25
+- **Files:** `backend/app/modules/user_management/routes/admin.py`, `backend/tests/test_admin_users.py`
+- **Result:** Admin user list serialization now respects the parsed `fields` projection instead of re-adding every supported list field for projected responses. Default requests still use the full supported user-list projection, and regression tests cover both default and narrowed field sets.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_admin_users`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## UM-PROFILE-USER-LIST-BOUNDS — Verify admin user query bounds
+
+- **Completed:** 2026-07-07
+- **Source items:** UM-14, UM-26
+- **Files:** `backend/app/modules/user_management/repositories/admin_users_repository.py`, `backend/tests/test_admin_users.py`, `backend/tests/test_cursor_pagination.py`
+- **Result:** Admin user list/search service paths now have query-count regression coverage: offset list/search stay bounded to the result query, count query, and tenant MFA policy query; cursor list/search stay bounded to the result query and tenant MFA policy query. Existing cursor regression coverage documents and verifies that admin user cursor repositories intentionally clear relevance/default ordering and use strict `id DESC` ordering for stable cursor semantics.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_admin_users`; `docker compose exec -T backend python -m unittest tests.test_cursor_pagination.CursorRepositoryOrderingTests.test_admin_user_cursor_repositories_clear_existing_ordering`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
 ---
 
 # Consolidated Task Backlog
-
-## SALES-MODELS — Normalize sales model loading, timestamps, and domain metadata
-
-- **Severity:** Medium
-- **Source items:** SALES-08, SALES-20, SALES-21, SALES-DEEP-01, SALES-DEEP-02, SALES-DEEP-03, SALES-DEEP-04, SALES-DEEP-06, SALES-DEEP-07, SALES-DEEP-13, SALES-DEEP-19, SALES-DEEP-20
-- **Files:** sales models, shared sales utilities, lead score services, relationship query tests, migrations where needed
-- **Issue:** Sales models use list-heavy `lazy="joined"` defaults, timestamp declarations and soft-delete timestamp creation are inconsistent, organizations lack `updated_at`, assigned-contact user deletion behavior is restrictive, custom-field hydration depends on an in-memory cache, duplicate name/timezone/stage behavior is duplicated, and opportunity currency lookups can repeat per row.
-- **Fix:** Prefer `selectin`/explicit eager loading for relationships. Use aware UTC timestamps and a shared timezone normalization helper. Add `updated_at` to organizations if product wants recency display. Change or guard assigned-user delete behavior. Document/test custom-field hydration. Normalize partial-name duplicate handling, stage metadata, lead-score freshness, and per-request currency lookup caching.
-- **Acceptance:** Base sales list queries do not auto-join unrelated tables, sales timestamps and hydration contracts are explicit, and model/domain metadata has one clear update path.
 
 ## UM-SSO — Finish DNS fallback and login regression guards
 
@@ -550,15 +629,6 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Issue:** Tenant-domain DNS fallback shells out to `dig` in request flow.
 - **Fix:** Normalize hostnames before DNS lookup and make `dig` fallback explicitly configured or dev-only.
 - **Acceptance:** DNS process fallback is intentional and normalized.
-
-## UM-PROFILE — Bound saved-view/user-list payloads and query behavior
-
-- **Severity:** High/Medium
-- **Source items:** UM-14, UM-16, UM-25, UM-26
-- **Files:** admin user repositories/routes, profile services, saved-view tests
-- **Issue:** Cursor user search can strip relevance/default sort, default saved-view assignment commits and re-queries all views, and admin user projection/query counts need verification.
-- **Fix:** Preserve or explicitly document cursor search ordering. Mark default saved views in memory or use a one-query/update-returning path. Verify admin user list field projection and add query-count tests for list/search/cursor paths.
-- **Acceptance:** First saved-view load avoids unnecessary full re-query, user search ordering is intentional, and admin user list performance stays bounded.
 
 ## PLAT-QUERY — Reduce platform over-fetching and harden raw-query helpers
 

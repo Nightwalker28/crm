@@ -544,25 +544,28 @@ def list_saved_views(
         if legacy_preference and legacy_preference.visible_columns
         else default_visible_columns
     )
-    system_view = _get_or_create_system_saved_view(
-        db,
-        user,
-        module_key,
-        visible_columns=default_columns,
-    )
     saved_views = (
         db.query(UserSavedView)
         .filter(UserSavedView.user_id == user.id, UserSavedView.module_key == module_key)
         .order_by(UserSavedView.is_default.desc(), UserSavedView.name.asc(), UserSavedView.id.asc())
         .all()
     )
+    system_view = next((view for view in saved_views if _is_system_saved_view(view)), None)
+    if not system_view:
+        system_view = _get_or_create_system_saved_view(
+            db,
+            user,
+            module_key,
+            visible_columns=default_columns,
+        )
+        if all(view.id != system_view.id for view in saved_views):
+            saved_views.append(system_view)
+
     has_default = any(bool(view.is_default) for view in saved_views)
     if not has_default:
         system_view.is_default = 1
         db.add(system_view)
         db.commit()
-        if all(view.id != system_view.id for view in saved_views):
-            saved_views.append(system_view)
         saved_views = _sort_saved_views_for_response(saved_views)
 
     return [_serialize_saved_view(module_key, view) for view in saved_views]

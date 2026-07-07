@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import hashlib
 import secrets
@@ -25,6 +25,7 @@ from app.modules.platform.services.custom_fields import (
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.models import SalesQuote, SalesQuoteDocument, SalesQuoteOpenEvent
 from app.modules.sales.repositories import quotes_repository
+from app.modules.sales.services.time_utils import as_utc, utc_now
 from app.modules.user_management.models import User
 
 
@@ -239,12 +240,6 @@ def _proposal_public_url_path(raw_token: str) -> str:
     return f"/public/quotes/proposal/{raw_token}"
 
 
-def _as_utc(value: datetime) -> datetime:
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
-
-
 def _apply_quote_payload(quote: SalesQuote, payload: dict) -> None:
     for field, value in payload.items():
         setattr(quote, field, value)
@@ -454,7 +449,7 @@ def update_sales_quote(db: Session, quote: SalesQuote, data: dict) -> SalesQuote
 
 
 def delete_sales_quote(db: Session, quote: SalesQuote) -> None:
-    quote.deleted_at = datetime.utcnow()
+    quote.deleted_at = utc_now()
     db.add(quote)
     db.commit()
 
@@ -509,9 +504,9 @@ def generate_quote_proposal(db: Session, quote: SalesQuote, current_user) -> Sal
 def send_quote_proposal(db: Session, quote: SalesQuote, *, sent_to: str | None, current_user) -> tuple[SalesQuoteDocument, str, datetime]:
     proposal = get_latest_quote_proposal(db, quote) or generate_quote_proposal(db, quote, current_user)
     raw_token = secrets.token_urlsafe(PROPOSAL_TOKEN_BYTES)
-    expires_at = datetime.now(timezone.utc) + timedelta(days=PROPOSAL_LINK_TTL_DAYS)
+    expires_at = utc_now() + timedelta(days=PROPOSAL_LINK_TTL_DAYS)
     proposal.status = "sent"
-    proposal.sent_at = datetime.now(timezone.utc)
+    proposal.sent_at = utc_now()
     proposal.sent_to = sent_to
     proposal.public_token_hash = _hash_value(raw_token)
     proposal.public_expires_at = expires_at
@@ -540,7 +535,7 @@ def get_public_quote_proposal_or_404(db: Session, token: str) -> tuple[SalesQuot
         )
         .first()
     )
-    if not proposal or not proposal.public_expires_at or _as_utc(proposal.public_expires_at) < datetime.now(timezone.utc):
+    if not proposal or not proposal.public_expires_at or as_utc(proposal.public_expires_at) < utc_now():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Proposal link not found")
     quote = proposal.quote
     if not quote or quote.tenant_id != proposal.tenant_id:

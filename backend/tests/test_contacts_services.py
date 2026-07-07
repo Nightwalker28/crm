@@ -13,6 +13,7 @@ from app.core.pagination import create_pagination
 from app.modules.client_portal import models as client_portal_models  # noqa: F401
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesContact
+from app.modules.sales.schema import SalesContactResponse
 from app.modules.sales.services import contacts_services
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
@@ -104,7 +105,18 @@ class CreateSalesContactDuplicateFilterTests(unittest.TestCase):
 
         return predicate_counts[-1]
 
-    def test_create_sales_contact_duplicate_filter_uses_email_only_without_full_name(self):
+    def test_create_sales_contact_duplicate_filter_uses_email_only_without_any_name(self):
+        predicate_count = self._create_contact_and_capture_duplicate_filter_count(
+            {
+                "first_name": "",
+                "last_name": "",
+                "primary_email": "ada@example.com",
+            }
+        )
+
+        self.assertEqual(predicate_count, 1)
+
+    def test_create_sales_contact_duplicate_filter_adds_name_when_partial_name_exists(self):
         predicate_count = self._create_contact_and_capture_duplicate_filter_count(
             {
                 "first_name": "Ada",
@@ -113,7 +125,7 @@ class CreateSalesContactDuplicateFilterTests(unittest.TestCase):
             }
         )
 
-        self.assertEqual(predicate_count, 1)
+        self.assertEqual(predicate_count, 2)
 
     def test_create_sales_contact_duplicate_filter_adds_name_when_full_name_exists(self):
         predicate_count = self._create_contact_and_capture_duplicate_filter_count(
@@ -125,6 +137,37 @@ class CreateSalesContactDuplicateFilterTests(unittest.TestCase):
         )
 
         self.assertEqual(predicate_count, 2)
+
+
+class SalesContactSchemaTests(unittest.TestCase):
+    def test_contact_response_allows_null_assignee_after_user_delete(self):
+        contact = SimpleNamespace(
+            contact_id=42,
+            first_name="Ada",
+            last_name="Lovelace",
+            contact_telephone=None,
+            linkedin_url=None,
+            current_title=None,
+            region=None,
+            country=None,
+            email_opt_out=False,
+            organization_id=None,
+            custom_fields=None,
+            primary_email="ada@example.com",
+            assigned_to=None,
+            customer_group_id=None,
+            customer_group=None,
+            created_time=datetime(2026, 7, 7, 10, 30),
+            last_contacted_at=None,
+            last_contacted_channel=None,
+            last_contacted_by_user_id=None,
+            whatsapp_last_contacted_at=None,
+            organization_name=None,
+        )
+
+        response = SalesContactResponse.model_validate(contact)
+
+        self.assertIsNone(response.assigned_to)
 
 
 class CreateSalesContactTransactionTests(unittest.TestCase):
@@ -206,6 +249,19 @@ class ImportContactsBulkInsertTests(unittest.TestCase):
 
 
 class UpdateSalesContactIntegrityTests(unittest.TestCase):
+    def test_update_sales_contact_rejects_null_assignee(self):
+        contact = SimpleNamespace(
+            tenant_id=1,
+            contact_id=44,
+            assigned_to=7,
+        )
+
+        with self.assertRaises(HTTPException) as exc:
+            contacts_services.update_sales_contact(FakeDB(), contact, {"assigned_to": None})
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "assigned_to cannot be null")
+
     def test_update_sales_contact_returns_duplicate_error_on_unique_race(self):
         db = IntegrityErrorDB()
         contact = SalesContact(
@@ -323,6 +379,33 @@ class ListSalesContactsTests(unittest.TestCase):
 
         self.assertEqual(total_count, 3)
         self.assertEqual([contact.first_name for contact in contacts], ["Ada", "Mia"])
+
+    def test_create_sales_contact_detects_first_name_only_duplicate(self):
+        self.db.add(
+            SalesContact(
+                contact_id=201,
+                tenant_id=10,
+                first_name="Ada",
+                last_name=None,
+                primary_email="existing@example.com",
+                assigned_to=1,
+            )
+        )
+        self.db.commit()
+
+        with patch.object(contacts_services, "validate_custom_field_payload", return_value={}):
+            with self.assertRaises(HTTPException) as exc:
+                contacts_services.create_sales_contact(
+                    self.db,
+                    {
+                        "first_name": " Ada ",
+                        "primary_email": "new@example.com",
+                    },
+                    SimpleNamespace(id=1, tenant_id=10),
+                )
+
+        self.assertEqual(exc.exception.status_code, 409)
+        self.assertIn("already exists", exc.exception.detail)
 
 
 if __name__ == "__main__":

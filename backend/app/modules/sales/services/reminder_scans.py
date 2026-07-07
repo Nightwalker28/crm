@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 from sqlalchemy import or_
@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.models import SalesContact, SalesOpportunity
+from app.modules.sales.opportunity_stages import OPPORTUNITY_CLOSED_STAGE_SET
+from app.modules.sales.services.time_utils import as_utc, utc_now
 from app.modules.tasks.models import Task
 from app.modules.tasks.services.tasks_services import (
     create_task,
@@ -18,21 +20,12 @@ from app.modules.tasks.services.tasks_services import (
 from app.modules.user_management.models import User
 
 
-CLOSED_OPPORTUNITY_STAGES = {"closed_won", "closed_lost"}
 NO_REPLY_TITLE_PREFIX = "No reply follow-up"
 INACTIVE_DEAL_TITLE_PREFIX = "Review inactive deal"
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _as_utc(value: datetime | None) -> datetime | None:
-    if value is None:
-        return None
-    if value.tzinfo is None:
-        return value.replace(tzinfo=timezone.utc)
-    return value.astimezone(timezone.utc)
+    return utc_now()
 
 
 def _display_contact_name(contact: SalesContact) -> str:
@@ -156,7 +149,7 @@ def _inactive_opportunities(db: Session, *, cutoff: datetime) -> list[SalesOppor
             SalesOpportunity.assigned_to.is_not(None),
             or_(
                 SalesOpportunity.sales_stage.is_(None),
-                ~SalesOpportunity.sales_stage.in_(CLOSED_OPPORTUNITY_STAGES),
+                ~SalesOpportunity.sales_stage.in_(OPPORTUNITY_CLOSED_STAGE_SET),
             ),
             or_(
                 SalesOpportunity.last_contacted_at.is_(None),
@@ -175,7 +168,7 @@ def scan_follow_up_reminders(
     no_reply_days: int | None = None,
     inactive_deal_days: int | None = None,
 ) -> dict:
-    scan_time = _as_utc(now) or _utcnow()
+    scan_time = as_utc(now) or _utcnow()
     no_reply_cutoff = scan_time - timedelta(days=no_reply_days or settings.NO_REPLY_REMINDER_DAYS)
     inactive_deal_cutoff = scan_time - timedelta(days=inactive_deal_days or settings.INACTIVE_DEAL_REMINDER_DAYS)
     due_at = scan_time + timedelta(days=1)
@@ -194,7 +187,7 @@ def scan_follow_up_reminders(
             title=title,
         ):
             continue
-        last_contacted_at = _as_utc(contact.last_contacted_at)
+        last_contacted_at = as_utc(contact.last_contacted_at)
         description = (
             f"No reply recorded since {last_contacted_at.date().isoformat() if last_contacted_at else 'the last follow-up'}. "
             "Check in or reschedule the follow-up."
@@ -226,7 +219,7 @@ def scan_follow_up_reminders(
             title=title,
         ):
             continue
-        last_contacted_at = _as_utc(opportunity.last_contacted_at)
+        last_contacted_at = as_utc(opportunity.last_contacted_at)
         description = (
             f"No deal activity recorded since {last_contacted_at.date().isoformat() if last_contacted_at else 'creation'}. "
             "Review the deal and log the next step."

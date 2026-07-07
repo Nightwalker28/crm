@@ -1,5 +1,4 @@
 from typing import Iterable, Sequence
-from datetime import datetime
 
 from fastapi import HTTPException, status
 from sqlalchemy import and_, func, or_
@@ -23,6 +22,7 @@ from app.modules.platform.services.custom_fields import (
 )
 from app.modules.sales.models import SalesContact, SalesOrganization
 from app.modules.user_management.models import User
+from app.modules.sales.services.time_utils import utc_now
 
 EXPORT_COLUMNS = [
     "contact_id",
@@ -48,9 +48,17 @@ def _normalize_email(value: str | None) -> str:
 
 
 def _normalize_name(first_name: str | None, last_name: str | None) -> str:
-    if not first_name or not last_name:
-        return ""
-    return f"{first_name.strip()} {last_name.strip()}".strip().lower()
+    return " ".join(part.strip().lower() for part in [first_name, last_name] if part and part.strip())
+
+
+def _contact_name_expression():
+    return func.lower(
+        func.trim(
+            func.coalesce(SalesContact.first_name, "")
+            + " "
+            + func.coalesce(SalesContact.last_name, "")
+        )
+    )
 
 
 def _apply_search_filter(query, search: str | None):
@@ -276,12 +284,7 @@ def create_sales_contact(
         func.lower(SalesContact.primary_email) == _normalize_email(email),
     ]
     if normalized_name:
-        duplicate_filters.append(
-            and_(
-                func.lower(SalesContact.first_name) == (data.get("first_name") or "").strip().lower(),
-                func.lower(SalesContact.last_name) == (data.get("last_name") or "").strip().lower(),
-            )
-        )
+        duplicate_filters.append(_contact_name_expression() == normalized_name)
 
     existing = (
         db.query(SalesContact)
@@ -447,7 +450,7 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
 
 
 def delete_sales_contact(db: Session, contact: SalesContact) -> None:
-    contact.deleted_at = datetime.utcnow()
+    contact.deleted_at = utc_now()
     db.add(contact)
     db.commit()
 
@@ -640,17 +643,14 @@ def import_contacts_from_csv(
         .distinct()
     }
     existing_name_duplicates = set()
-    first_names = {name.split(" ", 1)[0] for name in normalized_names if " " in name}
-    last_names = {name.split(" ", 1)[1] for name in normalized_names if " " in name}
-    if first_names and last_names:
+    if normalized_names:
         existing_name_duplicates = {
             _normalize_name(row.first_name, row.last_name)
             for row in db.query(SalesContact.first_name, SalesContact.last_name)
             .filter(
                 and_(
                     SalesContact.tenant_id == tenant_id,
-                    func.lower(SalesContact.first_name).in_(first_names),
-                    func.lower(SalesContact.last_name).in_(last_names),
+                    _contact_name_expression().in_(normalized_names),
                     SalesContact.deleted_at.is_(None),
                 )
             )
@@ -688,15 +688,14 @@ def import_contacts_from_csv(
         .all()
     }
     existing_by_name = {}
-    if first_names and last_names:
+    if normalized_names:
         existing_by_name = {
             _normalize_name(row.first_name, row.last_name): row
             for row in db.query(SalesContact)
             .filter(
                 and_(
                     SalesContact.tenant_id == tenant_id,
-                    func.lower(SalesContact.first_name).in_(first_names),
-                    func.lower(SalesContact.last_name).in_(last_names),
+                    _contact_name_expression().in_(normalized_names),
                     SalesContact.deleted_at.is_(None),
                 )
             )

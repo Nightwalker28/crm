@@ -4,11 +4,16 @@ from unittest.mock import patch
 
 from fastapi import HTTPException
 from pydantic import ValidationError
+from sqlalchemy import create_engine, event
+from sqlalchemy.orm import sessionmaker
 
+from app.core.database import Base
 from app.modules.user_management.models import Role, Team, User, UserAuthMode, UserStatus
 from app.modules.user_management.repositories import admin_users_repository
-from app.modules.user_management.schema import UpdateUserRequest
+from app.modules.user_management.routes import admin as admin_routes
+from app.modules.user_management.schema import UpdateUserRequest, UserProfile
 from app.modules.user_management.services import admin_users
+from app.modules.user_management.models import Tenant
 
 
 class FakeQuery:
@@ -227,6 +232,108 @@ class AdminUserRepositoryTests(unittest.TestCase):
         self.assertEqual(db.count_query.select_from_arg, "count-source")
 
 
+class AdminUserQueryCountTests(unittest.TestCase):
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        self.engine = engine
+        self.SessionLocal = sessionmaker(bind=engine)
+        self.db = self.SessionLocal()
+        self.db.add_all(
+            [
+                Tenant(id=10, slug="default", name="Default", mfa_policy="admins_only"),
+                Role(id=1, tenant_id=10, name="Admin", level=90),
+                Team(id=1, tenant_id=10, name="Revenue"),
+                User(
+                    id=1,
+                    tenant_id=10,
+                    email="ada@example.com",
+                    first_name="Ada",
+                    last_name="Lovelace",
+                    role_id=1,
+                    team_id=1,
+                    auth_mode=UserAuthMode.manual_only,
+                    is_active=UserStatus.active,
+                ),
+                User(
+                    id=2,
+                    tenant_id=10,
+                    email="grace@example.com",
+                    first_name="Grace",
+                    last_name="Hopper",
+                    role_id=1,
+                    team_id=1,
+                    auth_mode=UserAuthMode.manual_only,
+                    is_active=UserStatus.active,
+                ),
+            ]
+        )
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+        self.engine.dispose()
+
+    def _count_statements(self, callback) -> int:
+        statements = []
+
+        def before_cursor_execute(_conn, _cursor, statement, _parameters, _context, _executemany):
+            statements.append(statement)
+
+        event.listen(self.engine, "before_cursor_execute", before_cursor_execute)
+        try:
+            callback()
+        finally:
+            event.remove(self.engine, "before_cursor_execute", before_cursor_execute)
+        return len(statements)
+
+    def test_admin_user_list_and_search_query_counts_are_bounded(self):
+        list_count = self._count_statements(
+            lambda: admin_users.list_all_users(
+                self.db,
+                tenant_id=10,
+                pagination=SimpleNamespace(offset=0, limit=25, page=1, page_size=25),
+            )
+        )
+        search_count = self._count_statements(
+            lambda: admin_users.search_users(
+                self.db,
+                tenant_id=10,
+                pagination=SimpleNamespace(offset=0, limit=25, page=1, page_size=25),
+                q=None,
+                teams=None,
+                roles=None,
+                status_filter=None,
+                sort_by="name",
+                sort_order="asc",
+            )
+        )
+
+        self.assertLessEqual(list_count, 3)
+        self.assertLessEqual(search_count, 3)
+
+    def test_admin_user_cursor_query_counts_are_bounded(self):
+        list_count = self._count_statements(
+            lambda: admin_users.list_all_users_cursor(self.db, tenant_id=10, limit=25)
+        )
+        search_count = self._count_statements(
+            lambda: admin_users.search_users_cursor(
+                self.db,
+                tenant_id=10,
+                limit=25,
+                q=None,
+                teams=None,
+                roles=None,
+                status_filter=None,
+                sort_by="name",
+                sort_order="asc",
+            )
+        )
+
+        self.assertLessEqual(list_count, 2)
+        self.assertLessEqual(search_count, 2)
+
+
 class UserSerializationTests(unittest.TestCase):
     def test_serialize_user_profiles_uses_model_relationship_properties_once(self):
         user = User(
@@ -263,6 +370,54 @@ class UserSerializationTests(unittest.TestCase):
 
         self.assertEqual(profile.team_name, "Unassigned")
         self.assertEqual(profile.role_name, "Unassigned")
+
+
+class UserListProjectionTests(unittest.TestCase):
+    def _profile(self) -> SimpleNamespace:
+        return UserProfile(
+            id=7,
+            first_name="Ada",
+            last_name="Lovelace",
+            email="ada@example.com",
+            team_id=2,
+            role_id=3,
+            team_name="Revenue",
+            role_name="Manager",
+            role_level=50,
+            is_admin=False,
+            photo_url="https://cdn.example/avatar.png",
+            phone_number=None,
+            job_title=None,
+            timezone=None,
+            bio=None,
+            auth_mode=UserAuthMode.manual_only,
+            last_login_provider=None,
+            mfa_enabled=True,
+            mfa_required=False,
+            is_active=UserStatus.active,
+        )
+
+    def test_parse_list_fields_defaults_to_full_user_list_projection(self):
+        fields = admin_routes._parse_list_fields(None)
+        item = admin_routes._serialize_user_list_item(self._profile(), fields)
+
+        self.assertIn("email", item.model_fields_set)
+        self.assertIn("team_name", item.model_fields_set)
+        self.assertIn("mfa_enabled", item.model_fields_set)
+        self.assertEqual(item.email, "ada@example.com")
+        self.assertEqual(item.team_name, "Revenue")
+
+    def test_serialize_user_list_item_respects_requested_projection(self):
+        fields = admin_routes._parse_list_fields("email,role_name")
+        item = admin_routes._serialize_user_list_item(self._profile(), fields)
+
+        self.assertEqual(item.id, 7)
+        self.assertEqual(item.email, "ada@example.com")
+        self.assertEqual(item.role_name, "Manager")
+        self.assertIn("email", item.model_fields_set)
+        self.assertIn("role_name", item.model_fields_set)
+        self.assertNotIn("team_name", item.model_fields_set)
+        self.assertNotIn("mfa_enabled", item.model_fields_set)
 
 
 if __name__ == "__main__":

@@ -77,6 +77,20 @@ class LeadScoringTests(unittest.TestCase):
             self.assertEqual(grade, "cold")
             self.assertEqual(factors[0]["key"], "inactive_status")
 
+    def test_calculate_lead_score_treats_naive_follow_up_as_utc(self):
+        reference = datetime(2026, 7, 7, 12, 0, tzinfo=timezone.utc)
+        lead = SalesLead(
+            tenant_id=10,
+            primary_email="recent@example.com",
+            status="contacted",
+            last_contacted_at=datetime(2026, 7, 7, 11, 0),
+        )
+
+        score, _grade, factors = calculate_lead_score(lead, now=reference)
+
+        self.assertGreaterEqual(score, 30)
+        self.assertIn("recent_follow_up", {factor["key"] for factor in factors})
+
     def test_update_recalculates_existing_score_record(self):
         lead = SalesLead(lead_id=100, tenant_id=10, primary_email="ada@example.com", status="new", assigned_to=1)
         lead.score_record = SalesLeadScore(id=200, tenant_id=10, lead_id=100, score=10, grade="cold", factors_json=[])

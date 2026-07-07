@@ -27,6 +27,7 @@ from app.modules.platform.services.module_fields import (
     sanitize_disabled_filter_conditions,
 )
 from app.modules.user_management.services import admin_modules
+from app.modules.sales.opportunity_stages import OPPORTUNITY_CLOSED_STAGE_SET
 from app.modules.sales.schema import (
     FollowUpActionRequest,
     FollowUpActionResponse,
@@ -553,7 +554,7 @@ def update_sales_opportunity_stage(
     opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
     before_state = _serialize_opportunity(opportunity)
     updated = update_opportunity_stage(db, opportunity, sales_stage=payload.sales_stage)
-    action = "close" if updated.sales_stage in {"closed_won", "closed_lost"} else "stage_change"
+    action = "close" if updated.sales_stage in OPPORTUNITY_CLOSED_STAGE_SET else "stage_change"
     log_activity(
         db,
         tenant_id=current_user.tenant_id,

@@ -484,4 +484,4 @@ def _normalize_custom_field_value(definition: CustomFieldDefinition, value: Any)
 
 
 def _is_empty_custom_value(value: Any) -> bool:
-    return value is None or value == "" or value == []
+    return value is None or value == "" or value == [] or value == {}

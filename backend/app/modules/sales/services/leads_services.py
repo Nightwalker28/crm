@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Sequence
 
 from fastapi import HTTPException, status
@@ -20,8 +20,9 @@ from app.modules.platform.services.custom_fields import (
     validate_custom_field_payload,
 )
 from app.modules.sales.models import SalesContact, SalesLead, SalesLeadScore, SalesOpportunity, SalesOrganization
+from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_SET
 from app.modules.sales.repositories import leads_repository, organizations_repository
-from app.modules.sales.services.opportunities_services import OPPORTUNITY_STAGE_SET
+from app.modules.sales.services.time_utils import as_utc, utc_now
 from app.modules.user_management.models import User
 
 
@@ -160,16 +161,14 @@ def calculate_lead_score(lead: SalesLead, *, now: datetime | None = None) -> tup
     add_factor("qualified", "Qualified", 20, "Lead has been qualified by sales.", status == "qualified")
 
     if lead.last_contacted_at:
-        reference = now or datetime.now(timezone.utc)
-        contacted_at = lead.last_contacted_at
-        if contacted_at.tzinfo is None:
-            contacted_at = contacted_at.replace(tzinfo=timezone.utc)
+        reference = as_utc(now) or utc_now()
+        contacted_at = as_utc(lead.last_contacted_at)
         add_factor(
             "recent_follow_up",
             "Recent follow-up",
             10,
             "Lead has follow-up activity in the last 30 days.",
-            contacted_at >= reference - timedelta(days=30),
+            contacted_at is not None and contacted_at >= reference - timedelta(days=30),
         )
 
     normalized_score = max(0, min(score, 100))
@@ -184,7 +183,7 @@ def recalculate_lead_score(db: Session, lead: SalesLead) -> SalesLeadScore:
     record.score = score
     record.grade = grade
     record.factors_json = factors
-    record.calculated_at = datetime.now(timezone.utc)
+    record.calculated_at = utc_now()
     db.add(record)
     lead.score_record = record
     return record
@@ -429,7 +428,7 @@ def update_sales_lead(db: Session, lead: SalesLead, data: dict) -> SalesLead:
 
 
 def delete_sales_lead(db: Session, lead: SalesLead) -> None:
-    lead.deleted_at = datetime.utcnow()
+    lead.deleted_at = utc_now()
     db.add(lead)
     db.commit()
 

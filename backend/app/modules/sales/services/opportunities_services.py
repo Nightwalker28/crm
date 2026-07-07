@@ -22,7 +22,9 @@ from app.modules.platform.services.custom_fields import (
     validate_custom_field_payload,
 )
 from app.modules.sales.models import SalesOpportunity, SalesContact, SalesOrganization
+from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_LABELS, OPPORTUNITY_STAGE_ORDER, OPPORTUNITY_STAGE_SET
 from app.modules.sales.repositories import opportunities_repository
+from app.modules.sales.services.time_utils import utc_now
 from app.modules.user_management.services.profile import get_company_operating_currencies
 from app.modules.user_management.models import User
 
@@ -54,28 +56,6 @@ OPPORTUNITY_EXPORT_HEADERS = [
     "attachments",
     "created_time",
 ]
-
-OPPORTUNITY_STAGE_ORDER = [
-    "lead",
-    "qualified",
-    "proposal",
-    "negotiation",
-    "closed_won",
-    "closed_lost",
-]
-
-OPPORTUNITY_STAGE_LABELS = {
-    "lead": "Lead",
-    "qualified": "Qualified",
-    "proposal": "Proposal",
-    "negotiation": "Negotiation",
-    "closed_won": "Closed Won",
-    "closed_lost": "Closed Lost",
-    "unstaged": "Unstaged",
-}
-
-OPPORTUNITY_STAGE_SET = set(OPPORTUNITY_STAGE_ORDER)
-
 
 def parse_attachment_paths(value: str | list[str] | None) -> list[str]:
     if value is None:
@@ -223,8 +203,20 @@ def _contact_display_name(contact: SalesContact) -> str:
     return full_name or contact.primary_email or "Unnamed Contact"
 
 
+def _get_allowed_currencies(db: Session, current_user) -> tuple[str, ...]:
+    session_info = getattr(db, "info", None)
+    if session_info is None:
+        return tuple(get_company_operating_currencies(db, current_user))
+
+    tenant_id = getattr(current_user, "tenant_id", None)
+    cache = session_info.setdefault("sales_opportunity_operating_currencies", {})
+    if tenant_id not in cache:
+        cache[tenant_id] = tuple(get_company_operating_currencies(db, current_user))
+    return cache[tenant_id]
+
+
 def _normalize_currency(db: Session, current_user, currency: str | None) -> str:
-    allowed = get_company_operating_currencies(db, current_user)
+    allowed = _get_allowed_currencies(db, current_user)
     normalized = (currency or allowed[0]).strip().upper()
     if normalized not in allowed:
         raise HTTPException(
@@ -555,7 +547,7 @@ def update_opportunity_stage(
 
 
 def delete_opportunity(db: Session, opportunity: SalesOpportunity) -> SalesOpportunity:
-    opportunity.deleted_at = datetime.utcnow()
+    opportunity.deleted_at = utc_now()
     db.commit()
     db.refresh(opportunity)
     return hydrate_custom_field_record(

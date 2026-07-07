@@ -5,6 +5,8 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_PATTERN
+
 
 class CustomerGroupSummary(BaseModel):
     id: int
@@ -65,6 +67,7 @@ class SalesOrganizationResponse(SalesOrganizationBase):
     customer_group_id: int | None = None
     customer_group: CustomerGroupSummary | None = None
     created_time: datetime | None = None
+    updated_at: datetime | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -81,6 +84,9 @@ class SalesOrganizationListItem(BaseModel):
     customer_group_id: int | None = None
     customer_group: CustomerGroupSummary | None = None
     custom_fields: dict[str, Any] | None = None
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SalesOrganizationListResponse(BaseModel):
@@ -129,7 +135,7 @@ class SalesContactUpdateRequest(BaseModel):
 class SalesContactResponse(SalesContactBase):
     contact_id: int
     primary_email: EmailStr
-    assigned_to: int
+    assigned_to: int | None = None
     customer_group_id: int | None = None
     customer_group: CustomerGroupSummary | None = None
     created_time: datetime
@@ -738,7 +744,7 @@ class SalesOpportunityUpdate(BaseModel):
 
 
 class SalesOpportunityStageUpdate(BaseModel):
-    sales_stage: str = Field(pattern="^(lead|qualified|proposal|negotiation|closed_won|closed_lost)$")
+    sales_stage: str = Field(pattern=OPPORTUNITY_STAGE_PATTERN)
 
 
 class SalesOpportunityResponse(SalesOpportunityBase):

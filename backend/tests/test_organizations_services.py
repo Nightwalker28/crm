@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -10,7 +11,7 @@ from app.core.pagination import create_pagination
 from app.modules.client_portal import models as client_portal_models  # noqa: F401
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesOrganization
-from app.modules.sales.schema import SalesOrganizationCreate
+from app.modules.sales.schema import SalesOrganizationCreate, SalesOrganizationListItem, SalesOrganizationResponse
 from app.modules.sales.services import organizations_services
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
@@ -91,6 +92,39 @@ class OrganizationQueryBuildTests(unittest.TestCase):
             organizations_services._build_organization_query(db, tenant_id=3, search="acme")
 
         self.assertEqual(calls, [None, "acme"])
+
+
+class OrganizationSchemaTests(unittest.TestCase):
+    def test_organization_responses_include_updated_at(self):
+        updated_at = datetime(2026, 7, 7, 10, 30, tzinfo=timezone.utc)
+        organization = SimpleNamespace(
+            org_id=44,
+            org_name="Acme",
+            primary_email="ops@acme.example",
+            website=None,
+            primary_phone=None,
+            secondary_phone=None,
+            secondary_email=None,
+            industry=None,
+            annual_revenue=None,
+            billing_address=None,
+            billing_city=None,
+            billing_state=None,
+            billing_postal_code=None,
+            billing_country=None,
+            custom_fields=None,
+            assigned_to=7,
+            customer_group_id=None,
+            customer_group=None,
+            created_time=updated_at,
+            updated_at=updated_at,
+        )
+
+        detail = SalesOrganizationResponse.model_validate(organization)
+        list_item = SalesOrganizationListItem.model_validate(organization)
+
+        self.assertEqual(detail.updated_at, updated_at)
+        self.assertEqual(list_item.updated_at, updated_at)
 
 
 class ListOrganizationsTests(unittest.TestCase):

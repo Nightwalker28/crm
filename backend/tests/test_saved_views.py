@@ -158,7 +158,7 @@ class SavedViewConfigTests(unittest.TestCase):
             default_visible_columns=["title", "status"],
         )
 
-        self.assertEqual(db.all_calls, 2)
+        self.assertEqual(db.all_calls, 1)
         self.assertEqual(db.commits, 1)
         self.assertEqual(views[0]["id"], 9)
         self.assertTrue(views[0]["is_default"])

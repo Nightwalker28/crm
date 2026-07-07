@@ -1,5 +1,5 @@
 import unittest
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -12,7 +12,15 @@ from app.core.database import Base
 from app.core.pagination import create_pagination
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesOpportunity
+from app.modules.sales.opportunity_stages import (
+    OPPORTUNITY_CLOSED_STAGE_SET,
+    OPPORTUNITY_STAGE_LABELS,
+    OPPORTUNITY_STAGE_ORDER,
+    OPPORTUNITY_STAGE_PATTERN,
+    OPPORTUNITY_STAGE_SET,
+)
 from app.modules.sales.repositories import opportunities_repository
+from app.modules.sales.schema import SalesOpportunityStageUpdate
 from app.modules.sales.services import opportunities_services
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
@@ -30,8 +38,53 @@ class FakeDB:
         self.refreshed.append(value)
 
 
+class OpportunityStageMetadataTests(unittest.TestCase):
+    def test_backend_stage_metadata_is_single_source_for_services_and_schema(self):
+        self.assertEqual(opportunities_services.OPPORTUNITY_STAGE_ORDER, OPPORTUNITY_STAGE_ORDER)
+        self.assertEqual(opportunities_services.OPPORTUNITY_STAGE_LABELS, OPPORTUNITY_STAGE_LABELS)
+        self.assertEqual(opportunities_services.OPPORTUNITY_STAGE_SET, OPPORTUNITY_STAGE_SET)
+        self.assertEqual(OPPORTUNITY_CLOSED_STAGE_SET, {"closed_won", "closed_lost"})
+        self.assertEqual(
+            SalesOpportunityStageUpdate.model_fields["sales_stage"].metadata[0].pattern,
+            OPPORTUNITY_STAGE_PATTERN,
+        )
+
+
+class OpportunityCurrencyTests(unittest.TestCase):
+    def test_normalize_currency_reuses_session_operating_currency_cache(self):
+        db = SimpleNamespace(info={})
+        current_user = SimpleNamespace(tenant_id=10)
+
+        with patch.object(
+            opportunities_services,
+            "get_company_operating_currencies",
+            return_value=["USD", "EUR"],
+        ) as get_currencies:
+            self.assertEqual(opportunities_services._normalize_currency(db, current_user, "eur"), "EUR")
+            self.assertEqual(opportunities_services._normalize_currency(db, current_user, None), "USD")
+
+        get_currencies.assert_called_once_with(db, current_user)
+
+    def test_normalize_currency_rejects_invalid_currency_from_cached_allowed_list(self):
+        db = SimpleNamespace(info={})
+        current_user = SimpleNamespace(tenant_id=10)
+
+        with patch.object(
+            opportunities_services,
+            "get_company_operating_currencies",
+            return_value=["USD", "EUR"],
+        ) as get_currencies:
+            self.assertEqual(opportunities_services._normalize_currency(db, current_user, "usd"), "USD")
+            with self.assertRaises(HTTPException) as exc:
+                opportunities_services._normalize_currency(db, current_user, "gbp")
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Currency must be one of: USD, EUR")
+        get_currencies.assert_called_once_with(db, current_user)
+
+
 class OpportunitySoftDeleteTests(unittest.TestCase):
-    def test_delete_opportunity_sets_python_datetime(self):
+    def test_delete_opportunity_sets_aware_utc_datetime(self):
         db = FakeDB()
         opportunity = SimpleNamespace(
             tenant_id=3,
@@ -46,6 +99,8 @@ class OpportunitySoftDeleteTests(unittest.TestCase):
         self.assertTrue(db.committed)
         self.assertEqual(db.refreshed, [opportunity])
         self.assertIsInstance(opportunity.deleted_at, datetime)
+        self.assertIsNotNone(opportunity.deleted_at.tzinfo)
+        self.assertEqual(opportunity.deleted_at.utcoffset(), timezone.utc.utcoffset(opportunity.deleted_at))
 
     def test_update_opportunity_stage_normalizes_and_persists(self):
         db = FakeDB()

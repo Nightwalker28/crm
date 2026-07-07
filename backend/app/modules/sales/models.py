@@ -1,9 +1,10 @@
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, Text, func, TIMESTAMP, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, Text, func, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import expression
 
 from app.core.database import Base
 from app.modules.client_portal.models import CustomerGroup  # noqa: F401
+from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_CHECK_SQL
 
 
 def _get_custom_field_cache(record) -> dict | None:
@@ -11,6 +12,7 @@ def _get_custom_field_cache(record) -> dict | None:
 
 
 def _set_custom_field_cache(record, value: dict | None) -> None:
+    # Custom fields are persisted in CustomFieldValue rows; model instances only carry hydrated response data.
     record._custom_field_cache = value or None
 
 
@@ -47,11 +49,9 @@ class SalesOrganization(Base):
         index=True,
     )
 
-    created_time = Column(
-        TIMESTAMP(timezone=True),
-        server_default=func.now(),
-    )
-    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
     billing_address = Column(Text, nullable=True)
     billing_city = Column(Text, nullable=True)
@@ -68,7 +68,7 @@ class SalesOrganization(Base):
         ),
         nullable=True,
     )
-    customer_group = relationship("CustomerGroup", lazy="joined")
+    customer_group = relationship("CustomerGroup", lazy="selectin")
 
     @property
     def custom_data(self) -> dict | None:
@@ -107,8 +107,8 @@ class SalesContact(Base):
     email_opt_out = Column(Boolean, nullable=False, server_default=expression.false())
     assigned_to = Column(
         BigInteger,
-        ForeignKey("users.id", ondelete="RESTRICT"),
-        nullable=False,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
     )
     organization_id = Column(
         BigInteger,
@@ -126,7 +126,7 @@ class SalesContact(Base):
     last_contacted_channel = Column(Text, nullable=True)
     last_contacted_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     whatsapp_last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
-    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     search_doc = Column(
         Text,
         Computed(
@@ -139,10 +139,10 @@ class SalesContact(Base):
         nullable=True,
     )
 
-    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
-    last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="joined")
-    organization = relationship("SalesOrganization", lazy="joined")
-    customer_group = relationship("CustomerGroup", lazy="joined")
+    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
+    last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="selectin")
+    organization = relationship("SalesOrganization", lazy="selectin")
+    customer_group = relationship("CustomerGroup", lazy="selectin")
 
     @property
     def custom_data(self) -> dict | None:
@@ -192,7 +192,7 @@ class SalesLead(Base):
     last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     last_contacted_channel = Column(Text, nullable=True)
     last_contacted_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     search_doc = Column(
         Text,
         Computed(
@@ -205,8 +205,8 @@ class SalesLead(Base):
         nullable=True,
     )
 
-    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
-    last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="joined")
+    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
+    last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="selectin")
     score_record = relationship("SalesLeadScore", back_populates="lead", uselist=False, lazy="selectin", cascade="all, delete-orphan")
 
     @property
@@ -298,7 +298,7 @@ class SalesQuote(Base):
     assigned_to = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
     search_doc = Column(
         Text,
         Computed(
@@ -310,10 +310,10 @@ class SalesQuote(Base):
         nullable=True,
     )
 
-    contact = relationship("SalesContact", lazy="joined")
-    organization = relationship("SalesOrganization", lazy="joined")
-    opportunity = relationship("SalesOpportunity", lazy="joined")
-    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
+    contact = relationship("SalesContact", lazy="selectin")
+    organization = relationship("SalesOrganization", lazy="selectin")
+    opportunity = relationship("SalesOpportunity", lazy="selectin")
+    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
     proposal_documents = relationship("SalesQuoteDocument", back_populates="quote", cascade="all, delete-orphan")
 
     @property
@@ -387,8 +387,8 @@ class SalesQuoteOpenEvent(Base):
     user_agent_hash = Column(Text, nullable=True)
     occurred_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    quote = relationship("SalesQuote", lazy="joined")
-    document = relationship("SalesQuoteDocument", lazy="joined")
+    quote = relationship("SalesQuote", lazy="selectin")
+    document = relationship("SalesQuoteDocument", lazy="selectin")
 
 
 class SalesOrder(Base):
@@ -429,10 +429,10 @@ class SalesOrder(Base):
         nullable=True,
     )
 
-    quote = relationship("SalesQuote", lazy="joined")
-    organization = relationship("SalesOrganization", lazy="joined")
-    contact = relationship("SalesContact", lazy="joined")
-    opportunity = relationship("SalesOpportunity", lazy="joined")
+    quote = relationship("SalesQuote", lazy="selectin")
+    organization = relationship("SalesOrganization", lazy="selectin")
+    contact = relationship("SalesContact", lazy="selectin")
+    opportunity = relationship("SalesOpportunity", lazy="selectin")
     items = relationship("SalesOrderItem", back_populates="order", cascade="all, delete-orphan", order_by="SalesOrderItem.sort_order")
 
 
@@ -460,10 +460,7 @@ class SalesOrderItem(Base):
 class SalesOpportunity(Base):
     __tablename__ = "sales_opportunities"
     __table_args__ = (
-        CheckConstraint(
-            "sales_stage IS NULL OR sales_stage IN ('lead', 'qualified', 'proposal', 'negotiation', 'closed_won', 'closed_lost')",
-            name="ck_sales_opportunities_sales_stage",
-        ),
+        CheckConstraint(OPPORTUNITY_STAGE_CHECK_SQL, name="ck_sales_opportunities_sales_stage"),
         CheckConstraint(
             "probability_percent IS NULL OR (probability_percent >= 0 AND probability_percent <= 100)",
             name="ck_sales_opportunities_probability_range",
@@ -511,19 +508,16 @@ class SalesOpportunity(Base):
     delivery_format = Column(Text, nullable=True)
     attachments = Column(Text, nullable=True)
 
-    created_time = Column(
-        TIMESTAMP(timezone=True),
-        server_default=func.now(),
-    )
+    created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     last_contacted_channel = Column(Text, nullable=True)
     last_contacted_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
-    deleted_at = Column(TIMESTAMP(timezone=True), nullable=True)
+    deleted_at = Column(DateTime(timezone=True), nullable=True)
 
-    contact = relationship("SalesContact", lazy="joined")
-    organization = relationship("SalesOrganization", lazy="joined")
-    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="joined")
-    last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="joined")
+    contact = relationship("SalesContact", lazy="selectin")
+    organization = relationship("SalesOrganization", lazy="selectin")
+    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
+    last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="selectin")
 
     @property
     def custom_data(self) -> dict | None:

@@ -22,6 +22,7 @@ from app.modules.platform.services.custom_fields import (
 from app.modules.sales.models import SalesOrganization
 from app.modules.sales.repositories import organizations_repository
 from app.modules.sales.schema import SalesOrganizationCreate, SalesOrganizationUpdate
+from app.modules.sales.services.time_utils import utc_now
 
 
 def _apply_org_payload(organization: SalesOrganization, payload: SalesOrganizationCreate, current_user) -> None:
@@ -381,7 +382,7 @@ def delete_organization(db: Session, org_id: int, *, tenant_id: int) -> bool:
     if not organization:
         return False
 
-    organization.deleted_at = datetime.utcnow()
+    organization.deleted_at = utc_now()
     db.add(organization)
     db.commit()
     return True
