@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.config import settings
 from app.core.tenancy import invalidate_tenant_context_cache, normalize_hostname
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.user_management.models import Tenant, TenantDomain
@@ -278,22 +279,27 @@ def _verify_dns(hostname: str, verification_token: str | None) -> dict[str, Any]
 
 
 def _lookup_txt(hostname: str, errors: list[str]) -> set[str]:
+    normalized = normalize_hostname(hostname)
+    if not normalized:
+        errors.append("DNS TXT lookup hostname is invalid")
+        return set()
+
     try:
         import dns.resolver  # type: ignore
 
-        answers = dns.resolver.resolve(hostname, "TXT")
+        answers = dns.resolver.resolve(normalized, "TXT")
         return {"".join(part.decode("utf-8") for part in answer.strings) for answer in answers}
     except ImportError:
         pass
     except Exception as exc:
-        errors.append(f"TXT lookup failed for {hostname}: {exc}")
+        errors.append(f"TXT lookup failed for {normalized}: {exc}")
         return set()
 
-    if shutil.which("dig"):
-        result = subprocess.run(["dig", "+short", "TXT", hostname], check=False, capture_output=True, text=True, timeout=10)
+    if settings.TENANT_DOMAIN_DNS_DIG_FALLBACK_ENABLED and shutil.which("dig"):
+        result = subprocess.run(["dig", "+short", "TXT", normalized], check=False, capture_output=True, text=True, timeout=10)
         if result.returncode == 0:
             return {line.strip().strip('"') for line in result.stdout.splitlines() if line.strip()}
-        errors.append(f"TXT lookup failed for {hostname}: {result.stderr.strip() or 'dig failed'}")
+        errors.append(f"TXT lookup failed for {normalized}: {result.stderr.strip() or 'dig failed'}")
         return set()
     errors.append("DNS TXT lookup is unavailable in this runtime")
     return set()

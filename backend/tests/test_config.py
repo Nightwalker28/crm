@@ -232,6 +232,19 @@ class ConfigTests(unittest.TestCase):
         self.assertTrue(celery_app.conf.task_store_errors_even_if_ignored)
         self.assertIsNotNone(celery_app.conf.result_backend)
 
+    def test_celery_maintenance_jobs_use_wall_clock_schedules(self):
+        from celery.schedules import crontab
+        from app.core.celery_app import celery_app
+
+        schedule = celery_app.conf.beat_schedule
+
+        self.assertIsInstance(schedule["cleanup-expired-data-transfer-results"]["schedule"], crontab)
+        self.assertIsInstance(schedule["cleanup-expired-refresh-tokens"]["schedule"], crontab)
+        self.assertIsInstance(schedule["purge-expired-recycle-bin-records"]["schedule"], crontab)
+        self.assertIsInstance(schedule["scan-due-task-alerts"]["schedule"], int)
+        self.assertIsInstance(schedule["scan-follow-up-reminders"]["schedule"], int)
+        self.assertIsInstance(schedule["scan-due-tenant-backups"]["schedule"], int)
+
     def test_cors_uses_configured_origins_without_wildcard_regex(self):
         from app.main import app
 

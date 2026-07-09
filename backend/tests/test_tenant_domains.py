@@ -90,6 +90,49 @@ class TenantDomainServiceTests(unittest.TestCase):
         lookup_txt.assert_called_once()
         self.assertEqual(lookup_txt.call_args.args[0], "maadmustafa.dev")
 
+    @patch("builtins.__import__", side_effect=ImportError("dns unavailable"))
+    @patch("app.modules.user_management.services.tenant_domains.shutil.which", return_value="/usr/bin/dig")
+    @patch("app.modules.user_management.services.tenant_domains.subprocess.run")
+    def test_lookup_txt_does_not_use_dig_fallback_unless_enabled(self, run, _which, _import):
+        errors: list[str] = []
+
+        with patch.object(
+            tenant_domains.settings,
+            "TENANT_DOMAIN_DNS_DIG_FALLBACK_ENABLED",
+            False,
+        ):
+            result = tenant_domains._lookup_txt("Example.COM.", errors)
+
+        self.assertEqual(result, set())
+        self.assertEqual(errors, ["DNS TXT lookup is unavailable in this runtime"])
+        run.assert_not_called()
+
+    @patch("builtins.__import__", side_effect=ImportError("dns unavailable"))
+    @patch("app.modules.user_management.services.tenant_domains.shutil.which", return_value="/usr/bin/dig")
+    @patch("app.modules.user_management.services.tenant_domains.subprocess.run")
+    def test_lookup_txt_dig_fallback_is_explicit_and_uses_normalized_hostname(self, run, _which, _import):
+        run.return_value.returncode = 0
+        run.return_value.stdout = '"lynk-domain-verification=token"\n'
+        run.return_value.stderr = ""
+        errors: list[str] = []
+
+        with patch.object(
+            tenant_domains.settings,
+            "TENANT_DOMAIN_DNS_DIG_FALLBACK_ENABLED",
+            True,
+        ):
+            result = tenant_domains._lookup_txt("HTTPS://Example.COM/path", errors)
+
+        self.assertEqual(result, {"lynk-domain-verification=token"})
+        self.assertEqual(errors, [])
+        run.assert_called_once_with(
+            ["dig", "+short", "TXT", "example.com"],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
     def test_tenant_domain_email_domains_use_verified_custom_domains(self):
         self.db.add_all(
             [

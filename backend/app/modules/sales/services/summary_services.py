@@ -82,47 +82,19 @@ def _get_related_insertion_orders(
     if not organization_name and organization_id is None and contact_id is None:
         return []
 
-    normalized = organization_name.strip().lower() if organization_name else None
+    normalized_name = organization_name.strip().lower() if organization_name and organization_name.strip() else None
+    match_conditions = []
+    if contact_id is not None:
+        match_conditions.append(FinanceIO.customer_contact_id == contact_id)
+    if organization_id is not None:
+        match_conditions.append(FinanceIO.customer_organization_id == organization_id)
+    if normalized_name is not None:
+        match_conditions.append(func.lower(func.coalesce(FinanceIO.customer_name, "")) == normalized_name)
+    if not match_conditions:
+        return []
+
     filters = [FinanceIO.tenant_id == tenant_id, FinanceIO.deleted_at.is_(None)]
-    if contact_id is not None and organization_id is not None and normalized is not None:
-        filters.append(
-            or_(
-                FinanceIO.customer_contact_id == contact_id,
-                FinanceIO.customer_organization_id == organization_id,
-                func.lower(func.coalesce(FinanceIO.customer_name, "")) == normalized,
-            )
-        )
-    elif contact_id is not None and organization_id is not None:
-        filters.append(
-            or_(
-                FinanceIO.customer_contact_id == contact_id,
-                FinanceIO.customer_organization_id == organization_id,
-            )
-        )
-    elif contact_id is not None and normalized is not None:
-        filters.append(
-            or_(
-                FinanceIO.customer_contact_id == contact_id,
-                func.lower(func.coalesce(FinanceIO.customer_name, "")) == normalized,
-            )
-        )
-    elif contact_id is not None:
-        filters.append(FinanceIO.customer_contact_id == contact_id)
-    elif organization_id is not None and normalized is not None:
-        filters.append(
-            or_(
-                FinanceIO.customer_organization_id == organization_id,
-                func.lower(func.coalesce(FinanceIO.customer_name, "")) == normalized,
-            )
-        )
-    elif organization_id is not None:
-        filters.append(FinanceIO.customer_organization_id == organization_id)
-    elif normalized is not None:
-        filters.append(
-            or_(
-                func.lower(func.coalesce(FinanceIO.customer_name, "")) == normalized,
-            )
-        )
+    filters.append(or_(*match_conditions) if len(match_conditions) > 1 else match_conditions[0])
 
     return (
         db.query(FinanceIO)

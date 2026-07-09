@@ -491,7 +491,31 @@ class DocumentServiceTests(unittest.TestCase):
         self.assertEqual(document.file_size_bytes, len(b"%PDF-1.7\nupdated\n%%EOF"))
         self.assertEqual([version.version_number for version in versions], [2, 1])
         self.assertEqual(document.current_version_id, versions[0].id)
+        self.assertEqual(versions[0].tenant_id, 10)
         self.assertEqual(versions[1].storage_key, "tenant-10/contract-v1.pdf")
+        entry = self.db.query(ActivityLog).filter(ActivityLog.action == "version.create").one()
+        self.assertEqual(entry.tenant_id, 10)
+        self.assertEqual(entry.before_state["document_id"], 3)
+        self.assertEqual(entry.after_state["document_id"], 3)
+        self.assertNotIn("links", entry.before_state)
+        self.assertNotIn("client_shares", entry.after_state)
+
+    def test_template_update_audit_uses_slim_document_state(self):
+        document = update_document_template_status(
+            self.db,
+            tenant_id=10,
+            document_id=1,
+            is_template=True,
+            template_category="Proposals",
+            current_user=None,
+        )
+
+        entry = self.db.query(ActivityLog).filter(ActivityLog.action == "template.update").one()
+        self.assertEqual(entry.tenant_id, 10)
+        self.assertEqual(entry.before_state["document_id"], document.id)
+        self.assertEqual(entry.after_state["document_id"], document.id)
+        self.assertNotIn("links", entry.before_state)
+        self.assertNotIn("client_shares", entry.after_state)
 
     def test_create_document_deletes_storage_when_database_write_fails(self):
         upload = UploadFile(

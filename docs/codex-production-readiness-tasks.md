@@ -617,18 +617,73 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Admin user list/search service paths now have query-count regression coverage: offset list/search stay bounded to the result query, count query, and tenant MFA policy query; cursor list/search stay bounded to the result query and tenant MFA policy query. Existing cursor regression coverage documents and verifies that admin user cursor repositories intentionally clear relevance/default ordering and use strict `id DESC` ordering for stable cursor semantics.
 - **Verification:** `docker compose exec -T backend python -m unittest tests.test_admin_users`; `docker compose exec -T backend python -m unittest tests.test_cursor_pagination.CursorRepositoryOrderingTests.test_admin_user_cursor_repositories_clear_existing_ordering`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
 
+## UM-SSO — Gate tenant-domain DNS process fallback
+
+- **Completed:** 2026-07-09
+- **Source items:** UM-18
+- **Files:** `backend/app/core/config.py`, `backend/app/modules/user_management/services/tenant_domains.py`, `.env.sample`, `backend/tests/test_tenant_domains.py`
+- **Result:** Tenant custom-domain TXT verification now normalizes lookup hostnames before DNS resolution and only uses the `dig` process fallback when `TENANT_DOMAIN_DNS_DIG_FALLBACK_ENABLED` allows it. The setting defaults to dev-only behavior through `DEBUG`, and the sample environment documents the production-safe false setting.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_tenant_domains tests.test_config`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## OPS-MAINT — Keep low-risk operational cleanup explicit
+
+- **Completed:** 2026-07-09
+- **Source items:** CORE-22, CORE-27, FIN-07, FIN-15
+- **Files:** `backend/app/core/celery_app.py`, `backend/app/modules/finance/services/io_search_services.py`, `backend/app/modules/finance/services/io_search_api.py`, `backend/tests/test_config.py`, `backend/tests/test_finance_io_api.py`
+- **Result:** True cleanup jobs now use UTC wall-clock Celery beat schedules while due scanners remain interval based. The common-password blocklist was measured at 104 entries, so the existing single-entry `lru_cache` remains appropriate. Finance insertion-order filename sanitization now strips path separators, control characters, empty basenames, and repeated-dot noise. Invoice overdue CRM events now emit only when an insertion order becomes overdue instead of on every later save that remains overdue.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_finance_io_api tests.test_config`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SERIALIZATION-CORE-TASKS — Freeze duplicate detection output and avoid redundant task response validation
+
+- **Completed:** 2026-07-09
+- **Source items:** CORE-24, TASK-10
+- **Files:** `backend/app/core/duplicates.py`, `backend/app/modules/tasks/routes/tasks_routes.py`, `backend/tests/test_core_hardening.py`, `backend/tests/test_api_routes.py`
+- **Result:** Shared duplicate detection now stores request and existing duplicate values as copied `frozenset`s, so callers cannot mutate serialized duplicate output through returned sets or later changes to input sets. Task routes now return the already validated serialized task dicts and rely on FastAPI `response_model`s for the HTTP boundary instead of manually validating each response twice.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_core_hardening.DuplicateDetectionTests tests.test_api_routes.APIRouteTests.test_task_recycle_route_passes_current_user_to_visibility_filtered_service tests.test_api_routes.APIRouteTests.test_task_restore_route_uses_deleted_only_lookup`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SERIALIZATION-CATALOG-MEDIA — Make missing catalog media fields explicit
+
+- **Completed:** 2026-07-09
+- **Source items:** CAT-04
+- **Files:** `backend/app/modules/catalog/services/product_services.py`, `backend/app/modules/catalog/services/service_services.py`, `backend/tests/test_catalog_products.py`, `backend/tests/test_catalog_services.py`
+- **Result:** Catalog product and service serializers now treat absent `media_path` as the source of truth for missing media and return `None` for `media_url`, `media_content_type`, and `media_original_filename` together. Regression coverage prevents stale media metadata from appearing when no media file is attached.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_catalog_products tests.test_catalog_services`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SERIALIZATION-SUPPORT-SHAPES — Guard support list and comment response contracts
+
+- **Completed:** 2026-07-09
+- **Source items:** SUP-18, SUP-21, SUP-22
+- **Files:** `backend/tests/test_support_cases.py`
+- **Result:** Support serialization now has regression coverage for the intended lightweight list/search response shape: list endpoints use `SupportCaseListItem`, include assignee display names, and do not include detail-only comments or events. Comment responses are explicitly guarded as immutable created-at-only shapes while comment editing remains unsupported.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_support_cases`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SERIALIZATION-SALES-CONTRACTS — Retire sales custom-field and score freshness serialization items
+
+- **Completed:** 2026-07-09
+- **Source items:** SALES-DEEP-06, SALES-DEEP-07
+- **Files:** `backend/tests/test_lead_scoring.py`
+- **Result:** The sales custom-field hydration contract is already documented and covered by the completed `SALES-MODELS-CUSTOM-FIELDS` slice. Lead-score freshness now has an explicit regression that score recalculation updates `score_calculated_at` through the scoring service, keeping `calculated_at` as the score freshness timestamp while `updated_at` remains generic row update metadata.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_lead_scoring`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SERIALIZATION-CLIENT-PORTAL — Guard client-page action and relationship serialization
+
+- **Completed:** 2026-07-09
+- **Source items:** CP-12, CP-15
+- **Files:** `backend/tests/test_client_portal.py`
+- **Result:** Client-page action summaries already use typed bounded summary data from the completed client portal slice. Client page serialization now has a direct regression matching client account serialization: unloaded contact/organization relationships are not lazy-loaded just to build display labels, preventing accidental serializer query drift.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_client_portal`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## SERIALIZATION-FINANCE-SHAPES — Guard finance nullable and lightweight list responses
+
+- **Completed:** 2026-07-09
+- **Source items:** FIN-23, FIN-30
+- **Files:** `backend/tests/test_finance_io_api.py`, `backend/tests/test_finance_pos_invoices.py`
+- **Result:** Finance insertion-order detail serialization now has regression coverage for explicit `None` handling on optional linked IDs, totals, custom fields, and absent file URLs while preserving status/currency defaults. POS invoice list serialization is guarded as a lightweight list shape that omits line-item details even when invoice ORM records have loaded lines.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_finance_io_api tests.test_finance_pos_invoices`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
 ---
 
 # Consolidated Task Backlog
-
-## UM-SSO — Finish DNS fallback and login regression guards
-
-- **Severity:** Medium
-- **Source items:** UM-18
-- **Files:** tenant-domain services, frontend login tests where relevant
-- **Issue:** Tenant-domain DNS fallback shells out to `dig` in request flow.
-- **Fix:** Normalize hostnames before DNS lookup and make `dig` fallback explicitly configured or dev-only.
-- **Acceptance:** DNS process fallback is intentional and normalized.
 
 ## PLAT-QUERY — Reduce platform over-fetching and harden raw-query helpers
 
@@ -662,39 +717,36 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Final calendar audit found the extra marker covered by the earlier calendar slices: dialog state resets and date validation, stable participant display labels, and centralized calendar invite invalidation. No separate calendar code path remained.
 - **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
 
-## OPS-MAINT — Keep low-risk operational cleanup explicit
+## SERIALIZATION-CORE-CONTRACTS-DOCUMENTS — Retire remaining serialization contract gaps
 
-- **Severity:** Low/Medium
-- **Source items:** CORE-22, CORE-27, FIN-07, FIN-15
-- **Files:** Celery beat config, password cache helper, finance IO services/routes, tests or docs
-- **Issue:** Some audit items are not large enough for their own production-readiness epic but should remain visible: maintenance jobs use relative intervals, common-password memory should be measured before optimizing, insertion-order filenames need extra sanitization, and overdue finance events may repeat if emitted on every save.
-- **Fix:** Convert true maintenance jobs to wall-clock `crontab()` schedules where useful. Measure common-password cache size before changing it. Harden uploaded filename basenames by stripping control characters and collapsing suspicious repeated-dot patterns. Verify overdue event emission and emit only on transition or through a scheduled scanner if repeated events are confirmed.
-- **Acceptance:** Low-risk operational cleanup is documented or tested, with no premature optimization and no repeated overdue-event spam if the path exists.
+- **Completed:** 2026-07-09
+- **Source items:** CORE-26, CON-14, DOC-27
+- **Files:** `backend/app/modules/contracts/schema.py`, `backend/app/modules/documents/services/document_services.py`, `backend/tests/test_contracts.py`, `backend/tests/test_documents.py`
+- **Result:** Contract create schemas now explicitly document server-allocated contract numbers when clients omit or blank `contract_number`. Document activity snapshots now use the slim document audit reference for version, template, create, attach, delete, and restore events instead of full response serialization. Regression coverage verifies slim document audit state and explicit tenant inheritance for created document versions.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_contracts tests.test_documents`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
 
-## SERIALIZATION — Make API serialization contracts explicit
+## ROUTES-SALES-SUPPORT-REPORTS — Normalize organization routes and guard static paths
 
-- **Severity:** Medium
-- **Source items:** CORE-24, CORE-26, CON-14, CAT-04, DOC-27, FIN-23, FIN-30, CP-12, CP-15, SALES-DEEP-06, SALES-DEEP-07, TASK-10, SUP-18, SUP-21, SUP-22
-- **Files:** serializers, schemas, models/docs, tests
-- **Issue:** Some responses expose misleading nullable/default semantics, aliased mutable sets, missing-media ambiguity, heavy audit states, implicit tenant inheritance, hidden sales custom-field hydration contracts, or heavy list response shapes.
-- **Fix:** Return copies/frozen sets for duplicate detection. Define `None` media URL behavior and render placeholders. Clarify auto-generated contract numbers. Keep boolean serialization stable. Use slim audit states. Document inherited tenancy for child rows. Replace hidden dynamic ORM serializer attributes with typed inputs. Document/test sales custom-field cache hydration and support immutable-comment/list-item contracts. Ensure task responses are serialized/validated once, either as plain dicts plus route validation or as response models directly.
-- **Acceptance:** API consumers see intentional null/default/media/boolean behavior, and serializers do not mutate caller-owned state or trigger accidental lazy loads; bulk list schemas stay lightweight; task serialization avoids repeated Pydantic validation.
-
-## ROUTES — Add route-order and path-boundary regression coverage
-
-- **Severity:** Medium/Low
+- **Completed:** 2026-07-09
 - **Source items:** CAL-04, CP-03, FIN-36, PLAT-26, PLAT-43, SALES-38, SALES-DEEP-37, SALES-DEEP-39, SALES-DEEP-40, SALES-DEEP-42, SUP-20
-- **Files:** module route files and route tests
-- **Issue:** Static routes and constrained action/path routes need regression coverage so future dynamic routes do not intercept them. Some sales routes have inconsistent shapes, broad `ValueError` catches, or double-fetch update paths; support saved-view search routing needs verification.
-- **Fix:** Place static routes before dynamic routes where applicable. Use enum/Literal route params for finite action vocabularies. Add route tests for import/export/task/path-converter behavior. Normalize organization create/search routes with backward-compatible aliases where needed. Remove broad catches or narrow them to known parse/config errors. Pass already-loaded raw records to update services where practical.
-- **Acceptance:** Known static/action routes reach intended handlers, unsupported path/action values fail at route boundary, and sales/support route helpers do not hide errors or duplicate work.
+- **Files:** `backend/app/modules/sales/routes/organizations_routes.py`, `backend/app/modules/sales/services/organizations_services.py`, `backend/tests/test_api_routes.py`
+- **Result:** Sales organizations now support canonical `POST /sales/organizations` and query-param `GET /sales/organizations/search?name=...` routes while keeping legacy `/create` and `/search/{name}` compatibility. Organization edit routes now pass the already-loaded organization into the update service, avoiding the redundant fetch/hydration path. Route regression coverage verifies canonical organization create/search, support saved-view search routing, report module CSV export suffix routing, and static opportunity GET routes staying ahead of dynamic IDs.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_api_routes`; `docker compose exec -T backend python -m unittest tests.test_organizations_services`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## DUPLICATION-SALES-IO-MATCHING — Simplify related insertion-order matching
+
+- **Completed:** 2026-07-09
+- **Source items:** SALES-DEEP-30
+- **Files:** `backend/app/modules/sales/services/summary_services.py`, `backend/tests/test_summary_services.py`
+- **Result:** Related insertion-order summary matching now builds contact, organization, and normalized customer-name predicates programmatically and combines them once, replacing the previous branch matrix. Regression coverage verifies contact-only, organization-only, normalized-name-only, and combined matching while preserving tenant and deleted-row filtering.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_summary_services`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
 
 ## DUPLICATION — Remove low-risk duplication only where it improves clarity
 
 - **Severity:** Low/Medium
-- **Source items:** CON-17, CAT-12, CAT-20, CAT-22, DOC-16, FIN-06, FIN-24, FIN-35, SALES-DEEP-30
+- **Source items:** CON-17, CAT-12, CAT-20, CAT-22, DOC-16, FIN-06, FIN-24, FIN-35
 - **Files:** affected module utilities, services, schemas, frontend helpers
-- **Issue:** Some list/search handlers, validators, slug/content-type/formatting/display helpers, query serializers, sales hook fetcher signatures, and related-record matching helpers are duplicated.
+- **Issue:** Some list/search handlers, validators, slug/content-type/formatting/display helpers, query serializers, and sales hook fetcher signatures are duplicated.
 - **Fix:** Extract shared helpers only when behavior is identical and the abstraction reduces complexity. Preserve endpoint response shapes. Standardize sales hook fetcher signatures and API-column filtering around shared utilities.
 - **Acceptance:** Duplicated logic is reduced without broad refactors or behavior drift.
 

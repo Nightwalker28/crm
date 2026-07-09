@@ -72,6 +72,7 @@ def _service_state(service: CatalogService) -> dict:
 
 
 def serialize_service(service: CatalogService) -> dict:
+    media_path = service.media_path
     return {
         "id": service.id,
         "name": service.name,
@@ -81,9 +82,9 @@ def serialize_service(service: CatalogService) -> dict:
         "public_unit_price": service.public_unit_price,
         "is_public": bool(service.is_public),
         "is_active": bool(service.is_active),
-        "media_url": build_media_url(service.media_path) if service.media_path else None,
-        "media_content_type": service.media_content_type,
-        "media_original_filename": service.media_original_filename,
+        "media_url": build_media_url(media_path) if media_path else None,
+        "media_content_type": service.media_content_type if media_path else None,
+        "media_original_filename": service.media_original_filename if media_path else None,
         "created_at": service.created_at,
         "updated_at": service.updated_at,
     }

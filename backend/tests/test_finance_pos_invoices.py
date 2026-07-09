@@ -79,6 +79,49 @@ class FinancePosInvoiceTests(unittest.TestCase):
 
         self.assertEqual(payload["user_name"], "Ava Admin")
 
+    def test_list_invoices_keeps_lightweight_shape_without_lines(self):
+        invoice = FinancePosInvoice(
+            id=1,
+            tenant_id=10,
+            user_id=1,
+            invoice_number="POS-1",
+            mode="pos",
+            status="issued",
+            payment_status="unpaid",
+            payment_method=None,
+            template_id="modern",
+            accent_color="#14b8a6",
+            customer_name="Buyer",
+            currency="USD",
+            subtotal_amount=Decimal("10.00"),
+            discount_amount=Decimal("0.00"),
+            tax_rate=Decimal("0.00"),
+            tax_amount=Decimal("0.00"),
+            total_amount=Decimal("10.00"),
+            amount_paid=Decimal("0.00"),
+        )
+        invoice.lines = [
+            FinancePosInvoiceLine(
+                id=10,
+                invoice_id=1,
+                description="Line",
+                quantity=Decimal("1.00"),
+                unit_price=Decimal("10.00"),
+                line_total=Decimal("10.00"),
+            )
+        ]
+
+        with patch.object(pos_invoice_repository, "list_invoices", return_value=([invoice], 1)):
+            response = pos_invoice_services.list_invoices(
+                object(),
+                SimpleNamespace(id=1, tenant_id=10),
+                pagination=SimpleNamespace(page=1, page_size=10, offset=0, limit=10),
+            )
+
+        self.assertEqual(response["total_count"], 1)
+        self.assertEqual(response["results"][0]["invoice_number"], "POS-1")
+        self.assertNotIn("lines", response["results"][0])
+
     def test_list_invoices_sorts_before_pagination(self):
         query = FakePosInvoiceQuery()
         current_user = SimpleNamespace(id=1, tenant_id=10)

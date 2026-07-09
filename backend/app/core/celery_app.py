@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.schedules import crontab
 from celery.signals import worker_init
 
 from app.core.config import settings, validate_startup_settings
@@ -32,11 +33,11 @@ celery_app.conf.update(
     beat_schedule={
         "cleanup-expired-data-transfer-results": {
             "task": "app.tasks.data_transfer.cleanup_expired_results",
-            "schedule": settings.DATA_TRANSFER_RESULT_CLEANUP_INTERVAL_SECONDS,
+            "schedule": crontab(minute=15, hour=2),
         },
         "cleanup-expired-refresh-tokens": {
             "task": "app.tasks.cleanup_expired_refresh_tokens",
-            "schedule": settings.REFRESH_TOKEN_CLEANUP_INTERVAL_SECONDS,
+            "schedule": crontab(minute=7),
         },
         "scan-due-task-alerts": {
             "task": "app.tasks.task_reminders.scan_due_task_alerts",
@@ -48,7 +49,7 @@ celery_app.conf.update(
         },
         "purge-expired-recycle-bin-records": {
             "task": "app.tasks.recycle_bin.purge_expired_records",
-            "schedule": settings.RECYCLE_BIN_PURGE_INTERVAL_SECONDS,
+            "schedule": crontab(minute=30, hour=3),
         },
         "scan-due-tenant-backups": {
             "task": "app.tasks.tenant_backups.scan_due_backup_schedules",

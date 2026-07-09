@@ -82,6 +82,7 @@ def _product_state(product: CatalogProduct) -> dict:
 
 
 def serialize_product(product: CatalogProduct) -> dict:
+    media_path = product.media_path
     return {
         "id": product.id,
         "name": product.name,
@@ -94,9 +95,9 @@ def serialize_product(product: CatalogProduct) -> dict:
         "stock_quantity": product.stock_quantity,
         "is_public": bool(product.is_public),
         "is_active": bool(product.is_active),
-        "media_url": build_media_url(product.media_path) if product.media_path else None,
-        "media_content_type": product.media_content_type,
-        "media_original_filename": product.media_original_filename,
+        "media_url": build_media_url(media_path) if media_path else None,
+        "media_content_type": product.media_content_type if media_path else None,
+        "media_original_filename": product.media_original_filename if media_path else None,
         "created_at": product.created_at,
         "updated_at": product.updated_at,
     }

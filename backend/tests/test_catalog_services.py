@@ -216,6 +216,22 @@ class CatalogServiceServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(serialized["media_url"], "/media/catalog-services/tenant-10/service-1/service.png")
         self.assertEqual(serialized["media_original_filename"], "service.png")
 
+    def test_service_without_media_serializes_all_media_fields_as_none(self):
+        service = services.create_service(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={"name": "Design Review", "public_unit_price": "25.00"},
+        )
+        service.media_content_type = "image/png"
+        service.media_original_filename = "stale.png"
+
+        serialized = services.serialize_service(service)
+
+        self.assertIsNone(serialized["media_url"])
+        self.assertIsNone(serialized["media_content_type"])
+        self.assertIsNone(serialized["media_original_filename"])
+
     async def test_service_media_deletes_new_file_on_commit_failure_only(self):
         service = services.create_service(
             self.db,

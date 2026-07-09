@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -8,6 +9,7 @@ from app.core.database import Base
 from app.core.pagination import create_pagination
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesLead, SalesLeadScore
+from app.modules.sales.services import leads_services
 from app.modules.sales.services.leads_services import calculate_lead_score, list_sales_leads, update_sales_lead
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
@@ -92,25 +94,28 @@ class LeadScoringTests(unittest.TestCase):
         self.assertIn("recent_follow_up", {factor["key"] for factor in factors})
 
     def test_update_recalculates_existing_score_record(self):
+        calculated_at = datetime(2026, 7, 9, 12, 0, tzinfo=timezone.utc)
         lead = SalesLead(lead_id=100, tenant_id=10, primary_email="ada@example.com", status="new", assigned_to=1)
         lead.score_record = SalesLeadScore(id=200, tenant_id=10, lead_id=100, score=10, grade="cold", factors_json=[])
         self.db.add(lead)
         self.db.commit()
 
-        updated = update_sales_lead(
-            self.db,
-            lead,
-            {
-                "phone": "555-0100",
-                "company": "Analytical Engines",
-                "source": "Referral",
-                "status": "qualified",
-                "last_contacted_at": datetime.now(timezone.utc),
-            },
-        )
+        with patch.object(leads_services, "utc_now", return_value=calculated_at):
+            updated = update_sales_lead(
+                self.db,
+                lead,
+                {
+                    "phone": "555-0100",
+                    "company": "Analytical Engines",
+                    "source": "Referral",
+                    "status": "qualified",
+                    "last_contacted_at": datetime.now(timezone.utc),
+                },
+            )
 
         self.assertEqual(updated.score, 80)
         self.assertEqual(updated.score_grade, "hot")
+        self.assertEqual(updated.score_calculated_at.replace(tzinfo=timezone.utc), calculated_at)
         self.assertIn("qualified", {factor["key"] for factor in updated.score_factors})
 
     def test_lead_list_filters_by_score_and_grade(self):

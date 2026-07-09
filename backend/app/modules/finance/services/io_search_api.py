@@ -26,6 +26,10 @@ from app.modules.finance.services.io_search_services import (
     IO_NUMBER_PAD,
     IO_NUMBER_PREFIX,
     _build_insertion_orders_query,
+    _date_to_iso,
+    _finance_record_currency,
+    _finance_record_customer_name,
+    _finance_record_status,
     _get_next_io_sequence,
     get_io_search_upload_dir,
     normalize_io_status,
@@ -858,8 +862,35 @@ def _is_overdue_invoice(record: FinanceIO) -> bool:
     return bool(record.due_date and record.due_date < date.today())
 
 
-def _emit_invoice_overdue_event_if_needed(db: Session, *, current_user, record: FinanceIO) -> None:
+def _is_overdue_invoice_snapshot(*, status_value: str | None, due_date_value: Any) -> bool:
+    normalized_status = (status_value or "").strip().lower()
+    if normalized_status in {"paid", "completed", "closed", "cancelled", "void"}:
+        return False
+    if normalized_status in {"overdue", "past_due"}:
+        return True
+    if isinstance(due_date_value, date):
+        due_date_value = due_date_value.isoformat()
+    if isinstance(due_date_value, str) and due_date_value:
+        try:
+            return date.fromisoformat(due_date_value) < date.today()
+        except ValueError:
+            return False
+    return False
+
+
+def _emit_invoice_overdue_event_if_needed(
+    db: Session,
+    *,
+    current_user,
+    record: FinanceIO,
+    previous_state: dict[str, Any] | None = None,
+) -> None:
     if not _is_overdue_invoice(record):
+        return
+    if previous_state and _is_overdue_invoice_snapshot(
+        status_value=previous_state.get("status"),
+        due_date_value=previous_state.get("due_date"),
+    ):
         return
     safe_emit_crm_event(
         db,
@@ -941,7 +972,12 @@ def update_generic_insertion_order(
         before_state=before_state,
         after_state=_serialize_finance_record_state(updated, current_user=current_user),
     )
-    _emit_invoice_overdue_event_if_needed(db, current_user=current_user, record=updated)
+    _emit_invoice_overdue_event_if_needed(
+        db,
+        current_user=current_user,
+        record=updated,
+        previous_state=before_state,
+    )
     return serialized
 
 

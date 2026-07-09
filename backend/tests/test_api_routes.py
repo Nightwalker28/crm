@@ -17,7 +17,10 @@ from app.core.database import get_db
 from app.core.pagination import Pagination
 from app.core.security import get_current_user, require_admin, require_user
 from app.main import app
+from app.modules.platform.routes import module_reports
+from app.modules.support.routes import cases_routes
 from app.modules.sales.routes import contacts_routes, organizations_routes
+from app.modules.sales.routes import opportunities_routes
 from app.modules.tasks.routes import tasks_routes
 from app.modules.sales.schema import (
     SalesLeadResponse,
@@ -1209,6 +1212,7 @@ class APIRouteTests(unittest.TestCase):
         with patch.object(tasks_routes, "get_deleted_task_or_404", return_value=task) as get_mock, \
              patch.object(tasks_routes, "restore_task", return_value=task) as restore_mock, \
              patch.object(tasks_routes, "serialize_task", return_value=serialized), \
+             patch.object(tasks_routes.TaskResponse, "model_validate", side_effect=AssertionError("task response validated twice")), \
              patch.object(tasks_routes, "log_activity"), \
              patch.object(tasks_routes, "_mirror_task_source_activity"):
             response = tasks_routes.restore_task_route(
@@ -1217,7 +1221,7 @@ class APIRouteTests(unittest.TestCase):
                 current_user=user,
             )
 
-        self.assertEqual(response.id, 11)
+        self.assertEqual(response["id"], 11)
         get_mock.assert_called_once_with(db, 11, tenant_id=42, current_user=user)
         restore_mock.assert_called_once_with(db, task=task, current_user=user)
 
@@ -1642,6 +1646,171 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(response.json()["org_id"], 32)
         create_mock.assert_called_once()
+
+    def test_sales_organizations_canonical_create_route_returns_organization(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+        organization = SalesOrganizationResponse(
+            org_id=33,
+            org_name="Canonical ACME",
+            primary_email="ops@canonical.test",
+            website="https://canonical.test",
+            assigned_to=7,
+            created_time=datetime(2026, 4, 11, 10, 0, 0),
+        )
+
+        with patch("app.core.permissions.require_department_module_access"), patch(
+            "app.modules.sales.routes.organizations_routes.create_organization",
+            return_value=organization,
+        ) as create_mock:
+            response = self.client.post(
+                "/api/v1/sales/organizations",
+                json={
+                    "org_name": "Canonical ACME",
+                    "primary_email": "ops@canonical.test",
+                    "website": "https://canonical.test",
+                },
+            )
+
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["org_id"], 33)
+        create_mock.assert_called_once()
+
+    def test_sales_organizations_search_query_route_passes_name_by_keyword(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+        organization = SimpleNamespace(
+            org_id=34,
+            org_name="Search ACME",
+            primary_email="ops@search.test",
+            website=None,
+            primary_phone=None,
+            industry=None,
+            annual_revenue=None,
+            billing_country=None,
+            customer_group_id=None,
+            customer_group=None,
+            custom_data=None,
+        )
+
+        with patch("app.core.permissions.require_department_module_access"), patch(
+            "app.modules.sales.routes.organizations_routes.search_organizations_paginated",
+            return_value=([organization], 1),
+        ) as search_mock:
+            response = self.client.get("/api/v1/sales/organizations/search?name=Search%20ACME&page=1&page_size=10")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["results"][0]["org_name"], "Search ACME")
+        search_mock.assert_called_once()
+        self.assertEqual(search_mock.call_args.kwargs["name"], "Search ACME")
+
+    def test_sales_organization_edit_reuses_loaded_record(self):
+        db = object()
+        user = SimpleNamespace(id=7, tenant_id=42)
+        existing = SalesOrganizationResponse(
+            org_id=35,
+            org_name="Before",
+            primary_email="before@example.com",
+            website=None,
+            assigned_to=7,
+            created_time=datetime(2026, 4, 11, 10, 0, 0),
+        )
+        updated = SalesOrganizationResponse(
+            org_id=35,
+            org_name="After",
+            primary_email="before@example.com",
+            website=None,
+            assigned_to=7,
+            created_time=datetime(2026, 4, 11, 10, 0, 0),
+        )
+
+        with patch.object(organizations_routes, "get_organization", return_value=existing) as get_mock, \
+             patch.object(organizations_routes, "reject_disabled_field_writes"), \
+             patch.object(organizations_routes, "sanitize_disabled_field_payload", return_value={"org_name": "After"}), \
+             patch.object(organizations_routes, "update_existing_organization", return_value=updated) as update_mock, \
+             patch.object(organizations_routes, "log_activity"):
+            response = organizations_routes.edit_sales_organization(
+                org_id=35,
+                payload=organizations_routes.SalesOrganizationUpdate(org_name="After"),
+                db=db,
+                current_user=user,
+            )
+
+        self.assertEqual(response.org_name, "After")
+        get_mock.assert_called_once_with(db=db, org_id=35, tenant_id=42)
+        update_mock.assert_called_once()
+        self.assertIs(update_mock.call_args.kwargs["organization"], existing)
+
+    def test_support_case_search_static_route_reaches_search_handler(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+        case = SimpleNamespace(
+            id=51,
+            case_number="CASE-51",
+            subject="Router issue",
+            category=None,
+            status="open",
+            priority="medium",
+            source=None,
+            contact_id=None,
+            organization_id=None,
+            opportunity_id=None,
+            quote_id=None,
+            order_id=None,
+            assigned_to_id=None,
+            assigned_to_name=None,
+            sla_due_at=None,
+            first_response_at=None,
+            resolved_at=None,
+            closed_at=None,
+            created_at=datetime(2026, 4, 11, 10, 0, 0),
+            updated_at=datetime(2026, 4, 11, 10, 0, 0),
+        )
+
+        with patch("app.core.permissions.require_department_module_access"), patch.object(
+            cases_routes,
+            "list_support_cases",
+            return_value=([case], 1),
+        ) as search_mock:
+            response = self.client.get("/api/v1/support/cases/search?query=router&page=1&page_size=10")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["results"][0]["case_number"], "CASE-51")
+        search_mock.assert_called_once()
+        self.assertEqual(search_mock.call_args.kwargs["search"], "router")
+
+    def test_report_module_export_static_suffix_reaches_export_handler(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+
+        with patch("app.core.permissions.require_department_module_access"), patch(
+            "app.core.permissions.require_role_module_action_access",
+        ), patch.object(
+            module_reports.module_reports,
+            "generate_module_report",
+            return_value={"rows": []},
+        ) as report_mock, patch.object(
+            module_reports.module_reports,
+            "module_report_csv_bytes",
+            return_value=b"metric,count\n",
+        ):
+            response = self.client.get("/api/v1/reports/modules/sales_leads/export.csv")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"metric,count\n")
+        self.assertIn('filename="sales_leads-report.csv"', response.headers.get("content-disposition", ""))
+        report_mock.assert_called_once()
+
+    def test_opportunity_static_get_routes_stay_before_dynamic_id_route(self):
+        get_paths = [
+            route.path
+            for route in opportunities_routes.router.routes
+            if "GET" in getattr(route, "methods", set())
+        ]
+
+        dynamic_index = get_paths.index("/opportunities/{opportunity_id}")
+        self.assertLess(get_paths.index("/opportunities/search"), dynamic_index)
+        self.assertLess(get_paths.index("/opportunities/pipeline-summary"), dynamic_index)
 
 
 if __name__ == "__main__":

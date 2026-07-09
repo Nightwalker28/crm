@@ -198,6 +198,22 @@ class CatalogProductServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(serialized["media_url"], "/media/catalog-products/tenant-10/product-1/camera.png")
         self.assertEqual(serialized["media_original_filename"], "camera.png")
 
+    def test_product_without_media_serializes_all_media_fields_as_none(self):
+        product = services.create_product(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={"name": "Camera", "public_unit_price": "25.00", "stock_status": "untracked"},
+        )
+        product.media_content_type = "image/png"
+        product.media_original_filename = "stale.png"
+
+        serialized = services.serialize_product(product)
+
+        self.assertIsNone(serialized["media_url"])
+        self.assertIsNone(serialized["media_content_type"])
+        self.assertIsNone(serialized["media_original_filename"])
+
     async def test_product_media_deletes_new_file_on_commit_failure_only(self):
         product = services.create_product(
             self.db,

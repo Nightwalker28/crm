@@ -264,7 +264,7 @@ def get_tasks(
         sort_by=sort_by,
         sort_direction=sort_direction,
     )
-    serialized = [TaskResponse.model_validate(serialize_task(task)) for task in tasks]
+    serialized = [serialize_task(task) for task in tasks]
     return build_paged_response(serialized, total_count=total_count, pagination=pagination)
 
 
@@ -304,7 +304,7 @@ def get_tasks_cursor(
         tasks,
         limit=pagination.limit,
         id_attr="id",
-        serializer=lambda task: TaskResponse.model_validate(serialize_task(task)),
+        serializer=serialize_task,
     )
 
 
@@ -343,7 +343,7 @@ def get_deleted_tasks(
         current_user=current_user,
         pagination=pagination,
     )
-    serialized = [TaskResponse.model_validate(serialize_task(task)) for task in tasks]
+    serialized = [serialize_task(task) for task in tasks]
     return build_paged_response(serialized, total_count=total_count, pagination=pagination)
 
 
@@ -356,7 +356,7 @@ def get_task(
     require_permission=Depends(require_action_access("tasks", "view")),
 ):
     task = get_task_or_404(db, task_id, tenant_id=current_user.tenant_id, current_user=current_user)
-    return TaskResponse.model_validate(serialize_task(task))
+    return serialize_task(task)
 
 
 @router.post("", response_model=TaskResponse, status_code=status.HTTP_201_CREATED)
@@ -393,7 +393,7 @@ def create_task_route(
         source_context=source_context,
     )
     _emit_task_alert_events(db, current_user=current_user, task=task, added_keys=added_keys)
-    return TaskResponse.model_validate(task_state)
+    return task_state
 
 
 @router.put("/{task_id}", response_model=TaskResponse)
@@ -445,7 +445,7 @@ def update_task_route(
         source_context=source_context,
     )
     _emit_task_alert_events(db, current_user=current_user, task=updated, added_keys=added_keys)
-    return TaskResponse.model_validate(task_state)
+    return task_state
 
 
 @router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -533,4 +533,4 @@ def restore_task_route(
         after_state=restored_state,
         source_context=source_context,
     )
-    return TaskResponse.model_validate(restored_state)
+    return restored_state

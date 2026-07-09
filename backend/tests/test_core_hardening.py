@@ -261,7 +261,18 @@ class DuplicateDetectionTests(unittest.TestCase):
 
         self.assertEqual(detection.duplicates_in_request, {"A"})
         self.assertEqual(detection.existing_duplicates, {"C"})
+        self.assertIsInstance(detection.duplicates_in_request, frozenset)
+        self.assertIsInstance(detection.existing_duplicates, frozenset)
         self.assertEqual(detection.request_duplicate_values, ["A"])
+        self.assertEqual(detection.existing_duplicate_values, ["C"])
+        self.assertEqual(detection.duplicate_values, ["A", "C"])
+
+    def test_detect_duplicates_copies_existing_values_before_serialization(self):
+        existing = {"C"}
+        detection = detect_duplicates(["A", "A", "B"], existing_values=existing)
+
+        existing.add("D")
+
         self.assertEqual(detection.existing_duplicate_values, ["C"])
         self.assertEqual(detection.duplicate_values, ["A", "C"])
 

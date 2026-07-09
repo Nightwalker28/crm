@@ -6,7 +6,10 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 
 class ContractBase(BaseModel):
-    contract_number: str | None = None
+    contract_number: str | None = Field(
+        default=None,
+        description="Optional tenant-unique contract number. When omitted or blank, the server allocates the next CTR number.",
+    )
     title: str = Field(min_length=1)
     status: str = "draft"
     organization_id: int | None = None

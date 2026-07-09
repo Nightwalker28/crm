@@ -42,7 +42,7 @@ from app.modules.sales.services.organizations_services import (
     search_organizations_paginated,
     get_organization,
     restore_organization,
-    update_organization,
+    update_existing_organization,
     delete_organization,
     import_organizations_from_csv,
     list_organizations_cursor,
@@ -135,7 +135,55 @@ def _serialize_organization_list_item(org, fields: set[str]) -> SalesOrganizatio
     payload["custom_fields"] = getattr(org, "custom_data", None)
     return SalesOrganizationListItem.model_validate(payload)
 
+
+def _create_sales_organization_response(
+    *,
+    payload: SalesOrganizationCreate,
+    replace_duplicates: bool,
+    skip_duplicates: bool,
+    create_new_records: bool,
+    db: Session,
+    current_user,
+):
+    submitted_fields = set(payload.model_fields_set) - {"custom_fields"}
+    reject_disabled_field_writes(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_organizations",
+        field_keys=submitted_fields,
+    )
+    sanitized_payload = SalesOrganizationCreate.model_validate(
+        sanitize_disabled_field_payload(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key="sales_organizations",
+            payload=payload.model_dump(),
+        )
+    )
+    created = create_organization(
+        db=db,
+        payload=sanitized_payload,
+        current_user=current_user,
+        replace_duplicates=replace_duplicates,
+        skip_duplicates=skip_duplicates,
+        create_new_records=create_new_records,
+    )
+    log_activity(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        module_key="sales_organizations",
+        entity_type="sales_organization",
+        entity_id=created.org_id,
+        action="create",
+        description=f"Created organization {created.org_name}",
+        after_state=_serialize_organization(created),
+    )
+    return created
+
+
 # create
+@router.post("", response_model=SalesOrganizationResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/create", response_model=SalesOrganizationResponse, status_code=status.HTTP_201_CREATED)
 def create_sales_organization(
     payload: SalesOrganizationCreate,
@@ -148,41 +196,14 @@ def create_sales_organization(
     require_permission = Depends(require_action_access("sales_organizations", "create")),
 ):
     try:
-        submitted_fields = set(payload.model_fields_set) - {"custom_fields"}
-        reject_disabled_field_writes(
-            db,
-            tenant_id=current_user.tenant_id,
-            module_key="sales_organizations",
-            field_keys=submitted_fields,
-        )
-        sanitized_payload = SalesOrganizationCreate.model_validate(
-            sanitize_disabled_field_payload(
-                db,
-                tenant_id=current_user.tenant_id,
-                module_key="sales_organizations",
-                payload=payload.model_dump(),
-            )
-        )
-        created = create_organization(
-            db=db,
-            payload=sanitized_payload,
-            current_user=current_user,
+        return _create_sales_organization_response(
+            payload=payload,
             replace_duplicates=replace_duplicates,
             skip_duplicates=skip_duplicates,
             create_new_records=create_new_records,
+            db=db,
+            current_user=current_user,
         )
-        log_activity(
-            db,
-            tenant_id=current_user.tenant_id,
-            actor_user_id=current_user.id if current_user else None,
-            module_key="sales_organizations",
-            entity_type="sales_organization",
-            entity_id=created.org_id,
-            action="create",
-            description=f"Created organization {created.org_name}",
-            after_state=_serialize_organization(created),
-        )
-        return created
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
     
@@ -296,6 +317,39 @@ def get_deleted_sales_organizations(
     return build_paged_response(serialized, total_count=total, pagination=pagination)
 
 # search
+@router.get("/search", response_model=SalesOrganizationListResponse)
+def search_sales_organizations_by_query(
+    name: str = Query(..., min_length=1, max_length=100),
+    fields: str | None = Query(default=None),
+    sort_by: str | None = Query(default=None),
+    sort_direction: str | None = Query(default=None),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
+    pagination: Pagination = Depends(get_pagination),
+    db:  Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access('sales_organizations')),
+    require_permission = Depends(require_action_access("sales_organizations", "view")),
+):
+    return search_sales_organizations(
+        name=name,
+        fields=fields,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+        filter_logic=filter_logic,
+        filters=filters,
+        filters_all=filters_all,
+        filters_any=filters_any,
+        pagination=pagination,
+        db=db,
+        current_user=current_user,
+        require_module=require_module,
+        require_permission=require_permission,
+    )
+
+
 @router.get("/search/{name}", response_model=SalesOrganizationListResponse)
 def search_sales_organizations(
     name: str,
@@ -394,9 +448,7 @@ def edit_sales_organization(
     )
 
     before_state = _serialize_organization(existing)
-    org = update_organization(db=db, org_id=org_id, payload=sanitized_payload, tenant_id=current_user.tenant_id)
-    if not org:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
+    org = update_existing_organization(db=db, organization=existing, payload=sanitized_payload, tenant_id=current_user.tenant_id)
 
     log_activity(
         db,

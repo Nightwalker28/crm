@@ -1402,6 +1402,25 @@ class ClientPortalServiceTests(unittest.TestCase):
 
         self.assertIsNone(payload["contact_name"])
 
+    def test_serialize_client_page_does_not_lazy_load_relationships(self):
+        page = ClientPage(
+            id=32,
+            tenant_id=10,
+            contact_id=7,
+            title="Proposal",
+            status="draft",
+            pricing_items=[],
+        )
+        self.db.add(page)
+        self.db.commit()
+        page = self.db.query(ClientPage).filter(ClientPage.id == 32).first()
+        self.db.expunge(page)
+
+        payload = client_portal_services.serialize_client_page(page)
+
+        self.assertIsNone(payload["contact_name"])
+        self.assertIsNone(payload["organization_name"])
+
     def test_optional_client_account_treats_invalid_token_as_anonymous(self):
         credentials = HTTPAuthorizationCredentials(scheme="Bearer", credentials="not-a-valid-token")
 

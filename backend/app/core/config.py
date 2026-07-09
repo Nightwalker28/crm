@@ -171,6 +171,7 @@ class Settings:
     DEPLOYMENT_LICENSE_CACHE_TTL_SECONDS: int = int(os.getenv("DEPLOYMENT_LICENSE_CACHE_TTL_SECONDS", str(24 * 60 * 60)))
     TENANT_RESOLUTION_MODE: str = os.getenv("TENANT_RESOLUTION_MODE", "host").strip().lower()
     CUSTOM_DOMAIN_CNAME_TARGET: str = os.getenv("CUSTOM_DOMAIN_CNAME_TARGET", "").strip().lower()
+    TENANT_DOMAIN_DNS_DIG_FALLBACK_ENABLED: bool = _env_bool("TENANT_DOMAIN_DNS_DIG_FALLBACK_ENABLED", DEBUG)
     SINGLE_TENANT_SLUG: str = os.getenv("SINGLE_TENANT_SLUG", "default")
     SINGLE_TENANT_NAME: str = os.getenv("SINGLE_TENANT_NAME", "Default Tenant")
     GOOGLE_OAUTH_STATE_EXPIRE_MINUTES: int = int(

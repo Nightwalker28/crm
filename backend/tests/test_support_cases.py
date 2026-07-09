@@ -13,6 +13,8 @@ from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.platform import models as platform_models  # noqa: F401
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.support.models import SupportCase
+from app.modules.support.routes import cases_routes
+from app.modules.support.schema import SupportCaseCommentResponse
 from app.modules.support.services import cases_services
 from app.modules.support.services.cases_services import (
     add_case_comment,
@@ -354,6 +356,51 @@ class SupportCaseTests(unittest.TestCase):
 
         self.assertEqual(detail.assigned_to_name, "Agent User")
         self.assertEqual(next(case.assigned_to_name for case in cases if case.id == item.id), "Agent User")
+
+    def test_support_list_routes_keep_lightweight_case_shape(self):
+        item = create_support_case(self.db, {"subject": "Listed case", "assigned_to_id": 2}, self.user)
+        add_case_comment(self.db, item, {"body": "Internal detail", "is_internal": True}, self.user)
+        pagination = SimpleNamespace(page=1, page_size=10, offset=0, limit=10)
+
+        with patch.object(
+            cases_routes.SupportCaseResponse,
+            "model_validate",
+            side_effect=AssertionError("support list route used heavy detail schema"),
+        ):
+            listed = cases_routes.list_cases(
+                filter_logic="all",
+                filters=None,
+                filters_all=None,
+                filters_any=None,
+                sort_by=None,
+                sort_direction=None,
+                pagination=pagination,
+                db=self.db,
+                current_user=self.user,
+            )
+            searched = cases_routes.search_cases(
+                query="Listed",
+                filter_logic="all",
+                filters=None,
+                filters_all=None,
+                filters_any=None,
+                sort_by=None,
+                sort_direction=None,
+                pagination=pagination,
+                db=self.db,
+                current_user=self.user,
+            )
+
+        for response in (listed, searched):
+            self.assertEqual(response["total_count"], 1)
+            payload = response["results"][0].model_dump(mode="json")
+            self.assertEqual(payload["assigned_to_name"], "Agent User")
+            self.assertNotIn("comments", payload)
+            self.assertNotIn("events", payload)
+
+    def test_support_comment_response_is_immutable_created_at_shape(self):
+        self.assertIn("created_at", SupportCaseCommentResponse.model_fields)
+        self.assertNotIn("updated_at", SupportCaseCommentResponse.model_fields)
 
     def test_client_quick_questions_are_source_scoped(self):
         ticket = create_client_support_case(

@@ -25,7 +25,6 @@ from app.core.tenancy import get_frontend_origin_for_request, get_google_redirec
 from app.core.uploads import UPLOAD_READ_CHUNK_BYTES, read_upload_limited
 from app.modules.documents.models import Document, DocumentClientShare, DocumentLink, DocumentStorageConnection, DocumentVersion
 from app.modules.documents.repositories import documents_repository
-from app.modules.documents.schema import DocumentResponse
 from app.modules.documents.services.storage_backends import get_document_storage_backend, supported_storage_providers
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.record_comments import get_record_comment_module_config, get_record_reference
@@ -770,7 +769,7 @@ def require_document_link_access(db: Session, *, user, document: Document, actio
 
 
 def _serialize_document(document: Document) -> dict:
-    return DocumentResponse.model_validate(document).model_dump(mode="json")
+    return _document_audit_ref(document)
 
 
 def serialize_client_document_share(share: DocumentClientShare) -> dict:

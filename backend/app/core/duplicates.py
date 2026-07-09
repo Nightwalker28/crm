@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
-from typing import Generic, Hashable, Iterable, TypeVar
+from typing import AbstractSet, Generic, Hashable, Iterable, TypeVar
 
 T = TypeVar("T", bound=Hashable)
 V = TypeVar("V")
@@ -11,8 +11,8 @@ V = TypeVar("V")
 
 @dataclass(frozen=True)
 class DuplicateDetectionResult(Generic[T]):
-    duplicates_in_request: set[T]
-    existing_duplicates: set[T]
+    duplicates_in_request: frozenset[T]
+    existing_duplicates: frozenset[T]
 
     @property
     def request_duplicate_values(self) -> list[T]:
@@ -39,8 +39,8 @@ def detect_duplicates(
 ) -> DuplicateDetectionResult:
     values_list = list(values)
     counts = Counter(values_list)
-    duplicates_in_request = {value for value, count in counts.items() if count > 1}
-    existing_set = set(existing_values or [])
+    duplicates_in_request = frozenset(value for value, count in counts.items() if count > 1)
+    existing_set = frozenset(existing_values or [])
     return DuplicateDetectionResult(
         duplicates_in_request=duplicates_in_request,
         existing_duplicates=existing_set,
@@ -112,7 +112,7 @@ def should_merge_value(current_value, incoming_value) -> bool:
 
 def drop_existing_duplicates(
     mapping: dict[T, V],
-    existing_duplicates: set[T],
+    existing_duplicates: AbstractSet[T],
 ) -> dict[T, V]:
     if not existing_duplicates:
         return mapping

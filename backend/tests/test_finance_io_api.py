@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+from datetime import date
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -177,6 +178,13 @@ class FinanceDownloadTests(unittest.TestCase):
         self.assertEqual(file_path.name, "order.docx")
         self.assertEqual(file_name, "order.docx")
 
+    def test_sanitize_file_name_strips_control_chars_and_collapses_repeated_dots(self):
+        self.assertEqual(
+            io_search_services.sanitize_file_name("..\\nested/\x00invoice.. final....pdf"),
+            "invoice.-final.pdf",
+        )
+        self.assertEqual(io_search_services.sanitize_file_name("....docx"), "upload.docx")
+
     def test_get_downloadable_insertion_order_accepts_relative_stored_path(self):
         record = SimpleNamespace(
             file_path="tenant-42/order.pdf",
@@ -212,11 +220,98 @@ class FinanceDownloadTests(unittest.TestCase):
         )
         self.assertEqual(io_search_routes._download_media_type("order.bin"), "application/octet-stream")
 
+    def test_insertion_order_detail_serializes_optional_fields_as_none(self):
+        record = SimpleNamespace(
+            id=9,
+            io_number="IO-9",
+            customer_name="Acme",
+            customer_contact_id=None,
+            customer_organization_id=None,
+            counterparty_reference=None,
+            external_reference=None,
+            issue_date=None,
+            effective_date=None,
+            due_date=None,
+            start_date=None,
+            end_date=None,
+            status="draft",
+            currency="USD",
+            subtotal_amount=None,
+            tax_amount=None,
+            total_amount=None,
+            notes=None,
+            custom_data=None,
+            file_name="order.pdf",
+            user_id=None,
+            assigned_user=None,
+            created_at=None,
+            updated_at=None,
+        )
+
+        payload = io_search_api._serialize_finance_record_response(
+            record,
+            request=None,
+            current_user=SimpleNamespace(id=7),
+        )
+
+        self.assertIsNone(payload["customer_contact_id"])
+        self.assertIsNone(payload["customer_organization_id"])
+        self.assertIsNone(payload["total_amount"])
+        self.assertIsNone(payload["custom_fields"])
+        self.assertIsNone(payload["file_url"])
+        self.assertEqual(payload["status"], "draft")
+        self.assertEqual(payload["currency"], "USD")
+
     def test_upload_root_is_resolved_lazily_for_file_operations(self):
         with patch.object(io_search_services, "IO_SEARCH_UPLOAD_DIR", None), \
              patch.object(io_search_services.os, "getenv", return_value=None):
             with self.assertRaisesRegex(RuntimeError, "IO_SEARCH_UPLOAD_DIR"):
                 io_search_services.get_io_search_upload_dir()
+
+    def test_overdue_event_emits_only_when_record_becomes_overdue(self):
+        db = object()
+        current_user = SimpleNamespace(id=7, tenant_id=42, first_name="Ada", last_name="Admin", email="ada@example.test")
+        record = SimpleNamespace(
+            id=12,
+            io_number="IO-12",
+            status="draft",
+            due_date=None,
+            total_amount=None,
+            currency="USD",
+            customer_name="Acme",
+            customer_contact=None,
+            customer_organization=None,
+        )
+
+        with patch.object(io_search_api, "safe_emit_crm_event") as emit:
+            io_search_api._emit_invoice_overdue_event_if_needed(
+                db,
+                current_user=current_user,
+                record=record,
+            )
+
+        emit.assert_not_called()
+
+        record.due_date = date(2025, 1, 1)
+        with patch.object(io_search_api, "safe_emit_crm_event") as emit:
+            io_search_api._emit_invoice_overdue_event_if_needed(
+                db,
+                current_user=current_user,
+                record=record,
+                previous_state={"status": "draft", "due_date": None},
+            )
+
+        emit.assert_called_once()
+
+        with patch.object(io_search_api, "safe_emit_crm_event") as emit:
+            io_search_api._emit_invoice_overdue_event_if_needed(
+                db,
+                current_user=current_user,
+                record=record,
+                previous_state={"status": "draft", "due_date": "2025-01-01"},
+            )
+
+        emit.assert_not_called()
 
 
 class FinanceInsertionOrderListTests(unittest.TestCase):

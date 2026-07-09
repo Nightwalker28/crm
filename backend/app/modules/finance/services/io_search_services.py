@@ -81,10 +81,17 @@ def _get_next_io_sequence(db: Session) -> int:
 
 
 def sanitize_file_name(file_name: str) -> str:
-    """Normalize file names by stripping directories and replacing whitespace with dashes."""
-    name_only = Path(file_name).name
-    stem, suffix = os.path.splitext(name_only)
-    sanitized_stem = re.sub(r"\s+", "-", stem.strip())
+    """Normalize file names by stripping directories and unsafe basename noise."""
+    name_only = Path((file_name or "").replace("\\", "/")).name
+    name_only = re.sub(r"[\x00-\x1f\x7f]+", "", name_only)
+    name_only = re.sub(r"\.{2,}", ".", name_only)
+    if name_only.startswith(".") and name_only.count(".") == 1:
+        stem, suffix = "", name_only
+    else:
+        stem, suffix = os.path.splitext(name_only)
+    sanitized_stem = re.sub(r"\s+", "-", stem.strip(" ."))
+    if not sanitized_stem:
+        sanitized_stem = "upload"
     return f"{sanitized_stem}{suffix}"
 
 

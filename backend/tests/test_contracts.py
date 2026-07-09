@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.modules.contracts.models import Contract
+from app.modules.contracts.schema import ContractCreateRequest
 from app.modules.contracts.services import contracts_services
 from app.modules.contracts.services.contracts_services import add_contract_party, add_contract_signer, create_contract, get_contract_or_404, update_contract, update_contract_signer
 from app.modules.documents.models import Document
@@ -82,6 +83,13 @@ class ContractTests(unittest.TestCase):
             self.db.query(CrmNumberCounter).filter(CrmNumberCounter.scope == "contracts").count(),
             1,
         )
+
+    def test_contract_number_schema_documents_server_generation(self):
+        schema = ContractCreateRequest.model_json_schema()
+
+        description = schema["properties"]["contract_number"]["description"]
+        self.assertIn("Optional", description)
+        self.assertIn("server allocates", description)
 
     def test_create_contract_manual_duplicate_number_returns_conflict(self):
         create_contract(self.db, {"title": "First", "contract_number": "CTR-MANUAL"}, self.user)

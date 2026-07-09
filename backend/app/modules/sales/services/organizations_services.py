@@ -322,12 +322,14 @@ def get_organization(db: Session, org_id: int, *, tenant_id: int, include_delete
     )
 
 
-def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpdate, *, tenant_id: int) -> SalesOrganization | None:
-    """Update an existing organization by ID."""
-    organization = get_organization(db=db, org_id=org_id, tenant_id=tenant_id)
-    if not organization:
-        return None
-
+def update_existing_organization(
+    db: Session,
+    organization: SalesOrganization,
+    payload: SalesOrganizationUpdate,
+    *,
+    tenant_id: int,
+) -> SalesOrganization:
+    """Update an already-loaded organization."""
     data = payload.model_dump(exclude_unset=True)
     custom_data_to_save: dict | None = None
     if "custom_fields" in data:
@@ -374,6 +376,14 @@ def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpda
         record=organization,
         record_id=organization.org_id,
     )
+
+
+def update_organization(db: Session, org_id: int, payload: SalesOrganizationUpdate, *, tenant_id: int) -> SalesOrganization | None:
+    """Update an existing organization by ID."""
+    organization = get_organization(db=db, org_id=org_id, tenant_id=tenant_id)
+    if not organization:
+        return None
+    return update_existing_organization(db, organization, payload, tenant_id=tenant_id)
 
 
 def delete_organization(db: Session, org_id: int, *, tenant_id: int) -> bool:
