@@ -1,6 +1,6 @@
 # Codex Production Readiness Backlog
 
-_Last updated: 2026-07-01_
+_Last updated: 2026-07-10_
 
 This is the consolidated implementation backlog for the production-readiness audit across Core Backend, Contracts, Calendar, Catalog, Client Portal, Documents, Platform, Finance, Sales, Support, Tasks, and User Management.
 
@@ -741,14 +741,45 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 - **Result:** Related insertion-order summary matching now builds contact, organization, and normalized customer-name predicates programmatically and combines them once, replacing the previous branch matrix. Regression coverage verifies contact-only, organization-only, normalized-name-only, and combined matching while preserving tenant and deleted-row filtering.
 - **Verification:** `docker compose exec -T backend python -m unittest tests.test_summary_services`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
 
+## DUPLICATION-CATALOG-SHARED-PRIMITIVES — Share catalog slug, currency, boolean, and media helpers
+
+- **Completed:** 2026-07-10
+- **Source items:** CAT-12, CAT-20, CAT-22
+- **Files:** `backend/app/modules/catalog/services/common.py`, `backend/app/modules/catalog/services/product_services.py`, `backend/app/modules/catalog/services/service_services.py`
+- **Result:** Catalog product and service services now share slug normalization, currency normalization, boolean coercion, UTC timestamping, and media-field serialization through one catalog service helper. Product-only stock and decimal behavior remains local, preserving response shapes and validation behavior.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_catalog_products tests.test_catalog_services`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## DUPLICATION-FINANCE-DATE-FORMATTING — Share finance date serialization
+
+- **Completed:** 2026-07-10
+- **Source items:** FIN-24, FIN-35
+- **Files:** `backend/app/modules/finance/services/common.py`, `backend/app/modules/finance/services/io_search_api.py`, `backend/app/modules/finance/services/io_search_services.py`, `backend/app/modules/finance/services/pos_invoice_services.py`, `backend/tests/test_finance_pos_invoices.py`
+- **Result:** Insertion-order, overdue-event, and POS invoice serializers now use one finance service helper for `date`, `datetime`, and `None` date-to-ISO conversion, removing duplicate formatting logic while preserving response shapes.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_finance_io_api tests.test_finance_pos_invoices`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## DUPLICATION-LIST-FIELD-PROJECTION — Share list field projection parsing
+
+- **Completed:** 2026-07-10
+- **Source items:** FIN-06
+- **Files:** `backend/app/core/list_fields.py`, `backend/app/modules/finance/routes/io_search_routes.py`, `backend/app/modules/sales/routes/contacts_routes.py`, `backend/app/modules/sales/routes/leads_routes.py`, `backend/app/modules/sales/routes/opportunities_routes.py`, `backend/app/modules/sales/routes/organizations_routes.py`, `backend/app/modules/sales/routes/quotes_routes.py`, `backend/app/modules/user_management/routes/admin.py`, `backend/tests/test_core_hardening.py`
+- **Result:** Finance insertion orders, sales projected list routes, and admin user lists now share one core parser for comma-separated `fields` projection requests while keeping each module's allowed-field set and response serializer local.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_core_hardening tests.test_finance_io_api tests.test_admin_users tests.test_api_routes`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
+## DUPLICATION-CONTRACTS-DOCUMENTS — Share remaining contracts/documents list helpers
+
+- **Completed:** 2026-07-10
+- **Source items:** CON-17, DOC-16
+- **Files:** `backend/app/modules/contracts/routes/contracts_routes.py`, `backend/app/modules/documents/services/document_services.py`, `backend/tests/test_contracts.py`, `backend/tests/test_documents.py`
+- **Result:** Contract list and search routes now share one route helper for filter parsing, disabled-field sanitization, service dispatch, and paged response building. Document offset and cursor list services now share one linked-record scope validator before repository access, keeping tenant scoping and permission checks consistent.
+- **Verification:** `docker compose exec -T backend python -m unittest tests.test_contracts tests.test_documents tests.test_api_routes`; `docker compose exec -T backend python -m compileall app tests`; `git diff --check`
+
 ## DUPLICATION — Remove low-risk duplication only where it improves clarity
 
-- **Severity:** Low/Medium
-- **Source items:** CON-17, CAT-12, CAT-20, CAT-22, DOC-16, FIN-06, FIN-24, FIN-35
-- **Files:** affected module utilities, services, schemas, frontend helpers
-- **Issue:** Some list/search handlers, validators, slug/content-type/formatting/display helpers, query serializers, and sales hook fetcher signatures are duplicated.
-- **Fix:** Extract shared helpers only when behavior is identical and the abstraction reduces complexity. Preserve endpoint response shapes. Standardize sales hook fetcher signatures and API-column filtering around shared utilities.
-- **Acceptance:** Duplicated logic is reduced without broad refactors or behavior drift.
+- **Completed:** 2026-07-10
+- **Source items:** CON-17, CAT-12, CAT-20, CAT-22, DOC-16, FIN-06, FIN-24, FIN-35, SALES-DEEP-30
+- **Files:** Completed across the `DUPLICATION-*` sections above.
+- **Result:** Low-risk duplication work is now split into completed, focused slices for related insertion-order matching, catalog shared primitives, finance date serialization, list field projection parsing, and contracts/documents list helpers. No active source items remain in this bucket.
+- **Verification:** See the focused verification commands in the completed `DUPLICATION-*` sections above.
 
 ---
 

@@ -22,11 +22,11 @@ from app.core.pagination import Pagination, build_paged_response
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
 from app.modules.finance.models import FinanceIO
+from app.modules.finance.services.common import finance_date_to_iso
 from app.modules.finance.services.io_search_services import (
     IO_NUMBER_PAD,
     IO_NUMBER_PREFIX,
     _build_insertion_orders_query,
-    _date_to_iso,
     _finance_record_currency,
     _finance_record_customer_name,
     _finance_record_status,
@@ -905,7 +905,7 @@ def _emit_invoice_overdue_event_if_needed(
             "customer_name": _finance_record_customer_name(record),
             "amount": float(record.total_amount) if record.total_amount is not None else None,
             "currency": _finance_record_currency(record),
-            "due_date": _date_to_iso(record.due_date),
+            "due_date": finance_date_to_iso(record.due_date),
             "status": _finance_record_status(record),
             "href": f"/dashboard/finance/insertion-orders/{record.id}",
         },

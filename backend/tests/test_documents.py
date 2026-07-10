@@ -25,6 +25,7 @@ from app.modules.documents.services.document_services import (
     get_client_document_share_or_404,
     list_document_templates,
     list_client_documents,
+    list_documents_cursor,
     list_document_versions,
     list_documents,
     log_client_document_download,
@@ -260,6 +261,30 @@ class DocumentServiceTests(unittest.TestCase):
 
         self.assertEqual(total, 3)
         self.assertEqual([document.title for document in documents], ["Alpha"])
+
+    def test_list_documents_cursor_uses_linked_record_access_check(self):
+        current_user = SimpleNamespace(id=1, tenant_id=10)
+
+        with patch.object(document_services, "_require_linked_record_access") as require_access, \
+             patch.object(documents_repository, "list_documents_cursor", return_value=[]) as list_cursor:
+            documents = list_documents_cursor(
+                self.db,
+                tenant_id=10,
+                module_key="sales_contacts",
+                entity_id=7,
+                limit=10,
+                current_user=current_user,
+            )
+
+        self.assertEqual(documents, [])
+        require_access.assert_called_once_with(
+            self.db,
+            user=current_user,
+            module_key="sales_contacts",
+            entity_id=7,
+            action="view",
+        )
+        list_cursor.assert_called_once()
 
     def test_resolve_document_storage_path_stays_under_documents_root(self):
         with tempfile.TemporaryDirectory() as tmpdir:

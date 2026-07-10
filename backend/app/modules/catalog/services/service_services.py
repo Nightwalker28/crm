@@ -1,37 +1,25 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
-import re
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.uploads import build_media_url, delete_local_media_file, persist_media_file, read_image_upload
-from app.modules.catalog.models import CatalogProduct, CatalogService
+from app.core.uploads import delete_local_media_file, persist_media_file, read_image_upload
+from app.modules.catalog.models import CatalogService
 from app.modules.catalog.repositories import service_repository
 from app.modules.catalog.schema import CatalogServiceResponse
+from app.modules.catalog.services.common import (
+    catalog_media_payload,
+    coerce_catalog_bool,
+    normalize_catalog_currency,
+    normalize_catalog_slug,
+    utc_now,
+)
 from app.modules.platform.services.activity_logs import log_activity
 
 CATALOG_SERVICES_MODULE = "catalog_services"
-
-
-def _normalize_slug(value: str | None, *, fallback: str) -> str | None:
-    source = (value or fallback or "").strip().lower()
-    normalized = re.sub(r"[^a-z0-9]+", "-", source).strip("-")
-    return normalized[:160] or None
-
-
-def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
-
-
-def _normalize_currency(value) -> str:
-    normalized = str(value or "USD").strip().upper()
-    if len(normalized) != 3 or not normalized.isalpha():
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="currency must be a 3-letter code")
-    return normalized
 
 
 def _coerce_nonnegative_decimal(value, *, field_name: str) -> Decimal:
@@ -44,14 +32,6 @@ def _coerce_nonnegative_decimal(value, *, field_name: str) -> Decimal:
     if not decimal_value.is_finite() or decimal_value < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} must be non-negative")
     return decimal_value
-
-
-def _coerce_bool(value, *, field_name: str) -> int:
-    if isinstance(value, bool):
-        return 1 if value else 0
-    if isinstance(value, int) and value in {0, 1}:
-        return int(value)
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} must be a boolean")
 
 
 def _ensure_slug_available(
@@ -72,7 +52,6 @@ def _service_state(service: CatalogService) -> dict:
 
 
 def serialize_service(service: CatalogService) -> dict:
-    media_path = service.media_path
     return {
         "id": service.id,
         "name": service.name,
@@ -82,9 +61,7 @@ def serialize_service(service: CatalogService) -> dict:
         "public_unit_price": service.public_unit_price,
         "is_public": bool(service.is_public),
         "is_active": bool(service.is_active),
-        "media_url": build_media_url(media_path) if media_path else None,
-        "media_content_type": service.media_content_type if media_path else None,
-        "media_original_filename": service.media_original_filename if media_path else None,
+        **catalog_media_payload(service),
         "created_at": service.created_at,
         "updated_at": service.updated_at,
     }
@@ -161,17 +138,17 @@ def get_service_or_404(
 
 
 def create_service(db: Session, *, tenant_id: int, actor_user_id: int | None, payload: dict) -> CatalogService:
-    slug = _normalize_slug(payload.get("slug"), fallback=payload["name"])
+    slug = normalize_catalog_slug(payload.get("slug"), fallback=payload["name"])
     _ensure_slug_available(db, tenant_id=tenant_id, slug=slug)
     service = CatalogService(
         tenant_id=tenant_id,
         name=str(payload["name"]).strip(),
         slug=slug,
         description=(payload.get("description") or "").strip() or None,
-        currency=_normalize_currency(payload.get("currency")),
+        currency=normalize_catalog_currency(payload.get("currency")),
         public_unit_price=_coerce_nonnegative_decimal(payload.get("public_unit_price", 0), field_name="public_unit_price"),
-        is_public=_coerce_bool(payload.get("is_public", False), field_name="is_public"),
-        is_active=_coerce_bool(payload.get("is_active", True), field_name="is_active"),
+        is_public=coerce_catalog_bool(payload.get("is_public", False), field_name="is_public"),
+        is_active=coerce_catalog_bool(payload.get("is_active", True), field_name="is_active"),
         created_by_user_id=actor_user_id,
         updated_by_user_id=actor_user_id,
     )
@@ -212,18 +189,18 @@ def update_service(
         if value is None and field in required_fields:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field} cannot be null")
         if field == "slug":
-            value = _normalize_slug(value, fallback=service.name)
+            value = normalize_catalog_slug(value, fallback=service.name)
             _ensure_slug_available(db, tenant_id=service.tenant_id, slug=value, service_id=service.id)
         elif field == "description":
             value = (value or "").strip() or None
         elif field == "name" and value is not None:
             value = str(value).strip()
         elif field == "currency" and value is not None:
-            value = _normalize_currency(value)
+            value = normalize_catalog_currency(value)
         elif field == "public_unit_price" and value is not None:
             value = _coerce_nonnegative_decimal(value, field_name="public_unit_price")
         elif field in {"is_public", "is_active"} and value is not None:
-            value = _coerce_bool(value, field_name=field)
+            value = coerce_catalog_bool(value, field_name=field)
         setattr(service, field, value)
     service.updated_by_user_id = actor_user_id
     db.add(service)
@@ -300,7 +277,7 @@ def soft_delete_service(
 ) -> CatalogService:
     if service.deleted_at is None:
         before_state = _service_state(service)
-        service.deleted_at = _utcnow()
+        service.deleted_at = utc_now()
         service.updated_by_user_id = actor_user_id
         db.add(service)
         db.commit()

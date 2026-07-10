@@ -2,6 +2,7 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, 
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.list_fields import parse_list_fields as _parse_list_fields
 from app.core.module_csv import (
     ImportExecutionResponse,
     StandardImportSummary,
@@ -116,14 +117,6 @@ def _serialize_lead(lead) -> dict:
 def _display_lead_name(lead) -> str:
     full_name = " ".join(part for part in [getattr(lead, "first_name", None), getattr(lead, "last_name", None)] if part).strip()
     return full_name or getattr(lead, "primary_email", None) or "Lead"
-
-
-def _parse_list_fields(raw_fields: str | None, allowed_fields: set[str]) -> set[str]:
-    if not raw_fields:
-        return allowed_fields
-    requested = {field.strip() for field in raw_fields.split(",") if field.strip()}
-    valid = requested & allowed_fields
-    return valid or allowed_fields
 
 
 def _enabled_lead_list_fields(db: Session, tenant_id: int) -> set[str]:

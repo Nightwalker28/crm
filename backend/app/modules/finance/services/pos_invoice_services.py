@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import re
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import Any
 
@@ -16,6 +16,7 @@ from app.core.pagination import Pagination, build_paged_response
 from app.core.postgres_search import searchable_text
 from app.modules.finance.models import FinancePosInvoice, FinancePosInvoiceLine
 from app.modules.finance.repositories import pos_invoice_repository
+from app.modules.finance.services.common import finance_date_to_iso
 from app.modules.finance.services.io_search_services import _normalize_allowed_currency, parse_human_date
 from app.modules.platform.models import ActivityLog
 from app.modules.sales.models import SalesContact, SalesOrganization
@@ -53,14 +54,6 @@ def _money(value: Decimal) -> Decimal:
 
 def _invoice_conflict(exc: IntegrityError) -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Invoice number already exists")
-
-
-def _date_to_iso(value: date | datetime | None) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.date().isoformat()
-    return value.isoformat()
 
 
 def _next_invoice_number(db: Session, tenant_id: int) -> str:
@@ -295,8 +288,8 @@ def serialize_invoice(invoice: FinancePosInvoice, *, current_user=None, include_
         "customer_address": invoice.customer_address,
         "customer_contact_id": invoice.customer_contact_id,
         "customer_organization_id": invoice.customer_organization_id,
-        "issue_date": _date_to_iso(invoice.issue_date),
-        "due_date": _date_to_iso(invoice.due_date),
+        "issue_date": finance_date_to_iso(invoice.issue_date),
+        "due_date": finance_date_to_iso(invoice.due_date),
         "currency": invoice.currency,
         "subtotal_amount": float(invoice.subtotal_amount),
         "discount_amount": float(invoice.discount_amount),
@@ -308,7 +301,7 @@ def serialize_invoice(invoice: FinancePosInvoice, *, current_user=None, include_
         "payment_terms": invoice.payment_terms,
         "notes": invoice.notes,
         "user_name": user_name,
-        "updated_at": _date_to_iso(invoice.updated_at),
+        "updated_at": finance_date_to_iso(invoice.updated_at),
     }
     if include_lines:
         data["lines"] = [_serialize_line(line) for line in invoice.lines]

@@ -5,6 +5,7 @@ from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
+from app.core.list_fields import parse_list_fields as _parse_list_fields
 from app.core.pagination import Pagination, get_pagination
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.security import get_current_user
@@ -102,14 +103,6 @@ INSERTION_ORDER_IMPORT_ALIASES = {
     "total_amount": ["total", "total amount"],
     "notes": ["notes", "description"],
 }
-
-
-def _parse_list_fields(raw_fields: str | None, allowed_fields: set[str]) -> set[str]:
-    if not raw_fields:
-        return allowed_fields
-    requested = {field.strip() for field in raw_fields.split(",") if field.strip()}
-    valid = requested & allowed_fields
-    return valid or allowed_fields
 
 
 def _enabled_insertion_order_list_fields(db: Session, tenant_id: int) -> set[str]:

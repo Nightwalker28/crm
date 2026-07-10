@@ -58,6 +58,35 @@ def _serialize_contract_audit_state(contract) -> dict:
     return ContractListItem.model_validate(contract).model_dump(mode="json")
 
 
+def _list_contract_records_response(
+    db: Session,
+    *,
+    current_user,
+    pagination: Pagination,
+    search: str | None,
+    filter_logic: str,
+    filters: str | None,
+    filters_all: str | None,
+    filters_any: str | None,
+    sort_by: str | None,
+    sort_direction: str | None,
+):
+    all_conditions, any_conditions = _parse_filters(filter_logic, filters, filters_all, filters_any)
+    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, conditions=all_conditions)
+    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, conditions=any_conditions)
+    items, total_count = list_contracts(
+        db,
+        tenant_id=current_user.tenant_id,
+        pagination=pagination,
+        search=search,
+        all_filter_conditions=all_conditions,
+        any_filter_conditions=any_conditions,
+        sort_by=sort_by,
+        sort_direction=sort_direction,
+    )
+    return build_paged_response([ContractListItem.model_validate(item) for item in items], total_count, pagination)
+
+
 @router.get("/fields")
 def list_contract_fields(db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access(CONTRACTS_MODULE_KEY)), require_permission=Depends(require_action_access(CONTRACTS_MODULE_KEY, "view"))):
     return sorted(enabled_module_fields(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, field_keys=CONTRACT_LIST_FIELDS))
@@ -77,19 +106,18 @@ def list_contract_records(
     require_module=Depends(require_module_access(CONTRACTS_MODULE_KEY)),
     require_permission=Depends(require_action_access(CONTRACTS_MODULE_KEY, "view")),
 ):
-    all_conditions, any_conditions = _parse_filters(filter_logic, filters, filters_all, filters_any)
-    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, conditions=all_conditions)
-    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, conditions=any_conditions)
-    items, total_count = list_contracts(
+    return _list_contract_records_response(
         db,
-        tenant_id=current_user.tenant_id,
+        current_user=current_user,
         pagination=pagination,
-        all_filter_conditions=all_conditions,
-        any_filter_conditions=any_conditions,
+        search=None,
+        filter_logic=filter_logic,
+        filters=filters,
+        filters_all=filters_all,
+        filters_any=filters_any,
         sort_by=sort_by,
         sort_direction=sort_direction,
     )
-    return build_paged_response([ContractListItem.model_validate(item) for item in items], total_count, pagination)
 
 
 @router.get("/search", response_model=ContractListResponse)
@@ -107,20 +135,18 @@ def search_contract_records(
     require_module=Depends(require_module_access(CONTRACTS_MODULE_KEY)),
     require_permission=Depends(require_action_access(CONTRACTS_MODULE_KEY, "view")),
 ):
-    all_conditions, any_conditions = _parse_filters(filter_logic, filters, filters_all, filters_any)
-    all_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, conditions=all_conditions)
-    any_conditions = sanitize_disabled_filter_conditions(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, conditions=any_conditions)
-    items, total_count = list_contracts(
+    return _list_contract_records_response(
         db,
-        tenant_id=current_user.tenant_id,
+        current_user=current_user,
         pagination=pagination,
         search=query,
-        all_filter_conditions=all_conditions,
-        any_filter_conditions=any_conditions,
+        filter_logic=filter_logic,
+        filters=filters,
+        filters_all=filters_all,
+        filters_any=filters_any,
         sort_by=sort_by,
         sort_direction=sort_direction,
     )
-    return build_paged_response([ContractListItem.model_validate(item) for item in items], total_count, pagination)
 
 
 @router.post("", response_model=ContractResponse, status_code=status.HTTP_201_CREATED)

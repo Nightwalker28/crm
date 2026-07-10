@@ -1,6 +1,6 @@
 import unittest
 from decimal import Decimal
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -9,6 +9,7 @@ from fastapi import HTTPException
 from app.modules.finance.models import FinancePosInvoice
 from app.modules.finance.models import FinancePosInvoiceLine
 from app.modules.finance.repositories import pos_invoice_repository
+from app.modules.finance.services.common import finance_date_to_iso
 from app.modules.finance.services import io_search_services
 from app.modules.finance.services import pos_invoice_services
 from app.modules.finance.services.pos_invoice_services import serialize_invoice
@@ -52,6 +53,11 @@ class FakeDeleteDB:
 
 
 class FinancePosInvoiceTests(unittest.TestCase):
+    def test_finance_date_to_iso_handles_none_date_and_datetime(self):
+        self.assertIsNone(finance_date_to_iso(None))
+        self.assertEqual(finance_date_to_iso(date(2026, 7, 10)), "2026-07-10")
+        self.assertEqual(finance_date_to_iso(datetime(2026, 7, 10, 14, 30)), "2026-07-10")
+
     def test_serialize_invoice_uses_assigned_user_relationship_for_user_name(self):
         invoice = FinancePosInvoice(
             id=1,

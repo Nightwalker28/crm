@@ -768,6 +768,23 @@ def require_document_link_access(db: Session, *, user, document: Document, actio
     _require_any_linked_record_access(db, user=user, document=document, action=action)
 
 
+def _require_document_list_scope(
+    db: Session,
+    *,
+    tenant_id: int,
+    module_key: str | None,
+    entity_id: str | int | None,
+    current_user=None,
+) -> None:
+    if (module_key and entity_id is None) or (not module_key and entity_id is not None):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Both module key and record ID are required.")
+    if module_key and entity_id is not None:
+        if current_user is not None:
+            _require_linked_record_access(db, user=current_user, module_key=module_key, entity_id=entity_id, action="view")
+        else:
+            get_record_reference(db, tenant_id=tenant_id, module_key=module_key, entity_id=entity_id)
+
+
 def _serialize_document(document: Document) -> dict:
     return _document_audit_ref(document)
 
@@ -924,14 +941,7 @@ def list_documents(
     sort_direction: str | None = None,
     current_user=None,
 ) -> tuple[list[Document], int]:
-    if (module_key and entity_id is None) or (not module_key and entity_id is not None):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Both module key and record ID are required.")
-    if module_key and entity_id is not None:
-        if current_user is not None:
-            _require_linked_record_access(db, user=current_user, module_key=module_key, entity_id=entity_id, action="view")
-        else:
-            get_record_reference(db, tenant_id=tenant_id, module_key=module_key, entity_id=entity_id)
-
+    _require_document_list_scope(db, tenant_id=tenant_id, module_key=module_key, entity_id=entity_id, current_user=current_user)
     return documents_repository.list_documents(
         db,
         tenant_id=tenant_id,
@@ -957,13 +967,7 @@ def list_documents_cursor(
     cursor: int | None = None,
     current_user=None,
 ) -> list[Document]:
-    if (module_key and entity_id is None) or (not module_key and entity_id is not None):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Both module key and record ID are required.")
-    if module_key and entity_id is not None:
-        if current_user is not None:
-            _require_linked_record_access(db, user=current_user, module_key=module_key, entity_id=entity_id, action="view")
-        else:
-            get_record_reference(db, tenant_id=tenant_id, module_key=module_key, entity_id=entity_id)
+    _require_document_list_scope(db, tenant_id=tenant_id, module_key=module_key, entity_id=entity_id, current_user=current_user)
     return documents_repository.list_documents_cursor(
         db,
         tenant_id=tenant_id,

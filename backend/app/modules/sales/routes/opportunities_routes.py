@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
+from app.core.list_fields import parse_list_fields as _parse_list_fields
 from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, count_csv_rows_bytes, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
@@ -150,14 +151,6 @@ def _emit_deal_assigned_event(db: Session, *, current_user, opportunity) -> None
             "href": f"/dashboard/sales/opportunities/{opportunity.opportunity_id}",
         },
     )
-
-
-def _parse_list_fields(raw_fields: str | None, allowed_fields: set[str]) -> set[str]:
-    if not raw_fields:
-        return allowed_fields
-    requested = {field.strip() for field in raw_fields.split(",") if field.strip()}
-    valid = requested & allowed_fields
-    return valid or allowed_fields
 
 
 def _enabled_opportunity_list_fields(db: Session, tenant_id: int) -> set[str]:

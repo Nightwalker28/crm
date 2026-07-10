@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
+from app.core.list_fields import parse_list_fields
 from app.core.module_filters import parse_filter_conditions
 from app.core.security import require_admin
 from app.core.tenancy import get_frontend_origin_for_request
@@ -68,11 +69,7 @@ USER_LIST_FIELDS = {
 
 
 def _parse_list_fields(raw_fields: str | None) -> set[str]:
-    if not raw_fields:
-        return USER_LIST_FIELDS
-    requested = {field.strip() for field in raw_fields.split(",") if field.strip()}
-    valid = requested & USER_LIST_FIELDS
-    return valid or USER_LIST_FIELDS
+    return parse_list_fields(raw_fields, USER_LIST_FIELDS)
 
 
 def _serialize_user_list_item(user, fields: set[str]) -> UserListItem:

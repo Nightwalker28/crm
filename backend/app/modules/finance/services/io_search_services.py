@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.finance.models import FinanceIO
 from app.modules.finance.repositories import io_repository
+from app.modules.finance.services.common import finance_date_to_iso
 from app.modules.platform.services.custom_fields import (
     hydrate_custom_field_record,
     load_custom_field_values_with_fallback,
@@ -148,14 +149,6 @@ def _normalize_text(value: Any) -> str | None:
     return text or None
 
 
-def _date_to_iso(value: date | datetime | None) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.date().isoformat()
-    return value.isoformat()
-
-
 def _finance_record_customer_name(record: FinanceIO) -> str:
     linked_contact = getattr(record, "customer_contact", None)
     linked_customer = getattr(record, "customer_organization", None)
@@ -220,11 +213,11 @@ def _serialize_finance_record_state(record: FinanceIO, *, current_user=None) -> 
         "customer_organization_id": getattr(record, "customer_organization_id", None),
         "counterparty_reference": _normalize_text(record.counterparty_reference),
         "external_reference": _normalize_text(record.external_reference),
-        "issue_date": _date_to_iso(record.issue_date or record.created_at),
-        "effective_date": _date_to_iso(record.effective_date or record.start_date),
-        "due_date": _date_to_iso(record.due_date or record.end_date),
-        "start_date": _date_to_iso(record.start_date),
-        "end_date": _date_to_iso(record.end_date),
+        "issue_date": finance_date_to_iso(record.issue_date or record.created_at),
+        "effective_date": finance_date_to_iso(record.effective_date or record.start_date),
+        "due_date": finance_date_to_iso(record.due_date or record.end_date),
+        "start_date": finance_date_to_iso(record.start_date),
+        "end_date": finance_date_to_iso(record.end_date),
         "status": _finance_record_status(record),
         "currency": _finance_record_currency(record),
         "subtotal_amount": float(record.subtotal_amount) if record.subtotal_amount is not None else None,
@@ -235,7 +228,7 @@ def _serialize_finance_record_state(record: FinanceIO, *, current_user=None) -> 
         "file_name": _normalize_text(record.file_name),
         "user_name": user_name,
         "photo_url": getattr(getattr(record, "assigned_user", None), "photo_url", None),
-        "updated_at": _date_to_iso(record.updated_at),
+        "updated_at": finance_date_to_iso(record.updated_at),
     }
 
 

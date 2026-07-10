@@ -9,7 +9,7 @@ from fastapi import HTTPException, UploadFile
 from sqlalchemy import Column, Numeric, String
 from starlette.datastructures import Headers
 
-from app.core import cache, module_csv, module_export, module_filters, module_search, pagination, postgres_search, uploads
+from app.core import cache, list_fields, module_csv, module_export, module_filters, module_search, pagination, postgres_search, uploads
 from app.core.duplicates import detect_duplicates
 from app.core.passwords import (
     PBKDF2_ALGORITHM,
@@ -105,6 +105,26 @@ class CacheTests(unittest.TestCase):
             client.deleted,
             ["custom-field-definitions:1", "custom-field-definitions:2"],
         )
+
+
+class ListFieldsTests(unittest.TestCase):
+    def test_parse_list_fields_defaults_to_allowed_fields(self):
+        allowed = {"name", "email"}
+
+        self.assertEqual(list_fields.parse_list_fields(None, allowed), allowed)
+
+    def test_parse_list_fields_returns_valid_requested_subset(self):
+        allowed = {"name", "email", "status"}
+
+        self.assertEqual(
+            list_fields.parse_list_fields(" email,ignored,name , ", allowed),
+            {"email", "name"},
+        )
+
+    def test_parse_list_fields_falls_back_when_no_requested_fields_are_allowed(self):
+        allowed = {"name", "email"}
+
+        self.assertEqual(list_fields.parse_list_fields("ignored,other", allowed), allowed)
 
 
 class ModuleCsvTests(unittest.IsolatedAsyncioTestCase):

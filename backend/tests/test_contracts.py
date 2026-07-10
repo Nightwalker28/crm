@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.modules.contracts.models import Contract
+from app.modules.contracts.routes import contracts_routes
 from app.modules.contracts.schema import ContractCreateRequest
 from app.modules.contracts.services import contracts_services
 from app.modules.contracts.services.contracts_services import add_contract_party, add_contract_signer, create_contract, get_contract_or_404, update_contract, update_contract_signer
@@ -180,6 +181,33 @@ class ContractTests(unittest.TestCase):
         self.assertEqual(items, [])
         self.assertEqual(total_count, 0)
         self.assertEqual(query.operations, ["count", "order_by_reset", "order_by", ("offset", 10), ("limit", 5), "all"])
+
+    def test_contract_list_route_helper_preserves_search_filters_and_sort(self):
+        item = create_contract(self.db, {"title": "Route helper"}, self.user)
+        pagination = SimpleNamespace(page=1, page_size=10, offset=0, limit=10)
+
+        with patch.object(contracts_routes, "sanitize_disabled_filter_conditions", side_effect=lambda _db, **kwargs: kwargs["conditions"]), \
+             patch.object(contracts_routes, "list_contracts", return_value=([item], 1)) as list_mock:
+            response = contracts_routes._list_contract_records_response(
+                self.db,
+                current_user=self.user,
+                pagination=pagination,
+                search="route",
+                filter_logic="all",
+                filters='[{"field":"status","operator":"is","value":"draft"}]',
+                filters_all=None,
+                filters_any=None,
+                sort_by="title",
+                sort_direction="asc",
+            )
+
+        self.assertEqual(response["total_count"], 1)
+        self.assertEqual(response["results"][0].contract_number, item.contract_number)
+        list_mock.assert_called_once()
+        self.assertEqual(list_mock.call_args.kwargs["tenant_id"], 10)
+        self.assertEqual(list_mock.call_args.kwargs["search"], "route")
+        self.assertEqual(list_mock.call_args.kwargs["sort_by"], "title")
+        self.assertEqual(list_mock.call_args.kwargs["all_filter_conditions"][0]["field"], "status")
 
 
 if __name__ == "__main__":
