@@ -16,6 +16,8 @@ class Task(Base):
             name="ck_tasks_priority",
         ),
         Index("ix_tasks_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+        Index("ix_tasks_tenant_status", "tenant_id", "status"),
+        Index("ix_tasks_tenant_due_at", "tenant_id", "due_at"),
     )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)

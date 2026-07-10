@@ -244,6 +244,16 @@ class ImportContactsBulkInsertTests(unittest.TestCase):
         model, mappings = db.bulk_inserts[0]
         self.assertIs(model, SalesContact)
         self.assertEqual([row["tenant_id"] for row in mappings], [3, 3])
+        self.assertEqual(
+            mappings[0],
+            {
+                "first_name": "Ada",
+                "last_name": "Lovelace",
+                "primary_email": "ada@example.com",
+                "assigned_to": 7,
+                "tenant_id": 3,
+            },
+        )
         self.assertFalse(any(isinstance(item, SalesContact) for item in db.added))
         self.assertTrue(db.committed)
 

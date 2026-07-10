@@ -4,7 +4,7 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from fastapi import HTTPException
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
@@ -178,6 +178,11 @@ class TaskSourceActivityTests(unittest.TestCase):
         self.assertEqual(tasks, [])
         self.assertEqual(total_count, 0)
         self.assertEqual(query.operations, ["count", "order_by_reset", "order_by", ("offset", 20), ("limit", 10), "all"])
+
+    def test_task_model_declares_tenant_status_and_due_indexes(self):
+        index_names = {index.name for index in Task.__table__.indexes}
+
+        self.assertTrue({"ix_tasks_tenant_status", "ix_tasks_tenant_due_at"}.issubset(index_names))
 
     def test_get_task_include_deleted_returns_active_and_deleted_rows(self):
         active = Task(id=101, tenant_id=10, title="Active task", status="todo", priority="medium", created_by_user_id=1)
@@ -396,6 +401,44 @@ class TaskSourceActivityTests(unittest.TestCase):
         self.assertNotIn("inactive@example.com", {user["email"] for user in limited["users"]})
         self.assertIn("inactive@example.com", {user["email"] for user in selected["users"]})
         self.assertIn("Delivery", {team["name"] for team in selected["teams"]})
+
+    def test_task_list_and_serializer_query_count_is_bounded(self):
+        self.db.add_all(
+            [
+                Task(id=130, tenant_id=10, title="First", status="todo", priority="medium", created_by_user_id=1),
+                Task(id=131, tenant_id=10, title="Second", status="todo", priority="medium", created_by_user_id=1),
+            ]
+        )
+        self.db.flush()
+        self.db.add(
+            TaskAssignee(
+                tenant_id=10,
+                task_id=130,
+                assignee_type="user",
+                assignee_key="user:2",
+                user_id=2,
+            )
+        )
+        self.db.commit()
+
+        statements = []
+
+        def before_cursor_execute(_conn, _cursor, statement, _parameters, _context, _executemany):
+            statements.append(statement)
+
+        event.listen(self.db.get_bind(), "before_cursor_execute", before_cursor_execute)
+        try:
+            tasks, _total = tasks_repository.list_tasks(
+                self.db,
+                tenant_id=10,
+                current_user=self.current_user,
+                pagination=create_pagination(1, 25),
+            )
+            [tasks_services.serialize_task(task) for task in tasks]
+        finally:
+            event.remove(self.db.get_bind(), "before_cursor_execute", before_cursor_execute)
+
+        self.assertLessEqual(len(statements), 6)
 
 
 if __name__ == "__main__":

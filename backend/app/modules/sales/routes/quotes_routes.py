@@ -208,6 +208,7 @@ async def preview_quote_import(file: UploadFile = File(...), db: Session = Depen
 
 @router.post("/export", response_model=DataTransferExecutionResponse)
 def export_quotes(payload: DataTransferExportRequest = Body(default=DataTransferExportRequest()), db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "export"))):
+    """Queue quote exports to keep proposal/file-heavy exports off request workers."""
     sanitized_payload = sanitize_data_transfer_export_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=payload.model_dump(), export_field_keys=EXPORT_COLUMNS)
     job = create_data_transfer_job(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", operation_type="export", payload=sanitized_payload)
     enqueue_export_job(job.id)

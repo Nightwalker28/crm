@@ -506,6 +506,12 @@ def import_contacts_from_csv(
     skip_duplicates: bool = False,
     create_new_records: bool = False,
 ):
+    """Import contacts with an intentional bulk-insert path for new rows.
+
+    New contacts are inserted with explicit tenant ownership and every imported
+    field populated by this workflow. Contact creation has no required ORM
+    listeners, while duplicate updates continue through tracked ORM instances.
+    """
     mode = resolve_duplicate_mode(
         duplicate_mode=duplicate_mode,
         default_mode=default_duplicate_mode,
