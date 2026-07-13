@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CheckCircle2, ExternalLink, Plus } from "lucide-react";
 import { toast } from "sonner";
 
@@ -16,7 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { fetchPosInvoice, usePosInvoices, type PosInvoice, type PosInvoicePayload, type PosInvoiceSortState } from "@/hooks/finance/usePosInvoices";
+import { fetchPosInvoice, usePosInvoice, usePosInvoices, type PosInvoice, type PosInvoicePayload, type PosInvoiceSortState } from "@/hooks/finance/usePosInvoices";
 
 function money(amount: number, currency: string) {
   try {
@@ -44,6 +45,11 @@ type PosInvoiceSortableColumn =
   | "updated_at";
 
 export default function PosInvoicesPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const invoiceIdParam = searchParams.get("invoiceId");
+  const requestedInvoiceId = invoiceIdParam && /^\d+$/.test(invoiceIdParam) ? Number(invoiceIdParam) : null;
+  const requestedInvoiceQuery = usePosInvoice(requestedInvoiceId);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState("");
@@ -65,6 +71,7 @@ export default function PosInvoicesPage() {
     updateInvoice,
     isSaving,
   } = usePosInvoices(page, pageSize, search, status, sort);
+  const activeInvoice = selectedInvoice ?? requestedInvoiceQuery.data ?? null;
 
   const metrics = useMemo(() => {
     return invoices.reduce(
@@ -79,8 +86,8 @@ export default function PosInvoicesPage() {
   }, [invoices]);
 
   async function handleSubmit(payload: PosInvoicePayload) {
-    if (selectedInvoice) {
-      await updateInvoice(selectedInvoice.id, payload);
+    if (activeInvoice) {
+      await updateInvoice(activeInvoice.id, payload);
       toast.success("POS invoice updated.");
       return;
     }
@@ -207,6 +214,11 @@ export default function PosInvoicesPage() {
           <button className="underline underline-offset-2" onClick={() => refresh()}>Retry</button>
         </div>
       ) : null}
+      {requestedInvoiceQuery.error ? (
+        <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+          {requestedInvoiceQuery.error instanceof Error ? requestedInvoiceQuery.error.message : "Failed to load POS invoice."}
+        </div>
+      ) : null}
 
       <ModuleTableShell isRefreshing={isFetching && !isLoading}>
         <Table className="min-w-[1040px]">
@@ -281,12 +293,13 @@ export default function PosInvoicesPage() {
       />
 
       <PosInvoiceDialog
-        open={dialogOpen}
-        invoice={selectedInvoice}
+        open={dialogOpen || Boolean(requestedInvoiceId && activeInvoice)}
+        invoice={activeInvoice}
         isSubmitting={isSaving}
         onClose={() => {
           setDialogOpen(false);
           setSelectedInvoice(null);
+          if (requestedInvoiceId) router.replace("/dashboard/finance/pos");
         }}
         onSubmit={handleSubmit}
       />

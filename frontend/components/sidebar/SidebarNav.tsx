@@ -47,19 +47,11 @@ function useIsActive() {
 
 function GlassItemWrapper({
   children,
-  active,
 }: {
   children: React.ReactNode;
-  active: boolean;
 }) {
   return (
     <div className="relative group/item">
-      <div
-        className={
-          "noise-overlay absolute inset-0 pointer-events-none rounded-md transition-opacity duration-150 " +
-          (active ? "opacity-15" : "opacity-0 group-hover/item:opacity-10")
-        }
-      />
       {children}
     </div>
   );
@@ -80,22 +72,22 @@ export function SidebarMenuItem({
   const active = isActiveFn(href);
 
   return (
-    <GlassItemWrapper active={active}>
+    <GlassItemWrapper>
       <Link
         href={href}
         title={collapsed ? String(children) : undefined}
         className={
-          "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-sm font-medium transition-all duration-150 " +
+          "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control)] border px-2 py-1.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
           (active
-            ? "bg-white/10 text-neutral-100 border border-white/20 backdrop-blur-sm before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-neutral-100/80"
-            : "bg-transparent text-neutral-400 border border-transparent hover:bg-white/6 hover:text-neutral-100 hover:border-white/12")
+            ? "border-primary/20 bg-action-primary-muted text-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary"
+            : "border-transparent bg-transparent text-copy-secondary hover:border-line-subtle hover:bg-surface-muted hover:text-copy-primary")
         }
       >
         {Icon && (
           <Icon
             className={
               "h-4 w-4 shrink-0 transition-colors " +
-              (active ? "text-neutral-100" : "text-neutral-400")
+              (active ? "text-primary" : "text-copy-muted")
             }
           />
         )}
@@ -144,24 +136,24 @@ export function SidebarMenuItemCollapsible({
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-hidden">
-      <GlassItemWrapper active={activeSelf}>
+      <GlassItemWrapper>
         <button
           type="button"
           title={collapsed ? label : undefined}
           onClick={() => setOpen(!isOpen)}
           aria-expanded={isOpen}
           className={
-            "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-left text-sm font-medium transition-all duration-150 " +
+            "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control)] border px-2 py-1.5 text-left text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
             (activeSelf
-              ? "bg-white/10 text-neutral-100 border border-white/20 backdrop-blur-sm before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-neutral-100/80"
-              : "bg-transparent text-neutral-400 border border-transparent hover:bg-white/6 hover:text-neutral-100 hover:border-white/12")
+              ? "border-primary/20 bg-action-primary-muted text-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary"
+              : "border-transparent bg-transparent text-copy-secondary hover:border-line-subtle hover:bg-surface-muted hover:text-copy-primary")
           }
         >
           {Icon && (
             <Icon
               className={
                 "h-4 w-4 shrink-0 transition-colors " +
-                (activeSelf ? "text-neutral-100" : "text-neutral-400")
+                (activeSelf ? "text-primary" : "text-copy-muted")
               }
             />
           )}
@@ -180,7 +172,7 @@ export function SidebarMenuItemCollapsible({
               " " +
               (isOpen ? "rotate-90" : "") +
               " " +
-              (activeSelf ? "text-neutral-300" : "text-neutral-500")
+              (activeSelf ? "text-primary" : "text-copy-muted")
             }
           />
         </button>
@@ -188,7 +180,7 @@ export function SidebarMenuItemCollapsible({
 
       <div
         className={
-          "ml-4 flex min-w-0 max-w-[calc(100%-1rem)] flex-col gap-0.5 overflow-hidden border-l border-neutral-800/70 pl-1.5 transition-all duration-200 " +
+          "ml-4 flex min-w-0 max-w-[calc(100%-1rem)] flex-col gap-0.5 overflow-hidden border-l border-line-subtle pl-1.5 transition-all duration-200 motion-reduce:transition-none " +
           (collapsed ? "max-h-0 opacity-0" : isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0")
         }
       >
@@ -211,14 +203,14 @@ export function SidebarMenuItemChild({
   const active = isActiveFn(href);
 
   return (
-    <GlassItemWrapper active={active}>
+    <GlassItemWrapper>
       <Link
         href={href}
         className={
-          "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-md px-2 py-1 text-[13px] font-medium transition-all duration-150 " +
+          "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control-sm)] border px-2 py-1.5 text-[13px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
           (active
-            ? "bg-white/10 text-neutral-100 border border-white/20 backdrop-blur-sm before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-neutral-100/80"
-            : "bg-transparent text-neutral-400 border border-transparent hover:bg-white/6 hover:text-neutral-100 hover:border-white/12")
+            ? "border-primary/20 bg-action-primary-muted text-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary"
+            : "border-transparent bg-transparent text-copy-secondary hover:border-line-subtle hover:bg-surface-muted hover:text-copy-primary")
         }
       >
         <span

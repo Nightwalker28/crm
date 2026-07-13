@@ -1,24 +1,22 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowRightLeft, CheckSquare, StickyNote } from "lucide-react";
-import { toast } from "sonner";
+import { useQuery } from "@tanstack/react-query";
+import { Activity, ArrowRightLeft, CheckSquare, Pencil, StickyNote } from "lucide-react";
 
-import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
-import ConvertLeadDialog from "@/components/leads/ConvertLeadDialog";
+import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import CommunicationActions from "@/components/recordActivity/CommunicationActions";
-import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
+import FollowUpPanel from "@/components/recordActivity/FollowUpPanel";
+import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
+import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
-import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { RecordTabs } from "@/components/ui/RecordTabs";
+import { isModuleFieldEnabled, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -48,40 +46,10 @@ type LeadSummary = {
     score_factors?: LeadScoreFactor[] | null;
     score_calculated_at?: string | null;
     custom_fields?: Record<string, unknown> | null;
+    assigned_to?: number | null;
+    assigned_to_name?: string | null;
   };
 };
-
-type LeadForm = {
-  first_name: string;
-  last_name: string;
-  company: string;
-  primary_email: string;
-  phone: string;
-  title: string;
-  source: string;
-  status: string;
-  notes: string;
-};
-
-const emptyForm: LeadForm = {
-  first_name: "",
-  last_name: "",
-  company: "",
-  primary_email: "",
-  phone: "",
-  title: "",
-  source: "",
-  status: "new",
-  notes: "",
-};
-
-const STATUSES = [
-  { value: "new", label: "New" },
-  { value: "contacted", label: "Contacted" },
-  { value: "qualified", label: "Qualified" },
-  { value: "unqualified", label: "Unqualified" },
-  { value: "converted", label: "Converted" },
-];
 
 const SCORE_GRADE_STYLES: Record<string, string> = {
   hot: "border-emerald-700/40 bg-emerald-950/30 text-emerald-200",
@@ -98,13 +66,6 @@ async function fetchLeadSummary(leadId: string) {
 
 export default function LeadDetailPage() {
   const params = useParams<{ leadId: string }>();
-  const queryClient = useQueryClient();
-  const [form, setForm] = useState<LeadForm>(emptyForm);
-  const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
-  const [saving, setSaving] = useState(false);
-  const [convertOpen, setConvertOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const customFieldsQuery = useModuleCustomFields("sales_leads", true);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_leads");
   const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
 
@@ -116,68 +77,6 @@ export default function LeadDetailPage() {
   });
   const summary = summaryQuery.data ?? null;
   const loadError = summaryQuery.error instanceof Error ? summaryQuery.error.message : null;
-
-  useEffect(() => {
-    if (!summary) return;
-    setError(null);
-    setForm({
-      first_name: summary.lead.first_name ?? "",
-      last_name: summary.lead.last_name ?? "",
-      company: summary.lead.company ?? "",
-      primary_email: summary.lead.primary_email ?? "",
-      phone: summary.lead.phone ?? "",
-      title: summary.lead.title ?? "",
-      source: summary.lead.source ?? "",
-      status: summary.lead.status ?? "new",
-      notes: summary.lead.notes ?? "",
-    });
-    setCustomFieldValues(summary.lead.custom_fields ?? {});
-  }, [summary]);
-
-  async function handleSave() {
-    try {
-      setSaving(true);
-      setError(null);
-      const payload = pickEnabledModulePayload({
-        first_name: form.first_name.trim() || null,
-        last_name: form.last_name.trim() || null,
-        company: form.company.trim() || null,
-        primary_email: form.primary_email.trim(),
-        phone: form.phone.trim() || null,
-        title: form.title.trim() || null,
-        source: form.source.trim() || null,
-        status: form.status,
-        notes: form.notes.trim() || null,
-        custom_fields: customFieldValues,
-      }, moduleFields, ["primary_email", "custom_fields"]);
-      const res = await apiFetch(`/sales/leads/${params.leadId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["sales-leads"] }),
-        summaryQuery.refetch(),
-      ]);
-      toast.success("Lead updated.");
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save lead");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleConverted() {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["sales-leads"] }),
-      queryClient.invalidateQueries({ queryKey: ["sales-contacts"] }),
-      queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
-      queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
-      summaryQuery.refetch(),
-    ]);
-  }
 
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
@@ -195,12 +94,12 @@ export default function LeadDetailPage() {
               redirectHref="/dashboard/sales/leads"
               queryKeys={["sales-leads"]}
             />
-            <Button onClick={handleSave} disabled={saving || !form.primary_email.trim()}>{saving ? "Saving..." : "Save Lead"}</Button>
+            <Button asChild><Link href={`/dashboard/sales/leads/${params.leadId}/edit`}><Pencil />Edit</Link></Button>
           </>
         )}
       />
 
-      {error || loadError ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error || loadError}</div> : null}
+      {loadError ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{loadError}</div> : null}
 
       {summaryQuery.isLoading || !summary ? (
         <Card className="px-5 py-5 text-sm text-neutral-500">Loading lead...</Card>
@@ -208,110 +107,112 @@ export default function LeadDetailPage() {
         <>
           <Card className="px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" size="sm" onClick={() => setConvertOpen(true)} disabled={summary.lead.status === "converted"}>
-                <ArrowRightLeft />{summary.lead.status === "converted" ? "Converted" : "Convert"}
+              <Button asChild={summary.lead.status !== "converted"} type="button" size="sm" disabled={summary.lead.status === "converted"}>
+                {summary.lead.status === "converted" ? <><ArrowRightLeft />Converted</> : <Link href={`/dashboard/sales/leads/${summary.lead.lead_id}/convert`}><ArrowRightLeft />Convert</Link>}
               </Button>
               <CommunicationActions
                 email={summary.lead.primary_email}
                 phone={fieldEnabled("phone") ? summary.lead.phone : null}
-                followUpTargetId="lead-record-tools"
               />
-              <Button type="button" size="sm" variant="ghost" onClick={() => document.getElementById("lead-record-tools")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-                <StickyNote />Note
-              </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => document.getElementById("lead-record-tools")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-                <CheckSquare />Task
-              </Button>
+              <Button asChild type="button" size="sm" variant="ghost"><Link href="?tab=activity" scroll={false}><Activity />Add activity</Link></Button>
+              <Button asChild type="button" size="sm" variant="ghost"><Link href={`?tab=notes`} scroll={false}><StickyNote />Note</Link></Button>
+              <Button asChild type="button" size="sm" variant="ghost"><Link href={`?tab=related`} scroll={false}><CheckSquare />Task</Link></Button>
               <div className="ml-auto text-xs text-neutral-500">
                 Last contacted: {summary.lead.last_contacted_at ? formatDateTime(summary.lead.last_contacted_at) : "Not logged"}
               </div>
             </div>
           </Card>
 
-          <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-            <Card className="px-5 py-5">
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold text-neutral-100">Lead Details</h2>
-                <FieldDescription className="mt-1">Edit the record directly on the page.</FieldDescription>
-              </div>
-              <FieldGroup className="grid gap-4 md:grid-cols-2">
-                {fieldEnabled("first_name") ? <Field><FieldLabel>First Name</FieldLabel><Input value={form.first_name} onChange={(event) => setForm((current) => ({ ...current, first_name: event.target.value }))} /></Field> : null}
-                {fieldEnabled("last_name") ? <Field><FieldLabel>Last Name</FieldLabel><Input value={form.last_name} onChange={(event) => setForm((current) => ({ ...current, last_name: event.target.value }))} /></Field> : null}
-                {fieldEnabled("primary_email") ? <Field><FieldLabel>Email</FieldLabel><Input type="email" value={form.primary_email} onChange={(event) => setForm((current) => ({ ...current, primary_email: event.target.value }))} /></Field> : null}
-                {fieldEnabled("phone") ? <Field><FieldLabel>Phone</FieldLabel><Input value={form.phone} onChange={(event) => setForm((current) => ({ ...current, phone: event.target.value }))} /></Field> : null}
-                {fieldEnabled("company") ? <Field><FieldLabel>Company</FieldLabel><Input value={form.company} onChange={(event) => setForm((current) => ({ ...current, company: event.target.value }))} /></Field> : null}
-                {fieldEnabled("title") ? <Field><FieldLabel>Job Title</FieldLabel><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></Field> : null}
-                {fieldEnabled("source") ? <Field><FieldLabel>Source</FieldLabel><Input value={form.source} onChange={(event) => setForm((current) => ({ ...current, source: event.target.value }))} /></Field> : null}
-                {fieldEnabled("status") ? (
-                  <Field>
-                    <FieldLabel>Status</FieldLabel>
-                    <Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {STATUSES.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                ) : null}
-              </FieldGroup>
-              {fieldEnabled("notes") ? (
-                <div className="mt-4">
-                  <Field><FieldLabel>Notes</FieldLabel><Input value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} /></Field>
-                </div>
-              ) : null}
-              <div className="mt-4">
-                <CustomFieldInputs
-                  definitions={customFieldsQuery.data ?? []}
-                  values={customFieldValues}
-                  onChange={(fieldKey, value) => setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))}
-                />
-              </div>
-            </Card>
-
-            <Card className="px-5 py-5">
-              <h2 className="text-lg font-semibold text-neutral-100">Summary</h2>
-              <div className="mt-4 grid gap-3">
-                <ScoreTile
-                  score={summary.lead.score}
-                  grade={summary.lead.score_grade}
-                  factors={summary.lead.score_factors ?? []}
-                  calculatedAt={summary.lead.score_calculated_at}
-                />
-                <SummaryTile label="Company" value={summary.lead.company || "No company recorded"} />
-                <SummaryTile label="Source" value={summary.lead.source || "No source recorded"} />
-                <SummaryTile label="Status" value={(summary.lead.status || "new").replace(/_/g, " ")} />
-              </div>
-            </Card>
-          </div>
-
-          <div id="lead-record-tools" className="scroll-mt-6">
-            <CrmRecordActivitySection
-              moduleKey="sales_leads"
-              entityId={summary.lead.lead_id}
-              recordLabel="Lead-level"
-              taskSourceLabel={`${summary.lead.first_name || ""} ${summary.lead.last_name || ""}`.trim() || summary.lead.primary_email}
-              followUp={{
-                endpoint: `/sales/leads/${summary.lead.lead_id}/follow-up`,
-                lastContactedAt: summary.lead.last_contacted_at,
-                lastContactedChannel: summary.lead.last_contacted_channel,
-                email: summary.lead.primary_email,
-                phone: summary.lead.phone,
-                onLogged: () => {
-                  void summaryQuery.refetch();
-                },
-              }}
-            />
-          </div>
-          <ConvertLeadDialog
-            leadId={summary.lead.lead_id}
-            leadName={`${summary.lead.first_name || ""} ${summary.lead.last_name || ""}`.trim() || summary.lead.primary_email}
-            company={summary.lead.company}
-            isOpen={convertOpen}
-            onClose={() => setConvertOpen(false)}
-            onConverted={() => void handleConverted()}
+          <RecordTabs
+            urlParam="tab"
+            defaultTabId="overview"
+            tabs={[
+              {
+                id: "overview",
+                label: "Overview",
+                content: <LeadOverview summary={summary} fieldEnabled={fieldEnabled} />,
+              },
+              {
+                id: "activity",
+                label: "Activity",
+                content: (
+                  <FollowUpPanel
+                    endpoint={`/sales/leads/${summary.lead.lead_id}/follow-up`}
+                    lastContactedAt={summary.lead.last_contacted_at}
+                    lastContactedChannel={summary.lead.last_contacted_channel}
+                    email={summary.lead.primary_email}
+                    phone={summary.lead.phone}
+                    onLogged={async () => {
+                      await summaryQuery.refetch();
+                    }}
+                  />
+                ),
+              },
+              {
+                id: "related",
+                label: "Related records",
+                content: <RecordTasksPanel moduleKey="sales_leads" entityId={summary.lead.lead_id} sourceLabel={`${summary.lead.first_name || ""} ${summary.lead.last_name || ""}`.trim() || summary.lead.primary_email} />,
+              },
+              {
+                id: "notes",
+                label: "Notes",
+                content: <RecordCommentsPanel moduleKey="sales_leads" entityId={summary.lead.lead_id} />,
+              },
+              {
+                id: "files",
+                label: "Files",
+                content: <RecordDocumentsPanel moduleKey="sales_leads" entityId={summary.lead.lead_id} />,
+              },
+              {
+                id: "audit",
+                label: "Audit history",
+                content: <RecordActivityTimeline moduleKey="sales_leads" entityId={summary.lead.lead_id} title="Audit history" description="Chronological record changes and collaboration events for this lead." />,
+              },
+            ]}
           />
         </>
       )}
+    </div>
+  );
+}
+
+function LeadOverview({ summary, fieldEnabled }: { summary: LeadSummary; fieldEnabled: (fieldKey: string) => boolean }) {
+  return (
+    <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+      <Card className="px-5 py-5">
+        <div className="mb-4">
+          <h2 className="text-lg font-semibold text-neutral-100">Lead details</h2>
+          <p className="mt-1 text-sm text-neutral-500">Core contact and qualification information.</p>
+        </div>
+        <div className="grid gap-x-6 gap-y-4 md:grid-cols-2">
+          {fieldEnabled("primary_email") ? <DetailField label="Email" value={summary.lead.primary_email} /> : null}
+          {fieldEnabled("phone") ? <DetailField label="Phone" value={summary.lead.phone} /> : null}
+          {fieldEnabled("company") ? <DetailField label="Company" value={summary.lead.company} /> : null}
+          {fieldEnabled("title") ? <DetailField label="Job title" value={summary.lead.title} /> : null}
+          {fieldEnabled("source") ? <DetailField label="Source" value={summary.lead.source} /> : null}
+          {fieldEnabled("status") ? <DetailField label="Status" value={(summary.lead.status || "new").replace(/_/g, " ")} capitalize /> : null}
+          {fieldEnabled("assigned_to") ? <DetailField label="Owner" value={summary.lead.assigned_to_name} /> : null}
+        </div>
+        {fieldEnabled("notes") ? <div className="mt-5 border-t border-neutral-800 pt-5"><DetailField label="Notes" value={summary.lead.notes} /></div> : null}
+        {Object.keys(summary.lead.custom_fields ?? {}).length ? (
+          <details className="mt-5 border-t border-neutral-800 pt-5">
+            <summary className="cursor-pointer text-sm font-medium text-neutral-200">Custom fields</summary>
+            <div className="mt-4 grid gap-x-6 gap-y-4 md:grid-cols-2">
+              {Object.entries(summary.lead.custom_fields ?? {}).map(([key, value]) => <DetailField key={key} label={key.replace(/_/g, " ")} value={formatFieldValue(value)} />)}
+            </div>
+          </details>
+        ) : null}
+      </Card>
+
+      <Card className="px-5 py-5">
+        <h2 className="text-lg font-semibold text-neutral-100">Summary</h2>
+        <div className="mt-4 grid gap-3">
+          <ScoreTile score={summary.lead.score} grade={summary.lead.score_grade} factors={summary.lead.score_factors ?? []} calculatedAt={summary.lead.score_calculated_at} />
+          <SummaryTile label="Company" value={summary.lead.company || "No company recorded"} />
+          <SummaryTile label="Source" value={summary.lead.source || "No source recorded"} />
+          <SummaryTile label="Status" value={(summary.lead.status || "new").replace(/_/g, " ")} />
+        </div>
+      </Card>
     </div>
   );
 }
@@ -358,4 +259,20 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
       <div className="mt-2 text-sm capitalize text-neutral-100">{value}</div>
     </div>
   );
+}
+
+function DetailField({ label, value, capitalize = false }: { label: string; value?: string | null; capitalize?: boolean }) {
+  return (
+    <div>
+      <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">{label}</div>
+      <div className={`mt-1 text-sm text-neutral-200 ${capitalize ? "capitalize" : ""}`}>{value || "Not recorded"}</div>
+    </div>
+  );
+}
+
+function formatFieldValue(value: unknown) {
+  if (value === null || value === undefined || value === "") return "Not recorded";
+  if (Array.isArray(value)) return value.map(String).join(", ");
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
 }

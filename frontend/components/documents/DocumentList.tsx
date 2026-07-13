@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { ChevronDown, Download, ExternalLink, FileText, History, Share2, Tag, Trash2, Upload, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
@@ -39,6 +39,7 @@ type Props = {
   sort?: DocumentSortState;
   onSortChange?: (sort: DocumentSortState) => void;
   isRefreshing?: boolean;
+  highlightedDocumentId?: number | null;
 };
 
 type DocumentSortableColumn = NonNullable<DocumentSortState>["key"];
@@ -58,7 +59,8 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function DocumentRow({ document, onDelete, isDeleting }: { document: DocumentItem; onDelete?: (documentId: number) => void; isDeleting?: boolean }) {
+function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document: DocumentItem; onDelete?: (documentId: number) => void; isDeleting?: boolean; highlighted?: boolean }) {
+  const rowRef = useRef<HTMLTableRowElement>(null);
   const versionInputRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [templateCategory, setTemplateCategory] = useState(document.template_category ?? "");
@@ -80,6 +82,13 @@ function DocumentRow({ document, onDelete, isDeleting }: { document: DocumentIte
   const activeShares = (document.client_shares ?? []).filter(
     (share) => !share.revoked_at && (!share.expires_at || new Date(share.expires_at) > new Date()),
   );
+
+  useEffect(() => {
+    if (highlighted) {
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      rowRef.current?.scrollIntoView({ block: "center", behavior: reduceMotion ? "auto" : "smooth" });
+    }
+  }, [highlighted]);
 
   async function handleVersionFile(file: File | undefined) {
     if (!file) return;
@@ -141,7 +150,7 @@ function DocumentRow({ document, onDelete, isDeleting }: { document: DocumentIte
 
   return (
     <Fragment>
-      <TableRow>
+      <TableRow ref={rowRef} className={highlighted ? "bg-action-primary-muted ring-1 ring-inset ring-primary/40" : undefined}>
         <TableCell>
           <div className="flex min-w-0 items-start gap-3">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900">
@@ -337,7 +346,7 @@ function DocumentRow({ document, onDelete, isDeleting }: { document: DocumentIte
   );
 }
 
-export default function DocumentList({ documents, emptyText = "No documents yet.", onDelete, isDeleting, sort = null, onSortChange, isRefreshing = false }: Props) {
+export default function DocumentList({ documents, emptyText = "No documents yet.", onDelete, isDeleting, sort = null, onSortChange, isRefreshing = false, highlightedDocumentId = null }: Props) {
   function toggleSort(column: DocumentSortableColumn) {
     const nextSort: DocumentSortState = sort?.key === column
       ? { key: column, direction: sort.direction === "asc" ? "desc" : "asc" }
@@ -379,7 +388,13 @@ export default function DocumentList({ documents, emptyText = "No documents yet.
         </TableHeader>
         <TableBody>
           {documents.map((document) => (
-            <DocumentRow key={document.id} document={document} onDelete={onDelete} isDeleting={isDeleting} />
+            <DocumentRow
+              key={document.id}
+              document={document}
+              onDelete={onDelete}
+              isDeleting={isDeleting}
+              highlighted={document.id === highlightedDocumentId}
+            />
           ))}
         </TableBody>
       </Table>

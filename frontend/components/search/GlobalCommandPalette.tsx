@@ -10,8 +10,18 @@ import { Dialog, DialogBackdrop, DialogPanel } from "@/components/ui/dialog";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
-import { getModuleRoute, isModuleVisibleInNavigation } from "@/lib/module-registry";
+import { getModuleRegistryLabel, getModuleRoute, isModuleVisibleInNavigation } from "@/lib/module-registry";
 import { canonicalizeDashboardHref } from "@/lib/routes";
+
+const RECENT_PAGES_KEY = "lynk:command-palette:recent-pages";
+const RECENT_PAGE_LIMIT = 6;
+
+type PaletteLink = {
+  label: string;
+  subtitle: string;
+  href: string;
+  group: string;
+};
 
 type SearchResult = {
   module_key: string;
@@ -26,6 +36,18 @@ type SearchResponse = {
   query: string;
   results: SearchResult[];
 };
+
+function readRecentPages(): PaletteLink[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const stored = window.localStorage.getItem(RECENT_PAGES_KEY);
+    const parsed = stored ? JSON.parse(stored) : [];
+    return Array.isArray(parsed) ? parsed.slice(0, RECENT_PAGE_LIMIT) : [];
+  } catch {
+    window.localStorage.removeItem(RECENT_PAGES_KEY);
+    return [];
+  }
+}
 
 async function fetchGlobalSearch(query: string): Promise<SearchResponse> {
   const trimmedQuery = query.trim();
@@ -47,6 +69,7 @@ export default function GlobalCommandPalette() {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [recentPages, setRecentPages] = useState<PaletteLink[]>(readRecentPages);
   const deferredQuery = useDeferredValue(query.trim());
 
   useEffect(() => {
@@ -80,8 +103,10 @@ export default function GlobalCommandPalette() {
   });
 
   const quickLinks = useMemo(() => {
+    const accessibleModuleNames = new Set(modules.map((module) => module.name));
     const items = [
       { label: "Dashboard", subtitle: "Go to the home dashboard", href: "/dashboard", group: "Quick Links" },
+      ...(accessibleModuleNames.has("sales_leads") ? [{ label: "Create lead", subtitle: "Add a new sales lead", href: "/dashboard/sales/leads/new", group: "Actions" }] : []),
       ...modules
         .filter((module) => module.base_route)
         .filter((module) => module.name.startsWith("custom_") || isModuleVisibleInNavigation(module.name))
@@ -93,17 +118,23 @@ export default function GlobalCommandPalette() {
         })),
     ];
 
-    const deduped = new Map<string, { label: string; subtitle: string; href: string; group: string }>();
+    const deduped = new Map<string, PaletteLink>();
     for (const item of items) {
       deduped.set(item.href, item);
     }
     return Array.from(deduped.values());
   }, [modules]);
 
+  const matchingQuickLinks = useMemo(() => {
+    const normalized = deferredQuery.toLowerCase();
+    if (!normalized) return quickLinks;
+    return quickLinks.filter((item) => `${item.label} ${item.subtitle}`.toLowerCase().includes(normalized));
+  }, [deferredQuery, quickLinks]);
+
   const groupedResults = useMemo(() => {
     const groups = new Map<string, SearchResult[]>();
     for (const item of searchQuery.data?.results ?? []) {
-      const label = getModuleDisplayName(item.module_key) || item.module_label;
+      const label = getModuleRegistryLabel(item.module_key) ?? item.module_label;
       const current = groups.get(label) ?? [];
       current.push({ ...item, href: canonicalizeDashboardHref(item.href) });
       groups.set(label, current);
@@ -111,16 +142,28 @@ export default function GlobalCommandPalette() {
     return Array.from(groups.entries());
   }, [searchQuery.data?.results]);
 
-  function handleNavigate(href: string) {
+  function handleNavigate(href: string, label: string, subtitle?: string) {
+    const canonicalHref = canonicalizeDashboardHref(href);
+    const recentItem: PaletteLink = {
+      label,
+      subtitle: subtitle || canonicalHref,
+      href: canonicalHref,
+      group: "Recent",
+    };
+    setRecentPages((current) => {
+      const next = [recentItem, ...current.filter((item) => item.href !== canonicalHref)].slice(0, RECENT_PAGE_LIMIT);
+      window.localStorage.setItem(RECENT_PAGES_KEY, JSON.stringify(next));
+      return next;
+    });
     setQuery("");
     setOpen(false);
-    router.push(canonicalizeDashboardHref(href));
+    router.push(canonicalHref);
   }
 
   const canSearch = deferredQuery.length >= 2;
   const isWaitingForDeferredQuery = query.trim() !== deferredQuery;
   const isSearchPending = canSearch && (isWaitingForDeferredQuery || searchQuery.isLoading || searchQuery.isFetching);
-  const hasCompletedEmptySearch = canSearch && searchQuery.isFetched && !searchQuery.isFetching && groupedResults.length === 0;
+  const hasCompletedEmptySearch = canSearch && searchQuery.isFetched && !searchQuery.isFetching && groupedResults.length === 0 && matchingQuickLinks.length === 0;
 
   function handleClose() {
     setQuery("");
@@ -132,16 +175,17 @@ export default function GlobalCommandPalette() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-between gap-3 rounded-lg border border-white/8 bg-white/[0.04] px-3 py-2 text-left transition-colors hover:border-white/12 hover:bg-white/[0.06]"
+        className="flex w-full items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        aria-label="Open command palette"
       >
         <div className="flex items-center gap-3">
-          <Search className="h-4 w-4 text-neutral-500" />
+          <Search className="h-4 w-4 text-copy-muted" />
             <div>
-              <div className="text-sm font-medium text-neutral-100">Search records</div>
-              <div className="text-xs text-neutral-500">Jump across tasks, contacts, organizations, and opportunities.</div>
+              <div className="text-sm font-medium text-copy-primary">Search records</div>
+              <div className="text-xs text-copy-muted">Jump across modules and workspace records.</div>
             </div>
         </div>
-        <div className="hidden items-center gap-1 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[11px] text-neutral-400 sm:flex">
+        <div className="hidden items-center gap-1 rounded-[var(--radius-control-sm)] border border-line-default bg-app px-2 py-1 text-[11px] text-copy-muted sm:flex">
           <CommandIcon className="h-3 w-3" />
           <span>K</span>
         </div>
@@ -150,18 +194,19 @@ export default function GlobalCommandPalette() {
       <Dialog open={open} onClose={handleClose} className="z-50">
         <DialogBackdrop />
         <div className="fixed inset-0 flex items-start justify-center px-4 pt-[12vh]">
-          <DialogPanel className="w-full max-w-2xl overflow-hidden rounded-2xl border border-white/10 bg-[#090909] p-0 shadow-[0_32px_100px_rgba(0,0,0,0.55)]">
-            <Command shouldFilter={false} className="overflow-hidden">
-              <div className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
-                <Search className="h-4 w-4 text-neutral-500" />
+          <DialogPanel className="w-full max-w-2xl overflow-hidden rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-0 shadow-[0_32px_100px_rgba(0,0,0,0.55)]">
+            <Command shouldFilter={false} className="overflow-hidden bg-transparent">
+              <div className="flex items-center gap-3 border-b border-line-subtle px-4 py-3">
+                <Search className="h-4 w-4 text-copy-muted" />
                 <Command.Input
                   ref={inputRef}
                   value={query}
                   onValueChange={setQuery}
                   placeholder="Search records across the workspace..."
-                  className="h-10 w-full bg-transparent text-sm text-neutral-100 outline-none placeholder:text-neutral-500"
+                  className="h-10 w-full bg-transparent text-sm text-copy-primary outline-none placeholder:text-copy-muted"
+                  aria-label="Search records and modules"
                 />
-                <div className="hidden items-center gap-1 text-[11px] text-neutral-500 sm:flex">
+                <div className="hidden items-center gap-1 text-[11px] text-copy-muted sm:flex">
                   <CornerDownLeft className="h-3 w-3" />
                   <span>Open</span>
                 </div>
@@ -170,63 +215,107 @@ export default function GlobalCommandPalette() {
               <Command.List className="scrollbar-hide max-h-[60vh] overflow-y-auto p-3">
                 {!deferredQuery.length ? (
                   <>
-                    <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+                    {recentPages.length ? (
+                      <Command.Group className="mb-3">
+                        <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                          Recent Pages
+                        </div>
+                        {recentPages.map((item) => (
+                          <Command.Item
+                            key={`recent-${item.href}`}
+                            value={`recent-${item.href}`}
+                            onSelect={() => handleNavigate(item.href, item.label, item.subtitle)}
+                            className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-3 py-3 text-sm text-copy-secondary outline-none data-[selected=true]:bg-action-primary-muted data-[selected=true]:text-copy-primary"
+                          >
+                            <div>
+                              <div className="font-medium text-copy-primary">{item.label}</div>
+                              <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
+                            </div>
+                            <div className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">Recent</div>
+                          </Command.Item>
+                        ))}
+                      </Command.Group>
+                    ) : null}
+                    <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
                       Quick Links
                     </div>
                     {quickLinks.map((item) => (
                       <Command.Item
                         key={item.href}
                         value={item.href}
-                        onSelect={() => handleNavigate(item.href)}
-                        className="flex cursor-pointer items-center justify-between rounded-xl px-3 py-3 text-sm text-neutral-200 outline-none data-[selected=true]:bg-white/[0.06]"
+                        onSelect={() => handleNavigate(item.href, item.label, item.subtitle)}
+                        className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-3 py-3 text-sm text-copy-secondary outline-none data-[selected=true]:bg-action-primary-muted data-[selected=true]:text-copy-primary"
                       >
                         <div>
-                          <div className="font-medium text-neutral-100">{item.label}</div>
-                          <div className="mt-1 text-xs text-neutral-500">{item.subtitle}</div>
+                          <div className="font-medium text-copy-primary">{item.label}</div>
+                          <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
                         </div>
-                        <div className="text-[11px] uppercase tracking-[0.14em] text-neutral-500">{item.group}</div>
+                        <div className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">{item.group}</div>
                       </Command.Item>
                     ))}
                   </>
-                ) : deferredQuery.length < 2 ? (
-                  <div className="px-3 py-8 text-center text-sm text-neutral-500">
-                    Type at least 2 characters to search tasks, calendar events, contacts, accounts, deals, and other workspace records.
-                  </div>
-                ) : isSearchPending ? (
-                  <div className="px-3 py-8 text-center text-sm text-neutral-500">Searching…</div>
-                ) : searchQuery.error ? (
-                  <div className="rounded-xl border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
-                    {searchQuery.error instanceof Error ? searchQuery.error.message : "Failed to search records."}
-                  </div>
-                ) : groupedResults.length ? (
-                  groupedResults.map(([group, items]) => (
-                    <Command.Group
-                      key={group}
-                      heading={group}
-                      className="mb-3 overflow-hidden rounded-xl border border-white/6 bg-white/[0.02] p-1 text-neutral-200"
-                    >
-                      <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
-                        {group}
-                      </div>
-                      {items.map((item) => (
-                        <Command.Item
-                          key={`${item.module_key}-${item.record_id}`}
-                          value={`${item.module_key}-${item.record_id}-${item.title}`}
-                          onSelect={() => handleNavigate(item.href)}
-                          className="cursor-pointer rounded-lg px-3 py-3 outline-none data-[selected=true]:bg-white/[0.06]"
-                        >
-                          <div className="text-sm font-medium text-neutral-100">{item.title}</div>
-                          {item.subtitle ? <div className="mt-1 text-xs text-neutral-500">{item.subtitle}</div> : null}
-                        </Command.Item>
-                      ))}
-                    </Command.Group>
-                  ))
-                ) : hasCompletedEmptySearch ? (
-                  <Command.Empty className="px-3 py-8 text-center text-sm text-neutral-500">
-                    No matching records found.
-                  </Command.Empty>
                 ) : (
-                  <div className="px-3 py-8 text-center text-sm text-neutral-500">Searching…</div>
+                  <>
+                    {matchingQuickLinks.length ? (
+                      <Command.Group className="mb-3 overflow-hidden rounded-[var(--radius-card)] border border-line-subtle bg-surface p-1 text-copy-secondary">
+                        <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                          Modules
+                        </div>
+                        {matchingQuickLinks.map((item) => (
+                          <Command.Item
+                            key={`module-${item.href}`}
+                            value={`module-${item.label}-${item.href}`}
+                            onSelect={() => handleNavigate(item.href, item.label, item.subtitle)}
+                            className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-3 py-3 text-sm text-copy-secondary outline-none data-[selected=true]:bg-action-primary-muted data-[selected=true]:text-copy-primary"
+                          >
+                            <div>
+                              <div className="font-medium text-copy-primary">{item.label}</div>
+                              <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
+                            </div>
+                            <div className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">Module</div>
+                          </Command.Item>
+                        ))}
+                      </Command.Group>
+                    ) : null}
+                    {deferredQuery.length < 2 ? (
+                      <div className="px-3 py-8 text-center text-sm text-copy-muted">
+                        Type at least 2 characters to search workspace records.
+                      </div>
+                    ) : isSearchPending ? (
+                      <div className="px-3 py-8 text-center text-sm text-copy-muted">Searching records…</div>
+                    ) : searchQuery.error ? (
+                      <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+                        {searchQuery.error instanceof Error ? searchQuery.error.message : "Failed to search records."}
+                      </div>
+                    ) : groupedResults.length ? (
+                      groupedResults.map(([group, items]) => (
+                        <Command.Group
+                          key={group}
+                          heading={group}
+                          className="mb-3 overflow-hidden rounded-[var(--radius-card)] border border-line-subtle bg-surface p-1 text-copy-secondary"
+                        >
+                          <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                            {group}
+                          </div>
+                          {items.map((item) => (
+                            <Command.Item
+                              key={`${item.module_key}-${item.record_id}`}
+                              value={`${item.module_key}-${item.record_id}-${item.title}`}
+                              onSelect={() => handleNavigate(item.href, item.title, item.subtitle ?? group)}
+                              className="cursor-pointer rounded-[var(--radius-control)] px-3 py-3 outline-none data-[selected=true]:bg-action-primary-muted"
+                            >
+                              <div className="text-sm font-medium text-copy-primary">{item.title}</div>
+                              {item.subtitle ? <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div> : null}
+                            </Command.Item>
+                          ))}
+                        </Command.Group>
+                      ))
+                    ) : hasCompletedEmptySearch ? (
+                      <Command.Empty className="px-3 py-8 text-center text-sm text-copy-muted">
+                        No matching modules or records found.
+                      </Command.Empty>
+                    ) : null}
+                  </>
                 )}
               </Command.List>
             </Command>

@@ -78,6 +78,7 @@ LEAD_LIST_FIELDS = {
     "score",
     "score_grade",
     "assigned_to",
+    "assigned_to_name",
     "created_time",
     "last_contacted_at",
     "last_contacted_channel",

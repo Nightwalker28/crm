@@ -29,7 +29,10 @@ function formatBytes(bytes: number) {
 export default function DocumentsPage() {
   const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [search, setSearch] = useState("");
+  const requestedSearch = searchParams.get("search") ?? "";
+  const documentIdParam = searchParams.get("documentId");
+  const requestedDocumentId = documentIdParam && /^\d+$/.test(documentIdParam) ? Number(documentIdParam) : null;
+  const [search, setSearch] = useState(requestedSearch);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [storageProvider, setStorageProvider] = useState("local");
@@ -62,6 +65,10 @@ export default function DocumentsPage() {
     if (driveConnect === "connected") toast.success(`${label} connected.`);
     if (driveConnect === "error") toast.error(`Failed to connect ${label}.`);
   }, [searchParams]);
+
+  useEffect(() => {
+    setSearch(requestedSearch);
+  }, [requestedSearch]);
 
   async function handleSelectedFile(file: File | undefined) {
     if (!file) return;
@@ -209,6 +216,7 @@ export default function DocumentsPage() {
           ) : (
             <DocumentList
               documents={documentsQuery.data?.results ?? []}
+              highlightedDocumentId={requestedDocumentId}
               emptyText="No documents have been uploaded yet."
               onDelete={(documentId) => void handleDelete(documentId)}
               isDeleting={isDeletingDocument}

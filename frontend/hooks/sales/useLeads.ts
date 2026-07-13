@@ -17,6 +17,7 @@ export type Lead = {
   source: string | null;
   status: string | null;
   assigned_to: number | null;
+  assigned_to_name?: string | null;
   created_time: string;
   last_contacted_at?: string | null;
   last_contacted_channel?: string | null;

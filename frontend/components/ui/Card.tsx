@@ -1,28 +1,44 @@
 import * as React from "react";
+import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
-type CardProps = React.HTMLAttributes<HTMLDivElement>;
+const cardVariants = cva(
+  "relative overflow-hidden rounded-[var(--radius-card)] border text-copy-secondary",
+  {
+    variants: {
+      variant: {
+        surface: "border-line-subtle bg-surface",
+        muted: "border-line-subtle bg-surface-muted",
+        raised: "border-line-default bg-surface-raised shadow-lg shadow-black/20",
+        interactive: "border-line-default bg-surface transition-colors hover:border-line-strong hover:bg-surface-muted",
+        status: "border-line-default bg-surface-muted",
+      },
+    },
+    defaultVariants: { variant: "surface" },
+  },
+);
 
-export function Card({ className, children, ...props }: CardProps) {
+type CardProps = React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof cardVariants>;
+
+export function Card({ className, children, variant, ...props }: CardProps) {
   return (
     <div
-      className={cn(
-        // Base styles: rounded corners, dark background, subtle border
-        "relative overflow-hidden rounded-md border border-neutral-800 bg-neutral-900 text-neutral-200 shadow-sm",
-        className
-      )}
+      className={cn(cardVariants({ variant }), className)}
       {...props}
     >
-      {/* Noise Texture Overlay */}
-      <div
-        className="noise-overlay absolute inset-0 pointer-events-none opacity-10"
-        aria-hidden="true"
-      />
-
-      {/* Content Wrapper (z-10 ensures content sits above the noise) */}
-      <div className="relative z-10">
-        {children}
-      </div>
+      {children}
     </div>
   );
+}
+
+export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("flex items-start justify-between gap-4 px-6 pt-6", className)} {...props} />;
+}
+
+export function CardBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("px-6 py-5", className)} {...props} />;
+}
+
+export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn("border-t border-line-subtle px-6 py-4", className)} {...props} />;
 }

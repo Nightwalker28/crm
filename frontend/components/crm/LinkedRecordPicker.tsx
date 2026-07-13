@@ -45,6 +45,7 @@ type Props = {
   linkedModuleKey?: string;
   linkedEntityId?: string | number | null;
   sourceModuleKey?: string;
+  sourceAction?: "create" | "edit";
 };
 
 function appendRelationshipFilters(params: URLSearchParams, filters?: LinkedRecordFilters) {
@@ -64,6 +65,7 @@ async function searchLinkedRecords(
   linkedModuleKey?: string,
   linkedEntityId?: string | number | null,
   sourceModuleKey?: string,
+  sourceAction: "create" | "edit" = "create",
 ): Promise<LinkedRecordOption[]> {
   const params = new URLSearchParams({ page: "1", page_size: "10", query: search });
   appendRelationshipFilters(params, filters);
@@ -87,7 +89,7 @@ async function searchLinkedRecords(
     }
     endpoint = `/documents?${documentParams.toString()}`;
   } else {
-    const userParams = new URLSearchParams({ query: search, module_key: sourceModuleKey ?? "" });
+    const userParams = new URLSearchParams({ query: search, module_key: sourceModuleKey ?? "", action: sourceAction });
     endpoint = `/linked-record-options/users?${userParams.toString()}`;
   }
 
@@ -203,12 +205,13 @@ export default function LinkedRecordPicker({
   linkedModuleKey,
   linkedEntityId,
   sourceModuleKey,
+  sourceAction = "create",
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const debouncedSearch = useDebouncedValue(displayValue.trim(), 250);
   const query = useQuery({
-    queryKey: [queryKeyPrefix, recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey],
-    queryFn: () => searchLinkedRecords(recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey),
+    queryKey: [queryKeyPrefix, recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey, sourceAction],
+    queryFn: () => searchLinkedRecords(recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey, sourceAction),
     enabled: !disabled && isOpen && debouncedSearch.length > 0,
     staleTime: 30_000,
   });

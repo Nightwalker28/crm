@@ -189,22 +189,22 @@ export default function Sidebar() {
   return (
     <aside
       className={
-        "relative z-10 flex h-screen flex-col transition-[width] duration-200 " +
-        (collapsed ? "w-[4.5rem]" : "w-56")
+        "relative z-10 flex h-screen shrink-0 flex-col border-r border-line-subtle bg-sidebar transition-[width] duration-200 motion-reduce:transition-none " +
+        (collapsed ? "w-[4.5rem]" : "w-60")
       }
     >
       <div className="flex h-full min-h-0 flex-col overflow-hidden px-2 py-3">
         <div className={`mb-4 flex items-center gap-2 px-1 ${collapsed ? "flex-col justify-center" : "justify-between"}`}>
-          <Link href={DASHBOARD_ROUTES.home} className="flex min-w-0 items-center gap-2 rounded-md focus:outline-none focus:ring-2 focus:ring-white/20">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/5">
-              <span className="font-lynk text-xl leading-none text-white">L</span>
+          <Link href={DASHBOARD_ROUTES.home} className="flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] focus:outline-none focus:ring-2 focus:ring-primary">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
+              <span className="font-lynk text-xl leading-none text-copy-primary">L</span>
             </div>
-            {!collapsed ? <h1 className="font-lynk text-2xl tracking-tight text-white">Lynk</h1> : null}
+            {!collapsed ? <h1 className="font-lynk text-2xl tracking-tight text-copy-primary">Lynk</h1> : null}
           </Link>
           <button
             type="button"
             onClick={toggleCollapsed}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/6 hover:text-neutral-100"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-action-primary-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -235,13 +235,11 @@ export default function Sidebar() {
         </SidebarNav>
 
         <div className="shrink-0 pt-4">
-          <div className="relative overflow-hidden rounded-lg border border-white/10 bg-white/5">
-            <div className="noise-overlay pointer-events-none absolute inset-0 rounded-lg opacity-20" />
-
+          <div className="relative overflow-hidden rounded-[var(--radius-card)] border border-line-subtle bg-surface">
             <div className="relative z-10 flex flex-col">
-              <div className={`flex items-center border-b border-white/8 px-2 py-1.5 ${collapsed ? "justify-center" : "justify-between"}`}>
+              <div className={`flex items-center border-b border-line-subtle px-2 py-1.5 ${collapsed ? "justify-center" : "justify-between"}`}>
                 {!collapsed ? (
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-neutral-500">
+                  <span className="text-[11px] font-semibold uppercase tracking-wider text-copy-muted">
                     Notifications
                   </span>
                 ) : null}
@@ -251,7 +249,7 @@ export default function Sidebar() {
               <div className={`flex items-center p-1.5 ${collapsed ? "justify-center" : "gap-1"}`}>
                 <Link
                   href="/dashboard/profile"
-                  className={`flex min-w-0 items-center gap-2 rounded-md px-1 py-1 transition-colors hover:bg-white/6 ${
+                  className={`flex min-w-0 items-center gap-2 rounded-[var(--radius-control-sm)] px-1 py-1 transition-colors hover:bg-action-primary-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                     collapsed ? "justify-center" : "flex-1"
                   }`}
                   title={collapsed ? displayName : undefined}
@@ -272,7 +270,7 @@ export default function Sidebar() {
                   )}
 
                   {!collapsed ? (
-                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-semibold text-neutral-100">
+                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-semibold text-copy-primary">
                       {displayName}
                     </span>
                   ) : null}
@@ -282,7 +280,8 @@ export default function Sidebar() {
                   <button
                     onClick={logout}
                     type="button"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/6 hover:text-red-300"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-state-danger-muted hover:text-state-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-state-danger"
+                    aria-label="Log out"
                     title="Logout"
                   >
                     <LogOut size={14} />

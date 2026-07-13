@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UserRoundPlus } from "lucide-react";
 
@@ -15,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { CustomFieldCell } from "@/components/ui/CustomFieldCell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
@@ -39,6 +41,8 @@ type LeadsTableProps = {
   onToggleCurrentPage?: (checked: boolean) => void;
   sort?: SortState;
   onSortChange?: (sort: SortState) => void;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
@@ -74,6 +78,8 @@ export default function LeadsTable({
   onToggleCurrentPage,
   sort = null,
   onSortChange,
+  hasActiveFilters = false,
+  onClearFilters,
 }: LeadsTableProps) {
   const router = useRouter();
 
@@ -84,44 +90,48 @@ export default function LeadsTable({
     onSortChange?.(nextSort);
   }
 
-  function renderCell(lead: Lead, column: string) {
+  function renderCell(lead: Lead, column: string, isIdentityColumn: boolean) {
+    const stickyClassName = isIdentityColumn ? "sticky left-12 z-10 border-r border-line-subtle bg-neutral-950 group-hover:bg-neutral-900" : undefined;
     if (isCustomFieldColumnKey(column)) {
-      return <CustomFieldCell column={column} values={lead.custom_fields} />;
+      return <CustomFieldCell column={column} values={lead.custom_fields} className={stickyClassName} />;
     }
     switch (column) {
       case "first_name":
+        const leadName = [lead.first_name, lead.last_name].filter(Boolean).join(" ");
         return (
-          <TableCell>
+          <TableCell className={stickyClassName}>
             <div className="flex h-8 items-center gap-2.5">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-neutral-700 bg-neutral-800 text-[10px] font-semibold text-neutral-300">
                 {initials(lead)}
               </div>
-              <span className="truncate text-sm font-medium text-neutral-100">{lead.first_name || <span className="text-neutral-600">-</span>}</span>
+              <span className="truncate text-sm font-medium text-neutral-100">{leadName || <span className="text-neutral-600">-</span>}</span>
             </div>
           </TableCell>
         );
       case "primary_email":
-        return <TableCell><span className="font-mono text-sm tracking-tight text-neutral-300">{lead.primary_email || <span className="text-neutral-600">-</span>}</span></TableCell>;
+        return <TableCell className={stickyClassName}><span className="font-mono text-sm tracking-tight text-neutral-300">{lead.primary_email || <span className="text-neutral-600">-</span>}</span></TableCell>;
       case "status": {
         const style = STATUS_STYLES[lead.status ?? ""] ?? STATUS_STYLES.new;
-        return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
+        return <TableCell className={stickyClassName}><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
       }
       case "score": {
         const style = SCORE_STYLES[lead.score_grade ?? "cold"] ?? SCORE_STYLES.cold;
         return (
-          <TableCell>
+          <TableCell className={stickyClassName}>
             <Pill bg={style.bg} text={style.text} border={style.border}>{lead.score ?? 0}</Pill>
           </TableCell>
         );
       }
       case "score_grade": {
         const style = SCORE_STYLES[lead.score_grade ?? "cold"] ?? SCORE_STYLES.cold;
-        return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
+        return <TableCell className={stickyClassName}><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
       }
       case "created_time":
-        return <TableCell><span className="text-sm text-neutral-400">{lead.created_time ? formatDateTime(lead.created_time) : "-"}</span></TableCell>;
+        return <TableCell className={stickyClassName}><span className="text-sm text-neutral-400">{lead.created_time ? formatDateTime(lead.created_time) : "-"}</span></TableCell>;
+      case "last_contacted_at":
+        return <TableCell className={stickyClassName}><span className="text-sm text-neutral-400">{lead.last_contacted_at ? formatDateTime(lead.last_contacted_at) : "No activity"}</span></TableCell>;
       default:
-        return <TableCell><span className="text-sm text-neutral-300">{String(lead[column as keyof Lead] ?? "") || <span className="text-neutral-600">-</span>}</span></TableCell>;
+        return <TableCell className={stickyClassName}><span className="text-sm text-neutral-300">{String(lead[column as keyof Lead] ?? "") || <span className="text-neutral-600">-</span>}</span></TableCell>;
     }
   }
 
@@ -130,7 +140,7 @@ export default function LeadsTable({
       <Table className="min-w-[920px]">
         <TableHeader>
           <TableHeaderRow>
-            <TableHead className="w-12 pr-0">
+            <TableHead className="sticky left-0 z-40 w-12 border-r border-line-subtle bg-neutral-900 pr-0">
               <Checkbox
                 checked={currentPageSelectionState}
                 onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
@@ -140,20 +150,22 @@ export default function LeadsTable({
                 <CheckboxIndicator className="h-3 w-3" />
               </Checkbox>
             </TableHead>
-            {visibleColumns.map((column) => {
+            {visibleColumns.map((column, index) => {
               const label = getReadableColumnLabel(column, columnOptions);
-              const sortable = !isCustomFieldColumnKey(column) && ["first_name", "last_name", "company", "primary_email", "status", "score", "score_grade", "created_time"].includes(column);
+              const sortable = !isCustomFieldColumnKey(column) && ["first_name", "last_name", "company", "primary_email", "status", "score", "score_grade", "created_time", "last_contacted_at"].includes(column);
+              const stickyClassName = index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined;
               return sortable ? (
                 <SortableHead
                   key={column}
                   sorted={sort?.column === column}
                   direction={sort?.column === column ? sort.direction : "asc"}
                   onClick={() => toggleSort(column)}
+                  className={stickyClassName}
                 >
                   {label}
                 </SortableHead>
               ) : (
-                <TableHead key={column}>{label}</TableHead>
+                <TableHead key={column} className={stickyClassName}>{label}</TableHead>
               );
             })}
           </TableHeaderRow>
@@ -164,13 +176,27 @@ export default function LeadsTable({
           ) : leads.length === 0 ? (
             <TableRow>
               <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
-                <EmptyState icon={UserRoundPlus} title="No leads found" description="Leads matching the current view will appear here." />
+                {hasActiveFilters ? (
+                  <EmptyState
+                    icon={UserRoundPlus}
+                    title="No leads match these filters"
+                    description="Clear one or more filters and try again."
+                    action={<Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button>}
+                  />
+                ) : (
+                  <EmptyState
+                    icon={UserRoundPlus}
+                    title="No leads yet"
+                    description="Create your first lead or import existing records from CSV."
+                    action={<Button asChild><Link href="/dashboard/sales/leads/new">Create lead</Link></Button>}
+                  />
+                )}
               </TableCell>
             </TableRow>
           ) : (
             leads.map((lead) => (
               <TableRow key={lead.lead_id} className="group cursor-pointer" onClick={() => router.push(`/dashboard/sales/leads/${lead.lead_id}`)}>
-                <TableCell className="w-12 pr-0" onClick={(event) => event.stopPropagation()}>
+                <TableCell className="sticky left-0 z-20 w-12 border-r border-line-subtle bg-neutral-950 pr-0 group-hover:bg-neutral-900" onClick={(event) => event.stopPropagation()}>
                   <Checkbox
                     checked={selectedIds.includes(lead.lead_id)}
                     onCheckedChange={(checked) => onToggleRow?.(lead.lead_id, checked === true)}
@@ -180,8 +206,8 @@ export default function LeadsTable({
                     <CheckboxIndicator className="h-3 w-3" />
                   </Checkbox>
                 </TableCell>
-                {visibleColumns.map((column) => (
-                  <Fragment key={column}>{renderCell(lead, column)}</Fragment>
+                {visibleColumns.map((column, index) => (
+                  <Fragment key={column}>{renderCell(lead, column, index === 0)}</Fragment>
                 ))}
               </TableRow>
             ))

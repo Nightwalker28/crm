@@ -221,6 +221,7 @@ class SalesLeadResponse(SalesLeadBase):
     lead_id: int
     primary_email: EmailStr
     assigned_to: int | None = None
+    assigned_to_name: str | None = None
     created_time: datetime
     last_contacted_at: datetime | None = None
     last_contacted_channel: str | None = None
@@ -244,6 +245,7 @@ class SalesLeadListItem(BaseModel):
     source: str | None = None
     status: str | None = None
     assigned_to: int | None = None
+    assigned_to_name: str | None = None
     created_time: datetime | None = None
     last_contacted_at: datetime | None = None
     last_contacted_channel: str | None = None

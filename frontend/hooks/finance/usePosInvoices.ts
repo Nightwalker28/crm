@@ -114,6 +114,15 @@ export async function fetchPosInvoice(id: number): Promise<PosInvoice> {
   return body as PosInvoice;
 }
 
+export function usePosInvoice(id: number | null) {
+  return useQuery({
+    queryKey: ["pos-invoice", id],
+    queryFn: () => fetchPosInvoice(id as number),
+    enabled: id !== null,
+    staleTime: 30_000,
+  });
+}
+
 async function createInvoice(payload: PosInvoicePayload): Promise<PosInvoice> {
   const res = await apiFetch("/finance/pos-invoices", {
     method: "POST",

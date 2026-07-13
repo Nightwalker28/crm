@@ -21,6 +21,7 @@ LEAD_SORT_FIELDS = {
     "score": SalesLeadScore.score,
     "score_grade": SalesLeadScore.grade,
     "created_time": SalesLead.created_time,
+    "last_contacted_at": SalesLead.last_contacted_at,
 }
 
 
@@ -78,6 +79,7 @@ def build_leads_query(
         "score": {"expression": SalesLeadScore.score, "type": "number"},
         "score_grade": {"expression": SalesLeadScore.grade, "type": "text"},
         "created_time": {"expression": SalesLead.created_time, "type": "date"},
+        "last_contacted_at": {"expression": SalesLead.last_contacted_at, "type": "date"},
         **build_custom_field_filter_map(
             db,
             tenant_id=tenant_id,

@@ -1,23 +1,6 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 
-const adminEmail = process.env.INITIAL_ADMIN_EMAIL;
-const adminPassword = process.env.INITIAL_ADMIN_PASSWORD;
-
-async function loginAsAdmin(page: Page) {
-  if (!adminEmail || !adminPassword) {
-    throw new Error("INITIAL_ADMIN_EMAIL and INITIAL_ADMIN_PASSWORD must be set for e2e tests.");
-  }
-
-  await page.goto("/auth/login");
-  await expect(page.getByRole("button", { name: "Sign in with email" })).toBeVisible();
-
-  await page.getByLabel("Email").fill(adminEmail);
-  await page.getByLabel("Password").fill(adminPassword);
-  await page.getByRole("button", { name: "Sign in with email" }).click();
-
-  await page.waitForURL("**/dashboard");
-  await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-}
+import { loginAsAdmin } from "./helpers/auth";
 
 test("guest dashboard access redirects to login", async ({ page }) => {
   await page.goto("/dashboard/settings/users");

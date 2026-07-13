@@ -226,6 +226,13 @@ class SalesLead(Base):
         self.custom_data = value
 
     @property
+    def assigned_to_name(self) -> str | None:
+        if not self.assigned_user:
+            return None
+        full_name = " ".join(part for part in [self.assigned_user.first_name, self.assigned_user.last_name] if part).strip()
+        return full_name or self.assigned_user.email
+
+    @property
     def score(self) -> int | None:
         return self.score_record.score if self.score_record else None
 

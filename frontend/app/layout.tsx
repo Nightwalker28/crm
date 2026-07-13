@@ -19,12 +19,8 @@ export default function RootLayout({
     <html lang="en" className="dark" suppressHydrationWarning={true}>
       <head>
         <Script src="/runtime-config.js" strategy="beforeInteractive" />
-        <link
-          href="https://api.fontshare.com/v2/css?f[]=satoshi@1,2&display=swap"
-          rel="stylesheet"
-        ></link>
       </head>
-      <body className="font-satoshi antialiased">
+      <body className="font-sans antialiased">
         {/* Wrap everything inside the body with Providers */}
         <Providers>
           <ClientLayout>

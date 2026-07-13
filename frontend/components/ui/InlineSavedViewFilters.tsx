@@ -12,16 +12,17 @@ type Props = {
   filterFields: ModuleFilterField[];
   filters: SavedViewFilters;
   onChange: (next: SavedViewFilters) => void;
+  hideHeader?: boolean;
 };
 
-export function InlineSavedViewFilters({ filterFields, filters, onChange }: Props) {
+export function InlineSavedViewFilters({ filterFields, filters, onChange, hideHeader = false }: Props) {
   const isOpen = Boolean(filters.filtersOpen);
   const { allConditions, anyConditions } = getConditionGroups(filters);
   const activeCount = allConditions.length + anyConditions.length;
 
   return (
     <div className="flex flex-col gap-4 text-neutral-200">
-      <Card className="px-4 py-3">
+      {!hideHeader ? <Card className="px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">Quick Filters</h2>
@@ -66,7 +67,7 @@ export function InlineSavedViewFilters({ filterFields, filters, onChange }: Prop
             ) : null}
           </div>
         </div>
-      </Card>
+      </Card> : null}
 
       {isOpen ? (
         <SavedViewConditionEditor

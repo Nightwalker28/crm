@@ -64,7 +64,7 @@ export const CONTACT_COLUMNS: TableColumnOption[] = [
 ];
 
 export const LEAD_COLUMNS: TableColumnOption[] = [
-  { key: "first_name", label: "First Name" },
+  { key: "first_name", label: "Name" },
   { key: "last_name", label: "Last Name" },
   { key: "company", label: "Company" },
   { key: "score", label: "Score" },
@@ -74,6 +74,8 @@ export const LEAD_COLUMNS: TableColumnOption[] = [
   { key: "title", label: "Job Title" },
   { key: "source", label: "Source" },
   { key: "status", label: "Status" },
+  { key: "assigned_to_name", label: "Owner" },
+  { key: "last_contacted_at", label: "Last Activity" },
   { key: "created_time", label: "Created" },
 ];
 
@@ -225,7 +227,7 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
     sort: null,
   },
   sales_leads: {
-    visible_columns: ["first_name", "last_name", "company", "score", "score_grade", "primary_email", "phone", "status"],
+    visible_columns: ["first_name", "company", "status", "source", "assigned_to_name", "last_contacted_at", "created_time"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },
@@ -356,6 +358,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "phone", label: "Phone", type: "text", operators: TEXT_OPERATORS },
       { key: "title", label: "Job Title", type: "text", operators: TEXT_OPERATORS },
       { key: "source", label: "Source", type: "text", operators: TEXT_OPERATORS },
+      { key: "last_contacted_at", label: "Last Activity", type: "date", operators: DATE_OPERATORS },
       { key: "score", label: "Score", type: "number", operators: NUMBER_OPERATORS },
       {
         key: "score_grade",

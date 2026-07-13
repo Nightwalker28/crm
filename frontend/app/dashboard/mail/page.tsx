@@ -207,6 +207,8 @@ export default function MailPage() {
   const imapSmtpConnection = contextQuery.data?.connections.find((connection) => connection.provider === "imap_smtp");
   const hasSendProvider = Boolean(googleConnection?.can_send || microsoftConnection?.can_send || imapSmtpConnection?.can_send);
   const mailConnectStatus = searchParams.get("mailConnect");
+  const messageIdParam = searchParams.get("messageId");
+  const requestedMessageId = messageIdParam && /^\d+$/.test(messageIdParam) ? Number(messageIdParam) : null;
   const defaultComposeProvider = useMemo<MailProvider>(() => {
     if (googleConnection?.can_send) return "google";
     if (microsoftConnection?.can_send) return "microsoft";
@@ -224,12 +226,18 @@ export default function MailPage() {
   }, [mailConnectStatus, router]);
 
   useEffect(() => {
+    if (requestedMessageId) {
+      setSelectedMessageId(requestedMessageId);
+    }
+  }, [requestedMessageId]);
+
+  useEffect(() => {
     if (!messages.length) {
-      setSelectedMessageId(null);
+      if (!requestedMessageId) setSelectedMessageId(null);
       return;
     }
     setSelectedMessageId((current) => current ?? messages[0].id);
-  }, [messages]);
+  }, [messages, requestedMessageId]);
 
   useEffect(() => {
     let cancelled = false;

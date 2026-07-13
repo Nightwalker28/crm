@@ -65,14 +65,14 @@ function BreadcrumbBar({ pathname }: { pathname: string }) {
   const items = getBreadcrumbItems(pathname);
 
   return (
-    <nav className="flex min-w-0 items-center gap-1 text-sm text-neutral-500" aria-label="Breadcrumb">
+    <nav className="flex min-w-0 items-center gap-1 text-sm text-copy-muted" aria-label="Breadcrumb">
       {items.map((item, index) => (
         <div key={item.href} className="flex min-w-0 items-center gap-1">
-          {index > 0 ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-neutral-700" /> : null}
+          {index > 0 ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-copy-disabled" /> : null}
           {item.current ? (
-            <span className="truncate font-medium text-neutral-200">{item.label}</span>
+            <span className="truncate font-medium text-copy-primary" aria-current="page">{item.label}</span>
           ) : (
-            <Link href={item.href} className="truncate transition-colors hover:text-neutral-200">
+            <Link href={item.href} className="truncate rounded-sm transition-colors hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
               {item.label}
             </Link>
           )}
@@ -117,31 +117,31 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   }, [canonicalPathname, hasLegacyPathname, isBlocked, isModuleBlocked, router]);
 
   return (
-    <div className="relative flex h-screen w-full overflow-hidden bg-neutral-950 text-neutral-200 font-sans">
+    <div className="relative flex h-screen w-full overflow-hidden bg-app font-sans text-copy-secondary">
       <BrowserNotificationsBridge />
       <CalendarSyncBridge />
 
       <div className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute inset-0 mix-blend-soft-light opacity-[0.3] bg-[linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] bg-size-[3px_3px]" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(108,124,255,0.08),transparent_38%)]" />
       </div>
 
       <Sidebar />
 
-      <main className="relative z-10 flex min-w-0 flex-1 overflow-hidden px-3 py-4 pr-4">
-        <div className="relative z-20 flex h-full w-full min-w-0 flex-col overflow-hidden rounded-xl border border-white/6 bg-[#0a0a0a] shadow-[0_24px_80px_rgba(0,0,0,0.45)]">
-          <div className="flex flex-col gap-3 border-b border-white/6 px-6 py-4 xl:flex-row xl:items-center xl:justify-between">
+      <main className="relative z-10 flex min-w-0 flex-1 overflow-hidden p-3 sm:p-4 lg:p-6">
+        <div className="relative z-20 flex h-full w-full min-w-0 flex-col overflow-hidden rounded-[var(--radius-panel)] border border-line-subtle bg-surface shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+          <div className="flex min-h-16 flex-col justify-center gap-3 border-b border-line-subtle px-4 py-3 sm:px-6 xl:flex-row xl:items-center xl:justify-between xl:py-0">
             <BreadcrumbBar pathname={pathname} />
             <div className="w-full xl:max-w-xl">
               <GlobalCommandPalette />
             </div>
           </div>
-          <div className="scrollbar-hide relative z-30 h-full w-full overflow-y-auto px-6 py-5">
+          <div className="scrollbar-hide relative z-30 h-full w-full overflow-y-auto px-4 py-5 sm:px-6 lg:px-8">
             {isCheckingAccess ? (
-              <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-6 text-sm text-neutral-500">
+              <div className="rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-6 text-sm text-copy-muted">
                 Checking access...
               </div>
             ) : isBlocked || isModuleBlocked ? (
-              <div className="rounded-md border border-red-900/70 bg-red-950/30 px-4 py-6 text-sm text-red-100">
+              <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-6 text-sm text-copy-primary">
                 You do not have access to open this page.
               </div>
             ) : (
