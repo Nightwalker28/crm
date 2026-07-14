@@ -10,7 +10,7 @@ from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination
 from app.modules.platform.services.custom_fields import build_custom_field_filter_map
 from app.modules.sales.models import SalesLead, SalesLeadScore
-from app.modules.user_management.models import User
+from app.modules.user_management.models import Team, User
 
 LEAD_SORT_FIELDS = {
     "first_name": SalesLead.first_name,
@@ -22,6 +22,7 @@ LEAD_SORT_FIELDS = {
     "score_grade": SalesLeadScore.grade,
     "created_time": SalesLead.created_time,
     "last_contacted_at": SalesLead.last_contacted_at,
+    "next_follow_up_at": SalesLead.next_follow_up_at,
 }
 
 
@@ -76,10 +77,14 @@ def build_leads_query(
         "title": {"expression": SalesLead.title, "type": "text"},
         "source": {"expression": SalesLead.source, "type": "text"},
         "status": {"expression": SalesLead.status, "type": "text"},
+        "assigned_to": {"expression": SalesLead.assigned_to, "type": "number"},
+        "team_id": {"expression": SalesLead.team_id, "type": "number"},
         "score": {"expression": SalesLeadScore.score, "type": "number"},
         "score_grade": {"expression": SalesLeadScore.grade, "type": "text"},
         "created_time": {"expression": SalesLead.created_time, "type": "date"},
         "last_contacted_at": {"expression": SalesLead.last_contacted_at, "type": "date"},
+        "next_follow_up_at": {"expression": SalesLead.next_follow_up_at, "type": "date"},
+        "has_activity": {"expression": SalesLead.last_contacted_at.is_not(None), "type": "boolean"},
         **build_custom_field_filter_map(
             db,
             tenant_id=tenant_id,
@@ -206,3 +211,7 @@ def list_deleted_leads(
 
 def user_exists(db: Session, *, tenant_id: int, user_id: int) -> bool:
     return bool(db.query(User.id).filter(User.id == user_id, User.tenant_id == tenant_id).first())
+
+
+def team_exists(db: Session, *, tenant_id: int, team_id: int) -> bool:
+    return bool(db.query(Team.id).filter(Team.id == team_id, Team.tenant_id == tenant_id).first())

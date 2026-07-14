@@ -182,6 +182,8 @@ def log_lead_follow_up(db: Session, *, lead, payload: dict, current_user) -> dic
     lead.last_contacted_at = contacted_at
     lead.last_contacted_channel = channel
     lead.last_contacted_by_user_id = current_user.id
+    if payload.get("create_follow_up_task") and payload.get("follow_up_due_at") is not None:
+        lead.next_follow_up_at = payload["follow_up_due_at"]
     db.add(lead)
 
     source_label = _display_lead_name(lead)
@@ -226,6 +228,7 @@ def log_lead_follow_up(db: Session, *, lead, payload: dict, current_user) -> dic
         "entity_id": str(lead.lead_id),
         "channel": channel,
         "last_contacted_at": contacted_at,
+        "next_follow_up_at": lead.next_follow_up_at,
         "follow_up_task_id": task.id if task else None,
     }
 

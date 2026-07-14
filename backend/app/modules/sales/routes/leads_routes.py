@@ -79,8 +79,13 @@ LEAD_LIST_FIELDS = {
     "score_grade",
     "assigned_to",
     "assigned_to_name",
+    "team_id",
+    "team_name",
+    "tags",
     "created_time",
     "last_contacted_at",
+    "next_follow_up_at",
+    "next_follow_up_is_overdue",
     "last_contacted_channel",
 }
 

@@ -19,6 +19,7 @@ from app.modules.platform.services.custom_fields import (
     save_custom_field_values,
     validate_custom_field_payload,
 )
+from app.modules.platform.services.record_tags import hydrate_record_tags, normalize_record_tags, sync_record_tags
 from app.modules.sales.models import SalesContact, SalesLead, SalesLeadScore, SalesOpportunity, SalesOrganization
 from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_SET
 from app.modules.sales.repositories import leads_repository, organizations_repository
@@ -40,6 +41,7 @@ EXPORT_COLUMNS = [
     "status",
     "notes",
     "assigned_to",
+    "next_follow_up_at",
     "created_time",
 ]
 
@@ -65,6 +67,54 @@ def _ensure_assigned_user(db: Session, user_id: int | None, *, tenant_id: int) -
         return
     if not leads_repository.user_exists(db, user_id=user_id, tenant_id=tenant_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assigned user not found")
+
+
+def _ensure_team(db: Session, team_id: int | None, *, tenant_id: int) -> None:
+    if team_id is None:
+        return
+    if not leads_repository.team_exists(db, team_id=team_id, tenant_id=tenant_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Team not found")
+
+
+def _validated_tags(tags: Sequence[str]) -> list[str]:
+    try:
+        return [name for name, _normalized_name in normalize_record_tags(tags)]
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+
+
+def _hydrate_lead_records(db: Session, *, tenant_id: int, records: Sequence[SalesLead]) -> Sequence[SalesLead]:
+    hydrated = hydrate_custom_field_records(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_leads",
+        records=records,
+        record_id_attr="lead_id",
+    )
+    return hydrate_record_tags(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_leads",
+        records=hydrated,
+        record_id_attr="lead_id",
+    )
+
+
+def _hydrate_lead_record(db: Session, *, tenant_id: int, record: SalesLead) -> SalesLead:
+    hydrated = hydrate_custom_field_record(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_leads",
+        record=record,
+        record_id=record.lead_id,
+    )
+    return hydrate_record_tags(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_leads",
+        records=[hydrated],
+        record_id_attr="lead_id",
+    )[0]
 
 
 def _get_active_organization(db: Session, *, tenant_id: int, organization_id: int) -> SalesOrganization:
@@ -221,13 +271,7 @@ def list_sales_leads(
         sort_by=sort_by,
         sort_direction=sort_direction,
     )
-    leads = hydrate_custom_field_records(
-        db,
-        tenant_id=tenant_id,
-        module_key="sales_leads",
-        records=leads,
-        record_id_attr="lead_id",
-    )
+    leads = _hydrate_lead_records(db, tenant_id=tenant_id, records=leads)
     return leads, total_count
 
 
@@ -250,13 +294,7 @@ def list_sales_leads_cursor(
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
     )
-    return hydrate_custom_field_records(
-        db,
-        tenant_id=tenant_id,
-        module_key="sales_leads",
-        records=leads,
-        record_id_attr="lead_id",
-    )
+    return _hydrate_lead_records(db, tenant_id=tenant_id, records=leads)
 
 
 def list_all_sales_leads(
@@ -274,26 +312,14 @@ def list_all_sales_leads(
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
     )
-    return hydrate_custom_field_records(
-        db,
-        tenant_id=tenant_id,
-        module_key="sales_leads",
-        records=leads,
-        record_id_attr="lead_id",
-    )
+    return _hydrate_lead_records(db, tenant_id=tenant_id, records=leads)
 
 
 def get_lead_or_404(db: Session, lead_id: int, *, tenant_id: int, include_deleted: bool = False) -> SalesLead:
     lead = leads_repository.get_lead(db, tenant_id=tenant_id, lead_id=lead_id, include_deleted=include_deleted)
     if not lead:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
-    return hydrate_custom_field_record(
-        db,
-        tenant_id=tenant_id,
-        module_key="sales_leads",
-        record=lead,
-        record_id=lead.lead_id,
-    )
+    return _hydrate_lead_record(db, tenant_id=tenant_id, record=lead)
 
 
 def create_sales_lead(
@@ -311,6 +337,8 @@ def create_sales_lead(
     )
     data = dict(payload)
     explicit_assigned_to = "assigned_to" in data and data.get("assigned_to") is not None
+    explicit_team_id = "team_id" in data and data.get("team_id") is not None
+    tags_to_save = _validated_tags(data.pop("tags", []))
     custom_data = validate_custom_field_payload(
         db,
         tenant_id=current_user.tenant_id,
@@ -322,6 +350,9 @@ def create_sales_lead(
     if not data.get("assigned_to"):
         data["assigned_to"] = current_user.id if current_user else None
     _ensure_assigned_user(db, data.get("assigned_to"), tenant_id=current_user.tenant_id)
+    if not data.get("team_id"):
+        data["team_id"] = getattr(current_user, "team_id", None)
+    _ensure_team(db, data.get("team_id"), tenant_id=current_user.tenant_id)
 
     email = data.get("primary_email")
     if not email:
@@ -338,22 +369,25 @@ def create_sales_lead(
     )
     if existing and not create_new_records:
         if skip_duplicates:
-            return hydrate_custom_field_record(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record=existing, record_id=existing.lead_id)
+            return _hydrate_lead_record(db, tenant_id=current_user.tenant_id, record=existing)
         if replace_duplicates:
             if not explicit_assigned_to:
                 data.pop("assigned_to", None)
+            if not explicit_team_id:
+                data.pop("team_id", None)
             _apply_lead_payload(existing, data)
             db.add(existing)
             try:
                 db.flush()
                 recalculate_lead_score(db, existing)
                 save_custom_field_values(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record_id=existing.lead_id, values=custom_data)
+                sync_record_tags(db, tenant_id=current_user.tenant_id, module_key="sales_leads", entity_id=existing.lead_id, tags=tags_to_save)
                 db.commit()
             except IntegrityError as exc:
                 db.rollback()
                 raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to replace lead") from exc
             db.refresh(existing)
-            return hydrate_custom_field_record(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record=existing, record_id=existing.lead_id)
+            return _hydrate_lead_record(db, tenant_id=current_user.tenant_id, record=existing)
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=(
@@ -370,16 +404,18 @@ def create_sales_lead(
         db.flush()
         recalculate_lead_score(db, lead)
         save_custom_field_values(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record_id=lead.lead_id, values=custom_data)
+        sync_record_tags(db, tenant_id=current_user.tenant_id, module_key="sales_leads", entity_id=lead.lead_id, tags=tags_to_save)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to create lead") from exc
     db.refresh(lead)
-    return hydrate_custom_field_record(db, tenant_id=current_user.tenant_id, module_key="sales_leads", record=lead, record_id=lead.lead_id)
+    return _hydrate_lead_record(db, tenant_id=current_user.tenant_id, record=lead)
 
 
 def update_sales_lead(db: Session, lead: SalesLead, data: dict) -> SalesLead:
     custom_data_to_save: dict | None = None
+    tags_to_save = _validated_tags(data.pop("tags")) if "tags" in data else None
     if "custom_fields" in data:
         custom_data_to_save = validate_custom_field_payload(
             db,
@@ -399,6 +435,8 @@ def update_sales_lead(db: Session, lead: SalesLead, data: dict) -> SalesLead:
         data["status"] = _validate_status(data["status"])
     if "assigned_to" in data:
         _ensure_assigned_user(db, data["assigned_to"], tenant_id=lead.tenant_id)
+    if "team_id" in data:
+        _ensure_team(db, data["team_id"], tenant_id=lead.tenant_id)
     if "primary_email" in data and data["primary_email"]:
         duplicate = (
             db.query(SalesLead)
@@ -419,12 +457,14 @@ def update_sales_lead(db: Session, lead: SalesLead, data: dict) -> SalesLead:
         recalculate_lead_score(db, lead)
         if custom_data_to_save is not None:
             save_custom_field_values(db, tenant_id=lead.tenant_id, module_key="sales_leads", record_id=lead.lead_id, values=custom_data_to_save)
+        if tags_to_save is not None:
+            sync_record_tags(db, tenant_id=lead.tenant_id, module_key="sales_leads", entity_id=lead.lead_id, tags=tags_to_save)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unable to update lead") from exc
     db.refresh(lead)
-    return hydrate_custom_field_record(db, tenant_id=lead.tenant_id, module_key="sales_leads", record=lead, record_id=lead.lead_id)
+    return _hydrate_lead_record(db, tenant_id=lead.tenant_id, record=lead)
 
 
 def delete_sales_lead(db: Session, lead: SalesLead) -> None:
@@ -442,7 +482,7 @@ def restore_sales_lead(db: Session, lead: SalesLead) -> SalesLead:
     db.add(lead)
     db.commit()
     db.refresh(lead)
-    return hydrate_custom_field_record(db, tenant_id=lead.tenant_id, module_key="sales_leads", record=lead, record_id=lead.lead_id)
+    return _hydrate_lead_record(db, tenant_id=lead.tenant_id, record=lead)
 
 
 def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_user) -> dict:
@@ -540,7 +580,7 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
         db.refresh(opportunity)
 
     return {
-        "lead": hydrate_custom_field_record(db, tenant_id=tenant_id, module_key="sales_leads", record=lead, record_id=lead.lead_id),
+        "lead": _hydrate_lead_record(db, tenant_id=tenant_id, record=lead),
         "account_id": organization.org_id if organization else None,
         "contact_id": contact.contact_id if contact else None,
         "deal_id": opportunity.opportunity_id if opportunity else None,

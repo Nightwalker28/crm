@@ -11,7 +11,7 @@ import type { CustomModuleDefinition, CustomModuleField } from "@/hooks/useModul
 import { getModuleDisplayName } from "@/lib/module-display";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
-export type ModuleFilterFieldType = "text" | "number" | "date" | "select";
+export type ModuleFilterFieldType = "text" | "number" | "date" | "select" | "relation";
 
 export type ModuleFilterFieldOption = {
   value: string;
@@ -24,6 +24,8 @@ export type ModuleFilterField = {
   type: ModuleFilterFieldType;
   operators?: SavedViewFilterOperator[];
   options?: ModuleFilterFieldOption[];
+  sourceModuleKey?: string;
+  recordType?: "user" | "team";
 };
 
 export type ModuleViewDefinition = {
@@ -50,6 +52,7 @@ const TEXT_OPERATORS: SavedViewFilterOperator[] = ["is", "is_not", "contains", "
 const NUMBER_OPERATORS: SavedViewFilterOperator[] = ["is", "is_not", "gt", "gte", "lt", "lte", "in", "not_in", "is_empty", "is_not_empty"];
 const DATE_OPERATORS: SavedViewFilterOperator[] = ["is", "is_not", "gt", "gte", "lt", "lte", "in", "not_in", "is_empty", "is_not_empty"];
 const SELECT_OPERATORS: SavedViewFilterOperator[] = ["is", "is_not", "in", "not_in", "is_empty", "is_not_empty"];
+const RELATION_OPERATORS: SavedViewFilterOperator[] = ["is", "is_not", "is_empty", "is_not_empty"];
 
 export const CONTACT_COLUMNS: TableColumnOption[] = [
   { key: "first_name", label: "First Name" },
@@ -75,7 +78,10 @@ export const LEAD_COLUMNS: TableColumnOption[] = [
   { key: "source", label: "Source" },
   { key: "status", label: "Status" },
   { key: "assigned_to_name", label: "Owner" },
+  { key: "team_name", label: "Team" },
+  { key: "tags", label: "Tags" },
   { key: "last_contacted_at", label: "Last Activity" },
+  { key: "next_follow_up_at", label: "Next Follow-up" },
   { key: "created_time", label: "Created" },
 ];
 
@@ -358,7 +364,34 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "phone", label: "Phone", type: "text", operators: TEXT_OPERATORS },
       { key: "title", label: "Job Title", type: "text", operators: TEXT_OPERATORS },
       { key: "source", label: "Source", type: "text", operators: TEXT_OPERATORS },
+      {
+        key: "assigned_to",
+        label: "Owner",
+        type: "relation",
+        operators: RELATION_OPERATORS,
+        sourceModuleKey: "sales_leads",
+        recordType: "user",
+      },
+      {
+        key: "team_id",
+        label: "Team",
+        type: "relation",
+        operators: RELATION_OPERATORS,
+        sourceModuleKey: "sales_leads",
+        recordType: "team",
+      },
       { key: "last_contacted_at", label: "Last Activity", type: "date", operators: DATE_OPERATORS },
+      { key: "next_follow_up_at", label: "Next Follow-up", type: "date", operators: DATE_OPERATORS },
+      {
+        key: "has_activity",
+        label: "Has Activity",
+        type: "select",
+        operators: ["is"],
+        options: [
+          { value: "true", label: "Yes" },
+          { value: "false", label: "No" },
+        ],
+      },
       { key: "score", label: "Score", type: "number", operators: NUMBER_OPERATORS },
       {
         key: "score_grade",

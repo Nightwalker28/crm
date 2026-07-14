@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import relationship, validates
 
 from app.core.database import Base
@@ -116,6 +116,53 @@ class ModuleFieldConfig(Base):
     sort_order = Column(Integer, nullable=False, server_default="0")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class RecordTag(Base):
+    __tablename__ = "record_tags"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "normalized_name", name="uq_record_tags_tenant_normalized_name"),
+        UniqueConstraint("tenant_id", "id", name="uq_record_tags_tenant_id"),
+        Index("ix_record_tags_tenant_name", "tenant_id", "name"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(50), nullable=False)
+    normalized_name = Column(String(50), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    links = relationship("RecordTagLink", back_populates="tag", cascade="all, delete-orphan")
+
+
+class RecordTagLink(Base):
+    __tablename__ = "record_tag_links"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id",
+            "module_key",
+            "entity_id",
+            "tag_id",
+            name="uq_record_tag_links_tenant_record_tag",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "tag_id"],
+            ["record_tags.tenant_id", "record_tags.id"],
+            ondelete="CASCADE",
+            name="fk_record_tag_links_tenant_tag",
+        ),
+        Index("ix_record_tag_links_tenant_record", "tenant_id", "module_key", "entity_id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    entity_id = Column(String(100), nullable=False, index=True)
+    tag_id = Column(BigInteger, nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    tag = relationship("RecordTag", back_populates="links")
 
 
 class UserModuleReport(Base):

@@ -1,6 +1,8 @@
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.core.like_patterns import LIKE_ESCAPE, contains_pattern
+from app.modules.user_management.models import Team
 from app.modules.user_management.models import User, UserStatus
 
 
@@ -33,3 +35,20 @@ def list_linked_record_user_options(db: Session, *, tenant_id: int, query: str, 
         }
         for user in users
     ]
+
+
+def list_linked_record_team_options(db: Session, *, tenant_id: int, query: str, limit: int = 10) -> list[dict]:
+    normalized = query.strip().casefold()
+    if not normalized:
+        return []
+    teams = (
+        db.query(Team)
+        .filter(
+            Team.tenant_id == tenant_id,
+            func.lower(Team.name).like(contains_pattern(normalized), escape=LIKE_ESCAPE),
+        )
+        .order_by(func.lower(Team.name).asc(), Team.id.asc())
+        .limit(limit)
+        .all()
+    )
+    return [{"id": team.id, "label": team.name} for team in teams]

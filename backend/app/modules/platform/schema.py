@@ -688,6 +688,23 @@ class LinkedRecordUserListResponse(BaseModel):
     results: list[LinkedRecordUserResponse]
 
 
+class LinkedRecordTeamResponse(BaseModel):
+    id: int
+    label: str
+
+
+class LinkedRecordTeamListResponse(BaseModel):
+    results: list[LinkedRecordTeamResponse]
+
+
+class LinkedRecordTagResponse(BaseModel):
+    name: str
+
+
+class LinkedRecordTagListResponse(BaseModel):
+    results: list[LinkedRecordTagResponse]
+
+
 class GlobalSearchResultResponse(BaseModel):
     module_key: str
     module_label: str

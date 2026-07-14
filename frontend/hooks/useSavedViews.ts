@@ -34,6 +34,7 @@ export type SavedViewCondition = {
   operator: SavedViewFilterOperator;
   value?: unknown;
   values?: unknown;
+  value_label?: string | null;
 };
 
 export type SavedViewFilters = {

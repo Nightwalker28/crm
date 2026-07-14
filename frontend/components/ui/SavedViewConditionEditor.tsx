@@ -2,6 +2,7 @@
 
 import { Plus, Trash2 } from "lucide-react";
 
+import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/input";
@@ -147,6 +148,8 @@ function ConditionGroupsContent({
                 const operators = selectedField?.operators ?? ["is"];
                 const usesListValue = condition.operator === "in" || condition.operator === "not_in";
                 const hidesValue = condition.operator === "is_empty" || condition.operator === "is_not_empty";
+                const relationValue = Number(condition.value);
+                const relationValueId = Number.isInteger(relationValue) && relationValue > 0 ? relationValue : null;
 
                 return (
                   <div
@@ -163,6 +166,7 @@ function ConditionGroupsContent({
                             operator: selectedFieldMap.get(value)?.operators?.[0] ?? "is",
                             value: "",
                             values: [],
+                            value_label: "",
                           })
                         }
                       >
@@ -188,6 +192,7 @@ function ConditionGroupsContent({
                             operator: value as SavedViewFilterOperator,
                             value: "",
                             values: [],
+                            value_label: "",
                           })
                         }
                       >
@@ -210,6 +215,32 @@ function ConditionGroupsContent({
                         <div className="flex h-10 items-center rounded-md border border-neutral-800 px-3 text-sm text-neutral-500">
                           No value needed
                         </div>
+                      ) : selectedField?.type === "relation" && selectedField.recordType ? (
+                        <LinkedRecordPicker
+                          recordType={selectedField.recordType}
+                          valueId={relationValueId}
+                          displayValue={
+                            typeof condition.value_label === "string"
+                              ? condition.value_label
+                              : relationValueId
+                                ? `${selectedField.label} #${relationValueId}`
+                                : ""
+                          }
+                          onDisplayValueChange={(value_label) =>
+                            updateCondition(groupKey, index, { value: "", value_label })
+                          }
+                          onSelect={(option) =>
+                            updateCondition(groupKey, index, { value: option.id, value_label: option.label })
+                          }
+                          onClear={() =>
+                            updateCondition(groupKey, index, { value: "", value_label: "" })
+                          }
+                          placeholder={`Search ${selectedField.label.toLowerCase()}`}
+                          queryKeyPrefix="saved-view-relation-filter"
+                          noResultsText={`No ${selectedField.label.toLowerCase()} matched this search.`}
+                          sourceModuleKey={selectedField.sourceModuleKey}
+                          sourceAction="view"
+                        />
                       ) : selectedField?.type === "select" && selectedField.options && !usesListValue ? (
                         <Select
                           value={typeof condition.value === "string" ? condition.value : ""}

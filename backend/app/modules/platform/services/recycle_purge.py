@@ -24,6 +24,7 @@ PURGE_TARGETS: tuple[tuple[str, str], ...] = (
     ("documents", "id"),
     ("custom_module_records", "id"),
 )
+RECORD_TAG_MODULE_KEYS = {"sales_leads": "sales_leads"}
 
 
 def _quote_purge_identifier(identifier: str) -> str:
@@ -35,6 +36,21 @@ def _quote_purge_identifier(identifier: str) -> str:
 def _build_purge_statement(table_name: str, pk_column: str):
     table_identifier = _quote_purge_identifier(table_name)
     pk_identifier = _quote_purge_identifier(pk_column)
+    tag_module_key = RECORD_TAG_MODULE_KEYS.get(table_name)
+    tag_cleanup = ""
+    if tag_module_key:
+        tag_cleanup = f""",
+        deleted_tag_links AS (
+            DELETE FROM record_tag_links
+            WHERE tenant_id IN (
+                SELECT {table_identifier}.tenant_id
+                FROM {table_identifier}
+                JOIN rows_to_delete ON {table_identifier}.{pk_identifier} = rows_to_delete.{pk_identifier}
+            )
+            AND module_key = '{tag_module_key}'
+            AND entity_id IN (SELECT CAST({pk_identifier} AS text) FROM rows_to_delete)
+            RETURNING id
+        )"""
     return text(
         f"""
         WITH rows_to_delete AS (
@@ -43,7 +59,7 @@ def _build_purge_statement(table_name: str, pk_column: str):
             WHERE deleted_at < now() - (:retention_days * interval '1 day')
             ORDER BY deleted_at ASC, {pk_identifier} ASC
             LIMIT :batch_size
-        )
+        ){tag_cleanup}
         DELETE FROM {table_identifier}
         USING rows_to_delete
         WHERE {table_identifier}.{pk_identifier} = rows_to_delete.{pk_identifier}

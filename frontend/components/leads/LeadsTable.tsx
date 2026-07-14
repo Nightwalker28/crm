@@ -130,6 +130,28 @@ export default function LeadsTable({
         return <TableCell className={stickyClassName}><span className="text-sm text-neutral-400">{lead.created_time ? formatDateTime(lead.created_time) : "-"}</span></TableCell>;
       case "last_contacted_at":
         return <TableCell className={stickyClassName}><span className="text-sm text-neutral-400">{lead.last_contacted_at ? formatDateTime(lead.last_contacted_at) : "No activity"}</span></TableCell>;
+      case "next_follow_up_at": {
+        const isOverdue = Boolean(lead.next_follow_up_is_overdue);
+        return (
+          <TableCell className={stickyClassName}>
+            {lead.next_follow_up_at ? (
+              <span className={isOverdue ? "text-sm font-medium text-amber-300" : "text-sm text-neutral-400"}>
+                {formatDateTime(lead.next_follow_up_at)}{isOverdue ? " · Overdue" : ""}
+              </span>
+            ) : <span className="text-sm text-neutral-600">Not scheduled</span>}
+          </TableCell>
+        );
+      }
+      case "tags":
+        return (
+          <TableCell className={stickyClassName}>
+            <div className="flex max-w-64 flex-wrap gap-1">
+              {(lead.tags ?? []).length
+                ? (lead.tags ?? []).map((tag) => <Pill key={tag.toLocaleLowerCase()}>{tag}</Pill>)
+                : <span className="text-sm text-neutral-600">No tags</span>}
+            </div>
+          </TableCell>
+        );
       default:
         return <TableCell className={stickyClassName}><span className="text-sm text-neutral-300">{String(lead[column as keyof Lead] ?? "") || <span className="text-neutral-600">-</span>}</span></TableCell>;
     }
@@ -152,7 +174,7 @@ export default function LeadsTable({
             </TableHead>
             {visibleColumns.map((column, index) => {
               const label = getReadableColumnLabel(column, columnOptions);
-              const sortable = !isCustomFieldColumnKey(column) && ["first_name", "last_name", "company", "primary_email", "status", "score", "score_grade", "created_time", "last_contacted_at"].includes(column);
+              const sortable = !isCustomFieldColumnKey(column) && ["first_name", "last_name", "company", "primary_email", "status", "score", "score_grade", "created_time", "last_contacted_at", "next_follow_up_at"].includes(column);
               const stickyClassName = index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined;
               return sortable ? (
                 <SortableHead

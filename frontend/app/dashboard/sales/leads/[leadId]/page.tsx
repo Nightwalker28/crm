@@ -40,6 +40,11 @@ type LeadSummary = {
     status?: string | null;
     notes?: string | null;
     last_contacted_at?: string | null;
+    next_follow_up_at?: string | null;
+    next_follow_up_is_overdue?: boolean;
+    team_id?: number | null;
+    team_name?: string | null;
+    tags?: string[];
     last_contacted_channel?: string | null;
     score?: number | null;
     score_grade?: string | null;
@@ -192,8 +197,22 @@ function LeadOverview({ summary, fieldEnabled }: { summary: LeadSummary; fieldEn
           {fieldEnabled("source") ? <DetailField label="Source" value={summary.lead.source} /> : null}
           {fieldEnabled("status") ? <DetailField label="Status" value={(summary.lead.status || "new").replace(/_/g, " ")} capitalize /> : null}
           {fieldEnabled("assigned_to") ? <DetailField label="Owner" value={summary.lead.assigned_to_name} /> : null}
+          {fieldEnabled("team_id") ? <DetailField label="Team" value={summary.lead.team_name} /> : null}
+          {fieldEnabled("next_follow_up_at") ? (
+            <FollowUpDetail value={summary.lead.next_follow_up_at} isOverdue={summary.lead.next_follow_up_is_overdue} />
+          ) : null}
         </div>
         {fieldEnabled("notes") ? <div className="mt-5 border-t border-neutral-800 pt-5"><DetailField label="Notes" value={summary.lead.notes} /></div> : null}
+        {fieldEnabled("tags") && (summary.lead.tags ?? []).length ? (
+          <div className="mt-5 border-t border-neutral-800 pt-5">
+            <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">Tags</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {(summary.lead.tags ?? []).map((tag) => (
+                <span key={tag.toLocaleLowerCase()} className="rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-200">{tag}</span>
+              ))}
+            </div>
+          </div>
+        ) : null}
         {Object.keys(summary.lead.custom_fields ?? {}).length ? (
           <details className="mt-5 border-t border-neutral-800 pt-5">
             <summary className="cursor-pointer text-sm font-medium text-neutral-200">Custom fields</summary>
@@ -213,6 +232,17 @@ function LeadOverview({ summary, fieldEnabled }: { summary: LeadSummary; fieldEn
           <SummaryTile label="Status" value={(summary.lead.status || "new").replace(/_/g, " ")} />
         </div>
       </Card>
+    </div>
+  );
+}
+
+function FollowUpDetail({ value, isOverdue = false }: { value?: string | null; isOverdue?: boolean }) {
+  return (
+    <div>
+      <div className="text-xs font-medium uppercase tracking-wide text-neutral-500">Next follow-up</div>
+      <div className={`mt-1 text-sm ${isOverdue ? "font-medium text-amber-300" : "text-neutral-200"}`}>
+        {value ? `${formatDateTime(value)}${isOverdue ? " · Overdue" : ""}` : "Not scheduled"}
+      </div>
     </div>
   );
 }

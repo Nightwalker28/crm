@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { apiFetch } from "@/lib/api";
 
-export type LinkedRecordType = "contact" | "organization" | "opportunity" | "quote" | "order" | "document" | "user";
+export type LinkedRecordType = "contact" | "organization" | "opportunity" | "quote" | "order" | "document" | "user" | "team";
 
 export type LinkedRecordFilters = {
   contactId?: number | null;
@@ -45,7 +45,7 @@ type Props = {
   linkedModuleKey?: string;
   linkedEntityId?: string | number | null;
   sourceModuleKey?: string;
-  sourceAction?: "create" | "edit";
+  sourceAction?: "create" | "edit" | "view";
 };
 
 function appendRelationshipFilters(params: URLSearchParams, filters?: LinkedRecordFilters) {
@@ -65,7 +65,7 @@ async function searchLinkedRecords(
   linkedModuleKey?: string,
   linkedEntityId?: string | number | null,
   sourceModuleKey?: string,
-  sourceAction: "create" | "edit" = "create",
+  sourceAction: "create" | "edit" | "view" = "create",
 ): Promise<LinkedRecordOption[]> {
   const params = new URLSearchParams({ page: "1", page_size: "10", query: search });
   appendRelationshipFilters(params, filters);
@@ -88,6 +88,9 @@ async function searchLinkedRecords(
       documentParams.set("entity_id", String(linkedEntityId));
     }
     endpoint = `/documents?${documentParams.toString()}`;
+  } else if (recordType === "team") {
+    const teamParams = new URLSearchParams({ query: search, module_key: sourceModuleKey ?? "", action: sourceAction });
+    endpoint = `/linked-record-options/teams?${teamParams.toString()}`;
   } else {
     const userParams = new URLSearchParams({ query: search, module_key: sourceModuleKey ?? "", action: sourceAction });
     endpoint = `/linked-record-options/users?${userParams.toString()}`;
@@ -177,6 +180,14 @@ async function searchLinkedRecords(
         id: Number(record.id),
         label: typeof record.title === "string" ? record.title : "Untitled document",
         description: typeof record.original_filename === "string" ? record.original_filename : null,
+        raw: record,
+      };
+    }
+
+    if (recordType === "team") {
+      return {
+        id: Number(record.id),
+        label: typeof record.label === "string" ? record.label : "Unnamed team",
         raw: record,
       };
     }

@@ -2,8 +2,9 @@
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import RecordTagInput from "@/components/crm/RecordTagInput";
 import { FormSection } from "@/components/forms/RecordFormLayout";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -22,6 +23,10 @@ export type LeadFormValue = {
   notes: string;
   assigned_to: number | null;
   assigned_to_name: string;
+  next_follow_up_at: string;
+  team_id: number | null;
+  team_name: string;
+  tags: string[];
 };
 
 export const EMPTY_LEAD_FORM: LeadFormValue = {
@@ -36,6 +41,10 @@ export const EMPTY_LEAD_FORM: LeadFormValue = {
   notes: "",
   assigned_to: null,
   assigned_to_name: "",
+  next_follow_up_at: "",
+  team_id: null,
+  team_name: "",
+  tags: [],
 };
 
 export const LEAD_STATUSES = [
@@ -127,6 +136,24 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
             />
           </Field>
         ) : null}
+        {enabled("team_id") ? (
+          <Field>
+            <FieldLabel>Team</FieldLabel>
+            <LinkedRecordPicker
+              recordType="team"
+              valueId={value.team_id}
+              displayValue={value.team_name}
+              onDisplayValueChange={(team_name) => onChange({ ...value, team_id: null, team_name })}
+              onSelect={(option) => onChange({ ...value, team_id: option.id, team_name: option.label })}
+              onClear={() => onChange({ ...value, team_id: null, team_name: "" })}
+              placeholder={mode === "create" ? "Search teams (defaults to yours)" : "Search teams"}
+              queryKeyPrefix="lead-team"
+              noResultsText="No teams matched this search."
+              sourceModuleKey="sales_leads"
+              sourceAction={mode}
+            />
+          </Field>
+        ) : null}
         {enabled("status") ? (
           <Field>
             <FieldLabel>Status</FieldLabel>
@@ -137,6 +164,30 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
           </Field>
         ) : null}
         {enabled("source") ? <TextField label="Source" value={value.source} onChange={(source) => onChange({ ...value, source })} placeholder="Referral, website, event…" /> : null}
+        {enabled("next_follow_up_at") ? (
+          <Field>
+            <FieldLabel htmlFor="lead-next-follow-up">Next follow-up</FieldLabel>
+            <Input
+              id="lead-next-follow-up"
+              type="datetime-local"
+              value={value.next_follow_up_at}
+              onChange={(event) => onChange({ ...value, next_follow_up_at: event.target.value })}
+            />
+            <FieldDescription>Sets the Lead planning date. Reminder tasks can be created from the Activity tab.</FieldDescription>
+          </Field>
+        ) : null}
+        {enabled("tags") ? (
+          <Field>
+            <FieldLabel>Tags</FieldLabel>
+            <RecordTagInput
+              value={value.tags}
+              onChange={(tags) => onChange({ ...value, tags })}
+              moduleKey="sales_leads"
+              action={mode}
+            />
+            <FieldDescription>Use existing workspace tags or create a new one while saving the Lead.</FieldDescription>
+          </Field>
+        ) : null}
       </div>
     </FormSection>
   );

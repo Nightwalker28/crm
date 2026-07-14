@@ -99,6 +99,8 @@ class PlatformQueryHardeningTests(unittest.TestCase):
 
         self.assertIn('FROM "sales_leads"', statement)
         self.assertIn('SELECT "lead_id"', statement)
+        self.assertIn("DELETE FROM record_tag_links", statement)
+        self.assertIn("module_key = 'sales_leads'", statement)
         self.assertIn('"sales_leads"."lead_id" = rows_to_delete."lead_id"', statement)
 
 

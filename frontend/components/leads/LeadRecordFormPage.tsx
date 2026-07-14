@@ -32,6 +32,20 @@ async function fetchLeadSummary(leadId: string) {
   return body as LeadSummary;
 }
 
+function toDatetimeLocalValue(value?: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offset = date.getTimezoneOffset();
+  return new Date(date.getTime() - offset * 60_000).toISOString().slice(0, 16);
+}
+
+function toIsoOrNull(value: string) {
+  if (!value.trim()) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | "edit"; leadId?: string }) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -65,6 +79,10 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
       notes: lead.notes ?? "",
       assigned_to: lead.assigned_to ?? null,
       assigned_to_name: lead.assigned_to_name ?? "",
+      next_follow_up_at: toDatetimeLocalValue(lead.next_follow_up_at),
+      team_id: lead.team_id ?? null,
+      team_name: lead.team_name ?? "",
+      tags: Array.isArray(lead.tags) ? lead.tags : [],
     };
     const nextCustomFields = lead.custom_fields ?? {};
     setForm(nextForm);
@@ -116,6 +134,9 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
         status: form.status,
         notes: form.notes.trim() || null,
         assigned_to: form.assigned_to,
+        next_follow_up_at: toIsoOrNull(form.next_follow_up_at),
+        team_id: form.team_id,
+        tags: form.tags,
         custom_fields: customFieldValues,
       }, moduleFields, ["primary_email", "custom_fields"]);
       const endpoint = mode === "edit" ? `/sales/leads/${leadId}` : "/sales/leads";

@@ -188,6 +188,7 @@ class SalesLeadBase(BaseModel):
     source: str | None = None
     status: str = "new"
     notes: str | None = None
+    next_follow_up_at: datetime | None = None
     custom_fields: dict[str, Any] | None = None
 
 
@@ -201,6 +202,8 @@ class SalesLeadScoreFactor(BaseModel):
 class SalesLeadCreateRequest(SalesLeadBase):
     primary_email: EmailStr
     assigned_to: int | None = None
+    team_id: int | None = None
+    tags: list[str] = Field(default_factory=list, max_length=20)
 
 
 class SalesLeadUpdateRequest(BaseModel):
@@ -214,6 +217,9 @@ class SalesLeadUpdateRequest(BaseModel):
     status: str | None = None
     notes: str | None = None
     assigned_to: int | None = None
+    team_id: int | None = None
+    tags: list[str] = Field(default_factory=list, max_length=20)
+    next_follow_up_at: datetime | None = None
     custom_fields: dict[str, Any] | None = None
 
 
@@ -222,6 +228,10 @@ class SalesLeadResponse(SalesLeadBase):
     primary_email: EmailStr
     assigned_to: int | None = None
     assigned_to_name: str | None = None
+    team_id: int | None = None
+    team_name: str | None = None
+    tags: list[str] = Field(default_factory=list)
+    next_follow_up_is_overdue: bool = False
     created_time: datetime
     last_contacted_at: datetime | None = None
     last_contacted_channel: str | None = None
@@ -246,8 +256,13 @@ class SalesLeadListItem(BaseModel):
     status: str | None = None
     assigned_to: int | None = None
     assigned_to_name: str | None = None
+    team_id: int | None = None
+    team_name: str | None = None
+    tags: list[str] = Field(default_factory=list)
     created_time: datetime | None = None
     last_contacted_at: datetime | None = None
+    next_follow_up_at: datetime | None = None
+    next_follow_up_is_overdue: bool = False
     last_contacted_channel: str | None = None
     last_contacted_by_user_id: int | None = None
     score: int | None = None
@@ -641,6 +656,7 @@ class FollowUpActionResponse(BaseModel):
     entity_id: str
     channel: str
     last_contacted_at: datetime
+    next_follow_up_at: datetime | None = None
     follow_up_task_id: int | None = None
 
 

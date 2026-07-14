@@ -2,6 +2,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import patch
 
+from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -12,7 +13,7 @@ from app.modules.sales.models import SalesLead, SalesLeadScore
 from app.modules.sales.services import leads_services
 from app.modules.sales.services.leads_services import calculate_lead_score, list_sales_leads, update_sales_lead
 from app.modules.user_management import models as user_management_models  # noqa: F401
-from app.modules.user_management.models import Tenant, User, UserStatus
+from app.modules.user_management.models import Team, Tenant, User, UserStatus
 
 
 class LeadScoringTests(unittest.TestCase):
@@ -24,6 +25,9 @@ class LeadScoringTests(unittest.TestCase):
         self.db.add_all(
             [
                 Tenant(id=10, slug="default", name="Default"),
+                Tenant(id=99, slug="other", name="Other"),
+                Team(id=10, tenant_id=10, name="Revenue"),
+                Team(id=99, tenant_id=99, name="Other Revenue"),
                 User(
                     id=1,
                     tenant_id=10,
@@ -138,6 +142,98 @@ class LeadScoringTests(unittest.TestCase):
 
         self.assertEqual(total_count, 1)
         self.assertEqual([lead.lead_id for lead in leads], [hot.lead_id])
+
+    def test_lead_list_filters_by_owner(self):
+        self.db.add(
+            User(
+                id=2,
+                tenant_id=10,
+                email="second-owner@example.com",
+                first_name="Second",
+                last_name="Owner",
+                is_active=UserStatus.active,
+            )
+        )
+        owned_by_first = SalesLead(
+            lead_id=106,
+            tenant_id=10,
+            primary_email="first-owned@example.com",
+            assigned_to=1,
+        )
+        owned_by_second = SalesLead(
+            lead_id=107,
+            tenant_id=10,
+            primary_email="second-owned@example.com",
+            assigned_to=2,
+        )
+        self.db.add_all([owned_by_first, owned_by_second])
+        self.db.commit()
+
+        leads, total_count = list_sales_leads(
+            self.db,
+            tenant_id=10,
+            pagination=create_pagination(1, 20),
+            all_filter_conditions=[{"field": "assigned_to", "operator": "is", "value": 2}],
+        )
+
+        self.assertEqual(total_count, 1)
+        self.assertEqual([lead.lead_id for lead in leads], [owned_by_second.lead_id])
+
+    def test_lead_list_filters_by_follow_up_and_activity(self):
+        scheduled_at = datetime(2026, 7, 20, 9, 30, tzinfo=timezone.utc)
+        active = SalesLead(
+            lead_id=108,
+            tenant_id=10,
+            primary_email="active-follow-up@example.com",
+            assigned_to=1,
+            last_contacted_at=datetime(2026, 7, 14, 8, 0, tzinfo=timezone.utc),
+            next_follow_up_at=scheduled_at,
+        )
+        inactive = SalesLead(
+            lead_id=109,
+            tenant_id=10,
+            primary_email="inactive-follow-up@example.com",
+            assigned_to=1,
+        )
+        self.db.add_all([active, inactive])
+        self.db.commit()
+
+        leads, total_count = list_sales_leads(
+            self.db,
+            tenant_id=10,
+            pagination=create_pagination(1, 20),
+            all_filter_conditions=[
+                {"field": "has_activity", "operator": "is", "value": True},
+                {"field": "next_follow_up_at", "operator": "is_not_empty"},
+            ],
+        )
+
+        self.assertEqual(total_count, 1)
+        self.assertEqual([lead.lead_id for lead in leads], [active.lead_id])
+
+    def test_lead_update_validates_team_tenant_and_persists_tags(self):
+        lead = SalesLead(
+            lead_id=110,
+            tenant_id=10,
+            primary_email="team-tags@example.com",
+            assigned_to=1,
+        )
+        self.db.add(lead)
+        self.db.commit()
+
+        updated = update_sales_lead(
+            self.db,
+            lead,
+            {"team_id": 10, "tags": ["Enterprise", "Warm", "warm"]},
+        )
+
+        self.assertEqual(updated.team_id, 10)
+        self.assertEqual(updated.team_name, "Revenue")
+        self.assertEqual(updated.tags, ["Enterprise", "Warm"])
+
+        with self.assertRaises(HTTPException) as exc:
+            update_sales_lead(self.db, updated, {"team_id": 99})
+        self.assertEqual(exc.exception.detail, "Team not found")
 
     def test_lead_list_sorts_before_pagination(self):
         self.db.add_all(

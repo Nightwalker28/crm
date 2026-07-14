@@ -20,6 +20,11 @@ export type Lead = {
   assigned_to_name?: string | null;
   created_time: string;
   last_contacted_at?: string | null;
+  next_follow_up_at?: string | null;
+  next_follow_up_is_overdue?: boolean;
+  team_id?: number | null;
+  team_name?: string | null;
+  tags?: string[];
   last_contacted_channel?: string | null;
   score?: number | null;
   score_grade?: string | null;
