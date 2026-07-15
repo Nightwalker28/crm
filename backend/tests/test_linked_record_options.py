@@ -6,12 +6,16 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.modules.catalog import models as catalog_models  # noqa: F401
+from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.platform.services.linked_record_options import list_linked_record_team_options, list_linked_record_user_options
 from app.modules.platform.routes.linked_record_options import get_linked_record_tag_options, get_linked_record_team_options, get_linked_record_user_options
 from app.modules.platform.services.record_tags import hydrate_record_tags, list_record_tag_options, sync_record_tags
-from app.modules.sales.models import SalesLead
+from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization
+from app.modules.sales.routes.contacts_routes import _serialize_contact_list_item
 from app.modules.sales.routes.leads_routes import _serialize_lead_list_item
-from app.modules.sales.schema import SalesLeadResponse
+from app.modules.sales.routes.opportunities_routes import _serialize_opportunity_list_item
+from app.modules.sales.schema import SalesContactResponse, SalesLeadResponse, SalesOpportunityResponse
 from app.modules.user_management.models import Team, Tenant, User, UserStatus
 
 
@@ -193,6 +197,52 @@ class LinkedRecordOptionsTests(unittest.TestCase):
 
         self.assertEqual(detail.assigned_to_name, "Ada Lovelace")
         self.assertEqual(list_item.assigned_to_name, "Ada Lovelace")
+
+    def test_contact_responses_expose_the_readable_owner_name(self):
+        contact = SalesContact(tenant_id=10, primary_email="contact@example.com", assigned_to=1)
+        self.db.add(contact)
+        self.db.commit()
+        self.db.refresh(contact)
+
+        detail = SalesContactResponse.model_validate(contact)
+        list_item = _serialize_contact_list_item(contact, {"assigned_to", "assigned_to_name"})
+
+        self.assertEqual(detail.assigned_to_name, "Ada Lovelace")
+        self.assertEqual(list_item.assigned_to_name, "Ada Lovelace")
+
+    def test_opportunity_responses_expose_readable_relationship_names(self):
+        organization = SalesOrganization(tenant_id=10, org_name="Acme")
+        contact = SalesContact(
+            tenant_id=10,
+            first_name="Grace",
+            last_name="Hopper",
+            primary_email="grace@example.com",
+            organization=organization,
+        )
+        opportunity = SalesOpportunity(
+            tenant_id=10,
+            opportunity_name="Platform rollout",
+            client="Grace Hopper",
+            assigned_to=1,
+            contact=contact,
+            organization=organization,
+        )
+        self.db.add(opportunity)
+        self.db.commit()
+        self.db.refresh(opportunity)
+
+        detail = SalesOpportunityResponse.model_validate(opportunity)
+        list_item = _serialize_opportunity_list_item(
+            opportunity,
+            {"assigned_to_name", "contact_name", "organization_name"},
+        )
+
+        self.assertEqual(detail.assigned_to_name, "Ada Lovelace")
+        self.assertEqual(detail.contact_name, "Grace Hopper")
+        self.assertEqual(detail.organization_name, "Acme")
+        self.assertEqual(list_item.assigned_to_name, "Ada Lovelace")
+        self.assertEqual(list_item.contact_name, "Grace Hopper")
+        self.assertEqual(list_item.organization_name, "Acme")
 
 
 if __name__ == "__main__":

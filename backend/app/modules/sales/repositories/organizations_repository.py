@@ -6,6 +6,7 @@ from app.core.module_filters import apply_filter_conditions
 from app.core.module_search import apply_ranked_search
 from app.modules.platform.services.custom_fields import build_custom_field_filter_map
 from app.modules.sales.models import SalesOrganization
+from app.modules.user_management.models import User
 
 ORGANIZATION_SORT_FIELDS = {
     "org_name": SalesOrganization.org_name,
@@ -18,6 +19,7 @@ ORGANIZATION_SORT_FIELDS = {
     "assigned_to": SalesOrganization.assigned_to,
     "customer_group_id": SalesOrganization.customer_group_id,
     "created_time": SalesOrganization.created_time,
+    "updated_at": SalesOrganization.updated_at,
 }
 
 
@@ -48,6 +50,8 @@ def build_organization_query(
         "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
         "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
         "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
+        "assigned_to": {"expression": SalesOrganization.assigned_to, "type": "number"},
+        "updated_at": {"expression": SalesOrganization.updated_at, "type": "date"},
         **build_custom_field_filter_map(
             db,
             tenant_id=tenant_id,
@@ -150,6 +154,10 @@ def get_organization(
     if not include_deleted:
         query = query.filter(SalesOrganization.deleted_at.is_(None))
     return query.first()
+
+
+def user_exists(db: Session, *, tenant_id: int, user_id: int) -> bool:
+    return bool(db.query(User.id).filter(User.id == user_id, User.tenant_id == tenant_id).first())
 
 
 def list_deleted_paginated(

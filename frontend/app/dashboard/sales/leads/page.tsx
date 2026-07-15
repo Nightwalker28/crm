@@ -85,6 +85,7 @@ export default function LeadsPage() {
         onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))}
         onClearFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }))}
         selectedCount={selectedIds.length}
+        selectionNoun="lead"
         onClearSelection={() => setSelectedIds([])}
         viewControls={<SavedViewSelector moduleKey="sales_leads" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
         actionControls={(

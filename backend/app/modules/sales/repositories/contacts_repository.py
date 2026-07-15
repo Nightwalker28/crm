@@ -25,6 +25,7 @@ CONTACT_SORT_FIELDS = {
     "assigned_to": SalesContact.assigned_to,
     "organization_name": SalesOrganization.org_name,
     "created_time": SalesContact.created_time,
+    "last_contacted_at": SalesContact.last_contacted_at,
 }
 
 
@@ -66,6 +67,7 @@ def build_contacts_query(
         "assigned_to": {"expression": SalesContact.assigned_to, "type": "number"},
         "organization_name": {"expression": SalesOrganization.org_name, "type": "text"},
         "created_time": {"expression": SalesContact.created_time, "type": "date"},
+        "last_contacted_at": {"expression": SalesContact.last_contacted_at, "type": "date"},
         **build_custom_field_filter_map(
             db,
             tenant_id=tenant_id,

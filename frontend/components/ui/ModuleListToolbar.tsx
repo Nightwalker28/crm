@@ -15,6 +15,7 @@ type Props = {
   onToggleFilters: () => void;
   onClearFilters: () => void;
   selectedCount?: number;
+  selectionNoun?: string;
   onClearSelection?: () => void;
   viewControls?: ReactNode;
   actionControls?: ReactNode;
@@ -29,6 +30,7 @@ export function ModuleListToolbar({
   onToggleFilters,
   onClearFilters,
   selectedCount = 0,
+  selectionNoun = "record",
   onClearSelection,
   viewControls,
   actionControls,
@@ -50,7 +52,7 @@ export function ModuleListToolbar({
 
       {selectedCount ? (
         <div className="mt-3 flex items-center justify-between gap-3 border-t border-line-subtle pt-3">
-          <span className="text-sm font-medium text-copy-primary">{selectedCount} lead{selectedCount === 1 ? "" : "s"} selected</span>
+          <span className="text-sm font-medium text-copy-primary">{selectedCount} {selectionNoun}{selectedCount === 1 ? "" : "s"} selected</span>
           {onClearSelection ? <Button type="button" variant="ghost" size="sm" onClick={onClearSelection}><X />Clear selection</Button> : null}
         </div>
       ) : null}

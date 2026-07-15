@@ -19,7 +19,7 @@ export default function LeadsHeader({ eyebrow }: LeadsHeaderProps) {
       eyebrow={eyebrow}
       actions={
         <Button asChild>
-          <Link href="/dashboard/sales/leads/new">
+          <Link href="/dashboard/sales/leads/new" aria-label="Create lead">
             <Plus />
             <span className="hidden sm:inline">Create lead</span>
           </Link>

@@ -71,6 +71,7 @@ class SalesOrganization(Base):
         nullable=True,
     )
     customer_group = relationship("CustomerGroup", lazy="selectin")
+    assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
 
     @property
     def custom_data(self) -> dict | None:
@@ -87,6 +88,13 @@ class SalesOrganization(Base):
     @custom_fields.setter
     def custom_fields(self, value: dict | None) -> None:
         self.custom_data = value
+
+    @property
+    def assigned_to_name(self) -> str | None:
+        if not self.assigned_user:
+            return None
+        full_name = " ".join(part for part in [self.assigned_user.first_name, self.assigned_user.last_name] if part).strip()
+        return full_name or self.assigned_user.email
 
 # contacts model
 
@@ -143,6 +151,13 @@ class SalesContact(Base):
 
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
     last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="selectin")
+
+    @property
+    def assigned_to_name(self) -> str | None:
+        if not self.assigned_user:
+            return None
+        full_name = " ".join(part for part in [self.assigned_user.first_name, self.assigned_user.last_name] if part).strip()
+        return full_name or self.assigned_user.email
     organization = relationship("SalesOrganization", lazy="selectin")
     customer_group = relationship("CustomerGroup", lazy="selectin")
 
@@ -570,3 +585,23 @@ class SalesOpportunity(Base):
     @custom_fields.setter
     def custom_fields(self, value: dict | None) -> None:
         self.custom_data = value
+
+    @property
+    def assigned_to_name(self) -> str | None:
+        if not self.assigned_user:
+            return None
+        full_name = " ".join(
+            part for part in [self.assigned_user.first_name, self.assigned_user.last_name] if part
+        ).strip()
+        return full_name or self.assigned_user.email
+
+    @property
+    def organization_name(self) -> str | None:
+        return self.organization.org_name if self.organization else None
+
+    @property
+    def contact_name(self) -> str | None:
+        if not self.contact:
+            return None
+        full_name = " ".join(part for part in [self.contact.first_name, self.contact.last_name] if part).strip()
+        return full_name or self.contact.primary_email

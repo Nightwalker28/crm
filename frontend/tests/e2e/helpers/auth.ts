@@ -18,7 +18,12 @@ export async function loginAsAdmin(page: Page) {
   await page.getByRole("button", { name: "Sign in with email" }).click();
 
   const authenticatorInput = page.getByLabel("Authenticator Code");
-  await expect.poll(async () => page.url().endsWith("/dashboard") || await authenticatorInput.isVisible().catch(() => false)).toBeTruthy();
+  await expect
+    .poll(
+      async () => page.url().endsWith("/dashboard") || await authenticatorInput.isVisible().catch(() => false),
+      { message: "Expected login to reach the dashboard or MFA challenge.", timeout: 20_000 },
+    )
+    .toBeTruthy();
 
   if (await authenticatorInput.isVisible().catch(() => false)) {
     if (adminMfaCode) {

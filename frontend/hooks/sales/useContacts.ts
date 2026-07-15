@@ -18,7 +18,9 @@ export type Contact = {
   country: string | null;
   organization_name: string | null;
   assigned_to: number | null;
+  assigned_to_name: string | null;
   created_time: string;
+  last_contacted_at: string | null;
   custom_fields?: Record<string, unknown> | null;
 };
 

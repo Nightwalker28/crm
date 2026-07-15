@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Users } from "lucide-react";
 
@@ -15,6 +16,7 @@ import {
   SortableHead,
 } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Button } from "@/components/ui/button";
 import { CustomFieldCell } from "@/components/ui/CustomFieldCell";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
@@ -23,6 +25,7 @@ import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { Contact } from "@/hooks/sales/useContacts";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
+import { formatDateTime } from "@/lib/datetime";
 
 type SortDirection = "asc" | "desc";
 type SortState = { column: string; direction: SortDirection } | null;
@@ -39,6 +42,8 @@ interface ContactListProps {
   onToggleCurrentPage?: (checked: boolean) => void;
   sort?: SortState;
   onSortChange?: (sort: SortState) => void;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
 }
 
 function getInitials(firstName?: string | null, lastName?: string | null, email?: string | null): string {
@@ -70,6 +75,8 @@ export default function ContactList({
   onToggleCurrentPage,
   sort = null,
   onSortChange,
+  hasActiveFilters = false,
+  onClearFilters,
 }: ContactListProps) {
   const router = useRouter();
   const headers: Record<string, string> = {
@@ -82,6 +89,9 @@ export default function ContactList({
     region: "Region",
     country: "Country",
     linkedin_url: "LinkedIn",
+    assigned_to_name: "Owner",
+    last_contacted_at: "Last Activity",
+    created_time: "Created",
   };
   const sortableColumns = new Set([
     "first_name",
@@ -96,17 +106,19 @@ export default function ContactList({
     "organization_id",
     "assigned_to",
     "created_time",
+    "last_contacted_at",
   ]);
 
-  const renderCell = (contact: Contact, column: string) => {
+  const renderCell = (contact: Contact, column: string, isIdentityColumn: boolean) => {
+    const stickyClassName = isIdentityColumn ? "sticky left-12 z-10 border-r border-line-subtle bg-neutral-950 group-hover:bg-neutral-900" : undefined;
     if (isCustomFieldColumnKey(column)) {
-      return <CustomFieldCell column={column} values={contact.custom_fields} />;
+      return <CustomFieldCell column={column} values={contact.custom_fields} className={stickyClassName} />;
     }
 
     switch (column) {
       case "first_name":
         return (
-          <TableCell>
+          <TableCell className={stickyClassName}>
             <div className="flex items-center gap-2.5 h-8">
               <div className="h-7 w-7 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[10px] font-semibold text-neutral-300 shrink-0">
                 {getInitials(contact.first_name, contact.last_name, contact.primary_email)}
@@ -159,6 +171,12 @@ export default function ContactList({
             )}
           </TableCell>
         );
+      case "assigned_to_name":
+        return <TableCell><span className="text-sm text-neutral-300">{contact.assigned_to_name || "Unassigned"}</span></TableCell>;
+      case "last_contacted_at":
+        return <TableCell><span className="text-sm text-neutral-400">{contact.last_contacted_at ? formatDateTime(contact.last_contacted_at) : "No activity"}</span></TableCell>;
+      case "created_time":
+        return <TableCell><span className="text-sm text-neutral-400">{contact.created_time ? formatDateTime(contact.created_time) : "-"}</span></TableCell>;
       case "region":
         return (
           <TableCell>
@@ -188,6 +206,7 @@ export default function ContactList({
                 href={`https://${contact.linkedin_url.replace(/^https?:\/\//, "")}`}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={(event) => event.stopPropagation()}
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-sky-400 hover:text-sky-300 border border-sky-800/50 bg-sky-950/30 rounded px-2 py-0.5 transition-colors"
               >
                 <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
@@ -217,7 +236,7 @@ export default function ContactList({
       <Table className="min-w-[920px]">
         <TableHeader>
           <TableHeaderRow>
-            <TableHead className="w-12 pr-0">
+            <TableHead className="sticky left-0 z-40 w-12 border-r border-line-subtle bg-neutral-900 pr-0">
               <Checkbox
                 checked={currentPageSelectionState}
                 onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
@@ -227,7 +246,7 @@ export default function ContactList({
                 <CheckboxIndicator className="h-3 w-3" />
               </Checkbox>
             </TableHead>
-            {visibleColumns.map((column) => {
+            {visibleColumns.map((column, index) => {
               const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
               const sortable = !isCustomFieldColumnKey(column) && sortableColumns.has(column);
               return sortable ? (
@@ -236,11 +255,12 @@ export default function ContactList({
                   sorted={sort?.column === column}
                   direction={sort?.column === column ? sort.direction : "asc"}
                   onClick={() => toggleSort(column)}
+                  className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined}
                 >
                   {label}
                 </SortableHead>
               ) : (
-                <TableHead key={column}>{label}</TableHead>
+                <TableHead key={column} className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined}>{label}</TableHead>
               );
             })}
           </TableHeaderRow>
@@ -252,7 +272,11 @@ export default function ContactList({
           ) : contacts.length === 0 ? (
             <TableRow>
               <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
-                <EmptyState icon={Users} title="No contacts found" description="Contacts matching the current view will appear here." />
+                {hasActiveFilters ? (
+                  <EmptyState icon={Users} title="No contacts match these filters" description="Clear one or more filters and try again." action={<Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button>} />
+                ) : (
+                  <EmptyState icon={Users} title="No contacts yet" description="Create a contact or import contacts from CSV." action={<Button asChild><Link href="/dashboard/sales/contacts/new">Create contact</Link></Button>} />
+                )}
               </TableCell>
             </TableRow>
           ) : (
@@ -263,7 +287,7 @@ export default function ContactList({
                 onClick={() => router.push(`/dashboard/sales/contacts/${contact.contact_id}`)}
               >
                 <TableCell
-                  className="w-12 pr-0"
+                  className="sticky left-0 z-20 w-12 border-r border-line-subtle bg-neutral-950 pr-0 group-hover:bg-neutral-900"
                   onClick={(event) => event.stopPropagation()}
                 >
                   <Checkbox
@@ -275,8 +299,8 @@ export default function ContactList({
                     <CheckboxIndicator className="h-3 w-3" />
                   </Checkbox>
                 </TableCell>
-                {visibleColumns.map((column) => (
-                  <Fragment key={column}>{renderCell(contact, column)}</Fragment>
+                {visibleColumns.map((column, index) => (
+                  <Fragment key={column}>{renderCell(contact, column, index === 0)}</Fragment>
                 ))}
               </TableRow>
             ))

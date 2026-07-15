@@ -5,13 +5,15 @@ from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from fastapi import HTTPException
 
 from app.core.database import Base
 from app.core.pagination import create_pagination
+from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.client_portal import models as client_portal_models  # noqa: F401
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesOrganization
-from app.modules.sales.schema import SalesOrganizationCreate, SalesOrganizationListItem, SalesOrganizationResponse
+from app.modules.sales.schema import SalesOrganizationCreate, SalesOrganizationListItem, SalesOrganizationResponse, SalesOrganizationUpdate
 from app.modules.sales.services import organizations_services
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
@@ -191,6 +193,37 @@ class ListOrganizationsTests(unittest.TestCase):
 
         self.assertEqual(total_count, 3)
         self.assertEqual([organization.org_name for organization in organizations], ["Ada Co", "Mia Co"])
+
+    def test_organization_responses_expose_the_readable_owner_name(self):
+        organization = SalesOrganization(tenant_id=10, org_name="Acme", primary_email="ops@acme.example", assigned_to=1)
+        self.db.add(organization)
+        self.db.commit()
+        self.db.refresh(organization)
+
+        detail = SalesOrganizationResponse.model_validate(organization)
+        list_item = SalesOrganizationListItem.model_validate(organization)
+
+        self.assertEqual(detail.assigned_to_name, "Owner User")
+        self.assertEqual(list_item.assigned_to_name, "Owner User")
+
+    def test_update_rejects_cross_tenant_owner(self):
+        self.db.add_all([
+            Tenant(id=99, slug="other", name="Other"),
+            User(id=99, tenant_id=99, email="other@example.com", first_name="Other", last_name="Owner", is_active=UserStatus.active),
+        ])
+        organization = SalesOrganization(tenant_id=10, org_name="Acme", primary_email="ops@acme.example", assigned_to=1)
+        self.db.add(organization)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as raised:
+            organizations_services.update_existing_organization(
+                self.db,
+                organization,
+                SalesOrganizationUpdate(assigned_to=99),
+                tenant_id=10,
+            )
+
+        self.assertEqual(raised.exception.status_code, 400)
 
 
 if __name__ == "__main__":

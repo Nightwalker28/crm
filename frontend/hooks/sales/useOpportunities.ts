@@ -16,6 +16,9 @@ export type Opportunity = {
   contact_id?: number | null;
   organization_id?: number | null;
   assigned_to?: number | null;
+  assigned_to_name?: string | null;
+  contact_name?: string | null;
+  organization_name?: string | null;
   start_date?: string | null;
   expected_close_date?: string | null;
   probability_percent?: number | string | null;
@@ -159,7 +162,19 @@ export function useOpportunities(
   const stageMutation = useMutation({
     mutationFn: ({ opportunityId, salesStage }: { opportunityId: number; salesStage: string }) =>
       updateOpportunityStage(opportunityId, salesStage),
-    onSuccess: refreshLists,
+    onMutate: async ({ opportunityId, salesStage }) => {
+      await queryClient.cancelQueries({ queryKey: ["sales-opportunities"] });
+      const previous = queryClient.getQueriesData<OpportunitiesResponse>({ queryKey: ["sales-opportunities"] });
+      queryClient.setQueriesData<OpportunitiesResponse>({ queryKey: ["sales-opportunities"] }, (current) => current ? {
+        ...current,
+        results: current.results.map((opportunity) => opportunity.opportunity_id === opportunityId ? { ...opportunity, sales_stage: salesStage } : opportunity),
+      } : current);
+      return { previous };
+    },
+    onError: (_error, _variables, context) => {
+      for (const [queryKey, data] of context?.previous ?? []) queryClient.setQueryData(queryKey, data);
+    },
+    onSettled: refreshLists,
   });
   const deleteMutation = useMutation({
     mutationFn: deleteOpportunity,

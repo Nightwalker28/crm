@@ -1,8 +1,5 @@
 "use client";
 
-import { useState } from "react";
-import { toast } from "sonner";
-
 import { apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
@@ -21,8 +18,10 @@ export type Organization = {
   annual_revenue?: string;
   billing_country?: string;
   assigned_to?: number | null;
+  assigned_to_name?: string | null;
   customer_group_id?: number | null;
   created_time?: string | null;
+  updated_at?: string | null;
   custom_fields?: Record<string, unknown> | null;
 };
 
@@ -79,8 +78,6 @@ export function useOrganizations(
   initialPage = 1,
   initialPageSize = 10,
 ) {
-  const [createOpen, setCreateOpen] = useState(false);
-  const [isCreating, setIsCreating] = useState(false);
   const paged = usePagedList<Organization, OrganizationsResponse>({
     queryKey: ["sales-organizations"],
     fetcher: fetchOrganizations,
@@ -93,32 +90,6 @@ export function useOrganizations(
     errorMessage: getErrorMessage,
   });
 
-  async function createOrganization(payload: Record<string, unknown>) {
-    try {
-      setIsCreating(true);
-      const res = await apiFetch("/sales/organizations/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      }
-
-      await paged.refresh();
-      setCreateOpen(false);
-      toast.success("Organization created.");
-    } catch (error) {
-      console.error(error);
-      toast.error("Failed to create organization.");
-      throw error;
-    } finally {
-      setIsCreating(false);
-    }
-  }
-
   return {
     organizations: paged.items,
     page: paged.page,
@@ -130,13 +101,8 @@ export function useOrganizations(
     isLoading: paged.isLoading,
     isFetching: paged.isFetching,
     error: paged.error,
-    createOpen,
-    isCreating,
-
     goToPage: paged.goToPage,
     setPageSize: paged.onPageSizeChange,
     refresh: paged.refresh,
-    setCreateOpen,
-    createOrganization,
   };
 }

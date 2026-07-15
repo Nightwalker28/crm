@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Building2 } from "lucide-react";
 
@@ -15,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Button } from "@/components/ui/button";
 import { CustomFieldCell } from "@/components/ui/CustomFieldCell";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
@@ -24,6 +26,7 @@ import type { Organization } from "@/hooks/sales/useOrganizations";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatWebsiteDisplay, normalizeWebsiteHref } from "@/lib/urlDisplay";
+import { formatDateTime } from "@/lib/datetime";
 
 type SortState = { column: string; direction: "asc" | "desc" } | null;
 
@@ -39,6 +42,8 @@ type Props = {
   onToggleCurrentPage?: (checked: boolean) => void;
   sort?: SortState;
   onSortChange?: (sort: SortState) => void;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
 };
 
 const INDUSTRY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
@@ -77,6 +82,8 @@ export default function OrganizationsTable({
   onToggleCurrentPage,
   sort = null,
   onSortChange,
+  hasActiveFilters = false,
+  onClearFilters,
 }: Props) {
   const router = useRouter();
   const headers: Record<string, string> = {
@@ -87,6 +94,9 @@ export default function OrganizationsTable({
     annual_revenue: "Revenue",
     primary_phone: "Phone",
     billing_country: "Country",
+    assigned_to_name: "Owner",
+    created_time: "Created",
+    updated_at: "Updated",
   };
   const sortableColumns = new Set([
     "org_name",
@@ -99,6 +109,7 @@ export default function OrganizationsTable({
     "assigned_to",
     "customer_group_id",
     "created_time",
+    "updated_at",
   ]);
 
   function toggleSort(column: string) {
@@ -108,15 +119,16 @@ export default function OrganizationsTable({
     onSortChange?.(nextSort);
   }
 
-  const renderCell = (org: Organization, column: string) => {
+  const renderCell = (org: Organization, column: string, isIdentityColumn: boolean) => {
+    const stickyClassName = isIdentityColumn ? "sticky left-12 z-10 border-r border-line-subtle bg-neutral-950 group-hover:bg-neutral-900" : undefined;
     if (isCustomFieldColumnKey(column)) {
-      return <CustomFieldCell column={column} values={org.custom_fields} />;
+      return <CustomFieldCell column={column} values={org.custom_fields} className={stickyClassName} />;
     }
 
     switch (column) {
       case "org_name":
         return (
-          <TableCell>
+          <TableCell className={stickyClassName}>
             <div className="flex items-center gap-3 h-8">
               <div className="h-7 w-7 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[9px] font-bold text-neutral-300 shrink-0 leading-none">
                 {getOrgInitials(org.org_name)}
@@ -143,6 +155,7 @@ export default function OrganizationsTable({
                 href={normalizeWebsiteHref(org.website)}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={(event) => event.stopPropagation()}
                 className="text-sm text-sky-400 hover:text-sky-300 transition-colors truncate block max-w-[200px]"
               >
                 {formatWebsiteDisplay(org.website)}
@@ -193,6 +206,12 @@ export default function OrganizationsTable({
             </span>
           </TableCell>
         );
+      case "assigned_to_name":
+        return <TableCell><span className="text-sm text-neutral-300">{org.assigned_to_name || "Unassigned"}</span></TableCell>;
+      case "created_time":
+        return <TableCell><span className="text-sm text-neutral-400">{org.created_time ? formatDateTime(org.created_time) : "-"}</span></TableCell>;
+      case "updated_at":
+        return <TableCell><span className="text-sm text-neutral-400">{org.updated_at ? formatDateTime(org.updated_at) : "-"}</span></TableCell>;
       default:
         return null;
     }
@@ -203,7 +222,7 @@ export default function OrganizationsTable({
       <Table className="min-w-[960px]">
         <TableHeader>
           <TableHeaderRow>
-            <TableHead className="w-12 pr-0">
+            <TableHead className="sticky left-0 z-40 w-12 border-r border-line-subtle bg-neutral-900 pr-0">
               <Checkbox
                 checked={currentPageSelectionState}
                 onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
@@ -213,10 +232,10 @@ export default function OrganizationsTable({
                 <CheckboxIndicator className="h-3 w-3" />
               </Checkbox>
             </TableHead>
-            {visibleColumns.map((column) => {
+            {visibleColumns.map((column, index) => {
               const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
               if (isCustomFieldColumnKey(column) || !sortableColumns.has(column)) {
-                return <TableHead key={column}>{label}</TableHead>;
+                return <TableHead key={column} className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined}>{label}</TableHead>;
               }
               const isSorted = sort?.column === column;
               return (
@@ -225,6 +244,7 @@ export default function OrganizationsTable({
                   sorted={isSorted}
                   direction={isSorted ? sort.direction : "asc"}
                   onClick={() => toggleSort(column)}
+                  className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined}
                 >
                   {label}
                 </SortableHead>
@@ -239,7 +259,7 @@ export default function OrganizationsTable({
           ) : organizations.length === 0 ? (
             <TableRow>
               <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
-                <EmptyState icon={Building2} title="No accounts found" description="Accounts matching the current view will appear here." />
+                {hasActiveFilters ? <EmptyState icon={Building2} title="No accounts match these filters" description="Clear one or more filters and try again." action={<Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button>} /> : <EmptyState icon={Building2} title="No accounts yet" description="Create an account or import accounts from CSV." action={<Button asChild><Link href="/dashboard/sales/organizations/new">Create account</Link></Button>} />}
               </TableCell>
             </TableRow>
           ) : (
@@ -250,7 +270,7 @@ export default function OrganizationsTable({
                 onClick={() => router.push(`/dashboard/sales/organizations/${org.org_id}`)}
               >
                 <TableCell
-                  className="w-12 pr-0"
+                  className="sticky left-0 z-20 w-12 border-r border-line-subtle bg-neutral-950 pr-0 group-hover:bg-neutral-900"
                   onClick={(event) => event.stopPropagation()}
                 >
                   <Checkbox
@@ -264,8 +284,8 @@ export default function OrganizationsTable({
                     <CheckboxIndicator className="h-3 w-3" />
                   </Checkbox>
                 </TableCell>
-                {visibleColumns.map((column) => (
-                  <Fragment key={column}>{renderCell(org, column)}</Fragment>
+                {visibleColumns.map((column, index) => (
+                  <Fragment key={column}>{renderCell(org, column, index === 0)}</Fragment>
                 ))}
               </TableRow>
             ))

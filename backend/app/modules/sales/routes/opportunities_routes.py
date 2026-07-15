@@ -68,8 +68,11 @@ OPPORTUNITY_LIST_FIELDS = {
     "client",
     "sales_stage",
     "contact_id",
+    "contact_name",
     "organization_id",
+    "organization_name",
     "assigned_to",
+    "assigned_to_name",
     "expected_close_date",
     "probability_percent",
     "total_cost_of_project",
@@ -176,8 +179,11 @@ def _serialize_opportunity_list_item(opportunity, fields: set[str]) -> SalesOppo
     safe_fields.update(
         {
             "assigned_to",
+            "assigned_to_name",
             "contact_id",
+            "contact_name",
             "organization_id",
+            "organization_name",
             "start_date",
             "campaign_type",
             "total_leads",

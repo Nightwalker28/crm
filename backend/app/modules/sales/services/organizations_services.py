@@ -40,8 +40,7 @@ def _apply_org_payload(organization: SalesOrganization, payload: SalesOrganizati
     organization.billing_postal_code = payload.billing_postal_code
     organization.billing_country = payload.billing_country
     organization.custom_data = payload.custom_fields or None
-    if current_user:
-        organization.assigned_to = current_user.id
+    organization.assigned_to = payload.assigned_to if payload.assigned_to is not None else current_user.id if current_user else None
 
 
 def _merge_org_payload(organization: SalesOrganization, payload: SalesOrganizationCreate, current_user) -> None:
@@ -63,6 +62,8 @@ def create_organization(
     create_new_records: bool = False,
 ) -> SalesOrganization:
     """Persist a new organization using the current user as the assignee."""
+    if payload.assigned_to is not None and not organizations_repository.user_exists(db, tenant_id=current_user.tenant_id, user_id=payload.assigned_to):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assigned user not found")
     payload = payload.model_copy(
         update={
             "custom_fields": validate_custom_field_payload(
@@ -331,6 +332,11 @@ def update_existing_organization(
 ) -> SalesOrganization:
     """Update an already-loaded organization."""
     data = payload.model_dump(exclude_unset=True)
+    if "assigned_to" in data:
+        if data["assigned_to"] is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="assigned_to cannot be null")
+        if not organizations_repository.user_exists(db, tenant_id=tenant_id, user_id=data["assigned_to"]):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assigned user not found")
     custom_data_to_save: dict | None = None
     if "custom_fields" in data:
         custom_data_to_save = validate_custom_field_payload(

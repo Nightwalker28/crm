@@ -1,126 +1,45 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
+import { CheckSquare, Pencil, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 
-import { apiFetch } from "@/lib/api";
-import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
+import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import CommunicationActions from "@/components/recordActivity/CommunicationActions";
-import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
+import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
+import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
-import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
-import { useClientPortalActions, useCustomerGroups, type CustomerGroup } from "@/hooks/useClientPortal";
-import { Input } from "@/components/ui/input";
+import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { isModuleFieldEnabled, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { useClientPortalActions, useCustomerGroups, type CustomerGroup } from "@/hooks/useClientPortal";
+import { apiFetch } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
 
-type RelatedContact = {
-  contact_id: number;
-  first_name?: string | null;
-  last_name?: string | null;
-  primary_email: string;
-  current_title?: string | null;
-};
-
-type RelatedOpportunity = {
-  opportunity_id: number;
-  opportunity_name: string;
-  sales_stage?: string | null;
-  expected_close_date?: string | null;
-  total_cost_of_project?: string | null;
-  currency_type?: string | null;
-};
-
-type RelatedQuote = {
-  quote_id: number;
-  quote_number: string;
-  title?: string | null;
-  customer_name: string;
-  status?: string | null;
-  currency?: string | null;
-  total_amount?: number | string | null;
-  expiry_date?: string | null;
-};
-
+type RelatedContact = { contact_id: number; first_name?: string | null; last_name?: string | null; primary_email: string; current_title?: string | null };
+type RelatedOpportunity = { opportunity_id: number; opportunity_name: string; sales_stage?: string | null; expected_close_date?: string | null; total_cost_of_project?: string | null; currency_type?: string | null };
+type RelatedQuote = { quote_id: number; quote_number: string; title?: string | null; customer_name: string; status?: string | null; currency?: string | null; total_amount?: number | string | null };
+type RelatedInsertionOrder = { id: number; io_number: string; customer_name?: string | null; status?: string | null; total_amount?: number | null; currency?: string | null; updated_at?: string | null };
 type OrganizationSummary = {
   organization: {
-    org_id: number;
-    org_name: string;
-    assigned_to?: number | null;
-    primary_email?: string | null;
-    secondary_email?: string | null;
-    website?: string | null;
-    primary_phone?: string | null;
-    secondary_phone?: string | null;
-    industry?: string | null;
-    annual_revenue?: string | null;
-    billing_address?: string | null;
-    billing_city?: string | null;
-    billing_state?: string | null;
-    billing_postal_code?: string | null;
-    billing_country?: string | null;
-    customer_group_id?: number | null;
-    customer_group?: CustomerGroup | null;
-    custom_fields?: Record<string, unknown> | null;
+    org_id: number; org_name: string; assigned_to?: number | null; assigned_to_name?: string | null; primary_email?: string | null; secondary_email?: string | null; website?: string | null; primary_phone?: string | null; secondary_phone?: string | null; industry?: string | null; annual_revenue?: string | null; billing_address?: string | null; billing_city?: string | null; billing_state?: string | null; billing_postal_code?: string | null; billing_country?: string | null; customer_group_id?: number | null; customer_group?: CustomerGroup | null; custom_fields?: Record<string, unknown> | null; created_time?: string | null; updated_at?: string | null;
   };
   related_contacts: RelatedContact[];
   related_opportunities: RelatedOpportunity[];
   related_quotes: RelatedQuote[];
+  related_insertion_orders: RelatedInsertionOrder[];
   inferred_services: string[];
   contact_count: number;
   opportunity_count: number;
   quote_count: number;
+  insertion_order_count: number;
 };
-
-type OrganizationForm = {
-  org_name: string;
-  primary_email: string;
-  secondary_email: string;
-  website: string;
-  primary_phone: string;
-  secondary_phone: string;
-  industry: string;
-  annual_revenue: string;
-  billing_address: string;
-  billing_city: string;
-  billing_state: string;
-  billing_postal_code: string;
-  billing_country: string;
-};
-
-const emptyForm: OrganizationForm = {
-  org_name: "",
-  primary_email: "",
-  secondary_email: "",
-  website: "",
-  primary_phone: "",
-  secondary_phone: "",
-  industry: "",
-  annual_revenue: "",
-  billing_address: "",
-  billing_city: "",
-  billing_state: "",
-  billing_postal_code: "",
-  billing_country: "",
-};
-
-function formatMoney(value?: number | string | null, currency?: string | null) {
-  const amount = typeof value === "string" ? Number(value) : value;
-  if (typeof amount !== "number" || Number.isNaN(amount)) return "Unspecified";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency || "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
 
 async function fetchOrganizationSummary(orgId: string) {
   const res = await apiFetch(`/sales/organizations/${orgId}/summary`);
@@ -131,351 +50,69 @@ async function fetchOrganizationSummary(orgId: string) {
 
 export default function OrganizationDetailPage() {
   const params = useParams<{ orgId: string }>();
-  const queryClient = useQueryClient();
-  const [form, setForm] = useState<OrganizationForm>(emptyForm);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
-  const customFieldsQuery = useModuleCustomFields("sales_organizations", true);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_organizations");
-  const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
+  const fieldEnabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
   const customerGroupsQuery = useCustomerGroups();
   const { assignOrganizationGroup, isAssigningCustomerGroup } = useClientPortalActions();
-
-  const summaryQuery = useQuery({
-    queryKey: ["sales-organization-summary", params.orgId],
-    queryFn: () => fetchOrganizationSummary(params.orgId),
-    enabled: Boolean(params.orgId),
-    refetchOnWindowFocus: false,
-  });
+  const summaryQuery = useQuery({ queryKey: ["sales-organization-summary", params.orgId], queryFn: () => fetchOrganizationSummary(params.orgId), enabled: Boolean(params.orgId), refetchOnWindowFocus: false });
   const summary = summaryQuery.data ?? null;
-  const loadError = summaryQuery.error instanceof Error ? summaryQuery.error.message : null;
-  const isInitialLoading = summaryQuery.isLoading && !summary;
-  const isRefreshing = summaryQuery.isFetching && Boolean(summary);
-
-  useEffect(() => {
-    if (!summary) return;
-    setError(null);
-    setForm({
-      org_name: summary.organization.org_name ?? "",
-      primary_email: summary.organization.primary_email ?? "",
-      secondary_email: summary.organization.secondary_email ?? "",
-      website: summary.organization.website ?? "",
-      primary_phone: summary.organization.primary_phone ?? "",
-      secondary_phone: summary.organization.secondary_phone ?? "",
-      industry: summary.organization.industry ?? "",
-      annual_revenue: summary.organization.annual_revenue ?? "",
-      billing_address: summary.organization.billing_address ?? "",
-      billing_city: summary.organization.billing_city ?? "",
-      billing_state: summary.organization.billing_state ?? "",
-      billing_postal_code: summary.organization.billing_postal_code ?? "",
-      billing_country: summary.organization.billing_country ?? "",
-    });
-    setCustomFieldValues(summary.organization.custom_fields ?? {});
-  }, [summary]);
-
-  async function handleSave() {
-    try {
-      setSaving(true);
-      setError(null);
-      const payload = Object.fromEntries(
-        Object.entries(form).map(([key, value]) => [key, value.trim() || null]),
-      );
-      const requestPayload = {
-        ...pickEnabledModulePayload(payload, moduleFields, ["org_name", "primary_email"]),
-        custom_fields: customFieldValues,
-      };
-      const res = await apiFetch(`/sales/organizations/${params.orgId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(requestPayload),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
-        queryClient.invalidateQueries({ queryKey: ["sales-organization-summary", params.orgId] }),
-      ]);
-      toast.success("Organization updated.");
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save organization");
-    } finally {
-      setSaving(false);
-    }
-  }
+  const accountName = summary?.organization.org_name || "Account";
 
   async function handleAssignCustomerGroup(value: string) {
     if (!summary) return;
     try {
-      const parsedGroupId = value === "none" ? null : Number(value);
-      const groupExists = parsedGroupId === null || (customerGroupsQuery.data ?? []).some((group) => group.id === parsedGroupId);
-      if (parsedGroupId !== null && (!Number.isInteger(parsedGroupId) || parsedGroupId <= 0 || !groupExists)) {
-        throw new Error("Select a valid customer group.");
-      }
-      await assignOrganizationGroup({
-        organizationId: summary.organization.org_id,
-        customerGroupId: parsedGroupId,
-      });
+      const groupId = value === "none" ? null : Number(value);
+      const valid = groupId === null || (Number.isInteger(groupId) && (customerGroupsQuery.data ?? []).some((group) => group.id === groupId));
+      if (!valid) throw new Error("Select a valid customer group.");
+      await assignOrganizationGroup({ organizationId: summary.organization.org_id, customerGroupId: groupId });
       await summaryQuery.refetch();
       toast.success("Customer group updated.");
-    } catch (assignError) {
-      toast.error(assignError instanceof Error ? assignError.message : "Failed to update customer group.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update customer group.");
     }
   }
 
-  return (
-    <div className="flex flex-col gap-6 text-neutral-200">
-      <RecordPageHeader
-        backHref="/dashboard/sales/organizations"
-        backLabel="Back to Accounts"
-        title={summary?.organization.org_name || "Account"}
-        description="Review linked contacts, deals, quotes, and edit the account record directly on the page."
-        primaryAction={(
-          <>
-            <RecordDeleteButton
-              endpoint={`/sales/organizations/${params.orgId}`}
-              label="Account"
-              recordName={summary?.organization.org_name || "this account"}
-              redirectHref="/dashboard/sales/organizations"
-              queryKeys={["sales-organizations"]}
-            />
-            <Button onClick={handleSave} disabled={saving || !form.org_name.trim()}>
-              {saving ? "Saving..." : isRefreshing ? "Refreshing..." : "Save Account"}
-            </Button>
-          </>
-        )}
-      />
-
-      {error || loadError ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error || loadError}</div> : null}
-
-      {isInitialLoading ? (
-        <Card className="px-5 py-5 text-sm text-neutral-500">Loading organization…</Card>
-      ) : summary ? (
-        <>
-          <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-            <Card className="px-5 py-5">
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold text-neutral-100">Account Details</h2>
-                <p className="mt-1 text-sm text-neutral-500">Primary commercial and billing information.</p>
-              </div>
-              <FieldGroup className="grid gap-4 md:grid-cols-2">
-                {fieldEnabled("org_name") ? (
-                <Field>
-                  <FieldLabel>Name</FieldLabel>
-                  <Input value={form.org_name} onChange={(event) => setForm((current) => ({ ...current, org_name: event.target.value }))} />
-                </Field>
-                ) : null}
-                {fieldEnabled("primary_email") ? (
-                <Field>
-                  <FieldLabel>Primary Email</FieldLabel>
-                  <Input type="email" value={form.primary_email} onChange={(event) => setForm((current) => ({ ...current, primary_email: event.target.value }))} />
-                </Field>
-                ) : null}
-                {fieldEnabled("secondary_email") ? (
-                <Field>
-                  <FieldLabel>Secondary Email</FieldLabel>
-                  <Input type="email" value={form.secondary_email} onChange={(event) => setForm((current) => ({ ...current, secondary_email: event.target.value }))} />
-                </Field>
-                ) : null}
-                {fieldEnabled("website") ? (
-                <Field>
-                  <FieldLabel>Website</FieldLabel>
-                  <Input value={form.website} onChange={(event) => setForm((current) => ({ ...current, website: event.target.value }))} />
-                </Field>
-                ) : null}
-                {fieldEnabled("primary_phone") ? (
-                <Field>
-                  <FieldLabel>Primary Phone</FieldLabel>
-                  <Input value={form.primary_phone} onChange={(event) => setForm((current) => ({ ...current, primary_phone: event.target.value }))} />
-                </Field>
-                ) : null}
-                {fieldEnabled("secondary_phone") ? (
-                <Field>
-                  <FieldLabel>Secondary Phone</FieldLabel>
-                  <Input value={form.secondary_phone} onChange={(event) => setForm((current) => ({ ...current, secondary_phone: event.target.value }))} />
-                </Field>
-                ) : null}
-                {fieldEnabled("industry") ? (
-                <Field>
-                  <FieldLabel>Industry</FieldLabel>
-                  <Input value={form.industry} onChange={(event) => setForm((current) => ({ ...current, industry: event.target.value }))} />
-                </Field>
-                ) : null}
-                {fieldEnabled("annual_revenue") ? (
-                <Field>
-                  <FieldLabel>Annual Revenue</FieldLabel>
-                  <Input value={form.annual_revenue} onChange={(event) => setForm((current) => ({ ...current, annual_revenue: event.target.value }))} />
-                </Field>
-                ) : null}
-                {fieldEnabled("billing_address") ? (
-                <Field className="md:col-span-2">
-                  <FieldLabel>Billing Address</FieldLabel>
-                  <Textarea value={form.billing_address} onChange={(event) => setForm((current) => ({ ...current, billing_address: event.target.value }))} rows={3} />
-                </Field>
-                ) : null}
-                {fieldEnabled("billing_city") ? (
-                <Field>
-                  <FieldLabel>Billing City</FieldLabel>
-                  <Input value={form.billing_city} onChange={(event) => setForm((current) => ({ ...current, billing_city: event.target.value }))} />
-                </Field>
-                ) : null}
-                {fieldEnabled("billing_state") ? (
-                <Field>
-                  <FieldLabel>Billing State</FieldLabel>
-                  <Input value={form.billing_state} onChange={(event) => setForm((current) => ({ ...current, billing_state: event.target.value }))} />
-                </Field>
-                ) : null}
-                {fieldEnabled("billing_postal_code") ? (
-                <Field>
-                  <FieldLabel>Billing Postal Code</FieldLabel>
-                  <Input value={form.billing_postal_code} onChange={(event) => setForm((current) => ({ ...current, billing_postal_code: event.target.value }))} />
-                </Field>
-                ) : null}
-                {fieldEnabled("billing_country") ? (
-                <Field>
-                  <FieldLabel>Billing Country</FieldLabel>
-                  <Input value={form.billing_country} onChange={(event) => setForm((current) => ({ ...current, billing_country: event.target.value }))} />
-                </Field>
-                ) : null}
-              </FieldGroup>
-
-              <div className="mt-4">
-                <CustomFieldInputs
-                  definitions={customFieldsQuery.data ?? []}
-                  values={customFieldValues}
-                  onChange={(fieldKey, value) =>
-                    setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))
-                  }
-                />
-              </div>
-            </Card>
-
-            <Card className="px-5 py-5">
-              <div className="mb-4">
-                <h2 className="text-lg font-semibold text-neutral-100">Summary</h2>
-                <p className="mt-1 text-sm text-neutral-500">Cross-module context for this organization.</p>
-              </div>
-              <div className="mb-4">
-                <CommunicationActions
-                  email={summary.organization.primary_email}
-                  phone={summary.organization.primary_phone}
-                  followUpTargetId={undefined}
-                />
-              </div>
-              <div className="grid gap-3">
-                <div className="grid gap-3 md:grid-cols-3">
-                  <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                    <div className="text-xs uppercase tracking-wide text-neutral-500">Contacts</div>
-                    <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.contact_count}</div>
-                  </div>
-                  <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                    <div className="text-xs uppercase tracking-wide text-neutral-500">Deals</div>
-                    <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.opportunity_count}</div>
-                  </div>
-                  <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                    <div className="text-xs uppercase tracking-wide text-neutral-500">Quotes</div>
-                    <div className="mt-2 text-2xl font-semibold text-neutral-100">{summary.quote_count}</div>
-                  </div>
-                </div>
-                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                  <div className="text-xs uppercase tracking-wide text-neutral-500">Inferred Services</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {summary.inferred_services.length ? summary.inferred_services.map((item) => (
-                      <span key={item} className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-xs text-neutral-300">
-                        {item}
-                      </span>
-                    )) : <span className="text-sm text-neutral-500">No service history yet</span>}
-                  </div>
-                </div>
-                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                  <div className="text-xs uppercase tracking-wide text-neutral-500">Owner</div>
-                  <div className="mt-2 text-sm text-neutral-200">
-                    {summary.organization.assigned_to ? `User #${summary.organization.assigned_to}` : "Unassigned"}
-                  </div>
-                  <div className="mt-2 text-xs text-neutral-500">
-                    Account ownership is assigned through create/import flows. Detail edits preserve the current owner.
-                  </div>
-                </div>
-                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                  <div className="text-xs uppercase tracking-wide text-neutral-500">Customer Group</div>
-                  <div className="mt-2">
-                    <Select
-                      value={summary.organization.customer_group_id ? String(summary.organization.customer_group_id) : "none"}
-                      onValueChange={(value) => void handleAssignCustomerGroup(value)}
-                      disabled={customerGroupsQuery.isLoading || isAssigningCustomerGroup}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue placeholder="Select customer group" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="none">No group</SelectItem>
-                        {(customerGroupsQuery.data ?? []).map((group) => (
-                          <SelectItem key={group.id} value={String(group.id)} disabled={!group.is_active}>
-                            {group.name}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="mt-2 text-xs text-neutral-500">
-                    {summary.organization.customer_group
-                      ? `${summary.organization.customer_group.name} segmentation is assigned. Client portal pricing uses this group where pricing rules are configured.`
-                      : "No group assigned. Public/default pricing remains the fallback."}
-                  </div>
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Card className="px-5 py-5">
-              <h2 className="text-lg font-semibold text-neutral-100">Contacts</h2>
-              <div className="mt-4 space-y-3">
-                {summary.related_contacts.length ? summary.related_contacts.map((contact) => (
-                  <Link key={contact.contact_id} href={`/dashboard/sales/contacts/${contact.contact_id}`} className="block rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4 hover:border-neutral-700">
-                    <div className="text-sm font-semibold text-neutral-100">{`${contact.first_name || ""} ${contact.last_name || ""}`.trim() || contact.primary_email}</div>
-                    <div className="mt-1 text-sm text-neutral-500">{contact.current_title || "No title"} · {contact.primary_email}</div>
-                  </Link>
-                )) : <div className="text-sm text-neutral-500">No linked contacts.</div>}
-              </div>
-            </Card>
-
-            <Card className="px-5 py-5">
-              <h2 className="text-lg font-semibold text-neutral-100">Deals</h2>
-              <div className="mt-4 space-y-3">
-                {summary.related_opportunities.length ? summary.related_opportunities.map((opportunity) => (
-                  <Link key={opportunity.opportunity_id} href={`/dashboard/sales/opportunities/${opportunity.opportunity_id}`} className="block rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4 hover:border-neutral-700">
-                    <div className="text-sm font-semibold text-neutral-100">{opportunity.opportunity_name}</div>
-                    <div className="mt-1 text-sm text-neutral-500">{opportunity.sales_stage || "Unstaged"}</div>
-                    <div className="mt-2 text-sm text-neutral-300">{opportunity.total_cost_of_project || "No value recorded"}{opportunity.currency_type ? ` ${opportunity.currency_type}` : ""}</div>
-                  </Link>
-                )) : <div className="text-sm text-neutral-500">No linked deals.</div>}
-              </div>
-            </Card>
-
-            <Card className="px-5 py-5">
-              <h2 className="text-lg font-semibold text-neutral-100">Quotes</h2>
-              <FieldDescription className="mt-1">Quotes linked to this account or its contacts.</FieldDescription>
-              <div className="mt-4 space-y-3">
-                {summary.related_quotes.length ? summary.related_quotes.map((quote) => (
-                  <Link key={quote.quote_id} href={`/dashboard/sales/quotes/${quote.quote_id}`} className="block rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4 hover:border-neutral-700">
-                    <div className="text-sm font-semibold text-neutral-100">{quote.quote_number}</div>
-                    <div className="mt-1 text-sm text-neutral-500">{quote.title || quote.customer_name} · {quote.status || "Unknown status"}</div>
-                    <div className="mt-2 text-sm text-neutral-300">{formatMoney(quote.total_amount, quote.currency)}</div>
-                  </Link>
-                )) : <div className="text-sm text-neutral-500">No linked quotes.</div>}
-              </div>
-            </Card>
-          </div>
-
-          <CrmRecordActivitySection
-            moduleKey="sales_organizations"
-            entityId={summary.organization.org_id}
-            recordLabel="Account-level"
-            taskSourceLabel={summary.organization.org_name}
-          />
-        </>
-      ) : null}
-    </div>
-  );
+  return <div className="flex flex-col gap-6 text-neutral-200">
+    <RecordPageHeader backHref="/dashboard/sales/organizations" backLabel="Back to Accounts" title={accountName} description="Review account ownership, contacts, commercial activity, transactions, and documents." primaryAction={<><RecordDeleteButton endpoint={`/sales/organizations/${params.orgId}`} label="Account" recordName={accountName} redirectHref="/dashboard/sales/organizations" queryKeys={["sales-organizations"]} /><Button asChild><Link href={`/dashboard/sales/organizations/${params.orgId}/edit`}><Pencil />Edit</Link></Button></>} />
+    {summaryQuery.error ? <Card className="border-state-danger/40 p-6"><p className="text-sm text-state-danger">We could not load this account.</p><Button className="mt-4" variant="outline" onClick={() => void summaryQuery.refetch()}>Retry</Button></Card> : null}
+    {summaryQuery.isLoading || (!summary && !summaryQuery.error) ? <Card className="px-5 py-5 text-sm text-copy-muted">Loading account…</Card> : null}
+    {summary ? <>
+      <Card className="px-4 py-3"><div className="flex flex-wrap items-center gap-2"><CommunicationActions email={summary.organization.primary_email} phone={fieldEnabled("primary_phone") ? summary.organization.primary_phone : null} /><Button asChild size="sm" variant="ghost"><Link href="?tab=notes" scroll={false}><StickyNote />Note</Link></Button><Button asChild size="sm" variant="ghost"><Link href="?tab=related" scroll={false}><CheckSquare />Task</Link></Button><div className="ml-auto text-xs text-copy-muted">Updated: {summary.organization.updated_at ? formatDateTime(summary.organization.updated_at) : "Not recorded"}</div></div></Card>
+      <RecordTabs urlParam="tab" defaultTabId="overview" tabs={[
+        { id: "overview", label: "Overview", content: <AccountOverview summary={summary} fieldEnabled={fieldEnabled} customerGroups={customerGroupsQuery.data ?? []} customerGroupsLoading={customerGroupsQuery.isLoading} customerGroupSaving={isAssigningCustomerGroup} onAssignCustomerGroup={(value) => void handleAssignCustomerGroup(value)} /> },
+        { id: "activity", label: "Activity", content: <RecordActivityTimeline moduleKey="sales_organizations" entityId={summary.organization.org_id} title="Account activity" description="Recent account changes and collaboration events." /> },
+        { id: "related", label: "Related records", content: <RelatedRecords summary={summary} /> },
+        { id: "notes", label: "Notes", content: <RecordCommentsPanel moduleKey="sales_organizations" entityId={summary.organization.org_id} /> },
+        { id: "files", label: "Files", content: <RecordDocumentsPanel moduleKey="sales_organizations" entityId={summary.organization.org_id} /> },
+        { id: "audit", label: "Audit history", content: <RecordActivityTimeline moduleKey="sales_organizations" entityId={summary.organization.org_id} title="Audit history" description="Chronological record changes and collaboration events for this account." /> },
+      ]} />
+    </> : null}
+  </div>;
 }
+
+function AccountOverview({ summary, fieldEnabled, customerGroups, customerGroupsLoading, customerGroupSaving, onAssignCustomerGroup }: { summary: OrganizationSummary; fieldEnabled: (key: string) => boolean; customerGroups: CustomerGroup[]; customerGroupsLoading: boolean; customerGroupSaving: boolean; onAssignCustomerGroup: (value: string) => void }) {
+  const org = summary.organization;
+  const address = [org.billing_address, org.billing_city, org.billing_state, org.billing_postal_code, org.billing_country].filter(Boolean).join(", ");
+  return <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+    <Card className="px-5 py-5"><h2 className="text-lg font-semibold text-copy-primary">Account details</h2><p className="mt-1 text-sm text-copy-muted">Core company, ownership, and billing information.</p><div className="mt-5 grid gap-x-6 gap-y-4 md:grid-cols-2">{fieldEnabled("primary_email") ? <DetailField label="Primary email" value={org.primary_email} /> : null}{fieldEnabled("secondary_email") ? <DetailField label="Secondary email" value={org.secondary_email} /> : null}{fieldEnabled("primary_phone") ? <DetailField label="Primary phone" value={org.primary_phone} /> : null}{fieldEnabled("secondary_phone") ? <DetailField label="Secondary phone" value={org.secondary_phone} /> : null}{fieldEnabled("website") ? <DetailField label="Website" value={org.website} href={safeExternalUrl(org.website)} external /> : null}{fieldEnabled("industry") ? <DetailField label="Industry" value={org.industry} /> : null}{fieldEnabled("annual_revenue") ? <DetailField label="Annual revenue" value={org.annual_revenue} /> : null}{fieldEnabled("assigned_to") ? <DetailField label="Owner" value={org.assigned_to_name} /> : null}{address ? <div className="md:col-span-2"><DetailField label="Billing address" value={address} /></div> : null}</div>{Object.keys(org.custom_fields ?? {}).length ? <details className="mt-5 border-t border-line-subtle pt-5"><summary className="cursor-pointer text-sm font-medium text-copy-primary">Custom fields</summary><div className="mt-4 grid gap-x-6 gap-y-4 md:grid-cols-2">{Object.entries(org.custom_fields ?? {}).map(([key, value]) => <DetailField key={key} label={key.replace(/_/g, " ")} value={String(value ?? "")} />)}</div></details> : null}</Card>
+    <div className="grid gap-4"><Card className="px-5 py-5"><h2 className="text-lg font-semibold text-copy-primary">Commercial summary</h2><div className="mt-4 grid gap-3 sm:grid-cols-2"><SummaryTile label="Contacts" value={summary.contact_count} /><SummaryTile label="Deals" value={summary.opportunity_count} /><SummaryTile label="Quotes" value={summary.quote_count} /><SummaryTile label="Insertion orders" value={summary.insertion_order_count} /></div><div className="mt-3"><SummaryTile label="Services" value={summary.inferred_services.length ? summary.inferred_services.join(", ") : "No service history yet"} /></div></Card><Card className="px-5 py-5"><h2 className="text-sm font-semibold uppercase tracking-wide text-copy-secondary">Customer group</h2><Select value={org.customer_group_id ? String(org.customer_group_id) : "none"} onValueChange={onAssignCustomerGroup} disabled={customerGroupsLoading || customerGroupSaving}><SelectTrigger className="mt-3"><SelectValue placeholder="Select customer group" /></SelectTrigger><SelectContent><SelectItem value="none">No group</SelectItem>{customerGroups.map((group) => <SelectItem key={group.id} value={String(group.id)} disabled={!group.is_active}>{group.name}</SelectItem>)}</SelectContent></Select><p className="mt-2 text-xs text-copy-muted">Client portal pricing uses this group where pricing rules are configured.</p></Card></div>
+  </div>;
+}
+
+function RelatedRecords({ summary }: { summary: OrganizationSummary }) {
+  const org = summary.organization;
+  return <div className="grid gap-4 lg:grid-cols-2">
+    <RelatedCard title="Contacts" empty="No linked contacts yet.">{summary.related_contacts.map((contact) => <RelatedLink key={contact.contact_id} href={`/dashboard/sales/contacts/${contact.contact_id}`} title={[contact.first_name, contact.last_name].filter(Boolean).join(" ") || contact.primary_email} detail={contact.current_title || contact.primary_email} />)}</RelatedCard>
+    <RelatedCard title="Deals" empty="No related deals yet.">{summary.related_opportunities.map((deal) => <RelatedLink key={deal.opportunity_id} href={`/dashboard/sales/opportunities/${deal.opportunity_id}`} title={deal.opportunity_name} detail={`${deal.sales_stage || "Unstaged"}${deal.expected_close_date ? ` · closes ${deal.expected_close_date}` : ""}`} />)}</RelatedCard>
+    <RelatedCard title="Quotes" empty="No related quotes yet.">{summary.related_quotes.map((quote) => <RelatedLink key={quote.quote_id} href={`/dashboard/sales/quotes/${quote.quote_id}`} title={quote.quote_number} detail={`${quote.status || "Unknown status"} · ${formatMoney(quote.total_amount, quote.currency)}`} />)}</RelatedCard>
+    <RelatedCard title="Insertion orders" empty="No related insertion orders yet.">{summary.related_insertion_orders.map((order) => <RelatedLink key={order.id} href={`/dashboard/finance/insertion-orders/${order.id}`} title={order.io_number} detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency)}`} />)}</RelatedCard>
+    <div className="lg:col-span-2"><RecordTasksPanel moduleKey="sales_organizations" entityId={org.org_id} sourceLabel={org.org_name} /></div>
+  </div>;
+}
+
+function RelatedCard({ title, empty, children }: { title: string; empty: string; children: React.ReactNode }) { const items = Array.isArray(children) ? children : [children]; return <Card className="px-5 py-5"><h2 className="text-lg font-semibold text-copy-primary">{title}</h2><div className="mt-4 space-y-3">{items.length && items.some(Boolean) ? children : <p className="text-sm text-copy-muted">{empty}</p>}</div></Card>; }
+function RelatedLink({ href, title, detail }: { href: string; title: string; detail: string }) { return <Link href={href} className="block rounded-md border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"><div className="text-sm font-semibold text-copy-primary">{title}</div><div className="mt-1 text-sm text-copy-muted">{detail}</div></Link>; }
+function DetailField({ label, value, href, external = false }: { label: string; value?: string | null; href?: string; external?: boolean }) { const content = value || "Not recorded"; return <div><div className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</div><div className="mt-1 text-sm text-copy-primary">{href ? <Link href={href} target={external ? "_blank" : undefined} rel={external ? "noopener noreferrer" : undefined} className="text-action-primary hover:underline">{content}</Link> : content}</div></div>; }
+function SummaryTile({ label, value }: { label: string; value: string | number }) { return <div className="rounded-md border border-line-subtle bg-surface-muted px-4 py-4"><div className="text-xs uppercase tracking-wide text-copy-muted">{label}</div><div className="mt-2 text-sm font-medium text-copy-primary">{value}</div></div>; }
+function safeExternalUrl(value?: string | null) { if (!value) return undefined; try { const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`); return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined; } catch { return undefined; } }
+function formatMoney(value?: number | string | null, currency?: string | null) { const amount = typeof value === "string" ? Number(value) : value; if (typeof amount !== "number" || Number.isNaN(amount)) return "Unspecified"; return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "USD", maximumFractionDigits: 2 }).format(amount); }

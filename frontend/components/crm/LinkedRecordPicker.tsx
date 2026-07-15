@@ -46,6 +46,7 @@ type Props = {
   linkedEntityId?: string | number | null;
   sourceModuleKey?: string;
   sourceAction?: "create" | "edit" | "view";
+  allowClear?: boolean;
 };
 
 function appendRelationshipFilters(params: URLSearchParams, filters?: LinkedRecordFilters) {
@@ -217,6 +218,7 @@ export default function LinkedRecordPicker({
   linkedEntityId,
   sourceModuleKey,
   sourceAction = "create",
+  allowClear = true,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const debouncedSearch = useDebouncedValue(displayValue.trim(), 250);
@@ -241,7 +243,7 @@ export default function LinkedRecordPicker({
           }}
           placeholder={placeholder}
         />
-        {valueId ? (
+        {valueId && allowClear ? (
           <Button
             type="button"
             variant="outline"

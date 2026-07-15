@@ -8,6 +8,7 @@ import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { CustomFieldCell } from "@/components/ui/CustomFieldCell";
 import { Pill } from "@/components/ui/Pill";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { Button } from "@/components/ui/button";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import {
   SortableHead,
@@ -40,6 +41,8 @@ type Props = {
   onToggleCurrentPage?: (checked: boolean) => void;
   sort?: SortState;
   onSortChange?: (sort: SortState) => void;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
 };
 
 function isOverdue(dateStr?: string | null): boolean {
@@ -64,11 +67,16 @@ export default function OpportunitiesTable({
   onToggleCurrentPage,
   sort = null,
   onSortChange,
+  hasActiveFilters = false,
+  onClearFilters,
 }: Props) {
   const columnCount = visibleColumns.length + 1;
   const headers: Record<string, string> = {
     opportunity_name: "Deal",
-    client: "Client",
+    client: "Contact",
+    contact_name: "Contact",
+    organization_name: "Account",
+    assigned_to_name: "Owner",
     sales_stage: "Stage",
     expected_close_date: "Expected Close",
     probability_percent: "Probability",
@@ -94,15 +102,16 @@ export default function OpportunitiesTable({
     onSortChange?.(nextSort);
   }
 
-  const renderCell = (opportunity: Opportunity, column: string) => {
+  const renderCell = (opportunity: Opportunity, column: string, isIdentityColumn: boolean) => {
+    const stickyClassName = isIdentityColumn ? "sticky left-12 z-10 border-r border-line-subtle bg-neutral-950 group-hover:bg-neutral-900" : undefined;
     if (isCustomFieldColumnKey(column)) {
-      return <CustomFieldCell column={column} values={opportunity.custom_fields} />;
+      return <CustomFieldCell column={column} values={opportunity.custom_fields} className={stickyClassName} />;
     }
 
     switch (column) {
       case "opportunity_name":
         return (
-          <TableCell>
+          <TableCell className={stickyClassName}>
             <div className="flex flex-col gap-0.5">
               <span className="text-sm font-semibold text-neutral-100 truncate max-w-[220px]">
                 {opportunity.opportunity_name || <span className="text-neutral-600">—</span>}
@@ -111,15 +120,20 @@ export default function OpportunitiesTable({
           </TableCell>
         );
       case "client":
+      case "contact_name":
         return (
           <TableCell>
-            {opportunity.client ? (
-              <span className="text-sm text-sky-300 font-medium">{opportunity.client}</span>
+            {opportunity.contact_name || opportunity.client ? (
+              <span className="text-sm text-sky-300 font-medium">{opportunity.contact_name || opportunity.client}</span>
             ) : (
               <span className="text-neutral-600 text-sm">—</span>
             )}
           </TableCell>
         );
+      case "organization_name":
+        return <TableCell><span className="text-sm text-neutral-300">{opportunity.organization_name || "—"}</span></TableCell>;
+      case "assigned_to_name":
+        return <TableCell><span className="text-sm text-neutral-300">{opportunity.assigned_to_name || "Unassigned"}</span></TableCell>;
       case "sales_stage":
         return (
           <TableCell>
@@ -204,7 +218,7 @@ export default function OpportunitiesTable({
       <Table className="min-w-[1040px]">
         <TableHeader>
           <TableHeaderRow>
-            <TableHead className="w-12 pr-0">
+            <TableHead className="sticky left-0 z-40 w-12 border-r border-line-subtle bg-neutral-900 pr-0">
               <Checkbox
                 checked={currentPageSelectionState}
                 onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
@@ -214,10 +228,10 @@ export default function OpportunitiesTable({
                 <CheckboxIndicator className="h-3 w-3" />
               </Checkbox>
             </TableHead>
-            {visibleColumns.map((column) => {
+            {visibleColumns.map((column, index) => {
               const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
               if (!sortableColumns.has(column)) {
-                return <TableHead key={column}>{label}</TableHead>;
+                return <TableHead key={column} className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined}>{label}</TableHead>;
               }
               const isSorted = sort?.column === column;
               return (
@@ -226,6 +240,7 @@ export default function OpportunitiesTable({
                   sorted={isSorted}
                   direction={isSorted ? sort.direction : "asc"}
                   onClick={() => toggleSort(column)}
+                  className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined}
                 >
                   {label}
                 </SortableHead>
@@ -239,7 +254,7 @@ export default function OpportunitiesTable({
           ) : opportunities.length === 0 ? (
             <TableRow>
               <TableCell colSpan={columnCount} className="py-16 text-center">
-                <EmptyState icon={BriefcaseBusiness} title="No deals found" description="Deals matching the current view will appear here." />
+                <EmptyState icon={BriefcaseBusiness} title={hasActiveFilters ? "No matching deals" : "No deals yet"} description={hasActiveFilters ? "Try changing or clearing the current search and filters." : "Create your first deal to start tracking the pipeline."} action={hasActiveFilters && onClearFilters ? <Button variant="outline" onClick={onClearFilters}>Clear filters</Button> : undefined} />
               </TableCell>
             </TableRow>
           ) : (
@@ -250,7 +265,7 @@ export default function OpportunitiesTable({
                 onClick={() => onEdit(opportunity)}
               >
                 <TableCell
-                  className="w-12 pr-0"
+                  className="sticky left-0 z-20 w-12 border-r border-line-subtle bg-neutral-950 pr-0 group-hover:bg-neutral-900"
                   onClick={(event) => event.stopPropagation()}
                 >
                   <Checkbox
@@ -262,8 +277,8 @@ export default function OpportunitiesTable({
                     <CheckboxIndicator className="h-3 w-3" />
                   </Checkbox>
                 </TableCell>
-                {visibleColumns.map((column) => (
-                  <Fragment key={column}>{renderCell(opportunity, column)}</Fragment>
+                {visibleColumns.map((column, index) => (
+                  <Fragment key={column}>{renderCell(opportunity, column, index === 0)}</Fragment>
                 ))}
               </TableRow>
             ))

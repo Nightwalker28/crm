@@ -10,6 +10,7 @@ from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
 from app.core.pagination import create_pagination
+from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.client_portal import models as client_portal_models  # noqa: F401
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesContact

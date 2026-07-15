@@ -64,6 +64,10 @@ ORGANIZATION_LIST_FIELDS = {
     "billing_country",
     "customer_group_id",
     "customer_group",
+    "assigned_to",
+    "assigned_to_name",
+    "created_time",
+    "updated_at",
 }
 
 ORGANIZATION_IMPORT_TARGET_FIELDS = [

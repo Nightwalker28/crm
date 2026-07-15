@@ -39,9 +39,7 @@ class SalesOrganizationBase(BaseModel):
 
 
 class SalesOrganizationCreate(SalesOrganizationBase):
-    # No additional fields for creation at this time currently using all fields from base
-    # can be extended in the future if needed
-    pass
+    assigned_to: int | None = None
 
 
 class SalesOrganizationUpdate(BaseModel):
@@ -58,12 +56,14 @@ class SalesOrganizationUpdate(BaseModel):
     billing_state: str | None = None
     billing_postal_code: str | None = None
     billing_country: str | None = None
+    assigned_to: int | None = None
     custom_fields: dict[str, Any] | None = None
 
 
 class SalesOrganizationResponse(SalesOrganizationBase):
     org_id: int
     assigned_to: int | None = None
+    assigned_to_name: str | None = None
     customer_group_id: int | None = None
     customer_group: CustomerGroupSummary | None = None
     created_time: datetime | None = None
@@ -82,6 +82,9 @@ class SalesOrganizationListItem(BaseModel):
     annual_revenue: str | None = None
     billing_country: str | None = None
     customer_group_id: int | None = None
+    assigned_to: int | None = None
+    assigned_to_name: str | None = None
+    created_time: datetime | None = None
     customer_group: CustomerGroupSummary | None = None
     custom_fields: dict[str, Any] | None = None
     updated_at: datetime | None = None
@@ -136,6 +139,7 @@ class SalesContactResponse(SalesContactBase):
     contact_id: int
     primary_email: EmailStr
     assigned_to: int | None = None
+    assigned_to_name: str | None = None
     customer_group_id: int | None = None
     customer_group: CustomerGroupSummary | None = None
     created_time: datetime
@@ -161,6 +165,7 @@ class SalesContactListItem(BaseModel):
     organization_id: Optional[int] = None
     organization_name: Optional[str] = None
     assigned_to: Optional[int] = None
+    assigned_to_name: Optional[str] = None
     customer_group_id: Optional[int] = None
     customer_group: CustomerGroupSummary | None = None
     created_time: datetime | None = None
@@ -767,6 +772,9 @@ class SalesOpportunityStageUpdate(BaseModel):
 
 class SalesOpportunityResponse(SalesOpportunityBase):
     opportunity_id: int
+    contact_name: str | None = None
+    organization_name: str | None = None
+    assigned_to_name: str | None = None
     created_time: datetime | None = None
     last_contacted_at: datetime | None = None
     last_contacted_channel: str | None = None
@@ -789,8 +797,11 @@ class SalesOpportunityListItem(BaseModel):
     last_contacted_channel: str | None = None
     last_contacted_by_user_id: int | None = None
     assigned_to: int | None = None
+    assigned_to_name: str | None = None
     contact_id: int | None = None
+    contact_name: str | None = None
     organization_id: int | None = None
+    organization_name: str | None = None
     start_date: date | None = None
     campaign_type: str | None = None
     total_leads: str | None = None

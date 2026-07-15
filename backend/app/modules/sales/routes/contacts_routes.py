@@ -72,9 +72,11 @@ CONTACT_LIST_FIELDS = {
     "organization_id",
     "organization_name",
     "assigned_to",
+    "assigned_to_name",
     "customer_group_id",
     "customer_group",
     "created_time",
+    "last_contacted_at",
 }
 
 CONTACT_IMPORT_TARGET_FIELDS = [
