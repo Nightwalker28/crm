@@ -218,6 +218,8 @@ def _apply_totals(invoice: FinancePosInvoice, subtotal: Decimal, data: dict[str,
     tax = _money(taxable * tax_rate / Decimal("100"))
     total = _money(taxable + tax)
     amount_paid = _money(max(Decimal("0"), _to_decimal(data.get("amount_paid"))))
+    if amount_paid > total:
+        raise HTTPException(status_code=400, detail="Amount paid cannot exceed invoice total")
     invoice.subtotal_amount = subtotal
     invoice.discount_amount = discount
     invoice.tax_rate = tax_rate
@@ -274,6 +276,11 @@ def serialize_invoice(invoice: FinancePosInvoice, *, current_user=None, include_
         ) or invoice.assigned_user.email
     total = _to_decimal(invoice.total_amount)
     paid = _to_decimal(invoice.amount_paid)
+    contact = getattr(invoice, "customer_contact", None)
+    organization = getattr(invoice, "customer_organization", None)
+    contact_name = None
+    if contact:
+        contact_name = " ".join(part for part in (contact.first_name, contact.last_name) if part).strip() or contact.primary_email
     data = {
         "id": invoice.id,
         "invoice_number": invoice.invoice_number,
@@ -288,6 +295,8 @@ def serialize_invoice(invoice: FinancePosInvoice, *, current_user=None, include_
         "customer_address": invoice.customer_address,
         "customer_contact_id": invoice.customer_contact_id,
         "customer_organization_id": invoice.customer_organization_id,
+        "customer_contact_name": contact_name,
+        "customer_organization_name": organization.org_name if organization else None,
         "issue_date": finance_date_to_iso(invoice.issue_date),
         "due_date": finance_date_to_iso(invoice.due_date),
         "currency": invoice.currency,
@@ -342,6 +351,9 @@ def list_invoices(
     pagination: Pagination,
     search: str | None = None,
     status_filter: str | None = None,
+    payment_status_filter: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
     sort_by: str | None = None,
     sort_direction: str | None = None,
 ):
@@ -351,6 +363,9 @@ def list_invoices(
         pagination=pagination,
         search=search,
         status_filter=status_filter,
+        payment_status_filter=payment_status_filter,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
         sort_by=sort_by,
         sort_direction=sort_direction,
     )
@@ -361,7 +376,18 @@ def list_invoices(
     )
 
 
-def list_invoices_cursor(db: Session, current_user, *, limit: int, cursor: int | None = None, search: str | None = None, status_filter: str | None = None):
+def list_invoices_cursor(
+    db: Session,
+    current_user,
+    *,
+    limit: int,
+    cursor: int | None = None,
+    search: str | None = None,
+    status_filter: str | None = None,
+    payment_status_filter: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
+):
     return pos_invoice_repository.list_invoices_cursor(
         db,
         current_user,
@@ -369,6 +395,9 @@ def list_invoices_cursor(db: Session, current_user, *, limit: int, cursor: int |
         cursor=cursor,
         search=search,
         status_filter=status_filter,
+        payment_status_filter=payment_status_filter,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
     )
 
 
@@ -526,6 +555,58 @@ def update_invoice(db: Session, current_user, invoice_id: int, payload: dict[str
     except IntegrityError as exc:
         db.rollback()
         raise _invoice_conflict(exc) from exc
+    db.refresh(invoice)
+    return invoice
+
+
+def record_invoice_payment(
+    db: Session,
+    current_user,
+    invoice_id: int,
+    *,
+    amount: Decimal,
+    payment_method: str | None = None,
+) -> FinancePosInvoice:
+    invoice = pos_invoice_repository.get_invoice_for_update(db, current_user, invoice_id=invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Invoice not found")
+    if invoice.status == "void":
+        raise HTTPException(status_code=400, detail="Payments cannot be recorded against a void invoice")
+    if invoice.payment_status == "refunded":
+        raise HTTPException(status_code=400, detail="Payments cannot be recorded against a refunded invoice")
+
+    payment_amount = _money(_to_decimal(amount))
+    current_paid = _money(_to_decimal(invoice.amount_paid))
+    total = _money(_to_decimal(invoice.total_amount))
+    balance = _money(max(Decimal("0"), total - current_paid))
+    if payment_amount <= 0:
+        raise HTTPException(status_code=400, detail="Payment amount must be greater than zero")
+    if balance <= 0:
+        raise HTTPException(status_code=400, detail="This invoice has no outstanding balance")
+    if payment_amount > balance:
+        raise HTTPException(status_code=400, detail="Payment amount cannot exceed the outstanding balance")
+
+    before_state = serialize_invoice(invoice, current_user=current_user)
+    invoice.amount_paid = _money(current_paid + payment_amount)
+    invoice.payment_method = _normalize_text(payment_method) or invoice.payment_method
+    if invoice.amount_paid >= total:
+        invoice.amount_paid = total
+        invoice.payment_status = "paid"
+        invoice.status = "paid"
+    else:
+        invoice.payment_status = "partial"
+    db.add(invoice)
+    db.flush()
+    _add_invoice_activity(
+        db,
+        current_user=current_user,
+        invoice=invoice,
+        action="payment.record",
+        description=f"Recorded payment for invoice {invoice.invoice_number}",
+        before_state=before_state,
+        after_state=serialize_invoice(invoice, current_user=current_user),
+    )
+    db.commit()
     db.refresh(invoice)
     return invoice
 

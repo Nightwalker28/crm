@@ -1,4 +1,5 @@
 import unittest
+from datetime import date
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -10,8 +11,9 @@ from app.core.database import Base
 from app.core.pagination import create_pagination
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.platform import models as platform_models  # noqa: F401
-from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
-from app.modules.sales.services.orders_services import convert_quote_to_order, create_sales_order, get_order_by_quote, list_sales_orders
+from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote, SalesQuoteItem
+from app.modules.sales.schema import SalesOrderResponse
+from app.modules.sales.services.orders_services import convert_quote_to_order, create_sales_order, get_order_by_quote, list_sales_orders, update_sales_order
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
 
@@ -48,6 +50,19 @@ class SalesOrderTests(unittest.TestCase):
                     tax_amount=Decimal("95"),
                     total_amount=Decimal("1045"),
                     assigned_to=1,
+                    items=[
+                        SalesQuoteItem(
+                            tenant_id=10,
+                            name="Pilot package",
+                            description="Configured implementation",
+                            quantity=Decimal("1"),
+                            unit_price=Decimal("1000"),
+                            discount_amount=Decimal("50"),
+                            tax_amount=Decimal("95"),
+                            line_total=Decimal("1045"),
+                            sort_order=0,
+                        )
+                    ],
                 ),
                 SalesQuote(
                     quote_id=51,
@@ -86,6 +101,7 @@ class SalesOrderTests(unittest.TestCase):
         self.assertEqual(order.grand_total, Decimal("1045.00"))
         self.assertEqual(len(order.items), 1)
         self.assertEqual(order.items[0].name, "Pilot package")
+        self.assertEqual(order.items[0].description, "Configured implementation")
         self.assertEqual(order.items[0].line_total, Decimal("1045.00"))
         self.assertEqual(get_order_by_quote(self.db, tenant_id=10, quote_id=50).id, order.id)
 
@@ -123,6 +139,106 @@ class SalesOrderTests(unittest.TestCase):
             )
 
         self.assertEqual(exc.exception.status_code, 404)
+
+    def test_create_order_rejects_relationships_that_conflict_with_quote(self):
+        other_contact = SalesContact(contact_id=32, tenant_id=10, first_name="Grace", primary_email="grace@acme.test", organization_id=20)
+        self.db.add(other_contact)
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as exc:
+            create_sales_order(
+                self.db,
+                {
+                    "quote_id": 50,
+                    "contact_id": 32,
+                    "items": [{"name": "Manual item", "quantity": "1", "unit_price": "10"}],
+                },
+                self.user,
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Order contact must match the linked quote")
+
+    def test_manual_order_calculates_totals_from_items(self):
+        order = create_sales_order(
+            self.db,
+            {
+                "order_number": "SO-ITEMS",
+                "organization_id": 20,
+                "contact_id": 30,
+                "status": "draft",
+                "currency": "USD",
+                "delivery_date": date(2026, 8, 1),
+                "delivery_address": " 1 Customer Street ",
+                "payment_terms": " Net 30 ",
+                "notes": " Handle with care ",
+                "subtotal": "99999",
+                "grand_total": "99999",
+                "items": [
+                    {"name": "Implementation", "quantity": "2", "unit_price": "100", "discount_amount": "10", "tax_amount": "19", "line_total": "999"},
+                    {"name": "Training", "quantity": "1", "unit_price": "50", "tax_amount": "5"},
+                ],
+            },
+            self.user,
+        )
+
+        self.assertEqual(order.tenant_id, 10)
+        self.assertEqual(order.subtotal, Decimal("250.00"))
+        self.assertEqual(order.discount_total, Decimal("10.00"))
+        self.assertEqual(order.tax_total, Decimal("24.00"))
+        self.assertEqual(order.grand_total, Decimal("264.00"))
+        self.assertEqual(order.delivery_date.isoformat(), "2026-08-01")
+        self.assertEqual(order.delivery_address, "1 Customer Street")
+        self.assertEqual(order.payment_terms, "Net 30")
+        self.assertEqual(order.notes, "Handle with care")
+        self.assertEqual(order.items[0].line_total, Decimal("209.00"))
+        self.assertTrue(all(item.tenant_id == 10 for item in order.items))
+        response = SalesOrderResponse.model_validate(order)
+        self.assertEqual(response.organization_name, "Acme")
+        self.assertEqual(response.contact_name, "Ada")
+        self.assertEqual(response.owner_name, "Owner User")
+
+    def test_update_order_replaces_items_and_recalculates_totals(self):
+        order = create_sales_order(
+            self.db,
+            {
+                "order_number": "SO-EDIT",
+                "organization_id": 20,
+                "contact_id": 30,
+                "currency": "USD",
+                "items": [{"name": "Original", "quantity": "1", "unit_price": "10"}],
+            },
+            self.user,
+        )
+
+        updated = update_sales_order(
+            self.db,
+            order,
+            {
+                "order_number": "SO-EDITED",
+                "organization_id": 20,
+                "contact_id": 30,
+                "opportunity_id": 40,
+                "status": "fulfilled",
+                "currency": "lkr",
+                "delivery_address": "  Colombo  ",
+                "items": [
+                    {"name": "Implementation", "quantity": "2", "unit_price": "100", "discount_amount": "10", "tax_amount": "19"},
+                    {"name": "Support", "quantity": "1", "unit_price": "50"},
+                ],
+            },
+        )
+
+        self.assertEqual(updated.order_number, "SO-EDITED")
+        self.assertEqual(updated.status, "fulfilled")
+        self.assertEqual(updated.currency, "LKR")
+        self.assertEqual(updated.delivery_address, "Colombo")
+        self.assertEqual(updated.subtotal, Decimal("250.00"))
+        self.assertEqual(updated.discount_total, Decimal("10.00"))
+        self.assertEqual(updated.tax_total, Decimal("19.00"))
+        self.assertEqual(updated.grand_total, Decimal("259.00"))
+        self.assertEqual([item.name for item in updated.items], ["Implementation", "Support"])
+        self.assertTrue(all(item.tenant_id == 10 for item in updated.items))
 
     def test_order_list_sorts_before_pagination(self):
         self.db.add_all(

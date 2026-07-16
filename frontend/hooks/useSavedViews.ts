@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
-import { canonicalSavedViewConditionsKey } from "@/lib/savedViewQuery";
+import { canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
 
 export type SavedViewConfig = {
   visible_columns: string[];
@@ -74,18 +74,11 @@ function sameSort(left: SavedViewConfig["sort"], right: SavedViewConfig["sort"])
   return leftKeys.every((key) => Object.is(left[key], right[key]));
 }
 
-function sameConditions(left: SavedViewCondition[] = [], right: SavedViewCondition[] = []) {
-  return canonicalSavedViewConditionsKey(left) === canonicalSavedViewConditionsKey(right);
-}
-
 function sameAppliedConfig(left: SavedViewConfig, right: SavedViewConfig) {
   return (
     sameStringArray(left.visible_columns, right.visible_columns) &&
     sameSort(left.sort ?? null, right.sort ?? null) &&
-    (left.filters?.search ?? "") === (right.filters?.search ?? "") &&
-    sameConditions(left.filters?.conditions ?? [], right.filters?.conditions ?? []) &&
-    sameConditions(left.filters?.all_conditions ?? [], right.filters?.all_conditions ?? []) &&
-    sameConditions(left.filters?.any_conditions ?? [], right.filters?.any_conditions ?? [])
+    canonicalSavedViewFiltersKey(left.filters) === canonicalSavedViewFiltersKey(right.filters)
   );
 }
 

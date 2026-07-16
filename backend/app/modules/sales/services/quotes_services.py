@@ -23,7 +23,7 @@ from app.modules.platform.services.custom_fields import (
     validate_custom_field_payload,
 )
 from app.modules.platform.services.activity_logs import log_activity
-from app.modules.sales.models import SalesQuote, SalesQuoteDocument, SalesQuoteOpenEvent
+from app.modules.sales.models import SalesQuote, SalesQuoteDocument, SalesQuoteItem, SalesQuoteOpenEvent
 from app.modules.sales.repositories import quotes_repository
 from app.modules.sales.services.time_utils import as_utc, utc_now
 from app.modules.user_management.models import User
@@ -164,6 +164,50 @@ def _normalize_quote_payload(data: dict, *, partial: bool = False) -> dict:
     return normalized
 
 
+def _normalize_quote_items(items: list[dict], *, tenant_id: int) -> tuple[list[SalesQuoteItem], dict[str, Decimal]]:
+    normalized_items: list[SalesQuoteItem] = []
+    subtotal = Decimal("0")
+    discount_total = Decimal("0")
+    tax_total = Decimal("0")
+    for index, item in enumerate(items):
+        name = _coerce_required(item.get("name"), "Quote item name")
+        quantity = _coerce_decimal(item.get("quantity", "1"))
+        unit_price = _coerce_decimal(item.get("unit_price"))
+        discount = _coerce_decimal(item.get("discount_amount"))
+        tax = _coerce_decimal(item.get("tax_amount"))
+        if quantity <= 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote item quantity must be greater than zero")
+        if min(unit_price, discount, tax) < 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote item amounts cannot be negative")
+        extended = quantity * unit_price
+        line_total = extended - discount + tax
+        if line_total < 0:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote item discount cannot exceed its value and tax")
+        normalized_items.append(
+            SalesQuoteItem(
+                tenant_id=tenant_id,
+                name=name,
+                description=_coerce_optional(item.get("description")),
+                quantity=quantity,
+                unit_price=unit_price,
+                discount_amount=discount,
+                tax_amount=tax,
+                line_total=line_total.quantize(Decimal("0.01")),
+                sort_order=index,
+            )
+        )
+        subtotal += extended
+        discount_total += discount
+        tax_total += tax
+    totals = {
+        "subtotal_amount": subtotal.quantize(Decimal("0.01")),
+        "discount_amount": discount_total.quantize(Decimal("0.01")),
+        "tax_amount": tax_total.quantize(Decimal("0.01")),
+        "total_amount": (subtotal - discount_total + tax_total).quantize(Decimal("0.01")),
+    }
+    return normalized_items, totals
+
+
 def _generate_quote_number(db: Session, *, tenant_id: int) -> str:
     return allocate_business_number(db, tenant_id=tenant_id, scope="sales_quotes", prefix="Q")
 
@@ -189,6 +233,13 @@ def _build_proposal_content(quote: SalesQuote) -> str:
     )
     if quote.expiry_date:
         lines.append(f"Valid until: {quote.expiry_date.isoformat()}")
+    if quote.items:
+        lines.extend(["", "Items:"])
+        for item in quote.items:
+            lines.append(
+                f"- {item.name}: {item.quantity} x {quote.currency or 'USD'} {item.unit_price} = "
+                f"{quote.currency or 'USD'} {item.line_total}"
+            )
     if quote.notes:
         lines.extend(["", quote.notes])
     return "\n".join(lines)
@@ -377,9 +428,13 @@ def respond_to_client_quote(db: Session, *, quote: SalesQuote, action: str, clie
 def create_sales_quote(db: Session, payload: dict, current_user, replace_duplicates: bool = False, skip_duplicates: bool = False, create_new_records: bool = False) -> SalesQuote:
     ensure_single_duplicate_action(replace_duplicates=replace_duplicates, skip_duplicates=skip_duplicates, create_new_records=create_new_records)
     data = dict(payload)
+    item_payloads = data.pop("items", None)
+    normalized_items, item_totals = _normalize_quote_items(item_payloads, tenant_id=current_user.tenant_id) if item_payloads is not None else (None, None)
     explicit_assigned_to = "assigned_to" in data and data.get("assigned_to") is not None
     custom_data = validate_custom_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=data.pop("custom_fields", None))
     data = _normalize_quote_payload(data)
+    if item_totals is not None:
+        data.update(item_totals)
     data["custom_data"] = custom_data
     if not data.get("quote_number"):
         data["quote_number"] = _generate_quote_number(db, tenant_id=current_user.tenant_id)
@@ -399,6 +454,8 @@ def create_sales_quote(db: Session, payload: dict, current_user, replace_duplica
             if not explicit_assigned_to:
                 data.pop("assigned_to", None)
             _apply_quote_payload(existing, data)
+            if normalized_items is not None:
+                existing.items = normalized_items
             db.add(existing)
             try:
                 db.flush()
@@ -412,6 +469,8 @@ def create_sales_quote(db: Session, payload: dict, current_user, replace_duplica
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Quote number already exists")
 
     quote = SalesQuote(tenant_id=current_user.tenant_id, **data)
+    if normalized_items is not None:
+        quote.items = normalized_items
     db.add(quote)
     try:
         db.flush()
@@ -425,16 +484,22 @@ def create_sales_quote(db: Session, payload: dict, current_user, replace_duplica
 
 
 def update_sales_quote(db: Session, quote: SalesQuote, data: dict) -> SalesQuote:
+    item_payloads = data.pop("items", None)
+    normalized_items, item_totals = _normalize_quote_items(item_payloads, tenant_id=quote.tenant_id) if item_payloads is not None else (None, None)
     custom_data_to_save: dict | None = None
     if "custom_fields" in data:
         custom_data_to_save = validate_custom_field_payload(db, tenant_id=quote.tenant_id, module_key="sales_quotes", payload=data.pop("custom_fields"), existing=load_custom_field_values_with_fallback(db, tenant_id=quote.tenant_id, module_key="sales_quotes", record_id=quote.quote_id, fallback=quote.custom_data))
         data["custom_data"] = custom_data_to_save
     data = _normalize_quote_payload(data, partial=True)
+    if item_totals is not None:
+        data.update(item_totals)
     _ensure_assigned_user(db, data.get("assigned_to"), tenant_id=quote.tenant_id)
     _ensure_linked_records(db, data, tenant_id=quote.tenant_id)
     if data.get("quote_number") and quotes_repository.quote_number_exists(db, tenant_id=quote.tenant_id, quote_number=data["quote_number"], exclude_quote_id=quote.quote_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Another quote already uses this number")
     _apply_quote_payload(quote, data)
+    if normalized_items is not None:
+        quote.items = normalized_items
     db.add(quote)
     try:
         db.flush()

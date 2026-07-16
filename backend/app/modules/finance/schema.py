@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -194,6 +195,11 @@ class PosInvoiceUpdateRequest(BaseModel):
     lines: Optional[list[PosInvoiceLineRequest]] = Field(default=None, min_length=1)
 
 
+class PosInvoicePaymentRequest(BaseModel):
+    amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
+    payment_method: str | None = Field(default=None, max_length=100)
+
+
 class PosInvoiceLineResponse(BaseModel):
     id: int
     catalog_product_id: Optional[int] = None
@@ -219,6 +225,8 @@ class PosInvoiceResponse(BaseModel):
     customer_address: Optional[str] = None
     customer_contact_id: Optional[int] = None
     customer_organization_id: Optional[int] = None
+    customer_contact_name: Optional[str] = None
+    customer_organization_name: Optional[str] = None
     issue_date: Optional[str] = None
     due_date: Optional[str] = None
     currency: str

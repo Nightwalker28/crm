@@ -11,7 +11,7 @@ import BrowserNotificationsBridge from "@/components/notifications/BrowserNotifi
 import GlobalCommandPalette from "@/components/search/GlobalCommandPalette";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
-import { getGuardedModuleRoutePrefixes, getModuleRoute, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
+import { getGuardedModuleRoutePrefixes, getRequiredModuleKeyForRoute, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
 import { DASHBOARD_ROUTES, SETTINGS_ROUTES, canonicalizeDashboardHref, getFriendlyRouteLabel } from "@/lib/routes";
 
 const ADMIN_ONLY_PREFIXES = [
@@ -89,7 +89,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const requiresAdmin = isAdminOnlyPath(pathname);
   const moduleRoute = matchedModuleRoute(pathname);
-  const allowedModuleRoutes = new Set(modules.map((module) => getModuleRoute(module.name, module.base_route)).filter(Boolean));
+  const allowedModuleNames = new Set(modules.map((module) => module.name));
   const customModuleRoute = modules
     .map((module) => module.base_route)
     .filter((route): route is string => Boolean(route?.startsWith("/dashboard/custom/")))
@@ -102,7 +102,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const canonicalPathname = canonicalizeDashboardHref(pathname);
   const hasLegacyPathname = canonicalPathname !== pathname;
   const isModuleBlocked = Boolean(
-    (moduleRoute && !modulesLoading && !allowedModuleRoutes.has(moduleRoute)) ||
+    (moduleRoute && !modulesLoading && !allowedModuleNames.has(getRequiredModuleKeyForRoute(moduleRoute) ?? "")) ||
       (isCustomModulePath && !modulesLoading && !customModuleRoute),
   );
 

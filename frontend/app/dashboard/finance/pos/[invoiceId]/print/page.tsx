@@ -72,7 +72,7 @@ export default function PosInvoicePrintPage() {
     <div className="flex flex-col gap-5">
       <div className="flex items-center justify-between gap-3 print:hidden">
         <Button asChild variant="outline">
-          <Link href="/dashboard/finance/pos"><ArrowLeft /> POS Mode</Link>
+          <Link href="/dashboard/finance/pos"><ArrowLeft /> Invoices</Link>
         </Button>
         <Button onClick={() => window.print()}><Printer /> Print</Button>
       </div>

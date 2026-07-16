@@ -1,13 +1,17 @@
 "use client";
 
 import { useMemo } from "react";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 
-import OrdersHeader from "@/components/orders/OrdersHeader";
 import OrdersTable from "@/components/orders/OrdersTable";
 import Pagination from "@/components/ui/Pagination";
-import SearchBar from "@/components/ui/SearchBar";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
+import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
+import { Button } from "@/components/ui/button";
 import { useOrders, type OrderSortState } from "@/hooks/sales/useOrders";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
@@ -31,16 +35,20 @@ export default function OrdersPage() {
     };
   }, [draftConfig.sort]);
   const { orders, page, totalPages, totalCount, rangeStart, rangeEnd, pageSize, onPageSizeChange, isLoading, isFetching, error, goToPage, refresh } = useOrders(visibleColumns, activeFilters, activeSort);
+  const { allConditions, anyConditions } = getConditionGroups(activeFilters);
+  const activeFilterCount = allConditions.length + anyConditions.length;
+  const hasActiveFilters = Boolean((typeof activeFilters.search === "string" && activeFilters.search.trim()) || activeFilterCount);
+  const clearFilters = () => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }));
 
   return (
     <div className="flex flex-col gap-6">
-      <OrdersHeader viewSelector={<SavedViewSelector moduleKey="sales_orders" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />} />
-      <SearchBar value={typeof activeFilters?.search === "string" ? activeFilters.search : ""} onChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: value } }))} placeholder="Search orders" />
-      <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} />
+      <PageHeader title="Orders" description="Track confirmed sales orders created from accepted quotes or entered manually." eyebrow={totalCount ? `${totalCount} order${totalCount === 1 ? "" : "s"} in this view` : undefined} actions={<Button asChild><Link href="/dashboard/sales/orders/new"><Plus />Create order</Link></Button>} />
+      <ModuleListToolbar searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""} onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))} searchPlaceholder="Search orders" filtersOpen={Boolean(activeFilters.filtersOpen)} activeFilterCount={activeFilterCount} onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))} onClearFilters={clearFilters} viewControls={<SavedViewSelector moduleKey="sales_orders" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />} />
+      <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />
       {error ? (
-        <div className="flex justify-between rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">
-          <span>{error}</span>
-          <button onClick={refresh} className="underline underline-offset-2">Retry</button>
+        <div role="alert" className="flex justify-between rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+          <span>We could not load orders.</span>
+          <button onClick={refresh} className="underline underline-offset-2">Try again</button>
         </div>
       ) : null}
       <OrdersTable
@@ -49,6 +57,8 @@ export default function OrdersPage() {
         isRefreshing={isFetching && !isLoading}
         visibleColumns={visibleColumns}
         columnOptions={definition?.columns ?? []}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
         sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
         onSortChange={(nextSort) =>
           setDraftConfig((current) => ({

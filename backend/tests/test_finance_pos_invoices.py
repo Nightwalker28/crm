@@ -52,6 +52,19 @@ class FakeDeleteDB:
         self.committed = True
 
 
+class FakePaymentDB(FakeDeleteDB):
+    def __init__(self):
+        super().__init__()
+        self.flushed = False
+        self.refreshed = None
+
+    def flush(self):
+        self.flushed = True
+
+    def refresh(self, value):
+        self.refreshed = value
+
+
 class FinancePosInvoiceTests(unittest.TestCase):
     def test_finance_date_to_iso_handles_none_date_and_datetime(self):
         self.assertIsNone(finance_date_to_iso(None))
@@ -84,6 +97,34 @@ class FinancePosInvoiceTests(unittest.TestCase):
         payload = serialize_invoice(invoice, current_user=SimpleNamespace(id=1), include_lines=False)
 
         self.assertEqual(payload["user_name"], "Ava Admin")
+
+    def test_serialize_invoice_includes_linked_customer_display_names(self):
+        invoice = FinancePosInvoice(
+            id=1,
+            tenant_id=10,
+            user_id=2,
+            invoice_number="POS-1",
+            mode="pos",
+            status="issued",
+            payment_status="unpaid",
+            template_id="modern",
+            accent_color="#14b8a6",
+            customer_name="Buyer",
+            currency="USD",
+            subtotal_amount=Decimal("10.00"),
+            discount_amount=Decimal("0.00"),
+            tax_rate=Decimal("0.00"),
+            tax_amount=Decimal("0.00"),
+            total_amount=Decimal("10.00"),
+            amount_paid=Decimal("0.00"),
+        )
+        invoice.customer_contact = SimpleNamespace(first_name="Ada", last_name="Lovelace", primary_email="ada@example.com")
+        invoice.customer_organization = SimpleNamespace(org_name="Analytical Engines")
+
+        payload = serialize_invoice(invoice, current_user=SimpleNamespace(id=1), include_lines=False)
+
+        self.assertEqual(payload["customer_contact_name"], "Ada Lovelace")
+        self.assertEqual(payload["customer_organization_name"], "Analytical Engines")
 
     def test_list_invoices_keeps_lightweight_shape_without_lines(self):
         invoice = FinancePosInvoice(
@@ -193,6 +234,93 @@ class FinancePosInvoiceTests(unittest.TestCase):
             pos_invoice_services._apply_totals(invoice, Decimal("100.00"), {"tax_rate": 101})
 
         self.assertEqual(exc.exception.status_code, 400)
+
+    def test_apply_totals_rejects_overpayment(self):
+        invoice = FinancePosInvoice(discount_amount=Decimal("0"), tax_rate=Decimal("0"), amount_paid=Decimal("0"))
+
+        with self.assertRaises(HTTPException) as exc:
+            pos_invoice_services._apply_totals(invoice, Decimal("100.00"), {"amount_paid": 101})
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Amount paid cannot exceed invoice total")
+
+    def test_record_invoice_payment_updates_balance_status_and_activity(self):
+        invoice = FinancePosInvoice(
+            id=1,
+            tenant_id=10,
+            user_id=1,
+            invoice_number="POS-1",
+            mode="pos",
+            status="issued",
+            payment_status="unpaid",
+            payment_method=None,
+            template_id="modern",
+            accent_color="#14b8a6",
+            customer_name="Buyer",
+            currency="USD",
+            subtotal_amount=Decimal("100.00"),
+            discount_amount=Decimal("0.00"),
+            tax_rate=Decimal("0.00"),
+            tax_amount=Decimal("0.00"),
+            total_amount=Decimal("100.00"),
+            amount_paid=Decimal("25.00"),
+        )
+        invoice.lines = []
+        db = FakePaymentDB()
+        current_user = SimpleNamespace(id=1, tenant_id=10)
+
+        with patch.object(pos_invoice_repository, "get_invoice_for_update", return_value=invoice):
+            result = pos_invoice_services.record_invoice_payment(
+                db,
+                current_user,
+                invoice_id=1,
+                amount=Decimal("75.00"),
+                payment_method="Bank transfer",
+            )
+
+        self.assertIs(result, invoice)
+        self.assertEqual(invoice.amount_paid, Decimal("100.00"))
+        self.assertEqual(invoice.payment_status, "paid")
+        self.assertEqual(invoice.status, "paid")
+        self.assertEqual(invoice.payment_method, "Bank transfer")
+        self.assertTrue(db.flushed)
+        self.assertTrue(db.committed)
+        self.assertIs(db.refreshed, invoice)
+        self.assertEqual(len(db.added), 2)
+        self.assertEqual(db.added[1].action, "payment.record")
+
+    def test_record_invoice_payment_rejects_amount_above_locked_balance(self):
+        invoice = FinancePosInvoice(
+            id=1,
+            tenant_id=10,
+            invoice_number="POS-1",
+            mode="pos",
+            status="issued",
+            payment_status="partial",
+            template_id="modern",
+            accent_color="#14b8a6",
+            customer_name="Buyer",
+            currency="USD",
+            subtotal_amount=Decimal("100.00"),
+            discount_amount=Decimal("0.00"),
+            tax_rate=Decimal("0.00"),
+            tax_amount=Decimal("0.00"),
+            total_amount=Decimal("100.00"),
+            amount_paid=Decimal("90.00"),
+        )
+        invoice.lines = []
+
+        with patch.object(pos_invoice_repository, "get_invoice_for_update", return_value=invoice):
+            with self.assertRaises(HTTPException) as exc:
+                pos_invoice_services.record_invoice_payment(
+                    FakePaymentDB(),
+                    SimpleNamespace(id=1, tenant_id=10),
+                    invoice_id=1,
+                    amount=Decimal("10.01"),
+                )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Payment amount cannot exceed the outstanding balance")
 
     def test_apply_lines_preserves_existing_rows_by_id(self):
         invoice = FinancePosInvoice(id=1, tenant_id=10, invoice_number="POS-1")

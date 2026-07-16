@@ -63,6 +63,8 @@ export type TaskPayload = {
   assignees: TaskAssigneeInput[];
 };
 
+export type TaskUpdatePayload = Partial<TaskPayload>;
+
 export type TaskAssignmentUserOption = {
   id: number;
   name: string;
@@ -139,7 +141,7 @@ async function createTask(payload: TaskPayload) {
   return body as Task;
 }
 
-async function updateTask(taskId: number, payload: TaskPayload) {
+async function updateTask(taskId: number, payload: TaskUpdatePayload) {
   const res = await apiFetch(`/tasks/${taskId}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -225,9 +227,45 @@ export function useTasks(filters?: SavedViewFilters, sort: TaskSortState = null)
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ taskId, payload }: { taskId: number; payload: TaskPayload }) =>
+    mutationFn: ({ taskId, payload }: { taskId: number; payload: TaskUpdatePayload }) =>
       updateTask(taskId, payload),
     onSuccess: async (_, variables) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["task", variables.taskId] }),
+        queryClient.invalidateQueries({ queryKey: ["user-notifications"] }),
+      ]);
+    },
+  });
+
+  const statusMutation = useMutation({
+    mutationFn: ({ taskId, status, completedAt }: { taskId: number; status: TaskStatus; completedAt: string | null }) =>
+      updateTask(taskId, { status, completed_at: completedAt }),
+    onMutate: async ({ taskId, status, completedAt }) => {
+      await Promise.all([
+        queryClient.cancelQueries({ queryKey: ["tasks"] }),
+        queryClient.cancelQueries({ queryKey: ["task", taskId] }),
+      ]);
+      const previousLists = queryClient.getQueriesData<TaskListResponse>({ queryKey: ["tasks"] });
+      const previousTask = queryClient.getQueryData<Task>(["task", taskId]);
+      const optimisticUpdate = (task: Task): Task =>
+        task.id === taskId
+          ? { ...task, status, completed_at: completedAt, updated_at: new Date().toISOString() }
+          : task;
+
+      queryClient.setQueriesData<TaskListResponse>({ queryKey: ["tasks"] }, (current) =>
+        current ? { ...current, results: current.results.map(optimisticUpdate) } : current,
+      );
+      queryClient.setQueryData<Task>(["task", taskId], (current) => current ? optimisticUpdate(current) : current);
+      return { previousLists, previousTask };
+    },
+    onError: (_error, variables, context) => {
+      context?.previousLists.forEach(([queryKey, data]) => queryClient.setQueryData(queryKey, data));
+      if (context?.previousTask) {
+        queryClient.setQueryData(["task", variables.taskId], context.previousTask);
+      }
+    },
+    onSettled: async (_data, _error, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["task", variables.taskId] }),
@@ -268,10 +306,16 @@ export function useTasks(filters?: SavedViewFilters, sort: TaskSortState = null)
       await queryClient.invalidateQueries({ queryKey: ["tasks"] });
     },
     createTask: createMutation.mutateAsync,
-    updateTask: (taskId: number, payload: TaskPayload) =>
+    updateTask: (taskId: number, payload: TaskUpdatePayload) =>
       updateMutation.mutateAsync({ taskId, payload }),
+    updateTaskStatus: (task: Task, status: TaskStatus) =>
+      statusMutation.mutateAsync({
+        taskId: task.id,
+        status,
+        completedAt: status === "completed" ? task.completed_at ?? new Date().toISOString() : null,
+      }),
     deleteTask: deleteMutation.mutateAsync,
-    isSaving: createMutation.isPending || updateMutation.isPending,
+    isSaving: createMutation.isPending || updateMutation.isPending || statusMutation.isPending,
     isDeleting: deleteMutation.isPending,
   };
 }

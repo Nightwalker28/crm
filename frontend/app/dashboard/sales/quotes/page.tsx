@@ -1,19 +1,24 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 
-import CreateQuoteModal from "@/components/quotes/CreateQuoteModal";
-import QuotesHeader from "@/components/quotes/QuotesHeader";
 import QuotesTable from "@/components/quotes/QuotesTable";
 import Pagination from "@/components/ui/Pagination";
-import SearchBar from "@/components/ui/SearchBar";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
+import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
+import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
+import { Button } from "@/components/ui/button";
 import { useQuotes, type QuoteSortState } from "@/hooks/sales/useQuotes";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
+import { buildSavedViewExportPayload } from "@/lib/savedViewQuery";
 
 export default function QuotesPage() {
   const { data: customFields = [] } = useModuleCustomFields("sales_quotes");
@@ -32,8 +37,10 @@ export default function QuotesPage() {
     };
   }, [draftConfig.sort]);
   const { quotes, page, totalPages, totalCount, rangeStart, rangeEnd, pageSize, onPageSizeChange, isLoading, isFetching, error, goToPage, refresh } = useQuotes(visibleColumns, activeFilters, activeSort);
-  const [createOpen, setCreateOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const { allConditions, anyConditions } = getConditionGroups(activeFilters);
+  const activeFilterCount = allConditions.length + anyConditions.length;
+  const hasActiveFilters = Boolean((typeof activeFilters.search === "string" && activeFilters.search.trim()) || activeFilterCount);
 
   const currentPageIds = useMemo(() => quotes.map((quote) => quote.quote_id), [quotes]);
   const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
@@ -52,22 +59,19 @@ export default function QuotesPage() {
     setSelectedIds((current) => checked ? Array.from(new Set([...current, ...currentPageIds])) : current.filter((id) => !currentPageIds.includes(id)));
   }
 
+  function clearFilters() {
+    setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }));
+  }
+
   return (
     <div className="flex flex-col gap-6">
-      <QuotesHeader
-        onCreateClick={() => setCreateOpen(true)}
-        onImportSuccess={refresh}
-        selectedIds={selectedIds}
-        currentPageIds={currentPageIds}
-        exportFilters={activeFilters}
-        viewSelector={<SavedViewSelector moduleKey="sales_quotes" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
-      />
-      <SearchBar value={typeof activeFilters?.search === "string" ? activeFilters.search : ""} onChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: value } }))} placeholder="Search quotes" />
-      <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} />
+      <PageHeader title="Quotes" description="Prepare customer quotes before they become orders or invoices." eyebrow={totalCount ? `${totalCount} quote${totalCount === 1 ? "" : "s"} in this view` : undefined} actions={<Button asChild><Link href="/dashboard/sales/quotes/new"><Plus />Create quote</Link></Button>} />
+      <ModuleListToolbar searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""} onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))} searchPlaceholder="Search quotes" filtersOpen={Boolean(activeFilters.filtersOpen)} activeFilterCount={activeFilterCount} onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))} onClearFilters={clearFilters} selectedCount={selectedIds.length} selectionNoun="quote" onClearSelection={() => setSelectedIds([])} viewControls={<SavedViewSelector moduleKey="sales_quotes" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />} actionControls={<ModuleImportExportControls importEndpoint="/sales/quotes/import" exportEndpoint="/sales/quotes/export" exportMethod="POST" exportBody={buildSavedViewExportPayload(activeFilters)} onImportSuccess={refresh} selectedIds={selectedIds} currentPageIds={currentPageIds} />} />
+      <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />
       {error ? (
-        <div className="flex justify-between rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">
-          <span>{error}</span>
-          <button onClick={refresh} className="underline underline-offset-2">Retry</button>
+        <div role="alert" className="flex justify-between rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+          <span>We could not load quotes.</span>
+          <button onClick={refresh} className="underline underline-offset-2">Try again</button>
         </div>
       ) : null}
       <QuotesTable
@@ -80,6 +84,8 @@ export default function QuotesPage() {
         currentPageSelectionState={currentPageSelectionState}
         onToggleRow={toggleRow}
         onToggleCurrentPage={toggleCurrentPage}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
         sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
         onSortChange={(nextSort) =>
           setDraftConfig((current) => ({
@@ -89,7 +95,6 @@ export default function QuotesPage() {
         }
       />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
-      <CreateQuoteModal isOpen={createOpen} onClose={() => setCreateOpen(false)} onSuccess={refresh} />
     </div>
   );
 }

@@ -64,8 +64,16 @@ def _generate_order_number(db: Session, *, tenant_id: int) -> str:
 
 def _ensure_linked_records(db: Session, data: dict, *, tenant_id: int) -> None:
     quote_id = data.get("quote_id")
+    quote = None
     if quote_id is not None:
-        get_quote_or_404(db, quote_id, tenant_id=tenant_id)
+        quote = get_quote_or_404(db, quote_id, tenant_id=tenant_id)
+        for field in {"contact_id", "organization_id", "opportunity_id"}:
+            submitted = data.get(field)
+            linked = getattr(quote, field, None)
+            if submitted is not None and linked is not None and submitted != linked:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Order {field.removesuffix('_id')} must match the linked quote")
+            if submitted is None and linked is not None:
+                data[field] = linked
     contact_id = data.get("contact_id")
     if contact_id is not None and not quotes_repository.contact_exists(db, tenant_id=tenant_id, contact_id=contact_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact not found")
@@ -73,8 +81,19 @@ def _ensure_linked_records(db: Session, data: dict, *, tenant_id: int) -> None:
     if organization_id is not None and not quotes_repository.organization_exists(db, tenant_id=tenant_id, organization_id=organization_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not found")
     opportunity_id = data.get("opportunity_id")
-    if opportunity_id is not None and not quotes_repository.get_opportunity(db, tenant_id=tenant_id, opportunity_id=opportunity_id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Opportunity not found")
+    opportunity = None
+    if opportunity_id is not None:
+        opportunity = quotes_repository.get_opportunity(db, tenant_id=tenant_id, opportunity_id=opportunity_id)
+        if not opportunity:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Opportunity not found")
+    if opportunity is not None:
+        for field in {"contact_id", "organization_id"}:
+            submitted = data.get(field)
+            linked = getattr(opportunity, field, None)
+            if submitted is not None and linked is not None and submitted != linked:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Order {field.removesuffix('_id')} must match the linked opportunity")
+            if submitted is None and linked is not None:
+                data[field] = linked
     owner_id = data.get("owner_id")
     if owner_id is not None and not quotes_repository.user_exists(db, tenant_id=tenant_id, user_id=owner_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Owner not found")
@@ -82,6 +101,13 @@ def _ensure_linked_records(db: Session, data: dict, *, tenant_id: int) -> None:
 
 def _normalize_order_payload(db: Session, payload: dict, *, tenant_id: int, current_user, partial: bool = False) -> dict:
     data = dict(payload)
+    if "order_number" in data:
+        data["order_number"] = _coerce_optional(data["order_number"])
+        if not data["order_number"]:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order number is required")
+    for field in {"delivery_address", "payment_terms", "notes"}:
+        if field in data:
+            data[field] = _coerce_optional(data[field])
     for field in {"quote_id", "organization_id", "contact_id", "opportunity_id", "owner_id"}:
         if data.get(field) == "":
             data[field] = None
@@ -110,16 +136,28 @@ def _normalize_item_payload(item: dict, *, tenant_id: int, sort_order: int) -> S
     name = _coerce_optional(item.get("name"))
     if not name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order item name is required")
+    quantity = _coerce_decimal(item.get("quantity", "1"))
+    unit_price = _coerce_decimal(item.get("unit_price"))
+    discount = _coerce_decimal(item.get("discount_amount"))
+    tax = _coerce_decimal(item.get("tax_amount"))
+    if quantity <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order item quantity must be greater than zero")
+    if min(unit_price, discount, tax) < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order item amounts cannot be negative")
+    extended = quantity * unit_price
+    line_total = extended - discount + tax
+    if line_total < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order item discount cannot exceed its value and tax")
     return SalesOrderItem(
         tenant_id=tenant_id,
         name=name,
         description=_coerce_optional(item.get("description")),
-        quantity=_coerce_decimal(item.get("quantity", "1")),
-        unit_price=_coerce_decimal(item.get("unit_price")),
-        discount_amount=_coerce_decimal(item.get("discount_amount")),
-        tax_amount=_coerce_decimal(item.get("tax_amount")),
-        line_total=_coerce_decimal(item.get("line_total")),
-        sort_order=int(item.get("sort_order", sort_order) or sort_order),
+        quantity=quantity,
+        unit_price=unit_price,
+        discount_amount=discount,
+        tax_amount=tax,
+        line_total=line_total.quantize(Decimal("0.01")),
+        sort_order=sort_order,
     )
 
 
@@ -217,11 +255,21 @@ def get_order_by_quote(db: Session, *, tenant_id: int, quote_id: int) -> SalesOr
 def create_sales_order(db: Session, payload: dict, current_user) -> SalesOrder:
     items_payload = payload.pop("items", []) or []
     data = _normalize_order_payload(db, payload, tenant_id=current_user.tenant_id, current_user=current_user)
-    order = SalesOrder(tenant_id=current_user.tenant_id, **data)
-    order.items = [
+    normalized_items = [
         _normalize_item_payload(item, tenant_id=current_user.tenant_id, sort_order=index)
         for index, item in enumerate(items_payload)
     ]
+    if normalized_items:
+        data.update(
+            {
+                "subtotal": sum((item.quantity * item.unit_price for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
+                "discount_total": sum((item.discount_amount for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
+                "tax_total": sum((item.tax_amount for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
+                "grand_total": sum((item.line_total for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
+            }
+        )
+    order = SalesOrder(tenant_id=current_user.tenant_id, **data)
+    order.items = normalized_items
     db.add(order)
     try:
         db.commit()
@@ -254,6 +302,18 @@ def convert_quote_to_order(db: Session, quote: SalesQuote, current_user, *, allo
         "owner_id": quote.assigned_to or (current_user.id if current_user else None),
         "items": [
             {
+                "name": item.name,
+                "description": item.description,
+                "quantity": item.quantity,
+                "unit_price": item.unit_price,
+                "discount_amount": item.discount_amount,
+                "tax_amount": item.tax_amount,
+                "line_total": item.line_total,
+                "sort_order": item.sort_order,
+            }
+            for item in quote.items
+        ] if quote.items else [
+            {
                 "name": quote.title or f"Quote {quote.quote_number}",
                 "description": quote.notes,
                 "quantity": Decimal("1"),
@@ -269,10 +329,31 @@ def convert_quote_to_order(db: Session, quote: SalesQuote, current_user, *, allo
 
 
 def update_sales_order(db: Session, order: SalesOrder, payload: dict) -> SalesOrder:
+    items_payload = payload.pop("items", None)
     data = _normalize_order_payload(db, payload, tenant_id=order.tenant_id, current_user=None, partial=True)
+    normalized_items = None
+    if items_payload is not None:
+        normalized_items = [
+            _normalize_item_payload(item, tenant_id=order.tenant_id, sort_order=index)
+            for index, item in enumerate(items_payload)
+        ]
+        data.update(
+            {
+                "subtotal": sum((item.quantity * item.unit_price for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
+                "discount_total": sum((item.discount_amount for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
+                "tax_total": sum((item.tax_amount for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
+                "grand_total": sum((item.line_total for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
+            }
+        )
     for field, value in data.items():
         setattr(order, field, value)
+    if normalized_items is not None:
+        order.items = normalized_items
     db.add(order)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order could not be updated") from exc
     db.refresh(order)
     return get_order_or_404(db, tenant_id=order.tenant_id, order_id=order.id)

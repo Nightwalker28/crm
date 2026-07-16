@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: leads-revamp.spec.ts >> Leads routed workflow exposes create, detail, edit, conversion, and deep-linked tabs
-- Location: tests/e2e/leads-revamp.spec.ts:83:5
+- Name: payments-revamp.spec.ts >> Payments provides a responsive receivables list and records a payment
+- Location: tests/e2e/payments-revamp.spec.ts:56:5
 
 # Error details
 
@@ -70,22 +70,27 @@ Error: Admin MFA is enabled. Set E2E_ADMIN_MFA_CODE or E2E_ADMIN_RECOVERY_CODE t
   18 |   await page.getByRole("button", { name: "Sign in with email" }).click();
   19 | 
   20 |   const authenticatorInput = page.getByLabel("Authenticator Code");
-  21 |   await expect.poll(async () => page.url().endsWith("/dashboard") || await authenticatorInput.isVisible().catch(() => false)).toBeTruthy();
-  22 | 
-  23 |   if (await authenticatorInput.isVisible().catch(() => false)) {
-  24 |     if (adminMfaCode) {
-  25 |       await authenticatorInput.fill(adminMfaCode);
-  26 |     } else if (adminRecoveryCode) {
-  27 |       await page.getByLabel("Recovery Code").fill(adminRecoveryCode);
-  28 |     } else {
-> 29 |       throw new Error("Admin MFA is enabled. Set E2E_ADMIN_MFA_CODE or E2E_ADMIN_RECOVERY_CODE to run authenticated browser tests.");
+  21 |   await expect
+  22 |     .poll(
+  23 |       async () => page.url().endsWith("/dashboard") || await authenticatorInput.isVisible().catch(() => false),
+  24 |       { message: "Expected login to reach the dashboard or MFA challenge.", timeout: 20_000 },
+  25 |     )
+  26 |     .toBeTruthy();
+  27 | 
+  28 |   if (await authenticatorInput.isVisible().catch(() => false)) {
+  29 |     if (adminMfaCode) {
+  30 |       await authenticatorInput.fill(adminMfaCode);
+  31 |     } else if (adminRecoveryCode) {
+  32 |       await page.getByLabel("Recovery Code").fill(adminRecoveryCode);
+  33 |     } else {
+> 34 |       throw new Error("Admin MFA is enabled. Set E2E_ADMIN_MFA_CODE or E2E_ADMIN_RECOVERY_CODE to run authenticated browser tests.");
      |             ^ Error: Admin MFA is enabled. Set E2E_ADMIN_MFA_CODE or E2E_ADMIN_RECOVERY_CODE to run authenticated browser tests.
-  30 |     }
-  31 |     await page.getByRole("button", { name: "Verify MFA" }).click();
-  32 |   }
-  33 | 
-  34 |   await page.waitForURL("**/dashboard");
-  35 |   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
-  36 | }
-  37 | 
+  35 |     }
+  36 |     await page.getByRole("button", { name: "Verify MFA" }).click();
+  37 |   }
+  38 | 
+  39 |   await page.waitForURL("**/dashboard");
+  40 |   await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+  41 | }
+  42 | 
 ```

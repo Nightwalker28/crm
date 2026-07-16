@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckSquare, ExternalLink, FileText, RefreshCw, Send, ShoppingCart, StickyNote } from "lucide-react";
+import { CheckSquare, ExternalLink, FileText, Pencil, RefreshCw, Send, ShoppingCart, StickyNote } from "lucide-react";
 import { toast } from "sonner";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
@@ -80,6 +80,7 @@ type QuoteSummary = {
     created_time?: string | null;
     updated_at?: string | null;
     custom_fields?: Record<string, unknown> | null;
+    items?: Array<{ id: number; name: string; description?: string | null; quantity: string | number; unit_price: string | number; discount_amount: string | number; tax_amount: string | number; line_total: string | number; sort_order: number }>;
   };
   opportunity?: {
     opportunity_id: number;
@@ -347,6 +348,7 @@ export default function QuoteDetailPage() {
               redirectHref="/dashboard/sales/quotes"
               queryKeys={["sales-quotes"]}
             />
+            <Button asChild variant="outline"><Link href={`/dashboard/sales/quotes/${params.quoteId}/edit`}><Pencil />Edit quote</Link></Button>
             <Button onClick={handleSave} disabled={saving || !form.customer_name.trim() || !form.quote_number.trim()}>{saving ? "Saving..." : "Save Quote"}</Button>
           </>
         )}
@@ -494,16 +496,29 @@ export default function QuoteDetailPage() {
                 {fieldEnabled("issue_date") ? <Field><FieldLabel>Issue Date</FieldLabel><Input type="date" value={form.issue_date} onChange={(event) => setForm((current) => ({ ...current, issue_date: event.target.value }))} /></Field> : null}
                 {fieldEnabled("expiry_date") ? <Field><FieldLabel>Expiry Date</FieldLabel><Input type="date" value={form.expiry_date} onChange={(event) => setForm((current) => ({ ...current, expiry_date: event.target.value }))} /></Field> : null}
                 {fieldEnabled("currency") ? <Field><FieldLabel>Currency</FieldLabel><Input value={form.currency} onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))} /></Field> : null}
-                {fieldEnabled("total_amount") ? <Field><FieldLabel>Total</FieldLabel><Input type="number" step="0.01" value={form.total_amount} onChange={(event) => setForm((current) => ({ ...current, total_amount: event.target.value }))} /></Field> : null}
-                {fieldEnabled("subtotal_amount") ? <Field><FieldLabel>Subtotal</FieldLabel><Input type="number" step="0.01" value={form.subtotal_amount} onChange={(event) => setForm((current) => ({ ...current, subtotal_amount: event.target.value }))} /></Field> : null}
-                {fieldEnabled("discount_amount") ? <Field><FieldLabel>Discount</FieldLabel><Input type="number" step="0.01" value={form.discount_amount} onChange={(event) => setForm((current) => ({ ...current, discount_amount: event.target.value }))} /></Field> : null}
-                {fieldEnabled("tax_amount") ? <Field><FieldLabel>Tax</FieldLabel><Input type="number" step="0.01" value={form.tax_amount} onChange={(event) => setForm((current) => ({ ...current, tax_amount: event.target.value }))} /></Field> : null}
+                {fieldEnabled("total_amount") ? <Field><FieldLabel>Total</FieldLabel><Input type="number" step="0.01" value={form.total_amount} disabled={Boolean(summary.quote.items?.length)} onChange={(event) => setForm((current) => ({ ...current, total_amount: event.target.value }))} /></Field> : null}
+                {fieldEnabled("subtotal_amount") ? <Field><FieldLabel>Subtotal</FieldLabel><Input type="number" step="0.01" value={form.subtotal_amount} disabled={Boolean(summary.quote.items?.length)} onChange={(event) => setForm((current) => ({ ...current, subtotal_amount: event.target.value }))} /></Field> : null}
+                {fieldEnabled("discount_amount") ? <Field><FieldLabel>Discount</FieldLabel><Input type="number" step="0.01" value={form.discount_amount} disabled={Boolean(summary.quote.items?.length)} onChange={(event) => setForm((current) => ({ ...current, discount_amount: event.target.value }))} /></Field> : null}
+                {fieldEnabled("tax_amount") ? <Field><FieldLabel>Tax</FieldLabel><Input type="number" step="0.01" value={form.tax_amount} disabled={Boolean(summary.quote.items?.length)} onChange={(event) => setForm((current) => ({ ...current, tax_amount: event.target.value }))} /></Field> : null}
               </FieldGroup>
               {fieldEnabled("notes") ? <div className="mt-4"><Field><FieldLabel>Notes</FieldLabel><Input value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} /></Field></div> : null}
               <div className="mt-4">
                 <CustomFieldInputs definitions={customFieldsQuery.data ?? []} values={customFieldValues} onChange={(fieldKey, value) => setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))} />
               </div>
             </Card>
+
+            {summary.quote.items?.length ? (
+              <Card className="px-5 py-5 lg:col-span-2">
+                <h2 className="text-lg font-semibold text-neutral-100">Line Items</h2>
+                <FieldDescription className="mt-1">Pricing totals are calculated from these persisted items.</FieldDescription>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-sm">
+                    <thead><tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500"><th className="px-3 py-2">Item</th><th className="px-3 py-2 text-right">Quantity</th><th className="px-3 py-2 text-right">Unit price</th><th className="px-3 py-2 text-right">Discount</th><th className="px-3 py-2 text-right">Tax</th><th className="px-3 py-2 text-right">Total</th></tr></thead>
+                    <tbody>{summary.quote.items.map((item) => <tr key={item.id} className="border-b border-neutral-800/70"><td className="px-3 py-3"><div className="font-medium text-neutral-100">{item.name}</div>{item.description ? <div className="mt-1 text-xs text-neutral-500">{item.description}</div> : null}</td><td className="px-3 py-3 text-right tabular-nums text-neutral-300">{Number(item.quantity)}</td><td className="px-3 py-3 text-right tabular-nums text-neutral-300">{formatMoney(item.unit_price, summary.quote.currency)}</td><td className="px-3 py-3 text-right tabular-nums text-neutral-300">{formatMoney(item.discount_amount, summary.quote.currency)}</td><td className="px-3 py-3 text-right tabular-nums text-neutral-300">{formatMoney(item.tax_amount, summary.quote.currency)}</td><td className="px-3 py-3 text-right font-medium tabular-nums text-neutral-100">{formatMoney(item.line_total, summary.quote.currency)}</td></tr>)}</tbody>
+                  </table>
+                </div>
+              </Card>
+            ) : null}
 
             <Card className="px-5 py-5">
               <h2 className="text-lg font-semibold text-neutral-100">Summary</h2>

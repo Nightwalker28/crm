@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment } from "react";
-import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { ShoppingCart } from "lucide-react";
 
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
+import { Button } from "@/components/ui/button";
 import type { Order } from "@/hooks/sales/useOrders";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { formatDateTime } from "@/lib/datetime";
@@ -24,13 +25,15 @@ type OrdersTableProps = {
   columnOptions?: TableColumnOption[];
   sort?: SortState;
   onSortChange?: (sort: SortState) => void;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  draft: { bg: "bg-neutral-800/40", text: "text-neutral-300", border: "border-neutral-700/40", label: "Draft" },
-  confirmed: { bg: "bg-sky-900/30", text: "text-sky-300", border: "border-sky-700/40", label: "Confirmed" },
-  fulfilled: { bg: "bg-emerald-900/30", text: "text-emerald-300", border: "border-emerald-700/40", label: "Fulfilled" },
-  cancelled: { bg: "bg-red-900/30", text: "text-red-300", border: "border-red-700/40", label: "Cancelled" },
+  draft: { bg: "bg-surface-muted", text: "text-copy-secondary", border: "border-line-default", label: "Draft" },
+  confirmed: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40", label: "Confirmed" },
+  fulfilled: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Fulfilled" },
+  cancelled: { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40", label: "Cancelled" },
 };
 
 function formatMoney(value: string | number | null | undefined, currency: string | null | undefined) {
@@ -64,8 +67,9 @@ export default function OrdersTable({
   columnOptions = [],
   sort = null,
   onSortChange,
+  hasActiveFilters = false,
+  onClearFilters,
 }: OrdersTableProps) {
-  const router = useRouter();
 
   function toggleSort(column: string) {
     const nextSort: SortState = sort?.column === column
@@ -77,13 +81,21 @@ export default function OrdersTable({
   function renderCell(order: Order, column: string) {
     switch (column) {
       case "order_number":
-        return <TableCell><span className="font-mono text-sm font-medium text-neutral-100">{order.order_number}</span></TableCell>;
+        return <TableCell className="sticky left-0 z-10 bg-surface"><Link href={`/dashboard/sales/orders/${order.id}`} className="font-mono text-sm font-medium text-copy-primary hover:underline">{order.order_number}</Link></TableCell>;
       case "status": {
         const style = STATUS_STYLES[order.status] ?? STATUS_STYLES.draft;
         return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
       }
       case "grand_total":
         return <TableCell><span className="text-sm tabular-nums text-neutral-200">{formatMoney(order.grand_total, order.currency)}</span></TableCell>;
+      case "organization_name":
+        return <TableCell><span className="text-sm text-neutral-300">{order.organization_name || "—"}</span></TableCell>;
+      case "contact_name":
+        return <TableCell><span className="text-sm text-neutral-300">{order.contact_name || "—"}</span></TableCell>;
+      case "opportunity_name":
+        return <TableCell><span className="text-sm text-neutral-300">{order.opportunity_name || "—"}</span></TableCell>;
+      case "owner_name":
+        return <TableCell><span className="text-sm text-neutral-300">{order.owner_name || "Unassigned"}</span></TableCell>;
       case "created_at":
       case "updated_at":
         return <TableCell><span className="text-sm text-neutral-400">{formatDateTime(String(order[column]))}</span></TableCell>;
@@ -101,7 +113,7 @@ export default function OrdersTable({
               const label = getReadableColumnLabel(column, columnOptions);
               const sortable = SORTABLE_COLUMNS.has(column);
               return sortable ? (
-                <SortableHead key={column} sorted={sort?.column === column} direction={sort?.column === column ? sort.direction : "asc"} onClick={() => toggleSort(column)}>
+                <SortableHead key={column} sorted={sort?.column === column} direction={sort?.column === column ? sort.direction : "asc"} onClick={() => toggleSort(column)} className={column === "order_number" ? "sticky left-0 z-20 bg-surface" : undefined}>
                   {label}
                 </SortableHead>
               ) : <TableHead key={column}>{label}</TableHead>;
@@ -114,12 +126,12 @@ export default function OrdersTable({
           ) : orders.length === 0 ? (
             <TableRow>
               <TableCell colSpan={visibleColumns.length} className="py-16 text-center">
-                <EmptyState icon={ShoppingCart} title="No orders found" description="Accepted quotes converted to orders will appear here." />
+                <EmptyState icon={ShoppingCart} title={hasActiveFilters ? "No orders match these filters" : "No orders yet"} description={hasActiveFilters ? "Clear one or more filters and try again." : "Create an order manually or convert an accepted quote."} action={hasActiveFilters && onClearFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button> : <Button asChild><Link href="/dashboard/sales/orders/new">Create order</Link></Button>} />
               </TableCell>
             </TableRow>
           ) : (
             orders.map((order) => (
-              <TableRow key={order.id} className="group cursor-pointer" onClick={() => router.push(`/dashboard/sales/orders/${order.id}`)}>
+              <TableRow key={order.id}>
                 {visibleColumns.map((column) => <Fragment key={column}>{renderCell(order, column)}</Fragment>)}
               </TableRow>
             ))

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
@@ -89,7 +90,7 @@ export default function OrderDetailPage() {
         backLabel="Back to Orders"
         title={order ? order.order_number : "Order"}
         description="Review order value, linked quote, and fulfillment status."
-        primaryAction={<Button onClick={handleSave} disabled={saving || loading}>{saving ? "Saving..." : "Save Order"}</Button>}
+        primaryAction={<><Button asChild variant="outline"><Link href={`/dashboard/sales/orders/${params.orderId}/edit`}><Pencil />Edit order</Link></Button><Button onClick={handleSave} disabled={saving || loading}>{saving ? "Saving..." : "Save status"}</Button></>}
       />
 
       {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}
@@ -114,6 +115,8 @@ export default function OrderDetailPage() {
               <SummaryTile label="Tax" value={formatMoney(order.tax_total, order.currency)} />
               <SummaryTile label="Discount" value={formatMoney(order.discount_total, order.currency)} />
               <SummaryTile label="Created" value={formatDateTime(order.created_at)} />
+              <SummaryTile label="Delivery date" value={order.delivery_date || "Not scheduled"} />
+              <SummaryTile label="Payment terms" value={order.payment_terms || "Not set"} />
             </FieldGroup>
           </Card>
 
@@ -121,9 +124,12 @@ export default function OrderDetailPage() {
             <h2 className="text-lg font-semibold text-neutral-100">Links</h2>
             <div className="mt-4 grid gap-3">
               <LinkedTile label="Quote" value={order.quote_id ? `Quote #${order.quote_id}` : "No quote"} href={order.quote_id ? `/dashboard/sales/quotes/${order.quote_id}` : null} />
-              <LinkedTile label="Account" value={order.organization_id ? `Account #${order.organization_id}` : "No account"} href={order.organization_id ? `/dashboard/sales/organizations/${order.organization_id}` : null} />
-              <LinkedTile label="Contact" value={order.contact_id ? `Contact #${order.contact_id}` : "No contact"} href={order.contact_id ? `/dashboard/sales/contacts/${order.contact_id}` : null} />
-              <LinkedTile label="Deal" value={order.opportunity_id ? `Deal #${order.opportunity_id}` : "No deal"} href={order.opportunity_id ? `/dashboard/sales/opportunities/${order.opportunity_id}` : null} />
+              <LinkedTile label="Account" value={order.organization_name || (order.organization_id ? `Account #${order.organization_id}` : "No account")} href={order.organization_id ? `/dashboard/sales/organizations/${order.organization_id}` : null} />
+              <LinkedTile label="Contact" value={order.contact_name || (order.contact_id ? `Contact #${order.contact_id}` : "No contact")} href={order.contact_id ? `/dashboard/sales/contacts/${order.contact_id}` : null} />
+              <LinkedTile label="Deal" value={order.opportunity_name || (order.opportunity_id ? `Deal #${order.opportunity_id}` : "No deal")} href={order.opportunity_id ? `/dashboard/sales/opportunities/${order.opportunity_id}` : null} />
+              <SummaryTile label="Owner" value={order.owner_name || "Unassigned"} />
+              {order.delivery_address ? <SummaryTile label="Delivery address" value={order.delivery_address} /> : null}
+              {order.notes ? <SummaryTile label="Notes" value={order.notes} /> : null}
             </div>
           </Card>
 

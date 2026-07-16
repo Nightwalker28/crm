@@ -311,6 +311,28 @@ class LeadConversionResponse(BaseModel):
     created_deal: bool = False
 
 
+class SalesQuoteItemBase(BaseModel):
+    name: str = Field(min_length=1, max_length=500)
+    description: str | None = None
+    quantity: Decimal = Field(default=Decimal("1"), gt=0)
+    unit_price: Decimal = Field(default=Decimal("0"), ge=0)
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    tax_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    sort_order: int = Field(default=0, ge=0)
+
+
+class SalesQuoteItemCreate(SalesQuoteItemBase):
+    pass
+
+
+class SalesQuoteItemResponse(SalesQuoteItemBase):
+    id: int
+    quote_id: int
+    line_total: Decimal
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class SalesQuoteBase(BaseModel):
     title: str | None = None
     customer_name: str
@@ -332,6 +354,7 @@ class SalesQuoteBase(BaseModel):
 class SalesQuoteCreateRequest(SalesQuoteBase):
     quote_number: str | None = None
     assigned_to: int | None = None
+    items: list[SalesQuoteItemCreate] = Field(default_factory=list, max_length=200)
 
 
 class SalesQuoteUpdateRequest(BaseModel):
@@ -352,6 +375,7 @@ class SalesQuoteUpdateRequest(BaseModel):
     notes: str | None = None
     assigned_to: int | None = None
     custom_fields: dict[str, Any] | None = None
+    items: list[SalesQuoteItemCreate] | None = Field(default=None, max_length=200)
 
 
 class SalesQuoteResponse(SalesQuoteBase):
@@ -360,6 +384,7 @@ class SalesQuoteResponse(SalesQuoteBase):
     assigned_to: int | None = None
     created_time: datetime
     updated_at: datetime | None = None
+    items: list[SalesQuoteItemResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -487,14 +512,14 @@ class ClientQuoteActionRequest(BaseModel):
 
 
 class SalesOrderItemBase(BaseModel):
-    name: str
+    name: str = Field(min_length=1, max_length=500)
     description: str | None = None
-    quantity: Decimal = Decimal("1")
-    unit_price: Decimal = Decimal("0")
-    discount_amount: Decimal = Decimal("0")
-    tax_amount: Decimal = Decimal("0")
-    line_total: Decimal = Decimal("0")
-    sort_order: int = 0
+    quantity: Decimal = Field(default=Decimal("1"), gt=0)
+    unit_price: Decimal = Field(default=Decimal("0"), ge=0)
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    tax_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    line_total: Decimal = Field(default=Decimal("0"), ge=0)
+    sort_order: int = Field(default=0, ge=0)
 
 
 class SalesOrderItemCreate(SalesOrderItemBase):
@@ -520,13 +545,27 @@ class SalesOrderCreateRequest(BaseModel):
     tax_total: Decimal = Decimal("0")
     discount_total: Decimal = Decimal("0")
     grand_total: Decimal = Decimal("0")
+    delivery_date: date | None = None
+    delivery_address: str | None = None
+    payment_terms: str | None = None
+    notes: str | None = None
     owner_id: int | None = None
     items: list[SalesOrderItemCreate] = Field(default_factory=list)
 
 
 class SalesOrderUpdateRequest(BaseModel):
+    order_number: str | None = None
+    organization_id: int | None = None
+    contact_id: int | None = None
+    opportunity_id: int | None = None
     status: str | None = None
+    currency: str | None = None
     owner_id: int | None = None
+    delivery_date: date | None = None
+    delivery_address: str | None = None
+    payment_terms: str | None = None
+    notes: str | None = None
+    items: list[SalesOrderItemCreate] | None = Field(default=None, min_length=1)
 
 
 class SalesOrderResponse(BaseModel):
@@ -536,13 +575,21 @@ class SalesOrderResponse(BaseModel):
     organization_id: int | None = None
     contact_id: int | None = None
     opportunity_id: int | None = None
+    organization_name: str | None = None
+    contact_name: str | None = None
+    opportunity_name: str | None = None
     status: str
     currency: str
     subtotal: Decimal
     tax_total: Decimal
     discount_total: Decimal
     grand_total: Decimal
+    delivery_date: date | None = None
+    delivery_address: str | None = None
+    payment_terms: str | None = None
+    notes: str | None = None
     owner_id: int | None = None
+    owner_name: str | None = None
     created_by_id: int | None = None
     created_at: datetime
     updated_at: datetime
@@ -558,10 +605,14 @@ class SalesOrderListItem(BaseModel):
     organization_id: int | None = None
     contact_id: int | None = None
     opportunity_id: int | None = None
+    organization_name: str | None = None
+    contact_name: str | None = None
+    opportunity_name: str | None = None
     status: str
     currency: str
     grand_total: Decimal
     owner_id: int | None = None
+    owner_name: str | None = None
     created_at: datetime
     updated_at: datetime
 

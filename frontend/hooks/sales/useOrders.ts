@@ -25,6 +25,9 @@ export type Order = {
   organization_id: number | null;
   contact_id: number | null;
   opportunity_id: number | null;
+  organization_name?: string | null;
+  contact_name?: string | null;
+  opportunity_name?: string | null;
   status: string;
   currency: string;
   subtotal?: string | number | null;
@@ -32,6 +35,11 @@ export type Order = {
   discount_total?: string | number | null;
   grand_total: string | number;
   owner_id: number | null;
+  owner_name?: string | null;
+  delivery_date?: string | null;
+  delivery_address?: string | null;
+  payment_terms?: string | null;
+  notes?: string | null;
   created_by_id?: number | null;
   created_at: string;
   updated_at: string;

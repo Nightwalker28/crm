@@ -97,6 +97,49 @@ class QuoteOpportunityLinkTests(unittest.TestCase):
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "Opportunity not found")
 
+    def test_create_quote_persists_tenant_scoped_items_and_calculates_totals(self):
+        with patch.object(quotes_services, "validate_custom_field_payload", return_value={}), \
+             patch.object(quotes_services, "save_custom_field_values"), \
+             patch.object(quotes_services, "hydrate_custom_field_record", side_effect=lambda *args, **kwargs: kwargs["record"]):
+            quote = quotes_services.create_sales_quote(
+                self.db,
+                {
+                    "quote_number": "Q-ITEMS",
+                    "customer_name": "Acme",
+                    "currency": "USD",
+                    "items": [
+                        {"name": "Implementation", "quantity": "2", "unit_price": "100", "discount_amount": "10", "tax_amount": "19"},
+                        {"name": "Training", "quantity": "1", "unit_price": "50", "discount_amount": "0", "tax_amount": "5"},
+                    ],
+                },
+                self.current_user,
+            )
+
+        self.assertEqual(quote.tenant_id, 10)
+        self.assertEqual(len(quote.items), 2)
+        self.assertTrue(all(item.tenant_id == 10 for item in quote.items))
+        self.assertEqual(quote.subtotal_amount, Decimal("250.00"))
+        self.assertEqual(quote.discount_amount, Decimal("10.00"))
+        self.assertEqual(quote.tax_amount, Decimal("24.00"))
+        self.assertEqual(quote.total_amount, Decimal("264.00"))
+        self.assertEqual(quote.items[0].line_total, Decimal("209.00"))
+
+    def test_create_quote_rejects_invalid_item_amounts(self):
+        with patch.object(quotes_services, "validate_custom_field_payload", return_value={}):
+            with self.assertRaises(HTTPException) as exc:
+                quotes_services.create_sales_quote(
+                    self.db,
+                    {
+                        "quote_number": "Q-BAD-ITEM",
+                        "customer_name": "Acme",
+                        "items": [{"name": "Implementation", "quantity": "1", "unit_price": "10", "discount_amount": "20"}],
+                    },
+                    self.current_user,
+                )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Quote item discount cannot exceed its value and tax")
+
     def test_update_quote_rejects_mismatched_opportunity_contact(self):
         quote = SalesQuote(
             quote_id=50,

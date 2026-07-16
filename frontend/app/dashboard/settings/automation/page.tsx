@@ -515,7 +515,7 @@ export default function AutomationSettingsPage() {
               <SelectTrigger className="w-full md:w-80"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="global">Global Automation Center</SelectItem>
-                {MODULE_REGISTRY.filter((module) => !module.adminOnly && module.enabled).map((module) => (
+                {MODULE_REGISTRY.filter((module) => !module.adminOnly && module.enabled && !module.requiredModuleKey).map((module) => (
                   <SelectItem key={module.key} value={module.key}>{module.label}</SelectItem>
                 ))}
               </SelectContent>

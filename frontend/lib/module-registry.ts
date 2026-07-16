@@ -41,7 +41,8 @@ export const MODULE_REGISTRY: readonly ModuleRegistryEntry[] = [
   { key: "support_cases", label: "Support Cases", route: DASHBOARD_ROUTES.supportCases, group: "support", status: "tier1", enabled: true, sortOrder: 10 },
   { key: "client_portal", label: "Client Portal", route: DASHBOARD_ROUTES.clientPortal, group: "support", status: "tier1", enabled: true, sortOrder: 20 },
   { key: "finance_io", label: "Insertion Orders", route: DASHBOARD_ROUTES.insertionOrders, group: "finance", status: "tier2", enabled: true, sortOrder: 10 },
-  { key: "finance_pos", label: "POS", route: DASHBOARD_ROUTES.financePos, group: "finance", status: "tier2", enabled: true, sortOrder: 20 },
+  { key: "finance_pos", label: "Invoices", route: DASHBOARD_ROUTES.financePos, group: "finance", status: "tier2", enabled: true, sortOrder: 20 },
+  { key: "finance_payments", label: "Payments", route: DASHBOARD_ROUTES.payments, group: "finance", status: "tier2", enabled: true, sortOrder: 30, requiredModuleKey: "finance_pos" },
   { key: "reports", label: "Reports", route: DASHBOARD_ROUTES.reports, group: "reports", status: "tier2", enabled: true, sortOrder: 90 },
   { key: "message_templates", label: "Templates", route: SETTINGS_ROUTES.templates, group: "settings", status: "tier2", enabled: true, sortOrder: 80, adminOnly: true },
   { key: "integrations", label: "Integrations", route: SETTINGS_ROUTES.integrations, group: "settings", status: "tier1", enabled: true, sortOrder: 90, adminOnly: true },
@@ -82,6 +83,15 @@ export function getModuleRegistryLabel(moduleKey: string): string | null {
 
 export function getGuardedModuleRoutePrefixes(): string[] {
   return MODULE_REGISTRY.filter((module) => module.enabled && !module.adminOnly).map((module) => module.route);
+}
+
+export function getDependentModuleDefinitions(moduleKey: string): ModuleRegistryEntry[] {
+  return MODULE_REGISTRY.filter((module) => module.enabled && module.requiredModuleKey === moduleKey);
+}
+
+export function getRequiredModuleKeyForRoute(route: string): string | null {
+  const definition = MODULES_BY_ROUTE.get(route);
+  return definition ? definition.requiredModuleKey ?? definition.key : null;
 }
 
 export function isRegisteredModuleRoute(route: string): boolean {

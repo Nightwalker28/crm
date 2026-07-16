@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, Date, DateTime, ForeignKey, Index, Integer, JSON, Numeric, Text, func, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, Numeric, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import expression
 
@@ -327,6 +327,7 @@ class SalesQuote(Base):
         Index("ix_sales_quotes_tenant_contact", "tenant_id", "contact_id"),
         Index("ix_sales_quotes_tenant_organization", "tenant_id", "organization_id"),
         Index("ix_sales_quotes_tenant_opportunity", "tenant_id", "opportunity_id"),
+        UniqueConstraint("tenant_id", "quote_id", name="uq_sales_quotes_tenant_quote_id"),
     )
 
     quote_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
@@ -365,6 +366,7 @@ class SalesQuote(Base):
     organization = relationship("SalesOrganization", lazy="selectin")
     opportunity = relationship("SalesOpportunity", lazy="selectin")
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
+    items = relationship("SalesQuoteItem", back_populates="quote", cascade="all, delete-orphan", order_by="SalesQuoteItem.sort_order")
     proposal_documents = relationship("SalesQuoteDocument", back_populates="quote", cascade="all, delete-orphan")
 
     @property
@@ -382,6 +384,38 @@ class SalesQuote(Base):
     @custom_fields.setter
     def custom_fields(self, value: dict | None) -> None:
         self.custom_data = value
+
+
+class SalesQuoteItem(Base):
+    __tablename__ = "sales_quote_items"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["tenant_id", "quote_id"],
+            ["sales_quotes.tenant_id", "sales_quotes.quote_id"],
+            name="fk_sales_quote_items_tenant_quote",
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("quantity > 0", name="ck_sales_quote_items_quantity_positive"),
+        CheckConstraint("unit_price >= 0", name="ck_sales_quote_items_unit_price_nonnegative"),
+        CheckConstraint("discount_amount >= 0", name="ck_sales_quote_items_discount_nonnegative"),
+        CheckConstraint("tax_amount >= 0", name="ck_sales_quote_items_tax_nonnegative"),
+        CheckConstraint("line_total >= 0", name="ck_sales_quote_items_total_nonnegative"),
+        Index("ix_sales_quote_items_tenant_quote", "tenant_id", "quote_id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
+    tenant_id = Column(BigInteger, nullable=False)
+    quote_id = Column(BigInteger, nullable=False)
+    name = Column(Text, nullable=False)
+    description = Column(Text, nullable=True)
+    quantity = Column(Numeric(18, 4), nullable=False, server_default="1")
+    unit_price = Column(Numeric(18, 2), nullable=False, server_default="0")
+    discount_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    tax_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    line_total = Column(Numeric(18, 2), nullable=False, server_default="0")
+    sort_order = Column(Integer, nullable=False, server_default="0")
+
+    quote = relationship("SalesQuote", back_populates="items")
 
 
 class SalesQuoteDocument(Base):
@@ -467,6 +501,10 @@ class SalesOrder(Base):
     tax_total = Column(Numeric(18, 2), nullable=False, server_default="0")
     discount_total = Column(Numeric(18, 2), nullable=False, server_default="0")
     grand_total = Column(Numeric(18, 2), nullable=False, server_default="0")
+    delivery_date = Column(Date, nullable=True)
+    delivery_address = Column(Text, nullable=True)
+    payment_terms = Column(Text, nullable=True)
+    notes = Column(Text, nullable=True)
     owner_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -484,7 +522,28 @@ class SalesOrder(Base):
     organization = relationship("SalesOrganization", lazy="selectin")
     contact = relationship("SalesContact", lazy="selectin")
     opportunity = relationship("SalesOpportunity", lazy="selectin")
+    owner_user = relationship("User", foreign_keys=[owner_id], lazy="selectin")
     items = relationship("SalesOrderItem", back_populates="order", cascade="all, delete-orphan", order_by="SalesOrderItem.sort_order")
+
+    @property
+    def organization_name(self) -> str | None:
+        return self.organization.org_name if self.organization else None
+
+    @property
+    def contact_name(self) -> str | None:
+        if not self.contact:
+            return None
+        return " ".join(part for part in [self.contact.first_name, self.contact.last_name] if part).strip() or self.contact.primary_email
+
+    @property
+    def opportunity_name(self) -> str | None:
+        return self.opportunity.opportunity_name if self.opportunity else None
+
+    @property
+    def owner_name(self) -> str | None:
+        if not self.owner_user:
+            return None
+        return " ".join(part for part in [self.owner_user.first_name, self.owner_user.last_name] if part).strip() or self.owner_user.email
 
 
 class SalesOrderItem(Base):

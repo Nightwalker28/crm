@@ -154,9 +154,13 @@ def list_deleted_quotes(pagination: Pagination = Depends(get_pagination), db: Se
 
 @router.post("", response_model=SalesQuoteResponse, status_code=status.HTTP_201_CREATED)
 def create_quote(payload: SalesQuoteCreateRequest, replace_duplicates: bool = False, skip_duplicates: bool = False, create_new_records: bool = False, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "create"))):
-    submitted_fields = set(payload.model_fields_set) - {"custom_fields"}
+    submitted_fields = set(payload.model_fields_set) - {"custom_fields", "items"}
     reject_disabled_field_writes(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", field_keys=submitted_fields)
-    sanitized_payload = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=payload.model_dump())
+    raw_payload = payload.model_dump()
+    items = raw_payload.pop("items", [])
+    sanitized_payload = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=raw_payload)
+    if "items" in payload.model_fields_set:
+        sanitized_payload["items"] = items
     created = create_sales_quote(db, sanitized_payload, current_user, replace_duplicates, skip_duplicates, create_new_records)
     log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=created.quote_id, action="create", description=f"Created quote {_display_quote_name(created)}", after_state=_serialize_quote(created))
     safe_emit_crm_event(
@@ -313,8 +317,11 @@ def update_quote(quote_id: int, payload: SalesQuoteUpdateRequest, db: Session = 
     update_data = payload.model_dump(exclude_unset=True)
     if not update_data:
         return quote
-    reject_disabled_field_writes(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", field_keys=set(update_data) - {"custom_fields"})
+    reject_disabled_field_writes(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", field_keys=set(update_data) - {"custom_fields", "items"})
+    items = update_data.pop("items", None)
     update_data = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=update_data)
+    if items is not None:
+        update_data["items"] = items
     before_state = _serialize_quote(quote)
     updated = update_sales_quote(db, quote, update_data)
     log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=updated.quote_id, action="update", description=f"Updated quote {_display_quote_name(updated)}", before_state=before_state, after_state=_serialize_quote(updated))

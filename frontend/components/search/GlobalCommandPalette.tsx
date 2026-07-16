@@ -10,7 +10,7 @@ import { Dialog, DialogBackdrop, DialogPanel } from "@/components/ui/dialog";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
-import { getModuleRegistryLabel, getModuleRoute, isModuleVisibleInNavigation } from "@/lib/module-registry";
+import { getDependentModuleDefinitions, getModuleRegistryLabel, getModuleRoute, isModuleVisibleInNavigation } from "@/lib/module-registry";
 import { canonicalizeDashboardHref } from "@/lib/routes";
 
 const RECENT_PAGES_KEY = "lynk:command-palette:recent-pages";
@@ -116,6 +116,12 @@ export default function GlobalCommandPalette() {
           href: getModuleRoute(module.name, module.base_route),
           group: "Modules",
         })),
+      ...modules.flatMap((module) => getDependentModuleDefinitions(module.name).map((dependent) => ({
+        label: dependent.label,
+        subtitle: dependent.route,
+        href: dependent.route,
+        group: "Modules",
+      }))),
     ];
 
     const deduped = new Map<string, PaletteLink>();

@@ -130,7 +130,15 @@ class ModuleRegistrationChecklistTests(unittest.TestCase):
             "contracts": ("/api/v1/contracts", "/dashboard/contracts"),
         }
         seeded_modules = {module["name"]: module["base_route"] for module in DEFAULT_MODULES}
-        api_paths = {route.path for route in router.routes}
+        api_paths = {
+            context.path
+            for route in router.routes
+            for context in (
+                route.effective_route_contexts()
+                if hasattr(route, "effective_route_contexts")
+                else (route,)
+            )
+        }
 
         for module_key, (api_prefix, dashboard_route) in expected.items():
             with self.subTest(module_key=module_key):

@@ -22,7 +22,7 @@ import NotificationCenter from "@/components/notifications/NotificationCenter";
 import { useAccessibleModules, type AccessibleModule } from "@/hooks/useAccessibleModules";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { getModuleDisplayName } from "@/lib/module-display";
-import { getModuleDefinition, getModuleRoute, isModuleVisibleInNavigation, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
+import { getDependentModuleDefinitions, getModuleDefinition, getModuleRoute, isModuleVisibleInNavigation, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
 import { DASHBOARD_ROUTES, SETTINGS_ROUTES } from "@/lib/routes";
 import { resolveMediaUrl } from "@/lib/media";
 
@@ -126,6 +126,9 @@ function buildOperationalGroups(modules: AccessibleModule[]) {
     if (!href) continue;
     const group = ensureGroup(crmModule);
     group.items.push({ href, label: moduleLabel(crmModule), moduleName: crmModule.name });
+    for (const dependent of getDependentModuleDefinitions(crmModule.name)) {
+      group.items.push({ href: dependent.route, label: dependent.label, moduleName: dependent.key });
+    }
   }
 
   return Array.from(groupMap.values())

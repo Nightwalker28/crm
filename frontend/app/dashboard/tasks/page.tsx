@@ -3,16 +3,19 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { CheckSquare, Plus } from "lucide-react";
+import { CalendarDays, CheckSquare, Columns3, Plus, Table2 } from "lucide-react";
 import { toast } from "sonner";
 
 import TaskDialog from "@/components/tasks/TaskDialog";
+import TasksBoard from "@/components/tasks/TasksBoard";
+import TasksCalendar from "@/components/tasks/TasksCalendar";
 import TasksTable from "@/components/tasks/TasksTable";
 import Pagination from "@/components/ui/Pagination";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
+import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
-import SearchBar from "@/components/ui/SearchBar";
+import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { Button } from "@/components/ui/button";
 import { fetchTaskCalendarEvent, useCalendarActions } from "@/hooks/useCalendar";
 import { fetchTask, useTasks, type Task, type TaskPayload, type TaskSortState } from "@/hooks/useTasks";
@@ -27,6 +30,7 @@ export default function TasksPage() {
   const taskId = taskIdParam && /^\d+$/.test(taskIdParam) ? Number(taskIdParam) : null;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [displayMode, setDisplayMode] = useState<"list" | "board" | "calendar">("list");
   const [sort, setSort] = useState<TaskSortState>(null);
   const { fields: moduleFields } = useModuleFieldConfigs("tasks");
   const definition = useMemo(() => buildModuleViewDefinition("tasks", [], moduleFields), [moduleFields]);
@@ -56,10 +60,13 @@ export default function TasksPage() {
     refresh,
     createTask,
     updateTask,
+    updateTaskStatus,
     deleteTask,
     isSaving,
     isDeleting,
   } = useTasks(activeFilters, sort);
+  const { allConditions, anyConditions } = getConditionGroups(activeFilters);
+  const activeFilterCount = allConditions.length + anyConditions.length;
   const {
     createEventFromTask,
     deleteTaskCalendarEvent,
@@ -121,6 +128,34 @@ export default function TasksPage() {
     toast.success("Task moved to the recycle bin.");
   }
 
+  async function handleStatusChange(task: Task, status: Task["status"]) {
+    if (task.status === status) return;
+    try {
+      await updateTaskStatus(task, status);
+      toast.success(`Task moved to ${status.replace(/_/g, " ")}.`);
+    } catch (statusError) {
+      toast.error(statusError instanceof Error ? statusError.message : "Task status could not be updated.");
+    }
+  }
+
+  function clearFilters() {
+    setDraftConfig((current) => ({
+      ...current,
+      filters: {
+        ...current.filters,
+        search: "",
+        conditions: [],
+        all_conditions: [],
+        any_conditions: [],
+      },
+    }));
+  }
+
+  function changeDisplayMode(mode: "list" | "board" | "calendar") {
+    setDisplayMode(mode);
+    if (mode !== "list" && pageSize < 100) onPageSizeChange(100);
+  }
+
   async function handleAddToCalendar() {
     if (!activeTask) return;
     const result = await createEventFromTask(activeTask.id);
@@ -147,74 +182,77 @@ export default function TasksPage() {
       <PageHeader
         title="Tasks"
         description="Coordinate team work, assign follow-ups, and turn notifications into actionable next steps."
+        eyebrow={totalCount ? `${totalCount} task${totalCount === 1 ? "" : "s"} in this view` : undefined}
         actions={
+          <Button onClick={openCreateDialog}>
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Add Task</span>
+          </Button>
+        }
+      />
+
+      <ModuleListToolbar
+        searchValue={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
+        onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
+        searchPlaceholder="Search tasks"
+        filtersOpen={Boolean(activeFilters.filtersOpen)}
+        activeFilterCount={activeFilterCount}
+        onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))}
+        onClearFilters={clearFilters}
+        viewControls={
           <>
-            <SavedViewSelector
-              moduleKey="tasks"
-              views={views}
-              selectedViewId={selectedViewId}
-              onSelect={setSelectedViewId}
-            />
-            <Button onClick={openCreateDialog}>
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">Add Task</span>
-            </Button>
+            <SavedViewSelector moduleKey="tasks" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />
+            <div className="inline-flex rounded-md border border-line-default p-0.5" aria-label="Task display">
+              <Button type="button" variant={displayMode === "list" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "list"} onClick={() => changeDisplayMode("list")}><Table2 />List</Button>
+              <Button type="button" variant={displayMode === "board" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "board"} onClick={() => changeDisplayMode("board")}><Columns3 />Board</Button>
+              <Button type="button" variant={displayMode === "calendar" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "calendar"} onClick={() => changeDisplayMode("calendar")}><CalendarDays />Calendar</Button>
+            </div>
           </>
         }
       />
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_auto]">
-        <SearchBar
-          value={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
-          onChange={(value) =>
-            setDraftConfig((current) => ({
-              ...current,
-              filters: {
-                ...current.filters,
-                search: value,
-              },
-            }))
-          }
-          placeholder="Search tasks"
-        />
-
-        <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 px-4 py-3 text-sm text-neutral-400">
-          <div className="flex items-center gap-2 text-neutral-200">
-            <CheckSquare className="h-4 w-4 text-neutral-500" />
-            Default task views hide completed work. Use Manage View if you want a completed-task queue beside active work.
-          </div>
+      <div className="rounded-xl border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
+        <div className="flex items-center gap-2 text-copy-secondary">
+          <CheckSquare className="h-4 w-4" />
+          Default task views hide completed work. Use Manage View to include a completed-task queue.
         </div>
       </div>
 
       <InlineSavedViewFilters
         filterFields={definition?.filterFields ?? []}
         filters={activeFilters}
-        onChange={(nextFilters) =>
-          setDraftConfig((current) => ({
-            ...current,
-            filters: nextFilters,
-          }))
-        }
+        onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))}
+        hideHeader
       />
 
       {error ? (
         <div className="flex justify-between rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">
           <span>{error}</span>
-          <button onClick={() => void refresh()} className="underline underline-offset-2">
-            Retry
-          </button>
+          <button onClick={() => void refresh()} className="underline underline-offset-2">Retry</button>
         </div>
       ) : null}
 
-      <TasksTable
-        tasks={tasks}
-        isLoading={isLoading}
-        isRefreshing={isFetching && !isLoading}
-        visibleColumns={visibleColumns}
-        onEdit={openEditDialog}
-        sort={sort}
-        onSortChange={setSort}
-      />
+      {displayMode !== "list" ? (
+        <div className="rounded-lg border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
+          Showing loaded records {rangeStart}-{rangeEnd} of {totalCount}. {displayMode === "board" ? "Drag cards between columns or use the status menu for keyboard access." : "Calendar placement follows each task's due date in your local timezone."}
+        </div>
+      ) : null}
+
+      {displayMode === "list" ? (
+        <TasksTable
+          tasks={tasks}
+          isLoading={isLoading}
+          isRefreshing={isFetching && !isLoading}
+          visibleColumns={visibleColumns}
+          onEdit={openEditDialog}
+          sort={sort}
+          onSortChange={setSort}
+        />
+      ) : displayMode === "board" ? (
+        <TasksBoard tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} onOpen={openEditDialog} onStatusChange={handleStatusChange} />
+      ) : (
+        <TasksCalendar tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} onOpen={openEditDialog} />
+      )}
 
       <Pagination
         page={page}
