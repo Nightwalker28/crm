@@ -143,6 +143,7 @@ class SalesContactResponse(SalesContactBase):
     customer_group_id: int | None = None
     customer_group: CustomerGroupSummary | None = None
     created_time: datetime
+    updated_at: datetime | None = None
     last_contacted_at: datetime | None = None
     last_contacted_channel: str | None = None
     last_contacted_by_user_id: int | None = None
@@ -238,6 +239,7 @@ class SalesLeadResponse(SalesLeadBase):
     tags: list[str] = Field(default_factory=list)
     next_follow_up_is_overdue: bool = False
     created_time: datetime
+    updated_at: datetime | None = None
     last_contacted_at: datetime | None = None
     last_contacted_channel: str | None = None
     last_contacted_by_user_id: int | None = None
@@ -679,6 +681,29 @@ class RelatedQuoteSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RelatedOrderSummary(BaseModel):
+    id: int
+    order_number: str
+    status: str
+    currency: str
+    grand_total: Decimal
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RelatedInvoiceSummary(BaseModel):
+    id: int
+    invoice_number: str
+    status: str
+    payment_status: str
+    currency: str
+    total_amount: Decimal
+    updated_at: datetime | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class OrganizationCompactSummary(BaseModel):
     org_id: int
     org_name: str
@@ -721,11 +746,15 @@ class OrganizationSummaryResponse(BaseModel):
     related_contacts: list[SalesContactResponse]
     related_opportunities: list[RelatedOpportunitySummary]
     related_quotes: list[RelatedQuoteSummary]
+    related_orders: list[RelatedOrderSummary]
+    related_invoices: list[RelatedInvoiceSummary]
     related_insertion_orders: list[RelatedInsertionOrderSummary]
     inferred_services: list[str]
     contact_count: int
     opportunity_count: int
     quote_count: int
+    order_count: int
+    invoice_count: int
     insertion_order_count: int
 
 
@@ -827,6 +856,7 @@ class SalesOpportunityResponse(SalesOpportunityBase):
     organization_name: str | None = None
     assigned_to_name: str | None = None
     created_time: datetime | None = None
+    updated_at: datetime | None = None
     last_contacted_at: datetime | None = None
     last_contacted_channel: str | None = None
     last_contacted_by_user_id: int | None = None

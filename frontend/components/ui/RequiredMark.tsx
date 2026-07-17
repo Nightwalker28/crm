@@ -1,3 +1,3 @@
 export function RequiredMark() {
-  return <span className="text-red-400" aria-hidden="true">*</span>;
+  return <span className="text-state-danger" aria-hidden="true">*</span>;
 }

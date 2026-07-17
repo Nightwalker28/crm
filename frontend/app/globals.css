@@ -149,6 +149,8 @@
   --color-bg-surface-muted: #171c23;
   --color-bg-surface-raised: #1d232c;
   --color-bg-overlay: rgba(5, 7, 10, 0.72);
+  --background-accent-glow: radial-gradient(circle at top right, rgba(108, 124, 255, 0.08), transparent 38%);
+  --shadow-panel: 0 24px 80px rgba(0, 0, 0, 0.28);
 
   --color-border-subtle: #20262f;
   --color-border-default: #2a313c;

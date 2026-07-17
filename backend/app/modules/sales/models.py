@@ -132,6 +132,7 @@ class SalesContact(Base):
         index=True,
     )
     created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     last_contacted_channel = Column(Text, nullable=True)
     last_contacted_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -214,6 +215,7 @@ class SalesLead(Base):
     assigned_to = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     team_id = Column(BigInteger, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True)
     created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     next_follow_up_at = Column(DateTime(timezone=True), nullable=True)
     last_contacted_channel = Column(Text, nullable=True)
@@ -619,6 +621,7 @@ class SalesOpportunity(Base):
     attachments = Column(Text, nullable=True)
 
     created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     last_contacted_channel = Column(Text, nullable=True)
     last_contacted_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)

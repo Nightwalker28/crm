@@ -4,7 +4,7 @@ from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.modules.platform.services.custom_fields import hydrate_custom_field_record, hydrate_custom_field_records
-from app.modules.finance.models import FinanceIO
+from app.modules.finance.models import FinanceIO, FinancePosInvoice
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesOrder, SalesQuote
 from app.modules.sales.services.quotes_services import get_latest_quote_proposal, list_quote_proposal_events
 
@@ -105,6 +105,30 @@ def _get_related_insertion_orders(
     )
 
 
+def _get_related_orders(db: Session, *, tenant_id: int, organization_id: int, limit: int = 10) -> list[SalesOrder]:
+    return (
+        db.query(SalesOrder)
+        .filter(SalesOrder.tenant_id == tenant_id, SalesOrder.organization_id == organization_id)
+        .order_by(SalesOrder.updated_at.desc(), SalesOrder.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+
+def _get_related_invoices(db: Session, *, tenant_id: int, organization_id: int, limit: int = 10) -> list[FinancePosInvoice]:
+    return (
+        db.query(FinancePosInvoice)
+        .filter(
+            FinancePosInvoice.tenant_id == tenant_id,
+            FinancePosInvoice.customer_organization_id == organization_id,
+            FinancePosInvoice.deleted_at.is_(None),
+        )
+        .order_by(FinancePosInvoice.updated_at.desc(), FinancePosInvoice.id.desc())
+        .limit(limit)
+        .all()
+    )
+
+
 def build_contact_summary(db: Session, contact: SalesContact) -> dict:
     organization = None
     if contact.organization_id:
@@ -163,7 +187,6 @@ def build_contact_summary(db: Session, contact: SalesContact) -> dict:
         records=quotes,
         record_id_attr="quote_id",
     )
-
     return {
         "contact": contact,
         "organization": organization,
@@ -223,17 +246,23 @@ def build_organization_summary(db: Session, organization: SalesOrganization) -> 
         records=quotes,
         record_id_attr="quote_id",
     )
+    orders = _get_related_orders(db, tenant_id=organization.tenant_id, organization_id=organization.org_id)
+    invoices = _get_related_invoices(db, tenant_id=organization.tenant_id, organization_id=organization.org_id)
 
     return {
         "organization": organization,
         "related_contacts": contacts,
         "related_opportunities": opportunities,
         "related_quotes": quotes,
+        "related_orders": orders,
+        "related_invoices": invoices,
         "related_insertion_orders": [_serialize_io(record) for record in insertion_orders],
         "inferred_services": _collect_services(opportunities),
         "contact_count": len(contacts),
         "opportunity_count": len(opportunities),
         "quote_count": len(quotes),
+        "order_count": len(orders),
+        "invoice_count": len(invoices),
         "insertion_order_count": len(insertion_orders),
     }
 

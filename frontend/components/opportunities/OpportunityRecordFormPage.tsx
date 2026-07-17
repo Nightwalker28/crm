@@ -8,30 +8,296 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
-import { EMPTY_OPPORTUNITY_FORM, OpportunityFormMainFields, OpportunityFormSidebarFields, type OpportunityFormValue } from "@/components/opportunities/OpportunityFormFields";
+import {
+  EMPTY_OPPORTUNITY_FORM,
+  OpportunityFormMainFields,
+  OpportunityFormSidebarFields,
+  type OpportunityFormValue,
+} from "@/components/opportunities/OpportunityFormFields";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
+import {
+  RouteErrorState,
+  RouteLoadingState,
+} from "@/components/ui/RouteStates";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
-import { pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import {
+  pickEnabledModulePayload,
+  useModuleFieldConfigs,
+} from "@/hooks/useModuleFieldConfigs";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
 
-type OpportunitySummary = { opportunity: OpportunityFormValue & { opportunity_id: number; custom_fields?: Record<string, unknown> | null }; contact?: { first_name?: string | null; last_name?: string | null; primary_email?: string | null } | null; organization?: { org_name: string } | null };
-async function fetchSummary(id: string) { const res = await apiFetch(`/sales/opportunities/${id}/summary`); const body = await res.json().catch(() => null); if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`); return body as OpportunitySummary; }
+type OpportunitySummary = {
+  opportunity: OpportunityFormValue & {
+    opportunity_id: number;
+    custom_fields?: Record<string, unknown> | null;
+    updated_at?: string | null;
+  };
+  contact?: {
+    first_name?: string | null;
+    last_name?: string | null;
+    primary_email?: string | null;
+  } | null;
+  organization?: { org_name: string } | null;
+};
+async function fetchSummary(id: string) {
+  const res = await apiFetch(`/sales/opportunities/${id}/summary`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  return body as OpportunitySummary;
+}
 
-export default function OpportunityRecordFormPage({ mode, opportunityId }: { mode: "create" | "edit"; opportunityId?: string }) {
-  const router = useRouter(); const queryClient = useQueryClient();
-  const [form, setForm] = useState<OpportunityFormValue>(EMPTY_OPPORTUNITY_FORM); const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
-  const [initialSnapshot, setInitialSnapshot] = useState(() => JSON.stringify([EMPTY_OPPORTUNITY_FORM, {}])); const [nameError, setNameError] = useState<string | null>(null); const [contactError, setContactError] = useState<string | null>(null); const [submitError, setSubmitError] = useState<string | null>(null); const [submitting, setSubmitting] = useState(false);
-  const customFields = useModuleCustomFields("sales_opportunities", true); const { fields: moduleFields } = useModuleFieldConfigs("sales_opportunities");
-  const summaryQuery = useQuery({ queryKey: ["sales-opportunity-summary", opportunityId], queryFn: () => fetchSummary(opportunityId as string), enabled: mode === "edit" && Boolean(opportunityId), refetchOnWindowFocus: false });
-  useEffect(() => { if (mode !== "edit" || !summaryQuery.data) return; const opportunity = summaryQuery.data.opportunity; const contactName = opportunity.contact_name || [summaryQuery.data.contact?.first_name, summaryQuery.data.contact?.last_name].filter(Boolean).join(" ") || summaryQuery.data.contact?.primary_email || opportunity.client || ""; const next: OpportunityFormValue = { ...EMPTY_OPPORTUNITY_FORM, ...opportunity, contact_name: contactName, organization_name: opportunity.organization_name || summaryQuery.data.organization?.org_name || "", assigned_to_name: opportunity.assigned_to_name || "", probability_percent: opportunity.probability_percent?.toString() ?? "", start_date: opportunity.start_date ?? "", expected_close_date: opportunity.expected_close_date ?? "", attachments: opportunity.attachments ?? [] }; const values = opportunity.custom_fields ?? {}; setForm(next); setCustomValues(values); setInitialSnapshot(JSON.stringify([next, values])); }, [mode, summaryQuery.data]);
-  const snapshot = useMemo(() => JSON.stringify([form, customValues]), [form, customValues]); const dirty = snapshot !== initialSnapshot;
-  useEffect(() => { const warn = (event: BeforeUnloadEvent) => { if (!dirty || submitting) return; event.preventDefault(); }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [dirty, submitting]);
-  function validate() { const validName = Boolean(form.opportunity_name.trim()); const validContact = Boolean(form.contact_id); setNameError(validName ? null : "Deal name is required."); setContactError(validContact ? null : "Select an existing contact."); if (!validName) document.getElementById("deal-name")?.focus(); return validName && validContact; }
-  async function submit() { if (!validate()) return; try { setSubmitting(true); setSubmitError(null); const trim = (value: string) => value.trim() || null; const payload = pickEnabledModulePayload({ opportunity_name: form.opportunity_name.trim(), client: form.contact_name.trim(), contact_id: form.contact_id, organization_id: form.organization_id, assigned_to: mode === "edit" && form.assigned_to === null ? undefined : form.assigned_to, sales_stage: form.sales_stage || "lead", start_date: form.start_date || null, expected_close_date: form.expected_close_date || null, probability_percent: form.probability_percent.trim() ? Number(form.probability_percent) : null, total_cost_of_project: trim(form.total_cost_of_project), currency_type: form.currency_type || null, campaign_type: trim(form.campaign_type), total_leads: trim(form.total_leads), cpl: trim(form.cpl), target_geography: trim(form.target_geography), target_audience: trim(form.target_audience), domain_cap: trim(form.domain_cap), tactics: trim(form.tactics), delivery_format: trim(form.delivery_format), attachments: form.attachments, custom_fields: customValues }, moduleFields, ["opportunity_name", "contact_id", "custom_fields"]); const endpoint = mode === "edit" ? `/sales/opportunities/${opportunityId}` : "/sales/opportunities"; const res = await apiFetch(endpoint, { method: mode === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) }); const body = await res.json().catch(() => null) as { opportunity_id?: number; detail?: string } | null; if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`); const savedId = mode === "edit" ? opportunityId : body?.opportunity_id; await Promise.all([queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }), queryClient.invalidateQueries({ queryKey: ["sales-opportunities-pipeline-summary"] })]); setInitialSnapshot(snapshot); toast.success(mode === "edit" ? "Deal updated." : "Deal created."); router.push(savedId ? `/dashboard/sales/opportunities/${savedId}` : "/dashboard/sales/opportunities"); } catch (error) { setSubmitError(error instanceof Error ? error.message : "Failed to save deal"); } finally { setSubmitting(false); } }
-  if (mode === "edit" && summaryQuery.isLoading) return <Card className="p-6 text-sm text-copy-muted">Loading deal…</Card>;
-  if (mode === "edit" && summaryQuery.error) return <Card className="border-state-danger/40 p-6"><p className="text-sm text-state-danger">We could not load this deal.</p><Button className="mt-4" variant="outline" onClick={() => void summaryQuery.refetch()}>Retry</Button></Card>;
-  const cancelHref = mode === "edit" && opportunityId ? `/dashboard/sales/opportunities/${opportunityId}` : "/dashboard/sales/opportunities";
-  return <div className="flex flex-col gap-6"><PageHeader title={mode === "edit" ? "Edit deal" : "Create deal"} description={mode === "edit" ? "Update pipeline, value, linked customers, and delivery context." : "Add a qualified commercial opportunity to the pipeline."} actions={<Button asChild variant="ghost" size="sm"><Link href={cancelHref}><ArrowLeft />Back to {mode === "edit" ? "deal" : "deals"}</Link></Button>} />{submitError ? <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"><div className="font-medium">We could not save this deal.</div><div className="mt-1 text-copy-secondary">{submitError}</div></div> : null}<RecordFormLayout sidebar={<OpportunityFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />} footer={<div className="flex flex-wrap items-center justify-between gap-3"><span className="text-sm text-copy-muted">{dirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : "Complete the required fields to create this deal."}</span><div className="flex items-center gap-2"><Button asChild variant="outline"><Link href={cancelHref}>Cancel</Link></Button><Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !dirty)}><Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create deal"}</Button></div></div>}><OpportunityFormMainFields value={form} onChange={setForm} customFields={customFields.data ?? []} customFieldValues={customValues} onCustomFieldChange={(key, value) => setCustomValues((current) => ({ ...current, [key]: value }))} moduleFields={moduleFields} nameError={nameError} contactError={contactError} mode={mode} /></RecordFormLayout></div>;
+export default function OpportunityRecordFormPage({
+  mode,
+  opportunityId,
+}: {
+  mode: "create" | "edit";
+  opportunityId?: string;
+}) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [form, setForm] = useState<OpportunityFormValue>(
+    EMPTY_OPPORTUNITY_FORM,
+  );
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
+  const [initialSnapshot, setInitialSnapshot] = useState(() =>
+    JSON.stringify([EMPTY_OPPORTUNITY_FORM, {}]),
+  );
+  const [nameError, setNameError] = useState<string | null>(null);
+  const [contactError, setContactError] = useState<string | null>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const customFields = useModuleCustomFields("sales_opportunities", true);
+  const { fields: moduleFields } = useModuleFieldConfigs("sales_opportunities");
+  const summaryQuery = useQuery({
+    queryKey: ["sales-opportunity-summary", opportunityId],
+    queryFn: () => fetchSummary(opportunityId as string),
+    enabled: mode === "edit" && Boolean(opportunityId),
+    refetchOnWindowFocus: false,
+  });
+  useEffect(() => {
+    if (mode !== "edit" || !summaryQuery.data) return;
+    const opportunity = summaryQuery.data.opportunity;
+    const contactName =
+      opportunity.contact_name ||
+      [
+        summaryQuery.data.contact?.first_name,
+        summaryQuery.data.contact?.last_name,
+      ]
+        .filter(Boolean)
+        .join(" ") ||
+      summaryQuery.data.contact?.primary_email ||
+      opportunity.client ||
+      "";
+    const next: OpportunityFormValue = {
+      ...EMPTY_OPPORTUNITY_FORM,
+      ...opportunity,
+      contact_name: contactName,
+      organization_name:
+        opportunity.organization_name ||
+        summaryQuery.data.organization?.org_name ||
+        "",
+      assigned_to_name: opportunity.assigned_to_name || "",
+      probability_percent: opportunity.probability_percent?.toString() ?? "",
+      start_date: opportunity.start_date ?? "",
+      expected_close_date: opportunity.expected_close_date ?? "",
+      attachments: opportunity.attachments ?? [],
+    };
+    const values = opportunity.custom_fields ?? {};
+    setForm(next);
+    setCustomValues(values);
+    setInitialSnapshot(JSON.stringify([next, values]));
+  }, [mode, summaryQuery.data]);
+  const snapshot = useMemo(
+    () => JSON.stringify([form, customValues]),
+    [form, customValues],
+  );
+  const dirty = snapshot !== initialSnapshot;
+  useUnsavedChangesGuard(dirty, submitting);
+  function validate() {
+    const validName = Boolean(form.opportunity_name.trim());
+    const validContact = Boolean(form.contact_id);
+    setNameError(validName ? null : "Deal name is required.");
+    setContactError(validContact ? null : "Select an existing contact.");
+    if (!validName) document.getElementById("deal-name")?.focus();
+    return validName && validContact;
+  }
+  async function submit() {
+    if (!validate()) return;
+    try {
+      setSubmitting(true);
+      setSubmitError(null);
+      const trim = (value: string) => value.trim() || null;
+      const payload = pickEnabledModulePayload(
+        {
+          opportunity_name: form.opportunity_name.trim(),
+          client: form.contact_name.trim(),
+          contact_id: form.contact_id,
+          organization_id: form.organization_id,
+          assigned_to:
+            mode === "edit" && form.assigned_to === null
+              ? undefined
+              : form.assigned_to,
+          sales_stage: form.sales_stage || "lead",
+          start_date: form.start_date || null,
+          expected_close_date: form.expected_close_date || null,
+          probability_percent: form.probability_percent.trim()
+            ? Number(form.probability_percent)
+            : null,
+          total_cost_of_project: trim(form.total_cost_of_project),
+          currency_type: form.currency_type || null,
+          campaign_type: trim(form.campaign_type),
+          total_leads: trim(form.total_leads),
+          cpl: trim(form.cpl),
+          target_geography: trim(form.target_geography),
+          target_audience: trim(form.target_audience),
+          domain_cap: trim(form.domain_cap),
+          tactics: trim(form.tactics),
+          delivery_format: trim(form.delivery_format),
+          attachments: form.attachments,
+          custom_fields: customValues,
+        },
+        moduleFields,
+        ["opportunity_name", "contact_id", "custom_fields"],
+      );
+      const endpoint =
+        mode === "edit"
+          ? `/sales/opportunities/${opportunityId}`
+          : "/sales/opportunities";
+      const res = await apiFetch(endpoint, {
+        method: mode === "edit" ? "PUT" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = (await res.json().catch(() => null)) as {
+        opportunity_id?: number;
+        detail?: string;
+      } | null;
+      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      const savedId = mode === "edit" ? opportunityId : body?.opportunity_id;
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["sales-opportunities-pipeline-summary"],
+        }),
+      ]);
+      setInitialSnapshot(snapshot);
+      toast.success(mode === "edit" ? "Deal updated." : "Deal created.");
+      router.push(
+        savedId
+          ? `/dashboard/sales/opportunities/${savedId}`
+          : "/dashboard/sales/opportunities",
+      );
+    } catch {
+      setSubmitError(
+        mode === "edit"
+          ? "The deal could not be updated. Check the fields and try again."
+          : "The deal could not be created. Check the fields and try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+  if (mode === "edit" && summaryQuery.isLoading)
+    return <RouteLoadingState label="deal" />;
+  if (mode === "edit" && summaryQuery.error)
+    return (
+      <RouteErrorState
+        title="Unable to load this deal"
+        reset={() => void summaryQuery.refetch()}
+        backHref="/dashboard/sales/opportunities"
+        backLabel="Back to deals"
+      />
+    );
+  const cancelHref =
+    mode === "edit" && opportunityId
+      ? `/dashboard/sales/opportunities/${opportunityId}`
+      : "/dashboard/sales/opportunities";
+  return (
+    <div className="flex flex-col gap-6">
+      <PageHeader
+        title={mode === "edit" ? "Edit deal" : "Create deal"}
+        eyebrow={
+          mode === "edit" && summaryQuery.data?.opportunity.updated_at
+            ? `Last modified ${formatDateTime(summaryQuery.data.opportunity.updated_at)}`
+            : undefined
+        }
+        description={
+          mode === "edit"
+            ? "Update pipeline, value, linked customers, and delivery context."
+            : "Add a qualified commercial opportunity to the pipeline."
+        }
+        actions={
+          <Button asChild variant="ghost" size="sm">
+            <Link href={cancelHref}>
+              <ArrowLeft />
+              Back to {mode === "edit" ? "deal" : "deals"}
+            </Link>
+          </Button>
+        }
+      />
+      {submitError ? (
+        <div
+          role="alert"
+          className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"
+        >
+          <div className="font-medium">We could not save this deal.</div>
+          <div className="mt-1 text-copy-secondary">{submitError}</div>
+        </div>
+      ) : null}
+      <RecordFormLayout
+        sidebar={
+          <OpportunityFormSidebarFields
+            value={form}
+            onChange={setForm}
+            moduleFields={moduleFields}
+            mode={mode}
+          />
+        }
+        footer={
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span className="text-sm text-copy-muted">
+              {dirty
+                ? "You have unsaved changes."
+                : mode === "edit"
+                  ? "No unsaved changes."
+                  : "Complete the required fields to create this deal."}
+            </span>
+            <div className="flex items-center gap-2">
+              <Button asChild variant="outline">
+                <Link href={cancelHref}>Cancel</Link>
+              </Button>
+              <Button
+                onClick={() => void submit()}
+                disabled={submitting || (mode === "edit" && !dirty)}
+              >
+                <Save />
+                {submitting
+                  ? "Saving…"
+                  : mode === "edit"
+                    ? "Save changes"
+                    : "Create deal"}
+              </Button>
+            </div>
+          </div>
+        }
+      >
+        <OpportunityFormMainFields
+          value={form}
+          onChange={setForm}
+          customFields={customFields.data ?? []}
+          customFieldValues={customValues}
+          onCustomFieldChange={(key, value) =>
+            setCustomValues((current) => ({ ...current, [key]: value }))
+          }
+          moduleFields={moduleFields}
+          nameError={nameError}
+          contactError={contactError}
+          mode={mode}
+        />
+      </RecordFormLayout>
+    </div>
+  );
 }

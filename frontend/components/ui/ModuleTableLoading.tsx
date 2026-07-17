@@ -27,7 +27,7 @@ export function ModuleTableLoading({ columnCount, rows = 8, withCheckbox = true 
             if (withCheckbox && cellIndex === 0) {
               return (
                 <TableCell key={`table-loading-cell-${rowIndex}-${cellIndex}`} className="w-12 pr-0">
-                  <Skeleton className="h-4 w-4 rounded-sm bg-neutral-800" />
+                  <Skeleton className="h-4 w-4 rounded-sm bg-surface-raised" />
                 </TableCell>
               );
             }
@@ -36,8 +36,8 @@ export function ModuleTableLoading({ columnCount, rows = 8, withCheckbox = true 
             return (
               <TableCell key={`table-loading-cell-${rowIndex}-${cellIndex}`}>
                 <div className="flex items-center gap-3">
-                  {cellIndex === 1 ? <Skeleton className="h-7 w-7 rounded-md bg-neutral-800" /> : null}
-                  <Skeleton className={`h-4 ${widthClass} bg-neutral-800`} />
+                  {cellIndex === 1 ? <Skeleton className="h-7 w-7 rounded-md bg-surface-raised" /> : null}
+                  <Skeleton className={`h-4 ${widthClass} bg-surface-raised`} />
                 </div>
               </TableCell>
             );

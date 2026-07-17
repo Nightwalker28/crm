@@ -19,6 +19,7 @@ const fakeContactSummary = {
     assigned_to: 7,
     assigned_to_name: "Ada Owner",
     custom_fields: {},
+    updated_at: "2099-07-20T09:30:00Z",
   },
   organization: { org_id: 4, org_name: "Lynk QA" },
   related_opportunities: [],
@@ -91,4 +92,5 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
   await expect(page.getByLabel("Email")).toHaveValue("browser.contact@example.com");
   await expect(page.getByPlaceholder("Search owners")).toHaveValue("Ada Owner");
   await expect(page.getByPlaceholder("Search accounts")).toHaveValue("Lynk QA");
+  await expect(page.getByText(/Last modified/)).toBeVisible();
 });

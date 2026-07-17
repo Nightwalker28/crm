@@ -77,8 +77,8 @@ export default function LeadConversionForm({ leadId, leadName, company }: { lead
         queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
       ]);
       toast.success("Lead converted.");
-    } catch (conversionError) {
-      setError(conversionError instanceof Error ? conversionError.message : "Failed to convert lead");
+    } catch {
+      setError("The lead could not be converted. Review the selected records and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -158,7 +158,7 @@ function ToggleRow({ label, description, checked, onCheckedChange }: { label: st
   return (
     <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
       <div><div className="text-sm font-medium text-copy-primary">{label}</div><FieldDescription className="mt-1">{description}</FieldDescription></div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised data-[state=checked]:bg-action-primary"><SwitchThumb className="block h-5 w-5 rounded-full bg-white shadow-sm data-[state=checked]:translate-x-5" /></Switch>
+      <Switch checked={checked} onCheckedChange={onCheckedChange} className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised data-[state=checked]:bg-action-primary"><SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" /></Switch>
     </div>
   );
 }

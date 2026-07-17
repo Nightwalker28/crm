@@ -10,8 +10,9 @@ from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
 from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.documents import models as document_models  # noqa: F401
-from app.modules.finance.models import FinanceIO
-from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
+from app.modules.finance.models import FinanceIO, FinancePosInvoice
+from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
+from app.modules.sales.schema import OrganizationSummaryResponse
 from app.modules.sales.services import summary_services
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant
@@ -97,8 +98,8 @@ class SummaryRelatedQuoteTests(unittest.TestCase):
             [
                 Tenant(id=10, slug="default", name="Default"),
                 Tenant(id=99, slug="other", name="Other"),
-                SalesOrganization(org_id=20, tenant_id=10, org_name="Acme", primary_email="hello@acme.test"),
-                SalesContact(contact_id=30, tenant_id=10, first_name="Ada", primary_email="ada@acme.test", assigned_to=1, organization_id=20),
+                SalesOrganization(org_id=20, tenant_id=10, org_name="Acme", primary_email="hello@acme.example"),
+                SalesContact(contact_id=30, tenant_id=10, first_name="Ada", primary_email="ada@acme.example", assigned_to=1, organization_id=20),
                 SalesOpportunity(opportunity_id=35, tenant_id=10, opportunity_name="Acme Pilot", client="Ada", contact_id=30, organization_id=20, sales_stage="proposal"),
                 SalesQuote(
                     quote_id=40,
@@ -135,6 +136,59 @@ class SummaryRelatedQuoteTests(unittest.TestCase):
                     total_amount=Decimal("500.00"),
                     deleted_at=datetime(2026, 1, 1),
                 ),
+                SalesOrder(
+                    id=50,
+                    tenant_id=10,
+                    order_number="SO-50",
+                    organization_id=20,
+                    contact_id=30,
+                    status="confirmed",
+                    currency="USD",
+                    grand_total=Decimal("1250.00"),
+                ),
+                SalesOrder(
+                    id=51,
+                    tenant_id=99,
+                    order_number="SO-51",
+                    organization_id=20,
+                    status="confirmed",
+                    currency="USD",
+                    grand_total=Decimal("999.00"),
+                ),
+                FinancePosInvoice(
+                    id=60,
+                    tenant_id=10,
+                    invoice_number="INV-60",
+                    customer_name="Acme",
+                    customer_organization_id=20,
+                    status="issued",
+                    payment_status="unpaid",
+                    currency="USD",
+                    total_amount=Decimal("1250.00"),
+                ),
+                FinancePosInvoice(
+                    id=61,
+                    tenant_id=99,
+                    invoice_number="INV-61",
+                    customer_name="Other",
+                    customer_organization_id=20,
+                    status="issued",
+                    payment_status="unpaid",
+                    currency="USD",
+                    total_amount=Decimal("999.00"),
+                ),
+                FinancePosInvoice(
+                    id=62,
+                    tenant_id=10,
+                    invoice_number="INV-DELETED",
+                    customer_name="Acme",
+                    customer_organization_id=20,
+                    status="void",
+                    payment_status="unpaid",
+                    currency="USD",
+                    total_amount=Decimal("100.00"),
+                    deleted_at=datetime(2026, 1, 1),
+                ),
             ]
         )
         self.db.commit()
@@ -157,6 +211,19 @@ class SummaryRelatedQuoteTests(unittest.TestCase):
 
         self.assertEqual([quote.quote_id for quote in summary["related_quotes"]], [40])
         self.assertEqual(summary["quote_count"], 1)
+
+    def test_organization_summary_returns_tenant_scoped_orders_and_active_invoices(self):
+        organization = self.db.query(SalesOrganization).filter(SalesOrganization.org_id == 20).one()
+
+        summary = summary_services.build_organization_summary(self.db, organization)
+
+        self.assertEqual([order.id for order in summary["related_orders"]], [50])
+        self.assertEqual([invoice.id for invoice in summary["related_invoices"]], [60])
+        self.assertEqual(summary["order_count"], 1)
+        self.assertEqual(summary["invoice_count"], 1)
+        response = OrganizationSummaryResponse.model_validate(summary)
+        self.assertEqual(response.related_orders[0].order_number, "SO-50")
+        self.assertEqual(response.related_invoices[0].invoice_number, "INV-60")
 
     def test_opportunity_summary_returns_explicitly_linked_quotes(self):
         opportunity = self.db.query(SalesOpportunity).filter(SalesOpportunity.opportunity_id == 35).one()

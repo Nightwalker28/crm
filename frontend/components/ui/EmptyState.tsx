@@ -20,9 +20,9 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <div className={cn("flex flex-col items-center justify-center px-4 py-8 text-center", className)}>
-      <Icon className="h-8 w-8 text-neutral-700" />
-      <div className="mt-3 text-sm font-medium text-neutral-200">{title}</div>
-      {description ? <div className="mt-1 max-w-md text-sm leading-6 text-neutral-500">{description}</div> : null}
+      <Icon className="h-8 w-8 text-copy-disabled" aria-hidden="true" />
+      <div className="mt-3 text-sm font-medium text-copy-primary">{title}</div>
+      {description ? <div className="mt-1 max-w-md text-sm leading-6 text-copy-muted">{description}</div> : null}
       {action ? <div className="mt-4">{action}</div> : null}
     </div>
   );

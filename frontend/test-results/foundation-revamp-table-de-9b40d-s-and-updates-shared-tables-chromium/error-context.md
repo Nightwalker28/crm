@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: payments-revamp.spec.ts >> Payments distinguishes filtered empty results
-- Location: tests/e2e/payments-revamp.spec.ts:74:5
+- Name: foundation-revamp.spec.ts >> table density preference persists and updates shared tables
+- Location: tests/e2e/foundation-revamp.spec.ts:26:5
 
 # Error details
 

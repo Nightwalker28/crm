@@ -47,18 +47,18 @@ type Props = {
 };
 
 const INDUSTRY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  SaaS: { bg: "bg-sky-900/30", text: "text-sky-300", border: "border-sky-700/40" },
-  Technology: { bg: "bg-sky-900/30", text: "text-sky-300", border: "border-sky-700/40" },
-  Finance: { bg: "bg-emerald-900/30", text: "text-emerald-300", border: "border-emerald-700/40" },
+  SaaS: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40" },
+  Technology: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40" },
+  Finance: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" },
   Healthcare: { bg: "bg-teal-900/30", text: "text-teal-300", border: "border-teal-700/40" },
   Media: { bg: "bg-violet-900/30", text: "text-violet-300", border: "border-violet-700/40" },
   Retail: { bg: "bg-orange-900/30", text: "text-orange-300", border: "border-orange-700/40" },
 };
 
 function getIndustryStyle(industry?: string | null) {
-  if (!industry) return { bg: "bg-neutral-800/40", text: "text-neutral-400", border: "border-neutral-700/40" };
+  if (!industry) return { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default" };
   const key = Object.keys(INDUSTRY_STYLES).find(k => industry.toLowerCase().includes(k.toLowerCase()));
-  return key ? INDUSTRY_STYLES[key] : { bg: "bg-neutral-800/40", text: "text-neutral-400", border: "border-neutral-700/40" };
+  return key ? INDUSTRY_STYLES[key] : { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default" };
 }
 
 function getOrgInitials(name: string): string {
@@ -120,7 +120,7 @@ export default function OrganizationsTable({
   }
 
   const renderCell = (org: Organization, column: string, isIdentityColumn: boolean) => {
-    const stickyClassName = isIdentityColumn ? "sticky left-12 z-10 border-r border-line-subtle bg-neutral-950 group-hover:bg-neutral-900" : undefined;
+    const stickyClassName = isIdentityColumn ? "sticky left-12 z-10 border-r border-line-subtle bg-surface group-hover:bg-surface-raised" : undefined;
     if (isCustomFieldColumnKey(column)) {
       return <CustomFieldCell column={column} values={org.custom_fields} className={stickyClassName} />;
     }
@@ -130,10 +130,10 @@ export default function OrganizationsTable({
         return (
           <TableCell className={stickyClassName}>
             <div className="flex items-center gap-3 h-8">
-              <div className="h-7 w-7 rounded-md bg-neutral-800 border border-neutral-700 flex items-center justify-center text-[9px] font-bold text-neutral-300 shrink-0 leading-none">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted text-[9px] font-bold leading-none text-copy-secondary">
                 {getOrgInitials(org.org_name)}
               </div>
-              <span className="text-sm font-semibold text-neutral-100 truncate">
+              <span className="truncate text-sm font-semibold text-copy-primary">
                 {org.org_name}
               </span>
             </div>
@@ -142,8 +142,8 @@ export default function OrganizationsTable({
       case "primary_email":
         return (
           <TableCell>
-            <span className="text-sm text-neutral-300 font-mono tracking-tight">
-              {org.primary_email || <span className="text-neutral-600">—</span>}
+            <span className="font-mono text-sm tracking-tight text-copy-secondary">
+              {org.primary_email || <span className="text-copy-disabled">—</span>}
             </span>
           </TableCell>
         );
@@ -156,12 +156,12 @@ export default function OrganizationsTable({
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={(event) => event.stopPropagation()}
-                className="text-sm text-sky-400 hover:text-sky-300 transition-colors truncate block max-w-[200px]"
+                className="block max-w-[200px] truncate text-sm text-action-primary transition-colors hover:text-action-primary-hover"
               >
                 {formatWebsiteDisplay(org.website)}
               </a>
             ) : (
-              <span className="text-neutral-600 text-sm">—</span>
+              <span className="text-sm text-copy-disabled">—</span>
             )}
           </TableCell>
         );
@@ -175,43 +175,43 @@ export default function OrganizationsTable({
                   {org.industry}
                 </Pill>
               );
-            })() : <span className="text-neutral-600 text-sm">—</span>}
+            })() : <span className="text-sm text-copy-disabled">—</span>}
           </TableCell>
         );
       case "annual_revenue":
         return (
           <TableCell>
             {org.annual_revenue ? (
-              <span className="text-sm font-medium text-emerald-300">
+              <span className="text-sm font-medium text-state-success">
                 {formatRevenue(org.annual_revenue)}
               </span>
             ) : (
-              <span className="text-neutral-600 text-sm">—</span>
+              <span className="text-sm text-copy-disabled">—</span>
             )}
           </TableCell>
         );
       case "primary_phone":
         return (
           <TableCell>
-            <span className="text-sm text-neutral-400 font-mono tracking-tight">
-              {org.primary_phone || <span className="text-neutral-600">—</span>}
+            <span className="font-mono text-sm tracking-tight text-copy-muted">
+              {org.primary_phone || <span className="text-copy-disabled">—</span>}
             </span>
           </TableCell>
         );
       case "billing_country":
         return (
           <TableCell>
-            <span className="text-sm text-neutral-400">
-              {org.billing_country || <span className="text-neutral-600">—</span>}
+            <span className="text-sm text-copy-muted">
+              {org.billing_country || <span className="text-copy-disabled">—</span>}
             </span>
           </TableCell>
         );
       case "assigned_to_name":
-        return <TableCell><span className="text-sm text-neutral-300">{org.assigned_to_name || "Unassigned"}</span></TableCell>;
+        return <TableCell><span className="text-sm text-copy-secondary">{org.assigned_to_name || "Unassigned"}</span></TableCell>;
       case "created_time":
-        return <TableCell><span className="text-sm text-neutral-400">{org.created_time ? formatDateTime(org.created_time) : "-"}</span></TableCell>;
+        return <TableCell><span className="text-sm text-copy-muted">{org.created_time ? formatDateTime(org.created_time) : "-"}</span></TableCell>;
       case "updated_at":
-        return <TableCell><span className="text-sm text-neutral-400">{org.updated_at ? formatDateTime(org.updated_at) : "-"}</span></TableCell>;
+        return <TableCell><span className="text-sm text-copy-muted">{org.updated_at ? formatDateTime(org.updated_at) : "-"}</span></TableCell>;
       default:
         return null;
     }
@@ -222,11 +222,11 @@ export default function OrganizationsTable({
       <Table className="min-w-[960px]">
         <TableHeader>
           <TableHeaderRow>
-            <TableHead className="sticky left-0 z-40 w-12 border-r border-line-subtle bg-neutral-900 pr-0">
+            <TableHead className="sticky left-0 z-40 w-12 border-r border-line-subtle bg-surface-raised pr-0">
               <Checkbox
                 checked={currentPageSelectionState}
                 onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
-                className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                className="h-4 w-4 rounded border border-line-strong bg-surface-raised"
                 aria-label="Select current page organizations"
               >
                 <CheckboxIndicator className="h-3 w-3" />
@@ -235,7 +235,7 @@ export default function OrganizationsTable({
             {visibleColumns.map((column, index) => {
               const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
               if (isCustomFieldColumnKey(column) || !sortableColumns.has(column)) {
-                return <TableHead key={column} className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined}>{label}</TableHead>;
+                return <TableHead key={column} className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-surface-raised" : undefined}>{label}</TableHead>;
               }
               const isSorted = sort?.column === column;
               return (
@@ -244,7 +244,7 @@ export default function OrganizationsTable({
                   sorted={isSorted}
                   direction={isSorted ? sort.direction : "asc"}
                   onClick={() => toggleSort(column)}
-                  className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined}
+                  className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-surface-raised" : undefined}
                 >
                   {label}
                 </SortableHead>
@@ -270,7 +270,7 @@ export default function OrganizationsTable({
                 onClick={() => router.push(`/dashboard/sales/organizations/${org.org_id}`)}
               >
                 <TableCell
-                  className="sticky left-0 z-20 w-12 border-r border-line-subtle bg-neutral-950 pr-0 group-hover:bg-neutral-900"
+                  className="sticky left-0 z-20 w-12 border-r border-line-subtle bg-surface pr-0 group-hover:bg-surface-raised"
                   onClick={(event) => event.stopPropagation()}
                 >
                   <Checkbox
@@ -278,7 +278,7 @@ export default function OrganizationsTable({
                     onCheckedChange={(checked) => {
                       if (org.org_id != null) onToggleRow?.(org.org_id, checked === true);
                     }}
-                    className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                    className="h-4 w-4 rounded border border-line-strong bg-surface-raised"
                     aria-label={`Select organization ${org.org_name}`}
                   >
                     <CheckboxIndicator className="h-3 w-3" />

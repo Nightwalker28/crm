@@ -10,14 +10,16 @@ import { toast } from "sonner";
 import { ContactFormMainFields, ContactFormSidebarFields, EMPTY_CONTACT_FORM, type ContactFormValue } from "@/components/contacts/ContactFormFields";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
 
 type ContactSummary = {
-  contact: ContactFormValue & { contact_id: number; custom_fields?: Record<string, unknown> | null };
+  contact: ContactFormValue & { contact_id: number; custom_fields?: Record<string, unknown> | null; updated_at?: string | null };
   organization?: { org_id: number; org_name: string } | null;
 };
 
@@ -73,14 +75,7 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
   const currentSnapshot = useMemo(() => JSON.stringify([form, customFieldValues]), [form, customFieldValues]);
   const isDirty = currentSnapshot !== initialSnapshot;
 
-  useEffect(() => {
-    function warnBeforeUnload(event: BeforeUnloadEvent) {
-      if (!isDirty || submitting) return;
-      event.preventDefault();
-    }
-    window.addEventListener("beforeunload", warnBeforeUnload);
-    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
-  }, [isDirty, submitting]);
+  useUnsavedChangesGuard(isDirty, submitting);
 
   function validate() {
     const email = form.primary_email.trim();
@@ -131,16 +126,16 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
       setInitialSnapshot(currentSnapshot);
       toast.success(mode === "edit" ? "Contact updated." : "Contact created.");
       router.push(savedContactId ? `/dashboard/sales/contacts/${savedContactId}` : "/dashboard/sales/contacts");
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : `Failed to ${mode} contact`);
+    } catch {
+      setSubmitError(mode === "edit" ? "The contact could not be updated. Check the fields and try again." : "The contact could not be created. Check the fields and try again.");
     } finally {
       setSubmitting(false);
     }
   }
 
-  if (mode === "edit" && summaryQuery.isLoading) return <Card className="p-6 text-sm text-copy-muted">Loading contact…</Card>;
+  if (mode === "edit" && summaryQuery.isLoading) return <RouteLoadingState label="contact" />;
   if (mode === "edit" && summaryQuery.error) {
-    return <Card className="border-state-danger/40 p-6"><p className="text-sm text-state-danger">We could not load this contact.</p><Button className="mt-4" variant="outline" onClick={() => void summaryQuery.refetch()}>Retry</Button></Card>;
+    return <RouteErrorState title="Unable to load this contact" reset={() => void summaryQuery.refetch()} backHref="/dashboard/sales/contacts" backLabel="Back to contacts" />;
   }
 
   const title = mode === "edit" ? "Edit contact" : "Create contact";
@@ -149,6 +144,7 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
     <div className="flex flex-col gap-6">
       <PageHeader
         title={title}
+        eyebrow={mode === "edit" && summaryQuery.data?.contact.updated_at ? `Last modified ${formatDateTime(summaryQuery.data.contact.updated_at)}` : undefined}
         description={mode === "edit" ? "Update contact details, ownership, and account information." : "Add a person and connect them to the right account and owner."}
         actions={<Button asChild variant="ghost" size="sm"><Link href={cancelHref}><ArrowLeft />Back to {mode === "edit" ? "contact" : "contacts"}</Link></Button>}
       />

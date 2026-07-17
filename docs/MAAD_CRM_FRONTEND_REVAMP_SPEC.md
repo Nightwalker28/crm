@@ -1572,6 +1572,22 @@ Choose which fields appear when users create and edit this module.
 - Empty, loading, and error states.
 - Data table.
 
+### Phase 1 completion record
+
+Status: **Implemented**.
+
+- Design tokens: shared color, surface, border, radius, shadow, typography, and reduced-motion tokens are defined centrally and consumed by the foundation primitives.
+- App shell: the desktop sidebar supports persisted collapse, the mobile shell uses a focus-trapped navigation drawer, and the top bar exposes search, notifications, profile, breadcrumbs, and explicit access-denied feedback.
+- Shared controls: buttons, inputs, cards, page headers, dialogs, tabs, required marks, pagination, list toolbars, and saved-view controls use the shared token language.
+- Application states: reusable loading, recoverable-error, not-found, permission-denied, dataset-empty, and filtered-empty states are available. Dashboard and core CRM route boundaries preserve navigation and avoid exposing raw technical errors.
+- Data tables: shared tables provide semantic headers, keyboard-operable sorting, visible focus, responsive overflow, sticky headers, and persisted comfortable or compact density.
+- Responsive and accessibility baseline: the shell, toolbars, forms, tables, overlays, and route states provide the Phase 1 responsive behavior and keyboard semantics required for later route migrations.
+- Verification: frontend lint and the production build pass. The foundation browser specification is discovered successfully and covers mobile drawer focus behavior plus persisted table density; authenticated execution still requires `E2E_ADMIN_MFA_CODE` or `E2E_ADMIN_RECOVERY_CODE` in the local test environment.
+
+Migration note: no route-specific legacy components were removed in this foundation slice. Desktop-only shell behavior was replaced in place, and later phases should migrate remaining route-local styling onto these primitives rather than creating new variants.
+
+Scope note: this record completes the reusable Phase 1 foundation. The project-wide acceptance criteria in section 19 remain cumulative and are complete only after every route in Phases 2 through 6 has migrated to the foundation.
+
 ## Phase 2: Core CRM workflow
 
 - Leads list.
@@ -1581,6 +1597,23 @@ Choose which fields appear when users create and edit this module.
 - Contacts list and detail.
 - Accounts list and detail.
 - Opportunities table and kanban.
+
+### Phase 2 completion record
+
+Status: **Implemented**.
+
+- Lists: Leads, Contacts, Accounts, and Deals use the shared responsive table, toolbar, saved-view, filter, column, import/export, pagination, loading, filtered-empty, and dataset-empty patterns. Deals also provide a keyboard-accessible pipeline stage selector alongside drag-and-drop.
+- Forms: create and edit workflows are dedicated responsive pages with semantic sections, linked record pickers, inline validation, first-invalid-field focus, sticky actions, persisted values after failure, last-modified metadata, and warnings for browser or in-app navigation with unsaved changes.
+- Details: each module uses the shared record header and tab pattern for overview, activity, related records, notes, files, tasks, and audit history where applicable. Lead conversion is a guided routed workflow.
+- Relationships: Account summaries now include tenant-scoped Contacts, Deals, Quotes, Orders, Invoices, insertion orders, activity, tasks, and documents without fetching unrelated full lists.
+- Deals: table and pipeline views show stage, account/contact, value, close date, owner, overdue state, and high-value indicators. Stage changes use optimistic updates with rollback and a non-drag selector for keyboard users.
+- States and safety: route and record loading/error/not-found states preserve navigation, permission handling remains in the dashboard guard, and raw backend or status errors are not rendered to standard users.
+- Data contract: Leads, Contacts, Accounts, and Deals expose real update timestamps. Existing sales rows are deterministically backfilled from their creation timestamp; tenant-scoped invoice relationship indexes support the new account summary queries.
+- Verification: focused backend tests, backend compilation, migration upgrade/current checks, frontend lint, and the production build pass. Playwright discovers eight Phase 2 scenarios; authenticated execution requires `E2E_ADMIN_MFA_CODE` or `E2E_ADMIN_RECOVERY_CODE` in the local test environment.
+
+Migration note: the unused `OpportunityDialog`, `createContactModal`, `createOrganizationModal`, and `organizationCard` legacy components were removed after their workflows moved to routed pages and shared tables.
+
+Scope note: this completes Phase 2. The project-wide acceptance criteria remain cumulative until the routes in Phases 3 through 6 have migrated to the shared foundation.
 
 ## Phase 3: Transactions
 

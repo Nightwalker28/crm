@@ -45,14 +45,13 @@ export function ModuleImportExportControls({
           as={Button}
           type="button"
           variant="outline"
-          className="border-neutral-800 bg-neutral-950/70 text-neutral-200 hover:bg-neutral-900 hover:text-neutral-100"
         >
           Actions
           <ChevronDown className="h-4 w-4" />
         </MenuButton>
         <MenuItems
           anchor="bottom end"
-          className="z-50 mt-2 w-44 rounded-lg border border-neutral-800 bg-[#0d0d0d] p-1 shadow-2xl outline-none"
+          className="z-50 mt-2 w-44 rounded-[var(--radius-card)] border border-line-default bg-surface-raised p-1 shadow-2xl outline-none"
         >
           {importEndpoint ? (
             <ImportControls

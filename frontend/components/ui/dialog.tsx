@@ -82,7 +82,7 @@ function DialogBackdrop<TTag extends React.ElementType = typeof motion.div>(
       data-slot="dialog-backdrop"
       as={as as React.ElementType}
       className={cn(
-        "fixed inset-0 bg-black/60 backdrop-blur-sm",
+        "fixed inset-0 bg-overlay backdrop-blur-sm",
         className
       )}
       initial={{ opacity: 0, filter: 'blur(4px)', transition }}
@@ -128,7 +128,7 @@ function DialogPanel<TTag extends React.ElementType = typeof motion.div>(
       data-slot="dialog-panel"
       as={as as React.ElementType}
       className={cn(
-        "bg-neutral-900 border border-neutral-800 rounded-md p-4",
+        "rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-4",
         dialogPanelSizeClasses[size],
         size === "3xl" && "max-h-[80vh] overflow-y-auto",
         className

@@ -46,17 +46,17 @@ type LeadsTableProps = {
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  new: { bg: "bg-sky-900/30", text: "text-sky-300", border: "border-sky-700/40", label: "New" },
+  new: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40", label: "New" },
   contacted: { bg: "bg-violet-900/30", text: "text-violet-300", border: "border-violet-700/40", label: "Contacted" },
-  qualified: { bg: "bg-emerald-900/30", text: "text-emerald-300", border: "border-emerald-700/40", label: "Qualified" },
-  unqualified: { bg: "bg-neutral-800/40", text: "text-neutral-400", border: "border-neutral-700/40", label: "Unqualified" },
-  converted: { bg: "bg-amber-900/30", text: "text-amber-300", border: "border-amber-700/40", label: "Converted" },
+  qualified: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Qualified" },
+  unqualified: { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default", label: "Unqualified" },
+  converted: { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40", label: "Converted" },
 };
 
 const SCORE_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  hot: { bg: "bg-emerald-900/30", text: "text-emerald-300", border: "border-emerald-700/40", label: "Hot" },
-  warm: { bg: "bg-amber-900/30", text: "text-amber-300", border: "border-amber-700/40", label: "Warm" },
-  cold: { bg: "bg-neutral-800/40", text: "text-neutral-400", border: "border-neutral-700/40", label: "Cold" },
+  hot: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Hot" },
+  warm: { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40", label: "Warm" },
+  cold: { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default", label: "Cold" },
 };
 
 function initials(lead: Lead) {
@@ -91,7 +91,7 @@ export default function LeadsTable({
   }
 
   function renderCell(lead: Lead, column: string, isIdentityColumn: boolean) {
-    const stickyClassName = isIdentityColumn ? "sticky left-12 z-10 border-r border-line-subtle bg-neutral-950 group-hover:bg-neutral-900" : undefined;
+    const stickyClassName = isIdentityColumn ? "sticky left-12 z-10 border-r border-line-subtle bg-surface group-hover:bg-surface-raised" : undefined;
     if (isCustomFieldColumnKey(column)) {
       return <CustomFieldCell column={column} values={lead.custom_fields} className={stickyClassName} />;
     }
@@ -101,15 +101,15 @@ export default function LeadsTable({
         return (
           <TableCell className={stickyClassName}>
             <div className="flex h-8 items-center gap-2.5">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-neutral-700 bg-neutral-800 text-[10px] font-semibold text-neutral-300">
+              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted text-[10px] font-semibold text-copy-secondary">
                 {initials(lead)}
               </div>
-              <span className="truncate text-sm font-medium text-neutral-100">{leadName || <span className="text-neutral-600">-</span>}</span>
+              <span className="truncate text-sm font-medium text-copy-primary">{leadName || <span className="text-copy-disabled">-</span>}</span>
             </div>
           </TableCell>
         );
       case "primary_email":
-        return <TableCell className={stickyClassName}><span className="font-mono text-sm tracking-tight text-neutral-300">{lead.primary_email || <span className="text-neutral-600">-</span>}</span></TableCell>;
+        return <TableCell className={stickyClassName}><span className="font-mono text-sm tracking-tight text-copy-secondary">{lead.primary_email || <span className="text-copy-disabled">-</span>}</span></TableCell>;
       case "status": {
         const style = STATUS_STYLES[lead.status ?? ""] ?? STATUS_STYLES.new;
         return <TableCell className={stickyClassName}><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
@@ -127,18 +127,18 @@ export default function LeadsTable({
         return <TableCell className={stickyClassName}><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
       }
       case "created_time":
-        return <TableCell className={stickyClassName}><span className="text-sm text-neutral-400">{lead.created_time ? formatDateTime(lead.created_time) : "-"}</span></TableCell>;
+        return <TableCell className={stickyClassName}><span className="text-sm text-copy-muted">{lead.created_time ? formatDateTime(lead.created_time) : "-"}</span></TableCell>;
       case "last_contacted_at":
-        return <TableCell className={stickyClassName}><span className="text-sm text-neutral-400">{lead.last_contacted_at ? formatDateTime(lead.last_contacted_at) : "No activity"}</span></TableCell>;
+        return <TableCell className={stickyClassName}><span className="text-sm text-copy-muted">{lead.last_contacted_at ? formatDateTime(lead.last_contacted_at) : "No activity"}</span></TableCell>;
       case "next_follow_up_at": {
         const isOverdue = Boolean(lead.next_follow_up_is_overdue);
         return (
           <TableCell className={stickyClassName}>
             {lead.next_follow_up_at ? (
-              <span className={isOverdue ? "text-sm font-medium text-amber-300" : "text-sm text-neutral-400"}>
+              <span className={isOverdue ? "text-sm font-medium text-state-warning" : "text-sm text-copy-muted"}>
                 {formatDateTime(lead.next_follow_up_at)}{isOverdue ? " · Overdue" : ""}
               </span>
-            ) : <span className="text-sm text-neutral-600">Not scheduled</span>}
+            ) : <span className="text-sm text-copy-disabled">Not scheduled</span>}
           </TableCell>
         );
       }
@@ -148,12 +148,12 @@ export default function LeadsTable({
             <div className="flex max-w-64 flex-wrap gap-1">
               {(lead.tags ?? []).length
                 ? (lead.tags ?? []).map((tag) => <Pill key={tag.toLocaleLowerCase()}>{tag}</Pill>)
-                : <span className="text-sm text-neutral-600">No tags</span>}
+                : <span className="text-sm text-copy-disabled">No tags</span>}
             </div>
           </TableCell>
         );
       default:
-        return <TableCell className={stickyClassName}><span className="text-sm text-neutral-300">{String(lead[column as keyof Lead] ?? "") || <span className="text-neutral-600">-</span>}</span></TableCell>;
+        return <TableCell className={stickyClassName}><span className="text-sm text-copy-secondary">{String(lead[column as keyof Lead] ?? "") || <span className="text-copy-disabled">-</span>}</span></TableCell>;
     }
   }
 
@@ -162,11 +162,11 @@ export default function LeadsTable({
       <Table className="min-w-[920px]">
         <TableHeader>
           <TableHeaderRow>
-            <TableHead className="sticky left-0 z-40 w-12 border-r border-line-subtle bg-neutral-900 pr-0">
+            <TableHead className="sticky left-0 z-40 w-12 border-r border-line-subtle bg-surface-raised pr-0">
               <Checkbox
                 checked={currentPageSelectionState}
                 onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
-                className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                className="h-4 w-4 rounded border border-line-strong bg-surface-raised"
                 aria-label="Select current page leads"
               >
                 <CheckboxIndicator className="h-3 w-3" />
@@ -175,7 +175,7 @@ export default function LeadsTable({
             {visibleColumns.map((column, index) => {
               const label = getReadableColumnLabel(column, columnOptions);
               const sortable = !isCustomFieldColumnKey(column) && ["first_name", "last_name", "company", "primary_email", "status", "score", "score_grade", "created_time", "last_contacted_at", "next_follow_up_at"].includes(column);
-              const stickyClassName = index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined;
+              const stickyClassName = index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-surface-raised" : undefined;
               return sortable ? (
                 <SortableHead
                   key={column}
@@ -218,11 +218,11 @@ export default function LeadsTable({
           ) : (
             leads.map((lead) => (
               <TableRow key={lead.lead_id} className="group cursor-pointer" onClick={() => router.push(`/dashboard/sales/leads/${lead.lead_id}`)}>
-                <TableCell className="sticky left-0 z-20 w-12 border-r border-line-subtle bg-neutral-950 pr-0 group-hover:bg-neutral-900" onClick={(event) => event.stopPropagation()}>
+                <TableCell className="sticky left-0 z-20 w-12 border-r border-line-subtle bg-surface pr-0 group-hover:bg-surface-raised" onClick={(event) => event.stopPropagation()}>
                   <Checkbox
                     checked={selectedIds.includes(lead.lead_id)}
                     onCheckedChange={(checked) => onToggleRow?.(lead.lead_id, checked === true)}
-                    className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                    className="h-4 w-4 rounded border border-line-strong bg-surface-raised"
                     aria-label={`Select lead ${lead.primary_email ?? lead.lead_id}`}
                   >
                     <CheckboxIndicator className="h-3 w-3" />

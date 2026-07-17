@@ -194,10 +194,12 @@ export function SidebarMenuItemChild({
   href,
   children,
   collapsed = false,
+  onNavigate,
 }: {
   href: string;
   children: React.ReactNode;
   collapsed?: boolean;
+  onNavigate?: () => void;
 }) {
   const isActiveFn = useIsActive();
   const active = isActiveFn(href);
@@ -206,6 +208,7 @@ export function SidebarMenuItemChild({
     <GlassItemWrapper>
       <Link
         href={href}
+        onClick={onNavigate}
         className={
           "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control-sm)] border px-2 py-1.5 text-[13px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
           (active

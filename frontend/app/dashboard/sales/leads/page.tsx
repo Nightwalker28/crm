@@ -107,7 +107,7 @@ export default function LeadsPage() {
         hideHeader
       />
       {error ? (
-        <div className="flex justify-between rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">
+        <div className="flex justify-between rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           <span>{error}</span>
           <button onClick={refresh} className="underline underline-offset-2">Retry</button>
         </div>

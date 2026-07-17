@@ -16,6 +16,7 @@ const fakeLeadSummary = {
     status: "qualified",
     notes: "Non-persistent browser fixture",
     custom_fields: {},
+    updated_at: "2099-07-20T09:30:00Z",
     score: 45,
     score_grade: "warm",
     score_factors: [],
@@ -128,6 +129,13 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await expect(page.getByPlaceholder("Search teams")).toHaveValue("Revenue");
   await expect(page.getByRole("button", { name: "Remove Enterprise tag" })).toBeVisible();
   await expect(page.getByLabel("Next follow-up")).not.toHaveValue("");
+  await expect(page.getByText(/Last modified/)).toBeVisible();
+
+  await page.getByLabel("Email").fill("changed@example.com");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.getByRole("link", { name: "Cancel" }).click();
+  await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${fakeLeadId}/edit$`));
+  await expect(page.getByLabel("Email")).toHaveValue("changed@example.com");
 
   await page.goto(`/dashboard/sales/leads/${fakeLeadId}/convert`);
   await expect(page.getByRole("heading", { name: "Convert Browser Fixture" })).toBeVisible();

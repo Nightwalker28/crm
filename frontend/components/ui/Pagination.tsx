@@ -89,7 +89,7 @@ export default function Pagination({
       : FALLBACK_PAGE_SIZE_OPTIONS;
 
   return (
-    <div className="flex flex-col md:flex-row items-center justify-between gap-4 w-full text-xs md:text-sm text-neutral-400">
+    <div className="flex w-full flex-col items-center justify-between gap-4 text-xs text-copy-muted md:flex-row md:text-sm">
       
       {/* Left: Rows per page Dropdown */}
       <div className="flex items-center gap-4">
@@ -113,16 +113,16 @@ export default function Pagination({
         </div>
         <div className="whitespace-nowrap">
           Showing{" "}
-          <span className="text-neutral-200 font-medium">{rangeStart}</span>
+          <span className="font-medium text-copy-primary">{rangeStart}</span>
           {" – "}
-          <span className="text-neutral-200 font-medium">{rangeEnd}</span>
+          <span className="font-medium text-copy-primary">{rangeEnd}</span>
           {" of "}
-          <span className="text-neutral-200 font-medium">{totalCount}</span>{" "}
+          <span className="font-medium text-copy-primary">{totalCount}</span>{" "}
           entries
         </div>
         {isRefreshing ? (
-          <div className="inline-flex items-center gap-2 rounded-full border border-white/8 bg-neutral-900/80 px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-neutral-400">
-            <span className="h-2 w-2 rounded-full bg-neutral-400 animate-pulse" />
+          <div className="inline-flex items-center gap-2 rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-copy-muted">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-copy-muted motion-reduce:animate-none" />
             Refreshing
           </div>
         ) : null}
@@ -136,19 +136,19 @@ export default function Pagination({
         <button
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
-          className="flex p-2 items-center justify-center rounded-md bg-neutral-800/90 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-neutral-900 disabled:cursor-not-allowed transition-all"
+          className="flex items-center justify-center rounded-md border border-line-default bg-surface-muted p-2 text-copy-muted transition-colors hover:bg-surface-raised hover:text-copy-primary disabled:cursor-not-allowed disabled:opacity-30"
           aria-label="Previous page"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
 
         {/* Page Numbers Container */}
-        <div className="flex items-center bg-neutral-800/90 rounded-md px-1.5">
+        <div className="flex items-center rounded-md border border-line-default bg-surface-muted px-1.5">
           {pages.map((p, i) =>
             p === "..." ? (
               <div
                 key={`ellipsis-${i}`}
-                className="h-8 w-8 flex items-center justify-center text-neutral-600 text-xs"
+                className="flex h-8 w-8 items-center justify-center text-xs text-copy-disabled"
               >
                 <MoreHorizontal className="h-4 w-4" />
               </div>
@@ -158,13 +158,13 @@ export default function Pagination({
                 onClick={() => onPageChange(p)}
                 className={`
                   relative isolate min-w-8 p-2 rounded-md text-xs font-medium overflow-hidden transition-colors
-                  ${p === page ? "text-neutral-950" : "text-neutral-400 hover:text-neutral-200"}
+                  ${p === page ? "text-primary-foreground" : "text-copy-muted hover:text-copy-primary"}
                 `}
               >
                 {/* Expanding White Background Animation */}
                 <span
                   className={`
-                    absolute inset-0 -z-10 bg-neutral-200 origin-center rounded-md 
+                    absolute inset-0 -z-10 origin-center rounded-md bg-primary motion-reduce:transition-none
                     ${p === page 
                       ? "scale-100 transition-transform duration-300 ease-out" // Animate IN
                       : "scale-0 transition-none" // Instant OUT (No contract animation)
@@ -183,7 +183,7 @@ export default function Pagination({
         <button
           onClick={() => onPageChange(page + 1)}
           disabled={page >= totalPages}
-          className="flex p-2 items-center justify-center rounded-md bg-neutral-800/90 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-200 disabled:opacity-30 disabled:hover:bg-neutral-900 disabled:cursor-not-allowed transition-all"
+          className="flex items-center justify-center rounded-md border border-line-default bg-surface-muted p-2 text-copy-muted transition-colors hover:bg-surface-raised hover:text-copy-primary disabled:cursor-not-allowed disabled:opacity-30"
           aria-label="Next page"
         >
           <ChevronRight className="h-4 w-4" />

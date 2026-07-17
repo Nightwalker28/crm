@@ -73,11 +73,11 @@ export function ColumnPicker({
       {(forceOpen || open) && (
         <div
           className={cn(
-            "w-64 rounded-xl border border-neutral-800 bg-neutral-950 p-3 shadow-2xl",
+            "w-64 rounded-[var(--radius-panel)] border border-line-default bg-surface-raised p-3 shadow-2xl",
             forceOpen ? "static shadow-none" : "absolute right-0 top-11 z-30",
           )}
         >
-          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-neutral-400">
+          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-copy-secondary">
             Visible columns
           </div>
           <div className="space-y-3">
@@ -85,12 +85,12 @@ export function ColumnPicker({
               {orderedVisibleOptions.map((option, index) => (
                 <div
                   key={option.key}
-                  className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
+                  className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-copy-secondary hover:bg-surface-muted"
                 >
                   <button
                     type="button"
                     onClick={() => void toggleColumn(option.key)}
-                    className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
+                    className="rounded p-1 text-copy-muted hover:bg-surface-muted hover:text-copy-primary"
                     title="Hide column"
                   >
                     <EyeOff className="h-4 w-4" />
@@ -101,7 +101,7 @@ export function ColumnPicker({
                       type="button"
                       onClick={() => void moveColumn(option.key, "up")}
                       disabled={index === 0}
-                      className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:cursor-not-allowed disabled:opacity-30"
+                      className="rounded p-1 text-copy-muted hover:bg-surface-muted hover:text-copy-primary disabled:cursor-not-allowed disabled:opacity-30"
                       title="Move up"
                     >
                       <ArrowUp className="h-4 w-4" />
@@ -110,7 +110,7 @@ export function ColumnPicker({
                       type="button"
                       onClick={() => void moveColumn(option.key, "down")}
                       disabled={index === orderedVisibleOptions.length - 1}
-                      className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100 disabled:cursor-not-allowed disabled:opacity-30"
+                      className="rounded p-1 text-copy-muted hover:bg-surface-muted hover:text-copy-primary disabled:cursor-not-allowed disabled:opacity-30"
                       title="Move down"
                     >
                       <ArrowDown className="h-4 w-4" />
@@ -122,20 +122,20 @@ export function ColumnPicker({
 
             {hiddenColumns.length ? (
               <>
-                <div className="border-t border-neutral-800 pt-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+                <div className="border-t border-line-default pt-3 text-xs font-semibold uppercase tracking-wide text-copy-muted">
                   Hidden columns
                 </div>
                 <div className="space-y-2">
                   {hiddenColumns.map((option) => (
                     <label
                       key={option.key}
-                      className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm text-neutral-200 hover:bg-neutral-900"
+                      className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm text-copy-secondary hover:bg-surface-muted"
                     >
                       <input
                         type="checkbox"
                         checked={false}
                         onChange={() => void toggleColumn(option.key)}
-                        className="h-4 w-4 rounded border-neutral-700 bg-neutral-900"
+                        className="h-4 w-4 rounded border-line-strong bg-surface"
                       />
                       <span>{option.label}</span>
                     </label>

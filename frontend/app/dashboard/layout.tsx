@@ -1,14 +1,18 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Menu, UserRound } from "lucide-react";
 import CalendarSyncBridge from "@/components/calendar/CalendarSyncBridge";
 import Sidebar from "@/components/sidebar/Sidebar";
 import BrowserNotificationsBridge from "@/components/notifications/BrowserNotificationsBridge";
 import GlobalCommandPalette from "@/components/search/GlobalCommandPalette";
+import NotificationCenter from "@/components/notifications/NotificationCenter";
+import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetOverlay, SheetPortal, SheetTitle } from "@/components/ui/sheet";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { getGuardedModuleRoutePrefixes, getRequiredModuleKeyForRoute, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
@@ -85,6 +89,7 @@ function BreadcrumbBar({ pathname }: { pathname: string }) {
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const { isAdmin, isLoading } = useSidebarUser();
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const requiresAdmin = isAdminOnlyPath(pathname);
@@ -111,10 +116,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       router.replace(canonicalPathname);
       return;
     }
-    if (isBlocked || isModuleBlocked) {
-      router.replace("/dashboard");
-    }
-  }, [canonicalPathname, hasLegacyPathname, isBlocked, isModuleBlocked, router]);
+  }, [canonicalPathname, hasLegacyPathname, router]);
 
   return (
     <div className="relative flex h-screen w-full overflow-hidden bg-app font-sans text-copy-secondary">
@@ -122,17 +124,33 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       <CalendarSyncBridge />
 
       <div className="pointer-events-none fixed inset-0 z-0">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(108,124,255,0.08),transparent_38%)]" />
+        <div className="absolute inset-0 bg-[image:var(--background-accent-glow)]" />
       </div>
 
       <Sidebar />
+      <Sheet open={mobileNavigationOpen} onOpenChange={setMobileNavigationOpen}>
+        <SheetPortal>
+          <SheetOverlay className="fixed inset-0 z-40 bg-overlay md:hidden" />
+          <SheetContent side="left" className="z-50 w-72 max-w-[85vw] outline-none md:hidden">
+            <SheetTitle className="sr-only">Navigation</SheetTitle>
+            <Sidebar mobile onNavigate={() => setMobileNavigationOpen(false)} />
+          </SheetContent>
+        </SheetPortal>
+      </Sheet>
 
       <main className="relative z-10 flex min-w-0 flex-1 overflow-hidden p-3 sm:p-4 lg:p-6">
-        <div className="relative z-20 flex h-full w-full min-w-0 flex-col overflow-hidden rounded-[var(--radius-panel)] border border-line-subtle bg-surface shadow-[0_24px_80px_rgba(0,0,0,0.28)]">
+        <div className="relative z-20 flex h-full w-full min-w-0 flex-col overflow-hidden rounded-[var(--radius-panel)] border border-line-subtle bg-surface shadow-[var(--shadow-panel)]">
           <div className="flex min-h-16 flex-col justify-center gap-3 border-b border-line-subtle px-4 py-3 sm:px-6 xl:flex-row xl:items-center xl:justify-between xl:py-0">
-            <BreadcrumbBar pathname={pathname} />
-            <div className="w-full xl:max-w-xl">
+            <div className="flex min-w-0 items-center gap-2">
+              <Button type="button" variant="ghost" size="icon-sm" className="md:hidden" aria-label="Open navigation" aria-expanded={mobileNavigationOpen} onClick={() => setMobileNavigationOpen(true)}><Menu /></Button>
+              <BreadcrumbBar pathname={pathname} />
+            </div>
+            <div className="flex w-full items-center gap-2 xl:max-w-2xl">
+              <div className="min-w-0 flex-1">
               <GlobalCommandPalette />
+              </div>
+              <NotificationCenter />
+              <Button asChild variant="ghost" size="icon-sm"><Link href="/dashboard/profile" aria-label="Open profile"><UserRound /></Link></Button>
             </div>
           </div>
           <div className="scrollbar-hide relative z-30 h-full w-full overflow-y-auto px-4 py-5 sm:px-6 lg:px-8">
@@ -141,9 +159,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                 Checking access...
               </div>
             ) : isBlocked || isModuleBlocked ? (
-              <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-6 text-sm text-copy-primary">
-                You do not have access to open this page.
-              </div>
+              <PermissionDeniedState />
             ) : (
               children
             )}

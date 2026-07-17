@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: payments-revamp.spec.ts >> Payments provides a responsive receivables list and records a payment
-- Location: tests/e2e/payments-revamp.spec.ts:56:5
+- Name: foundation-revamp.spec.ts >> dashboard shell provides an accessible mobile navigation drawer
+- Location: tests/e2e/foundation-revamp.spec.ts:9:5
 
 # Error details
 

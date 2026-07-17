@@ -5,6 +5,7 @@ import { Filter, SearchX, X } from "lucide-react";
 
 import SearchBar from "@/components/ui/SearchBar";
 import { Button } from "@/components/ui/button";
+import { TableDensityToggle } from "@/components/ui/TableDensityToggle";
 
 type Props = {
   searchValue: string;
@@ -46,6 +47,7 @@ export function ModuleListToolbar({
             {activeFilterCount ? <span className="rounded-full bg-action-primary-muted px-1.5 py-0.5 text-[10px] font-semibold text-copy-primary">{activeFilterCount}</span> : null}
           </Button>
           {activeFilterCount ? <Button type="button" variant="ghost" size="sm" onClick={onClearFilters}><SearchX />Clear filters</Button> : null}
+          <TableDensityToggle />
           <div className="ml-auto flex items-center gap-2">{actionControls}</div>
         </div>
       </div>

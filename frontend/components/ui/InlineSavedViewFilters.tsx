@@ -21,12 +21,12 @@ export function InlineSavedViewFilters({ filterFields, filters, onChange, hideHe
   const activeCount = allConditions.length + anyConditions.length;
 
   return (
-    <div className="flex flex-col gap-4 text-neutral-200">
+    <div className="flex flex-col gap-4 text-copy-secondary">
       {!hideHeader ? <Card className="px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-neutral-400">Quick Filters</h2>
-            <p className="mt-1 text-xs text-neutral-500">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-copy-secondary">Quick Filters</h2>
+            <p className="mt-1 text-xs text-copy-muted">
               Apply reusable AND/OR conditions directly from this module page.
             </p>
           </div>
@@ -41,7 +41,7 @@ export function InlineSavedViewFilters({ filterFields, filters, onChange, hideHe
               <Filter className="h-4 w-4" />
               {isOpen ? "Hide Filters" : "Show Filters"}
               {activeCount > 0 ? (
-                <span className="ml-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-neutral-200 px-1 text-[9px] font-bold text-neutral-950">
+                <span className="ml-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-action-primary-muted px-1 text-[9px] font-bold text-copy-primary">
                   {activeCount}
                 </span>
               ) : null}

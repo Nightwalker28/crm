@@ -116,8 +116,8 @@ function ConditionGroupsContent({
     <>
       {(title || description) ? (
         <div>
-          {title ? <h2 className="text-lg font-semibold text-neutral-100">{title}</h2> : null}
-          {description ? <p className="mt-1 text-sm text-neutral-400">{description}</p> : null}
+          {title ? <h2 className="text-lg font-semibold text-copy-primary">{title}</h2> : null}
+          {description ? <p className="mt-1 text-sm text-copy-secondary">{description}</p> : null}
         </div>
       ) : null}
 
@@ -128,8 +128,8 @@ function ConditionGroupsContent({
         <div key={groupKey} className={title || description ? "mt-6" : ""}>
           <div className="mb-3 flex items-center justify-between gap-4">
             <div>
-              <h3 className="text-sm font-semibold text-neutral-200">{groupLabel}</h3>
-              <p className="mt-1 text-xs text-neutral-500">
+              <h3 className="text-sm font-semibold text-copy-primary">{groupLabel}</h3>
+              <p className="mt-1 text-xs text-copy-muted">
                 {groupKey === "all"
                   ? "Records must satisfy every condition in this section."
                   : "Records must satisfy at least one condition in this section."}
@@ -154,7 +154,7 @@ function ConditionGroupsContent({
                 return (
                   <div
                     key={condition.id ?? `${condition.field}-${index}`}
-                    className="grid gap-3 rounded-xl border border-neutral-800 bg-neutral-950/60 px-4 py-4 md:grid-cols-[1.3fr_1fr_1.2fr_auto]"
+                    className="grid gap-3 rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4 md:grid-cols-[1.3fr_1fr_1.2fr_auto]"
                   >
                     <div className="space-y-2">
                       <Label>Field</Label>
@@ -212,7 +212,7 @@ function ConditionGroupsContent({
                     <div className="space-y-2">
                       <Label>Value</Label>
                       {hidesValue ? (
-                        <div className="flex h-10 items-center rounded-md border border-neutral-800 px-3 text-sm text-neutral-500">
+                        <div className="flex h-10 items-center rounded-md border border-line-default px-3 text-sm text-copy-muted">
                           No value needed
                         </div>
                       ) : selectedField?.type === "relation" && selectedField.recordType ? (
@@ -295,7 +295,7 @@ function ConditionGroupsContent({
                 );
               })
             ) : (
-              <div className="rounded-xl border border-dashed border-neutral-800 px-4 py-5 text-sm text-neutral-500">
+              <div className="rounded-[var(--radius-card)] border border-dashed border-line-default px-4 py-5 text-sm text-copy-muted">
                 No {groupKey === "all" ? "AND" : "OR"} conditions yet.
               </div>
             )}

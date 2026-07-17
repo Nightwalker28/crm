@@ -156,15 +156,16 @@ function activeGroupKey(pathname: string, groups: SidebarGroupConfig[]) {
   return active?.key ?? groups[0]?.key ?? "";
 }
 
-export default function Sidebar() {
+export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
   const { user, isAdmin, logout } = useSidebarUser();
   const { modules } = useAccessibleModules();
-  const collapsed = useSyncExternalStore(
+  const storedCollapsed = useSyncExternalStore(
     subscribeToSidebarCollapse,
     getSidebarCollapsedSnapshot,
     () => false,
   );
+  const collapsed = mobile ? false : storedCollapsed;
 
   const groups = useMemo(() => {
     const next = buildOperationalGroups(modules);
@@ -191,27 +192,28 @@ export default function Sidebar() {
 
   return (
     <aside
+      aria-label={mobile ? "Mobile navigation" : "Primary navigation"}
       className={
-        "relative z-10 flex h-screen shrink-0 flex-col border-r border-line-subtle bg-sidebar transition-[width] duration-200 motion-reduce:transition-none " +
-        (collapsed ? "w-[4.5rem]" : "w-60")
+        "relative z-10 h-full shrink-0 flex-col border-r border-line-subtle bg-sidebar transition-[width] duration-200 motion-reduce:transition-none " +
+        (mobile ? "flex w-72" : `hidden md:flex ${collapsed ? "w-[4.5rem]" : "w-60"}`)
       }
     >
       <div className="flex h-full min-h-0 flex-col overflow-hidden px-2 py-3">
         <div className={`mb-4 flex items-center gap-2 px-1 ${collapsed ? "flex-col justify-center" : "justify-between"}`}>
-          <Link href={DASHBOARD_ROUTES.home} className="flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] focus:outline-none focus:ring-2 focus:ring-primary">
+          <Link href={DASHBOARD_ROUTES.home} onClick={onNavigate} className="flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] focus:outline-none focus:ring-2 focus:ring-primary">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
               <span className="font-lynk text-xl leading-none text-copy-primary">L</span>
             </div>
             {!collapsed ? <h1 className="font-lynk text-2xl tracking-tight text-copy-primary">Lynk</h1> : null}
           </Link>
-          <button
+          {!mobile ? <button
             type="button"
             onClick={toggleCollapsed}
             className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-action-primary-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-          </button>
+          </button> : null}
         </div>
 
         <SidebarNav>
@@ -227,7 +229,7 @@ export default function Sidebar() {
                   onOpenChange={(nextOpen) => setManualOpenGroup({ pathname, key: nextOpen ? group.key : "" })}
                 >
                   {group.items.map((item) => (
-                    <SidebarMenuItemChild key={item.href} href={item.href} collapsed={collapsed}>
+                    <SidebarMenuItemChild key={item.href} href={item.href} collapsed={collapsed} onNavigate={onNavigate}>
                       {item.label}
                     </SidebarMenuItemChild>
                   ))}
@@ -252,6 +254,7 @@ export default function Sidebar() {
               <div className={`flex items-center p-1.5 ${collapsed ? "justify-center" : "gap-1"}`}>
                 <Link
                   href="/dashboard/profile"
+                  onClick={onNavigate}
                   className={`flex min-w-0 items-center gap-2 rounded-[var(--radius-control-sm)] px-1 py-1 transition-colors hover:bg-action-primary-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
                     collapsed ? "justify-center" : "flex-1"
                   }`}
@@ -267,7 +270,7 @@ export default function Sidebar() {
                       className="h-8 w-8 shrink-0 rounded-md object-cover shadow-sm"
                     />
                   ) : (
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-neutral-100 text-[10px] font-bold text-black shadow-sm">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-copy-primary text-[10px] font-bold text-app shadow-sm">
                       {initials}
                     </div>
                   )}

@@ -27,11 +27,15 @@ const fakeAccountSummary = {
   related_contacts: [],
   related_opportunities: [],
   related_quotes: [],
+  related_orders: [{ id: 71, order_number: "SO-BROWSER", status: "confirmed", currency: "USD", grand_total: 1250, updated_at: "2099-07-20T09:30:00Z" }],
+  related_invoices: [{ id: 72, invoice_number: "INV-BROWSER", status: "issued", payment_status: "unpaid", currency: "USD", total_amount: 1250, updated_at: "2099-07-20T09:30:00Z" }],
   related_insertion_orders: [],
   inferred_services: [],
   contact_count: 0,
   opportunity_count: 0,
   quote_count: 0,
+  order_count: 1,
+  invoice_count: 1,
   insertion_order_count: 0,
 };
 
@@ -82,10 +86,13 @@ test("Account create, detail, edit, and related-record tabs use the shared workf
   await page.getByRole("tab", { name: "Related records" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/organizations/${fakeAccountId}\\?tab=related$`));
   await expect(page.getByText("Insertion orders", { exact: true })).toBeVisible();
+  await expect(page.getByText("SO-BROWSER", { exact: true })).toBeVisible();
+  await expect(page.getByText("INV-BROWSER", { exact: true })).toBeVisible();
 
   await page.goto(`/dashboard/sales/organizations/${fakeAccountId}/edit`);
   await expect(page.getByRole("heading", { name: "Edit account" })).toBeVisible();
   await expect(page.getByLabel("Account name")).toHaveValue("Browser Account");
   await expect(page.getByLabel("Primary email")).toHaveValue("account@example.com");
   await expect(page.getByPlaceholder("Search owners")).toHaveValue("Ada Owner");
+  await expect(page.getByText(/Last modified/)).toBeVisible();
 });

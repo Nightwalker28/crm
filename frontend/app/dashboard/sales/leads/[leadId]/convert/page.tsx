@@ -9,6 +9,7 @@ import LeadConversionForm from "@/components/leads/LeadConversionForm";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { apiFetch } from "@/lib/api";
 
 type LeadSummary = { lead: { lead_id: number; first_name?: string | null; last_name?: string | null; company?: string | null; primary_email: string; status?: string | null } };
@@ -25,8 +26,8 @@ export default function ConvertLeadPage() {
   const summaryQuery = useQuery({ queryKey: ["sales-lead-summary", params.leadId], queryFn: () => fetchLeadSummary(params.leadId), enabled: Boolean(params.leadId), refetchOnWindowFocus: false });
   const backHref = `/dashboard/sales/leads/${params.leadId}`;
 
-  if (summaryQuery.isLoading) return <Card className="p-6 text-sm text-copy-muted">Loading lead…</Card>;
-  if (!summaryQuery.data || summaryQuery.error) return <Card className="border-state-danger/40 p-6 text-sm text-state-danger">{summaryQuery.error instanceof Error ? summaryQuery.error.message : "Lead not found."}</Card>;
+  if (summaryQuery.isLoading) return <RouteLoadingState label="lead conversion" />;
+  if (!summaryQuery.data || summaryQuery.error) return <RouteErrorState title="Unable to prepare this lead conversion" reset={() => void summaryQuery.refetch()} backHref={backHref} backLabel="Back to lead" />;
 
   const lead = summaryQuery.data.lead;
   const leadName = `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || lead.primary_email;

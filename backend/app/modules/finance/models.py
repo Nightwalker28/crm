@@ -96,6 +96,8 @@ class FinancePosInvoice(Base):
         ),
         Index("ix_finance_pos_invoices_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_finance_pos_invoices_tenant_status_active", "tenant_id", "status", postgresql_where=text("deleted_at IS NULL")),
+        Index("ix_finance_pos_invoices_tenant_contact_active", "tenant_id", "customer_contact_id", postgresql_where=text("deleted_at IS NULL")),
+        Index("ix_finance_pos_invoices_tenant_org_active", "tenant_id", "customer_organization_id", postgresql_where=text("deleted_at IS NULL")),
         Index(
             "uq_finance_pos_invoices_active_tenant_number",
             "tenant_id",

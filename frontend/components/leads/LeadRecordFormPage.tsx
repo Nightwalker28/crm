@@ -10,16 +10,19 @@ import { toast } from "sonner";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { EMPTY_LEAD_FORM, LeadFormMainFields, LeadFormSidebarFields, type LeadFormValue } from "@/components/leads/LeadFormFields";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
+import { formatDateTime } from "@/lib/datetime";
 
 type LeadSummary = {
   lead: LeadFormValue & {
     lead_id: number;
     custom_fields?: Record<string, unknown> | null;
+    updated_at?: string | null;
   };
 };
 
@@ -93,14 +96,7 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
   const currentSnapshot = useMemo(() => JSON.stringify([form, customFieldValues]), [form, customFieldValues]);
   const isDirty = currentSnapshot !== initialSnapshot;
 
-  useEffect(() => {
-    function warnBeforeUnload(event: BeforeUnloadEvent) {
-      if (!isDirty || submitting) return;
-      event.preventDefault();
-    }
-    window.addEventListener("beforeunload", warnBeforeUnload);
-    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
-  }, [isDirty, submitting]);
+  useUnsavedChangesGuard(isDirty, submitting);
 
   function validate() {
     const email = form.primary_email.trim();
@@ -153,24 +149,19 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
       setInitialSnapshot(currentSnapshot);
       toast.success(mode === "edit" ? "Lead updated." : "Lead created.");
       router.push(savedLeadId ? `/dashboard/sales/leads/${savedLeadId}` : "/dashboard/sales/leads");
-    } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : `Failed to ${mode} lead`);
+    } catch {
+      setSubmitError(mode === "edit" ? "The lead could not be updated. Check the fields and try again." : "The lead could not be created. Check the fields and try again.");
     } finally {
       setSubmitting(false);
     }
   }
 
   if (mode === "edit" && summaryQuery.isLoading) {
-    return <Card className="p-6 text-sm text-copy-muted">Loading lead…</Card>;
+    return <RouteLoadingState label="lead" />;
   }
 
   if (mode === "edit" && summaryQuery.error) {
-    return (
-      <Card className="border-state-danger/40 p-6">
-        <p className="text-sm text-state-danger">{summaryQuery.error instanceof Error ? summaryQuery.error.message : "Failed to load lead."}</p>
-        <Button className="mt-4" variant="outline" onClick={() => void summaryQuery.refetch()}>Retry</Button>
-      </Card>
-    );
+    return <RouteErrorState title="Unable to load this lead" reset={() => void summaryQuery.refetch()} backHref="/dashboard/sales/leads" backLabel="Back to leads" />;
   }
 
   const title = mode === "edit" ? "Edit lead" : "Create lead";
@@ -180,6 +171,7 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
     <div className="flex flex-col gap-6">
       <PageHeader
         title={title}
+        eyebrow={mode === "edit" && summaryQuery.data?.lead.updated_at ? `Last modified ${formatDateTime(summaryQuery.data.lead.updated_at)}` : undefined}
         description={mode === "edit" ? "Update lead details and qualification information." : "Capture a new prospect and prepare the first follow-up."}
         actions={(
           <Button asChild variant="ghost" size="sm">

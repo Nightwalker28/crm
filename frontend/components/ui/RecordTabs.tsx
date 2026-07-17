@@ -42,7 +42,7 @@ export function RecordTabs({ tabs, defaultTabId, className, urlParam }: RecordTa
 
   return (
     <div className={cn("flex min-w-0 flex-col gap-5", className)}>
-      <div className="overflow-x-auto border-b border-neutral-800">
+      <div className="overflow-x-auto border-b border-line-default">
         <div className="flex min-w-max gap-2" role="tablist">
           {tabs.map((tab) => {
             const active = tab.id === activeTab?.id;
@@ -55,10 +55,10 @@ export function RecordTabs({ tabs, defaultTabId, className, urlParam }: RecordTa
                 aria-selected={active}
                 aria-controls={`record-tab-panel-${tab.id}`}
                 className={cn(
-                  "border-b-2 px-3 py-2 text-sm font-medium transition-colors",
+                  "border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                   active
-                    ? "border-neutral-100 text-neutral-100"
-                    : "border-transparent text-neutral-500 hover:text-neutral-200",
+                    ? "border-primary text-copy-primary"
+                    : "border-transparent text-copy-muted hover:text-copy-primary",
                 )}
               >
                 {tab.label}

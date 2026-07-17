@@ -7,11 +7,11 @@ interface PillProps extends React.HTMLAttributes<HTMLSpanElement> {
   border?: string;
 }
 
-export function Pill({ 
-  children, 
-  bg = "bg-neutral-800", 
-  text = "text-neutral-200", 
-  border = "border-neutral-600",
+export function Pill({
+  children,
+  bg = "bg-surface-muted",
+  text = "text-copy-secondary",
+  border = "border-line-default",
   className,
   ...props 
 }: PillProps) {

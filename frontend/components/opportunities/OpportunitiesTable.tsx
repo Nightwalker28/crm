@@ -103,7 +103,7 @@ export default function OpportunitiesTable({
   }
 
   const renderCell = (opportunity: Opportunity, column: string, isIdentityColumn: boolean) => {
-    const stickyClassName = isIdentityColumn ? "sticky left-12 z-10 border-r border-line-subtle bg-neutral-950 group-hover:bg-neutral-900" : undefined;
+    const stickyClassName = isIdentityColumn ? "sticky left-12 z-10 border-r border-line-subtle bg-surface group-hover:bg-surface-raised" : undefined;
     if (isCustomFieldColumnKey(column)) {
       return <CustomFieldCell column={column} values={opportunity.custom_fields} className={stickyClassName} />;
     }
@@ -113,8 +113,8 @@ export default function OpportunitiesTable({
         return (
           <TableCell className={stickyClassName}>
             <div className="flex flex-col gap-0.5">
-              <span className="text-sm font-semibold text-neutral-100 truncate max-w-[220px]">
-                {opportunity.opportunity_name || <span className="text-neutral-600">—</span>}
+              <span className="max-w-[220px] truncate text-sm font-semibold text-copy-primary">
+                {opportunity.opportunity_name || <span className="text-copy-disabled">—</span>}
               </span>
             </div>
           </TableCell>
@@ -124,16 +124,16 @@ export default function OpportunitiesTable({
         return (
           <TableCell>
             {opportunity.contact_name || opportunity.client ? (
-              <span className="text-sm text-sky-300 font-medium">{opportunity.contact_name || opportunity.client}</span>
+              <span className="text-sm font-medium text-action-primary">{opportunity.contact_name || opportunity.client}</span>
             ) : (
-              <span className="text-neutral-600 text-sm">—</span>
+              <span className="text-sm text-copy-disabled">—</span>
             )}
           </TableCell>
         );
       case "organization_name":
-        return <TableCell><span className="text-sm text-neutral-300">{opportunity.organization_name || "—"}</span></TableCell>;
+        return <TableCell><span className="text-sm text-copy-secondary">{opportunity.organization_name || "—"}</span></TableCell>;
       case "assigned_to_name":
-        return <TableCell><span className="text-sm text-neutral-300">{opportunity.assigned_to_name || "Unassigned"}</span></TableCell>;
+        return <TableCell><span className="text-sm text-copy-secondary">{opportunity.assigned_to_name || "Unassigned"}</span></TableCell>;
       case "sales_stage":
         return (
           <TableCell>
@@ -145,7 +145,7 @@ export default function OpportunitiesTable({
                   {label}
                 </Pill>
               );
-            })() : <span className="text-neutral-600 text-sm">—</span>}
+            })() : <span className="text-sm text-copy-disabled">—</span>}
           </TableCell>
         );
       case "expected_close_date":
@@ -154,13 +154,13 @@ export default function OpportunitiesTable({
             {opportunity.expected_close_date ? (
               <span className={`text-sm font-medium tabular-nums ${
                 isOverdue(opportunity.expected_close_date) && opportunity.sales_stage !== "closed_won" && opportunity.sales_stage !== "closed_lost"
-                  ? "text-red-400"
-                  : "text-neutral-300"
+                  ? "text-state-danger"
+                  : "text-copy-secondary"
               }`}>
                 {formatDateOnly(opportunity.expected_close_date)}
               </span>
             ) : (
-              <span className="text-neutral-600 text-sm">—</span>
+              <span className="text-sm text-copy-disabled">—</span>
             )}
           </TableCell>
         );
@@ -168,11 +168,11 @@ export default function OpportunitiesTable({
         return (
           <TableCell>
             {opportunity.total_cost_of_project ? (
-              <span className="text-sm font-semibold text-emerald-300 tabular-nums">
+              <span className="text-sm font-semibold tabular-nums text-state-success">
                 {opportunity.total_cost_of_project}
               </span>
             ) : (
-              <span className="text-neutral-600 text-sm">—</span>
+              <span className="text-sm text-copy-disabled">—</span>
             )}
           </TableCell>
         );
@@ -180,11 +180,11 @@ export default function OpportunitiesTable({
         return (
           <TableCell>
             {opportunity.probability_percent !== null && opportunity.probability_percent !== undefined && opportunity.probability_percent !== "" ? (
-              <span className="text-sm font-medium text-neutral-300 tabular-nums">
+              <span className="text-sm font-medium tabular-nums text-copy-secondary">
                 {Number(opportunity.probability_percent).toLocaleString(undefined, { maximumFractionDigits: 2 })}%
               </span>
             ) : (
-              <span className="text-neutral-600 text-sm">Stage default</span>
+              <span className="text-sm text-copy-disabled">Stage default</span>
             )}
           </TableCell>
         );
@@ -192,19 +192,19 @@ export default function OpportunitiesTable({
         return (
           <TableCell>
             {opportunity.currency_type ? (
-              <span className="text-xs font-bold text-neutral-400 tracking-wider bg-neutral-800/60 border border-neutral-700/50 rounded px-1.5 py-0.5">
+              <span className="rounded border border-line-default bg-surface-muted px-1.5 py-0.5 text-xs font-bold tracking-wider text-copy-muted">
                 {opportunity.currency_type}
               </span>
             ) : (
-              <span className="text-neutral-600 text-sm">—</span>
+              <span className="text-sm text-copy-disabled">—</span>
             )}
           </TableCell>
         );
       case "created_time":
         return (
           <TableCell>
-            <span className="text-sm text-neutral-500 tabular-nums">
-              {opportunity.created_time ? formatDateTime(opportunity.created_time, { hour: "numeric", minute: "2-digit" }) : <span className="text-neutral-600">—</span>}
+            <span className="text-sm tabular-nums text-copy-muted">
+              {opportunity.created_time ? formatDateTime(opportunity.created_time, { hour: "numeric", minute: "2-digit" }) : <span className="text-copy-disabled">—</span>}
             </span>
           </TableCell>
         );
@@ -218,11 +218,11 @@ export default function OpportunitiesTable({
       <Table className="min-w-[1040px]">
         <TableHeader>
           <TableHeaderRow>
-            <TableHead className="sticky left-0 z-40 w-12 border-r border-line-subtle bg-neutral-900 pr-0">
+            <TableHead className="sticky left-0 z-40 w-12 border-r border-line-subtle bg-surface-raised pr-0">
               <Checkbox
                 checked={currentPageSelectionState}
                 onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
-                className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                className="h-4 w-4 rounded border border-line-strong bg-surface-raised"
                 aria-label="Select current page opportunities"
               >
                 <CheckboxIndicator className="h-3 w-3" />
@@ -231,7 +231,7 @@ export default function OpportunitiesTable({
             {visibleColumns.map((column, index) => {
               const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
               if (!sortableColumns.has(column)) {
-                return <TableHead key={column} className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined}>{label}</TableHead>;
+                return <TableHead key={column} className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-surface-raised" : undefined}>{label}</TableHead>;
               }
               const isSorted = sort?.column === column;
               return (
@@ -240,7 +240,7 @@ export default function OpportunitiesTable({
                   sorted={isSorted}
                   direction={isSorted ? sort.direction : "asc"}
                   onClick={() => toggleSort(column)}
-                  className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-neutral-900" : undefined}
+                  className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-surface-raised" : undefined}
                 >
                   {label}
                 </SortableHead>
@@ -265,13 +265,13 @@ export default function OpportunitiesTable({
                 onClick={() => onEdit(opportunity)}
               >
                 <TableCell
-                  className="sticky left-0 z-20 w-12 border-r border-line-subtle bg-neutral-950 pr-0 group-hover:bg-neutral-900"
+                  className="sticky left-0 z-20 w-12 border-r border-line-subtle bg-surface pr-0 group-hover:bg-surface-raised"
                   onClick={(event) => event.stopPropagation()}
                 >
                   <Checkbox
                     checked={selectedIds.includes(opportunity.opportunity_id)}
                     onCheckedChange={(checked) => onToggleRow?.(opportunity.opportunity_id, checked === true)}
-                    className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                    className="h-4 w-4 rounded border border-line-strong bg-surface-raised"
                     aria-label={`Select opportunity ${opportunity.opportunity_name}`}
                   >
                     <CheckboxIndicator className="h-3 w-3" />
