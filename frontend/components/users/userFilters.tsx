@@ -20,11 +20,11 @@ function FilterChip({ label, active, onClick }: FilterChipProps) {
       type="button"
       onClick={onClick}
       className={`
-        relative flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium transition-all duration-200
+        relative flex items-center justify-center rounded-[var(--radius-control)] border px-3 py-1.5 text-sm font-medium transition-colors motion-reduce:transition-none
         ${
           active
-            ? "border-neutral-200 bg-neutral-200 text-neutral-950 shadow-sm"
-            : "border-neutral-800 bg-neutral-900/40 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
+            ? "border-action-primary bg-action-primary-muted text-copy-primary shadow-sm"
+            : "border-line-default bg-surface-muted text-copy-muted hover:border-line-strong hover:text-copy-primary"
         }
       `}
     >
@@ -56,7 +56,13 @@ type Props = {
   onClear: () => void;
 };
 
-export default function UserFilters({ value, options, isLoading = false, onChange, onClear }: Props) {
+export default function UserFilters({
+  value,
+  options,
+  isLoading = false,
+  onChange,
+  onClear,
+}: Props) {
   const hasActiveFilters = useMemo(() => {
     return (
       value.search.trim().length > 0 ||
@@ -64,16 +70,20 @@ export default function UserFilters({ value, options, isLoading = false, onChang
       value.selectedRoles.length > 0 ||
       value.selectedStatuses.length > 0
     );
-  }, [value.search, value.selectedRoles, value.selectedStatuses, value.selectedTeams]);
+  }, [
+    value.search,
+    value.selectedRoles,
+    value.selectedStatuses,
+    value.selectedTeams,
+  ]);
 
-  const activeCount = 
-    value.selectedTeams.length + 
-    value.selectedRoles.length + 
+  const activeCount =
+    value.selectedTeams.length +
+    value.selectedRoles.length +
     value.selectedStatuses.length;
 
   return (
-    <div className="flex flex-col gap-4 text-neutral-200">
-      
+    <div className="flex flex-col gap-4 text-copy-primary">
       {/* Main Control Bar */}
       <Card className="px-4 py-1.5">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between">
@@ -86,18 +96,24 @@ export default function UserFilters({ value, options, isLoading = false, onChang
                 placeholder="Search users..."
               />
             </div>
-            
+
             {/* Loading Spinner or Total Count Text */}
-            <div className="hidden text-sm text-neutral-500 md:block min-w-[140px]">
+            <div className="hidden min-w-[140px] text-sm text-copy-muted md:block">
               {isLoading ? (
-                <div className="flex items-center gap-2 animate-pulse">
-                  <Spinner/>
-                  <span className="text-neutral-400">Updating...</span>
+                <div className="flex animate-pulse items-center gap-2 motion-reduce:animate-none">
+                  <Spinner />
+                  <span className="text-copy-muted">Updating...</span>
                 </div>
               ) : (
-                 <span className="text-neutral-400">
-                    <span className="text-neutral-200 font-medium">{options.totalCount}</span> users from{" "}
-                    <span className="text-neutral-200 font-medium">{options.allTeams.length}</span> teams
+                <span className="text-copy-muted">
+                  <span className="font-medium text-copy-primary">
+                    {options.totalCount}
+                  </span>{" "}
+                  users from{" "}
+                  <span className="font-medium text-copy-primary">
+                    {options.allTeams.length}
+                  </span>{" "}
+                  teams
                 </span>
               )}
             </div>
@@ -109,16 +125,18 @@ export default function UserFilters({ value, options, isLoading = false, onChang
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => onChange({ ...value, filtersOpen: !value.filtersOpen })}
+              onClick={() =>
+                onChange({ ...value, filtersOpen: !value.filtersOpen })
+              }
               className={`
                 text-xs font-normal transition-colors
-                ${value.filtersOpen ? "bg-neutral-800 text-neutral-200" : "text-neutral-400 hover:text-neutral-200"}
+                ${value.filtersOpen ? "bg-surface-raised text-copy-primary" : "text-copy-muted hover:text-copy-primary"}
               `}
             >
               <Filter />
               Filters
               {activeCount > 0 && (
-                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-neutral-200 px-1 text-[9px] font-bold text-neutral-950">
+                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-action-primary-muted px-1 text-[9px] font-bold text-copy-primary">
                   {activeCount}
                 </span>
               )}
@@ -130,13 +148,13 @@ export default function UserFilters({ value, options, isLoading = false, onChang
                 variant="ghost"
                 size="sm"
                 onClick={onClear}
-                className="text-xs text-neutral-500 hover:text-red-400"
+                className="text-xs text-copy-muted hover:text-state-danger"
               >
                 <SearchX />
                 Clear
               </Button>
             )}
-          </div>          
+          </div>
         </div>
       </Card>
 
@@ -153,10 +171,9 @@ export default function UserFilters({ value, options, isLoading = false, onChang
           >
             <Card className="px-4 py-3">
               <div className="grid gap-6 md:grid-cols-3">
-                
                 {/* Teams Section */}
                 <div className="space-y-2.5">
-                  <div className="text-xs uppercase tracking-wider font-semibold text-neutral-500">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-copy-muted">
                     Teams
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -183,7 +200,7 @@ export default function UserFilters({ value, options, isLoading = false, onChang
 
                 {/* Roles Section */}
                 <div className="space-y-2.5">
-                  <div className="text-xs uppercase tracking-wider font-semibold text-neutral-500">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-copy-muted">
                     Roles
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -210,17 +227,21 @@ export default function UserFilters({ value, options, isLoading = false, onChang
 
                 {/* Status Section */}
                 <div className="space-y-2.5">
-                  <div className="text-xs uppercase tracking-wider font-semibold text-neutral-500">
+                  <div className="text-xs font-semibold uppercase tracking-wider text-copy-muted">
                     Status
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <FilterChip
                       label="All"
                       active={value.selectedStatuses.length === 0}
-                      onClick={() => onChange({ ...value, selectedStatuses: [] })}
+                      onClick={() =>
+                        onChange({ ...value, selectedStatuses: [] })
+                      }
                     />
                     {options.allStatuses.map((statusValue) => {
-                      const label = statusValue.charAt(0).toUpperCase() + statusValue.slice(1);
+                      const label =
+                        statusValue.charAt(0).toUpperCase() +
+                        statusValue.slice(1);
 
                       return (
                         <FilterChip
@@ -228,8 +249,12 @@ export default function UserFilters({ value, options, isLoading = false, onChang
                           label={label}
                           active={value.selectedStatuses.includes(statusValue)}
                           onClick={() => {
-                            const next = value.selectedStatuses.includes(statusValue)
-                              ? value.selectedStatuses.filter((s) => s !== statusValue)
+                            const next = value.selectedStatuses.includes(
+                              statusValue,
+                            )
+                              ? value.selectedStatuses.filter(
+                                  (s) => s !== statusValue,
+                                )
                               : [...value.selectedStatuses, statusValue];
                             onChange({ ...value, selectedStatuses: next });
                           }}

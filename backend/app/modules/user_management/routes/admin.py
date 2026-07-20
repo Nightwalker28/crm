@@ -10,6 +10,7 @@ from app.core.pagination import Pagination, get_pagination
 from app.modules.user_management.schema import (
     AdminCreateUserRequest,
     AdminCreateUserResponse,
+    BulkUpdateUsersRequest,
     ModuleAccessSchema,
     ModuleAccessUpdateRequest,
     ModuleSchema,
@@ -47,6 +48,7 @@ from app.modules.user_management.services import admin_modules, admin_structure,
 from app.modules.user_management.services.mfa import admin_reset_user_mfa, get_tenant_mfa_policy, update_tenant_mfa_policy
 from app.modules.user_management.services.sso import get_or_create_sso_settings, serialize_sso_settings, test_sso_settings, update_sso_settings
 from app.modules.user_management.services.tenant_domains import create_tenant_domain, delete_tenant_domain, list_tenant_domains, serialize_tenant_domain, verify_tenant_domain
+from app.modules.platform.services.activity_logs import safe_log_activity
 from typing import Optional
 
 router = APIRouter(prefix="/admin/users", tags=["Admin Users"])
@@ -523,6 +525,33 @@ def test_tenant_sso_settings(
         tenant_id=admin.tenant_id,
         actor_user_id=admin.id,
     )
+
+
+@router.put("/bulk", response_model=list[UserProfile])
+def bulk_update_users(
+    payload: BulkUpdateUsersRequest,
+    db: Session = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    users = admin_users.bulk_update_users(
+        db,
+        payload,
+        tenant_id=admin.tenant_id,
+        actor_user_id=admin.id,
+    )
+    changes = payload.model_dump(exclude={"user_ids"}, exclude_none=True, mode="json")
+    safe_log_activity(
+        db,
+        tenant_id=admin.tenant_id,
+        actor_user_id=admin.id,
+        module_key="admin_users",
+        entity_type="user_bulk_update",
+        entity_id=admin.id,
+        action="bulk_update",
+        description=f"Updated {len(users)} users",
+        after_state={"user_ids": payload.user_ids, "changes": changes},
+    )
+    return [admin_users.serialize_user_profile(user) for user in users]
 
 
 @router.put("/{user_id}", response_model=UserProfile)

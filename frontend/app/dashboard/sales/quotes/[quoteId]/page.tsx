@@ -1,10 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckSquare, ExternalLink, FileText, Pencil, RefreshCw, Send, ShoppingCart, StickyNote } from "lucide-react";
+import {
+  CheckSquare,
+  ExternalLink,
+  FileText,
+  Pencil,
+  RefreshCw,
+  Send,
+  ShoppingCart,
+  StickyNote,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
@@ -15,11 +24,31 @@ import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import {
+  Field,
+  FieldDescription,
+  FieldGroup,
+  FieldLabel,
+} from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  RouteErrorState,
+  RouteLoadingState,
+} from "@/components/ui/RouteStates";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
-import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import {
+  isModuleFieldEnabled,
+  pickEnabledModulePayload,
+  useModuleFieldConfigs,
+} from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 
@@ -80,7 +109,17 @@ type QuoteSummary = {
     created_time?: string | null;
     updated_at?: string | null;
     custom_fields?: Record<string, unknown> | null;
-    items?: Array<{ id: number; name: string; description?: string | null; quantity: string | number; unit_price: string | number; discount_amount: string | number; tax_amount: string | number; line_total: string | number; sort_order: number }>;
+    items?: Array<{
+      id: number;
+      name: string;
+      description?: string | null;
+      quantity: string | number;
+      unit_price: string | number;
+      discount_amount: string | number;
+      tax_amount: string | number;
+      line_total: string | number;
+      sort_order: number;
+    }>;
   };
   opportunity?: {
     opportunity_id: number;
@@ -152,27 +191,44 @@ const STATUSES = [
   { value: "expired", label: "Expired" },
 ];
 
-const QUOTE_ALWAYS_INCLUDED_FIELDS = ["quote_number", "customer_name", "contact_id", "organization_id", "opportunity_id", "custom_fields"];
+const QUOTE_ALWAYS_INCLUDED_FIELDS = [
+  "quote_number",
+  "customer_name",
+  "contact_id",
+  "organization_id",
+  "opportunity_id",
+  "custom_fields",
+];
 
 function asInputValue(value: string | number | null | undefined) {
   return value == null ? "" : String(value);
 }
 
-function formatMoney(value: string | number | null | undefined, currency: string | null | undefined) {
+function formatMoney(
+  value: string | number | null | undefined,
+  currency: string | null | undefined,
+) {
   const amount = Number(value ?? 0);
   if (!Number.isFinite(amount)) return "-";
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "USD" }).format(amount);
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency: currency || "USD",
+  }).format(amount);
 }
 
 function getContactLabel(contact: QuoteSummary["contact"]) {
   if (!contact) return "";
-  return `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() || contact.primary_email || `Contact #${contact.contact_id}`;
+  return (
+    `${contact.first_name ?? ""} ${contact.last_name ?? ""}`.trim() ||
+    contact.primary_email ||
+    `Contact #${contact.contact_id}`
+  );
 }
 
 async function fetchQuoteSummary(quoteId: string) {
   const res = await apiFetch(`/sales/quotes/${quoteId}/summary`);
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new Error("Unable to load quote");
   return body as QuoteSummary;
 }
 
@@ -183,16 +239,22 @@ export default function QuoteDetailPage() {
   const [contactSearch, setContactSearch] = useState("");
   const [accountSearch, setAccountSearch] = useState("");
   const [dealSearch, setDealSearch] = useState("");
-  const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
+  const [customFieldValues, setCustomFieldValues] = useState<
+    Record<string, unknown>
+  >({});
   const [saving, setSaving] = useState(false);
   const [proposalSendingTo, setProposalSendingTo] = useState("");
-  const [proposalBusy, setProposalBusy] = useState<"generate" | "send" | null>(null);
+  const [proposalBusy, setProposalBusy] = useState<"generate" | "send" | null>(
+    null,
+  );
   const [proposalLinkPath, setProposalLinkPath] = useState<string | null>(null);
   const [convertingOrder, setConvertingOrder] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [savedSnapshot, setSavedSnapshot] = useState("");
   const customFieldsQuery = useModuleCustomFields("sales_quotes", true);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_quotes");
-  const fieldEnabled = (fieldKey: string) => isModuleFieldEnabled(moduleFields, fieldKey);
+  const fieldEnabled = (fieldKey: string) =>
+    isModuleFieldEnabled(moduleFields, fieldKey);
 
   const summaryQuery = useQuery({
     queryKey: ["sales-quote-summary", params.quoteId],
@@ -201,18 +263,17 @@ export default function QuoteDetailPage() {
     refetchOnWindowFocus: false,
   });
   const summary = summaryQuery.data ?? null;
-  const loadError = summaryQuery.error instanceof Error ? summaryQuery.error.message : null;
-
   useEffect(() => {
     if (!summary) return;
-    setError(null);
-    setForm({
+    const nextForm = {
       quote_number: summary.quote.quote_number ?? "",
       title: summary.quote.title ?? "",
       customer_name: summary.quote.customer_name ?? "",
       contact_id: summary.quote.contact_id ?? null,
       organization_id: summary.quote.organization_id ?? null,
-      opportunity_id: summary.quote.opportunity_id ? String(summary.quote.opportunity_id) : "",
+      opportunity_id: summary.quote.opportunity_id
+        ? String(summary.quote.opportunity_id)
+        : "",
       status: summary.quote.status ?? "draft",
       issue_date: summary.quote.issue_date ?? "",
       expiry_date: summary.quote.expiry_date ?? "",
@@ -222,50 +283,82 @@ export default function QuoteDetailPage() {
       tax_amount: asInputValue(summary.quote.tax_amount),
       total_amount: asInputValue(summary.quote.total_amount),
       notes: summary.quote.notes ?? "",
-    });
+    };
+    const nextCustomFields = summary.quote.custom_fields ?? {};
+    setError(null);
+    setForm(nextForm);
     setContactSearch(getContactLabel(summary.contact));
-    setAccountSearch(summary.organization?.org_name ?? (summary.quote.organization_id ? `Account #${summary.quote.organization_id}` : ""));
-    setDealSearch(summary.opportunity?.opportunity_name ?? (summary.quote.opportunity_id ? `Deal #${summary.quote.opportunity_id}` : ""));
-    setCustomFieldValues(summary.quote.custom_fields ?? {});
-    setProposalSendingTo(summary.latest_proposal?.sent_to ?? summary.contact?.primary_email ?? "");
+    setAccountSearch(
+      summary.organization?.org_name ??
+        (summary.quote.organization_id
+          ? `Account #${summary.quote.organization_id}`
+          : ""),
+    );
+    setDealSearch(
+      summary.opportunity?.opportunity_name ??
+        (summary.quote.opportunity_id
+          ? `Deal #${summary.quote.opportunity_id}`
+          : ""),
+    );
+    setCustomFieldValues(nextCustomFields);
+    setSavedSnapshot(JSON.stringify([nextForm, nextCustomFields]));
+    setProposalSendingTo(
+      summary.latest_proposal?.sent_to ?? summary.contact?.primary_email ?? "",
+    );
   }, [summary]);
+
+  const currentSnapshot = useMemo(
+    () => JSON.stringify([form, customFieldValues]),
+    [form, customFieldValues],
+  );
+  useUnsavedChangesGuard(
+    Boolean(summary && savedSnapshot && currentSnapshot !== savedSnapshot),
+    saving,
+  );
 
   async function handleSave() {
     try {
       setSaving(true);
       setError(null);
-      const payload = pickEnabledModulePayload({
-        quote_number: form.quote_number.trim(),
-        title: form.title.trim() || null,
-        customer_name: form.customer_name.trim(),
-        contact_id: form.contact_id,
-        organization_id: form.organization_id,
-        opportunity_id: form.opportunity_id.trim() ? Number(form.opportunity_id) : null,
-        status: form.status,
-        issue_date: form.issue_date || null,
-        expiry_date: form.expiry_date || null,
-        currency: form.currency.trim().toUpperCase() || "USD",
-        subtotal_amount: form.subtotal_amount || "0",
-        discount_amount: form.discount_amount || "0",
-        tax_amount: form.tax_amount || "0",
-        total_amount: form.total_amount || "0",
-        notes: form.notes.trim() || null,
-        custom_fields: customFieldValues,
-      }, moduleFields, QUOTE_ALWAYS_INCLUDED_FIELDS);
+      const payload = pickEnabledModulePayload(
+        {
+          quote_number: form.quote_number.trim(),
+          title: form.title.trim() || null,
+          customer_name: form.customer_name.trim(),
+          contact_id: form.contact_id,
+          organization_id: form.organization_id,
+          opportunity_id: form.opportunity_id.trim()
+            ? Number(form.opportunity_id)
+            : null,
+          status: form.status,
+          issue_date: form.issue_date || null,
+          expiry_date: form.expiry_date || null,
+          currency: form.currency.trim().toUpperCase() || "USD",
+          subtotal_amount: form.subtotal_amount || "0",
+          discount_amount: form.discount_amount || "0",
+          tax_amount: form.tax_amount || "0",
+          total_amount: form.total_amount || "0",
+          notes: form.notes.trim() || null,
+          custom_fields: customFieldValues,
+        },
+        moduleFields,
+        QUOTE_ALWAYS_INCLUDED_FIELDS,
+      );
       const res = await apiFetch(`/sales/quotes/${params.quoteId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      if (!res.ok) throw new Error("We could not save this quote.");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-quotes"] }),
         summaryQuery.refetch(),
       ]);
       toast.success("Quote updated.");
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save quote");
+      setError(
+        saveError instanceof Error ? saveError.message : "Failed to save quote",
+      );
     } finally {
       setSaving(false);
     }
@@ -275,14 +368,20 @@ export default function QuoteDetailPage() {
     try {
       setProposalBusy("generate");
       setError(null);
-      const res = await apiFetch(`/sales/quotes/${params.quoteId}/proposal/generate`, { method: "POST" });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      const res = await apiFetch(
+        `/sales/quotes/${params.quoteId}/proposal/generate`,
+        { method: "POST" },
+      );
+      if (!res.ok) throw new Error("We could not generate the proposal.");
       setProposalLinkPath(null);
       await summaryQuery.refetch();
       toast.success("Proposal generated.");
     } catch (proposalError) {
-      setError(proposalError instanceof Error ? proposalError.message : "Failed to generate proposal");
+      setError(
+        proposalError instanceof Error
+          ? proposalError.message
+          : "Failed to generate proposal",
+      );
     } finally {
       setProposalBusy(null);
     }
@@ -292,18 +391,25 @@ export default function QuoteDetailPage() {
     try {
       setProposalBusy("send");
       setError(null);
-      const res = await apiFetch(`/sales/quotes/${params.quoteId}/proposal/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sent_to: proposalSendingTo.trim() || null }),
-      });
+      const res = await apiFetch(
+        `/sales/quotes/${params.quoteId}/proposal/send`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sent_to: proposalSendingTo.trim() || null }),
+        },
+      );
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      if (!res.ok) throw new Error("We could not send the proposal.");
       setProposalLinkPath(body.public_url_path ?? null);
       await summaryQuery.refetch();
       toast.success("Proposal marked sent.");
     } catch (proposalError) {
-      setError(proposalError instanceof Error ? proposalError.message : "Failed to send proposal");
+      setError(
+        proposalError instanceof Error
+          ? proposalError.message
+          : "Failed to send proposal",
+      );
     } finally {
       setProposalBusy(null);
     }
@@ -313,33 +419,51 @@ export default function QuoteDetailPage() {
     try {
       setConvertingOrder(true);
       setError(null);
-      const res = await apiFetch(`/sales/quotes/${params.quoteId}/convert-to-order`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ allow_duplicate: false }),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      const res = await apiFetch(
+        `/sales/quotes/${params.quoteId}/convert-to-order`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ allow_duplicate: false }),
+        },
+      );
+      if (!res.ok)
+        throw new Error("We could not convert this quote to an order.");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-orders"] }),
         summaryQuery.refetch(),
       ]);
       toast.success("Quote converted to order.");
     } catch (convertError) {
-      setError(convertError instanceof Error ? convertError.message : "Failed to convert quote to order");
+      setError(
+        convertError instanceof Error
+          ? convertError.message
+          : "Failed to convert quote to order",
+      );
     } finally {
       setConvertingOrder(false);
     }
   }
 
+  if (summaryQuery.isLoading) return <RouteLoadingState />;
+  if (summaryQuery.error || !summary)
+    return (
+      <RouteErrorState
+        title="Unable to load quote"
+        backHref="/dashboard/sales/quotes"
+        backLabel="Back to quotes"
+        reset={() => void summaryQuery.refetch()}
+      />
+    );
+
   return (
-    <div className="flex flex-col gap-6 text-neutral-200">
+    <div className="flex flex-col gap-6 text-copy-primary">
       <RecordPageHeader
         backHref="/dashboard/sales/quotes"
         backLabel="Back to Quotes"
         title={summary ? summary.quote.quote_number || "Quote" : "Quote"}
         description="Review quote value, customer status, and record history."
-        primaryAction={(
+        primaryAction={
           <>
             <RecordDeleteButton
               endpoint={`/sales/quotes/${params.quoteId}`}
@@ -348,31 +472,87 @@ export default function QuoteDetailPage() {
               redirectHref="/dashboard/sales/quotes"
               queryKeys={["sales-quotes"]}
             />
-            <Button asChild variant="outline"><Link href={`/dashboard/sales/quotes/${params.quoteId}/edit`}><Pencil />Edit quote</Link></Button>
-            <Button onClick={handleSave} disabled={saving || !form.customer_name.trim() || !form.quote_number.trim()}>{saving ? "Saving..." : "Save Quote"}</Button>
+            <Button asChild variant="outline">
+              <Link href={`/dashboard/sales/quotes/${params.quoteId}/edit`}>
+                <Pencil />
+                Edit quote
+              </Link>
+            </Button>
+            <Button
+              onClick={handleSave}
+              disabled={
+                saving ||
+                !form.customer_name.trim() ||
+                !form.quote_number.trim()
+              }
+            >
+              {saving ? "Saving..." : "Save Quote"}
+            </Button>
           </>
-        )}
+        }
       />
 
-      {error || loadError ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error || loadError}</div> : null}
+      {error ? (
+        <div
+          role="alert"
+          className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"
+        >
+          {error}
+        </div>
+      ) : null}
 
       {summaryQuery.isLoading || !summary ? (
-        <Card className="px-5 py-5 text-sm text-neutral-500">Loading quote...</Card>
+        <Card className="px-5 py-5 text-sm text-copy-muted">
+          Loading quote...
+        </Card>
       ) : (
         <>
           <Card className="px-4 py-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Button type="button" size="sm" variant="outline" onClick={() => document.getElementById("quote-record-tools")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-                <FileText />Documents
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={() =>
+                  document
+                    .getElementById("quote-record-tools")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                }
+              >
+                <FileText />
+                Documents
               </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => document.getElementById("quote-record-tools")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-                <StickyNote />Note
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  document
+                    .getElementById("quote-record-tools")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                }
+              >
+                <StickyNote />
+                Note
               </Button>
-              <Button type="button" size="sm" variant="ghost" onClick={() => document.getElementById("quote-record-tools")?.scrollIntoView({ behavior: "smooth", block: "start" })}>
-                <CheckSquare />Task
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={() =>
+                  document
+                    .getElementById("quote-record-tools")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                }
+              >
+                <CheckSquare />
+                Task
               </Button>
-              <div className="ml-auto text-xs text-neutral-500">
-                Updated: {summary.quote.updated_at ? formatDateTime(summary.quote.updated_at) : "Not recorded"}
+              <div className="ml-auto text-xs text-copy-muted">
+                Updated:{" "}
+                {summary.quote.updated_at
+                  ? formatDateTime(summary.quote.updated_at)
+                  : "Not recorded"}
               </div>
             </div>
           </Card>
@@ -380,155 +560,443 @@ export default function QuoteDetailPage() {
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <Card className="px-5 py-5">
               <div className="mb-4">
-                <h2 className="text-lg font-semibold text-neutral-100">Quote Details</h2>
-                <FieldDescription className="mt-1">Edit the record directly on the page.</FieldDescription>
+                <h2 className="text-lg font-semibold text-copy-primary">
+                  Quote Details
+                </h2>
+                <FieldDescription className="mt-1">
+                  Edit the record directly on the page.
+                </FieldDescription>
               </div>
               <FieldGroup className="grid gap-4 md:grid-cols-2">
-                <Field><FieldLabel>Quote Number</FieldLabel><Input value={form.quote_number} onChange={(event) => setForm((current) => ({ ...current, quote_number: event.target.value }))} /></Field>
-                {fieldEnabled("customer_name") ? <Field><FieldLabel>Customer</FieldLabel><Input value={form.customer_name} onChange={(event) => setForm((current) => ({ ...current, customer_name: event.target.value }))} /></Field> : null}
-                {fieldEnabled("contact_id") ? (
                 <Field>
-                  <FieldLabel>Contact</FieldLabel>
-                  <LinkedRecordPicker
-                    recordType="contact"
-                    valueId={form.contact_id}
-                    displayValue={contactSearch}
-                    onDisplayValueChange={(value) => {
-                      setContactSearch(value);
-                      setForm((current) => ({ ...current, contact_id: null }));
-                    }}
-                    onSelect={(option) => {
-                      setContactSearch(option.label);
+                  <FieldLabel>Quote Number</FieldLabel>
+                  <Input
+                    value={form.quote_number}
+                    onChange={(event) =>
                       setForm((current) => ({
                         ...current,
-                        contact_id: option.id,
-                        organization_id: option.organization_id ?? current.organization_id,
-                        customer_name: current.customer_name.trim() ? current.customer_name : option.label,
-                      }));
-                      if (option.organization_id) {
-                        setAccountSearch(option.organization_name || `Account #${option.organization_id}`);
-                      }
-                    }}
-                    onClear={() => {
-                      setContactSearch("");
-                      setForm((current) => ({ ...current, contact_id: null }));
-                    }}
-                    placeholder="Search contacts"
-                    queryKeyPrefix="quote-detail-contact"
+                        quote_number: event.target.value,
+                      }))
+                    }
                   />
                 </Field>
+                {fieldEnabled("customer_name") ? (
+                  <Field>
+                    <FieldLabel>Customer</FieldLabel>
+                    <Input
+                      value={form.customer_name}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          customer_name: event.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                ) : null}
+                {fieldEnabled("contact_id") ? (
+                  <Field>
+                    <FieldLabel>Contact</FieldLabel>
+                    <LinkedRecordPicker
+                      recordType="contact"
+                      valueId={form.contact_id}
+                      displayValue={contactSearch}
+                      onDisplayValueChange={(value) => {
+                        setContactSearch(value);
+                        setForm((current) => ({
+                          ...current,
+                          contact_id: null,
+                        }));
+                      }}
+                      onSelect={(option) => {
+                        setContactSearch(option.label);
+                        setForm((current) => ({
+                          ...current,
+                          contact_id: option.id,
+                          organization_id:
+                            option.organization_id ?? current.organization_id,
+                          customer_name: current.customer_name.trim()
+                            ? current.customer_name
+                            : option.label,
+                        }));
+                        if (option.organization_id) {
+                          setAccountSearch(
+                            option.organization_name ||
+                              `Account #${option.organization_id}`,
+                          );
+                        }
+                      }}
+                      onClear={() => {
+                        setContactSearch("");
+                        setForm((current) => ({
+                          ...current,
+                          contact_id: null,
+                        }));
+                      }}
+                      placeholder="Search contacts"
+                      queryKeyPrefix="quote-detail-contact"
+                    />
+                  </Field>
                 ) : null}
                 {fieldEnabled("organization_id") ? (
-                <Field>
-                  <FieldLabel>Account</FieldLabel>
-                  <LinkedRecordPicker
-                    recordType="organization"
-                    valueId={form.organization_id}
-                    displayValue={accountSearch}
-                    onDisplayValueChange={(value) => {
-                      setAccountSearch(value);
-                      setForm((current) => ({ ...current, organization_id: null }));
-                    }}
-                    onSelect={(option) => {
-                      setAccountSearch(option.label);
-                      setForm((current) => ({
-                        ...current,
-                        organization_id: option.id,
-                        customer_name: current.customer_name.trim() ? current.customer_name : option.label,
-                      }));
-                    }}
-                    onClear={() => {
-                      setAccountSearch("");
-                      setForm((current) => ({ ...current, organization_id: null }));
-                    }}
-                    placeholder="Search accounts"
-                    queryKeyPrefix="quote-detail-account"
-                  />
-                </Field>
+                  <Field>
+                    <FieldLabel>Account</FieldLabel>
+                    <LinkedRecordPicker
+                      recordType="organization"
+                      valueId={form.organization_id}
+                      displayValue={accountSearch}
+                      onDisplayValueChange={(value) => {
+                        setAccountSearch(value);
+                        setForm((current) => ({
+                          ...current,
+                          organization_id: null,
+                        }));
+                      }}
+                      onSelect={(option) => {
+                        setAccountSearch(option.label);
+                        setForm((current) => ({
+                          ...current,
+                          organization_id: option.id,
+                          customer_name: current.customer_name.trim()
+                            ? current.customer_name
+                            : option.label,
+                        }));
+                      }}
+                      onClear={() => {
+                        setAccountSearch("");
+                        setForm((current) => ({
+                          ...current,
+                          organization_id: null,
+                        }));
+                      }}
+                      placeholder="Search accounts"
+                      queryKeyPrefix="quote-detail-account"
+                    />
+                  </Field>
                 ) : null}
                 {fieldEnabled("opportunity_id") ? (
-                <Field>
-                  <FieldLabel>Deal</FieldLabel>
-                  <LinkedRecordPicker
-                    recordType="opportunity"
-                    valueId={form.opportunity_id ? Number(form.opportunity_id) : null}
-                    displayValue={dealSearch}
-                    onDisplayValueChange={(value) => {
-                      setDealSearch(value);
-                      setForm((current) => ({ ...current, opportunity_id: "" }));
-                    }}
-                    onSelect={(option) => {
-                      setDealSearch(option.label);
-                      if (option.contact_id) {
-                        setContactSearch(`Contact #${option.contact_id}`);
+                  <Field>
+                    <FieldLabel>Deal</FieldLabel>
+                    <LinkedRecordPicker
+                      recordType="opportunity"
+                      valueId={
+                        form.opportunity_id ? Number(form.opportunity_id) : null
                       }
-                      if (option.organization_id) {
-                        setAccountSearch(`Account #${option.organization_id}`);
-                      }
-                      setForm((current) => ({
-                        ...current,
-                        opportunity_id: String(option.id),
-                        contact_id: option.contact_id ?? current.contact_id,
-                        organization_id: option.organization_id ?? current.organization_id,
-                        customer_name: current.customer_name.trim() ? current.customer_name : option.description?.split(" · ")[0] || option.label,
-                      }));
-                    }}
-                    onClear={() => {
-                      setDealSearch("");
-                      setForm((current) => ({ ...current, opportunity_id: "" }));
-                    }}
-                    placeholder="Search deals"
-                    queryKeyPrefix="quote-detail-deal"
-                  />
-                  <FieldDescription>Links this quote to a sales deal and inherits contact/account when available.</FieldDescription>
-                </Field>
+                      displayValue={dealSearch}
+                      onDisplayValueChange={(value) => {
+                        setDealSearch(value);
+                        setForm((current) => ({
+                          ...current,
+                          opportunity_id: "",
+                        }));
+                      }}
+                      onSelect={(option) => {
+                        setDealSearch(option.label);
+                        if (option.contact_id) {
+                          setContactSearch(`Contact #${option.contact_id}`);
+                        }
+                        if (option.organization_id) {
+                          setAccountSearch(
+                            `Account #${option.organization_id}`,
+                          );
+                        }
+                        setForm((current) => ({
+                          ...current,
+                          opportunity_id: String(option.id),
+                          contact_id: option.contact_id ?? current.contact_id,
+                          organization_id:
+                            option.organization_id ?? current.organization_id,
+                          customer_name: current.customer_name.trim()
+                            ? current.customer_name
+                            : option.description?.split(" · ")[0] ||
+                              option.label,
+                        }));
+                      }}
+                      onClear={() => {
+                        setDealSearch("");
+                        setForm((current) => ({
+                          ...current,
+                          opportunity_id: "",
+                        }));
+                      }}
+                      placeholder="Search deals"
+                      queryKeyPrefix="quote-detail-deal"
+                    />
+                    <FieldDescription>
+                      Links this quote to a sales deal and inherits
+                      contact/account when available.
+                    </FieldDescription>
+                  </Field>
                 ) : null}
-                {fieldEnabled("title") ? <Field><FieldLabel>Title</FieldLabel><Input value={form.title} onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))} /></Field> : null}
+                {fieldEnabled("title") ? (
+                  <Field>
+                    <FieldLabel>Title</FieldLabel>
+                    <Input
+                      value={form.title}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          title: event.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                ) : null}
                 {fieldEnabled("status") ? (
                   <Field>
                     <FieldLabel>Status</FieldLabel>
-                    <Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{STATUSES.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}</SelectContent>
+                    <Select
+                      value={form.status}
+                      onValueChange={(value) =>
+                        setForm((current) => ({ ...current, status: value }))
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {STATUSES.map((status) => (
+                          <SelectItem key={status.value} value={status.value}>
+                            {status.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
                     </Select>
                   </Field>
                 ) : null}
-                {fieldEnabled("issue_date") ? <Field><FieldLabel>Issue Date</FieldLabel><Input type="date" value={form.issue_date} onChange={(event) => setForm((current) => ({ ...current, issue_date: event.target.value }))} /></Field> : null}
-                {fieldEnabled("expiry_date") ? <Field><FieldLabel>Expiry Date</FieldLabel><Input type="date" value={form.expiry_date} onChange={(event) => setForm((current) => ({ ...current, expiry_date: event.target.value }))} /></Field> : null}
-                {fieldEnabled("currency") ? <Field><FieldLabel>Currency</FieldLabel><Input value={form.currency} onChange={(event) => setForm((current) => ({ ...current, currency: event.target.value }))} /></Field> : null}
-                {fieldEnabled("total_amount") ? <Field><FieldLabel>Total</FieldLabel><Input type="number" step="0.01" value={form.total_amount} disabled={Boolean(summary.quote.items?.length)} onChange={(event) => setForm((current) => ({ ...current, total_amount: event.target.value }))} /></Field> : null}
-                {fieldEnabled("subtotal_amount") ? <Field><FieldLabel>Subtotal</FieldLabel><Input type="number" step="0.01" value={form.subtotal_amount} disabled={Boolean(summary.quote.items?.length)} onChange={(event) => setForm((current) => ({ ...current, subtotal_amount: event.target.value }))} /></Field> : null}
-                {fieldEnabled("discount_amount") ? <Field><FieldLabel>Discount</FieldLabel><Input type="number" step="0.01" value={form.discount_amount} disabled={Boolean(summary.quote.items?.length)} onChange={(event) => setForm((current) => ({ ...current, discount_amount: event.target.value }))} /></Field> : null}
-                {fieldEnabled("tax_amount") ? <Field><FieldLabel>Tax</FieldLabel><Input type="number" step="0.01" value={form.tax_amount} disabled={Boolean(summary.quote.items?.length)} onChange={(event) => setForm((current) => ({ ...current, tax_amount: event.target.value }))} /></Field> : null}
+                {fieldEnabled("issue_date") ? (
+                  <Field>
+                    <FieldLabel>Issue Date</FieldLabel>
+                    <Input
+                      type="date"
+                      value={form.issue_date}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          issue_date: event.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                ) : null}
+                {fieldEnabled("expiry_date") ? (
+                  <Field>
+                    <FieldLabel>Expiry Date</FieldLabel>
+                    <Input
+                      type="date"
+                      value={form.expiry_date}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          expiry_date: event.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                ) : null}
+                {fieldEnabled("currency") ? (
+                  <Field>
+                    <FieldLabel>Currency</FieldLabel>
+                    <Input
+                      value={form.currency}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          currency: event.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                ) : null}
+                {fieldEnabled("total_amount") ? (
+                  <Field>
+                    <FieldLabel>Total</FieldLabel>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={form.total_amount}
+                      disabled={Boolean(summary.quote.items?.length)}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          total_amount: event.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                ) : null}
+                {fieldEnabled("subtotal_amount") ? (
+                  <Field>
+                    <FieldLabel>Subtotal</FieldLabel>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={form.subtotal_amount}
+                      disabled={Boolean(summary.quote.items?.length)}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          subtotal_amount: event.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                ) : null}
+                {fieldEnabled("discount_amount") ? (
+                  <Field>
+                    <FieldLabel>Discount</FieldLabel>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={form.discount_amount}
+                      disabled={Boolean(summary.quote.items?.length)}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          discount_amount: event.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                ) : null}
+                {fieldEnabled("tax_amount") ? (
+                  <Field>
+                    <FieldLabel>Tax</FieldLabel>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={form.tax_amount}
+                      disabled={Boolean(summary.quote.items?.length)}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          tax_amount: event.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                ) : null}
               </FieldGroup>
-              {fieldEnabled("notes") ? <div className="mt-4"><Field><FieldLabel>Notes</FieldLabel><Input value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} /></Field></div> : null}
+              {fieldEnabled("notes") ? (
+                <div className="mt-4">
+                  <Field>
+                    <FieldLabel>Notes</FieldLabel>
+                    <Input
+                      value={form.notes}
+                      onChange={(event) =>
+                        setForm((current) => ({
+                          ...current,
+                          notes: event.target.value,
+                        }))
+                      }
+                    />
+                  </Field>
+                </div>
+              ) : null}
               <div className="mt-4">
-                <CustomFieldInputs definitions={customFieldsQuery.data ?? []} values={customFieldValues} onChange={(fieldKey, value) => setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))} />
+                <CustomFieldInputs
+                  definitions={customFieldsQuery.data ?? []}
+                  values={customFieldValues}
+                  onChange={(fieldKey, value) =>
+                    setCustomFieldValues((current) => ({
+                      ...current,
+                      [fieldKey]: value,
+                    }))
+                  }
+                />
               </div>
             </Card>
 
             {summary.quote.items?.length ? (
               <Card className="px-5 py-5 lg:col-span-2">
-                <h2 className="text-lg font-semibold text-neutral-100">Line Items</h2>
-                <FieldDescription className="mt-1">Pricing totals are calculated from these persisted items.</FieldDescription>
+                <h2 className="text-lg font-semibold text-copy-primary">
+                  Line Items
+                </h2>
+                <FieldDescription className="mt-1">
+                  Pricing totals are calculated from these persisted items.
+                </FieldDescription>
                 <div className="mt-4 overflow-x-auto">
                   <table className="w-full min-w-[760px] text-sm">
-                    <thead><tr className="border-b border-neutral-800 text-left text-xs uppercase tracking-wide text-neutral-500"><th className="px-3 py-2">Item</th><th className="px-3 py-2 text-right">Quantity</th><th className="px-3 py-2 text-right">Unit price</th><th className="px-3 py-2 text-right">Discount</th><th className="px-3 py-2 text-right">Tax</th><th className="px-3 py-2 text-right">Total</th></tr></thead>
-                    <tbody>{summary.quote.items.map((item) => <tr key={item.id} className="border-b border-neutral-800/70"><td className="px-3 py-3"><div className="font-medium text-neutral-100">{item.name}</div>{item.description ? <div className="mt-1 text-xs text-neutral-500">{item.description}</div> : null}</td><td className="px-3 py-3 text-right tabular-nums text-neutral-300">{Number(item.quantity)}</td><td className="px-3 py-3 text-right tabular-nums text-neutral-300">{formatMoney(item.unit_price, summary.quote.currency)}</td><td className="px-3 py-3 text-right tabular-nums text-neutral-300">{formatMoney(item.discount_amount, summary.quote.currency)}</td><td className="px-3 py-3 text-right tabular-nums text-neutral-300">{formatMoney(item.tax_amount, summary.quote.currency)}</td><td className="px-3 py-3 text-right font-medium tabular-nums text-neutral-100">{formatMoney(item.line_total, summary.quote.currency)}</td></tr>)}</tbody>
+                    <thead>
+                      <tr className="border-b border-line-default text-left text-xs uppercase tracking-wide text-copy-muted">
+                        <th className="px-3 py-2">Item</th>
+                        <th className="px-3 py-2 text-right">Quantity</th>
+                        <th className="px-3 py-2 text-right">Unit price</th>
+                        <th className="px-3 py-2 text-right">Discount</th>
+                        <th className="px-3 py-2 text-right">Tax</th>
+                        <th className="px-3 py-2 text-right">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.quote.items.map((item) => (
+                        <tr
+                          key={item.id}
+                          className="border-b border-line-subtle"
+                        >
+                          <td className="px-3 py-3">
+                            <div className="font-medium text-copy-primary">
+                              {item.name}
+                            </div>
+                            {item.description ? (
+                              <div className="mt-1 text-xs text-copy-muted">
+                                {item.description}
+                              </div>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums text-copy-secondary">
+                            {Number(item.quantity)}
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums text-copy-secondary">
+                            {formatMoney(
+                              item.unit_price,
+                              summary.quote.currency,
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums text-copy-secondary">
+                            {formatMoney(
+                              item.discount_amount,
+                              summary.quote.currency,
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums text-copy-secondary">
+                            {formatMoney(
+                              item.tax_amount,
+                              summary.quote.currency,
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-right font-medium tabular-nums text-copy-primary">
+                            {formatMoney(
+                              item.line_total,
+                              summary.quote.currency,
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
                   </table>
                 </div>
               </Card>
             ) : null}
 
             <Card className="px-5 py-5">
-              <h2 className="text-lg font-semibold text-neutral-100">Summary</h2>
+              <h2 className="text-lg font-semibold text-copy-primary">
+                Summary
+              </h2>
               <div className="mt-4 grid gap-3">
-                <SummaryTile label="Customer" value={summary.quote.customer_name || "No customer recorded"} />
-                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                  <div className="text-xs uppercase tracking-wide text-neutral-500">Deal</div>
-                  <div className="mt-2 text-sm text-neutral-100">
+                <SummaryTile
+                  label="Customer"
+                  value={summary.quote.customer_name || "No customer recorded"}
+                />
+                <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
+                  <div className="text-xs uppercase tracking-wide text-copy-muted">
+                    Deal
+                  </div>
+                  <div className="mt-2 text-sm text-copy-primary">
                     {summary.opportunity ? (
-                      <Link href={`/dashboard/sales/opportunities/${summary.opportunity.opportunity_id}`} className="hover:text-white">
+                      <Link
+                        href={`/dashboard/sales/opportunities/${summary.opportunity.opportunity_id}`}
+                        className="hover:underline"
+                      >
                         {summary.opportunity.opportunity_name}
                       </Link>
                     ) : (
@@ -537,21 +1005,65 @@ export default function QuoteDetailPage() {
                   </div>
                 </div>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <LinkedRecordTile label="Contact" value={summary.contact ? getContactLabel(summary.contact) : "No contact"} href={summary.quote.contact_id ? `/dashboard/sales/contacts/${summary.quote.contact_id}` : null} />
-                  <LinkedRecordTile label="Account" value={summary.organization?.org_name || "No account"} href={summary.quote.organization_id ? `/dashboard/sales/organizations/${summary.quote.organization_id}` : null} />
+                  <LinkedRecordTile
+                    label="Contact"
+                    value={
+                      summary.contact
+                        ? getContactLabel(summary.contact)
+                        : "No contact"
+                    }
+                    href={
+                      summary.quote.contact_id
+                        ? `/dashboard/sales/contacts/${summary.quote.contact_id}`
+                        : null
+                    }
+                  />
+                  <LinkedRecordTile
+                    label="Account"
+                    value={summary.organization?.org_name || "No account"}
+                    href={
+                      summary.quote.organization_id
+                        ? `/dashboard/sales/organizations/${summary.quote.organization_id}`
+                        : null
+                    }
+                  />
                 </div>
-                <SummaryTile label="Status" value={(summary.quote.status || "draft").replace(/_/g, " ")} />
-                <SummaryTile label="Total" value={formatMoney(summary.quote.total_amount, summary.quote.currency)} />
-                <SummaryTile label="Expires" value={summary.quote.expiry_date ? formatDateOnly(summary.quote.expiry_date) : "No expiry date"} />
+                <SummaryTile
+                  label="Status"
+                  value={(summary.quote.status || "draft").replace(/_/g, " ")}
+                />
+                <SummaryTile
+                  label="Total"
+                  value={formatMoney(
+                    summary.quote.total_amount,
+                    summary.quote.currency,
+                  )}
+                />
+                <SummaryTile
+                  label="Expires"
+                  value={
+                    summary.quote.expiry_date
+                      ? formatDateOnly(summary.quote.expiry_date)
+                      : "No expiry date"
+                  }
+                />
                 {summary.related_order ? (
-                  <LinkedRecordTile label="Order" value={summary.related_order.order_number} href={`/dashboard/sales/orders/${summary.related_order.id}`} />
+                  <LinkedRecordTile
+                    label="Order"
+                    value={summary.related_order.order_number}
+                    href={`/dashboard/sales/orders/${summary.related_order.id}`}
+                  />
                 ) : null}
               </div>
             </Card>
 
             <Card className="px-5 py-5">
-              <h2 className="text-lg font-semibold text-neutral-100">Communication</h2>
-              <p className="mt-1 text-sm text-neutral-500">Follow up on this quote through the linked contact.</p>
+              <h2 className="text-lg font-semibold text-copy-primary">
+                Communication
+              </h2>
+              <p className="mt-1 text-sm text-copy-muted">
+                Follow up on this quote through the linked contact.
+              </p>
               <div className="mt-4">
                 <CommunicationActions
                   email={summary.contact?.primary_email}
@@ -564,16 +1076,41 @@ export default function QuoteDetailPage() {
             <Card className="px-5 py-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold text-neutral-100">Proposal</h2>
-                  <FieldDescription className="mt-1">Generate the quote proposal and track signed-link activity.</FieldDescription>
+                  <h2 className="text-lg font-semibold text-copy-primary">
+                    Proposal
+                  </h2>
+                  <FieldDescription className="mt-1">
+                    Generate the quote proposal and track signed-link activity.
+                  </FieldDescription>
                 </div>
                 <div className="flex gap-2">
-                  <Button type="button" size="sm" variant="outline" onClick={handleGenerateProposal} disabled={proposalBusy !== null}>
-                    {proposalBusy === "generate" ? <RefreshCw className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleGenerateProposal}
+                    disabled={proposalBusy !== null}
+                  >
+                    {proposalBusy === "generate" ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileText className="h-4 w-4" />
+                    )}
                     {proposalBusy === "generate" ? "Generating..." : "Generate"}
                   </Button>
-                  <Button type="button" size="sm" onClick={handleSendProposal} disabled={proposalBusy !== null || !proposalSendingTo.trim()}>
-                    {proposalBusy === "send" ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleSendProposal}
+                    disabled={
+                      proposalBusy !== null || !proposalSendingTo.trim()
+                    }
+                  >
+                    {proposalBusy === "send" ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
                     {proposalBusy === "send" ? "Sending..." : "Send"}
                   </Button>
                 </div>
@@ -582,30 +1119,79 @@ export default function QuoteDetailPage() {
               <div className="mt-4 grid gap-3">
                 <Field>
                   <FieldLabel>Recipient</FieldLabel>
-                  <Input type="email" value={proposalSendingTo} onChange={(event) => setProposalSendingTo(event.target.value)} placeholder="client@example.com" />
+                  <Input
+                    type="email"
+                    value={proposalSendingTo}
+                    onChange={(event) =>
+                      setProposalSendingTo(event.target.value)
+                    }
+                    placeholder="client@example.com"
+                  />
                 </Field>
                 <div className="grid gap-3 md:grid-cols-3">
-                  <SummaryTile label="Status" value={(summary.latest_proposal?.status ?? "not generated").replace(/_/g, " ")} />
-                  <SummaryTile label="Generated" value={summary.latest_proposal?.generated_at ? formatDateTime(summary.latest_proposal.generated_at) : "Not generated"} />
-                  <SummaryTile label="Sent" value={summary.latest_proposal?.sent_at ? formatDateTime(summary.latest_proposal.sent_at) : "Not sent"} />
+                  <SummaryTile
+                    label="Status"
+                    value={(
+                      summary.latest_proposal?.status ?? "not generated"
+                    ).replace(/_/g, " ")}
+                  />
+                  <SummaryTile
+                    label="Generated"
+                    value={
+                      summary.latest_proposal?.generated_at
+                        ? formatDateTime(summary.latest_proposal.generated_at)
+                        : "Not generated"
+                    }
+                  />
+                  <SummaryTile
+                    label="Sent"
+                    value={
+                      summary.latest_proposal?.sent_at
+                        ? formatDateTime(summary.latest_proposal.sent_at)
+                        : "Not sent"
+                    }
+                  />
                 </div>
                 {proposalLinkPath ? (
-                  <a className="inline-flex w-fit items-center gap-2 text-sm text-sky-300 hover:text-sky-200" href={proposalLinkPath} target="_blank" rel="noreferrer">
-                    <ExternalLink className="h-4 w-4" />Open signed proposal link
+                  <a
+                    className="inline-flex w-fit items-center gap-2 text-sm text-sky-300 hover:text-sky-200"
+                    href={proposalLinkPath}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open signed proposal link
                   </a>
                 ) : null}
-                <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-                  <div className="text-xs uppercase tracking-wide text-neutral-500">Lifecycle</div>
+                <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
+                  <div className="text-xs uppercase tracking-wide text-copy-muted">
+                    Lifecycle
+                  </div>
                   <div className="mt-3 grid gap-3">
-                    {(summary.proposal_events ?? []).length ? (summary.proposal_events ?? []).map((event) => (
-                      <div key={event.id} className="flex items-start justify-between gap-3 text-sm">
-                        <div>
-                          <div className="capitalize text-neutral-100">{event.event_type}</div>
-                          <div className="text-xs text-neutral-500">{event.recipient_email || "Signed link"}</div>
+                    {(summary.proposal_events ?? []).length ? (
+                      (summary.proposal_events ?? []).map((event) => (
+                        <div
+                          key={event.id}
+                          className="flex items-start justify-between gap-3 text-sm"
+                        >
+                          <div>
+                            <div className="capitalize text-copy-primary">
+                              {event.event_type}
+                            </div>
+                            <div className="text-xs text-copy-muted">
+                              {event.recipient_email || "Signed link"}
+                            </div>
+                          </div>
+                          <div className="shrink-0 text-xs text-copy-muted">
+                            {formatDateTime(event.occurred_at)}
+                          </div>
                         </div>
-                        <div className="shrink-0 text-xs text-neutral-500">{formatDateTime(event.occurred_at)}</div>
+                      ))
+                    ) : (
+                      <div className="text-sm text-copy-muted">
+                        No proposal events yet.
                       </div>
-                    )) : <div className="text-sm text-neutral-500">No proposal events yet.</div>}
+                    )}
                   </div>
                 </div>
               </div>
@@ -614,24 +1200,68 @@ export default function QuoteDetailPage() {
             <Card className="px-5 py-5">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h2 className="text-lg font-semibold text-neutral-100">Order</h2>
-                  <FieldDescription className="mt-1">Accepted quotes can be converted once into a sales order.</FieldDescription>
+                  <h2 className="text-lg font-semibold text-copy-primary">
+                    Order
+                  </h2>
+                  <FieldDescription className="mt-1">
+                    Accepted quotes can be converted once into a sales order.
+                  </FieldDescription>
                 </div>
                 {summary.related_order ? (
                   <Button type="button" size="sm" variant="outline" asChild>
-                    <Link href={`/dashboard/sales/orders/${summary.related_order.id}`}><ShoppingCart className="h-4 w-4" />Open Order</Link>
+                    <Link
+                      href={`/dashboard/sales/orders/${summary.related_order.id}`}
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                      Open Order
+                    </Link>
                   </Button>
                 ) : (
-                  <Button type="button" size="sm" onClick={handleConvertToOrder} disabled={convertingOrder || summary.quote.status !== "accepted"}>
-                    {convertingOrder ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ShoppingCart className="h-4 w-4" />}
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleConvertToOrder}
+                    disabled={
+                      convertingOrder || summary.quote.status !== "accepted"
+                    }
+                  >
+                    {convertingOrder ? (
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <ShoppingCart className="h-4 w-4" />
+                    )}
                     {convertingOrder ? "Converting..." : "Convert"}
                   </Button>
                 )}
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-3">
-                <SummaryTile label="Status" value={summary.related_order?.status ?? (summary.quote.status === "accepted" ? "Ready" : "Requires accepted quote")} />
-                <SummaryTile label="Order" value={summary.related_order?.order_number ?? "Not converted"} />
-                <SummaryTile label="Total" value={summary.related_order ? formatMoney(summary.related_order.grand_total, summary.related_order.currency) : formatMoney(summary.quote.total_amount, summary.quote.currency)} />
+                <SummaryTile
+                  label="Status"
+                  value={
+                    summary.related_order?.status ??
+                    (summary.quote.status === "accepted"
+                      ? "Ready"
+                      : "Requires accepted quote")
+                  }
+                />
+                <SummaryTile
+                  label="Order"
+                  value={summary.related_order?.order_number ?? "Not converted"}
+                />
+                <SummaryTile
+                  label="Total"
+                  value={
+                    summary.related_order
+                      ? formatMoney(
+                          summary.related_order.grand_total,
+                          summary.related_order.currency,
+                        )
+                      : formatMoney(
+                          summary.quote.total_amount,
+                          summary.quote.currency,
+                        )
+                  }
+                />
               </div>
             </Card>
           </div>
@@ -660,19 +1290,37 @@ export default function QuoteDetailPage() {
 
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-neutral-500">{label}</div>
-      <div className="mt-2 text-sm capitalize text-neutral-100">{value}</div>
+    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
+      <div className="text-xs uppercase tracking-wide text-copy-muted">
+        {label}
+      </div>
+      <div className="mt-2 text-sm capitalize text-copy-primary">{value}</div>
     </div>
   );
 }
 
-function LinkedRecordTile({ label, value, href }: { label: string; value: string; href: string | null }) {
+function LinkedRecordTile({
+  label,
+  value,
+  href,
+}: {
+  label: string;
+  value: string;
+  href: string | null;
+}) {
   return (
-    <div className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-neutral-500">{label}</div>
-      <div className="mt-2 text-sm text-neutral-100">
-        {href ? <Link href={href} className="hover:text-white">{value}</Link> : value}
+    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
+      <div className="text-xs uppercase tracking-wide text-copy-muted">
+        {label}
+      </div>
+      <div className="mt-2 text-sm text-copy-primary">
+        {href ? (
+          <Link href={href} className="hover:underline">
+            {value}
+          </Link>
+        ) : (
+          value
+        )}
       </div>
     </div>
   );

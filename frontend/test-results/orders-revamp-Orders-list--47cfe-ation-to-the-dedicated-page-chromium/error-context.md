@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: foundation-revamp.spec.ts >> table density preference persists and updates shared tables
-- Location: tests/e2e/foundation-revamp.spec.ts:26:5
+- Name: orders-revamp.spec.ts >> Orders list routes manual creation to the dedicated page
+- Location: tests/e2e/orders-revamp.spec.ts:37:5
 
 # Error details
 

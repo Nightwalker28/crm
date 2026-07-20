@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: foundation-revamp.spec.ts >> dashboard shell provides an accessible mobile navigation drawer
-- Location: tests/e2e/foundation-revamp.spec.ts:9:5
+- Name: orders-revamp.spec.ts >> Order creation uses the shared itemized transaction workflow
+- Location: tests/e2e/orders-revamp.spec.ts:9:5
 
 # Error details
 

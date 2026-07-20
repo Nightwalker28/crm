@@ -154,11 +154,14 @@ def verify_tenant_domain(
     domain = _get_tenant_domain(db, tenant_id=tenant_id, domain_id=domain_id)
     before = _safe_domain_state(domain)
     checks = _verify_dns(domain.hostname, domain.verification_token)
+    checked_at = datetime.now(timezone.utc)
+    domain.last_checked_at = checked_at
     if checks["verified"]:
         domain.status = DOMAIN_STATUS_VERIFIED
-        domain.verified_at = datetime.now(timezone.utc)
+        domain.verified_at = checked_at
     else:
         domain.status = DOMAIN_STATUS_FAILED
+        domain.verified_at = None
     db.add(domain)
     db.commit()
     db.refresh(domain)
@@ -184,6 +187,23 @@ def delete_tenant_domain(db: Session, *, tenant_id: int, actor_user_id: int, dom
     domain = _get_tenant_domain(db, tenant_id=tenant_id, domain_id=domain_id)
     before = _safe_domain_state(domain)
     hostname = domain.hostname
+    replacement = None
+    if bool(domain.is_primary):
+        replacement = (
+            db.query(TenantDomain)
+            .filter(
+                TenantDomain.tenant_id == tenant_id,
+                TenantDomain.id != domain_id,
+            )
+            .order_by(
+                (TenantDomain.status == DOMAIN_STATUS_VERIFIED).desc(),
+                TenantDomain.id.asc(),
+            )
+            .first()
+        )
+        if replacement:
+            replacement.is_primary = 1
+            db.add(replacement)
     db.delete(domain)
     db.commit()
     invalidate_tenant_context_cache(hostname)
@@ -197,6 +217,9 @@ def delete_tenant_domain(db: Session, *, tenant_id: int, actor_user_id: int, dom
         action="tenant_domain.deleted",
         description="Tenant custom domain removed",
         before_state=before,
+        after_state={
+            "promoted_primary_domain_id": replacement.id if replacement else None,
+        },
     )
 
 
@@ -211,6 +234,7 @@ def serialize_tenant_domain(domain: TenantDomain) -> dict[str, Any]:
         "txt_record_name": _verification_txt_host(domain.hostname),
         "txt_record_value": token,
         "verified_at": domain.verified_at,
+        "last_checked_at": domain.last_checked_at,
         "created_at": domain.created_at,
     }
 
@@ -229,6 +253,7 @@ def _safe_domain_state(domain: TenantDomain) -> dict[str, Any]:
         "is_primary": bool(domain.is_primary),
         "status": domain.status,
         "verified_at": domain.verified_at,
+        "last_checked_at": domain.last_checked_at,
     }
 
 

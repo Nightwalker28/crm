@@ -11,7 +11,7 @@ from app.core.database import Base
 from app.modules.user_management.models import Role, Team, User, UserAuthMode, UserStatus
 from app.modules.user_management.repositories import admin_users_repository
 from app.modules.user_management.routes import admin as admin_routes
-from app.modules.user_management.schema import UpdateUserRequest, UserProfile
+from app.modules.user_management.schema import BulkUpdateUsersRequest, UpdateUserRequest, UserProfile
 from app.modules.user_management.services import admin_users
 from app.modules.user_management.models import Tenant
 
@@ -332,6 +332,66 @@ class AdminUserQueryCountTests(unittest.TestCase):
 
         self.assertLessEqual(list_count, 2)
         self.assertLessEqual(search_count, 2)
+
+    def test_bulk_update_users_changes_role_and_status_atomically(self):
+        self.db.add(Role(id=2, tenant_id=10, name="Manager", level=50))
+        self.db.commit()
+
+        updated = admin_users.bulk_update_users(
+            self.db,
+            BulkUpdateUsersRequest(
+                user_ids=[1, 2],
+                role_id=2,
+                is_active=UserStatus.inactive,
+            ),
+            tenant_id=10,
+            actor_user_id=99,
+        )
+
+        self.assertEqual([user.id for user in updated], [1, 2])
+        self.assertTrue(all(user.role_id == 2 for user in updated))
+        self.assertTrue(all(user.is_active == UserStatus.inactive for user in updated))
+        self.assertTrue(all(user._serialized_role_name == "Manager" for user in updated))
+
+    def test_bulk_update_users_rejects_cross_tenant_ids_without_partial_update(self):
+        self.db.add_all(
+            [
+                Tenant(id=20, slug="other", name="Other"),
+                Role(id=20, tenant_id=20, name="Other Admin", level=90),
+                User(
+                    id=20,
+                    tenant_id=20,
+                    email="other@example.com",
+                    role_id=20,
+                    auth_mode=UserAuthMode.manual_only,
+                    is_active=UserStatus.active,
+                ),
+            ]
+        )
+        self.db.commit()
+
+        with self.assertRaises(HTTPException) as exc:
+            admin_users.bulk_update_users(
+                self.db,
+                BulkUpdateUsersRequest(user_ids=[1, 20], is_active=UserStatus.inactive),
+                tenant_id=10,
+                actor_user_id=99,
+            )
+
+        self.assertEqual(exc.exception.status_code, 404)
+        self.assertEqual(self.db.get(User, 1).is_active, UserStatus.active)
+
+    def test_bulk_update_users_prevents_self_deactivation(self):
+        with self.assertRaises(HTTPException) as exc:
+            admin_users.bulk_update_users(
+                self.db,
+                BulkUpdateUsersRequest(user_ids=[1], is_active=UserStatus.inactive),
+                tenant_id=10,
+                actor_user_id=1,
+            )
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(self.db.get(User, 1).is_active, UserStatus.active)
 
 
 class UserSerializationTests(unittest.TestCase):

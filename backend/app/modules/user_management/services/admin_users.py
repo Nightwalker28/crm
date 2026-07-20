@@ -12,6 +12,7 @@ from app.modules.user_management.models import Role, Team, Tenant, User, UserAut
 from app.modules.user_management.schema import (
     AdminCreateUserRequest,
     AdminCreateUserResponse,
+    BulkUpdateUsersRequest,
     UpdateUserRequest,
     UserProfile,
     UserUpdateOptions,
@@ -244,6 +245,52 @@ def update_user(db: Session, user_id: int, payload: UpdateUserRequest, *, tenant
         user._serialized_role_name = getattr(loaded_role, "name", None)
         user._serialized_role_level = getattr(loaded_role, "level", None)
     return user
+
+
+def bulk_update_users(
+    db: Session,
+    payload: BulkUpdateUsersRequest,
+    *,
+    tenant_id: int,
+    actor_user_id: int,
+) -> list[User]:
+    users = (
+        admin_users_repository.build_user_query(db, tenant_id=tenant_id)
+        .filter(User.id.in_(payload.user_ids))
+        .order_by(User.id.asc())
+        .all()
+    )
+    if len(users) != len(payload.user_ids):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="One or more users were not found",
+        )
+    if payload.is_active == "inactive" and actor_user_id in payload.user_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You cannot deactivate your own account",
+        )
+
+    role = None
+    if payload.role_id is not None:
+        role = _get_role_or_404(db, payload.role_id, tenant_id=tenant_id)
+
+    for user in users:
+        if role is not None:
+            user.role_id = role.id
+            user._serialized_role_name = role.name
+            user._serialized_role_level = role.level
+        if payload.is_active is not None:
+            user.is_active = payload.is_active
+        db.add(user)
+
+    db.commit()
+    for user in users:
+        db.refresh(user)
+        if role is not None:
+            user._serialized_role_name = role.name
+            user._serialized_role_level = role.level
+    return users
 
 def _serialize_user_profiles(users: list[User]):
     return [serialize_user_profile(user) for user in users]

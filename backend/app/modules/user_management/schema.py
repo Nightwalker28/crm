@@ -2,7 +2,7 @@ from typing import Optional, List, Any
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 class UserStatus(str, Enum):
     pending = "pending"
@@ -152,6 +152,32 @@ class UpdateUserRequest(BaseModel):
         if value == UserStatus.pending:
             raise ValueError("Pending status is no longer supported")
         return value
+
+
+class BulkUpdateUsersRequest(BaseModel):
+    user_ids: list[int] = Field(min_length=1, max_length=100)
+    role_id: Optional[int] = None
+    is_active: Optional[UserStatus] = None
+
+    @field_validator("user_ids")
+    @classmethod
+    def require_unique_user_ids(cls, value: list[int]) -> list[int]:
+        if len(set(value)) != len(value):
+            raise ValueError("User IDs must be unique")
+        return value
+
+    @field_validator("is_active")
+    @classmethod
+    def reject_pending_bulk_status(cls, value: Optional[UserStatus]) -> Optional[UserStatus]:
+        if value == UserStatus.pending:
+            raise ValueError("Pending status is no longer supported")
+        return value
+
+    @model_validator(mode="after")
+    def require_at_least_one_change(self):
+        if self.role_id is None and self.is_active is None:
+            raise ValueError("Choose a role or status to update")
+        return self
     
 class DepartmentSchema(BaseModel):
     id: int
@@ -337,6 +363,7 @@ class TenantDomainResponse(BaseModel):
     txt_record_name: str
     txt_record_value: str | None = None
     verified_at: datetime | None = None
+    last_checked_at: datetime | None = None
     created_at: datetime | None = None
 
 
@@ -364,6 +391,8 @@ class TenantSsoSettingsResponse(BaseModel):
     last_name_claim: str | None = None
     status: str = "draft"
     last_test_result: dict[str, Any] | None = None
+    last_successful_test: dict[str, Any] | None = None
+    last_failed_test: dict[str, Any] | None = None
     last_successful_login_at: datetime | None = None
     last_failed_login_reason: str | None = None
 

@@ -1622,14 +1622,40 @@ Scope note: this completes Phase 2. The project-wide acceptance criteria remain 
 - Invoices.
 - Payments.
 
+### Phase 3 completion record
+
+Status: **Implemented**.
+
+- Transaction lists: Quotes, Orders, Invoices, and Payments use the shared responsive table, toolbar, saved-view, filtering, column, sorting, pagination, loading, refreshing, dataset-empty, and filtered-empty patterns applicable to each module.
+- Creation and editing: Quotes, Orders, and Invoices use dedicated multi-section pages with linked CRM selectors, editable keyboard-friendly line items, inline validation, first-invalid-field focus, sticky summaries and actions, real last-modified metadata, and protection against browser or in-app navigation with unsaved changes.
+- Record workflows: routed detail and edit pages preserve quote proposal actions, quote-to-order conversion, order fulfillment state, invoice printing, activity history, soft-delete behavior, and links to related CRM records.
+- Payments: the receivables view supports responsive balance tracking, saved filters, invoice selection, guarded payment entry, payment-state refresh, filtered-empty recovery, and direct navigation back to invoices.
+- States and safety: transaction route boundaries use the shared loading, recoverable-error, and not-found states. Standard users receive actionable generic failures rather than raw backend responses, while existing module/action permissions and tenant-scoped APIs remain unchanged.
+- Visual system: dashboard transaction surfaces now use semantic tokens and shared controls. Printable invoice templates intentionally retain fixed light/dark document colors so exported and printed output remains stable independently of the dashboard theme.
+- Verification: frontend lint and the production build pass. Playwright discovers eleven Phase 3 scenarios across Quotes, Orders, Invoices, and Payments. Authenticated execution reaches the MFA boundary and requires `E2E_ADMIN_MFA_CODE` or `E2E_ADMIN_RECOVERY_CODE` in the local test environment.
+
+Migration note: the unused `CreateQuoteModal` was removed after quote creation moved to the dedicated routed workflow.
+
+Scope note: this completes the Phase 3 implementation without opening deferred payment-link or external payment-provider work. The project-wide acceptance criteria remain cumulative until Phases 4 through 6 have migrated to the shared foundation.
+
 ## Phase 4: Administration
 
-- Users.
-- Authentication.
-- Domains.
+- Users. **Implemented.**
+- Authentication. **Implemented.**
+- Domains. **Implemented.**
 - Permissions.
 - Field config.
 - View manager.
+
+### Phase 4 progress record
+
+- Users: the administration route now uses addressable Users, Authentication, Domains, and Provisioning tabs. The Users tab includes shared search and filtering, responsive loading and empty states, selectable rows, and tenant-scoped bulk role/status updates with self-deactivation protection and activity logging.
+- Authentication: the tab exposes the enforced password requirements, tenant MFA policy, OIDC configuration, connection testing, separate successful/failed test history, retry and opt-in technical details, and distinct successful/failed login status. Configuration-test failures no longer overwrite login-failure telemetry, and secrets remain excluded from API responses and activity state.
+- Domains: responsive status cards show the custom hostname, verification status, TXT-only record type, root/account-domain host, expected value, verified time, and a persisted last-checked timestamp. Verification failures refresh into actionable generic guidance, DNS values have accessible copy actions, removal is confirmed, and deleting a primary domain deterministically promotes a verified replacement when available.
+- Route quality: user management has shared loading and recoverable-error boundaries, semantic design tokens, generic authentication/provider failures, and mobile-reachable bulk actions.
+- Verification: the focused admin-user, SSO, MFA, password-policy, and tenant-domain backend suites, migration upgrade/current checks, backend compilation, frontend lint, and the production build pass. Playwright discovers three scenarios covering Users bulk actions plus Administration, Authentication, and Domains behavior; authenticated execution still requires the configured local admin MFA credential.
+
+Scope note: Users, Authentication, and Domains are complete. Permissions, Field config, and View manager remain active Phase 4 work.
 
 ## Phase 5: Builders
 

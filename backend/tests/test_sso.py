@@ -152,6 +152,12 @@ class SsoServiceTests(unittest.TestCase):
         self.assertTrue(result["ok"])
         self.assertEqual(settings_row.status, "tested")
         self.assertEqual(settings_row.last_test_result["metadata"]["issuer"], "https://idp.example.com")
+        serialized = sso.serialize_sso_settings(settings_row)
+        self.assertEqual(
+            serialized["last_successful_test"]["checked_at"],
+            result["checked_at"],
+        )
+        self.assertIsNone(serialized["last_failed_test"])
         self.assertNotIn("client-secret", str(settings_row.last_test_result))
         self.assertEqual(self.db.query(ActivityLog).filter(ActivityLog.action == "sso.config.tested").count(), 1)
 
@@ -178,8 +184,41 @@ class SsoServiceTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertEqual(settings_row.status, "error")
         self.assertIn("OIDC discovery returned HTTP 404", result["errors"])
+        self.assertEqual(
+            sso.serialize_sso_settings(settings_row)["last_failed_test"]["checked_at"],
+            result["checked_at"],
+        )
         self.assertNotIn("client-secret", str(result))
-        self.assertTrue(settings_row.last_failed_login_reason)
+        self.assertIsNone(settings_row.last_failed_login_reason)
+
+    def test_sso_test_history_preserves_latest_success_and_failure(self):
+        success = {
+            "ok": True,
+            "message": "Connection verified.",
+            "checked_at": "2099-01-01T10:00:00+00:00",
+            "metadata": {"issuer": "https://idp.example.com"},
+            "errors": [],
+        }
+        failure = {
+            "ok": False,
+            "message": "Connection failed.",
+            "checked_at": "2099-01-02T10:00:00+00:00",
+            "metadata": {},
+            "errors": ["Issuer could not be verified"],
+        }
+
+        history = sso._merge_sso_test_history(None, success)
+        history = sso._merge_sso_test_history(history, failure)
+
+        self.assertEqual(
+            history["last_successful_test"]["checked_at"],
+            success["checked_at"],
+        )
+        self.assertEqual(
+            history["last_failed_test"]["checked_at"],
+            failure["checked_at"],
+        )
+        self.assertFalse(history["ok"])
 
     @patch("app.core.secrets.settings.APP_ENCRYPTION_SECRET", "sso-secret")
     @patch("app.core.secrets.settings.APP_ENCRYPTION_KEY_VERSION", "v3")
@@ -226,7 +265,7 @@ class SsoServiceTests(unittest.TestCase):
             self.assertEqual(result["message"], "SSO test failed.")
             self.assertEqual(settings_row.status, "error")
             self.assertEqual(settings_row.last_test_result["message"], "SSO test failed.")
-            self.assertEqual(settings_row.last_failed_login_reason, "SSO test failed.")
+            self.assertIsNone(settings_row.last_failed_login_reason)
             self.assertEqual(verify_db.query(ActivityLog).filter(ActivityLog.action == "sso.config.tested").count(), 1)
             self.assertEqual(rollback_calls, 1)
             self.assertEqual(len(result_sessions), 1)

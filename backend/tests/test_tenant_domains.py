@@ -58,8 +58,46 @@ class TenantDomainServiceTests(unittest.TestCase):
 
         self.assertEqual(verified.status, "verified")
         self.assertIsNotNone(verified.verified_at)
+        self.assertEqual(verified.last_checked_at, verified.verified_at)
         self.assertEqual(self.db.query(ActivityLog).filter(ActivityLog.action == "tenant_domain.verified").count(), 1)
         invalidate.assert_called_once_with("crm.example.com")
+
+    @patch(
+        "app.modules.user_management.services.tenant_domains._verify_dns",
+        return_value={
+            "verified": False,
+            "message": "TXT record was not found",
+            "txt_ok": False,
+            "txt_host": "example.com",
+        },
+    )
+    def test_verify_tenant_domain_persists_failed_check_timestamp(self, _verify):
+        domain = tenant_domains.create_tenant_domain(
+            self.db,
+            tenant_id=1,
+            actor_user_id=7,
+            hostname="crm.example.com",
+        )
+
+        with self.assertRaises(HTTPException) as ctx:
+            tenant_domains.verify_tenant_domain(
+                self.db,
+                tenant_id=1,
+                actor_user_id=7,
+                domain_id=domain.id,
+            )
+
+        self.assertEqual(ctx.exception.status_code, 400)
+        refreshed = self.db.get(TenantDomain, domain.id)
+        self.assertEqual(refreshed.status, "failed")
+        self.assertIsNone(refreshed.verified_at)
+        self.assertIsNotNone(refreshed.last_checked_at)
+        self.assertEqual(
+            self.db.query(ActivityLog)
+            .filter(ActivityLog.action == "tenant_domain.verification_failed")
+            .count(),
+            1,
+        )
 
     def test_delete_tenant_domain_invalidates_tenant_context_cache(self):
         domain = tenant_domains.create_tenant_domain(self.db, tenant_id=1, actor_user_id=7, hostname="crm.example.com")
@@ -69,6 +107,49 @@ class TenantDomainServiceTests(unittest.TestCase):
 
         self.assertIsNone(self.db.query(TenantDomain).filter(TenantDomain.id == domain.id).first())
         invalidate.assert_called_once_with("crm.example.com")
+
+    def test_delete_primary_domain_promotes_verified_replacement(self):
+        primary = tenant_domains.create_tenant_domain(
+            self.db,
+            tenant_id=1,
+            actor_user_id=7,
+            hostname="crm.example.com",
+            is_primary=True,
+        )
+        pending = tenant_domains.create_tenant_domain(
+            self.db,
+            tenant_id=1,
+            actor_user_id=7,
+            hostname="crm.pending.test",
+        )
+        verified = tenant_domains.create_tenant_domain(
+            self.db,
+            tenant_id=1,
+            actor_user_id=7,
+            hostname="crm.verified.test",
+        )
+        verified.status = "verified"
+        self.db.add(verified)
+        self.db.commit()
+
+        tenant_domains.delete_tenant_domain(
+            self.db,
+            tenant_id=1,
+            actor_user_id=7,
+            domain_id=primary.id,
+        )
+
+        self.assertTrue(self.db.get(TenantDomain, verified.id).is_primary)
+        self.assertFalse(self.db.get(TenantDomain, pending.id).is_primary)
+        activity = (
+            self.db.query(ActivityLog)
+            .filter(ActivityLog.action == "tenant_domain.deleted")
+            .one()
+        )
+        self.assertEqual(
+            activity.after_state["promoted_primary_domain_id"],
+            verified.id,
+        )
 
     def test_verification_txt_record_uses_account_domain(self):
         domain = tenant_domains.create_tenant_domain(self.db, tenant_id=1, actor_user_id=7, hostname="lynk.maadmustafa.dev")

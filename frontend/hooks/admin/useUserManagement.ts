@@ -12,6 +12,11 @@ type AuthMode = "manual_only" | "manual_or_google";
 type UserStatus = "active" | "inactive";
 export type MfaPolicy = "off" | "admins_only" | "all_users";
 
+export type PasswordPolicy = {
+  min_length: number;
+  requirements: string[];
+};
+
 export type SsoSettings = {
   enabled: boolean;
   provider_type: "oidc";
@@ -31,6 +36,8 @@ export type SsoSettings = {
   last_name_claim: string | null;
   status: string;
   last_test_result: SsoTestResult | null;
+  last_successful_test: SsoTestResult | null;
+  last_failed_test: SsoTestResult | null;
   last_successful_login_at: string | null;
   last_failed_login_reason: string | null;
 };
@@ -44,6 +51,7 @@ export type TenantDomain = {
   txt_record_name: string;
   txt_record_value: string | null;
   verified_at: string | null;
+  last_checked_at: string | null;
   created_at: string | null;
 };
 
@@ -55,7 +63,17 @@ export type SsoTestResult = {
   errors: string[];
 };
 
-export type SsoSettingsUpdate = Partial<Omit<SsoSettings, "provider_type" | "has_client_secret" | "status" | "last_test_result" | "last_successful_login_at" | "last_failed_login_reason">> & {
+export type SsoSettingsUpdate = Partial<
+  Omit<
+    SsoSettings,
+    | "provider_type"
+    | "has_client_secret"
+    | "status"
+    | "last_test_result"
+    | "last_successful_login_at"
+    | "last_failed_login_reason"
+  >
+> & {
   client_secret?: string | null;
 };
 
@@ -73,6 +91,11 @@ export type CreateUserForm = {
   team_id: number;
   auth_mode: AuthMode;
   is_active: UserStatus;
+};
+
+export type BulkUserUpdate = {
+  role_id?: number;
+  is_active?: UserStatus;
 };
 
 type CreateUserResult = {
@@ -101,7 +124,10 @@ function parseStoredUser(raw: string | null): number | null {
   }
 }
 
-export function useUserManagement() {
+type UserManagementSection =
+  "users" | "authentication" | "domains" | "provisioning";
+
+export function useUserManagement(section: UserManagementSection = "users") {
   const queryClient = useQueryClient();
 
   const [currentUserId] = useState<number | null>(() => {
@@ -122,6 +148,7 @@ export function useUserManagement() {
     staleTime: 1000 * 60 * 10,
     refetchOnWindowFocus: false,
     refetchOnMount: true,
+    enabled: section === "users" || section === "provisioning",
   });
 
   const mfaPolicyQuery = useQuery<{ policy: MfaPolicy }>({
@@ -133,6 +160,19 @@ export function useUserManagement() {
     },
     staleTime: 1000 * 60 * 5,
     refetchOnWindowFocus: false,
+    enabled: section === "authentication",
+  });
+
+  const passwordPolicyQuery = useQuery<PasswordPolicy>({
+    queryKey: ["password-policy"],
+    queryFn: async () => {
+      const res = await apiFetch("/auth/password-policy");
+      if (!res.ok) throw new Error("Failed to fetch password policy");
+      return res.json();
+    },
+    staleTime: 1000 * 60 * 30,
+    refetchOnWindowFocus: false,
+    enabled: section === "authentication",
   });
 
   const ssoSettingsQuery = useQuery<SsoSettings>({
@@ -144,6 +184,7 @@ export function useUserManagement() {
     },
     staleTime: 1000 * 60 * 5,
     refetchOnWindowFocus: false,
+    enabled: section === "authentication" || section === "provisioning",
   });
 
   const domainsQuery = useQuery<TenantDomain[]>({
@@ -155,6 +196,7 @@ export function useUserManagement() {
     },
     staleTime: 1000 * 60 * 5,
     refetchOnWindowFocus: false,
+    enabled: section === "domains",
   });
 
   const updateMfaPolicyMutation = useMutation({
@@ -166,7 +208,9 @@ export function useUserManagement() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+        throw new Error(
+          body?.detail ?? body?.message ?? `Status ${res.status}`,
+        );
       }
       return res.json();
     },
@@ -177,8 +221,8 @@ export function useUserManagement() {
       ]);
       toast.success("MFA policy updated.");
     },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to update MFA policy.");
+    onError: () => {
+      toast.error("MFA policy could not be updated. Please try again.");
     },
   });
 
@@ -189,7 +233,9 @@ export function useUserManagement() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+        throw new Error(
+          body?.detail ?? body?.message ?? `Status ${res.status}`,
+        );
       }
       return res.json();
     },
@@ -197,8 +243,8 @@ export function useUserManagement() {
       await queryClient.invalidateQueries({ queryKey: ["users-paged"] });
       toast.success("MFA reset.");
     },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to reset MFA.");
+    onError: () => {
+      toast.error("MFA could not be reset. Please try again.");
     },
   });
 
@@ -211,7 +257,9 @@ export function useUserManagement() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+        throw new Error(
+          body?.detail ?? body?.message ?? `Status ${res.status}`,
+        );
       }
       return res.json();
     },
@@ -219,8 +267,8 @@ export function useUserManagement() {
       await queryClient.invalidateQueries({ queryKey: ["admin-sso-settings"] });
       toast.success("SSO settings updated.");
     },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to update SSO settings.");
+    onError: () => {
+      toast.error("SSO settings could not be updated. Please try again.");
     },
   });
 
@@ -231,7 +279,9 @@ export function useUserManagement() {
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+        throw new Error(
+          body?.detail ?? body?.message ?? `Status ${res.status}`,
+        );
       }
       return body as SsoTestResult;
     },
@@ -240,11 +290,15 @@ export function useUserManagement() {
       if (result.ok) {
         toast.success("SSO configuration test passed.");
       } else {
-        toast.error(result.message || "SSO configuration test failed.");
+        toast.error(
+          "SSO connection failed. Review the provider settings and try again.",
+        );
       }
     },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to test SSO settings.");
+    onError: () => {
+      toast.error(
+        "SSO connection could not be tested. Review the provider settings and try again.",
+      );
     },
   });
 
@@ -256,7 +310,10 @@ export function useUserManagement() {
         body: JSON.stringify(payload),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+      if (!res.ok)
+        throw new Error(
+          body?.detail ?? body?.message ?? `Status ${res.status}`,
+        );
       return body as TenantDomain;
     },
     onSuccess: async () => {
@@ -266,36 +323,47 @@ export function useUserManagement() {
       ]);
       toast.success("Custom domain added.");
     },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to add custom domain.");
+    onError: () => {
+      toast.error("The custom domain could not be added. Please try again.");
     },
   });
 
   const verifyDomainMutation = useMutation({
     mutationFn: async (domainId: number) => {
-      const res = await apiFetch(`/admin/users/domains/${domainId}/verify`, { method: "POST" });
+      const res = await apiFetch(`/admin/users/domains/${domainId}/verify`, {
+        method: "POST",
+      });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+      if (!res.ok)
+        throw new Error(
+          body?.detail ?? body?.message ?? `Status ${res.status}`,
+        );
       return body as TenantDomain;
     },
-    onSuccess: async () => {
+    onSuccess: () => {
+      toast.success("Custom domain verified.");
+    },
+    onError: () => {
+      toast.error("The custom domain could not be verified. Please try again.");
+    },
+    onSettled: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["admin-tenant-domains"] }),
         queryClient.invalidateQueries({ queryKey: ["admin-sso-settings"] }),
       ]);
-      toast.success("Custom domain verified.");
-    },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to verify custom domain.");
     },
   });
 
   const deleteDomainMutation = useMutation({
     mutationFn: async (domainId: number) => {
-      const res = await apiFetch(`/admin/users/domains/${domainId}`, { method: "DELETE" });
+      const res = await apiFetch(`/admin/users/domains/${domainId}`, {
+        method: "DELETE",
+      });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? body?.message ?? `Status ${res.status}`);
+        throw new Error(
+          body?.detail ?? body?.message ?? `Status ${res.status}`,
+        );
       }
     },
     onSuccess: async () => {
@@ -305,8 +373,8 @@ export function useUserManagement() {
       ]);
       toast.success("Custom domain removed.");
     },
-    onError: (error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to remove custom domain.");
+    onError: () => {
+      toast.error("The custom domain could not be removed. Please try again.");
     },
   });
 
@@ -351,6 +419,22 @@ export function useUserManagement() {
     toast.success("User updated.");
   }
 
+  async function bulkUpdateUsers(userIds: number[], changes: BulkUserUpdate) {
+    const res = await apiFetch("/admin/users/bulk", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_ids: userIds, ...changes }),
+    });
+    if (!res.ok) {
+      throw new Error("The selected users could not be updated.");
+    }
+
+    await refreshUsers();
+    toast.success(
+      `${userIds.length} user${userIds.length === 1 ? "" : "s"} updated.`,
+    );
+  }
+
   function openEditModal(user: User) {
     setEditUserData(user);
     setIsEditOpen(true);
@@ -376,12 +460,17 @@ export function useUserManagement() {
     isCreateOpen,
     optionsData: optionsQuery.data ?? EMPTY_USER_OPTIONS,
     mfaPolicy: mfaPolicyQuery.data?.policy ?? "off",
+    passwordPolicy: passwordPolicyQuery.data,
+    isPasswordPolicyLoading: passwordPolicyQuery.isLoading,
     isMfaPolicyLoading: mfaPolicyQuery.isLoading,
     isMfaPolicySaving: updateMfaPolicyMutation.isPending,
     ssoSettings: ssoSettingsQuery.data,
     tenantDomains: domainsQuery.data ?? [],
     isTenantDomainsLoading: domainsQuery.isLoading,
-    isTenantDomainSaving: createDomainMutation.isPending || verifyDomainMutation.isPending || deleteDomainMutation.isPending,
+    isTenantDomainSaving:
+      createDomainMutation.isPending ||
+      verifyDomainMutation.isPending ||
+      deleteDomainMutation.isPending,
     isSsoSettingsLoading: ssoSettingsQuery.isLoading,
     isSsoSettingsSaving: updateSsoSettingsMutation.isPending,
     isSsoSettingsTesting: testSsoSettingsMutation.isPending,
@@ -393,13 +482,19 @@ export function useUserManagement() {
     closeCreateModal,
     createUser,
     updateUser,
-    updateMfaPolicy: (policy: MfaPolicy) => updateMfaPolicyMutation.mutate(policy),
+    bulkUpdateUsers,
+    updateMfaPolicy: (policy: MfaPolicy) =>
+      updateMfaPolicyMutation.mutate(policy),
     resetUserMfa: (userId: number) => resetUserMfaMutation.mutateAsync(userId),
     isResettingUserMfa: resetUserMfaMutation.isPending,
-    updateSsoSettings: (payload: SsoSettingsUpdate) => updateSsoSettingsMutation.mutateAsync(payload),
+    updateSsoSettings: (payload: SsoSettingsUpdate) =>
+      updateSsoSettingsMutation.mutateAsync(payload),
     testSsoSettings: () => testSsoSettingsMutation.mutateAsync(),
-    createTenantDomain: (payload: { hostname: string; is_primary?: boolean }) => createDomainMutation.mutateAsync(payload),
-    verifyTenantDomain: (domainId: number) => verifyDomainMutation.mutateAsync(domainId),
-    deleteTenantDomain: (domainId: number) => deleteDomainMutation.mutateAsync(domainId),
+    createTenantDomain: (payload: { hostname: string; is_primary?: boolean }) =>
+      createDomainMutation.mutateAsync(payload),
+    verifyTenantDomain: (domainId: number) =>
+      verifyDomainMutation.mutateAsync(domainId),
+    deleteTenantDomain: (domainId: number) =>
+      deleteDomainMutation.mutateAsync(domainId),
   };
 }

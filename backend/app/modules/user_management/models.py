@@ -92,6 +92,7 @@ class TenantDomain(Base):
     status = Column(String(20), nullable=False, default="pending", server_default="pending")
     verification_token = Column(String(96), nullable=True, unique=True, index=True)
     verified_at = Column(DateTime(timezone=True), nullable=True)
+    last_checked_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True),

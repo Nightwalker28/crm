@@ -750,6 +750,56 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response.json()["email"], "ada@example.com")
         update_mock.assert_called_once()
 
+    def test_admin_bulk_update_users_route_is_tenant_scoped_and_audited(self):
+        app.dependency_overrides[require_admin] = self._admin_user
+        app.dependency_overrides[get_db] = self._override_db
+        updated_user = SimpleNamespace(
+            id=55,
+            first_name="Ada",
+            last_name="Lovelace",
+            email="ada@example.com",
+            team_id=4,
+            role_id=10,
+            _serialized_team_name="Platform",
+            _serialized_role_name="Manager",
+            _serialized_role_level=50,
+            photo_url=None,
+            phone_number=None,
+            job_title=None,
+            timezone=None,
+            bio=None,
+            auth_mode=UserAuthMode.manual_only,
+            last_login_provider=None,
+            mfa_enabled=False,
+            tenant=SimpleNamespace(mfa_policy="off"),
+            role=None,
+            team=None,
+            is_active=UserStatus.inactive,
+        )
+
+        with (
+            patch(
+                "app.modules.user_management.routes.admin.admin_users.bulk_update_users",
+                return_value=[updated_user],
+            ) as bulk_update_mock,
+            patch(
+                "app.modules.user_management.routes.admin.safe_log_activity",
+            ) as activity_mock,
+        ):
+            response = self.client.put(
+                "/api/v1/admin/users/bulk",
+                json={"user_ids": [55], "role_id": 10, "is_active": "inactive"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()[0]["role_name"], "Manager")
+        bulk_update_mock.assert_called_once()
+        self.assertEqual(bulk_update_mock.call_args.kwargs["tenant_id"], 1)
+        self.assertEqual(bulk_update_mock.call_args.kwargs["actor_user_id"], 1)
+        activity_mock.assert_called_once()
+        self.assertEqual(activity_mock.call_args.kwargs["tenant_id"], 1)
+        self.assertEqual(activity_mock.call_args.kwargs["action"], "bulk_update")
+
     def test_admin_user_search_uses_current_filter_params(self):
         pagination = Pagination(page=1, page_size=10, offset=0, limit=10)
         db = object()

@@ -16,16 +16,29 @@ type RecordTabsProps = {
   defaultTabId?: string;
   className?: string;
   urlParam?: string;
+  renderPanel?: boolean;
 };
 
-export function RecordTabs({ tabs, defaultTabId, className, urlParam }: RecordTabsProps) {
+export function RecordTabs({
+  tabs,
+  defaultTabId,
+  className,
+  urlParam,
+  renderPanel = true,
+}: RecordTabsProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const requestedTabId = urlParam ? searchParams.get(urlParam) : null;
-  const initialTabId = tabs.some((tab) => tab.id === requestedTabId) ? requestedTabId as string : defaultTabId ?? tabs[0]?.id;
+  const initialTabId = tabs.some((tab) => tab.id === requestedTabId)
+    ? (requestedTabId as string)
+    : (defaultTabId ?? tabs[0]?.id);
   const [localActiveTabId, setLocalActiveTabId] = useState(initialTabId);
-  const activeTabId = urlParam ? (tabs.some((tab) => tab.id === requestedTabId) ? requestedTabId as string : defaultTabId ?? tabs[0]?.id) : localActiveTabId;
+  const activeTabId = urlParam
+    ? tabs.some((tab) => tab.id === requestedTabId)
+      ? (requestedTabId as string)
+      : (defaultTabId ?? tabs[0]?.id)
+    : localActiveTabId;
   const activeTab = tabs.find((tab) => tab.id === activeTabId) ?? tabs[0];
 
   function selectTab(tabId: string) {
@@ -37,7 +50,9 @@ export function RecordTabs({ tabs, defaultTabId, className, urlParam }: RecordTa
     if (tabId === (defaultTabId ?? tabs[0]?.id)) nextParams.delete(urlParam);
     else nextParams.set(urlParam, tabId);
     const query = nextParams.toString();
-    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+    router.replace(query ? `${pathname}?${query}` : pathname, {
+      scroll: false,
+    });
   }
 
   return (
@@ -53,7 +68,9 @@ export function RecordTabs({ tabs, defaultTabId, className, urlParam }: RecordTa
                 onClick={() => selectTab(tab.id)}
                 role="tab"
                 aria-selected={active}
-                aria-controls={`record-tab-panel-${tab.id}`}
+                aria-controls={
+                  renderPanel ? `record-tab-panel-${tab.id}` : undefined
+                }
                 className={cn(
                   "border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
                   active
@@ -68,7 +85,15 @@ export function RecordTabs({ tabs, defaultTabId, className, urlParam }: RecordTa
         </div>
       </div>
 
-      <div id={activeTab ? `record-tab-panel-${activeTab.id}` : undefined} role="tabpanel" aria-label={activeTab?.label}>{activeTab?.content}</div>
+      {renderPanel ? (
+        <div
+          id={activeTab ? `record-tab-panel-${activeTab.id}` : undefined}
+          role="tabpanel"
+          aria-label={activeTab?.label}
+        >
+          {activeTab?.content}
+        </div>
+      ) : null}
     </div>
   );
 }

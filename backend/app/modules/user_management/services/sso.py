@@ -57,6 +57,7 @@ def get_or_create_sso_settings(db: Session, *, tenant_id: int) -> TenantSsoSetti
 
 
 def serialize_sso_settings(settings_row: TenantSsoSettings) -> dict[str, Any]:
+    last_test_result = settings_row.last_test_result
     return {
         "enabled": _settings_enabled(settings_row),
         "provider_type": settings_row.provider_type,
@@ -75,7 +76,17 @@ def serialize_sso_settings(settings_row: TenantSsoSettings) -> dict[str, Any]:
         "first_name_claim": settings_row.first_name_claim,
         "last_name_claim": settings_row.last_name_claim,
         "status": settings_row.status,
-        "last_test_result": settings_row.last_test_result,
+        "last_test_result": last_test_result,
+        "last_successful_test": _test_history_entry(
+            last_test_result,
+            key="last_successful_test",
+            expected_ok=True,
+        ),
+        "last_failed_test": _test_history_entry(
+            last_test_result,
+            key="last_failed_test",
+            expected_ok=False,
+        ),
         "last_successful_login_at": settings_row.last_successful_login_at,
         "last_failed_login_reason": settings_row.last_failed_login_reason,
     }
@@ -249,12 +260,14 @@ def _persist_sso_test_result(
     try:
         settings_row = result_db.query(TenantSsoSettings).filter(TenantSsoSettings.tenant_id == tenant_id).first()
         if settings_row:
-            settings_row.last_test_result = result
+            settings_row.last_test_result = _merge_sso_test_history(
+                settings_row.last_test_result,
+                result,
+            )
             if result["ok"]:
                 settings_row.status = "enabled" if _settings_enabled(settings_row) else "tested"
             else:
                 settings_row.status = "error"
-                settings_row.last_failed_login_reason = result["message"]
             result_db.add(settings_row)
             result_db.commit()
 
@@ -274,6 +287,58 @@ def _persist_sso_test_result(
         raise
     finally:
         result_db.close()
+
+
+def _test_result_snapshot(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "ok": bool(result.get("ok")),
+        "message": str(result.get("message") or ""),
+        "checked_at": result.get("checked_at"),
+        "metadata": dict(result.get("metadata") or {}),
+        "errors": list(result.get("errors") or []),
+    }
+
+
+def _test_history_entry(
+    last_test_result: dict[str, Any] | None,
+    *,
+    key: str,
+    expected_ok: bool,
+) -> dict[str, Any] | None:
+    if not isinstance(last_test_result, dict):
+        return None
+    stored = last_test_result.get(key)
+    if isinstance(stored, dict):
+        return _test_result_snapshot(stored)
+    if last_test_result.get("ok") is expected_ok:
+        return _test_result_snapshot(last_test_result)
+    return None
+
+
+def _merge_sso_test_history(
+    previous: dict[str, Any] | None,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    latest = _test_result_snapshot(result)
+    successful = _test_history_entry(
+        previous,
+        key="last_successful_test",
+        expected_ok=True,
+    )
+    failed = _test_history_entry(
+        previous,
+        key="last_failed_test",
+        expected_ok=False,
+    )
+    if latest["ok"]:
+        successful = latest
+    else:
+        failed = latest
+    return {
+        **latest,
+        "last_successful_test": successful,
+        "last_failed_test": failed,
+    }
 
 
 def build_sso_start_url(db: Session, *, request: Request, email: str | None = None) -> str:
