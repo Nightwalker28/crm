@@ -104,6 +104,7 @@ class ModulePermissionSchema(BaseModel):
     module_id: int
     module_name: str
     module_description: str | None = None
+    product_area: str = "other"
     actions: RolePermissionActions
 
 
@@ -132,11 +133,24 @@ class ModulePermissionUpdateRequest(BaseModel):
 
 
 class RolePermissionUpdateRequest(BaseModel):
-    permissions: list[ModulePermissionUpdateRequest]
+    permissions: list[ModulePermissionUpdateRequest] = Field(min_length=1, max_length=500)
+
+    @field_validator("permissions")
+    @classmethod
+    def require_unique_permission_modules(
+        cls,
+        value: list[ModulePermissionUpdateRequest],
+    ) -> list[ModulePermissionUpdateRequest]:
+        module_ids = [permission.module_id for permission in value]
+        if len(set(module_ids)) != len(module_ids):
+            raise ValueError("Each module can only be updated once")
+        return value
+
 
 class ApproveUserRequest(BaseModel):
     role_id: int
     team_id: int
+
 
 class UpdateUserRequest(BaseModel):
     first_name: Optional[str] = None

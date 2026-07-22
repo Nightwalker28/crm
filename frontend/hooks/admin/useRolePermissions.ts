@@ -23,6 +23,7 @@ export type ModulePermission = {
   module_id: number;
   module_name: string;
   module_description?: string | null;
+  product_area: string;
   actions: {
     can_view: boolean;
     can_create: boolean;
@@ -55,6 +56,8 @@ async function fetchRolePermissions(roleId: number): Promise<ModulePermission[]>
 export function useRolePermissions() {
   const queryClient = useQueryClient();
   const [selectedRoleId, setSelectedRoleId] = useState<number | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   const overviewQuery = useQuery({
     queryKey: ["role-permission-overview"],
@@ -68,7 +71,6 @@ export function useRolePermissions() {
     if (!roles.length) return;
     const selectedRoleExists = selectedRoleId != null && roles.some((role) => role.id === selectedRoleId);
     if (selectedRoleId == null || !selectedRoleExists) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedRoleId(roles[0].id);
     }
   }, [roles, selectedRoleId]);
@@ -81,37 +83,51 @@ export function useRolePermissions() {
   const permissions = useMemo(() => permissionsQuery.data ?? [], [permissionsQuery.data]);
 
   async function createRole(payload: { name: string; description?: string; level?: number; template_key: string }) {
-    const res = await apiFetch("/admin/users/roles", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) {
-      throw new Error(body?.detail ?? `Failed with ${res.status}`);
+    try {
+      setIsCreating(true);
+      const res = await apiFetch("/admin/users/roles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        throw new Error(
+          res.status === 409
+            ? "A role with this name already exists."
+            : "The role could not be created. Please try again.",
+        );
+      }
+      await queryClient.invalidateQueries({ queryKey: ["role-permission-overview"] });
+      setSelectedRoleId(body.id);
+      toast.success("Role created.");
+    } finally {
+      setIsCreating(false);
     }
-    await queryClient.invalidateQueries({ queryKey: ["role-permission-overview"] });
-    setSelectedRoleId(body.id);
-    toast.success("Role created.");
   }
 
   async function updatePermissions(roleId: number, permissions: ModulePermission[]) {
-    const res = await apiFetch(`/admin/users/roles/${roleId}/permissions`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        permissions: permissions.map((permission) => ({
-          module_id: permission.module_id,
-          actions: permission.actions,
-        })),
-      }),
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) {
-      throw new Error(body?.detail ?? `Failed with ${res.status}`);
+    try {
+      setIsSaving(true);
+      const res = await apiFetch(`/admin/users/roles/${roleId}/permissions`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          permissions: permissions.map((permission) => ({
+            module_id: permission.module_id,
+            actions: permission.actions,
+          })),
+        }),
+      });
+      if (!res.ok) {
+        throw new Error("Permissions could not be saved. Please try again.");
+      }
+      const body = (await res.json()) as ModulePermission[];
+      queryClient.setQueryData(["role-permissions", roleId], body);
+      toast.success("Permissions updated.");
+    } finally {
+      setIsSaving(false);
     }
-    await queryClient.invalidateQueries({ queryKey: ["role-permissions", roleId] });
-    toast.success("Permissions updated.");
   }
 
   return {
@@ -120,7 +136,14 @@ export function useRolePermissions() {
     selectedRoleId,
     setSelectedRoleId,
     permissions,
-    isLoading: overviewQuery.isLoading || permissionsQuery.isLoading,
+    isOverviewLoading: overviewQuery.isLoading,
+    isPermissionsLoading: permissionsQuery.isLoading,
+    overviewError: overviewQuery.isError,
+    permissionsError: permissionsQuery.isError,
+    retryOverview: overviewQuery.refetch,
+    retryPermissions: permissionsQuery.refetch,
+    isCreating,
+    isSaving,
     createRole,
     updatePermissions,
   };

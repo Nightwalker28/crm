@@ -1643,19 +1643,22 @@ Scope note: this completes the Phase 3 implementation without opening deferred p
 - Users. **Implemented.**
 - Authentication. **Implemented.**
 - Domains. **Implemented.**
-- Permissions.
-- Field config.
-- View manager.
+- Permissions. **Implemented.**
+- Field config. **Implemented.**
+- View manager. **Implemented.**
 
 ### Phase 4 progress record
 
 - Users: the administration route now uses addressable Users, Authentication, Domains, and Provisioning tabs. The Users tab includes shared search and filtering, responsive loading and empty states, selectable rows, and tenant-scoped bulk role/status updates with self-deactivation protection and activity logging.
 - Authentication: the tab exposes the enforced password requirements, tenant MFA policy, OIDC configuration, connection testing, separate successful/failed test history, retry and opt-in technical details, and distinct successful/failed login status. Configuration-test failures no longer overwrite login-failure telemetry, and secrets remain excluded from API responses and activity state.
 - Domains: responsive status cards show the custom hostname, verification status, TXT-only record type, root/account-domain host, expected value, verified time, and a persisted last-checked timestamp. Verification failures refresh into actionable generic guidance, DNS values have accessible copy actions, removal is confirmed, and deleting a primary domain deterministically promotes a verified replacement when available.
+- Permissions: the responsive role-first workspace uses a searchable permission matrix with tenant-configured product-area grouping, sticky headers and module names, row and visible-column selection, permission presets, protected role switching, an unsaved-change indicator, and mobile-reachable sticky save actions. Role creation, editing, and permission writes remain tenant-scoped, reject duplicate or invalid module updates before mutation, and record actor-attributed activity history without exposing backend error details.
+- Field configuration: the module field catalog now provides shared search, All/System/Custom/Required/Disabled filters, source and status badges, accessible enable toggles, a contextual more-actions menu, and explicit explanations for protected controls. The responsive inspector persists labels, custom metadata, required state, and visibility through the existing tenant-scoped admin contracts; custom-field creation uses labeled controls, inline generic errors, automatic safe keys, dirty-state protection, and transitions directly into the saved field inspector.
+- View manager: the responsive three-column workspace separates searchable available fields, selected fields, and view preview/filter metadata without placing the selector inside an oversized empty card. Columns support pointer drag-and-drop plus keyboard-accessible arrow ordering, mobile-safe add/hide controls, live preview synchronization, bounded AND/OR filter editing, default search, guarded view switching, and a sticky dirty-state action bar for updating, cloning, defaulting, and deleting personal views. Saved-view writes continue through the existing current-user-owned, module-validated, tenant-safe, payload-bounded API contract and show generic failures instead of backend details.
 - Route quality: user management has shared loading and recoverable-error boundaries, semantic design tokens, generic authentication/provider failures, and mobile-reachable bulk actions.
-- Verification: the focused admin-user, SSO, MFA, password-policy, and tenant-domain backend suites, migration upgrade/current checks, backend compilation, frontend lint, and the production build pass. Playwright discovers three scenarios covering Users bulk actions plus Administration, Authentication, and Domains behavior; authenticated execution still requires the configured local admin MFA credential.
+- Verification: the focused admin-user, SSO, MFA, password-policy, tenant-domain, role-permission, protected-field, and saved-view backend suites, migration upgrade/current checks, backend compilation, frontend lint, and the production build pass. Playwright discovers nine scenarios covering Users bulk actions plus Administration, Authentication, Domains, Permissions, Field configuration, and View manager behavior; authenticated execution still requires the configured local admin MFA credential.
 
-Scope note: Users, Authentication, and Domains are complete. Permissions, Field config, and View manager remain active Phase 4 work.
+Scope note: Phase 4 is complete. Users, Authentication, Domains, Permissions, Field configuration, and View manager now use the shared frontend foundation and retain their existing security boundaries.
 
 ## Phase 5: Builders
 

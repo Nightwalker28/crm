@@ -88,10 +88,7 @@ async function fetchSavedViews(moduleKey: string, defaultColumns: string[]): Pro
     params.set("default_columns", defaultColumns.join(","));
   }
   const res = await apiFetch(`/users/saved-views/${moduleKey}?${params.toString()}`);
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Failed with ${res.status}`);
-  }
+  if (!res.ok) throw new Error("Saved views could not be loaded.");
   return res.json();
 }
 
@@ -101,10 +98,7 @@ async function createSavedView(moduleKey: string, payload: { name: string; confi
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Failed with ${res.status}`);
-  }
+  if (!res.ok) throw new Error("The saved view could not be created.");
   return res.json() as Promise<SavedView>;
 }
 
@@ -114,10 +108,7 @@ async function updateSavedView(moduleKey: string, viewId: number, payload: Parti
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Failed with ${res.status}`);
-  }
+  if (!res.ok) throw new Error("The saved view could not be updated.");
   return res.json() as Promise<SavedView>;
 }
 
@@ -125,10 +116,7 @@ async function deleteSavedView(moduleKey: string, viewId: number) {
   const res = await apiFetch(`/users/saved-views/${moduleKey}/${viewId}`, {
     method: "DELETE",
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Failed with ${res.status}`);
-  }
+  if (!res.ok) throw new Error("The saved view could not be deleted.");
 }
 
 export function useSavedViews(
@@ -252,6 +240,8 @@ export function useSavedViews(
     draftConfig,
     setDraftConfig,
     isLoading: query.isLoading,
+    error: query.error,
+    refresh: query.refetch,
     isSaving: createMutation.isPending || updateMutation.isPending || deleteMutation.isPending,
     createView: async (name: string, isDefault = false) => {
       const created = await createMutation.mutateAsync({ name, config: draftConfig, is_default: isDefault });

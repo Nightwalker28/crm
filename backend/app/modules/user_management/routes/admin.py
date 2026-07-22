@@ -293,7 +293,12 @@ def create_role(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    role = role_permissions.create_role(db, payload, tenant_id=admin.tenant_id)
+    role = role_permissions.create_role(
+        db,
+        payload,
+        tenant_id=admin.tenant_id,
+        actor_user_id=admin.id,
+    )
     admin_users.invalidate_user_update_options_cache(admin.tenant_id)
     return role
 
@@ -305,7 +310,13 @@ def update_role(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    role = role_permissions.update_role(db, role_id, payload, tenant_id=admin.tenant_id)
+    role = role_permissions.update_role(
+        db,
+        role_id,
+        payload,
+        tenant_id=admin.tenant_id,
+        actor_user_id=admin.id,
+    )
     admin_users.invalidate_user_update_options_cache(admin.tenant_id)
     return role
 
@@ -317,7 +328,13 @@ def update_role_permissions(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return role_permissions.update_role_permissions(db, role_id, payload, tenant_id=admin.tenant_id)
+    return role_permissions.update_role_permissions(
+        db,
+        role_id,
+        payload,
+        tenant_id=admin.tenant_id,
+        actor_user_id=admin.id,
+    )
 
 
 @router.post("", response_model=AdminCreateUserResponse, status_code=status.HTTP_201_CREATED)

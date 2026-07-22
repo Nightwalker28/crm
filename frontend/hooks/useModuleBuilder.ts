@@ -196,6 +196,8 @@ export function useModuleBuilder() {
   return {
     modules: query.data ?? [],
     isLoading: query.isLoading,
+    error: query.error,
+    refresh: query.refetch,
     createModule: createModule.mutateAsync,
     updateModule: updateModule.mutateAsync,
     deleteModule: deleteModule.mutateAsync,

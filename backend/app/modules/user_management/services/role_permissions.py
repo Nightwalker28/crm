@@ -1,7 +1,8 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.modules.user_management.models import Module, Role, RoleModulePermission
+from app.modules.platform.services.activity_logs import safe_log_activity
+from app.modules.user_management.models import Module, Role, RoleModulePermission, TenantModuleConfig
 from app.modules.user_management.schema import (
     ModulePermissionSchema,
     RoleCreateRequest,
@@ -12,7 +13,12 @@ from app.modules.user_management.schema import (
     RoleTemplateSummary,
     RoleUpdateRequest,
 )
-from app.modules.user_management.services.admin_modules import _module_belongs_to_tenant_or_global, is_module_enabled_for_tenant
+from app.modules.user_management.services.admin_modules import (
+    _module_belongs_to_tenant_or_global,
+    default_sidebar_tab_key,
+    is_module_enabled_for_tenant,
+    normalize_sidebar_tab_key,
+)
 
 
 ROLE_TEMPLATES: dict[str, dict] = {
@@ -68,6 +74,7 @@ def list_role_permission_overview(db: Session, *, tenant_id: int) -> RolePermiss
         for module in db.query(Module).order_by(Module.name.asc()).all()
         if _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id)
     ]
+    product_areas = _product_areas_by_module(db, modules=modules, tenant_id=tenant_id)
 
     return RolePermissionOverviewResponse(
         roles=[RoleSchema.model_validate(role) for role in roles],
@@ -84,6 +91,7 @@ def list_role_permission_overview(db: Session, *, tenant_id: int) -> RolePermiss
                 module_id=module.id,
                 module_name=module.name,
                 module_description=module.description,
+                product_area=product_areas[module.id],
                 actions=RolePermissionActions(),
             )
             for module in modules
@@ -98,6 +106,7 @@ def get_role_permissions(db: Session, role_id: int, *, tenant_id: int) -> list[M
         for module in db.query(Module).order_by(Module.name.asc()).all()
         if _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id)
     ]
+    product_areas = _product_areas_by_module(db, modules=modules, tenant_id=tenant_id)
     permissions = {
         permission.module_id: permission
         for permission in db.query(RoleModulePermission)
@@ -110,6 +119,7 @@ def get_role_permissions(db: Session, role_id: int, *, tenant_id: int) -> list[M
             module_id=module.id,
             module_name=module.name,
             module_description=module.description,
+            product_area=product_areas[module.id],
             actions=RolePermissionActions(
                 can_view=bool(permission.can_view) if permission else True,
                 can_create=bool(permission.can_create) if permission else False,
@@ -125,7 +135,13 @@ def get_role_permissions(db: Session, role_id: int, *, tenant_id: int) -> list[M
     ]
 
 
-def create_role(db: Session, payload: RoleCreateRequest, *, tenant_id: int) -> Role:
+def create_role(
+    db: Session,
+    payload: RoleCreateRequest,
+    *,
+    tenant_id: int,
+    actor_user_id: int,
+) -> Role:
     template = ROLE_TEMPLATES.get(payload.template_key)
     if not template:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unknown role template")
@@ -167,11 +183,34 @@ def create_role(db: Session, payload: RoleCreateRequest, *, tenant_id: int) -> R
 
     db.commit()
     db.refresh(role)
+    safe_log_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        module_key="security",
+        entity_type="role",
+        entity_id=role.id,
+        action="role.created",
+        description="Role created",
+        after_state={
+            "name": role.name,
+            "level": role.level,
+            "template_key": payload.template_key,
+        },
+    )
     return role
 
 
-def update_role(db: Session, role_id: int, payload: RoleUpdateRequest, *, tenant_id: int) -> Role:
+def update_role(
+    db: Session,
+    role_id: int,
+    payload: RoleUpdateRequest,
+    *,
+    tenant_id: int,
+    actor_user_id: int,
+) -> Role:
     role = _get_role_or_404(db, role_id, tenant_id=tenant_id)
+    before = {"name": role.name, "description": role.description, "level": role.level}
     update_data = payload.model_dump(exclude_unset=True)
 
     if "name" in update_data and update_data["name"]:
@@ -189,10 +228,33 @@ def update_role(db: Session, role_id: int, payload: RoleUpdateRequest, *, tenant
     db.add(role)
     db.commit()
     db.refresh(role)
+    safe_log_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        module_key="security",
+        entity_type="role",
+        entity_id=role.id,
+        action="role.updated",
+        description="Role updated",
+        before_state=before,
+        after_state={
+            "name": role.name,
+            "description": role.description,
+            "level": role.level,
+        },
+    )
     return role
 
 
-def update_role_permissions(db: Session, role_id: int, payload: RolePermissionUpdateRequest, *, tenant_id: int) -> list[ModulePermissionSchema]:
+def update_role_permissions(
+    db: Session,
+    role_id: int,
+    payload: RolePermissionUpdateRequest,
+    *,
+    tenant_id: int,
+    actor_user_id: int,
+) -> list[ModulePermissionSchema]:
     role = _get_role_or_404(db, role_id, tenant_id=tenant_id)
     modules = {
         module.id: module
@@ -200,19 +262,47 @@ def update_role_permissions(db: Session, role_id: int, payload: RolePermissionUp
         if _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id)
     }
 
-    for item in payload.permissions:
-        module = modules.get(item.module_id)
-        if not module:
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Module {item.module_id} not found")
-
-        permission = (
-            db.query(RoleModulePermission)
-            .filter(
-                RoleModulePermission.role_id == role.id,
-                RoleModulePermission.module_id == item.module_id,
-            )
-            .first()
+    requested_module_ids = {item.module_id for item in payload.permissions}
+    missing_module_ids = sorted(requested_module_ids.difference(modules))
+    if missing_module_ids:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Module {missing_module_ids[0]} not found",
         )
+
+    existing_permissions = {
+        permission.module_id: permission
+        for permission in db.query(RoleModulePermission)
+        .filter(
+            RoleModulePermission.role_id == role.id,
+            RoleModulePermission.module_id.in_(requested_module_ids),
+        )
+        .all()
+    }
+    before_state = {
+        "permissions": [
+            _permission_audit_state(
+                module_id=item.module_id,
+                actions=(
+                    RolePermissionActions(
+                        can_view=bool(existing_permissions[item.module_id].can_view),
+                        can_create=bool(existing_permissions[item.module_id].can_create),
+                        can_edit=bool(existing_permissions[item.module_id].can_edit),
+                        can_delete=bool(existing_permissions[item.module_id].can_delete),
+                        can_restore=bool(existing_permissions[item.module_id].can_restore),
+                        can_export=bool(existing_permissions[item.module_id].can_export),
+                        can_configure=bool(existing_permissions[item.module_id].can_configure),
+                    )
+                    if item.module_id in existing_permissions
+                    else RolePermissionActions()
+                ),
+            )
+            for item in payload.permissions
+        ]
+    }
+
+    for item in payload.permissions:
+        permission = existing_permissions.get(item.module_id)
         if not permission:
             permission = RoleModulePermission(role_id=role.id, module_id=item.module_id)
 
@@ -226,7 +316,63 @@ def update_role_permissions(db: Session, role_id: int, payload: RolePermissionUp
         db.add(permission)
 
     db.commit()
-    return get_role_permissions(db, role_id, tenant_id=tenant_id)
+    updated = get_role_permissions(db, role_id, tenant_id=tenant_id)
+    updated_by_module = {permission.module_id: permission for permission in updated}
+    safe_log_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        module_key="security",
+        entity_type="role",
+        entity_id=role.id,
+        action="role.permissions.updated",
+        description="Role permissions updated",
+        before_state=before_state,
+        after_state={
+            "permissions": [
+                _permission_audit_state(
+                    module_id=module_id,
+                    actions=updated_by_module[module_id].actions,
+                )
+                for module_id in sorted(requested_module_ids)
+            ]
+        },
+    )
+    return updated
+
+
+def _permission_audit_state(
+    *,
+    module_id: int,
+    actions: RolePermissionActions,
+) -> dict:
+    return {
+        "module_id": module_id,
+        "actions": actions.model_dump(),
+    }
+
+
+def _product_areas_by_module(
+    db: Session,
+    *,
+    modules: list[Module],
+    tenant_id: int,
+) -> dict[int, str]:
+    module_ids = {module.id for module in modules}
+    configured_areas = {
+        config.module_id: normalize_sidebar_tab_key(config.sidebar_tab_key)
+        for config in db.query(TenantModuleConfig)
+        .filter(
+            TenantModuleConfig.tenant_id == tenant_id,
+            TenantModuleConfig.module_id.in_(module_ids),
+        )
+        .all()
+        if config.sidebar_tab_key
+    }
+    return {
+        module.id: configured_areas.get(module.id, default_sidebar_tab_key(module.name))
+        for module in modules
+    }
 
 
 def _get_role_or_404(db: Session, role_id: int, *, tenant_id: int) -> Role:
