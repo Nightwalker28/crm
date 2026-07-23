@@ -9,6 +9,7 @@ class DashboardLayoutTests(unittest.TestCase):
             {
                 "widgets": [
                     {"id": "crm", "type": "crm_snapshot", "size": "wide"},
+                    {"id": "forecast", "type": "weighted_forecast", "size": "large"},
                     {"id": "leads", "type": "module_summary", "size": "small", "module_key": "sales_leads"},
                     {"id": "note", "type": "note", "config": {"body": "Call back top accounts"}},
                 ]
@@ -20,6 +21,7 @@ class DashboardLayoutTests(unittest.TestCase):
             {
                 "widgets": [
                     {"id": "crm", "type": "crm_snapshot", "size": "wide"},
+                    {"id": "forecast", "type": "weighted_forecast", "size": "large"},
                     {"id": "leads", "type": "module_summary", "size": "small", "module_key": "sales_leads"},
                     {"id": "note", "type": "note", "size": "medium", "config": {"body": "Call back top accounts"}},
                 ]
@@ -40,6 +42,26 @@ class DashboardLayoutTests(unittest.TestCase):
     def test_normalize_dashboard_layout_rejects_unsupported_widget_type(self):
         with self.assertRaisesRegex(ValueError, "Unsupported dashboard widget type"):
             profile._normalize_dashboard_layout({"widgets": [{"id": "bad", "type": "external_feed"}]})
+
+    def test_normalize_dashboard_layout_rejects_oversized_widget_config(self):
+        with self.assertRaisesRegex(ValueError, "config value is too large"):
+            profile._normalize_dashboard_layout(
+                {"widgets": [{"id": "note", "type": "note", "config": {"body": "x" * 2_001}}]}
+            )
+
+    def test_normalize_dashboard_layout_rejects_deep_widget_config(self):
+        with self.assertRaisesRegex(ValueError, "too deeply nested"):
+            profile._normalize_dashboard_layout(
+                {
+                    "widgets": [
+                        {
+                            "id": "note",
+                            "type": "note",
+                            "config": {"a": {"b": {"c": {"d": {"e": {"f": "too deep"}}}}}},
+                        }
+                    ]
+                }
+            )
 
     def test_saved_empty_layout_is_marked_as_existing_layout(self):
         class Query:

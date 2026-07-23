@@ -1664,7 +1664,7 @@ Scope note: Phase 4 is complete. Users, Authentication, Domains, Permissions, Fi
 
 - Module builder. **Implemented.**
 - Automation builder. **Implemented.**
-- Dashboard edit mode.
+- Dashboard edit mode. **Implemented.**
 
 ### Phase 5 progress record
 
@@ -1673,9 +1673,11 @@ Scope note: Phase 4 is complete. Users, Authentication, Domains, Permissions, Fi
 - Module workflow: searchable module selection, recoverable deletion and restoration, active-state and sidebar placement controls, custom sidebar-group management, generic failure states, mobile-reachable sticky actions, and direct runtime navigation retain the existing admin-only, tenant-scoped, activity-logged backend contract.
 - Automation builder: the registry-backed rule editor now uses a searchable rule navigator, a compact When/If/Do flow canvas, and a selected-step inspector. Trigger changes are guarded, conditions expose supported fields and operators, action order is explicit and adjustable, configuration uses one sticky save surface, validation never executes actions, and unsaved changes protect navigation and rule switching.
 - Automation runs: run history is separated from rule editing and uses the server-sanitized run contract. Responsive rows show rule, source, status, action outcomes, and timing; selecting a run opens its redacted input, result, error, and action-step details in the inspector without placing raw logs on the builder canvas.
-- Verification: the focused 16-test custom-module and 26-test automation-rule backend suites, frontend lint, and the production build pass. Playwright discovers two scenarios for each builder and 40 frontend scenarios overall; authenticated execution remains behind the configured local admin MFA boundary and requires `E2E_ADMIN_MFA_CODE` or `E2E_ADMIN_RECOVERY_CODE`.
+- Dashboard edit mode: the normal dashboard hides all layout controls and exposes date-range and refresh actions. Explicit edit mode creates a local draft with pointer drag-and-drop, accessible ordering and mobile resize controls, widget addition/removal, default reset, empty-draft recovery, unsaved navigation protection, and one sticky Save/Cancel surface. Widget content remains non-interactive while arranging the layout, failed widgets provide scoped retry actions, empty widgets collapse naturally, and saved layouts stay scoped to the authenticated tenant user.
+- Dashboard persistence: the existing layout contract now accepts every catalog widget, including weighted forecast, enforces the 24-widget limit, unique IDs, supported sizes and types, and bounded nested configuration before writing per-user JSON. Generic retryable errors replace raw backend messages.
+- Verification: the focused 16-test custom-module, 26-test automation-rule, and 6-test dashboard-layout backend suites, backend compilation, frontend lint, and the production build pass. Playwright discovers two scenarios for each Phase 5 surface and 42 frontend scenarios overall; authenticated execution remains behind the configured local admin MFA boundary and requires `E2E_ADMIN_MFA_CODE` or `E2E_ADMIN_RECOVERY_CODE`.
 
-Scope note: this completes the UI migration of the existing Module builder and Automation builder. It does not expand the deferred custom-module boundary, add unsupported automation triggers/actions, or mark Dashboard edit mode complete.
+Scope note: Phase 5 is complete. Module builder, Automation builder, and Dashboard edit mode now use the shared builder and draft-editing foundation without expanding deferred custom-module or automation capabilities.
 
 ## Phase 6: Secondary modules
 

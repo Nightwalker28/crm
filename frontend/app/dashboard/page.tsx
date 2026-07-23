@@ -20,24 +20,34 @@ import {
   LayoutDashboard,
   LayoutGrid,
   Mail,
+  Pencil,
   Plus,
+  RefreshCw,
+  RotateCcw,
+  Save,
   Settings2,
   Table2,
   Trash2,
+  X,
 } from "lucide-react";
+import { toast } from "sonner";
 
 import { useAccessibleModules, type AccessibleModule } from "@/hooks/useAccessibleModules";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getModuleRoute } from "@/lib/module-registry";
 import { DASHBOARD_ROUTES, SETTINGS_ROUTES, canonicalizeDashboardHref } from "@/lib/routes";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
+import { cn } from "@/lib/utils";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/button";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Dialog,
   DialogBackdrop,
@@ -235,8 +245,8 @@ async function fetchDashboardActivity(): Promise<ActivityResponse> {
   return body as ActivityResponse;
 }
 
-async function fetchCrmDashboardSummary(): Promise<CrmDashboardSummary> {
-  const res = await apiFetch("/reports/crm-summary?period_days=30");
+async function fetchCrmDashboardSummary(periodDays: number): Promise<CrmDashboardSummary> {
+  const res = await apiFetch(`/reports/crm-summary?period_days=${periodDays}`);
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load CRM dashboard summary.");
@@ -381,6 +391,7 @@ function WidgetShell({
   onRemove,
   onDragStart,
   onDrop,
+  isEditing,
 }: {
   title: string;
   icon: ReactNode;
@@ -393,47 +404,65 @@ function WidgetShell({
   onRemove: (id: string) => void;
   onDragStart: (index: number) => void;
   onDrop: (index: number) => void;
+  isEditing: boolean;
 }) {
   return (
     <section
-      draggable
-      onDragStart={() => onDragStart(index)}
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={() => onDrop(index)}
-      className={`min-h-[13rem] rounded-xl border border-neutral-800 bg-neutral-950/60 ${sizeClass(widget.size)}`}
+      data-testid={`dashboard-widget-${widget.id}`}
+      draggable={isEditing}
+      onDragStart={() => {
+        if (isEditing) onDragStart(index);
+      }}
+      onDragOver={(event) => {
+        if (isEditing) event.preventDefault();
+      }}
+      onDrop={() => {
+        if (isEditing) onDrop(index);
+      }}
+      className={cn(
+        "rounded-[var(--radius-card)] border border-line-subtle bg-surface",
+        isEditing && "border-line-strong bg-surface-raised shadow-sm",
+        sizeClass(widget.size),
+      )}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-subtle px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
-          <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-neutral-600" />
-          <div className="text-neutral-500">{icon}</div>
-          <h2 className="truncate text-sm font-semibold text-neutral-100">{title}</h2>
+          {isEditing ? <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-label="Drag widget" /> : null}
+          <div className="text-copy-muted">{icon}</div>
+          <h2 className="truncate text-sm font-semibold text-copy-primary">{title}</h2>
         </div>
-        <div className="flex items-center gap-1">
-          <Button type="button" variant="ghost" size="icon-sm" title="Move up" disabled={index === 0} onClick={() => onMove(index, index - 1)}>
-            <ArrowUp className="h-4 w-4" />
-          </Button>
-          <Button type="button" variant="ghost" size="icon-sm" title="Move down" disabled={index === count - 1} onClick={() => onMove(index, index + 1)}>
-            <ArrowDown className="h-4 w-4" />
-          </Button>
-          <div className="mx-1 hidden rounded-md border border-neutral-800 p-0.5 sm:flex">
-            {(Object.keys(SIZE_LABELS) as WidgetSize[]).map((size) => (
-              <button
-                key={size}
-                type="button"
-                title={`Resize ${size}`}
-                onClick={() => onResize(widget.id, size)}
-                className={`h-7 min-w-7 rounded px-2 text-xs font-medium ${widget.size === size ? "bg-neutral-100 text-neutral-950" : "text-neutral-500 hover:bg-neutral-900 hover:text-neutral-200"}`}
-              >
-                {SIZE_LABELS[size]}
-              </button>
-            ))}
+        {isEditing ? (
+          <div className="flex flex-wrap items-center gap-1">
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${title} up`} disabled={index === 0} onClick={() => onMove(index, index - 1)}>
+              <ArrowUp />
+            </Button>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${title} down`} disabled={index === count - 1} onClick={() => onMove(index, index + 1)}>
+              <ArrowDown />
+            </Button>
+            <div className="mx-1 flex rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted p-0.5" aria-label={`Resize ${title}`}>
+              {(Object.keys(SIZE_LABELS) as WidgetSize[]).map((size) => (
+                <button
+                  key={size}
+                  type="button"
+                  aria-label={`Resize ${title} to ${size}`}
+                  aria-pressed={widget.size === size}
+                  onClick={() => onResize(widget.id, size)}
+                  className={cn(
+                    "h-7 min-w-7 rounded-[var(--radius-control-sm)] px-2 text-xs font-medium text-copy-muted hover:bg-surface-raised hover:text-copy-primary",
+                    widget.size === size && "bg-primary text-primary-foreground",
+                  )}
+                >
+                  {SIZE_LABELS[size]}
+                </button>
+              ))}
+            </div>
+            <Button type="button" variant="dangerGhost" size="icon-sm" aria-label={`Remove ${title}`} onClick={() => onRemove(widget.id)}>
+              <Trash2 />
+            </Button>
           </div>
-          <Button type="button" variant="ghost" size="icon-sm" title="Remove widget" onClick={() => onRemove(widget.id)}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        ) : null}
       </div>
-      <div className="p-4">{children}</div>
+      <div className={cn("p-4", isEditing && "pointer-events-none select-none opacity-80")}>{children}</div>
     </section>
   );
 }
@@ -442,6 +471,10 @@ export default function DashboardHomePage() {
   const queryClient = useQueryClient();
   const [addOpen, setAddOpen] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftWidgets, setDraftWidgets] = useState<DashboardWidget[]>(DEFAULT_WIDGETS);
+  const [periodDays, setPeriodDays] = useState(30);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { modules, isLoading: isModulesLoading } = useAccessibleModules();
   const { notifications, unreadCount, isLoading: isNotificationsLoading } = useNotifications();
 
@@ -451,7 +484,9 @@ export default function DashboardHomePage() {
     staleTime: 30000,
   });
 
-  const widgets = layoutQuery.data?.has_layout ? layoutQuery.data.widgets : DEFAULT_WIDGETS;
+  const persistedWidgets = layoutQuery.data?.has_layout ? layoutQuery.data.widgets : DEFAULT_WIDGETS;
+  const widgets = isEditing ? draftWidgets : persistedWidgets;
+  const isLayoutDirty = isEditing && JSON.stringify(draftWidgets) !== JSON.stringify(persistedWidgets);
 
   const accessibleRoutes = useMemo(
     () => new Set(modules.map((module) => getModuleRoute(module.name, module.base_route)).filter(Boolean)),
@@ -471,8 +506,8 @@ export default function DashboardHomePage() {
     enabled: widgets.some((widget) => widget.type === "recent_activity"),
   });
   const crmSummaryQuery = useQuery({
-    queryKey: ["dashboard-crm-summary"],
-    queryFn: fetchCrmDashboardSummary,
+    queryKey: ["dashboard-crm-summary", periodDays],
+    queryFn: () => fetchCrmDashboardSummary(periodDays),
     staleTime: 30000,
     enabled: hasReportAccess && hasCrmWidgets,
   });
@@ -488,8 +523,14 @@ export default function DashboardHomePage() {
     mutationFn: saveDashboardLayout,
     onSuccess: (data) => {
       queryClient.setQueryData(["dashboard-layout"], data);
+      setDraftWidgets(data.widgets);
+      setIsEditing(false);
+      setAddOpen(false);
+      toast.success("Dashboard layout saved.");
     },
+    onError: () => toast.error("The dashboard layout could not be saved."),
   });
+  useUnsavedChangesGuard(isLayoutDirty, saveMutation.isPending);
 
   const quickActions = useMemo(() => {
     const actions = [
@@ -547,12 +588,9 @@ export default function DashboardHomePage() {
     return items;
   }, [hasReportAccess, modules, savedReports]);
 
-  function persist(nextWidgets: DashboardWidget[]) {
-    queryClient.setQueryData<DashboardLayoutResponse>(["dashboard-layout"], {
-      widgets: nextWidgets,
-      has_layout: true,
-    });
-    saveMutation.mutate(nextWidgets);
+  function updateDraft(nextWidgets: DashboardWidget[]) {
+    if (!isEditing) return;
+    setDraftWidgets(nextWidgets);
   }
 
   function moveWidget(from: number, to: number) {
@@ -560,19 +598,23 @@ export default function DashboardHomePage() {
     const next = [...widgets];
     const [item] = next.splice(from, 1);
     next.splice(to, 0, item);
-    persist(next);
+    updateDraft(next);
   }
 
   function resizeWidget(id: string, size: WidgetSize) {
-    persist(widgets.map((widget) => (widget.id === id ? { ...widget, size } : widget)));
+    updateDraft(widgets.map((widget) => (widget.id === id ? { ...widget, size } : widget)));
   }
 
   function removeWidget(id: string) {
-    persist(widgets.filter((widget) => widget.id !== id));
+    updateDraft(widgets.filter((widget) => widget.id !== id));
   }
 
   function addWidget(item: WidgetCatalogItem) {
-    persist([
+    if (widgets.length >= 24) {
+      toast.error("A dashboard can include at most 24 widgets.");
+      return;
+    }
+    updateDraft([
       ...widgets,
       {
         id: nextWidgetId(item.type, item.module_key),
@@ -586,11 +628,46 @@ export default function DashboardHomePage() {
   }
 
   function updateWidgetConfig(id: string, config: Record<string, unknown>) {
-    persist(widgets.map((widget) => (widget.id === id ? { ...widget, config: { ...(widget.config ?? {}), ...config } } : widget)));
+    const nextWidgets = widgets.map((widget) => (widget.id === id ? { ...widget, config: { ...(widget.config ?? {}), ...config } } : widget));
+    if (isEditing) {
+      setDraftWidgets(nextWidgets);
+      return;
+    }
+    saveMutation.mutate(nextWidgets);
   }
 
   function resetLayout() {
-    persist(DEFAULT_WIDGETS);
+    if (!window.confirm("Reset this draft to the default dashboard widgets?")) return;
+    setDraftWidgets(DEFAULT_WIDGETS);
+  }
+
+  function beginEditing() {
+    setDraftWidgets(persistedWidgets);
+    setIsEditing(true);
+  }
+
+  function cancelEditing() {
+    if (isLayoutDirty && !window.confirm("Discard unsaved dashboard layout changes?")) return;
+    setDraftWidgets(persistedWidgets);
+    setAddOpen(false);
+    setIsEditing(false);
+  }
+
+  async function refreshDashboard() {
+    setIsRefreshing(true);
+    try {
+      const refreshes: Promise<unknown>[] = [
+        layoutQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["user-notifications"] }),
+      ];
+      if (widgets.some((widget) => widget.type === "recent_activity")) refreshes.push(activityQuery.refetch());
+      if (hasReportAccess && hasCrmWidgets) refreshes.push(crmSummaryQuery.refetch());
+      if (hasReportAccess) refreshes.push(savedReportsQuery.refetch());
+      await Promise.all(refreshes);
+      toast.success("Dashboard refreshed.");
+    } finally {
+      setIsRefreshing(false);
+    }
   }
 
   function renderCrmGuard(children: ReactNode) {
@@ -601,7 +678,12 @@ export default function DashboardHomePage() {
       return <div className="text-sm text-neutral-500">Loading CRM summary...</div>;
     }
     if (crmSummaryQuery.error) {
-      return <div className="text-sm text-red-300">{crmSummaryQuery.error instanceof Error ? crmSummaryQuery.error.message : "Failed to load CRM summary."}</div>;
+      return (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/30 bg-state-danger-muted p-3 text-sm text-copy-secondary">
+          <span>This CRM summary could not be loaded.</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => void crmSummaryQuery.refetch()}>Retry</Button>
+        </div>
+      );
     }
     return children;
   }
@@ -686,7 +768,14 @@ export default function DashboardHomePage() {
     }
     if (widget.type === "recent_activity") {
       if (activityQuery.isLoading) return <div className="text-sm text-neutral-500">Loading activity...</div>;
-      if (activityQuery.error) return <div className="text-sm text-red-300">{activityQuery.error instanceof Error ? activityQuery.error.message : "Failed to load activity."}</div>;
+      if (activityQuery.error) {
+        return (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/30 bg-state-danger-muted p-3 text-sm text-copy-secondary">
+            <span>Recent activity could not be loaded.</span>
+            <Button type="button" variant="outline" size="sm" onClick={() => void activityQuery.refetch()}>Retry</Button>
+          </div>
+        );
+      }
       return activityQuery.data?.results.length ? (
         <div className="divide-y divide-neutral-800 rounded-lg border border-neutral-800">
           {activityQuery.data.results.map((item) => (
@@ -749,44 +838,78 @@ export default function DashboardHomePage() {
         title="Dashboard"
         description="Your configurable workspace for module summaries, quick views, and operational shortcuts."
         actions={
-          <>
-            <Button type="button" variant="outline" onClick={() => setAddOpen(true)}>
-              <Plus className="h-4 w-4" />
-              Add Widget
-            </Button>
-            <Button type="button" variant="outline" onClick={resetLayout}>
-              <LayoutDashboard className="h-4 w-4" />
-              Reset
-            </Button>
-            <Button asChild variant="outline">
-              <Link href={SETTINGS_ROUTES.activityLog}>
-                <ClipboardList className="h-4 w-4" />
-                Activity Log
-              </Link>
-            </Button>
-            {accessibleRoutes.has(DASHBOARD_ROUTES.tasks) ? (
-              <Button asChild>
-                <Link href={DASHBOARD_ROUTES.tasks}>
-                  <Plus className="h-4 w-4" />
-                  New Work
+          isEditing ? undefined : (
+            <>
+              <Select value={String(periodDays)} onValueChange={(value) => setPeriodDays(Number(value))}>
+                <SelectTrigger aria-label="Dashboard date range" className="w-36"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7">Last 7 days</SelectItem>
+                  <SelectItem value="30">Last 30 days</SelectItem>
+                  <SelectItem value="90">Last 90 days</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button type="button" variant="outline" onClick={() => void refreshDashboard()} disabled={isRefreshing}>
+                <RefreshCw className={cn(isRefreshing && "animate-spin")} />
+                {isRefreshing ? "Refreshing…" : "Refresh"}
+              </Button>
+              <Button type="button" variant="outline" onClick={beginEditing}>
+                <Pencil />
+                Edit dashboard
+              </Button>
+              <Button asChild variant="outline">
+                <Link href={SETTINGS_ROUTES.activityLog}>
+                  <ClipboardList />
+                  Activity log
                 </Link>
               </Button>
-            ) : null}
-            {accessibleRoutes.has(DASHBOARD_ROUTES.calendar) ? <HeaderLink href={DASHBOARD_ROUTES.calendar} icon={<CalendarDays className="h-4 w-4" />} label="Calendar" /> : null}
-            {accessibleRoutes.has(DASHBOARD_ROUTES.mail) ? <HeaderLink href={DASHBOARD_ROUTES.mail} icon={<Mail className="h-4 w-4" />} label="Mail" /> : null}
-            {accessibleRoutes.has(DASHBOARD_ROUTES.documents) ? <HeaderLink href={DASHBOARD_ROUTES.documents} icon={<FileText className="h-4 w-4" />} label="Documents" /> : null}
-          </>
+              {accessibleRoutes.has(DASHBOARD_ROUTES.tasks) ? (
+                <Button asChild>
+                  <Link href={DASHBOARD_ROUTES.tasks}>
+                    <Plus />
+                    New work
+                  </Link>
+                </Button>
+              ) : null}
+              {accessibleRoutes.has(DASHBOARD_ROUTES.calendar) ? <HeaderLink href={DASHBOARD_ROUTES.calendar} icon={<CalendarDays />} label="Calendar" /> : null}
+              {accessibleRoutes.has(DASHBOARD_ROUTES.mail) ? <HeaderLink href={DASHBOARD_ROUTES.mail} icon={<Mail />} label="Mail" /> : null}
+              {accessibleRoutes.has(DASHBOARD_ROUTES.documents) ? <HeaderLink href={DASHBOARD_ROUTES.documents} icon={<FileText />} label="Documents" /> : null}
+            </>
+          )
         }
       />
 
       {layoutQuery.error ? (
-        <div className="rounded-lg border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm text-red-200">
-          {layoutQuery.error instanceof Error ? layoutQuery.error.message : "Failed to load dashboard layout."}
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/30 bg-state-danger-muted px-4 py-3 text-sm text-copy-secondary">
+          <span>Your saved dashboard layout could not be loaded. The default layout is shown.</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => void layoutQuery.refetch()}>Try again</Button>
         </div>
       ) : null}
       {saveMutation.error ? (
-        <div className="rounded-lg border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm text-red-200">
-          {saveMutation.error instanceof Error ? saveMutation.error.message : "Failed to save dashboard layout."}
+        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/30 bg-state-danger-muted px-4 py-3 text-sm text-state-danger">
+          The dashboard layout could not be saved. Your draft is still available.
+        </div>
+      ) : null}
+
+      {isEditing ? (
+        <div className="sticky top-2 z-20 flex flex-wrap items-center gap-2 rounded-[var(--radius-card)] border border-line-strong bg-surface-raised/95 px-4 py-3 shadow-lg backdrop-blur">
+          <div className="mr-auto">
+            <p className="text-sm font-semibold text-copy-primary">Dashboard edit mode</p>
+            <p className={cn("text-xs", isLayoutDirty ? "text-state-warning" : "text-copy-muted")}>
+              {isLayoutDirty ? "Unsaved layout changes" : "Move, resize, add, or remove widgets"}
+            </p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={() => setAddOpen(true)} disabled={widgets.length >= 24}>
+            <Plus />Add widget
+          </Button>
+          <Button type="button" variant="outline" size="sm" onClick={resetLayout}>
+            <RotateCcw />Reset
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={cancelEditing} disabled={saveMutation.isPending}>
+            <X />Cancel
+          </Button>
+          <Button type="button" size="sm" onClick={() => saveMutation.mutate(draftWidgets)} disabled={saveMutation.isPending || !isLayoutDirty}>
+            <Save />{saveMutation.isPending ? "Saving…" : "Save layout"}
+          </Button>
         </div>
       ) : null}
 
@@ -803,6 +926,7 @@ export default function DashboardHomePage() {
             onResize={resizeWidget}
             onRemove={removeWidget}
             onDragStart={setDragIndex}
+            isEditing={isEditing}
             onDrop={(dropIndex) => {
               if (dragIndex !== null && dragIndex !== dropIndex) {
                 moveWidget(dragIndex, dropIndex);
@@ -813,15 +937,25 @@ export default function DashboardHomePage() {
             {renderWidget(widget)}
           </WidgetShell>
         ))}
+        {isEditing && !widgets.length ? (
+          <div className="md:col-span-2 xl:col-span-4">
+            <EmptyState
+              icon={LayoutDashboard}
+              title="Your dashboard draft is empty"
+              description="Add a widget or reset to the default layout before saving."
+              action={<Button type="button" onClick={() => setAddOpen(true)}><Plus />Add widget</Button>}
+            />
+          </div>
+        ) : null}
       </div>
 
-      <Dialog open={addOpen} onClose={() => setAddOpen(false)}>
+      <Dialog open={isEditing && addOpen} onClose={() => setAddOpen(false)}>
         <DialogBackdrop />
         <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
           <DialogPanel size="3xl">
             <DialogHeader>
-              <DialogTitle className="text-lg text-neutral-100">Add Dashboard Widget</DialogTitle>
-              <DialogDescription className="mt-1 text-sm text-neutral-400">
+              <DialogTitle className="text-lg text-copy-primary">Add dashboard widget</DialogTitle>
+              <DialogDescription className="mt-1 text-sm text-copy-secondary">
                 Choose a module summary or quick view to add to your personal dashboard.
               </DialogDescription>
             </DialogHeader>
@@ -831,10 +965,10 @@ export default function DashboardHomePage() {
                   key={`${item.type}-${item.module_key ?? "base"}`}
                   type="button"
                   onClick={() => addWidget(item)}
-                  className="rounded-lg border border-neutral-800 bg-black/20 px-4 py-4 text-left transition-colors hover:border-neutral-700 hover:bg-neutral-900/70"
+                  className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4 text-left transition-colors hover:border-line-strong hover:bg-surface-raised"
                 >
-                  <div className="text-sm font-semibold text-neutral-100">{item.title}</div>
-                  <div className="mt-1 text-sm leading-6 text-neutral-400">{item.description}</div>
+                  <div className="text-sm font-semibold text-copy-primary">{item.title}</div>
+                  <div className="mt-1 text-sm leading-6 text-copy-secondary">{item.description}</div>
                 </button>
               ))}
             </div>
@@ -1012,7 +1146,14 @@ function ReportChartWidget({ widget, savedReports, hasReportAccess }: { widget: 
     );
   }
   if (reportQuery.isLoading) return <div className="text-sm text-neutral-500">Loading report chart...</div>;
-  if (reportQuery.error) return <div className="text-sm text-red-300">{reportQuery.error instanceof Error ? reportQuery.error.message : "Failed to load report."}</div>;
+  if (reportQuery.error) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/30 bg-state-danger-muted p-3 text-sm text-copy-secondary">
+        <span>This saved report could not be loaded.</span>
+        <Button type="button" variant="outline" size="sm" onClick={() => void reportQuery.refetch()}>Retry</Button>
+      </div>
+    );
+  }
 
   const report = reportQuery.data;
   const rows = report?.rows ?? [];

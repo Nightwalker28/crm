@@ -45,11 +45,16 @@ DASHBOARD_WIDGET_TYPES = {
     "note",
     "summary_table",
     "pipeline_funnel",
+    "weighted_forecast",
     "report_chart",
 }
 DASHBOARD_WIDGET_SIZES = {"small", "medium", "large", "wide"}
 DASHBOARD_MAX_WIDGETS = 24
 DASHBOARD_MAX_ID_LENGTH = 120
+DASHBOARD_MAX_CONFIG_BYTES = 16_000
+DASHBOARD_MAX_CONFIG_DEPTH = 5
+DASHBOARD_MAX_CONFIG_ITEMS = 100
+DASHBOARD_MAX_CONFIG_STRING_BYTES = 2_000
 
 
 def _clean(value: str | None) -> str | None:
@@ -223,6 +228,27 @@ def save_user_table_preference(
     return preference
 
 
+def _assert_dashboard_config_bounds(value, *, depth: int = 0) -> None:
+    if depth > DASHBOARD_MAX_CONFIG_DEPTH:
+        raise ValueError("Dashboard widget config is too deeply nested")
+    if isinstance(value, dict):
+        if len(value) > DASHBOARD_MAX_CONFIG_ITEMS:
+            raise ValueError("Dashboard widget config has too many keys")
+        for key, item in value.items():
+            if len(str(key).encode("utf-8")) > DASHBOARD_MAX_CONFIG_STRING_BYTES:
+                raise ValueError("Dashboard widget config key is too large")
+            _assert_dashboard_config_bounds(item, depth=depth + 1)
+        return
+    if isinstance(value, list):
+        if len(value) > DASHBOARD_MAX_CONFIG_ITEMS:
+            raise ValueError("Dashboard widget config has too many items")
+        for item in value:
+            _assert_dashboard_config_bounds(item, depth=depth + 1)
+        return
+    if isinstance(value, str) and len(value.encode("utf-8")) > DASHBOARD_MAX_CONFIG_STRING_BYTES:
+        raise ValueError("Dashboard widget config value is too large")
+
+
 def _normalize_dashboard_layout(layout: dict | None) -> dict:
     raw_widgets = (layout or {}).get("widgets", [])
     if not isinstance(raw_widgets, list):
@@ -260,6 +286,9 @@ def _normalize_dashboard_layout(layout: dict | None) -> dict:
             widget["module_key"] = module_key[:100]
         config = raw_widget.get("config")
         if isinstance(config, dict):
+            _assert_dashboard_config_bounds(config)
+            if len(json.dumps(config, separators=(",", ":")).encode("utf-8")) > DASHBOARD_MAX_CONFIG_BYTES:
+                raise ValueError("Dashboard widget config is too large")
             widget["config"] = config
         widgets.append(widget)
     return {"widgets": widgets}
