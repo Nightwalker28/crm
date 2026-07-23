@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: orders-revamp.spec.ts >> Order creation uses the shared itemized transaction workflow
-- Location: tests/e2e/orders-revamp.spec.ts:9:5
+- Name: module-builder-revamp.spec.ts >> adds a field in the inspector and exposes shared builder destinations
+- Location: tests/e2e/module-builder-revamp.spec.ts:145:5
 
 # Error details
 

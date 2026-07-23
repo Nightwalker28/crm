@@ -1662,9 +1662,20 @@ Scope note: Phase 4 is complete. Users, Authentication, Domains, Permissions, Fi
 
 ## Phase 5: Builders
 
-- Module builder.
-- Automation builder.
+- Module builder. **Implemented.**
+- Automation builder. **Implemented.**
 - Dashboard edit mode.
+
+### Phase 5 progress record
+
+- Module builder: the previous stacked module-and-field form is replaced by a responsive module rail, tabbed module editor, and selected-field inspector. General, Fields, Layout, Permissions, and Automation are addressable editor tabs; shared permissions and automation workspaces remain the source of truth rather than being duplicated inside the builder.
+- Field workflow: compact rows support pointer drag-and-drop and accessible arrow ordering. Field creation opens directly in the inspector, protected identifiers explain their restrictions, fixed types are read-only after creation, and metadata, ordering, staged additions, and staged deletions are committed through one module-level save action with dirty-state navigation protection.
+- Module workflow: searchable module selection, recoverable deletion and restoration, active-state and sidebar placement controls, custom sidebar-group management, generic failure states, mobile-reachable sticky actions, and direct runtime navigation retain the existing admin-only, tenant-scoped, activity-logged backend contract.
+- Automation builder: the registry-backed rule editor now uses a searchable rule navigator, a compact When/If/Do flow canvas, and a selected-step inspector. Trigger changes are guarded, conditions expose supported fields and operators, action order is explicit and adjustable, configuration uses one sticky save surface, validation never executes actions, and unsaved changes protect navigation and rule switching.
+- Automation runs: run history is separated from rule editing and uses the server-sanitized run contract. Responsive rows show rule, source, status, action outcomes, and timing; selecting a run opens its redacted input, result, error, and action-step details in the inspector without placing raw logs on the builder canvas.
+- Verification: the focused 16-test custom-module and 26-test automation-rule backend suites, frontend lint, and the production build pass. Playwright discovers two scenarios for each builder and 40 frontend scenarios overall; authenticated execution remains behind the configured local admin MFA boundary and requires `E2E_ADMIN_MFA_CODE` or `E2E_ADMIN_RECOVERY_CODE`.
+
+Scope note: this completes the UI migration of the existing Module builder and Automation builder. It does not expand the deferred custom-module boundary, add unsupported automation triggers/actions, or mark Dashboard edit mode complete.
 
 ## Phase 6: Secondary modules
 

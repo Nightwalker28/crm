@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: orders-revamp.spec.ts >> Orders list routes manual creation to the dedicated page
-- Location: tests/e2e/orders-revamp.spec.ts:37:5
+- Name: module-builder-revamp.spec.ts >> edits and reorders fields from one module-level save on mobile
+- Location: tests/e2e/module-builder-revamp.spec.ts:123:5
 
 # Error details
 
