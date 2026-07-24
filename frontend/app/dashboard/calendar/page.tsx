@@ -1,15 +1,17 @@
 "use client";
 
-import type { KeyboardEvent } from "react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertTriangle, CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Clock3, PlugZap, Plus, RefreshCw } from "lucide-react";
+import { AlertTriangle, CalendarDays, ChevronLeft, ChevronRight, Clock3, PlugZap, Plus, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import CalendarEventDialog from "@/components/calendar/CalendarEventDialog";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   fetchCalendarEvent,
   useCalendarActions,
@@ -18,9 +20,9 @@ import {
   type CalendarConnectionSummary,
   type CalendarEvent,
   type CalendarEventPayload,
-  type CalendarSyncJob,
 } from "@/hooks/useCalendar";
 import { useJobPoller } from "@/hooks/useJobPoller";
+import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 
 function startOfMonth(value: Date) {
@@ -59,10 +61,10 @@ function dayKey(value: Date | string) {
 }
 
 function getEventTone(event: CalendarEvent) {
-  if (event.current_user_response === "pending") return "border-amber-800/70 bg-amber-950/30 text-amber-100";
-  if (event.current_user_response === "shared") return "border-sky-800/70 bg-sky-950/30 text-sky-100";
-  if (event.current_user_response === "declined") return "border-neutral-800 bg-neutral-950/40 text-neutral-500";
-  return "border-neutral-800 bg-neutral-900/70 text-neutral-100";
+  if (event.current_user_response === "pending") return "border-state-warning/40 bg-state-warning-muted text-copy-primary";
+  if (event.current_user_response === "shared") return "border-state-info/40 bg-state-info-muted text-copy-primary";
+  if (event.current_user_response === "declined") return "border-line-subtle bg-surface-muted text-copy-disabled";
+  return "border-line-default bg-surface-raised text-copy-primary";
 }
 
 function providerLabel(provider: CalendarConnectionSummary["provider"]) {
@@ -79,30 +81,17 @@ function connectionStatusLabel(connection: CalendarConnectionSummary) {
 }
 
 function connectionStatusTone(connection: CalendarConnectionSummary) {
-  if (connection.health_status === "healthy") return "border-emerald-800/70 bg-emerald-950/20 text-emerald-200";
+  if (connection.health_status === "healthy") return "border-state-success/40 bg-state-success-muted text-state-success";
   if (connection.health_status === "warning" || connection.health_status === "session_provider_mismatch") {
-    return "border-amber-800/70 bg-amber-950/20 text-amber-200";
+    return "border-state-warning/40 bg-state-warning-muted text-state-warning";
   }
-  return "border-red-800/70 bg-red-950/20 text-red-200";
-}
-
-function isActivationKey(event: KeyboardEvent) {
-  return event.key === "Enter" || event.key === " ";
-}
-
-function syncJobLabel(job: CalendarSyncJob) {
-  if (job.status === "completed") {
-    const syncedCount = typeof job.summary?.synced_event_count === "number" ? job.summary.synced_event_count : null;
-    return syncedCount === null ? "Completed" : `Synced ${syncedCount} event${syncedCount === 1 ? "" : "s"}`;
-  }
-  if (job.status === "failed") return job.error_message || "Failed";
-  if (job.progress_message) return job.progress_message;
-  return job.status;
+  return "border-state-danger/40 bg-state-danger-muted text-state-danger";
 }
 
 export default function CalendarPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const { user: currentUser } = useSidebarUser();
   const searchParams = useSearchParams();
   const eventIdParam = searchParams.get("eventId");
   const eventId = eventIdParam && /^\d+$/.test(eventIdParam) ? Number(eventIdParam) : null;
@@ -157,6 +146,12 @@ export default function CalendarPage() {
 
   const activeEvent = eventId ? (eventDetailQuery.data ?? selectedEvent) : selectedEvent;
   const isDialogOpen = eventId ? Boolean(activeEvent) : dialogOpen;
+
+  useEffect(() => {
+    if (!eventId || !eventDetailQuery.error) return;
+    toast.error("This calendar event could not be opened.");
+    router.replace("/dashboard/calendar");
+  }, [eventDetailQuery.error, eventId, router]);
 
   const calendarDays = useMemo(() => {
     const first = startOfGrid(month);
@@ -224,52 +219,69 @@ export default function CalendarPage() {
   }
 
   async function handleInviteResponse(event: CalendarEvent, responseStatus: "accepted" | "declined") {
-    await respondToInvite(event.id, responseStatus);
-    toast.success(responseStatus === "accepted" ? "Invite accepted." : "Invite declined.");
+    try {
+      await respondToInvite(event.id, responseStatus);
+      toast.success(responseStatus === "accepted" ? "Invite accepted." : "Invite declined.");
+    } catch {
+      toast.error("Your invitation response could not be saved.");
+    }
   }
 
   async function handleManualSync() {
-    const result = await syncCalendar();
-    if (result.job_id) {
-      setSyncJobId(result.job_id);
-      syncJob.start(result.job_status || "queued", result.message || "Calendar sync queued.");
+    try {
+      const result = await syncCalendar();
+      if (result.job_id) {
+        setSyncJobId(result.job_id);
+        syncJob.start(result.job_status || "queued", result.message || "Calendar sync queued.");
+      }
+      toast.success(result.message || "Calendar sync queued.");
+    } catch {
+      toast.error("Calendar sync could not be started. Reconnect the provider if the problem continues.");
     }
-    toast.success(result.message || "Calendar sync queued.");
   }
 
   return (
-    <div className="flex flex-col gap-6 text-neutral-200">
+    <div className="flex flex-col gap-6">
       <PageHeader
         title="Calendar"
         description="Keep one internal collaboration calendar per user, share events with colleagues and teams, and let synced providers follow the current sign-in path where available."
         actions={
           <>
-            <div className="flex items-center gap-2 rounded-xl border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-xs text-neutral-400">
-              <Clock3 className="h-4 w-4 text-neutral-500" />
+            <div className="hidden items-center gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-xs text-copy-muted xl:flex">
+              <Clock3 className="h-4 w-4 text-copy-disabled" />
               {contextQuery.data?.connections.some((connection) => connection.sync_enabled_for_current_session)
                 ? "External sync active for this session"
                 : "Internal calendar only for this session"}
             </div>
-            <Button variant="outline" onClick={() => void handleManualSync()} disabled={isCalendarSyncActive || !hasActiveSyncConnection}>
+            <Button aria-label={isCalendarSyncActive ? "Syncing calendar" : "Sync calendar now"} variant="outline" onClick={() => void handleManualSync()} disabled={isCalendarSyncActive || !hasActiveSyncConnection}>
               <RefreshCw className={"h-4 w-4 " + (isCalendarSyncActive ? "animate-spin" : "")} />
-              {isCalendarSyncActive ? "Syncing" : "Sync Now"}
+              <span className="hidden sm:inline">{isCalendarSyncActive ? "Syncing" : "Sync now"}</span>
             </Button>
-            <Button onClick={() => openCreateDialog(selectedDay)}>
+            <Button aria-label="New event" onClick={() => openCreateDialog(selectedDay)}>
               <Plus className="h-4 w-4" />
-              New Event
+              <span className="hidden sm:inline">New event</span>
             </Button>
           </>
         }
       />
 
-      <div className="grid gap-5 xl:grid-cols-[1.2fr_0.8fr]">
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60">
-          <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-5 py-4">
+      {contextQuery.isError ? (
+        <div role="alert" className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-secondary sm:flex-row sm:items-center sm:justify-between">
+          <span>Calendar participants and provider status could not be loaded.</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => void contextQuery.refetch()}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
+
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1.35fr)_minmax(20rem,0.65fr)]">
+        <Card className="hidden lg:block">
+          <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-5 py-4">
             <div>
-              <div className="text-base font-semibold text-neutral-100">
+              <div className="text-base font-semibold text-copy-primary">
                 {month.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
               </div>
-              <div className="mt-1 text-sm text-neutral-400">
+              <div className="mt-1 text-sm text-copy-muted">
                 Personal scheduling, shared team events, and task-driven calendar entries in one view.
               </div>
             </div>
@@ -286,7 +298,7 @@ export default function CalendarPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-7 border-b border-neutral-800 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500">
+          <div className="grid grid-cols-7 border-b border-line-subtle text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
             {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
               <div key={day} className="px-4 py-3">
                 {day}
@@ -295,10 +307,17 @@ export default function CalendarPage() {
           </div>
 
           {eventsQuery.isLoading ? (
-            <div className="px-5 py-10 text-sm text-neutral-500">Loading calendar events…</div>
+            <div className="grid grid-cols-7 gap-px bg-line-subtle p-px" aria-label="Loading calendar events">
+              {Array.from({ length: 35 }, (_, index) => (
+                <Skeleton key={index} className="h-28 rounded-none bg-surface" />
+              ))}
+            </div>
           ) : eventsQuery.error ? (
-            <div className="px-5 py-10 text-sm text-red-300">
-              {eventsQuery.error instanceof Error ? eventsQuery.error.message : "Failed to load calendar events."}
+            <div className="px-5 py-10 text-center">
+              <div className="text-sm font-medium text-copy-primary">Calendar events could not be loaded.</div>
+              <Button className="mt-4" type="button" size="sm" variant="outline" onClick={() => void eventsQuery.refetch()}>
+                Try again
+              </Button>
             </div>
           ) : (
             <div className="grid grid-cols-7">
@@ -310,26 +329,21 @@ export default function CalendarPage() {
                 return (
                   <div
                     key={day.toISOString()}
-                    role="button"
-                    tabIndex={0}
-                    aria-pressed={isSelected}
-                    aria-label={`Select ${dayLabel}`}
-                    onClick={() => setSelectedDay(day)}
-                    onKeyDown={(keyEvent) => {
-                      if (isActivationKey(keyEvent)) {
-                        keyEvent.preventDefault();
-                        setSelectedDay(day);
-                      }
-                    }}
                     className={
-                      "min-h-[132px] cursor-pointer border-b border-r border-neutral-800 px-3 py-3 text-left align-top transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white/20 " +
-                      (isSelected ? "bg-white/[0.04]" : "hover:bg-white/[0.02]")
+                      "min-h-[132px] border-b border-r border-line-subtle px-3 py-3 text-left align-top transition-colors " +
+                      (isSelected ? "bg-surface-raised" : "hover:bg-surface-muted")
                     }
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className={"text-sm font-semibold " + (isCurrentMonth ? "text-neutral-100" : "text-neutral-600")}>
+                      <button
+                        type="button"
+                        aria-pressed={isSelected}
+                        aria-label={`Select ${dayLabel}`}
+                        onClick={() => setSelectedDay(day)}
+                        className={"rounded-md px-1.5 py-0.5 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-ring " + (isCurrentMonth ? "text-copy-primary" : "text-copy-disabled")}
+                      >
                         {day.getDate()}
-                      </span>
+                      </button>
                       <button
                         type="button"
                         aria-label={`Create event on ${dayLabel}`}
@@ -337,12 +351,7 @@ export default function CalendarPage() {
                           clickEvent.stopPropagation();
                           openCreateDialog(day);
                         }}
-                        onKeyDown={(keyEvent) => {
-                          if (isActivationKey(keyEvent)) {
-                            keyEvent.stopPropagation();
-                          }
-                        }}
-                        className="rounded-full p-1 text-neutral-600 transition-colors hover:bg-white/8 hover:text-neutral-200"
+                        className="rounded-full p-1 text-copy-disabled transition-colors hover:bg-surface-raised hover:text-copy-primary focus:outline-none focus:ring-2 focus:ring-ring"
                       >
                         <Plus className="h-3.5 w-3.5" />
                       </button>
@@ -350,22 +359,14 @@ export default function CalendarPage() {
 
                     <div className="mt-3 space-y-2">
                       {dayEvents.slice(0, 3).map((event) => (
-                        <div
+                        <button
                           key={event.id}
-                          role="button"
-                          tabIndex={0}
+                          type="button"
                           onClick={(clickEvent) => {
                             clickEvent.stopPropagation();
                             openEditDialog(event);
                           }}
-                          onKeyDown={(keyEvent) => {
-                            if (isActivationKey(keyEvent)) {
-                              keyEvent.preventDefault();
-                              keyEvent.stopPropagation();
-                              openEditDialog(event);
-                            }
-                          }}
-                          className={"rounded-lg border px-2.5 py-2 text-xs " + getEventTone(event)}
+                          className={"block w-full rounded-lg border px-2.5 py-2 text-left text-xs focus:outline-none focus:ring-2 focus:ring-ring " + getEventTone(event)}
                         >
                           <div className="truncate font-medium">{event.title}</div>
                           <div className="mt-1 truncate text-[11px] opacity-80">
@@ -377,10 +378,10 @@ export default function CalendarPage() {
                               year: undefined,
                             })}
                           </div>
-                        </div>
+                        </button>
                       ))}
                       {dayEvents.length > 3 ? (
-                        <div className="text-[11px] uppercase tracking-[0.16em] text-neutral-500">+{dayEvents.length - 3} more</div>
+                        <div className="text-[11px] uppercase tracking-[0.16em] text-copy-muted">+{dayEvents.length - 3} more</div>
                       ) : null}
                     </div>
                   </div>
@@ -388,16 +389,89 @@ export default function CalendarPage() {
               })}
             </div>
           )}
-        </section>
+        </Card>
+
+        <Card className="lg:hidden" aria-label="Calendar month agenda">
+          <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-4 py-4">
+            <div>
+              <div className="font-semibold text-copy-primary">
+                {month.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+              </div>
+              <div className="mt-1 text-sm text-copy-muted">Choose a day to review or add events.</div>
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Previous month"
+                onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <Button type="button" variant="outline" size="sm" onClick={() => setMonth(startOfMonth(new Date()))}>
+                Today
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Next month"
+                onClick={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+          {eventsQuery.isLoading ? (
+            <div className="space-y-2 p-4" aria-label="Loading calendar events">
+              {Array.from({ length: 5 }, (_, index) => <Skeleton key={index} className="h-14 w-full" />)}
+            </div>
+          ) : eventsQuery.isError ? (
+            <div className="p-4 text-center">
+              <div className="text-sm text-copy-secondary">Calendar events could not be loaded.</div>
+              <Button className="mt-3" type="button" size="sm" variant="outline" onClick={() => void eventsQuery.refetch()}>
+                Try again
+              </Button>
+            </div>
+          ) : (
+            <div className="grid grid-cols-7 gap-1 p-3">
+              {calendarDays
+                .filter((day) => day.getMonth() === month.getMonth())
+                .map((day) => {
+                  const count = eventsByDay.get(dayKey(day))?.length ?? 0;
+                  const selected = sameDay(day, selectedDay);
+                  return (
+                    <button
+                      key={day.toISOString()}
+                      type="button"
+                      aria-pressed={selected}
+                      aria-label={`${formatDateOnly(dayKey(day))}${count ? `, ${count} event${count === 1 ? "" : "s"}` : ""}`}
+                      onClick={() => setSelectedDay(day)}
+                      className={
+                        "relative flex min-h-12 items-center justify-center rounded-[var(--radius-control)] border text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring " +
+                        (selected
+                          ? "border-primary bg-action-primary-muted text-copy-primary"
+                          : "border-line-subtle bg-surface-muted text-copy-secondary hover:border-line-strong hover:bg-surface-raised")
+                      }
+                    >
+                      {day.getDate()}
+                      {count ? <span className="absolute bottom-1 h-1 w-1 rounded-full bg-state-info" /> : null}
+                    </button>
+                  );
+                })}
+            </div>
+          )}
+        </Card>
 
         <div className="space-y-5">
-          <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60">
-            <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-5 py-4">
+          <Card>
+            <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-5 py-4">
               <div>
-                <div className="text-base font-semibold text-neutral-100">Selected Day</div>
-                <div className="mt-1 text-sm text-neutral-400">{formatDateOnly(selectedDay.toISOString())}</div>
+                <div className="text-base font-semibold text-copy-primary">Selected day</div>
+                <div className="mt-1 text-sm text-copy-muted">{formatDateOnly(selectedDay.toISOString())}</div>
               </div>
-              <CalendarDays className="h-4 w-4 text-neutral-500" />
+              <CalendarDays className="h-4 w-4 text-copy-muted" />
             </div>
             <div className="space-y-3 p-4">
               {selectedDayEvents.length ? (
@@ -406,15 +480,15 @@ export default function CalendarPage() {
                     key={event.id}
                     type="button"
                     onClick={() => openEditDialog(event)}
-                    className="block w-full rounded-xl border border-neutral-800 bg-black/20 px-4 py-4 text-left transition-colors hover:border-neutral-700 hover:bg-neutral-900/60"
+                    className="block w-full rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4 text-left transition-colors hover:border-line-strong hover:bg-surface-raised focus:outline-none focus:ring-2 focus:ring-ring"
                   >
-                    <div className="text-sm font-semibold text-neutral-100">{event.title}</div>
-                    <div className="mt-1 text-sm text-neutral-400">
+                    <div className="text-sm font-semibold text-copy-primary">{event.title}</div>
+                    <div className="mt-1 text-sm text-copy-muted">
                       {formatDateTime(event.start_at)} to {formatDateTime(event.end_at)}
                     </div>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {event.participants.slice(0, 3).map((participant) => (
-                        <span key={participant.participant_key} className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-300">
+                        <span key={participant.participant_key} className="rounded-full border border-line-default bg-surface px-2 py-1 text-[11px] text-copy-secondary">
                           {participant.label}
                         </span>
                       ))}
@@ -422,68 +496,57 @@ export default function CalendarPage() {
                   </button>
                 ))
               ) : (
-                <div className="rounded-xl border border-dashed border-neutral-800 bg-black/20 px-4 py-8 text-center text-sm text-neutral-500">
-                  No events on this day yet.
-                </div>
+                <EmptyState
+                  icon={CalendarDays}
+                  title="No events on this day"
+                  description="Create an event or choose another date."
+                  action={<Button type="button" size="sm" variant="outline" onClick={() => openCreateDialog(selectedDay)}>Add event</Button>}
+                />
               )}
             </div>
-          </section>
+          </Card>
 
-          <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60">
-            <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-5 py-4">
+          <Card>
+            <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-5 py-4">
               <div>
-                <div className="text-base font-semibold text-neutral-100">Calendar Sync</div>
-                <div className="mt-1 text-sm text-neutral-400">Provider health and recent sync activity.</div>
+                <div className="text-base font-semibold text-copy-primary">Calendar sync</div>
+                <div className="mt-1 text-sm text-copy-muted">Provider health and most recent successful sync.</div>
               </div>
-              <PlugZap className="h-4 w-4 text-neutral-500" />
+              <PlugZap className="h-4 w-4 text-copy-muted" />
             </div>
             <div className="space-y-3 p-4">
               {contextQuery.data?.connections.length ? (
                 contextQuery.data.connections.map((connection) => (
-                  <div key={connection.provider} className="rounded-xl border border-neutral-800 bg-black/20 px-4 py-4">
+                  <div key={connection.provider} className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
-                        <div className="text-sm font-semibold text-neutral-100">
+                        <div className="text-sm font-semibold text-copy-primary">
                           {providerLabel(connection.provider)} Calendar
                         </div>
-                        <div className="mt-1 text-xs text-neutral-500">{connection.account_email || "No account email"}</div>
+                        <div className="mt-1 text-xs text-copy-muted">{connection.account_email || "No account email"}</div>
                       </div>
                       <span className={"rounded-full border px-2.5 py-1 text-[11px] font-medium " + connectionStatusTone(connection)}>
                         {connectionStatusLabel(connection)}
                       </span>
                     </div>
-                    <div className="mt-3 grid gap-2 text-xs text-neutral-400 sm:grid-cols-2">
+                    <div className="mt-3 grid gap-2 text-xs text-copy-muted sm:grid-cols-2">
                       <div>
-                        <span className="text-neutral-500">Calendar</span>
-                        <div className="mt-0.5 truncate text-neutral-300">
+                        <span>Calendar</span>
+                        <div className="mt-0.5 truncate text-copy-secondary">
                           {connection.provider_calendar_name || connection.provider_calendar_id || "Not selected yet"}
                         </div>
                       </div>
                       <div>
-                        <span className="text-neutral-500">Last sync</span>
-                        <div className="mt-0.5 text-neutral-300">
+                        <span>Last sync</span>
+                        <div className="mt-0.5 text-copy-secondary">
                           {connection.last_successful_sync_at ? formatDateTime(connection.last_successful_sync_at) : "No successful sync yet"}
                         </div>
                       </div>
                     </div>
                     {connection.last_failure_reason ? (
-                      <div className="mt-3 flex gap-2 rounded-lg border border-red-900/60 bg-red-950/20 px-3 py-2 text-xs text-red-200">
+                      <div className="mt-3 flex gap-2 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-3 py-2 text-xs text-copy-primary">
                         <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                        <span>{connection.last_failure_reason}</span>
-                      </div>
-                    ) : null}
-                    {connection.scopes.length ? (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {connection.scopes.slice(0, 3).map((scope) => (
-                          <span key={scope} className="max-w-full truncate rounded-full border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-400">
-                            {scope}
-                          </span>
-                        ))}
-                        {connection.scopes.length > 3 ? (
-                          <span className="rounded-full border border-neutral-800 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-500">
-                            +{connection.scopes.length - 3}
-                          </span>
-                        ) : null}
+                        <span>The provider needs attention. Reconnect it, then try syncing again.</span>
                       </div>
                     ) : null}
                     <div className="mt-3 flex flex-wrap gap-2">
@@ -504,52 +567,33 @@ export default function CalendarPage() {
                   </div>
                 ))
               ) : (
-                <div className="rounded-xl border border-dashed border-neutral-800 bg-black/20 px-4 py-8 text-center text-sm text-neutral-500">
-                  No external calendar provider connected.
-                </div>
+                <EmptyState
+                  icon={PlugZap}
+                  title="No calendar provider connected"
+                  description="Your internal calendar still works. Connect Google or Microsoft to sync external events."
+                  action={<Button type="button" size="sm" variant="outline" onClick={() => router.push("/dashboard/settings/integrations")}>Manage integrations</Button>}
+                />
               )}
-
-              {contextQuery.data?.recent_sync_jobs.length ? (
-                <div className="space-y-2 pt-1">
-                  {contextQuery.data.recent_sync_jobs.slice(0, 3).map((job) => (
-                    <div key={job.id} className="flex items-start gap-3 rounded-lg border border-neutral-800 bg-neutral-900/40 px-3 py-3">
-                      {job.status === "completed" ? (
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" />
-                      ) : job.status === "failed" ? (
-                        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-                      ) : (
-                        <RefreshCw className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-xs font-medium text-neutral-200">{syncJobLabel(job)}</div>
-                        <div className="mt-0.5 text-[11px] text-neutral-500">
-                          {formatDateTime(job.completed_at || job.started_at || job.created_at)}
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : null}
             </div>
-          </section>
+          </Card>
 
-          <section className="rounded-2xl border border-neutral-800 bg-neutral-950/60">
-            <div className="flex items-center justify-between gap-3 border-b border-neutral-800 px-5 py-4">
+          <Card>
+            <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-5 py-4">
               <div>
-                <div className="text-base font-semibold text-neutral-100">Pending Invites</div>
-                <div className="mt-1 text-sm text-neutral-400">Accept or decline user-targeted invites here.</div>
+                <div className="text-base font-semibold text-copy-primary">Pending invites</div>
+                <div className="mt-1 text-sm text-copy-muted">Accept or decline invitations sent directly to you.</div>
               </div>
-              <div className="rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-300">
+              <div className="rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-xs text-copy-secondary">
                 {contextQuery.data?.pending_invite_count ?? pendingInvites.length}
               </div>
             </div>
             <div className="space-y-3 p-4">
               {pendingInvites.length ? (
                 pendingInvites.map((event) => (
-                  <div key={event.id} className="rounded-xl border border-amber-800/60 bg-amber-950/20 px-4 py-4">
-                    <div className="text-sm font-semibold text-neutral-100">{event.title}</div>
-                    <div className="mt-1 text-sm text-neutral-400">{formatDateTime(event.start_at)}</div>
-                    {event.owner_name ? <div className="mt-1 text-xs text-neutral-500">Owner: {event.owner_name}</div> : null}
+                  <div key={event.id} className="rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted px-4 py-4">
+                    <div className="text-sm font-semibold text-copy-primary">{event.title}</div>
+                    <div className="mt-1 text-sm text-copy-secondary">{formatDateTime(event.start_at)}</div>
+                    {event.owner_name ? <div className="mt-1 text-xs text-copy-muted">Owner: {event.owner_name}</div> : null}
                     <div className="mt-3 flex gap-2">
                       <Button type="button" size="sm" disabled={isResponding} onClick={() => void handleInviteResponse(event, "accepted")}>
                         Accept
@@ -561,12 +605,10 @@ export default function CalendarPage() {
                   </div>
                 ))
               ) : (
-                <div className="rounded-xl border border-dashed border-neutral-800 bg-black/20 px-4 py-8 text-center text-sm text-neutral-500">
-                  No pending invites right now.
-                </div>
+                <EmptyState title="No pending invites" description="New calendar invitations will appear here." />
               )}
             </div>
-          </section>
+          </Card>
 
         </div>
       </div>
@@ -580,6 +622,7 @@ export default function CalendarPage() {
         teams={contextQuery.data?.teams ?? []}
         isSubmitting={isSaving}
         isDeleting={isDeleting}
+        canManage={!activeEvent || activeEvent.owner_user_id === currentUser?.id}
         onClose={closeDialog}
         onSubmit={handleSubmit}
         onDelete={activeEvent ? handleDelete : undefined}

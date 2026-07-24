@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import TaskAssigneePicker from "@/components/tasks/TaskAssigneePicker";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -14,7 +15,7 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -96,6 +97,15 @@ function toIsoOrNull(value: string) {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+function validateTaskForm(form: FormState) {
+  if (!form.title.trim()) return "Task title is required.";
+  if (form.title.trim().length > 255) return "Task title must be 255 characters or fewer.";
+  if (form.start_at && form.due_at && new Date(form.due_at).getTime() < new Date(form.start_at).getTime()) {
+    return "Due time must be after the start time.";
+  }
+  return null;
+}
+
 export default function TaskDialog({
   open,
   task,
@@ -114,10 +124,7 @@ export default function TaskDialog({
   const { confirm } = useConfirm();
   const [form, setForm] = useState<FormState>(() => buildFormState(task));
   const [error, setError] = useState<string | null>(null);
-  const formResetKey = useMemo(
-    () => `${open ? "open" : "closed"}:${task?.id ?? "new"}:${task?.updated_at ?? ""}`,
-    [open, task?.id, task?.updated_at],
-  );
+  const validationError = useMemo(() => validateTaskForm(form), [form]);
   const optionsQuery = useQuery({
     queryKey: ["task-assignment-options"],
     queryFn: fetchTaskAssignmentOptions,
@@ -125,17 +132,16 @@ export default function TaskDialog({
     staleTime: 5 * 60_000,
   });
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setForm(buildFormState(open ? task : null));
-    setError(null);
-  }, [formResetKey, open, task]);
-
   const selectedAssigneeCount = form.assignees.length;
 
   async function handleSubmit() {
     try {
       setError(null);
+      const nextValidationError = validateTaskForm(form);
+      if (nextValidationError) {
+        setError(nextValidationError);
+        return;
+      }
       await onSubmit({
         ...form,
         title: form.title.trim(),
@@ -143,7 +149,7 @@ export default function TaskDialog({
       });
       onClose();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to save task");
+      setError(submitError instanceof Error ? submitError.message : "The task could not be saved.");
     }
   }
 
@@ -161,7 +167,17 @@ export default function TaskDialog({
       await onDelete();
       onClose();
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete task");
+      setError(deleteError instanceof Error ? deleteError.message : "The task could not be moved to the recycle bin.");
+    }
+  }
+
+  async function runCalendarAction(action: (() => Promise<void>) | undefined, failureMessage: string) {
+    if (!action) return;
+    try {
+      setError(null);
+      await action();
+    } catch {
+      setError(failureMessage);
     }
   }
 
@@ -177,15 +193,18 @@ export default function TaskDialog({
 
           <div className="mt-4 space-y-4">
             {error ? (
-              <div className="rounded-md border border-red-800/60 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+              <div role="alert" aria-live="polite" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
                 {error}
               </div>
             ) : null}
 
             <FieldGroup className="grid gap-4 md:grid-cols-2">
               <Field className="md:col-span-2">
-                <FieldLabel>Task Title</FieldLabel>
+                <FieldLabel htmlFor="task-title">Task title <RequiredMark /></FieldLabel>
                 <Input
+                  id="task-title"
+                  required
+                  maxLength={255}
                   value={form.title}
                   onChange={(event) => setForm((current) => ({ ...current, title: event.target.value }))}
                   placeholder="Follow up with new opportunity stakeholders"
@@ -193,8 +212,9 @@ export default function TaskDialog({
               </Field>
 
               <Field className="md:col-span-2">
-                <FieldLabel>Description</FieldLabel>
+                <FieldLabel htmlFor="task-description">Description</FieldLabel>
                 <Textarea
+                  id="task-description"
                   rows={4}
                   value={form.description ?? ""}
                   onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
@@ -203,7 +223,7 @@ export default function TaskDialog({
               </Field>
 
               <Field>
-                <FieldLabel>Status</FieldLabel>
+                <FieldLabel htmlFor="task-status">Status</FieldLabel>
                 <Select
                   value={form.status}
                   onValueChange={(value) =>
@@ -221,7 +241,7 @@ export default function TaskDialog({
                     }))
                   }
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger id="task-status" className="w-full">
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -234,14 +254,14 @@ export default function TaskDialog({
               </Field>
 
               <Field>
-                <FieldLabel>Priority</FieldLabel>
+                <FieldLabel htmlFor="task-priority">Priority</FieldLabel>
                 <Select
                   value={form.priority}
                   onValueChange={(value) =>
                     setForm((current) => ({ ...current, priority: value as FormState["priority"] }))
                   }
                 >
-                  <SelectTrigger className="w-full">
+                  <SelectTrigger id="task-priority" className="w-full">
                     <SelectValue placeholder="Select priority" />
                   </SelectTrigger>
                   <SelectContent>
@@ -253,8 +273,9 @@ export default function TaskDialog({
               </Field>
 
               <Field>
-                <FieldLabel>Start</FieldLabel>
+                <FieldLabel htmlFor="task-start">Start</FieldLabel>
                 <Input
+                  id="task-start"
                   type="datetime-local"
                   value={toDatetimeLocalValue(form.start_at)}
                   onChange={(event) =>
@@ -264,37 +285,40 @@ export default function TaskDialog({
               </Field>
 
               <Field>
-                <FieldLabel>Due</FieldLabel>
+                <FieldLabel htmlFor="task-due">Due</FieldLabel>
                 <Input
+                  id="task-due"
                   type="datetime-local"
                   value={toDatetimeLocalValue(form.due_at)}
                   onChange={(event) =>
                     setForm((current) => ({ ...current, due_at: toIsoOrNull(event.target.value) }))
                   }
                 />
+                {validationError === "Due time must be after the start time." ? (
+                  <FieldError>{validationError}</FieldError>
+                ) : null}
               </Field>
             </FieldGroup>
 
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4">
+            <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-neutral-100">Assignments</div>
+                  <div className="text-sm font-semibold text-copy-primary">Assignments</div>
                   <FieldDescription>
                     Search and assign individual users or whole teams. Team assignments notify the full team.
                   </FieldDescription>
                 </div>
-                <div className="text-xs uppercase tracking-[0.16em] text-neutral-500">
+                <div className="text-xs uppercase tracking-[0.16em] text-copy-muted">
                   {selectedAssigneeCount} selected
                 </div>
               </div>
 
               {optionsQuery.isLoading ? (
-                <div className="mt-4 text-sm text-neutral-500">Loading assignee options…</div>
+                <div className="mt-4 text-sm text-copy-muted">Loading assignee options…</div>
               ) : optionsQuery.error ? (
-                <div className="mt-4 text-sm text-red-300">
-                  {optionsQuery.error instanceof Error
-                    ? optionsQuery.error.message
-                    : "Failed to load assignment options."}
+                <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-3 py-2 text-sm text-copy-primary">
+                  <span>Task assignment options could not be loaded.</span>
+                  <Button type="button" size="sm" variant="outline" onClick={() => void optionsQuery.refetch()}>Try again</Button>
                 </div>
               ) : (
                 <div className="mt-4 space-y-3">
@@ -306,7 +330,7 @@ export default function TaskDialog({
                     disabled={isSubmitting || isDeleting}
                   />
                   {task?.assigned_by_name ? (
-                    <div className="text-xs text-neutral-500">
+                    <div className="text-xs text-copy-muted">
                       Last assigned by {task.assigned_by_name}
                       {task.assigned_at ? ` on ${formatDateTime(task.assigned_at)}` : ""}
                     </div>
@@ -321,7 +345,7 @@ export default function TaskDialog({
               <Button
                 type="button"
                 variant="outline"
-                className="mr-auto border-red-800/70 text-red-200 hover:bg-red-950/40 hover:text-red-100"
+                className="mr-auto border-state-danger/50 text-state-danger hover:bg-state-danger-muted hover:text-state-danger"
                 onClick={() => void handleDelete()}
                 disabled={isSubmitting || isDeleting}
               >
@@ -332,7 +356,7 @@ export default function TaskDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => void onAddToCalendar()}
+                onClick={() => void runCalendarAction(onAddToCalendar, "The task could not be added to the calendar.")}
                 disabled={isSubmitting || isDeleting || isAddingToCalendar || Boolean(linkedCalendarEvent)}
               >
                 {linkedCalendarEvent ? "Already On Calendar" : isAddingToCalendar ? "Adding..." : "Add To Calendar"}
@@ -347,7 +371,7 @@ export default function TaskDialog({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => void onRemoveFromCalendar()}
+                onClick={() => void runCalendarAction(onRemoveFromCalendar, "The task could not be removed from the calendar.")}
                 disabled={isSubmitting || isDeleting || isRemovingFromCalendar}
               >
                 {isRemovingFromCalendar ? "Removing..." : "Remove From Calendar"}
@@ -359,7 +383,7 @@ export default function TaskDialog({
             <Button
               type="button"
               onClick={() => void handleSubmit()}
-              disabled={isSubmitting || isDeleting || !form.title.trim()}
+              disabled={isSubmitting || isDeleting || Boolean(validationError)}
             >
               {task ? "Save Task" : "Create Task"}
             </Button>

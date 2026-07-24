@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import CalendarParticipantPicker from "@/components/calendar/CalendarParticipantPicker";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -15,6 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Switch, SwitchThumb } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type {
   CalendarAssignmentTeamOption,
@@ -33,6 +35,7 @@ type Props = {
   teams: CalendarAssignmentTeamOption[];
   isSubmitting?: boolean;
   isDeleting?: boolean;
+  canManage?: boolean;
   onClose: () => void;
   onSubmit: (payload: CalendarEventPayload) => Promise<void>;
   onDelete?: () => Promise<void>;
@@ -115,6 +118,7 @@ export default function CalendarEventDialog({
   teams,
   isSubmitting = false,
   isDeleting = false,
+  canManage = true,
   onClose,
   onSubmit,
   onDelete,
@@ -183,21 +187,27 @@ export default function CalendarEventDialog({
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
         <DialogPanel size="3xl">
           <DialogHeader>
-            <DialogTitle>{event ? "Edit Event" : "Create Event"}</DialogTitle>
+            <DialogTitle>{event ? (canManage ? "Edit Event" : "Event details") : "Create Event"}</DialogTitle>
             <DialogIconClose />
           </DialogHeader>
 
-          <div className="mt-4 space-y-4">
+          <fieldset disabled={!canManage} className="mt-4 space-y-4 disabled:opacity-80">
+            {!canManage ? (
+              <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3 text-sm text-copy-secondary">
+                Only the event owner can change or delete this event.
+              </div>
+            ) : null}
             {error ? (
-              <div className="rounded-md border border-red-800/60 bg-red-950/30 px-4 py-3 text-sm text-red-200">
+              <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
                 {error}
               </div>
             ) : null}
 
             <FieldGroup className="grid gap-4 md:grid-cols-2">
               <Field className="md:col-span-2">
-                <FieldLabel>Event Title</FieldLabel>
+                <FieldLabel htmlFor="calendar-event-title">Event title <RequiredMark /></FieldLabel>
                 <Input
+                  id="calendar-event-title"
                   value={form.title}
                   onChange={(nextEvent) => setForm((current) => ({ ...current, title: nextEvent.target.value }))}
                   placeholder="Join weekly customer kickoff"
@@ -205,8 +215,9 @@ export default function CalendarEventDialog({
               </Field>
 
               <Field className="md:col-span-2">
-                <FieldLabel>Description</FieldLabel>
+                <FieldLabel htmlFor="calendar-event-description">Description</FieldLabel>
                 <Textarea
+                  id="calendar-event-description"
                   rows={4}
                   value={form.description ?? ""}
                   onChange={(nextEvent) => setForm((current) => ({ ...current, description: nextEvent.target.value }))}
@@ -215,8 +226,9 @@ export default function CalendarEventDialog({
               </Field>
 
               <Field>
-                <FieldLabel>Start</FieldLabel>
+                <FieldLabel htmlFor="calendar-event-start">Start <RequiredMark /></FieldLabel>
                 <Input
+                  id="calendar-event-start"
                   type="datetime-local"
                   value={toDatetimeLocalValue(form.start_at)}
                   onChange={(nextEvent) =>
@@ -229,8 +241,9 @@ export default function CalendarEventDialog({
               </Field>
 
               <Field>
-                <FieldLabel>End</FieldLabel>
+                <FieldLabel htmlFor="calendar-event-end">End <RequiredMark /></FieldLabel>
                 <Input
+                  id="calendar-event-end"
                   type="datetime-local"
                   value={toDatetimeLocalValue(form.end_at)}
                   onChange={(nextEvent) =>
@@ -246,8 +259,9 @@ export default function CalendarEventDialog({
               </Field>
 
               <Field>
-                <FieldLabel>Location</FieldLabel>
+                <FieldLabel htmlFor="calendar-event-location">Location</FieldLabel>
                 <Input
+                  id="calendar-event-location"
                   value={form.location ?? ""}
                   onChange={(nextEvent) => setForm((current) => ({ ...current, location: nextEvent.target.value }))}
                   placeholder="Boardroom A / Customer HQ"
@@ -255,19 +269,38 @@ export default function CalendarEventDialog({
               </Field>
 
               <Field>
-                <FieldLabel>Meeting Link</FieldLabel>
+                <FieldLabel htmlFor="calendar-event-link">Meeting link</FieldLabel>
                 <Input
+                  id="calendar-event-link"
                   value={form.meeting_url ?? ""}
                   onChange={(nextEvent) => setForm((current) => ({ ...current, meeting_url: nextEvent.target.value }))}
                   placeholder="https://meet.google.com/..."
                 />
               </Field>
+
+              <Field className="md:col-span-2">
+                <div className="flex min-h-10 items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2">
+                  <div>
+                    <FieldLabel htmlFor="calendar-all-day">All-day event</FieldLabel>
+                    <FieldDescription>Show this event without a specific meeting time.</FieldDescription>
+                  </div>
+                  <Switch
+                    id="calendar-all-day"
+                    checked={form.is_all_day}
+                    onCheckedChange={(checked) => setForm((current) => ({ ...current, is_all_day: checked }))}
+                    aria-label="All-day event"
+                    className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface data-[state=checked]:bg-primary"
+                  >
+                    <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
+                  </Switch>
+                </div>
+              </Field>
             </FieldGroup>
 
-            <div className="rounded-xl border border-neutral-800 bg-neutral-950/60 p-4">
+            <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-neutral-100">Participants</div>
+                  <div className="text-sm font-semibold text-copy-primary">Participants</div>
                   <FieldDescription>
                     Invite users who should accept or decline, and share with teams that should see the event internally.
                   </FieldDescription>
@@ -283,14 +316,14 @@ export default function CalendarEventDialog({
                 />
               </div>
             </div>
-          </div>
+          </fieldset>
 
           <DialogFooter className="mt-6">
-            {event && onDelete ? (
+            {event && onDelete && canManage ? (
               <Button
                 type="button"
                 variant="outline"
-                className="mr-auto border-red-800/70 text-red-200 hover:bg-red-950/40 hover:text-red-100"
+                className="mr-auto border-state-danger/50 text-state-danger hover:bg-state-danger-muted hover:text-state-danger"
                 onClick={() => void handleDelete()}
                 disabled={isSubmitting || isDeleting}
               >
@@ -300,9 +333,11 @@ export default function CalendarEventDialog({
             <Button type="button" variant="ghost" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="button" onClick={() => void handleSubmit()} disabled={isSubmitting || isDeleting || !canSubmit}>
-              {event ? "Save Event" : "Create Event"}
-            </Button>
+            {canManage ? (
+              <Button type="button" onClick={() => void handleSubmit()} disabled={isSubmitting || isDeleting || !canSubmit}>
+                {event ? "Save Event" : "Create Event"}
+              </Button>
+            ) : null}
           </DialogFooter>
         </DialogPanel>
       </div>

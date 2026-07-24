@@ -5,6 +5,7 @@ import { CalendarDays, CheckCircle2, Clock3 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -68,7 +69,7 @@ async function readJson(res: Response) {
 async function fetchBookingType(slug: string) {
   const res = await apiFetch(`/booking-links/${slug}`);
   const body = await readJson(res);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new Error("This booking link is unavailable.");
   return body as PublicBookingType;
 }
 
@@ -76,7 +77,7 @@ async function fetchSlots(slug: string, startDate: string, endDate: string) {
   const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
   const res = await apiFetch(`/booking-links/${slug}/slots?${params.toString()}`);
   const body = await readJson(res);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new Error("Available times could not be loaded.");
   return (body?.results ?? []) as PublicSlot[];
 }
 
@@ -87,7 +88,7 @@ async function submitBooking(slug: string, payload: Record<string, unknown>) {
     body: JSON.stringify(payload),
   });
   const body = await readJson(res);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new Error("This time could not be booked. Refresh the page and choose another slot.");
   return body;
 }
 
@@ -104,6 +105,9 @@ export default function BookingForm({ slug }: { slug: string }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [booked, setBooked] = useState(false);
+  const requiredAnswersComplete = bookingType?.questions
+    .filter((question) => question.required)
+    .every((question) => Boolean(answers[String(question.id ?? question.label)]?.trim())) ?? true;
 
   useEffect(() => {
     let cancelled = false;
@@ -152,10 +156,10 @@ export default function BookingForm({ slug }: { slug: string }) {
   }
 
   if (loading) {
-    return <Card className="px-5 py-5 text-sm text-neutral-500">Loading booking link...</Card>;
+    return <Card className="px-5 py-5 text-sm text-copy-muted">Loading booking link...</Card>;
   }
   if (error && !bookingType) {
-    return <Card className="px-5 py-5 text-sm text-red-300">{error}</Card>;
+    return <Card role="alert" className="border-state-danger/40 bg-state-danger-muted px-5 py-5 text-sm text-copy-primary">{error}</Card>;
   }
   if (!bookingType) return null;
   if (booked) {
@@ -232,33 +236,34 @@ export default function BookingForm({ slug }: { slug: string }) {
             ) : null}
             <FieldGroup className="mt-3 grid gap-3">
               <Field>
-                <FieldLabel>Name</FieldLabel>
-                <Input value={guestName} onChange={(event) => setGuestName(event.target.value)} />
+                <FieldLabel htmlFor="booking-guest-name">Name <RequiredMark /></FieldLabel>
+                <Input id="booking-guest-name" value={guestName} onChange={(event) => setGuestName(event.target.value)} />
               </Field>
               <Field>
-                <FieldLabel>Email</FieldLabel>
-                <Input type="email" value={guestEmail} onChange={(event) => setGuestEmail(event.target.value)} />
+                <FieldLabel htmlFor="booking-guest-email">Email <RequiredMark /></FieldLabel>
+                <Input id="booking-guest-email" type="email" value={guestEmail} onChange={(event) => setGuestEmail(event.target.value)} />
               </Field>
               {bookingType.questions.map((question) => {
                 const key = String(question.id ?? question.label);
+                const inputId = `booking-question-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
                 return (
                   <Field key={key}>
-                    <FieldLabel>{question.label}{question.required ? " *" : ""}</FieldLabel>
+                    <FieldLabel htmlFor={inputId}>{question.label}{question.required ? <RequiredMark /> : null}</FieldLabel>
                     {question.field_type === "textarea" ? (
-                      <Textarea value={answers[key] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} />
+                      <Textarea id={inputId} value={answers[key] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} />
                     ) : (
-                      <Input value={answers[key] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} />
+                      <Input id={inputId} value={answers[key] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} />
                     )}
                   </Field>
                 );
               })}
               <Field>
-                <FieldLabel>Note</FieldLabel>
-                <Textarea value={guestNote} onChange={(event) => setGuestNote(event.target.value)} />
+                <FieldLabel htmlFor="booking-guest-note">Note</FieldLabel>
+                <Textarea id="booking-guest-note" value={guestNote} onChange={(event) => setGuestNote(event.target.value)} />
               </Field>
             </FieldGroup>
-            {error ? <div className="mt-3 rounded-md border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-200">{error}</div> : null}
-            <Button className="mt-4 w-full" onClick={handleSubmit} disabled={!selectedSlot || !guestName.trim() || !guestEmail.trim() || submitting}>
+            {error ? <div role="alert" aria-live="polite" className="mt-3 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-3 py-2 text-sm text-copy-primary">{error}</div> : null}
+            <Button className="mt-4 w-full" onClick={handleSubmit} disabled={!selectedSlot || !guestName.trim() || !guestEmail.trim() || !requiredAnswersComplete || submitting}>
               {submitting ? "Booking..." : "Book meeting"}
             </Button>
           </div>

@@ -73,6 +73,11 @@ class SupportCaseResponse(SupportCaseBase):
     created_by_id: int | None = None
     created_by_name: str | None = None
     assigned_to_name: str | None = None
+    contact_name: str | None = None
+    organization_name: str | None = None
+    opportunity_name: str | None = None
+    quote_label: str | None = None
+    order_label: str | None = None
     sla_due_at: datetime | None = None
     first_response_at: datetime | None = None
     resolved_at: datetime | None = None

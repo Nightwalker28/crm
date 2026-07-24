@@ -67,6 +67,9 @@ export default function TasksPage() {
   } = useTasks(activeFilters, sort);
   const { allConditions, anyConditions } = getConditionGroups(activeFilters);
   const activeFilterCount = allConditions.length + anyConditions.length;
+  const hasActiveFilters = activeFilterCount > 0 || Boolean(
+    typeof activeFilters.search === "string" && activeFilters.search.trim(),
+  );
   const {
     createEventFromTask,
     deleteTaskCalendarEvent,
@@ -184,7 +187,7 @@ export default function TasksPage() {
         description="Coordinate team work, assign follow-ups, and turn notifications into actionable next steps."
         eyebrow={totalCount ? `${totalCount} task${totalCount === 1 ? "" : "s"} in this view` : undefined}
         actions={
-          <Button onClick={openCreateDialog}>
+          <Button aria-label="Add Task" onClick={openCreateDialog}>
             <Plus className="h-4 w-4" />
             <span className="hidden sm:inline">Add Task</span>
           </Button>
@@ -226,9 +229,9 @@ export default function TasksPage() {
       />
 
       {error ? (
-        <div className="flex justify-between rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">
-          <span>{error}</span>
-          <button onClick={() => void refresh()} className="underline underline-offset-2">Retry</button>
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+          <span>Tasks could not be loaded. Check your connection and try again.</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>Try again</Button>
         </div>
       ) : null}
 
@@ -245,6 +248,7 @@ export default function TasksPage() {
           isRefreshing={isFetching && !isLoading}
           visibleColumns={visibleColumns}
           onEdit={openEditDialog}
+          isFiltered={hasActiveFilters}
           sort={sort}
           onSortChange={setSort}
         />
@@ -267,6 +271,7 @@ export default function TasksPage() {
       />
 
       <TaskDialog
+        key={activeTask ? `task-${activeTask.id}` : `task-new-${isDialogOpen}`}
         open={isDialogOpen}
         task={activeTask}
         isSubmitting={isSaving}

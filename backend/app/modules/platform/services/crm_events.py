@@ -193,7 +193,11 @@ def serialize_crm_event_delivery(delivery: CrmEventDelivery) -> dict[str, Any]:
         "provider": delivery.provider,
         "status": delivery.status,
         "channel_name": getattr(channel, "channel_name", None),
-        "error_message": delivery.error_message,
+        "error_message": (
+            "Delivery failed. Check the notification channel configuration and try a test message."
+            if delivery.error_message
+            else None
+        ),
         "delivered_at": delivery.delivered_at,
         "created_at": delivery.created_at,
     }

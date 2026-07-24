@@ -49,6 +49,11 @@ export type SupportCase = {
   order_id: number | null;
   assigned_to_id: number | null;
   assigned_to_name: string | null;
+  contact_name?: string | null;
+  organization_name?: string | null;
+  opportunity_name?: string | null;
+  quote_label?: string | null;
+  order_label?: string | null;
   created_by_name?: string | null;
   created_by_id?: number | null;
   sla_due_at: string | null;
@@ -80,14 +85,14 @@ export type SupportCaseSummary = {
 async function fetchSupportCase(caseId: string | number): Promise<SupportCase> {
   const res = await apiFetch(`/support/cases/${caseId}`);
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new Error(res.status === 404 ? "not-found" : "load-failed");
   return body;
 }
 
 async function fetchSupportCaseSummary(): Promise<SupportCaseSummary> {
   const res = await apiFetch("/support/cases/summary");
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new Error("summary-failed");
   return body;
 }
 

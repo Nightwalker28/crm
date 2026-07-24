@@ -123,7 +123,7 @@ async function fetchTasks(page: number, pageSize: number, filters?: SavedViewFil
   const res = await apiFetch(`/tasks?${buildTaskListParams(page, pageSize, filters, sort).toString()}`);
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load tasks.");
+    throw new Error("Tasks could not be loaded.");
   }
   return body as TaskListResponse;
 }
@@ -136,7 +136,7 @@ async function createTask(payload: TaskPayload) {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to create task.");
+    throw new Error("The task could not be created. Check the details and try again.");
   }
   return body as Task;
 }
@@ -149,7 +149,7 @@ async function updateTask(taskId: number, payload: TaskUpdatePayload) {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to update task.");
+    throw new Error("The task could not be updated. Check your access and try again.");
   }
   return body as Task;
 }
@@ -158,9 +158,8 @@ async function deleteTask(taskId: number) {
   const res = await apiFetch(`/tasks/${taskId}`, {
     method: "DELETE",
   });
-  const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to delete task.");
+    throw new Error("The task could not be moved to the recycle bin.");
   }
 }
 
@@ -168,7 +167,7 @@ export async function fetchTask(taskId: number) {
   const res = await apiFetch(`/tasks/${taskId}`);
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load task.");
+    throw new Error("This task could not be loaded.");
   }
   return body as Task;
 }
@@ -177,10 +176,7 @@ export async function fetchTaskAssignmentOptions() {
   const res = await apiFetch("/tasks/options");
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error(
-      (body && typeof body.detail === "string" && body.detail) ||
-        "Failed to load task assignment options.",
-    );
+    throw new Error("Task assignment options could not be loaded.");
   }
   return body as TaskAssignmentOptions;
 }
@@ -197,7 +193,7 @@ export async function fetchRecordTasks(moduleKey: string, entityId: string | num
   const res = await apiFetch(`/tasks?${params.toString()}`);
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load record tasks.");
+    throw new Error("Related tasks could not be loaded.");
   }
   return body as TaskListResponse;
 }

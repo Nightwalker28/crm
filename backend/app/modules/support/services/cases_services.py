@@ -250,6 +250,11 @@ def get_case_or_404(db: Session, *, tenant_id: int, case_id: int) -> SupportCase
     item = (
         db.query(SupportCase)
         .options(
+            selectinload(SupportCase.contact),
+            selectinload(SupportCase.organization),
+            selectinload(SupportCase.opportunity),
+            selectinload(SupportCase.quote),
+            selectinload(SupportCase.order),
             selectinload(SupportCase.assigned_user),
             selectinload(SupportCase.created_by),
             selectinload(SupportCase.comments).selectinload(SupportCaseComment.author),

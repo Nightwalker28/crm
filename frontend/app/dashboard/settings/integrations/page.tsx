@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, ExternalLink, KeyRound, Package, PlugZap, RefreshCw, Send, ShoppingCart, Trash2 } from "lucide-react";
@@ -20,6 +20,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { connectGoogleDriveStorage, connectMicrosoftOneDriveStorage } from "@/hooks/useDocuments";
+import { useConfirm } from "@/hooks/useConfirm";
 
 type NotificationChannel = {
   id: number;
@@ -83,6 +84,7 @@ type IntegrationRegistryHealth = {
     provider_key: string;
     status: string;
     provider_display_name: string | null;
+    account_label: string | null;
     last_sync_at: string | null;
     last_successful_sync_at: string | null;
     source: string;
@@ -225,25 +227,25 @@ function eventTitle(event: CrmEvent) {
 
 function deliveryStatusPill(status: string) {
   if (status === "delivered") {
-    return { bg: "bg-emerald-950/60", text: "text-emerald-200", border: "border-emerald-800/70" };
+    return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" };
   }
   if (status === "failed") {
-    return { bg: "bg-red-950/60", text: "text-red-200", border: "border-red-800/70" };
+    return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" };
   }
-  return { bg: "bg-amber-950/60", text: "text-amber-200", border: "border-amber-800/70" };
+  return { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40" };
 }
 
 function connectionStatusPill(status: string) {
   if (status === "connected") {
-    return { bg: "bg-emerald-950/60", text: "text-emerald-200", border: "border-emerald-800/70" };
+    return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" };
   }
   if (status === "error" || status === "reconnect_required") {
-    return { bg: "bg-red-950/60", text: "text-red-200", border: "border-red-800/70" };
+    return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" };
   }
   if (status === "pending") {
-    return { bg: "bg-amber-950/60", text: "text-amber-200", border: "border-amber-800/70" };
+    return { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40" };
   }
-  return { bg: "bg-neutral-900", text: "text-neutral-400", border: "border-neutral-800" };
+  return { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default" };
 }
 
 function formatStatus(value: string) {
@@ -263,11 +265,16 @@ async function readJson(res: Response) {
   return res.json().catch(() => null);
 }
 
-function responseError(body: unknown, fallback: string) {
-  if (body && typeof body === "object" && "detail" in body && typeof (body as { detail?: unknown }).detail === "string") {
-    return (body as { detail: string }).detail;
-  }
-  return fallback;
+function SectionError({ message, retry }: { message: string; retry: () => void }) {
+  return (
+    <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+      <span>{message}</span>
+      <Button type="button" variant="outline" size="sm" onClick={retry}>
+        <RefreshCw size={14} aria-hidden="true" />
+        Try again
+      </Button>
+    </div>
+  );
 }
 
 async function fetchWebsiteIntegrations() {
@@ -277,9 +284,7 @@ async function fetchWebsiteIntegrations() {
     apiFetch("/integrations/orders?limit=10&offset=0"),
   ]);
   const [keysBody, catalogBody, ordersBody] = await Promise.all([readJson(keysRes), readJson(catalogRes), readJson(ordersRes)]);
-  if (!keysRes.ok) throw new Error(responseError(keysBody, `Failed with ${keysRes.status}`));
-  if (!catalogRes.ok) throw new Error(responseError(catalogBody, `Failed with ${catalogRes.status}`));
-  if (!ordersRes.ok) throw new Error(responseError(ordersBody, `Failed with ${ordersRes.status}`));
+  if (!keysRes.ok || !catalogRes.ok || !ordersRes.ok) throw new Error("website-integrations-unavailable");
   return {
     apiKeys: Array.isArray(keysBody) ? keysBody as IntegrationApiKey[] : [],
     publishedCatalog: Array.isArray(catalogBody?.results) ? catalogBody.results as WebsiteCatalogItem[] : [],
@@ -291,7 +296,7 @@ async function fetchWebsiteIntegrations() {
 async function fetchNotificationChannels() {
   const res = await apiFetch("/admin/notification-channels");
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new Error("notification-channels-unavailable");
   return Array.isArray(body?.results) ? body.results as NotificationChannel[] : [];
 }
 
@@ -301,19 +306,20 @@ async function fetchCrmEvents(filters: EventFilters) {
   if (filters.delivery_status !== "all") params.set("delivery_status", filters.delivery_status);
   const res = await apiFetch(`/admin/crm-events?${params.toString()}`);
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new Error("event-history-unavailable");
   return Array.isArray(body?.results) ? body.results as CrmEvent[] : [];
 }
 
 async function fetchRegistryHealth() {
   const res = await apiFetch("/admin/integrations-registry/health");
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new Error("integration-health-unavailable");
   return Array.isArray(body?.results) ? body.results as IntegrationRegistryHealth[] : [];
 }
 
 export default function IntegrationsPage() {
   const queryClient = useQueryClient();
+  const { confirm } = useConfirm();
   const [apiKeyDraft, setApiKeyDraft] = useState<ApiKeyDraft>(emptyApiKeyDraft);
   const [latestApiKey, setLatestApiKey] = useState<string | null>(null);
   const [draft, setDraft] = useState<ChannelDraft>(emptyDraft);
@@ -351,30 +357,6 @@ export default function IntegrationsPage() {
   const loading = channelsQuery.isLoading || channelsQuery.isFetching;
   const eventsLoading = eventsQuery.isLoading || eventsQuery.isFetching;
 
-  useEffect(() => {
-    if (registryQuery.error) {
-      toast.error(registryQuery.error instanceof Error ? registryQuery.error.message : "Failed to load integration health.");
-    }
-  }, [registryQuery.error]);
-
-  useEffect(() => {
-    if (websiteQuery.error) {
-      toast.error(websiteQuery.error instanceof Error ? websiteQuery.error.message : "Failed to load website integration data.");
-    }
-  }, [websiteQuery.error]);
-
-  useEffect(() => {
-    if (channelsQuery.error) {
-      toast.error(channelsQuery.error instanceof Error ? channelsQuery.error.message : "Failed to load integrations.");
-    }
-  }, [channelsQuery.error]);
-
-  useEffect(() => {
-    if (eventsQuery.error) {
-      toast.error(eventsQuery.error instanceof Error ? eventsQuery.error.message : "Failed to load event history.");
-    }
-  }, [eventsQuery.error]);
-
   async function createChannel() {
     try {
       setSaving(true);
@@ -388,13 +370,12 @@ export default function IntegrationsPage() {
           is_active: draft.is_active,
         }),
       });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      if (!res.ok) throw new Error("create-channel-failed");
       setDraft(emptyDraft);
       await queryClient.invalidateQueries({ queryKey: ["integrations", "notification-channels"] });
       toast.success("Notification channel added.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to add channel.");
+    } catch {
+      toast.error("The notification channel could not be added. Check the URL and try again.");
     } finally {
       setSaving(false);
     }
@@ -431,59 +412,77 @@ export default function IntegrationsPage() {
         }),
       });
       const body = await readJson(res);
-      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+      if (!res.ok) throw new Error("create-api-key-failed");
       setLatestApiKey(typeof body?.api_key === "string" ? body.api_key : null);
       setApiKeyDraft(emptyApiKeyDraft);
       await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
       toast.success("Website API key created.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create API key.");
+    } catch {
+      toast.error("The API key could not be created. Review the settings and try again.");
     } finally {
       setWebsiteSaving(false);
     }
   }
 
   async function revokeApiKey(key: IntegrationApiKey) {
+    const confirmed = await confirm({
+      title: `Revoke ${key.name}?`,
+      description: "Requests using this key will stop working immediately. This action cannot be undone.",
+      confirmLabel: "Revoke key",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
     try {
       setWebsiteSaving(true);
       const res = await apiFetch(`/integrations/api-keys/${key.id}`, { method: "DELETE" });
-      const body = await readJson(res);
-      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+      if (!res.ok) throw new Error("revoke-api-key-failed");
       await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
       toast.success("Website API key revoked.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to revoke API key.");
+    } catch {
+      toast.error("The API key could not be revoked. Try again.");
     } finally {
       setWebsiteSaving(false);
     }
   }
 
   async function rotateApiKey(key: IntegrationApiKey) {
+    const confirmed = await confirm({
+      title: `Rotate ${key.name}?`,
+      description: "The current key will stop working immediately. Update the connected website with the new key after rotating.",
+      confirmLabel: "Rotate key",
+    });
+    if (!confirmed) return;
     try {
       setWebsiteSaving(true);
       const res = await apiFetch(`/integrations/api-keys/${key.id}/rotate`, { method: "POST" });
       const body = await readJson(res);
-      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+      if (!res.ok) throw new Error("rotate-api-key-failed");
       setLatestApiKey(typeof body?.api_key === "string" ? body.api_key : null);
       await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
       toast.success("Website API key rotated.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to rotate API key.");
+    } catch {
+      toast.error("The API key could not be rotated. Try again.");
     } finally {
       setWebsiteSaving(false);
     }
   }
 
   async function createPosInvoice(order: WebsiteOrder) {
+    const confirmed = await confirm({
+      title: `Create a POS invoice for ${order.external_reference}?`,
+      description: "This creates a finance record from the reviewed website order.",
+      confirmLabel: "Create invoice",
+    });
+    if (!confirmed) return;
     try {
       setWebsiteSaving(true);
       const res = await apiFetch(`/integrations/orders/${order.id}/create-pos-invoice`, { method: "POST" });
       const body = await readJson(res);
-      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+      if (!res.ok) throw new Error("create-pos-invoice-failed");
       await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
       toast.success(body?.already_existing ? "POS invoice already exists." : "POS invoice created from website order.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create POS invoice.");
+    } catch {
+      toast.error("The POS invoice could not be created. Try again.");
     } finally {
       setWebsiteSaving(false);
     }
@@ -491,18 +490,26 @@ export default function IntegrationsPage() {
 
   async function updateOrderStatus(order: WebsiteOrder, nextStatus: string) {
     if (order.status === nextStatus) return;
+    if (nextStatus === "cancelled" || nextStatus === "rejected") {
+      const confirmed = await confirm({
+        title: `${nextStatus === "cancelled" ? "Cancel" : "Reject"} ${order.external_reference}?`,
+        description: "This changes the status visible to staff reviewing this website order.",
+        confirmLabel: nextStatus === "cancelled" ? "Cancel order" : "Reject order",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
     try {
       setWebsiteSaving(true);
       const res = await apiFetch(`/integrations/orders/${order.id}/status`, {
         method: "PUT",
         body: JSON.stringify({ status: nextStatus }),
       });
-      const body = await readJson(res);
-      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+      if (!res.ok) throw new Error("update-order-status-failed");
       await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
       toast.success("Order status updated.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update order status.");
+    } catch {
+      toast.error("The order status could not be updated. Try again.");
     } finally {
       setWebsiteSaving(false);
     }
@@ -516,29 +523,34 @@ export default function IntegrationsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      if (!res.ok) throw new Error("update-channel-failed");
       await queryClient.invalidateQueries({ queryKey: ["integrations", "notification-channels"] });
       toast.success("Notification channel updated.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update channel.");
+    } catch {
+      toast.error("The notification channel could not be updated. Try again.");
     } finally {
       setSaving(false);
     }
   }
 
   async function deleteChannel(channel: NotificationChannel) {
+    const confirmed = await confirm({
+      title: `Delete ${channel.channel_name || channel.provider} webhook?`,
+      description: "CRM event notifications will no longer be delivered through this channel.",
+      confirmLabel: "Delete webhook",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
     try {
       setSaving(true);
       const res = await apiFetch(`/admin/notification-channels/${channel.id}`, { method: "DELETE" });
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? `Failed with ${res.status}`);
+        throw new Error("delete-channel-failed");
       }
       await queryClient.invalidateQueries({ queryKey: ["integrations", "notification-channels"] });
       toast.success("Notification channel deleted.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to delete channel.");
+    } catch {
+      toast.error("The notification channel could not be deleted. Try again.");
     } finally {
       setSaving(false);
     }
@@ -549,10 +561,10 @@ export default function IntegrationsPage() {
       setSaving(true);
       const res = await apiFetch(`/admin/notification-channels/${channel.id}/test`, { method: "POST" });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      if (!res.ok) throw new Error("test-channel-failed");
       toast.success(body?.message ?? "Test message sent.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to send test message.");
+    } catch {
+      toast.error("The test message could not be sent. Check the webhook configuration and try again.");
     } finally {
       setSaving(false);
     }
@@ -566,8 +578,8 @@ export default function IntegrationsPage() {
           ? await connectGoogleDriveStorage("/dashboard/settings/integrations")
           : await connectMicrosoftOneDriveStorage("/dashboard/settings/integrations");
       window.location.href = result.auth_url;
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to start storage connection.");
+    } catch {
+      toast.error("The storage connection could not be started. Try again.");
       setConnectingProvider(null);
     }
   }
@@ -618,6 +630,12 @@ export default function IntegrationsPage() {
             Refresh
           </Button>
         </div>
+        {registryQuery.isError ? (
+          <SectionError
+            message="Provider health is temporarily unavailable. Your existing connections have not been changed."
+            retry={() => void registryQuery.refetch()}
+          />
+        ) : null}
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {registryQuery.isLoading ? (
             <Card className="px-5 py-5 text-sm text-neutral-500 md:col-span-2 xl:col-span-3">Loading provider health...</Card>
@@ -640,6 +658,10 @@ export default function IntegrationsPage() {
                   </div>
                   <p className="mt-3 text-sm leading-5 text-neutral-500">{provider.description}</p>
                   <div className="mt-4 grid gap-2 text-xs text-neutral-500">
+                    <div>
+                      <span className="text-neutral-600">Account: </span>
+                      <span className="text-neutral-300">{connection.account_label || (connection.connection_count ? "Connected account" : "Not connected")}</span>
+                    </div>
                     <div className="grid grid-cols-2 gap-2">
                       <div className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2">
                         <div className="text-neutral-600">Connections</div>
@@ -663,7 +685,9 @@ export default function IntegrationsPage() {
                     <div>{connection.last_successful_sync_at ? `Last successful run ${formatDateTime(connection.last_successful_sync_at)}` : "No successful run recorded"}</div>
                     {connection.scopes.length ? <div className="truncate">Scopes: {connection.scopes.join(", ")}</div> : null}
                     {connection.last_failure_reason || connection.last_error ? (
-                      <div className="truncate text-red-300">{connection.last_failure_reason || connection.last_error}</div>
+                      <div role="alert" className="rounded-md border border-state-danger/40 bg-state-danger-muted px-3 py-2 leading-5 text-copy-primary">
+                        This connection needs attention. Review its configuration or reconnect, then try again.
+                      </div>
                     ) : null}
                     {connection.help_text ? <div className="leading-5 text-neutral-400">{connection.help_text}</div> : null}
                   </div>
@@ -688,6 +712,12 @@ export default function IntegrationsPage() {
             Refresh
           </Button>
         </div>
+        {websiteQuery.isError ? (
+          <SectionError
+            message="Website integration data could not be loaded. Existing API keys, catalog settings, and orders are unchanged."
+            retry={() => void websiteQuery.refetch()}
+          />
+        ) : null}
 
         <div>
           <h3 className="text-base font-semibold text-neutral-100">API Keys</h3>
@@ -707,14 +737,15 @@ export default function IntegrationsPage() {
             </div>
             <FieldGroup className="grid gap-4">
               <Field>
-                <FieldLabel>Key Name <RequiredMark /></FieldLabel>
-                <Input value={apiKeyDraft.name} onChange={(event) => setApiKeyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="WordPress production" />
+                <FieldLabel htmlFor="api-key-name">Key Name <RequiredMark /></FieldLabel>
+                <Input id="api-key-name" value={apiKeyDraft.name} onChange={(event) => setApiKeyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="WordPress production" />
               </Field>
               <div className="grid gap-2">
                 <label className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-300">
                   Catalog read
                   <input
                     type="checkbox"
+                    aria-label="Allow catalog read access"
                     checked={apiKeyDraft.allowCatalogRead}
                     onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowCatalogRead: event.target.checked }))}
                     className="h-4 w-4 accent-neutral-100"
@@ -724,6 +755,7 @@ export default function IntegrationsPage() {
                   Order writeback
                   <input
                     type="checkbox"
+                    aria-label="Allow order writeback access"
                     checked={apiKeyDraft.allowOrdersWrite}
                     onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowOrdersWrite: event.target.checked }))}
                     className="h-4 w-4 accent-neutral-100"
@@ -731,13 +763,15 @@ export default function IntegrationsPage() {
                 </label>
               </div>
               <Field>
-                <FieldLabel>Allowed Origins</FieldLabel>
+                <FieldLabel htmlFor="api-key-origins">Allowed Origins</FieldLabel>
                 <Textarea
+                  id="api-key-origins"
                   value={apiKeyDraft.allowedOrigins}
                   onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowedOrigins: event.target.value }))}
                   placeholder="https://example.com, https://www.example.com"
                   className="min-h-20"
                 />
+                <p className="text-xs leading-5 text-copy-muted">Comma-separated browser origins. Leave empty only for server-to-server clients that do not send an Origin header.</p>
               </Field>
               <Button type="button" disabled={websiteSaving} onClick={createApiKey}>
                 <KeyRound size={14} />
@@ -746,13 +780,16 @@ export default function IntegrationsPage() {
             </FieldGroup>
 
             {latestApiKey ? (
-              <div className="mt-4 rounded-md border border-neutral-800 bg-neutral-950 p-3">
-                <div className="mb-2 text-xs uppercase text-neutral-500">New key</div>
+              <div role="status" className="mt-4 rounded-md border border-state-success/40 bg-state-success-muted p-3">
+                <div className="mb-2 text-xs font-medium uppercase text-copy-muted">Copy this key now</div>
                 <div className="break-all font-mono text-xs text-neutral-200">{latestApiKey}</div>
-                <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void copyText(latestApiKey, "API key")}>
-                  <Copy size={14} />
-                  Copy
-                </Button>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Button type="button" variant="outline" size="sm" onClick={() => void copyText(latestApiKey, "API key")}>
+                    <Copy size={14} />
+                    Copy
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setLatestApiKey(null)}>Dismiss</Button>
+                </div>
               </div>
             ) : null}
           </Card>
@@ -784,9 +821,9 @@ export default function IntegrationsPage() {
                       <TableCell className="max-w-[220px] truncate text-neutral-400">{key.allowed_origins.length ? key.allowed_origins.join(", ") : "Any origin"}</TableCell>
                       <TableCell>
                         <Pill
-                          bg={key.status === "active" ? "bg-emerald-950/60" : "bg-red-950/60"}
-                          text={key.status === "active" ? "text-emerald-200" : "text-red-200"}
-                          border={key.status === "active" ? "border-emerald-800/70" : "border-red-800/70"}
+                          bg={key.status === "active" ? "bg-state-success-muted" : "bg-state-danger-muted"}
+                          text={key.status === "active" ? "text-state-success" : "text-state-danger"}
+                          border={key.status === "active" ? "border-state-success/40" : "border-state-danger/40"}
                         >
                           {key.status}
                         </Pill>
@@ -929,7 +966,7 @@ export default function IntegrationsPage() {
                       <div className="mt-1 text-xs text-neutral-500">{order.source_platform || "external site"}</div>
                       <div className="mt-2 max-w-[180px]">
                         <Select value={order.status} onValueChange={(value) => void updateOrderStatus(order, value)} disabled={websiteSaving}>
-                          <SelectTrigger className="h-8 bg-neutral-950 text-xs">
+                          <SelectTrigger className="h-8 bg-neutral-950 text-xs" aria-label={`Status for order ${order.external_reference}`}>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -1005,9 +1042,9 @@ export default function IntegrationsPage() {
 
           <FieldGroup className="mt-5 grid gap-4">
             <Field>
-              <FieldLabel>Provider</FieldLabel>
+              <FieldLabel htmlFor="webhook-provider">Provider</FieldLabel>
               <Select value={draft.provider} onValueChange={(value) => setDraft((current) => ({ ...current, provider: value }))}>
-                <SelectTrigger>
+                <SelectTrigger id="webhook-provider">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1017,12 +1054,14 @@ export default function IntegrationsPage() {
               </Select>
             </Field>
             <Field>
-              <FieldLabel>Channel Name</FieldLabel>
-              <Input value={draft.channel_name} onChange={(event) => setDraft((current) => ({ ...current, channel_name: event.target.value }))} placeholder="#sales-alerts" />
+              <FieldLabel htmlFor="webhook-channel-name">Channel Name</FieldLabel>
+              <Input id="webhook-channel-name" value={draft.channel_name} onChange={(event) => setDraft((current) => ({ ...current, channel_name: event.target.value }))} placeholder="#sales-alerts" />
             </Field>
             <Field>
-              <FieldLabel>Webhook URL</FieldLabel>
+              <FieldLabel htmlFor="webhook-url">Webhook URL</FieldLabel>
               <Input
+                id="webhook-url"
+                type="url"
                 value={draft.webhook_url}
                 onChange={(event) => setDraft((current) => ({ ...current, webhook_url: event.target.value }))}
                 placeholder="https://hooks.slack.com/services/..."
@@ -1032,6 +1071,7 @@ export default function IntegrationsPage() {
               Active
               <input
                 type="checkbox"
+                aria-label="Create webhook as active"
                 checked={draft.is_active}
                 onChange={(event) => setDraft((current) => ({ ...current, is_active: event.target.checked }))}
                 className="h-4 w-4 accent-neutral-100"
@@ -1055,7 +1095,13 @@ export default function IntegrationsPage() {
               </TableHeaderRow>
             </TableHeader>
             <TableBody>
-              {loading ? (
+              {channelsQuery.isError ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="py-6">
+                    <SectionError message="Notification channels could not be loaded. Existing webhooks are unchanged." retry={() => void channelsQuery.refetch()} />
+                  </TableCell>
+                </TableRow>
+              ) : loading ? (
                 <TableRow>
                   <TableCell colSpan={5} className="py-10 text-center text-neutral-500">Loading integrations...</TableCell>
                 </TableRow>
@@ -1067,9 +1113,9 @@ export default function IntegrationsPage() {
                     <TableCell className="font-mono text-xs text-neutral-500">{channel.webhook_url_masked}</TableCell>
                     <TableCell>
                       <Pill
-                        bg={channel.is_active ? "bg-emerald-950/60" : "bg-red-950/60"}
-                        text={channel.is_active ? "text-emerald-200" : "text-red-200"}
-                        border={channel.is_active ? "border-emerald-800/70" : "border-red-800/70"}
+                        bg={channel.is_active ? "bg-state-success-muted" : "bg-state-danger-muted"}
+                        text={channel.is_active ? "text-state-success" : "text-state-danger"}
+                        border={channel.is_active ? "border-state-success/40" : "border-state-danger/40"}
                       >
                         {channel.is_active ? "Active" : "Inactive"}
                       </Pill>
@@ -1108,7 +1154,7 @@ export default function IntegrationsPage() {
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <Select value={eventFilters.event_type} onValueChange={(value) => setEventFilters((current) => ({ ...current, event_type: value }))}>
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger className="w-[180px]" aria-label="Filter by event type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1118,7 +1164,7 @@ export default function IntegrationsPage() {
               </SelectContent>
             </Select>
             <Select value={eventFilters.delivery_status} onValueChange={(value) => setEventFilters((current) => ({ ...current, delivery_status: value }))}>
-              <SelectTrigger className="w-[170px]">
+              <SelectTrigger className="w-[170px]" aria-label="Filter by delivery status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -1133,6 +1179,12 @@ export default function IntegrationsPage() {
             </Button>
           </div>
         </div>
+        {eventsQuery.isError ? (
+          <SectionError
+            message="Event and delivery history could not be loaded. Try again when the connection is available."
+            retry={() => void eventsQuery.refetch()}
+          />
+        ) : null}
 
         <ModuleTableShell>
           <Table className="min-w-[980px]">
@@ -1141,7 +1193,7 @@ export default function IntegrationsPage() {
                 <TableHead>Event</TableHead>
                 <TableHead>Record</TableHead>
                 <TableHead>Deliveries</TableHead>
-                <TableHead>Last Error</TableHead>
+                <TableHead>Delivery guidance</TableHead>
                 <TableHead>Created</TableHead>
               </TableHeaderRow>
             </TableHeader>
@@ -1181,8 +1233,8 @@ export default function IntegrationsPage() {
                           <span className="text-sm text-neutral-500">No channel delivery</span>
                         )}
                       </TableCell>
-                      <TableCell className="max-w-[280px] truncate text-sm text-red-200/80">
-                        {failedDelivery?.error_message || "-"}
+                      <TableCell className="max-w-[280px] text-sm text-copy-secondary">
+                        {failedDelivery ? "Delivery failed. Check the notification channel configuration and try a test message." : "-"}
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-sm text-neutral-400">{formatDateTime(event.created_at)}</TableCell>
                     </TableRow>

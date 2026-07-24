@@ -24,21 +24,22 @@ type SupportCasesTableProps = {
   columnOptions?: TableColumnOption[];
   sort?: SortState;
   onSortChange?: (sort: SortState) => void;
+  isFiltered?: boolean;
 };
 
 const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  new: { bg: "bg-sky-900/30", text: "text-sky-300", border: "border-sky-700/40", label: "New" },
-  open: { bg: "bg-amber-900/30", text: "text-amber-300", border: "border-amber-700/40", label: "Open" },
-  pending: { bg: "bg-neutral-800/40", text: "text-neutral-300", border: "border-neutral-700/40", label: "Pending" },
-  resolved: { bg: "bg-emerald-900/30", text: "text-emerald-300", border: "border-emerald-700/40", label: "Resolved" },
-  closed: { bg: "bg-neutral-900/70", text: "text-neutral-500", border: "border-neutral-800", label: "Closed" },
+  new: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40", label: "New" },
+  open: { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40", label: "Open" },
+  pending: { bg: "bg-surface-muted", text: "text-copy-secondary", border: "border-line-default", label: "Pending" },
+  resolved: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Resolved" },
+  closed: { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default", label: "Closed" },
 };
 
 const PRIORITY_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  low: { bg: "bg-neutral-800/40", text: "text-neutral-300", border: "border-neutral-700/40", label: "Low" },
-  medium: { bg: "bg-blue-900/30", text: "text-blue-300", border: "border-blue-700/40", label: "Medium" },
-  high: { bg: "bg-orange-900/30", text: "text-orange-300", border: "border-orange-700/40", label: "High" },
-  urgent: { bg: "bg-red-900/30", text: "text-red-300", border: "border-red-700/40", label: "Urgent" },
+  low: { bg: "bg-surface-muted", text: "text-copy-secondary", border: "border-line-default", label: "Low" },
+  medium: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40", label: "Medium" },
+  high: { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40", label: "High" },
+  urgent: { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40", label: "Urgent" },
 };
 
 const SORTABLE_COLUMNS = new Set([
@@ -61,7 +62,7 @@ const SORTABLE_COLUMNS = new Set([
   "updated_at",
 ]);
 
-export default function SupportCasesTable({ cases, isLoading, isRefreshing = false, visibleColumns, columnOptions = [], sort = null, onSortChange }: SupportCasesTableProps) {
+export default function SupportCasesTable({ cases, isLoading, isRefreshing = false, visibleColumns, columnOptions = [], sort = null, onSortChange, isFiltered = false }: SupportCasesTableProps) {
   const router = useRouter();
 
   function toggleSort(column: string) {
@@ -74,9 +75,9 @@ export default function SupportCasesTable({ cases, isLoading, isRefreshing = fal
   function renderCell(item: SupportCase, column: string) {
     switch (column) {
       case "case_number":
-        return <TableCell><span className="font-mono text-sm font-medium text-neutral-100">{item.case_number}</span></TableCell>;
+        return <TableCell><span className="font-mono text-sm font-medium text-copy-primary">{item.case_number}</span></TableCell>;
       case "subject":
-        return <TableCell><span className="text-sm font-medium text-neutral-100">{item.subject}</span></TableCell>;
+        return <TableCell><span className="text-sm font-medium text-copy-primary">{item.subject}</span></TableCell>;
       case "status": {
         const style = STATUS_STYLES[item.status] ?? STATUS_STYLES.new;
         return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
@@ -86,16 +87,16 @@ export default function SupportCasesTable({ cases, isLoading, isRefreshing = fal
         return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
       }
       case "assigned_to_name":
-        return <TableCell><span className="text-sm text-neutral-300">{item.assigned_to_name || <span className="text-neutral-600">Unassigned</span>}</span></TableCell>;
+        return <TableCell><span className="text-sm text-copy-secondary">{item.assigned_to_name || <span className="text-copy-muted">Unassigned</span>}</span></TableCell>;
       case "created_at":
       case "updated_at":
       case "sla_due_at":
       case "first_response_at":
       case "resolved_at":
       case "closed_at":
-        return <TableCell><span className="text-sm text-neutral-400">{item[column] ? formatDateTime(String(item[column])) : "-"}</span></TableCell>;
+        return <TableCell><span className="text-sm text-copy-muted">{item[column] ? formatDateTime(String(item[column])) : "—"}</span></TableCell>;
       default:
-        return <TableCell><span className="text-sm text-neutral-300">{String(item[column as keyof SupportCase] ?? "") || <span className="text-neutral-600">-</span>}</span></TableCell>;
+        return <TableCell><span className="text-sm text-copy-secondary">{String(item[column as keyof SupportCase] ?? "") || <span className="text-copy-muted">—</span>}</span></TableCell>;
     }
   }
 
@@ -121,12 +122,28 @@ export default function SupportCasesTable({ cases, isLoading, isRefreshing = fal
           ) : cases.length === 0 ? (
             <TableRow>
               <TableCell colSpan={visibleColumns.length} className="py-16 text-center">
-                <EmptyState icon={LifeBuoy} title="No support cases found" description="Customer issues matching this view will appear here." />
+                <EmptyState
+                  icon={LifeBuoy}
+                  title={isFiltered ? "No cases match this view" : "No support cases yet"}
+                  description={isFiltered ? "Adjust the search or filters to see more cases." : "Create a support case to start tracking customer issues."}
+                />
               </TableCell>
             </TableRow>
           ) : (
             cases.map((item) => (
-              <TableRow key={item.id} className="group cursor-pointer" onClick={() => router.push(`/dashboard/support/cases/${item.id}`)}>
+              <TableRow
+                key={item.id}
+                className="group cursor-pointer"
+                tabIndex={0}
+                aria-label={`Open ${item.case_number}: ${item.subject}`}
+                onClick={() => router.push(`/dashboard/support/cases/${item.id}`)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    router.push(`/dashboard/support/cases/${item.id}`);
+                  }
+                }}
+              >
                 {visibleColumns.map((column) => <Fragment key={column}>{renderCell(item, column)}</Fragment>)}
               </TableRow>
             ))

@@ -65,6 +65,37 @@ class SupportCase(Base):
     def created_by_name(self) -> str | None:
         return _display_user_name(self.created_by)
 
+    @property
+    def contact_name(self) -> str | None:
+        if not self.contact or self.contact.tenant_id != self.tenant_id:
+            return None
+        full_name = " ".join(part for part in [self.contact.first_name, self.contact.last_name] if part).strip()
+        return full_name or self.contact.primary_email
+
+    @property
+    def organization_name(self) -> str | None:
+        if not self.organization or self.organization.tenant_id != self.tenant_id:
+            return None
+        return self.organization.org_name
+
+    @property
+    def opportunity_name(self) -> str | None:
+        if not self.opportunity or self.opportunity.tenant_id != self.tenant_id:
+            return None
+        return self.opportunity.opportunity_name
+
+    @property
+    def quote_label(self) -> str | None:
+        if not self.quote or self.quote.tenant_id != self.tenant_id:
+            return None
+        return self.quote.quote_number
+
+    @property
+    def order_label(self) -> str | None:
+        if not self.order or self.order.tenant_id != self.tenant_id:
+            return None
+        return self.order.order_number
+
 
 class SupportCaseComment(Base):
     __tablename__ = "support_case_comments"

@@ -4,16 +4,17 @@ import type { ReactNode } from "react";
 import { PageHeader } from "@/components/ui/PageHeader";
 
 type SupportCasesHeaderProps = {
-  viewSelector?: ReactNode;
   primaryAction?: ReactNode;
+  eyebrow?: string;
 };
 
-export default function SupportCasesHeader({ viewSelector, primaryAction }: SupportCasesHeaderProps) {
+export default function SupportCasesHeader({ primaryAction, eyebrow }: SupportCasesHeaderProps) {
   return (
     <PageHeader
       title="Support Cases"
       description="Track customer issues, ownership, SLA due dates, and resolution status."
-      actions={<div className="flex flex-wrap items-center gap-2">{viewSelector}{primaryAction}</div>}
+      eyebrow={eyebrow}
+      actions={<div className="flex flex-wrap items-center gap-2">{primaryAction}</div>}
     />
   );
 }

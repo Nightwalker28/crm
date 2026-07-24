@@ -6,7 +6,6 @@ const taskId = 987654331;
 
 function taskFixture(status = "todo") {
   const due = new Date();
-  due.setDate(Math.min(20, Math.max(2, due.getDate())));
   due.setHours(14, 0, 0, 0);
   return {
     id: taskId,
@@ -80,6 +79,7 @@ test("Tasks expose list, board, and calendar views with quick review", async ({ 
   await expect(page.getByText("1 of 1 loaded tasks have a due date")).toBeVisible();
   await expect(page.getByRole("button", { name: "Previous month" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Next month" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Prepare renewal brief" })).toBeVisible();
 });
 
 test("Board status menu updates a task", async ({ page }) => {
@@ -89,4 +89,34 @@ test("Board status menu updates a task", async ({ page }) => {
   await page.getByRole("option", { name: "In Progress" }).click();
   await expect(page.getByRole("region", { name: "In Progress tasks" })).toContainText("Prepare renewal brief");
   await expect(page.getByText("Task moved to in progress.")).toBeVisible();
+});
+
+test("Task creation labels required fields and validates the schedule", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/dashboard/tasks");
+
+  await page.getByRole("button", { name: "Add Task" }).click();
+  await expect(page.getByRole("heading", { name: "Create Task" })).toBeVisible();
+  await page.getByLabel("Task title").fill("Schedule customer follow-up");
+  await page.getByLabel("Start").fill("2026-07-25T15:00");
+  await page.getByLabel("Due").fill("2026-07-25T14:00");
+
+  await expect(page.getByText("Due time must be after the start time.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create Task" })).toBeDisabled();
+});
+
+test("Task list failures do not expose backend details", async ({ page }) => {
+  await page.unroute("**/tasks?**");
+  await page.route("**/tasks?**", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "database_connection=secret" }),
+    }),
+  );
+  await page.goto("/dashboard/tasks");
+
+  await expect(page.getByText("Tasks could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("database_connection=secret")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });

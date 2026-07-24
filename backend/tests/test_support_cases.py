@@ -14,7 +14,7 @@ from app.modules.platform import models as platform_models  # noqa: F401
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.support.models import SupportCase
 from app.modules.support.routes import cases_routes
-from app.modules.support.schema import SupportCaseCommentResponse
+from app.modules.support.schema import SupportCaseCommentResponse, SupportCaseResponse
 from app.modules.support.services import cases_services
 from app.modules.support.services.cases_services import (
     add_case_comment,
@@ -356,6 +356,29 @@ class SupportCaseTests(unittest.TestCase):
 
         self.assertEqual(detail.assigned_to_name, "Agent User")
         self.assertEqual(next(case.assigned_to_name for case in cases if case.id == item.id), "Agent User")
+
+    def test_support_case_detail_includes_tenant_safe_related_record_labels(self):
+        item = create_support_case(
+            self.db,
+            {
+                "subject": "Related labels",
+                "contact_id": 30,
+                "organization_id": 20,
+                "opportunity_id": 40,
+                "quote_id": 50,
+                "order_id": 60,
+            },
+            self.user,
+        )
+
+        detail = get_case_or_404(self.db, tenant_id=10, case_id=item.id)
+        response = SupportCaseResponse.model_validate(detail)
+
+        self.assertEqual(response.contact_name, "Ada")
+        self.assertEqual(response.organization_name, "Acme")
+        self.assertEqual(response.opportunity_name, "Acme Pilot")
+        self.assertEqual(response.quote_label, "Q-500")
+        self.assertEqual(response.order_label, "SO-60")
 
     def test_support_list_routes_keep_lightweight_case_shape(self):
         item = create_support_case(self.db, {"subject": "Listed case", "assigned_to_id": 2}, self.user)

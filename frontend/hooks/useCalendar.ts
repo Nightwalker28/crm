@@ -146,7 +146,7 @@ async function fetchCalendarContext() {
   const res = await apiFetch("/calendar/context");
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load calendar context.");
+    throw new Error("Calendar settings could not be loaded.");
   }
   return body as CalendarContext;
 }
@@ -160,7 +160,7 @@ async function fetchCalendarEvents(startAt: string, endAt: string) {
   const res = await apiFetch(`/calendar/events?${params.toString()}`);
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load calendar events.");
+    throw new Error("Calendar events could not be loaded.");
   }
   return body as CalendarEventListResponse;
 }
@@ -169,7 +169,7 @@ export async function fetchCalendarEvent(eventId: number) {
   const res = await apiFetch(`/calendar/events/${eventId}`);
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load calendar event.");
+    throw new Error("This calendar event could not be loaded.");
   }
   return body as CalendarEvent;
 }
@@ -182,7 +182,7 @@ async function createCalendarEvent(payload: CalendarEventPayload) {
   });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to create calendar event.");
+    throw new Error("The calendar event could not be created. Check the details and try again.");
   }
   return body as CalendarEvent;
 }
@@ -195,7 +195,7 @@ async function updateCalendarEvent(eventId: number, payload: CalendarEventPayloa
   });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to update calendar event.");
+    throw new Error("The calendar event could not be updated. Check your access and try again.");
   }
   return body as CalendarEvent;
 }
@@ -208,7 +208,7 @@ async function respondToInvite(eventId: number, responseStatus: "accepted" | "de
   });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to update invite response.");
+    throw new Error("Your invitation response could not be saved.");
   }
   return body as CalendarEvent;
 }
@@ -217,9 +217,8 @@ async function deleteCalendarEvent(eventId: number) {
   const res = await apiFetch(`/calendar/events/${eventId}`, {
     method: "DELETE",
   });
-  const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to delete calendar event.");
+    throw new Error("The calendar event could not be moved to the recycle bin.");
   }
 }
 
@@ -229,7 +228,7 @@ async function createEventFromTask(taskId: number) {
   });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to create calendar event from task.");
+    throw new Error("The task could not be added to the calendar.");
   }
   return body as CalendarTaskCreateResponse;
 }
@@ -238,7 +237,7 @@ export async function fetchTaskCalendarEvent(taskId: number) {
   const res = await apiFetch(`/calendar/events/from-task/${taskId}`);
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load task calendar event.");
+    throw new Error("The linked calendar event could not be loaded.");
   }
   return body as CalendarTaskEventResponse;
 }
@@ -249,7 +248,7 @@ async function deleteTaskCalendarEvent(taskId: number) {
   });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to remove task calendar event.");
+    throw new Error("The task event could not be removed from the calendar.");
   }
   return body as CalendarTaskEventResponse;
 }
@@ -260,7 +259,7 @@ async function syncCalendar() {
   });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to sync calendar.");
+    throw new Error("Calendar sync could not be started. Reconnect the provider if the problem continues.");
   }
   return body as CalendarSyncJobResponse;
 }

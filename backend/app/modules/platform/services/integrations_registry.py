@@ -155,7 +155,7 @@ KNOWN_PROVIDERS = [
     },
 ]
 
-_PUBLIC_SETTINGS_KEYS = {"label", "last_failure_reason", "notes", "scope_summary"}
+_PUBLIC_SETTINGS_KEYS = {"label", "notes", "scope_summary"}
 _QUEUED_JOB_STATUSES = {"queued", "pending", "running"}
 _FAILED_JOB_STATUSES = {"failed"}
 _DATA_TRANSFER_MODULES_BY_PROVIDER = {
@@ -176,6 +176,8 @@ _HELP_TEXT_BY_PROVIDER = {
     "slack_webhooks": "Update the Slack webhook URL or send a test notification if delivery fails.",
     "teams_webhooks": "Update the Teams webhook URL or send a test notification if delivery fails.",
 }
+_SAFE_CONNECTION_FAILURE = "This connection needs attention. Review its configuration or reconnect, then try again."
+_SAFE_SYNC_FAILURE = "The sync did not complete. Review the connection and try again."
 
 
 def _public_settings(settings: dict[str, Any] | None) -> dict[str, Any]:
@@ -206,6 +208,20 @@ def _normalize_scopes(value: Any) -> list[str]:
     if isinstance(value, str):
         return sorted({part.strip() for part in value.replace(",", " ").split() if part.strip()})
     return []
+
+
+def _account_label_for_rows(rows) -> str | None:
+    labels = []
+    for row in rows:
+        value = getattr(row, "account_email", None) or getattr(row, "name", None) or getattr(row, "channel_name", None)
+        if value and str(value).strip():
+            labels.append(str(value).strip())
+    unique_labels = list(dict.fromkeys(labels))
+    if not unique_labels:
+        return None
+    if len(unique_labels) == 1:
+        return unique_labels[0]
+    return f"{unique_labels[0]} +{len(unique_labels) - 1} more"
 
 
 def _credential_state_for_rows(rows) -> str:
@@ -260,8 +276,9 @@ def _aggregate_rows(rows, *, last_sync_attr: str | None = None, error_attr: str 
         "connection_count": sum(1 for row in rows if str(row.status).lower() in {"connected", "active"}),
         "last_sync_at": last_sync_at,
         "last_successful_sync_at": last_sync_at if not last_error else None,
-        "last_error": last_error,
-        "last_failure_reason": last_error,
+        "last_error": _SAFE_CONNECTION_FAILURE if last_error else None,
+        "last_failure_reason": _SAFE_CONNECTION_FAILURE if last_error else None,
+        "account_label": _account_label_for_rows(rows),
         "credential_state": credential_state,
         "scopes": sorted(scopes),
         "queued_jobs": 0,
@@ -334,8 +351,9 @@ def _backup_destination_health(db: Session, *, tenant_id: int) -> dict[str, Any]
         "connection_count": 1 if enabled else 0,
         "last_sync_at": latest_activity,
         "last_successful_sync_at": latest_success,
-        "last_error": latest_failed.error_message if latest_failed else None,
-        "last_failure_reason": latest_failed.error_message if latest_failed else None,
+        "last_error": _SAFE_CONNECTION_FAILURE if latest_failed else None,
+        "last_failure_reason": _SAFE_CONNECTION_FAILURE if latest_failed else None,
+        "account_label": destination.replace("_", " ").title(),
         "credential_state": "valid" if enabled or latest_success else "not_configured",
         "scopes": [],
         "source": "backups",
@@ -380,12 +398,14 @@ def list_registry_connections(db: Session, *, tenant_id: int) -> list[Integratio
 def serialize_registry_connection(connection: IntegrationConnection) -> dict[str, Any]:
     settings = _public_settings(connection.settings_json)
     scopes = _normalize_scopes(settings.get("scope_summary"))
-    last_failure_reason = settings.get("last_failure_reason")
+    has_failure = bool((connection.settings_json or {}).get("last_failure_reason"))
+    last_failure_reason = _SAFE_CONNECTION_FAILURE if has_failure else None
     return {
         "id": connection.id,
         "provider_key": connection.provider_key,
         "status": connection.status,
         "provider_display_name": connection.provider.name if connection.provider else connection.provider_key,
+        "account_label": settings.get("label"),
         "connected_by_id": connection.connected_by_id,
         "connected_at": connection.connected_at,
         "last_sync_at": connection.last_sync_at,
@@ -437,6 +457,7 @@ def _derived_connections(db: Session, *, tenant_id: int) -> dict[str, dict[str, 
             "connection_count": len(active_keys),
             "last_sync_at": _latest(*(key.last_used_at for key in website_keys)),
             "last_successful_sync_at": _latest(*(key.last_used_at for key in website_keys)),
+            "account_label": _account_label_for_rows(website_keys),
             "last_error": None,
             "last_failure_reason": None,
             "credential_state": "valid" if active_keys else "not_configured",
@@ -456,6 +477,7 @@ def _derived_connections(db: Session, *, tenant_id: int) -> dict[str, dict[str, 
                 "connection_count": len(active_rows),
                 "last_sync_at": None,
                 "last_successful_sync_at": None,
+                "account_label": _account_label_for_rows(active_rows or rows),
                 "last_error": None,
                 "last_failure_reason": None,
                 "credential_state": "valid" if active_rows else "not_configured",
@@ -478,6 +500,7 @@ def _merge_connection(provider_key: str, registry: IntegrationConnection | None,
         "provider_key": provider_key,
         "status": "disconnected",
         "provider_display_name": None,
+        "account_label": None,
         "connected_by_id": None,
         "connected_at": None,
         "last_sync_at": None,
@@ -503,6 +526,7 @@ def _merge_connection(provider_key: str, registry: IntegrationConnection | None,
             "status": derived["status"],
             "last_sync_at": _latest(base["last_sync_at"], derived["last_sync_at"]),
             "last_successful_sync_at": _latest(base["last_successful_sync_at"], derived["last_successful_sync_at"]),
+            "account_label": derived.get("account_label") or base.get("account_label"),
             "source": derived["source"] if not registry else f'{derived["source"]}+registry',
             "connection_count": derived["connection_count"],
             "last_error": derived["last_error"],
@@ -576,7 +600,7 @@ def serialize_sync_run(run: IntegrationSyncRun) -> dict[str, Any]:
         "started_at": run.started_at,
         "finished_at": run.finished_at,
         "result_json": run.result_json or {},
-        "error_message": run.error_message,
+        "error_message": _SAFE_SYNC_FAILURE if run.error_message else None,
     }
 
 

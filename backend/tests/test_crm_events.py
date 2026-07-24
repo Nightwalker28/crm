@@ -101,6 +101,8 @@ class CrmEventHistoryTests(unittest.TestCase):
         self.assertEqual(total, 1)
         self.assertEqual(events[0].event_type, "deal.assigned")
         self.assertEqual(deliveries_by_event_id[events[0].id][0].error_message, "bad webhook")
+        serialized = serialize_crm_event(events[0], deliveries_by_event_id[events[0].id])
+        self.assertNotIn("bad webhook", serialized["deliveries"][0]["error_message"])
 
     def test_unknown_event_message_uses_safe_fallback_fields(self):
         message = format_event_message(

@@ -27,6 +27,7 @@ type Props = {
   isRefreshing?: boolean;
   visibleColumns: string[];
   onEdit: (task: Task) => void;
+  isFiltered?: boolean;
   sort?: TaskSortState;
   onSortChange?: (sort: TaskSortState) => void;
 };
@@ -61,8 +62,8 @@ function renderCell(task: Task, column: string) {
       return (
         <TableCell>
           <div className="min-w-0">
-            <div className="truncate text-sm font-semibold text-neutral-100">{task.title}</div>
-            <div className="mt-1 line-clamp-2 text-xs leading-5 text-neutral-500">
+            <div className="truncate text-sm font-semibold text-copy-primary">{task.title}</div>
+            <div className="mt-1 line-clamp-2 text-xs leading-5 text-copy-muted">
               {task.description || "No additional task notes yet."}
             </div>
           </div>
@@ -91,32 +92,32 @@ function renderCell(task: Task, column: string) {
     case "assigned_by_name":
       return (
         <TableCell>
-          <span className="text-sm text-neutral-300">
-            {task.assigned_by_name || <span className="text-neutral-600">Unassigned</span>}
+          <span className="text-sm text-copy-secondary">
+            {task.assigned_by_name || <span className="text-copy-disabled">Unassigned</span>}
           </span>
         </TableCell>
       );
     case "assigned_at":
       return (
         <TableCell>
-          <span className="text-sm text-neutral-400">
-            {task.assigned_at ? formatDateTime(task.assigned_at) : <span className="text-neutral-600">—</span>}
+          <span className="text-sm text-copy-muted">
+            {task.assigned_at ? formatDateTime(task.assigned_at) : <span className="text-copy-disabled">—</span>}
           </span>
         </TableCell>
       );
     case "due_at":
       return (
         <TableCell>
-          <span className="text-sm text-neutral-300">
-            {task.due_at ? formatDateTime(task.due_at) : <span className="text-neutral-600">No due date</span>}
+          <span className="text-sm text-copy-secondary">
+            {task.due_at ? formatDateTime(task.due_at) : <span className="text-copy-disabled">No due date</span>}
           </span>
         </TableCell>
       );
     case "start_at":
       return (
         <TableCell>
-          <span className="text-sm text-neutral-400">
-            {task.start_at ? formatDateTime(task.start_at) : <span className="text-neutral-600">—</span>}
+          <span className="text-sm text-copy-muted">
+            {task.start_at ? formatDateTime(task.start_at) : <span className="text-copy-disabled">—</span>}
           </span>
         </TableCell>
       );
@@ -128,32 +129,32 @@ function renderCell(task: Task, column: string) {
               {task.assignees.slice(0, 3).map((assignee) => (
                 <span
                   key={assignee.assignee_key}
-                  className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-300"
+                  className="rounded-full border border-line-default bg-surface-muted px-2 py-1 text-[11px] text-copy-secondary"
                 >
                   {assignee.label}
                 </span>
               ))}
               {task.assignees.length > 3 ? (
-                <span className="rounded-full border border-neutral-700 bg-neutral-900 px-2 py-1 text-[11px] text-neutral-500">
+                <span className="rounded-full border border-line-default bg-surface-muted px-2 py-1 text-[11px] text-copy-muted">
                   +{task.assignees.length - 3}
                 </span>
               ) : null}
             </div>
           ) : (
-            <span className="text-neutral-600">Unassigned</span>
+            <span className="text-copy-disabled">Unassigned</span>
           )}
         </TableCell>
       );
     case "updated_at":
       return (
         <TableCell>
-          <span className="text-sm text-neutral-500">
-            {task.updated_at ? formatDateTime(task.updated_at) : <span className="text-neutral-600">—</span>}
+          <span className="text-sm text-copy-muted">
+            {task.updated_at ? formatDateTime(task.updated_at) : <span className="text-copy-disabled">—</span>}
           </span>
         </TableCell>
       );
     default:
-      return <TableCell><span className="text-neutral-600">—</span></TableCell>;
+      return <TableCell><span className="text-copy-disabled">—</span></TableCell>;
   }
 }
 
@@ -163,6 +164,7 @@ export default function TasksTable({
   isRefreshing = false,
   visibleColumns,
   onEdit,
+  isFiltered = false,
   sort = null,
   onSortChange,
 }: Props) {
@@ -196,16 +198,25 @@ export default function TasksTable({
             <ModuleTableLoading columnCount={columnCount} />
           ) : tasks.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={columnCount} className="py-16 text-center text-neutral-500">
-                <EmptyState icon={ClipboardList} title="No tasks found" description="Tasks matching the current view will appear here." />
+              <TableCell colSpan={columnCount} className="py-16 text-center text-copy-muted">
+                <EmptyState
+                  icon={ClipboardList}
+                  title={isFiltered ? "No tasks match this view" : "No tasks yet"}
+                  description={isFiltered ? "Adjust or clear the current search and filters." : "Create a task to start coordinating team work."}
+                />
               </TableCell>
             </TableRow>
           ) : (
             tasks.map((task) => (
               <TableRow
                 key={task.id}
-                className="cursor-pointer"
+                tabIndex={0}
+                aria-label={`Open task ${task.title}`}
+                className="cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                 onClick={() => onEdit(task)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") onEdit(task);
+                }}
               >
                 {visibleColumns.map((column) => (
                   <Fragment key={column}>{renderCell(task, column)}</Fragment>

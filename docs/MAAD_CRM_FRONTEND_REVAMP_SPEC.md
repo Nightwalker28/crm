@@ -1681,11 +1681,50 @@ Scope note: Phase 5 is complete. Module builder, Automation builder, and Dashboa
 
 ## Phase 6: Secondary modules
 
-- Calendar.
-- Tasks.
-- Support.
-- Reports.
-- Integrations.
+- Calendar. **Implemented.**
+- Tasks. **Implemented.**
+- Support. **Implemented.**
+- Reports. **Implemented.**
+- Integrations. **Implemented.**
+
+### Phase 6 progress record
+
+- Calendar workspace: the responsive route now uses the shared page, card, loading, recoverable-error, and empty-state foundation. Desktop retains the full month grid, while mobile provides a touch- and keyboard-accessible month agenda with reachable day selection, event review, event creation, provider sync, and invitation actions.
+- Event workflows: creation and editing retain the existing tenant-scoped calendar contract, searchable user/team participants, task relationships, invitation responses, and recoverable deletion. Required fields are labeled, all-day state is editable, deep-linked failures recover safely, and shared events open read-only for non-owners instead of offering actions the backend will reject.
+- Provider sync: Google and Microsoft use compact connection cards with account, calendar, health, last successful sync, reconnect/manage, and manual-sync actions. Raw provider failures, job payloads, and recent sync-log rows are not rendered on the main calendar; user-readable recovery guidance replaces technical details.
+- Booking links: the settings workspace uses shared controls and semantic tokens, searchable timezone selection, inline duration validation, keyboard-accessible link selection, protected unsaved drafts, generic recoverable errors, and confirmed disabling. The public booking surface labels required guest details and questions, enforces required answers before submission, and does not expose backend error details.
+- Security and product boundaries: existing Calendar module/action permissions, tenant-scoped event and booking queries, owner-only event mutation, soft deletion, activity history, least-privilege provider scopes, public booking rate limiting, and separate public/CRM auth boundaries remain unchanged.
+- Verification: the focused 26-test Calendar and booking backend suites, frontend lint, and the production build pass. Playwright discovers two Calendar scenarios covering mobile scheduling and provider-detail redaction; authenticated execution reaches the configured admin MFA boundary and requires `E2E_ADMIN_MFA_CODE` or `E2E_ADMIN_RECOVERY_CODE`.
+- Tasks workspace: list, board, and due-date calendar views retain the shared saved-view, filter, visible-column, sorting, pagination, and current-page disclosure patterns. Dataset-empty and filtered-empty states are distinct, table rows are keyboard-openable, status changes remain optimistic with rollback, and raw backend failures are replaced with generic retry guidance.
+- Task scheduling and editing: mobile users now receive a native month picker and selected-day agenda instead of an 840-pixel desktop canvas. The quick-review dialog uses labeled shared controls, required-title and date-order validation, searchable user/team assignment, generic recoverable errors, guarded Calendar actions, recoverable deletion, and a stable task-identity boundary that does not remount after timestamp-only updates.
+- Task contracts: existing tenant/module/action access, tenant-validated user and team assignment, linked source-record validation, assignment and due-date notifications, mirrored source activity, Calendar linking, and soft-delete/restore behavior remain unchanged.
+- Tasks verification: the focused 22-test task reminder and source-activity backend suites, frontend lint, and the production build pass. Playwright discovers four Tasks scenarios covering list/board/calendar behavior, optimistic status changes, mobile schedule validation, and backend-detail redaction; authenticated execution remains behind the configured admin MFA credential.
+- Support workspace: the list now uses the shared search, saved-view, filter, density, pagination, loading, dataset-empty, filtered-empty, and recoverable-error foundation. Summary failures no longer render misleading zero totals, rows open by pointer or keyboard, and technical backend details stay out of user-facing failures.
+- Case creation and review: the former oversized creation dialog is replaced by a dedicated responsive form route with labeled required fields, linked-record search, dependency-safe customer and commercial relationships, generic failures, and protected unsaved drafts. The discarded SLA input was removed because SLA timestamps remain service-owned lifecycle data.
+- Case detail: requester, assignee, SLA, status, priority, and the customer conversation lead the workspace. Related records use tenant-safe display labels instead of raw numeric IDs, edits have explicit dirty state, replies are labeled, loading/not-found/error states are recoverable, and activity/history remain available without exposing raw event payloads.
+- Support contracts: existing module/action permissions, tenant-scoped case queries, tenant-validated relationships, service-owned SLA and response timestamps, activity/event publication, client-portal auth separation, and lightweight paginated list responses remain intact.
+- Support verification: the focused 23-test Support backend suite, backend compilation, frontend lint, and the production build pass. Playwright discovers four Support scenarios covering mobile list navigation, full-page creation, service-owned SLA behavior, detail priorities, guarded saves, and backend-detail redaction; authenticated execution remains behind the configured admin MFA credential.
+- Reports workspace: the route now uses the shared page, card, field, loading, filtered-empty, dataset-empty, and retry patterns. CRM presets remain available, while the module selector exposes every built-in or custom module returned by the tenant- and permission-aware reporting registry instead of hiding supported finance and custom-module reports.
+- Forecasting and report output: weighted forecasting only requests data when Deals access is available, date ranges validate before requests, and loading or failure states no longer appear as valid zero totals. Table, bar, and pie controls are grouped with the report output, count tables no longer repeat the same measure, charts have accessible descriptions, and CSV/SVG exports show progress with generic recovery guidance.
+- Saved reports: per-user report configurations retain server-side validation and tenant scoping. Rows open by pointer or keyboard, unchanged reports cannot be redundantly saved, stable filter comparison prevents false dirty states, save-as fields are labeled, duplicate-name guidance is safe, and deletion requires confirmation that distinguishes configuration removal from CRM data deletion.
+- Reports contracts: existing Reports module/action permissions, target-module view checks, export permission, per-user saved-report ownership, tenant-scoped adapters, custom-field sanitization, and Deals permission boundary for forecasting remain unchanged. Backend error details are not rendered in the browser.
+- Reports verification: the focused six-test forecasting and Reports API-route set, frontend lint, and the production build pass. Playwright discovers four Reports scenarios covering authorized finance/custom modules, permission-aware forecast behavior, filtered-empty and error-redaction states, keyboard saved-report access, dirty saves, confirmed deletion, and forecast date validation; authenticated execution remains behind the configured admin MFA credential.
+- Integrations workspace: provider cards now surface connection state, connected account, last activity, last successful run, credential health, queued and failed work, and the appropriate connect, reconnect, or configure action. Provider, website API, webhook, and delivery-history failures have scoped retry states instead of collapsing into misleading empty tables.
+- Integration credentials and actions: website API key inputs and scopes, webhook fields, event filters, and order status controls are explicitly labeled. New API secrets remain one-time values with copy and dismiss actions; rotation, revocation, webhook deletion, website-order cancellation or rejection, and POS conversion require confirmation with consequence-specific copy.
+- Integration safety: raw provider, backup, sync-run, and webhook-delivery exception text is redacted at the backend serialization boundary and ignored defensively by the frontend. Existing admin-only settings access, tenant-scoped queries, public website-key authentication boundary, least-privilege API scopes, masked webhook output, finance permission for POS conversion, rate limiting, idempotency, and audit behavior remain unchanged.
+- Integrations verification: the focused 26-test provider-registry, CRM-event, and website-integration backend suites, backend compilation, frontend lint, and the production build pass. Playwright discovers three Integrations scenarios covering mobile provider health and account context, technical-detail redaction, one-time API-key handling, labeled scopes, and confirmation gates; authenticated execution remains behind the configured admin MFA credential.
+
+Migration note: no Calendar business workflow or backend data model was redesigned. The main route's raw sync-job rows and desktop-only calendar dependency were replaced in place; no reusable legacy component was removed.
+
+Tasks migration note: no task API or business workflow was redesigned. The desktop-only task calendar dependency and timestamp-driven dialog remount were replaced in place; no reusable legacy component was removed.
+
+Support migration note: no support lifecycle or client-portal workflow was redesigned. The large creation modal was retired in favor of a dedicated route, and detail serialization gained tenant-checked related-record display labels; no database migration was required.
+
+Reports migration note: no reporting schema, aggregation engine, or permission contract was redesigned. The frontend restriction that hid authorized finance and custom modules was removed, and the existing synchronous CSV and chart exports were retained; no database migration was required.
+
+Integrations migration note: no provider, website-order, notification-channel, or public API workflow was redesigned. The existing tenant-scoped services remain authoritative; response serialization and the admin workspace were hardened in place, and no database migration was required.
+
+Scope note: Phase 6 is complete. Calendar, Tasks, Support, Reports, and Integrations now use the shared frontend foundation while retaining their existing module, tenant, permission, and public-auth boundaries.
 
 ---
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, ExternalLink, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -8,13 +8,18 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { RequiredMark } from "@/components/ui/RequiredMark";
+import TimezonePicker from "@/components/ui/TimezonePicker";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch, SwitchThumb } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useCalendarContext } from "@/hooks/useCalendar";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
@@ -88,7 +93,7 @@ async function readJson(res: Response) {
 async function fetchBookingTypes() {
   const res = await apiFetch("/calendar/booking-types");
   const body = await readJson(res);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new Error("Booking links could not be loaded.");
   return (body?.results ?? []) as BookingType[];
 }
 
@@ -111,15 +116,14 @@ async function saveBookingType(payload: BookingDraft) {
     body: JSON.stringify(body),
   });
   const responseBody = await readJson(res);
-  if (!res.ok) throw new Error(responseBody?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new Error("The booking link could not be saved. Check the fields and try again.");
   return responseBody as BookingType;
 }
 
 async function disableBookingType(id: number) {
   const res = await apiFetch(`/calendar/booking-types/${id}`, { method: "DELETE" });
   if (!res.ok) {
-    const body = await readJson(res);
-    throw new Error(body?.detail ?? `Failed with ${res.status}`);
+    throw new Error("The booking link could not be disabled.");
   }
 }
 
@@ -130,11 +134,14 @@ function publicUrl(slug: string) {
 
 export default function CalendarBookingSettingsPage() {
   const queryClient = useQueryClient();
+  const { confirm } = useConfirm();
   const contextQuery = useCalendarContext();
   const bookingTypesQuery = useQuery({ queryKey: ["calendar-booking-types"], queryFn: fetchBookingTypes });
   const [draft, setDraft] = useState<BookingDraft>(emptyDraft);
+  const [initialDraft, setInitialDraft] = useState<BookingDraft>(emptyDraft);
   const bookingTypes = bookingTypesQuery.data ?? [];
   const isEditing = Boolean(draft.id);
+  const isDirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(initialDraft), [draft, initialDraft]);
   const ownerOptions = (contextQuery.data?.users ?? []).map((user) => ({
     value: String(user.id),
     label: user.name || user.email || `User ${user.id}`,
@@ -145,9 +152,10 @@ export default function CalendarBookingSettingsPage() {
     onSuccess: async (saved) => {
       await queryClient.invalidateQueries({ queryKey: ["calendar-booking-types"] });
       setDraft(emptyDraft);
+      setInitialDraft(emptyDraft);
       toast.success(`Booking link ${saved.name} saved.`);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to save booking link."),
+    onError: () => toast.error("The booking link could not be saved. Check the fields and try again."),
   });
 
   const disableMutation = useMutation({
@@ -156,11 +164,21 @@ export default function CalendarBookingSettingsPage() {
       await queryClient.invalidateQueries({ queryKey: ["calendar-booking-types"] });
       toast.success("Booking link disabled.");
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to disable booking link."),
+    onError: () => toast.error("The booking link could not be disabled."),
   });
+  useUnsavedChangesGuard(isDirty, saveMutation.isPending);
 
-  function editBookingType(item: BookingType) {
-    setDraft({
+  async function editBookingType(item: BookingType) {
+    if (isDirty && item.id !== draft.id) {
+      const confirmed = await confirm({
+        title: "Discard unsaved changes?",
+        description: "Switching booking links will discard the changes in this form.",
+        confirmLabel: "Discard changes",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
+    const nextDraft: BookingDraft = {
       id: item.id,
       name: item.name,
       slug: item.slug,
@@ -172,7 +190,24 @@ export default function CalendarBookingSettingsPage() {
       enabled: item.enabled,
       availability: item.availability.length ? item.availability : emptyDraft.availability,
       questions: item.questions,
+    };
+    setDraft(nextDraft);
+    setInitialDraft(nextDraft);
+  }
+
+  function resetDraft() {
+    setDraft(emptyDraft);
+    setInitialDraft(emptyDraft);
+  }
+
+  async function confirmDisableBookingType(item: BookingType) {
+    const confirmed = await confirm({
+      title: "Disable booking link?",
+      description: `"${item.name}" will stop accepting new bookings. Existing calendar events are not removed.`,
+      confirmLabel: "Disable link",
+      variant: "destructive",
     });
+    if (confirmed) disableMutation.mutate(item.id);
   }
 
   function updateAvailability(index: number, patch: Partial<Availability>) {
@@ -190,26 +225,36 @@ export default function CalendarBookingSettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 text-neutral-200">
+    <div className="flex flex-col gap-6">
       <PageHeader
         title="Booking Links"
         description="Create public meeting links that offer available calendar slots and write confirmed bookings back to the CRM calendar."
+        eyebrow={isDirty ? "Unsaved booking-link changes" : undefined}
         actions={<Button asChild variant="outline"><Link href={SETTINGS_ROUTES.integrations}>Integrations</Link></Button>}
       />
+
+      {bookingTypesQuery.isError ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+          <span>Booking links could not be loaded.</span>
+          <Button type="button" size="sm" variant="outline" onClick={() => void bookingTypesQuery.refetch()}>Try again</Button>
+        </div>
+      ) : null}
 
       <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
         <Card className="px-5 py-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-neutral-100">{isEditing ? "Edit booking link" : "Create booking link"}</h2>
+              <h2 className="text-lg font-semibold text-copy-primary">{isEditing ? "Edit booking link" : "Create booking link"}</h2>
+              <p className="mt-1 text-sm text-copy-muted">Set the public schedule, meeting owner, and questions guests must answer.</p>
             </div>
-            {isEditing ? <Button variant="ghost" size="sm" onClick={() => setDraft(emptyDraft)}>New</Button> : null}
+            {isEditing ? <Button variant="ghost" size="sm" onClick={resetDraft}>New</Button> : null}
           </div>
 
           <FieldGroup className="grid gap-4 md:grid-cols-2">
             <Field>
-              <FieldLabel>Name</FieldLabel>
+              <FieldLabel htmlFor="booking-link-name">Name <RequiredMark /></FieldLabel>
               <Input
+                id="booking-link-name"
                 value={draft.name}
                 onChange={(event) => setDraft((current) => ({
                   ...current,
@@ -219,8 +264,9 @@ export default function CalendarBookingSettingsPage() {
               />
             </Field>
             <Field>
-              <FieldLabel>Slug</FieldLabel>
-              <Input value={draft.slug} onChange={(event) => setDraft((current) => ({ ...current, slug: slugify(event.target.value) }))} />
+              <FieldLabel htmlFor="booking-link-slug">Slug <RequiredMark /></FieldLabel>
+              <Input id="booking-link-slug" value={draft.slug} onChange={(event) => setDraft((current) => ({ ...current, slug: slugify(event.target.value) }))} />
+              <FieldDescription>The public URL will be /book/{draft.slug || "your-link"}.</FieldDescription>
             </Field>
             <Field>
               <FieldLabel>Owner</FieldLabel>
@@ -232,22 +278,24 @@ export default function CalendarBookingSettingsPage() {
               </Select>
             </Field>
             <Field>
-              <FieldLabel>Timezone</FieldLabel>
-              <Input value={draft.timezone} onChange={(event) => setDraft((current) => ({ ...current, timezone: event.target.value }))} />
+              <FieldLabel>Timezone <RequiredMark /></FieldLabel>
+              <TimezonePicker value={draft.timezone} onChange={(timezone) => setDraft((current) => ({ ...current, timezone }))} />
             </Field>
             <Field>
               <FieldLabel>Duration</FieldLabel>
               <Input type="number" min="15" max="240" value={draft.duration_minutes} onChange={(event) => setDraft((current) => ({ ...current, duration_minutes: Number(event.target.value) }))} />
+              {draft.duration_minutes < 15 || draft.duration_minutes > 240 ? <FieldError>Use a duration between 15 and 240 minutes.</FieldError> : null}
             </Field>
             <Field>
               <FieldLabel>Enabled</FieldLabel>
               <div className="flex h-10 items-center">
                 <Switch
+                  aria-label="Booking link enabled"
                   checked={draft.enabled}
                   onCheckedChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
-                  className="relative h-6 w-11 shrink-0 rounded-full border border-neutral-700 bg-neutral-800 data-[state=checked]:bg-emerald-600"
+                  className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-muted data-[state=checked]:bg-primary"
                 >
-                  <SwitchThumb className="block h-5 w-5 rounded-full bg-white shadow-sm data-[state=checked]:translate-x-5" />
+                  <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
                 </Switch>
               </div>
             </Field>
@@ -255,7 +303,7 @@ export default function CalendarBookingSettingsPage() {
 
           <div className="mt-5 space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-neutral-100">Availability</h3>
+              <h3 className="text-sm font-semibold text-copy-primary">Availability</h3>
               <Button
                 type="button"
                 variant="outline"
@@ -277,9 +325,9 @@ export default function CalendarBookingSettingsPage() {
                     {WEEKDAYS.map((day, dayIndex) => <SelectItem key={day} value={String(dayIndex)}>{day}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Input type="time" value={window.start_time.slice(0, 5)} onChange={(event) => updateAvailability(index, { start_time: event.target.value })} />
-                <Input type="time" value={window.end_time.slice(0, 5)} onChange={(event) => updateAvailability(index, { end_time: event.target.value })} />
-                <Button variant="ghost" size="icon-sm" onClick={() => setDraft((current) => ({ ...current, availability: current.availability.filter((_, itemIndex) => itemIndex !== index) }))}>
+                <Input aria-label={`Start time for availability window ${index + 1}`} type="time" value={window.start_time.slice(0, 5)} onChange={(event) => updateAvailability(index, { start_time: event.target.value })} />
+                <Input aria-label={`End time for availability window ${index + 1}`} type="time" value={window.end_time.slice(0, 5)} onChange={(event) => updateAvailability(index, { end_time: event.target.value })} />
+                <Button aria-label={`Remove availability window ${index + 1}`} variant="ghost" size="icon-sm" onClick={() => setDraft((current) => ({ ...current, availability: current.availability.filter((_, itemIndex) => itemIndex !== index) }))}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -288,7 +336,7 @@ export default function CalendarBookingSettingsPage() {
 
           <div className="mt-5 space-y-3">
             <div className="flex items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-neutral-100">Questions</h3>
+              <h3 className="text-sm font-semibold text-copy-primary">Questions</h3>
               <Button
                 type="button"
                 variant="outline"
@@ -304,18 +352,18 @@ export default function CalendarBookingSettingsPage() {
             </div>
             {draft.questions.map((question, index) => (
               <div key={`question-${index}`} className="grid gap-2 md:grid-cols-[1fr_auto_auto]">
-                <Input value={question.label} placeholder="Question label" onChange={(event) => updateQuestion(index, { label: event.target.value })} />
-                <div className="flex items-center gap-2 rounded-md border border-neutral-800 px-3 py-2 text-sm text-neutral-300">
+                <Input aria-label={`Question ${index + 1} label`} value={question.label} placeholder="Question label" onChange={(event) => updateQuestion(index, { label: event.target.value })} />
+                <div className="flex items-center gap-2 rounded-[var(--radius-control)] border border-line-default px-3 py-2 text-sm text-copy-secondary">
                   Required
                   <Switch
                     checked={question.required}
                     onCheckedChange={(checked) => updateQuestion(index, { required: checked })}
-                    className="relative h-6 w-11 shrink-0 rounded-full border border-neutral-700 bg-neutral-800 data-[state=checked]:bg-emerald-600"
+                    className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-muted data-[state=checked]:bg-primary"
                   >
-                    <SwitchThumb className="block h-5 w-5 rounded-full bg-white shadow-sm data-[state=checked]:translate-x-5" />
+                    <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
                   </Switch>
                 </div>
-                <Button variant="ghost" size="icon-sm" onClick={() => setDraft((current) => ({ ...current, questions: current.questions.filter((_, itemIndex) => itemIndex !== index) }))}>
+                <Button aria-label={`Remove question ${index + 1}`} variant="ghost" size="icon-sm" onClick={() => setDraft((current) => ({ ...current, questions: current.questions.filter((_, itemIndex) => itemIndex !== index) }))}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
@@ -323,16 +371,19 @@ export default function CalendarBookingSettingsPage() {
           </div>
 
           <div className="mt-5 flex justify-end gap-2">
-            <Button variant="ghost" onClick={() => setDraft(emptyDraft)}>Reset</Button>
-            <Button onClick={() => saveMutation.mutate(draft)} disabled={!draft.name.trim() || !draft.slug.trim() || !draft.availability.length || saveMutation.isPending}>
+            <Button variant="ghost" onClick={resetDraft}>Reset</Button>
+            <Button
+              onClick={() => saveMutation.mutate(draft)}
+              disabled={!isDirty || !draft.name.trim() || !draft.slug.trim() || !draft.availability.length || draft.duration_minutes < 15 || draft.duration_minutes > 240 || saveMutation.isPending}
+            >
               {saveMutation.isPending ? "Saving..." : "Save"}
             </Button>
           </div>
         </Card>
 
         <Card className="px-5 py-5">
-          <h2 className="text-lg font-semibold text-neutral-100">Booking links</h2>
-          <div className="mt-4 overflow-hidden rounded-lg border border-neutral-800">
+          <h2 className="text-lg font-semibold text-copy-primary">Booking links</h2>
+          <div className="mt-4 overflow-x-auto rounded-[var(--radius-card)] border border-line-default">
             <Table>
               <TableHeader>
                 <TableHeaderRow>
@@ -345,15 +396,23 @@ export default function CalendarBookingSettingsPage() {
               </TableHeader>
               <TableBody>
                 {bookingTypesQuery.isLoading ? (
-                  <TableRow><TableCell colSpan={5} className="py-6 text-neutral-500">Loading booking links...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="py-6 text-copy-muted">Loading booking links...</TableCell></TableRow>
                 ) : bookingTypes.length ? bookingTypes.map((item) => (
-                  <TableRow key={item.id} className="cursor-pointer" onClick={() => editBookingType(item)}>
-                    <TableCell className="font-medium text-neutral-100">{item.name}</TableCell>
-                    <TableCell className="text-neutral-400">{item.owner_name || `User ${item.owner_id}`}</TableCell>
-                    <TableCell className="text-neutral-400">
+                  <TableRow key={item.id}>
+                    <TableCell className="font-medium text-copy-primary">
                       <button
                         type="button"
-                        className="inline-flex items-center gap-2 text-sm text-neutral-300 hover:text-white"
+                        className="rounded-sm text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring"
+                        onClick={() => void editBookingType(item)}
+                      >
+                        {item.name}
+                      </button>
+                    </TableCell>
+                    <TableCell className="text-copy-muted">{item.owner_name || `User ${item.owner_id}`}</TableCell>
+                    <TableCell className="text-copy-muted">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-2 text-sm text-copy-secondary hover:text-copy-primary focus:outline-none focus:ring-2 focus:ring-ring"
                         onClick={(event) => {
                           event.stopPropagation();
                           void navigator.clipboard.writeText(publicUrl(item.slug));
@@ -364,20 +423,20 @@ export default function CalendarBookingSettingsPage() {
                         /book/{item.slug}
                       </button>
                     </TableCell>
-                    <TableCell className={item.enabled ? "text-emerald-300" : "text-neutral-500"}>{item.enabled ? "Enabled" : "Disabled"}</TableCell>
-                    <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
+                    <TableCell className={item.enabled ? "text-state-success" : "text-copy-muted"}>{item.enabled ? "Enabled" : "Disabled"}</TableCell>
+                    <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button asChild variant="ghost" size="icon-sm">
-                          <Link href={`/book/${item.slug}`} target="_blank"><ExternalLink className="h-4 w-4" /></Link>
+                          <Link aria-label={`Open ${item.name} booking page`} href={`/book/${item.slug}`} target="_blank"><ExternalLink className="h-4 w-4" /></Link>
                         </Button>
-                        <Button variant="ghost" size="icon-sm" onClick={() => disableMutation.mutate(item.id)} disabled={!item.enabled || disableMutation.isPending}>
+                        <Button aria-label={`Disable ${item.name}`} variant="ghost" size="icon-sm" onClick={() => void confirmDisableBookingType(item)} disabled={!item.enabled || disableMutation.isPending}>
                           <Trash2 className="h-4 w-4" />
                         </Button>
                       </div>
                     </TableCell>
                   </TableRow>
                 )) : (
-                  <TableRow><TableCell colSpan={5} className="py-8 text-neutral-500">No booking links yet.</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5}><EmptyState title="No booking links yet" description="Create the first link to offer public meeting slots." /></TableCell></TableRow>
                 )}
               </TableBody>
             </Table>

@@ -50,7 +50,7 @@ class IntegrationsRegistryTests(unittest.TestCase):
         now = datetime.now(timezone.utc)
         self.db.add_all(
             [
-                UserMailConnection(id=1, tenant_id=10, user_id=1, provider="google", status="connected", last_synced_at=now),
+                UserMailConnection(id=1, tenant_id=10, user_id=1, provider="google", status="connected", account_email="owner@example.com", last_synced_at=now),
                 UserMailConnection(id=2, tenant_id=99, user_id=2, provider="google", status="connected"),
                 UserCalendarConnection(id=1, tenant_id=10, user_id=1, provider="microsoft", status="connected", scopes=["Calendars.ReadWrite"], token_expires_at=now),
                 DocumentStorageConnection(id=1, tenant_id=10, user_id=1, provider="microsoft_onedrive", status="connected", scopes=["Files.ReadWrite.AppFolder"]),
@@ -70,6 +70,7 @@ class IntegrationsRegistryTests(unittest.TestCase):
         self.assertEqual(health["google_mail"]["last_sync_at"], now.replace(tzinfo=None))
         self.assertEqual(health["google_mail"]["credential_state"], "valid")
         self.assertEqual(health["google_mail"]["health_status"], "healthy")
+        self.assertEqual(health["google_mail"]["account_label"], "owner@example.com")
         self.assertEqual(health["microsoft_calendar"]["status"], "reconnect_required")
         self.assertEqual(health["microsoft_calendar"]["credential_state"], "expired")
         self.assertEqual(health["microsoft_calendar"]["health_status"], "reconnect_required")
@@ -100,10 +101,11 @@ class IntegrationsRegistryTests(unittest.TestCase):
         self.assertEqual(connections[0]["provider_key"], "google_drive")
         self.assertEqual(
             connections[0]["settings_json"],
-            {"label": "Shared Drive", "last_failure_reason": "Shared drive permission failed", "scope_summary": "drive.file"},
+            {"label": "Shared Drive", "scope_summary": "drive.file"},
         )
         self.assertEqual(connections[0]["scopes"], ["drive.file"])
-        self.assertEqual(connections[0]["last_failure_reason"], "Shared drive permission failed")
+        self.assertNotIn("permission failed", connections[0]["last_failure_reason"].lower())
+        self.assertEqual(connections[0]["account_label"], "Shared Drive")
         self.assertEqual(connections[0]["queued_jobs"], 0)
         self.assertEqual(connections[0]["failed_jobs"], 0)
         self.assertIn("Google Drive", connections[0]["help_text"])
@@ -173,7 +175,7 @@ class IntegrationsRegistryTests(unittest.TestCase):
         self.assertEqual(health["backup_destinations"]["status"], "error")
         self.assertEqual(health["backup_destinations"]["connection_count"], 1)
         self.assertEqual(health["backup_destinations"]["failed_jobs"], 1)
-        self.assertEqual(health["backup_destinations"]["last_failure_reason"], "Backup artifact upload failed")
+        self.assertNotIn("artifact upload failed", health["backup_destinations"]["last_failure_reason"].lower())
         self.assertEqual(health["backup_destinations"]["settings_json"]["destination"], "google_drive")
         self.assertIn("backup settings", health["backup_destinations"]["help_text"].lower())
 

@@ -783,6 +783,7 @@ class IntegrationConnectionResponse(BaseModel):
     provider_key: str
     status: str
     provider_display_name: str | None = None
+    account_label: str | None = None
     connected_by_id: int | None = None
     connected_at: datetime | None = None
     last_sync_at: datetime | None = None
