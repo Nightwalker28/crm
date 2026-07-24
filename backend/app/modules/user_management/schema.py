@@ -247,6 +247,10 @@ class ModuleSchema(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class AccessibleModuleSchema(ModuleSchema):
+    actions: RolePermissionActions
+
+
 class ModuleUpdateRequest(BaseModel):
     name: str | None = None
     base_route: str | None = None

@@ -1,7 +1,8 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Copy, ExternalLink, KeyRound, Link2, Plus, Search, Send, X } from "lucide-react";
 import { toast } from "sonner";
 
@@ -233,6 +234,8 @@ function DocumentSelector({
 }
 
 export default function ClientPortalDashboardPage() {
+  const searchParams = useSearchParams();
+  const createPageRef = useRef<HTMLDivElement>(null);
   const [pageSort, setPageSort] = useState<ClientPortalSortState>(null);
   const [accountSort, setAccountSort] = useState<ClientPortalSortState>(null);
   const pagesQuery = useClientPortalPages(pageSort);
@@ -252,6 +255,12 @@ export default function ClientPortalDashboardPage() {
   const [pageForm, setPageForm] = useState<PageForm>(emptyPageForm);
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccountForm);
   const [lastSetupLink, setLastSetupLink] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get("action") !== "create-page") return;
+    createPageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    createPageRef.current?.focus();
+  }, [searchParams]);
 
   async function copyText(value: string | null | undefined, label: string) {
     if (!value) return;
@@ -364,6 +373,7 @@ export default function ClientPortalDashboardPage() {
       />
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.8fr)]">
+        <div ref={createPageRef} tabIndex={-1} className="rounded-[var(--radius-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
         <Card className="px-5 py-5">
           <div className="mb-4 flex items-start gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-md border border-neutral-700 bg-neutral-950">
@@ -414,6 +424,7 @@ export default function ClientPortalDashboardPage() {
             </div>
           </form>
         </Card>
+        </div>
 
         <Card className="px-5 py-5">
           <div className="mb-4">

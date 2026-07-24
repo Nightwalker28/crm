@@ -10,7 +10,7 @@ from app.modules.user_management.schema import (
     CompanyProfileUpdateRequest,
     DashboardLayoutResponse,
     DashboardLayoutUpdateRequest,
-    ModuleSchema,
+    AccessibleModuleSchema,
     SavedViewCreateRequest,
     SavedViewResponse,
     SavedViewsListResponse,
@@ -73,7 +73,7 @@ async def upload_me_photo(
     return UserImageUploadResponse(photo_url=user.photo_url or "", user=serialize_user_profile(user))
 
 
-@router.get("/me/modules", response_model=list[ModuleSchema])
+@router.get("/me/modules", response_model=list[AccessibleModuleSchema])
 def get_my_modules(
     current_user = Depends(get_current_user),
     db: Session = Depends(get_db),

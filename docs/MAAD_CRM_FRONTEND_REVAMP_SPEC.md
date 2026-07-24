@@ -1578,11 +1578,12 @@ Status: **Implemented**.
 
 - Design tokens: shared color, surface, border, radius, shadow, typography, and reduced-motion tokens are defined centrally and consumed by the foundation primitives.
 - App shell: the desktop sidebar supports persisted collapse, the mobile shell uses a focus-trapped navigation drawer, and the top bar exposes search, notifications, profile, breadcrumbs, and explicit access-denied feedback.
+- Command palette actions: module and settings navigation now come from the canonical registries, while routed and deep-linked create, upload, compose, and scheduling shortcuts are shown only when the current user's tenant-aware role contract grants the corresponding create action. Built-in and custom modules use the same action path.
 - Shared controls: buttons, inputs, cards, page headers, dialogs, tabs, required marks, pagination, list toolbars, and saved-view controls use the shared token language.
 - Application states: reusable loading, recoverable-error, not-found, permission-denied, dataset-empty, and filtered-empty states are available. Dashboard and core CRM route boundaries preserve navigation and avoid exposing raw technical errors.
 - Data tables: shared tables provide semantic headers, keyboard-operable sorting, visible focus, responsive overflow, sticky headers, and persisted comfortable or compact density.
 - Responsive and accessibility baseline: the shell, toolbars, forms, tables, overlays, and route states provide the Phase 1 responsive behavior and keyboard semantics required for later route migrations.
-- Verification: frontend lint and the production build pass. The foundation browser specification is discovered successfully and covers mobile drawer focus behavior plus persisted table density; authenticated execution still requires `E2E_ADMIN_MFA_CODE` or `E2E_ADMIN_RECOVERY_CODE` in the local test environment.
+- Verification: focused current-user module-action tests, backend compilation, frontend lint, and the production build pass. Playwright discovers the palette action scenario alongside the foundation coverage; authenticated execution still requires `E2E_ADMIN_MFA_CODE` or `E2E_ADMIN_RECOVERY_CODE` in the local test environment.
 
 Migration note: no route-specific legacy components were removed in this foundation slice. Desktop-only shell behavior was replaced in place, and later phases should migrate remaining route-local styling onto these primitives rather than creating new variants.
 

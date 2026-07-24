@@ -22,29 +22,34 @@ export type ModuleRegistryEntry = {
   sortOrder: number;
   requiredModuleKey?: string;
   adminOnly?: boolean;
+  quickAction?: {
+    label: string;
+    description: string;
+    href: string;
+  };
 };
 
 export const MODULE_REGISTRY: readonly ModuleRegistryEntry[] = [
-  { key: "sales_leads", label: "Leads", route: DASHBOARD_ROUTES.leads, group: "sales", status: "tier1", enabled: true, sortOrder: 10 },
-  { key: "sales_organizations", label: "Accounts", route: DASHBOARD_ROUTES.accounts, group: "sales", status: "tier1", enabled: true, sortOrder: 20 },
-  { key: "sales_contacts", label: "Contacts", route: DASHBOARD_ROUTES.contacts, group: "sales", status: "tier1", enabled: true, sortOrder: 30 },
-  { key: "sales_opportunities", label: "Deals", route: DASHBOARD_ROUTES.deals, group: "sales", status: "tier1", enabled: true, sortOrder: 40 },
-  { key: "sales_quotes", label: "Quotes", route: DASHBOARD_ROUTES.quotes, group: "sales", status: "tier1", enabled: true, sortOrder: 50 },
-  { key: "sales_orders", label: "Orders", route: DASHBOARD_ROUTES.orders, group: "sales", status: "tier1", enabled: true, sortOrder: 60 },
-  { key: "contracts", label: "Contracts", route: DASHBOARD_ROUTES.contracts, group: "sales", status: "tier2", enabled: true, sortOrder: 70 },
-  { key: "catalog_products", label: "Products", route: DASHBOARD_ROUTES.products, group: "catalog", status: "tier1", enabled: true, sortOrder: 10 },
-  { key: "catalog_services", label: "Services", route: DASHBOARD_ROUTES.services, group: "catalog", status: "tier1", enabled: true, sortOrder: 20 },
-  { key: "documents", label: "Documents", route: DASHBOARD_ROUTES.documents, group: "workspace", status: "tier1", enabled: true, sortOrder: 10 },
-  { key: "calendar", label: "Calendar", route: DASHBOARD_ROUTES.calendar, group: "workspace", status: "tier1", enabled: true, sortOrder: 20 },
-  { key: "mail", label: "Mail", route: DASHBOARD_ROUTES.mail, group: "workspace", status: "tier1", enabled: true, sortOrder: 30 },
-  { key: "tasks", label: "Tasks", route: DASHBOARD_ROUTES.tasks, group: "workspace", status: "tier2", enabled: true, sortOrder: 40 },
-  { key: "support_cases", label: "Support Cases", route: DASHBOARD_ROUTES.supportCases, group: "support", status: "tier1", enabled: true, sortOrder: 10 },
-  { key: "client_portal", label: "Client Portal", route: DASHBOARD_ROUTES.clientPortal, group: "support", status: "tier1", enabled: true, sortOrder: 20 },
-  { key: "finance_io", label: "Insertion Orders", route: DASHBOARD_ROUTES.insertionOrders, group: "finance", status: "tier2", enabled: true, sortOrder: 10 },
-  { key: "finance_pos", label: "Invoices", route: DASHBOARD_ROUTES.financePos, group: "finance", status: "tier2", enabled: true, sortOrder: 20 },
+  { key: "sales_leads", label: "Leads", route: DASHBOARD_ROUTES.leads, group: "sales", status: "tier1", enabled: true, sortOrder: 10, quickAction: { label: "Create lead", description: "Add a new sales lead", href: `${DASHBOARD_ROUTES.leads}/new` } },
+  { key: "sales_organizations", label: "Accounts", route: DASHBOARD_ROUTES.accounts, group: "sales", status: "tier1", enabled: true, sortOrder: 20, quickAction: { label: "Create account", description: "Add a company account", href: `${DASHBOARD_ROUTES.accounts}/new` } },
+  { key: "sales_contacts", label: "Contacts", route: DASHBOARD_ROUTES.contacts, group: "sales", status: "tier1", enabled: true, sortOrder: 30, quickAction: { label: "Create contact", description: "Add a CRM contact", href: `${DASHBOARD_ROUTES.contacts}/new` } },
+  { key: "sales_opportunities", label: "Deals", route: DASHBOARD_ROUTES.deals, group: "sales", status: "tier1", enabled: true, sortOrder: 40, quickAction: { label: "Create deal", description: "Add a sales opportunity", href: `${DASHBOARD_ROUTES.deals}/new` } },
+  { key: "sales_quotes", label: "Quotes", route: DASHBOARD_ROUTES.quotes, group: "sales", status: "tier1", enabled: true, sortOrder: 50, quickAction: { label: "Create quote", description: "Prepare a customer quote", href: `${DASHBOARD_ROUTES.quotes}/new` } },
+  { key: "sales_orders", label: "Orders", route: DASHBOARD_ROUTES.orders, group: "sales", status: "tier1", enabled: true, sortOrder: 60, quickAction: { label: "Create order", description: "Add a sales order", href: `${DASHBOARD_ROUTES.orders}/new` } },
+  { key: "contracts", label: "Contracts", route: DASHBOARD_ROUTES.contracts, group: "sales", status: "tier2", enabled: true, sortOrder: 70, quickAction: { label: "Create contract", description: "Add a contract", href: `${DASHBOARD_ROUTES.contracts}?action=create` } },
+  { key: "catalog_products", label: "Products", route: DASHBOARD_ROUTES.products, group: "catalog", status: "tier1", enabled: true, sortOrder: 10, quickAction: { label: "Create product", description: "Add a catalog product", href: `${DASHBOARD_ROUTES.products}?action=create` } },
+  { key: "catalog_services", label: "Services", route: DASHBOARD_ROUTES.services, group: "catalog", status: "tier1", enabled: true, sortOrder: 20, quickAction: { label: "Create service", description: "Add a catalog service", href: `${DASHBOARD_ROUTES.services}?action=create` } },
+  { key: "documents", label: "Documents", route: DASHBOARD_ROUTES.documents, group: "workspace", status: "tier1", enabled: true, sortOrder: 10, quickAction: { label: "Upload document", description: "Open the document upload workflow", href: `${DASHBOARD_ROUTES.documents}?action=upload` } },
+  { key: "calendar", label: "Calendar", route: DASHBOARD_ROUTES.calendar, group: "workspace", status: "tier1", enabled: true, sortOrder: 20, quickAction: { label: "Create event", description: "Schedule a calendar event", href: `${DASHBOARD_ROUTES.calendar}?action=create` } },
+  { key: "mail", label: "Mail", route: DASHBOARD_ROUTES.mail, group: "workspace", status: "tier1", enabled: true, sortOrder: 30, quickAction: { label: "Compose email", description: "Write a CRM email", href: `${DASHBOARD_ROUTES.mail}?action=compose` } },
+  { key: "tasks", label: "Tasks", route: DASHBOARD_ROUTES.tasks, group: "workspace", status: "tier2", enabled: true, sortOrder: 40, quickAction: { label: "Create task", description: "Add a workspace task", href: `${DASHBOARD_ROUTES.tasks}?action=create` } },
+  { key: "support_cases", label: "Support Cases", route: DASHBOARD_ROUTES.supportCases, group: "support", status: "tier1", enabled: true, sortOrder: 10, quickAction: { label: "Create support case", description: "Open a customer support case", href: `${DASHBOARD_ROUTES.supportCases}/new` } },
+  { key: "client_portal", label: "Client Portal", route: DASHBOARD_ROUTES.clientPortal, group: "support", status: "tier1", enabled: true, sortOrder: 20, quickAction: { label: "Create client page", description: "Prepare a client-facing page", href: `${DASHBOARD_ROUTES.clientPortal}?action=create-page` } },
+  { key: "finance_io", label: "Insertion Orders", route: DASHBOARD_ROUTES.insertionOrders, group: "finance", status: "tier2", enabled: true, sortOrder: 10, quickAction: { label: "Create insertion order", description: "Add a finance insertion order", href: `${DASHBOARD_ROUTES.insertionOrders}?action=create` } },
+  { key: "finance_pos", label: "Invoices", route: DASHBOARD_ROUTES.financePos, group: "finance", status: "tier2", enabled: true, sortOrder: 20, quickAction: { label: "Create invoice", description: "Add an itemized invoice", href: `${DASHBOARD_ROUTES.financePos}/new` } },
   { key: "finance_payments", label: "Payments", route: DASHBOARD_ROUTES.payments, group: "finance", status: "tier2", enabled: true, sortOrder: 30, requiredModuleKey: "finance_pos" },
   { key: "reports", label: "Reports", route: DASHBOARD_ROUTES.reports, group: "reports", status: "tier2", enabled: true, sortOrder: 90 },
-  { key: "message_templates", label: "Templates", route: SETTINGS_ROUTES.templates, group: "settings", status: "tier2", enabled: true, sortOrder: 80, adminOnly: true },
+  { key: "message_templates", label: "Templates", route: SETTINGS_ROUTES.templates, group: "settings", status: "tier2", enabled: true, sortOrder: 80, adminOnly: true, quickAction: { label: "Create message template", description: "Add a reusable message template", href: `${SETTINGS_ROUTES.templates}?action=create` } },
   { key: "integrations", label: "Integrations", route: SETTINGS_ROUTES.integrations, group: "settings", status: "tier1", enabled: true, sortOrder: 90, adminOnly: true },
 ] as const;
 

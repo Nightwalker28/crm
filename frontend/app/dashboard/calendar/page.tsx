@@ -145,7 +145,8 @@ export default function CalendarPage() {
   });
 
   const activeEvent = eventId ? (eventDetailQuery.data ?? selectedEvent) : selectedEvent;
-  const isDialogOpen = eventId ? Boolean(activeEvent) : dialogOpen;
+  const createRequested = searchParams.get("action") === "create";
+  const isDialogOpen = createRequested || (eventId ? Boolean(activeEvent) : dialogOpen);
 
   useEffect(() => {
     if (!eventId || !eventDetailQuery.error) return;

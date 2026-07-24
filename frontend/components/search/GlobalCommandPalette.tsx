@@ -8,9 +8,10 @@ import { CommandIcon, CornerDownLeft, Search } from "lucide-react";
 
 import { Dialog, DialogBackdrop, DialogPanel } from "@/components/ui/dialog";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
-import { getDependentModuleDefinitions, getModuleRegistryLabel, getModuleRoute, isModuleVisibleInNavigation } from "@/lib/module-registry";
+import { getDependentModuleDefinitions, getModuleDefinition, getModuleRegistryLabel, getModuleRoute, isModuleVisibleInNavigation, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
 import { canonicalizeDashboardHref } from "@/lib/routes";
 
 const RECENT_PAGES_KEY = "lynk:command-palette:recent-pages";
@@ -66,6 +67,7 @@ async function fetchGlobalSearch(query: string): Promise<SearchResponse> {
 export default function GlobalCommandPalette() {
   const router = useRouter();
   const { modules } = useAccessibleModules();
+  const { isAdmin } = useSidebarUser();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -103,13 +105,31 @@ export default function GlobalCommandPalette() {
   });
 
   const quickLinks = useMemo(() => {
-    const accessibleModuleNames = new Set(modules.map((module) => module.name));
     const items = [
       { label: "Dashboard", subtitle: "Go to the home dashboard", href: "/dashboard", group: "Quick Links" },
-      ...(accessibleModuleNames.has("sales_leads") ? [{ label: "Create lead", subtitle: "Add a new sales lead", href: "/dashboard/sales/leads/new", group: "Actions" }] : []),
+      ...modules.flatMap((module) => {
+        if (!module.actions?.can_create) return [];
+        if (module.name.startsWith("custom_")) {
+          const label = getModuleDisplayName(module.name, module.description ?? undefined);
+          const route = getModuleRoute(module.name, module.base_route);
+          return route ? [{
+            label: `Create ${label}`,
+            subtitle: `Add a record to ${label}`,
+            href: `${route}?action=create`,
+            group: "Actions",
+          }] : [];
+        }
+        const action = getModuleDefinition(module.name)?.quickAction;
+        return action ? [{
+          label: action.label,
+          subtitle: action.description,
+          href: action.href,
+          group: "Actions",
+        }] : [];
+      }),
       ...modules
         .filter((module) => module.base_route)
-        .filter((module) => module.name.startsWith("custom_") || isModuleVisibleInNavigation(module.name))
+        .filter((module) => module.name.startsWith("custom_") || isModuleVisibleInNavigation(module.name) || (isAdmin && getModuleDefinition(module.name)?.adminOnly))
         .map((module) => ({
           label: getModuleDisplayName(module.name, module.description ?? undefined),
           subtitle: getModuleRoute(module.name, module.base_route),
@@ -122,6 +142,12 @@ export default function GlobalCommandPalette() {
         href: dependent.route,
         group: "Modules",
       }))),
+      ...(isAdmin ? SETTINGS_NAV_ITEMS.map((item) => ({
+        label: item.label,
+        subtitle: item.href,
+        href: item.href,
+        group: "Settings",
+      })) : []),
     ];
 
     const deduped = new Map<string, PaletteLink>();
@@ -129,7 +155,7 @@ export default function GlobalCommandPalette() {
       deduped.set(item.href, item);
     }
     return Array.from(deduped.values());
-  }, [modules]);
+  }, [isAdmin, modules]);
 
   const matchingQuickLinks = useMemo(() => {
     const normalized = deferredQuery.toLowerCase();
@@ -278,7 +304,7 @@ export default function GlobalCommandPalette() {
                               <div className="font-medium text-copy-primary">{item.label}</div>
                               <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
                             </div>
-                            <div className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">Module</div>
+                            <div className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">{item.group}</div>
                           </Command.Item>
                         ))}
                       </Command.Group>

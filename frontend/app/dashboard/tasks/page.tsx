@@ -96,7 +96,8 @@ export default function TasksPage() {
     router.replace("/dashboard/tasks");
   }, [taskDetailQuery.error, taskId, router]);
 
-  const isDialogOpen = taskId ? Boolean(activeTask) : dialogOpen;
+  const createRequested = searchParams.get("action") === "create";
+  const isDialogOpen = createRequested || (taskId ? Boolean(activeTask) : dialogOpen);
   function openCreateDialog() {
     setSelectedTask(null);
     setDialogOpen(true);

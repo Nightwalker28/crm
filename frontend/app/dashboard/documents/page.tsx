@@ -29,6 +29,7 @@ function formatBytes(bytes: number) {
 export default function DocumentsPage() {
   const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const uploadSectionRef = useRef<HTMLDivElement>(null);
   const requestedSearch = searchParams.get("search") ?? "";
   const documentIdParam = searchParams.get("documentId");
   const requestedDocumentId = documentIdParam && /^\d+$/.test(documentIdParam) ? Number(documentIdParam) : null;
@@ -69,6 +70,12 @@ export default function DocumentsPage() {
   useEffect(() => {
     setSearch(requestedSearch);
   }, [requestedSearch]);
+
+  useEffect(() => {
+    if (searchParams.get("action") !== "upload") return;
+    uploadSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    uploadSectionRef.current?.focus();
+  }, [searchParams]);
 
   async function handleSelectedFile(file: File | undefined) {
     if (!file) return;
@@ -135,6 +142,7 @@ export default function DocumentsPage() {
         </div>
       </div>
 
+      <div ref={uploadSectionRef} tabIndex={-1} className="rounded-[var(--radius-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
       <Card className="px-5 py-5">
         <div className="grid gap-3 md:grid-cols-[1fr_1fr_220px_auto] md:items-end">
           <div>
@@ -181,6 +189,7 @@ export default function DocumentsPage() {
           <Link href="/dashboard/settings/integrations" className="text-neutral-200 underline-offset-4 hover:underline">Integrations</Link>.
         </FieldDescription>
       </Card>
+      </div>
 
       <Card className="px-5 py-5">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">

@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 
 import { CustomModuleRecordDialog } from "@/components/customModules/CustomModuleRecordDialog";
@@ -47,9 +47,11 @@ function renderRecordColumn(record: CustomModuleRecord, column: string) {
 export default function CustomModulePage() {
   const params = useParams<{ moduleKey: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const moduleKey = params.moduleKey;
   const [page, setPage] = useState(1);
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const createRequested = searchParams.get("action") === "create";
   const [error, setError] = useState<string | null>(null);
   const schema = useCustomModuleSchema(moduleKey);
   const { fields: moduleFields } = useModuleFieldConfigs(moduleKey);
@@ -119,6 +121,7 @@ export default function CustomModulePage() {
     try {
       await records.saveRecord(payload);
       setIsCreateOpen(false);
+      router.replace(`/dashboard/custom/${moduleKey}`);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unable to save record");
     }
@@ -277,9 +280,9 @@ export default function CustomModulePage() {
         </div>
       </div>
 
-      {isCreateOpen ? (
+      {isCreateOpen || createRequested ? (
         <CustomModuleRecordDialog
-          open={isCreateOpen}
+          open={isCreateOpen || createRequested}
           mode="create"
           fields={fields}
           isSaving={records.isSaving}
@@ -287,6 +290,7 @@ export default function CustomModulePage() {
           onClose={() => {
             setIsCreateOpen(false);
             setError(null);
+            router.replace(`/dashboard/custom/${moduleKey}`);
           }}
           onSubmit={createRecord}
         />

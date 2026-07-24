@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import CatalogRecordDialog from "@/components/catalog/CatalogRecordDialog";
@@ -23,7 +23,9 @@ type Props = {
 
 export default function CatalogRecordsPage({ kind }: Props) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [dialogOpen, setDialogOpen] = useState(false);
+  const createRequested = searchParams.get("action") === "create";
   const isProduct = kind === "products";
   const title = isProduct ? "Products" : "Services";
   const lowerTitle = title.toLowerCase();
@@ -179,11 +181,14 @@ export default function CatalogRecordsPage({ kind }: Props) {
       />
 
       <CatalogRecordDialog
-        open={dialogOpen}
+        open={dialogOpen || createRequested}
         kind={kind}
         record={null}
         isSubmitting={isSaving}
-        onClose={() => setDialogOpen(false)}
+        onClose={() => {
+          setDialogOpen(false);
+          router.replace(`/dashboard/catalog/${kind}`);
+        }}
         onSubmit={handleSubmit}
       />
     </div>

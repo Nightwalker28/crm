@@ -32,6 +32,7 @@ from app.core.tenancy import (
 from app.modules.user_management.models import (
     Module,
     RefreshToken,
+    Role,
     Tenant,
     TenantModuleConfig,
     RoleModulePermission,
@@ -41,6 +42,7 @@ from app.modules.user_management.models import (
     UserStatus,
 )
 from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, get_user_role_level, user_has_module_assignment
+from app.modules.user_management.schema import AccessibleModuleSchema, RolePermissionActions
 from app.modules.user_management.services.admin_modules import build_module_schema, is_module_enabled_for_tenant, _custom_tab_labels
 
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
@@ -776,15 +778,62 @@ def get_user_accessible_modules(user: User, db: Session):
             .all()
         )
         return [
-            build_module_schema(module, config_map.get(module.id), custom_tab_labels=custom_tab_labels)
+            AccessibleModuleSchema.model_validate({
+                **build_module_schema(
+                    module,
+                    config_map.get(module.id),
+                    custom_tab_labels=custom_tab_labels,
+                ).model_dump(),
+                "actions": RolePermissionActions(
+                    can_view=True,
+                    can_create=True,
+                    can_edit=True,
+                    can_delete=True,
+                    can_restore=True,
+                    can_export=True,
+                    can_configure=True,
+                ),
+            })
             for module in modules
             if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
         ]
 
     visible_modules = get_role_visible_modules(user.role_id, db=db)
+    visible_module_ids = [module.id for module in visible_modules]
+    permissions = {
+        permission.module_id: permission
+        for permission in (
+            db.query(RoleModulePermission)
+            .join(Role, Role.id == RoleModulePermission.role_id)
+            .filter(
+                Role.tenant_id == user.tenant_id,
+                RoleModulePermission.role_id == user.role_id,
+                RoleModulePermission.module_id.in_(visible_module_ids),
+            )
+            .all()
+            if visible_module_ids
+            else []
+        )
+    }
     return [
-        build_module_schema(module, config_map.get(module.id), custom_tab_labels=custom_tab_labels)
+        AccessibleModuleSchema.model_validate({
+            **build_module_schema(
+                module,
+                config_map.get(module.id),
+                custom_tab_labels=custom_tab_labels,
+            ).model_dump(),
+            "actions": RolePermissionActions(
+                can_view=bool(permissions[module.id].can_view),
+                can_create=bool(permissions[module.id].can_create),
+                can_edit=bool(permissions[module.id].can_edit),
+                can_delete=bool(permissions[module.id].can_delete),
+                can_restore=bool(permissions[module.id].can_restore),
+                can_export=bool(permissions[module.id].can_export),
+                can_configure=bool(permissions[module.id].can_configure),
+            ),
+        })
         for module in visible_modules
+        if module.id in permissions
         if is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
         and user_has_module_assignment(db, user=user, module=module)
     ]

@@ -5,7 +5,18 @@ import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 
 const LEGACY_MODULE_CACHE_KEY = "lynk_modules";
-const MODULE_CACHE_KEY = "lynk_modules:v2";
+const PREVIOUS_MODULE_CACHE_KEY = "lynk_modules:v2";
+const MODULE_CACHE_KEY = "lynk_modules:v3";
+
+export type AccessibleModuleActions = {
+  can_view: boolean;
+  can_create: boolean;
+  can_edit: boolean;
+  can_delete: boolean;
+  can_restore: boolean;
+  can_export: boolean;
+  can_configure: boolean;
+};
 
 export type AccessibleModule = {
   id: number;
@@ -16,6 +27,7 @@ export type AccessibleModule = {
   sidebar_tab_key?: string | null;
   sidebar_tab_label?: string | null;
   display_name?: string | null;
+  actions?: AccessibleModuleActions;
 };
 
 function readCachedModules(): AccessibleModule[] | null {
@@ -39,6 +51,7 @@ function readCachedModules(): AccessibleModule[] | null {
 export function invalidateModuleCache() {
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(LEGACY_MODULE_CACHE_KEY);
+  window.sessionStorage.removeItem(PREVIOUS_MODULE_CACHE_KEY);
   window.sessionStorage.removeItem(MODULE_CACHE_KEY);
 }
 
@@ -54,7 +67,8 @@ function sameAccessibleModules(a: AccessibleModule[], b: AccessibleModule[]) {
       item.is_enabled === next.is_enabled &&
       item.sidebar_tab_key === next.sidebar_tab_key &&
       item.sidebar_tab_label === next.sidebar_tab_label &&
-      item.display_name === next.display_name
+      item.display_name === next.display_name &&
+      JSON.stringify(item.actions) === JSON.stringify(next.actions)
     );
   });
 }

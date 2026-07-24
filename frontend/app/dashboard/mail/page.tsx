@@ -206,6 +206,7 @@ export default function MailPage() {
   const microsoftConnection = contextQuery.data?.connections.find((connection) => connection.provider === "microsoft");
   const imapSmtpConnection = contextQuery.data?.connections.find((connection) => connection.provider === "imap_smtp");
   const hasSendProvider = Boolean(googleConnection?.can_send || microsoftConnection?.can_send || imapSmtpConnection?.can_send);
+  const composeRequested = searchParams.get("action") === "compose";
   const mailConnectStatus = searchParams.get("mailConnect");
   const messageIdParam = searchParams.get("messageId");
   const requestedMessageId = messageIdParam && /^\d+$/.test(messageIdParam) ? Number(messageIdParam) : null;
@@ -355,7 +356,7 @@ export default function MailPage() {
     }
     try {
       await sendMail({
-        provider: composeProvider,
+        provider: composeOpen ? composeProvider : defaultComposeProvider,
         to: recipients,
         subject: composeSubject,
         body_text: composeBody,
@@ -366,6 +367,7 @@ export default function MailPage() {
       setComposeBody("");
       setComposeOpen(false);
       setFolder("sent");
+      router.replace("/dashboard/mail");
     } catch (error) {
       toast.error(getErrorMessage(error, "Failed to send mail."));
     }
@@ -404,10 +406,13 @@ export default function MailPage() {
   }
 
   function toggleCompose() {
-    if (!composeOpen) {
+    if (composeOpen || composeRequested) {
+      setComposeOpen(false);
+      router.replace("/dashboard/mail");
+    } else {
       setComposeProvider(defaultComposeProvider);
+      setComposeOpen(true);
     }
-    setComposeOpen((current) => !current);
   }
 
   return (
@@ -529,7 +534,7 @@ export default function MailPage() {
         </div>
       </section>
 
-      {composeOpen ? (
+      {composeOpen || (composeRequested && hasSendProvider) ? (
         <section className="rounded-2xl border border-neutral-800 bg-neutral-950/70 p-5">
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -538,8 +543,12 @@ export default function MailPage() {
                 <p className="mt-1 text-sm text-neutral-500">CRM variables resolve from the linked record or matching contact recipient when mail is sent.</p>
               </div>
               <select
-                value={composeProvider}
-                onChange={(event) => setComposeProvider(event.target.value as MailProvider)}
+                value={composeOpen ? composeProvider : defaultComposeProvider}
+                onChange={(event) => {
+                  setComposeProvider(event.target.value as MailProvider);
+                  setComposeOpen(true);
+                  router.replace("/dashboard/mail");
+                }}
                 className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none"
               >
                 <option value="google" disabled={!googleConnection?.can_send}>Gmail</option>
@@ -579,7 +588,7 @@ export default function MailPage() {
               className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600"
             />
             <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => setComposeOpen(false)}>Cancel</Button>
+              <Button type="button" variant="outline" onClick={() => { setComposeOpen(false); router.replace("/dashboard/mail"); }}>Cancel</Button>
               <Button type="button" onClick={() => void handleSendMail()} disabled={isSendingMail}>
                 {isSendingMail ? "Sending..." : "Send Mail"}
               </Button>

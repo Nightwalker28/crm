@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import InsertionOrdersList from "@/components/finance/insertionOrderList";
@@ -23,6 +23,7 @@ type InsertionOrderTableSortState = { column: string; direction: "asc" | "desc" 
 
 export default function InsertionOrdersPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { data: customFields = [] } = useModuleCustomFields("finance_io");
   const { fields: moduleFields } = useModuleFieldConfigs("finance_io");
   const definition = useMemo(
@@ -31,6 +32,7 @@ export default function InsertionOrdersPage() {
   );
   const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.finance_io;
   const [dialogOpen, setDialogOpen] = useState(false);
+  const createRequested = searchParams.get("action") === "create";
   const [selectedOrder, setSelectedOrder] = useState<InsertionOrder | null>(null);
   const {
     views,
@@ -236,12 +238,13 @@ export default function InsertionOrdersPage() {
         />
 
       <InsertionOrderDialog
-        open={dialogOpen}
+        open={dialogOpen || createRequested}
         order={selectedOrder}
         isSubmitting={isSaving || isDeleting}
         onClose={() => {
           setDialogOpen(false);
           setSelectedOrder(null);
+          router.replace("/dashboard/finance/insertion-orders");
         }}
         onSubmit={handleSubmit}
       />

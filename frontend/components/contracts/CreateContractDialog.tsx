@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -85,9 +86,12 @@ function validateContractForm(form: ContractForm) {
 }
 
 export default function CreateContractDialog() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const createRequested = searchParams.get("action") === "create";
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState(INITIAL_FORM);
   const [contactDisplay, setContactDisplay] = useState("");
@@ -163,6 +167,7 @@ export default function CreateContractDialog() {
       toast.success("Contract created.");
       setOpen(false);
       reset();
+      router.replace("/dashboard/contracts");
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "Failed to create contract");
     } finally {
@@ -173,7 +178,7 @@ export default function CreateContractDialog() {
   return (
     <>
       <Button onClick={() => setOpen(true)}><Plus className="mr-2 h-4 w-4" />New Contract</Button>
-      <Dialog open={open} onClose={() => { setOpen(false); reset(); }}>
+      <Dialog open={open || createRequested} onClose={() => { setOpen(false); reset(); router.replace("/dashboard/contracts"); }}>
         <DialogBackdrop />
         <div className="fixed inset-0 flex items-center justify-center p-4">
           <DialogPanel size="3xl">

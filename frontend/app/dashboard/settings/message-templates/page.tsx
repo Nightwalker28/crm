@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Edit3, Plus, Power, Sparkles, Trash2 } from "lucide-react";
 import { toast } from "sonner";
@@ -175,12 +176,20 @@ async function fetchTemplates(): Promise<MessageTemplate[]> {
 }
 
 export default function MessageTemplatesPage() {
+  const searchParams = useSearchParams();
+  const templateFormRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<TemplateDraft>(emptyDraft);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [search, setSearch] = useState("");
   const [channelFilter, setChannelFilter] = useState("all");
   const [moduleFilter, setModuleFilter] = useState("all");
   const [sort, setSort] = useState<TemplateSortState>({ key: "name", direction: "asc" });
+
+  useEffect(() => {
+    if (searchParams.get("action") !== "create") return;
+    templateFormRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    templateFormRef.current?.focus();
+  }, [searchParams]);
 
   const query = useQuery({
     queryKey: ["message-templates", "all"],
@@ -288,6 +297,7 @@ export default function MessageTemplatesPage() {
       />
 
       <div className="grid gap-5 xl:grid-cols-[380px_1fr]">
+        <div ref={templateFormRef} tabIndex={-1} className="rounded-[var(--radius-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
         <Card className="px-5 py-5">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -422,6 +432,7 @@ export default function MessageTemplatesPage() {
             </Button>
           </FieldGroup>
         </Card>
+        </div>
 
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-3 rounded-md border border-neutral-800 bg-neutral-950/80 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
