@@ -22,6 +22,8 @@ type Props = {
   selectedIds: number[];
   sort: PosInvoiceSortState;
   hasActiveFilters: boolean;
+  canCreateInvoice: boolean;
+  canRecordPayment: boolean;
   onSortChange: (sort: PosInvoiceSortState) => void;
   onToggle: (id: number, checked: boolean) => void;
   onTogglePage: (checked: boolean) => void;
@@ -50,8 +52,8 @@ function nextSort(sort: PosInvoiceSortState, column: string): PosInvoiceSortStat
   return sort?.key === column ? { key: column, direction: sort.direction === "asc" ? "desc" : "asc" } : { key: column, direction: "asc" };
 }
 
-function cell(invoice: PosInvoice, column: string) {
-  if (column === "invoice_number") return <TableCell className="sticky left-10 z-10 bg-surface"><Link href={`/dashboard/finance/pos/${invoice.id}`} className="font-mono text-xs font-semibold text-copy-primary hover:underline">{invoice.invoice_number}</Link></TableCell>;
+function cell(invoice: PosInvoice, column: string, hasSelection: boolean) {
+  if (column === "invoice_number") return <TableCell className={`sticky z-10 bg-surface ${hasSelection ? "left-10" : "left-0"}`}><Link href={`/dashboard/finance/pos/${invoice.id}`} className="font-mono text-xs font-semibold text-copy-primary hover:underline">{invoice.invoice_number}</Link></TableCell>;
   if (column === "customer_name") return <TableCell><span className="font-medium text-copy-primary">{invoice.customer_name}</span></TableCell>;
   if (column === "payment_status") { const style = STATUS_STYLE[invoice.payment_status] ?? STATUS_STYLE.unpaid; return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>; }
   if (column === "total_amount") return <TableCell className="text-right font-medium text-copy-primary">{money(invoice.total_amount, invoice.currency)}</TableCell>;
@@ -63,24 +65,25 @@ function cell(invoice: PosInvoice, column: string) {
   return <TableCell>—</TableCell>;
 }
 
-export default function PaymentsTable({ invoices, visibleColumns, isLoading, isRefreshing, selectedIds, sort, hasActiveFilters, onSortChange, onToggle, onTogglePage, onRecordPayment, onClearFilters }: Props) {
+export default function PaymentsTable({ invoices, visibleColumns, isLoading, isRefreshing, selectedIds, sort, hasActiveFilters, canCreateInvoice, canRecordPayment, onSortChange, onToggle, onTogglePage, onRecordPayment, onClearFilters }: Props) {
   const allSelected = invoices.length > 0 && invoices.every((invoice) => selectedIds.includes(invoice.id));
+  const columnCount = visibleColumns.length + (canRecordPayment ? 2 : 0);
   return (
     <ModuleTableShell isRefreshing={isRefreshing}>
       <Table className="min-w-[1080px]">
         <TableHeader><TableHeaderRow>
-          <TableHead className="sticky left-0 z-20 w-10 bg-surface"><Checkbox aria-label="Select all payments on this page" checked={allSelected} onCheckedChange={(checked) => onTogglePage(checked === true)} /></TableHead>
-          {visibleColumns.map((column) => SORTABLE.has(column) ? <SortableHead key={column} sorted={sort?.key === column} direction={sort?.key === column ? sort.direction : "asc"} onClick={() => onSortChange(nextSort(sort, column))} className={column === "invoice_number" ? "sticky left-10 z-20 bg-surface" : undefined}>{label(column)}</SortableHead> : <TableHead key={column}>{label(column)}</TableHead>)}
-          <TableHead className="text-right">Action</TableHead>
+          {canRecordPayment ? <TableHead className="sticky left-0 z-20 w-10 bg-surface"><Checkbox aria-label="Select all payments on this page" checked={allSelected} onCheckedChange={(checked) => onTogglePage(checked === true)} /></TableHead> : null}
+          {visibleColumns.map((column) => SORTABLE.has(column) ? <SortableHead key={column} sorted={sort?.key === column} direction={sort?.key === column ? sort.direction : "asc"} onClick={() => onSortChange(nextSort(sort, column))} className={column === "invoice_number" ? `sticky z-20 bg-surface ${canRecordPayment ? "left-10" : "left-0"}` : undefined}>{label(column)}</SortableHead> : <TableHead key={column}>{label(column)}</TableHead>)}
+          {canRecordPayment ? <TableHead className="text-right">Action</TableHead> : null}
         </TableHeaderRow></TableHeader>
         <TableBody>
-          {isLoading ? <ModuleTableLoading columnCount={visibleColumns.length + 2} /> : invoices.length === 0 ? (
-            <TableRow><TableCell colSpan={visibleColumns.length + 2} className="py-12"><EmptyState icon={CreditCard} title={hasActiveFilters ? "No payments match these filters" : "No invoices available for payment tracking"} description={hasActiveFilters ? "Clear one or more filters and try again." : "Create an invoice first, then record customer payments here."} action={hasActiveFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button> : <Button asChild><Link href="/dashboard/finance/pos/new">Create invoice</Link></Button>} /></TableCell></TableRow>
+          {isLoading ? <ModuleTableLoading columnCount={columnCount} /> : invoices.length === 0 ? (
+            <TableRow><TableCell colSpan={columnCount} className="py-12"><EmptyState icon={CreditCard} title={hasActiveFilters ? "No payments match these filters" : "No invoices available for payment tracking"} description={hasActiveFilters ? "Clear one or more filters and try again." : "Create an invoice first, then record customer payments here."} action={hasActiveFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button> : canCreateInvoice ? <Button asChild><Link href="/dashboard/finance/pos/new">Create invoice</Link></Button> : <Button asChild variant="outline"><Link href="/dashboard/finance/pos">Open invoices</Link></Button>} /></TableCell></TableRow>
           ) : invoices.map((invoice) => (
             <TableRow key={invoice.id}>
-              <TableCell className="sticky left-0 z-10 bg-surface"><Checkbox aria-label={`Select ${invoice.invoice_number}`} checked={selectedIds.includes(invoice.id)} onCheckedChange={(checked) => onToggle(invoice.id, checked === true)} /></TableCell>
-              {visibleColumns.map((column) => <Fragment key={column}>{cell(invoice, column)}</Fragment>)}
-              <TableCell className="text-right"><Button type="button" variant="outline" size="sm" disabled={invoice.balance_due <= 0 || invoice.status === "void" || invoice.payment_status === "refunded"} onClick={() => onRecordPayment(invoice)}>Record payment</Button></TableCell>
+              {canRecordPayment ? <TableCell className="sticky left-0 z-10 bg-surface"><Checkbox aria-label={`Select ${invoice.invoice_number}`} checked={selectedIds.includes(invoice.id)} onCheckedChange={(checked) => onToggle(invoice.id, checked === true)} /></TableCell> : null}
+              {visibleColumns.map((column) => <Fragment key={column}>{cell(invoice, column, canRecordPayment)}</Fragment>)}
+              {canRecordPayment ? <TableCell className="text-right"><Button type="button" variant="outline" size="sm" disabled={invoice.balance_due <= 0 || invoice.status === "void" || invoice.payment_status === "refunded"} onClick={() => onRecordPayment(invoice)}>Record payment</Button></TableCell> : null}
             </TableRow>
           ))}
         </TableBody>

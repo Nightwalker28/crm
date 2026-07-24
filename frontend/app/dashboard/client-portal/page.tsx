@@ -1,67 +1,27 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Copy, ExternalLink, KeyRound, Link2, Plus, Search, Send, X } from "lucide-react";
+import { useState } from "react";
+import Link from "next/link";
+import { Copy, ExternalLink, KeyRound, Link2, Search, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/ui/PageHeader";
-import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
-import { Textarea } from "@/components/ui/textarea";
-import { useClientPortalActions, useClientPortalAccounts, useClientPortalPages, useCustomerOptions, type ClientAccountStatus, type ClientPortalSortState, type PricingItemPayload } from "@/hooks/useClientPortal";
+import { useClientPortalActions, useClientPortalAccounts, useClientPortalPages, useCustomerOptions, type ClientAccountStatus, type ClientPortalSortState } from "@/hooks/useClientPortal";
 import { formatDateTime } from "@/lib/datetime";
 
 type LinkedType = "contact" | "organization";
-
-type PageForm = {
-  title: string;
-  summary: string;
-  linkedType: LinkedType;
-  linkedId: string;
-  itemName: string;
-  itemDescription: string;
-  itemQuantity: string;
-  itemCurrency: string;
-  itemPrice: string;
-  documentIds: string;
-  brandCompanyName: string;
-  brandLogoUrl: string;
-  brandAccentColor: string;
-  proposalOverview: string;
-  proposalScope: string;
-  proposalTerms: string;
-};
 
 type AccountForm = {
   email: string;
   linkedType: LinkedType;
   linkedId: string;
-};
-
-const emptyPageForm: PageForm = {
-  title: "",
-  summary: "",
-  linkedType: "contact",
-  linkedId: "",
-  itemName: "",
-  itemDescription: "",
-  itemQuantity: "1",
-  itemCurrency: "USD",
-  itemPrice: "",
-  documentIds: "",
-  brandCompanyName: "",
-  brandLogoUrl: "",
-  brandAccentColor: "#14b8a6",
-  proposalOverview: "",
-  proposalScope: "",
-  proposalTerms: "",
 };
 
 const emptyAccountForm: AccountForm = {
@@ -80,24 +40,9 @@ function formatMoney(value: string | number, currency: string) {
   return `${currency} ${amount.toFixed(2)}`;
 }
 
-function parseDocumentIds(value: string) {
-  return value
-    .split(",")
-    .map((item) => Number(item.trim()))
-    .filter((item) => Number.isInteger(item) && item > 0);
-}
-
 function customerLabel(item: { contact_id?: number | null; organization_id?: number | null; contact_name?: string | null; organization_name?: string | null }) {
   if (item.contact_id) return item.contact_name || `Contact #${item.contact_id}`;
   return item.organization_name || `Organization #${item.organization_id}`;
-}
-
-function proposalSectionsFromForm(form: PageForm) {
-  return [
-    { title: "Overview", body: form.proposalOverview.trim(), sort_order: 0 },
-    { title: "Scope", body: form.proposalScope.trim(), sort_order: 1 },
-    { title: "Terms", body: form.proposalTerms.trim(), sort_order: 2 },
-  ].filter((section) => section.body);
 }
 
 function actionLabel(action: string) {
@@ -180,134 +125,28 @@ function CustomerSelector({
   );
 }
 
-function DocumentSelector({
-  value,
-  linkedType,
-  linkedId,
-  onChange,
-}: {
-  value: string;
-  linkedType: LinkedType;
-  linkedId: string;
-  onChange: (value: string) => void;
-}) {
-  const [search, setSearch] = useState("");
-  const [labels, setLabels] = useState<Record<number, string>>({});
-  const selectedIds = parseDocumentIds(value);
-
-  function update(ids: number[]) {
-    onChange(ids.join(","));
-  }
-
-  return (
-    <div className="space-y-2">
-      <LinkedRecordPicker
-        recordType="document"
-        valueId={null}
-        displayValue={search}
-        onDisplayValueChange={setSearch}
-        onSelect={(option) => {
-          setLabels((current) => ({ ...current, [option.id]: option.label }));
-          if (!selectedIds.includes(option.id)) update([...selectedIds, option.id]);
-          setSearch("");
-        }}
-        onClear={() => setSearch("")}
-        placeholder="Search documents"
-        queryKeyPrefix="client-page-document"
-        linkedModuleKey={linkedId ? (linkedType === "contact" ? "sales_contacts" : "sales_organizations") : undefined}
-        linkedEntityId={linkedId || null}
-      />
-      {selectedIds.length ? (
-        <div className="flex flex-wrap gap-2">
-          {selectedIds.map((id) => (
-            <span key={id} className="inline-flex items-center gap-2 rounded-full border border-neutral-700 bg-neutral-900 px-3 py-1 text-xs text-neutral-200">
-              {labels[id] ?? `Document #${id}`}
-              <button type="button" onClick={() => update(selectedIds.filter((selectedId) => selectedId !== id))} aria-label={`Remove document ${id}`}>
-                <X className="h-3 w-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
 export default function ClientPortalDashboardPage() {
-  const searchParams = useSearchParams();
-  const createPageRef = useRef<HTMLDivElement>(null);
   const [pageSort, setPageSort] = useState<ClientPortalSortState>(null);
   const [accountSort, setAccountSort] = useState<ClientPortalSortState>(null);
   const pagesQuery = useClientPortalPages(pageSort);
   const accountsQuery = useClientPortalAccounts(accountSort);
   const {
-    createPage,
     publishPage,
     createAccount,
     updateAccountStatus,
     regenerateAccountSetupLink,
-    isCreatingPage,
     isPublishingPage,
     isCreatingAccount,
     isUpdatingAccountStatus,
     isRegeneratingSetupLink,
   } = useClientPortalActions();
-  const [pageForm, setPageForm] = useState<PageForm>(emptyPageForm);
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccountForm);
   const [lastSetupLink, setLastSetupLink] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (searchParams.get("action") !== "create-page") return;
-    createPageRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    createPageRef.current?.focus();
-  }, [searchParams]);
 
   async function copyText(value: string | null | undefined, label: string) {
     if (!value) return;
     await navigator.clipboard.writeText(value);
     toast.success(`${label} copied.`);
-  }
-
-  async function handleCreatePage(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const linkedId = Number(pageForm.linkedId);
-    const price = Number(pageForm.itemPrice);
-    const quantity = Number(pageForm.itemQuantity || "1");
-    if (!Number.isInteger(linkedId) || linkedId <= 0) {
-      toast.error("Enter a valid linked customer ID.");
-      return;
-    }
-    if (!pageForm.itemName.trim() || !Number.isFinite(price) || price < 0 || !Number.isFinite(quantity) || quantity <= 0) {
-      toast.error("Enter a valid pricing item.");
-      return;
-    }
-    const item: PricingItemPayload = {
-      name: pageForm.itemName.trim(),
-      description: pageForm.itemDescription.trim() || null,
-      quantity,
-      currency: pageForm.itemCurrency.trim().toUpperCase() || "USD",
-      public_unit_price: price,
-    };
-    try {
-      await createPage({
-        title: pageForm.title.trim(),
-        summary: pageForm.summary.trim() || null,
-        contact_id: pageForm.linkedType === "contact" ? linkedId : null,
-        organization_id: pageForm.linkedType === "organization" ? linkedId : null,
-        pricing_items: [item],
-        document_ids: parseDocumentIds(pageForm.documentIds),
-        proposal_sections: proposalSectionsFromForm(pageForm),
-        brand_settings: {
-          company_name: pageForm.brandCompanyName.trim() || null,
-          logo_url: pageForm.brandLogoUrl.trim() || null,
-          accent_color: pageForm.brandAccentColor.trim() || null,
-        },
-      });
-      setPageForm(emptyPageForm);
-      toast.success("Client page created.");
-    } catch (error) {
-      toast.error(errorMessage(error, "Failed to create client page."));
-    }
   }
 
   async function handleCreateAccount(event: FormEvent<HTMLFormElement>) {
@@ -370,62 +209,10 @@ export default function ClientPortalDashboardPage() {
       <PageHeader
         title="Client Portal"
         description="Create signed client pages, share pricing snapshots, and manage client login access."
+        actions={<Button asChild><Link href="/dashboard/client-portal/pages/new">Create client page</Link></Button>}
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.4fr)_minmax(360px,0.8fr)]">
-        <div ref={createPageRef} tabIndex={-1} className="rounded-[var(--radius-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-        <Card className="px-5 py-5">
-          <div className="mb-4 flex items-start gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-md border border-neutral-700 bg-neutral-950">
-              <Plus className="h-4 w-4 text-neutral-300" />
-            </div>
-            <div>
-              <h2 className="text-base font-semibold text-neutral-100">New Client Page</h2>
-              <FieldDescription className="mt-1">Link one customer and store the pricing shown in this shared offer.</FieldDescription>
-            </div>
-          </div>
-
-          <form className="grid gap-3" onSubmit={handleCreatePage}>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Input value={pageForm.title} onChange={(event) => setPageForm((current) => ({ ...current, title: event.target.value }))} placeholder="Page title" required />
-              <CustomerSelector
-                linkedType={pageForm.linkedType}
-                linkedId={pageForm.linkedId}
-                onTypeChange={(linkedType) => setPageForm((current) => ({ ...current, linkedType, documentIds: "" }))}
-                onIdChange={(linkedId) => setPageForm((current) => ({ ...current, linkedId, documentIds: "" }))}
-              />
-            </div>
-            <Textarea value={pageForm.summary} onChange={(event) => setPageForm((current) => ({ ...current, summary: event.target.value }))} placeholder="Short proposal or pricing summary" />
-            <div className="grid gap-3 md:grid-cols-[1fr_120px_120px_160px]">
-              <Input value={pageForm.itemName} onChange={(event) => setPageForm((current) => ({ ...current, itemName: event.target.value }))} placeholder="Pricing item" required />
-              <Input value={pageForm.itemQuantity} onChange={(event) => setPageForm((current) => ({ ...current, itemQuantity: event.target.value }))} placeholder="Qty" inputMode="decimal" required />
-              <Input value={pageForm.itemCurrency} onChange={(event) => setPageForm((current) => ({ ...current, itemCurrency: event.target.value }))} placeholder="USD" maxLength={3} required />
-              <Input value={pageForm.itemPrice} onChange={(event) => setPageForm((current) => ({ ...current, itemPrice: event.target.value }))} placeholder="Public price" inputMode="decimal" required />
-            </div>
-            <div className="grid gap-3 md:grid-cols-2">
-              <Input value={pageForm.itemDescription} onChange={(event) => setPageForm((current) => ({ ...current, itemDescription: event.target.value }))} placeholder="Item description" />
-              <DocumentSelector value={pageForm.documentIds} linkedType={pageForm.linkedType} linkedId={pageForm.linkedId} onChange={(documentIds) => setPageForm((current) => ({ ...current, documentIds }))} />
-            </div>
-            <div className="grid gap-3 md:grid-cols-[1fr_1fr_140px]">
-              <Input value={pageForm.brandCompanyName} onChange={(event) => setPageForm((current) => ({ ...current, brandCompanyName: event.target.value }))} placeholder="Client page company name" />
-              <Input value={pageForm.brandLogoUrl} onChange={(event) => setPageForm((current) => ({ ...current, brandLogoUrl: event.target.value }))} placeholder="Logo URL" />
-              <Input value={pageForm.brandAccentColor} onChange={(event) => setPageForm((current) => ({ ...current, brandAccentColor: event.target.value }))} placeholder="#14b8a6" />
-            </div>
-            <div className="grid gap-3 md:grid-cols-3">
-              <Textarea value={pageForm.proposalOverview} onChange={(event) => setPageForm((current) => ({ ...current, proposalOverview: event.target.value }))} placeholder="Proposal overview" />
-              <Textarea value={pageForm.proposalScope} onChange={(event) => setPageForm((current) => ({ ...current, proposalScope: event.target.value }))} placeholder="Scope and deliverables" />
-              <Textarea value={pageForm.proposalTerms} onChange={(event) => setPageForm((current) => ({ ...current, proposalTerms: event.target.value }))} placeholder="Terms or next steps" />
-            </div>
-            <div className="flex justify-end">
-              <Button type="submit" disabled={isCreatingPage}>
-                <Plus className="h-4 w-4" />
-                {isCreatingPage ? "Creating..." : "Create Page"}
-              </Button>
-            </div>
-          </form>
-        </Card>
-        </div>
-
+      <div className="grid gap-4">
         <Card className="px-5 py-5">
           <div className="mb-4">
             <h2 className="text-base font-semibold text-neutral-100">Client Login Access</h2>

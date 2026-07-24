@@ -4,15 +4,14 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
-import { useState } from "react";
 import { toast } from "sonner";
 
-import CatalogRecordDialog from "@/components/catalog/CatalogRecordDialog";
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
-import type { CatalogKind, CatalogRecordPayload } from "@/hooks/catalog/useCatalogRecords";
+import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import type { CatalogKind } from "@/hooks/catalog/useCatalogRecords";
 import { useCatalogRecord, useCatalogRecordActions } from "@/hooks/catalog/useCatalogRecords";
 import { useConfirm } from "@/hooks/useConfirm";
 import { resolveMediaUrl } from "@/lib/media";
@@ -43,28 +42,13 @@ function stockLabel(value?: string | null) {
 export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
   const router = useRouter();
   const { confirm } = useConfirm();
-  const [dialogOpen, setDialogOpen] = useState(false);
   const isProduct = kind === "products";
   const noun = isProduct ? "Product" : "Service";
   const moduleKey = isProduct ? "catalog_products" : "catalog_services";
   const listHref = `/dashboard/catalog/${kind}`;
   const recordQuery = useCatalogRecord(kind, recordId);
-  const {
-    updateRecord,
-    uploadMedia,
-    deleteRecord,
-    isSaving,
-    isDeleting,
-  } = useCatalogRecordActions(kind);
+  const { deleteRecord, isDeleting } = useCatalogRecordActions(kind);
   const record = recordQuery.data ?? null;
-
-  async function handleSubmit(payload: CatalogRecordPayload, mediaFile: File | null) {
-    await updateRecord(recordId, payload);
-    if (mediaFile) {
-      await uploadMedia(recordId, mediaFile);
-    }
-    toast.success(`${noun} updated.`);
-  }
 
   async function handleDelete() {
     const confirmed = await confirm({
@@ -79,9 +63,21 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
       await deleteRecord(recordId);
       toast.success(`${noun} deleted.`);
       router.push(listHref);
-    } catch (deleteError) {
-      toast.error(deleteError instanceof Error ? deleteError.message : `Failed to delete ${noun.toLowerCase()}.`);
+    } catch {
+      toast.error(`We could not delete this ${noun.toLowerCase()}. Try again.`);
     }
+  }
+
+  if (recordQuery.isLoading) return <RouteLoadingState label={noun.toLowerCase()} />;
+  if (recordQuery.error || !record) {
+    return (
+      <RouteErrorState
+        title={`Unable to load ${noun.toLowerCase()}`}
+        reset={() => void recordQuery.refetch()}
+        backHref={listHref}
+        backLabel={`Back to ${kind}`}
+      />
+    );
   }
 
   return (
@@ -97,31 +93,20 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
                 Back
               </Link>
             </Button>
-            {record ? (
-              <>
-                <Button type="button" variant="outline" onClick={() => setDialogOpen(true)}>
+            <Button type="button" variant="outline" asChild>
+              <Link href={`${listHref}/${recordId}/edit`}>
                   <Pencil className="mr-2 h-4 w-4" />
-                  Edit
-                </Button>
-                <Button type="button" variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </Button>
-              </>
-            ) : null}
+                  Edit {noun.toLowerCase()}
+              </Link>
+            </Button>
+            <Button type="button" variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete {noun.toLowerCase()}
+            </Button>
           </div>
         }
       />
 
-      {recordQuery.isLoading ? (
-        <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-6 text-sm text-neutral-500">
-          Loading {noun.toLowerCase()}...
-        </div>
-      ) : recordQuery.error ? (
-        <div className="rounded-md border border-red-800/60 bg-red-950/30 px-4 py-3 text-sm text-red-200">
-          {recordQuery.error instanceof Error ? recordQuery.error.message : `Failed to load ${noun.toLowerCase()}.`}
-        </div>
-      ) : record ? (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
           <section className="rounded-md border border-neutral-800 bg-neutral-950/70 p-5">
             <div className="flex items-start justify-between gap-4">
@@ -225,16 +210,6 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
             taskSourceLabel={record.name}
           />
         </div>
-      ) : null}
-
-      <CatalogRecordDialog
-        open={dialogOpen}
-        kind={kind}
-        record={record}
-        isSubmitting={isSaving}
-        onClose={() => setDialogOpen(false)}
-        onSubmit={handleSubmit}
-      />
     </div>
   );
 }

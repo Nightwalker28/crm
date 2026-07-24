@@ -190,3 +190,41 @@ test("Forecast dates validate before issuing a report request", async ({ page })
   await expect(page.getByText("Forecast end date must be on or after the start date.")).toBeVisible();
   await expect(page.getByLabel("End")).toHaveAttribute("aria-invalid", "true");
 });
+
+test("Reports hide mutation and export controls without their action permissions", async ({ page }) => {
+  await mockReportData(page);
+  await page.route("**/users/me/modules", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: 12,
+        name: "reports",
+        base_route: "/dashboard/reports",
+        description: "Reports",
+        is_enabled: true,
+        actions: {
+          can_view: true,
+          can_create: false,
+          can_edit: false,
+          can_delete: false,
+          can_restore: false,
+          can_export: false,
+          can_configure: false,
+        },
+      }]),
+    }),
+  );
+  await page.evaluate(() => window.sessionStorage.clear());
+  await page.goto("/dashboard/reports");
+
+  await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Export CSV" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Export chart" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save as" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save changes" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
+
+  await page.keyboard.press("Control+K");
+  await expect(page.getByText("Build report", { exact: true })).toBeHidden();
+});

@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: module-builder-revamp.spec.ts >> edits and reorders fields from one module-level save on mobile
-- Location: tests/e2e/module-builder-revamp.spec.ts:123:5
+- Name: command-palette-actions.spec.ts >> opens contract creation as a routed full-page workflow
+- Location: tests/e2e/command-palette-actions.spec.ts:127:5
 
 # Error details
 

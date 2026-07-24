@@ -1,21 +1,19 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Command } from "cmdk";
 import { CommandIcon, CornerDownLeft, Search } from "lucide-react";
 
 import { Dialog, DialogBackdrop, DialogPanel } from "@/components/ui/dialog";
-import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { useAccessibleModules, type AccessibleModuleActions } from "@/hooks/useAccessibleModules";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getDependentModuleDefinitions, getModuleDefinition, getModuleRegistryLabel, getModuleRoute, isModuleVisibleInNavigation, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
+import { describeRecentDashboardPage, getRecentPagesSnapshot, parseRecentPages, recordRecentPage, subscribeToRecentPages } from "@/lib/recent-pages";
 import { canonicalizeDashboardHref } from "@/lib/routes";
-
-const RECENT_PAGES_KEY = "lynk:command-palette:recent-pages";
-const RECENT_PAGE_LIMIT = 6;
 
 type PaletteLink = {
   label: string;
@@ -38,18 +36,6 @@ type SearchResponse = {
   results: SearchResult[];
 };
 
-function readRecentPages(): PaletteLink[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const stored = window.localStorage.getItem(RECENT_PAGES_KEY);
-    const parsed = stored ? JSON.parse(stored) : [];
-    return Array.isArray(parsed) ? parsed.slice(0, RECENT_PAGE_LIMIT) : [];
-  } catch {
-    window.localStorage.removeItem(RECENT_PAGES_KEY);
-    return [];
-  }
-}
-
 async function fetchGlobalSearch(query: string): Promise<SearchResponse> {
   const trimmedQuery = query.trim();
   const params = new URLSearchParams({
@@ -64,15 +50,36 @@ async function fetchGlobalSearch(query: string): Promise<SearchResponse> {
   return body as SearchResponse;
 }
 
+function canUseQuickAction(
+  actions: AccessibleModuleActions | undefined,
+  requiredAction: "create" | "edit" | "configure" | "export" = "create",
+) {
+  if (!actions) return false;
+  if (requiredAction === "edit") return actions.can_edit;
+  if (requiredAction === "configure") return actions.can_configure;
+  if (requiredAction === "export") return actions.can_export;
+  return actions.can_create;
+}
+
 export default function GlobalCommandPalette() {
   const router = useRouter();
-  const { modules } = useAccessibleModules();
-  const { isAdmin } = useSidebarUser();
+  const pathname = usePathname();
+  const { modules, isLoading: modulesLoading } = useAccessibleModules();
+  const { isAdmin, isLoading: userLoading, user } = useSidebarUser();
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [recentPages, setRecentPages] = useState<PaletteLink[]>(readRecentPages);
   const deferredQuery = useDeferredValue(query.trim());
+  const getRecentSnapshot = useCallback(() => getRecentPagesSnapshot(user?.id), [user?.id]);
+  const recentPagesSnapshot = useSyncExternalStore(
+    subscribeToRecentPages,
+    getRecentSnapshot,
+    () => "[]",
+  );
+  const recentPages = useMemo(
+    () => parseRecentPages(recentPagesSnapshot).filter((item) => item.href !== pathname),
+    [pathname, recentPagesSnapshot],
+  );
 
   useEffect(() => {
     function onKeyDown(event: KeyboardEvent) {
@@ -97,6 +104,12 @@ export default function GlobalCommandPalette() {
     return () => window.clearTimeout(focusTimer);
   }, [open]);
 
+  useEffect(() => {
+    if (!user?.id || userLoading || modulesLoading) return;
+    const recentPage = describeRecentDashboardPage(pathname, modules, isAdmin);
+    if (recentPage) recordRecentPage(user.id, recentPage);
+  }, [isAdmin, modules, modulesLoading, pathname, user?.id, userLoading]);
+
   const searchQuery = useQuery({
     queryKey: ["global-search", deferredQuery],
     queryFn: () => fetchGlobalSearch(deferredQuery),
@@ -108,8 +121,8 @@ export default function GlobalCommandPalette() {
     const items = [
       { label: "Dashboard", subtitle: "Go to the home dashboard", href: "/dashboard", group: "Quick Links" },
       ...modules.flatMap((module) => {
-        if (!module.actions?.can_create) return [];
         if (module.name.startsWith("custom_")) {
+          if (!module.actions?.can_create) return [];
           const label = getModuleDisplayName(module.name, module.description ?? undefined);
           const route = getModuleRoute(module.name, module.base_route);
           return route ? [{
@@ -119,13 +132,27 @@ export default function GlobalCommandPalette() {
             group: "Actions",
           }] : [];
         }
-        const action = getModuleDefinition(module.name)?.quickAction;
-        return action ? [{
+        const definition = getModuleDefinition(module.name);
+        if (definition?.adminOnly && !isAdmin) return [];
+        const action = definition?.quickAction;
+        const ownActions = action && canUseQuickAction(module.actions, action.requiredAction) ? [{
           label: action.label,
           subtitle: action.description,
           href: action.href,
           group: "Actions",
         }] : [];
+        const dependentActions = getDependentModuleDefinitions(module.name).flatMap((dependent) => {
+          if (dependent.adminOnly && !isAdmin) return [];
+          const dependentAction = dependent.quickAction;
+          if (!dependentAction || !canUseQuickAction(module.actions, dependentAction.requiredAction)) return [];
+          return [{
+            label: dependentAction.label,
+            subtitle: dependentAction.description,
+            href: dependentAction.href,
+            group: "Actions",
+          }];
+        });
+        return [...ownActions, ...dependentActions];
       }),
       ...modules
         .filter((module) => module.base_route)
@@ -136,12 +163,14 @@ export default function GlobalCommandPalette() {
           href: getModuleRoute(module.name, module.base_route),
           group: "Modules",
         })),
-      ...modules.flatMap((module) => getDependentModuleDefinitions(module.name).map((dependent) => ({
-        label: dependent.label,
-        subtitle: dependent.route,
-        href: dependent.route,
-        group: "Modules",
-      }))),
+      ...modules.flatMap((module) => getDependentModuleDefinitions(module.name)
+        .filter((dependent) => !dependent.adminOnly || isAdmin)
+        .map((dependent) => ({
+          label: dependent.label,
+          subtitle: dependent.route,
+          href: dependent.route,
+          group: "Modules",
+        }))),
       ...(isAdmin ? SETTINGS_NAV_ITEMS.map((item) => ({
         label: item.label,
         subtitle: item.href,
@@ -174,19 +203,8 @@ export default function GlobalCommandPalette() {
     return Array.from(groups.entries());
   }, [searchQuery.data?.results]);
 
-  function handleNavigate(href: string, label: string, subtitle?: string) {
+  function handleNavigate(href: string) {
     const canonicalHref = canonicalizeDashboardHref(href);
-    const recentItem: PaletteLink = {
-      label,
-      subtitle: subtitle || canonicalHref,
-      href: canonicalHref,
-      group: "Recent",
-    };
-    setRecentPages((current) => {
-      const next = [recentItem, ...current.filter((item) => item.href !== canonicalHref)].slice(0, RECENT_PAGE_LIMIT);
-      window.localStorage.setItem(RECENT_PAGES_KEY, JSON.stringify(next));
-      return next;
-    });
     setQuery("");
     setOpen(false);
     router.push(canonicalHref);
@@ -248,7 +266,7 @@ export default function GlobalCommandPalette() {
                 {!deferredQuery.length ? (
                   <>
                     {recentPages.length ? (
-                      <Command.Group className="mb-3">
+                      <Command.Group className="mb-3" data-testid="recent-pages">
                         <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
                           Recent Pages
                         </div>
@@ -256,7 +274,7 @@ export default function GlobalCommandPalette() {
                           <Command.Item
                             key={`recent-${item.href}`}
                             value={`recent-${item.href}`}
-                            onSelect={() => handleNavigate(item.href, item.label, item.subtitle)}
+                            onSelect={() => handleNavigate(item.href)}
                             className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-3 py-3 text-sm text-copy-secondary outline-none data-[selected=true]:bg-action-primary-muted data-[selected=true]:text-copy-primary"
                           >
                             <div>
@@ -275,7 +293,7 @@ export default function GlobalCommandPalette() {
                       <Command.Item
                         key={item.href}
                         value={item.href}
-                        onSelect={() => handleNavigate(item.href, item.label, item.subtitle)}
+                        onSelect={() => handleNavigate(item.href)}
                         className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-3 py-3 text-sm text-copy-secondary outline-none data-[selected=true]:bg-action-primary-muted data-[selected=true]:text-copy-primary"
                       >
                         <div>
@@ -297,7 +315,7 @@ export default function GlobalCommandPalette() {
                           <Command.Item
                             key={`module-${item.href}`}
                             value={`module-${item.label}-${item.href}`}
-                            onSelect={() => handleNavigate(item.href, item.label, item.subtitle)}
+                            onSelect={() => handleNavigate(item.href)}
                             className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-3 py-3 text-sm text-copy-secondary outline-none data-[selected=true]:bg-action-primary-muted data-[selected=true]:text-copy-primary"
                           >
                             <div>
@@ -333,7 +351,7 @@ export default function GlobalCommandPalette() {
                             <Command.Item
                               key={`${item.module_key}-${item.record_id}`}
                               value={`${item.module_key}-${item.record_id}-${item.title}`}
-                              onSelect={() => handleNavigate(item.href, item.title, item.subtitle ?? group)}
+                              onSelect={() => handleNavigate(item.href)}
                               className="cursor-pointer rounded-[var(--radius-control)] px-3 py-3 outline-none data-[selected=true]:bg-action-primary-muted"
                             >
                               <div className="text-sm font-medium text-copy-primary">{item.title}</div>

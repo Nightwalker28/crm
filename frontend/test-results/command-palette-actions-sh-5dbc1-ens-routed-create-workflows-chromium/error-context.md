@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: module-builder-revamp.spec.ts >> adds a field in the inspector and exposes shared builder destinations
-- Location: tests/e2e/module-builder-revamp.spec.ts:145:5
+- Name: command-palette-actions.spec.ts >> shows only permitted module actions and opens routed create workflows
+- Location: tests/e2e/command-palette-actions.spec.ts:92:5
 
 # Error details
 

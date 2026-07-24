@@ -241,6 +241,13 @@ export function useCatalogRecordActions(kind: CatalogKind) {
   const queryClient = useQueryClient();
   const queryKey = ["catalog", kind];
 
+  const createMutation = useMutation({
+    mutationFn: (payload: CatalogRecordPayload) => createCatalogRecord(kind, payload),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
   const updateMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: CatalogRecordPayload }) => updateCatalogRecord(kind, id, payload),
     onSuccess: async (_record, variables) => {
@@ -272,10 +279,11 @@ export function useCatalogRecordActions(kind: CatalogKind) {
   });
 
   return {
+    createRecord: (payload: CatalogRecordPayload) => createMutation.mutateAsync(payload),
     updateRecord: (id: number, payload: CatalogRecordPayload) => updateMutation.mutateAsync({ id, payload }),
     uploadMedia: (id: number, file: File) => uploadMutation.mutateAsync({ id, file }),
     deleteRecord: (id: number) => deleteMutation.mutateAsync(id),
-    isSaving: updateMutation.isPending || uploadMutation.isPending,
+    isSaving: createMutation.isPending || updateMutation.isPending || uploadMutation.isPending,
     isDeleting: deleteMutation.isPending,
   };
 }

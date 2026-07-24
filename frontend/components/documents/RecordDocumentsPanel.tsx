@@ -10,6 +10,8 @@ import { Card } from "@/components/ui/Card";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { useDocumentActions, useDocuments } from "@/hooks/useDocuments";
+import type { DocumentItem } from "@/hooks/useDocuments";
+import { useConfirm } from "@/hooks/useConfirm";
 import type { RecordModuleKey } from "@/types/record-activity";
 
 type Props = {
@@ -17,12 +19,13 @@ type Props = {
   entityId: string | number;
 };
 
-function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+function errorMessage(_error: unknown, fallback: string) {
+  return fallback;
 }
 
 export default function RecordDocumentsPanel({ moduleKey, entityId }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { confirm } = useConfirm();
   const [title, setTitle] = useState("");
   const documentsQuery = useDocuments({ moduleKey, entityId, limit: 25 });
   const { uploadDocument, deleteDocument, isUploadingDocument, isDeletingDocument } = useDocumentActions({ moduleKey, entityId });
@@ -44,9 +47,16 @@ export default function RecordDocumentsPanel({ moduleKey, entityId }: Props) {
     }
   }
 
-  async function handleDelete(documentId: number) {
+  async function handleDelete(document: DocumentItem) {
+    const confirmed = await confirm({
+      title: "Remove document?",
+      description: `Move "${document.title}" to the recycle bin?`,
+      confirmLabel: "Remove",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
     try {
-      await deleteDocument(documentId);
+      await deleteDocument(document.id);
       toast.success("Document removed.");
     } catch (error) {
       toast.error(errorMessage(error, "Failed to delete document."));
@@ -91,7 +101,7 @@ export default function RecordDocumentsPanel({ moduleKey, entityId }: Props) {
           <DocumentList
             documents={documentsQuery.data?.results ?? []}
             emptyText="No documents are linked to this record yet."
-            onDelete={(documentId) => void handleDelete(documentId)}
+            onDelete={(document) => void handleDelete(document)}
             isDeleting={isDeletingDocument}
           />
         )}

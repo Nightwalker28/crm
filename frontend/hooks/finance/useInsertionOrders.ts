@@ -72,16 +72,6 @@ type InsertionOrdersResponse = {
 const DEFAULT_ERROR = "Something went wrong while loading insertion orders";
 const INSERTION_ORDER_LIST_STALE_TIME_MS = 30_000;
 
-function toApiErrorMessage(body: unknown, fallback: string) {
-  if (body && typeof body === "object") {
-    const detail = "detail" in body ? body.detail : undefined;
-    const message = "message" in body ? body.message : undefined;
-    if (typeof detail === "string" && detail.trim()) return detail;
-    if (typeof message === "string" && message.trim()) return message;
-  }
-  return fallback;
-}
-
 async function fetchInsertionOrders(
   page: number,
   pageSize: number,
@@ -110,13 +100,12 @@ async function fetchInsertionOrders(
 
   const res = await apiFetch(`/finance/insertion-orders?${params.toString()}`);
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(toApiErrorMessage(body, `Failed to load insertion orders (${res.status})`));
+    throw new Error("We could not load insertion orders.");
   }
   return res.json();
 }
 
-async function createInsertionOrder(payload: InsertionOrderPayload): Promise<InsertionOrder> {
+export async function createInsertionOrder(payload: InsertionOrderPayload): Promise<InsertionOrder> {
   const res = await apiFetch("/finance/insertion-orders", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -124,8 +113,7 @@ async function createInsertionOrder(payload: InsertionOrderPayload): Promise<Ins
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(toApiErrorMessage(body, `Failed to create insertion order (${res.status})`));
+    throw new Error("We could not create this insertion order.");
   }
 
   return res.json();
@@ -139,8 +127,7 @@ export async function updateInsertionOrder(id: number, payload: InsertionOrderPa
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(toApiErrorMessage(body, `Failed to update insertion order (${res.status})`));
+    throw new Error("We could not update this insertion order.");
   }
 
   return res.json();
@@ -149,8 +136,7 @@ export async function updateInsertionOrder(id: number, payload: InsertionOrderPa
 async function fetchInsertionOrder(id: number | string): Promise<InsertionOrder> {
   const res = await apiFetch(`/finance/insertion-orders/${id}`);
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(toApiErrorMessage(body, `Failed to load insertion order (${res.status})`));
+    throw new Error("We could not load this insertion order.");
   }
   return res.json();
 }
@@ -161,8 +147,7 @@ async function deleteInsertionOrder(id: number): Promise<void> {
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(toApiErrorMessage(body, `Failed to delete insertion order (${res.status})`));
+    throw new Error("We could not delete this insertion order.");
   }
 }
 

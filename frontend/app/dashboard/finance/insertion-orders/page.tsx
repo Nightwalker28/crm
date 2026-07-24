@@ -1,17 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 import InsertionOrdersList from "@/components/finance/insertionOrderList";
-import InsertionOrderDialog from "@/components/finance/insertionOrderDialog";
 import { useInsertionOrders } from "@/hooks/finance/useInsertionOrders";
 import InsertionOrdersHeader from "../../../../components/finance/InsertionOrdersHeader";
 import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
-import type { InsertionOrder, InsertionOrderPayload, InsertionOrderSortState } from "@/hooks/finance/useInsertionOrders";
+import type { InsertionOrderSortState } from "@/hooks/finance/useInsertionOrders";
 import { Button } from "@/components/ui/button";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useSavedViews } from "@/hooks/useSavedViews";
@@ -23,7 +21,6 @@ type InsertionOrderTableSortState = { column: string; direction: "asc" | "desc" 
 
 export default function InsertionOrdersPage() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { data: customFields = [] } = useModuleCustomFields("finance_io");
   const { fields: moduleFields } = useModuleFieldConfigs("finance_io");
   const definition = useMemo(
@@ -31,9 +28,6 @@ export default function InsertionOrdersPage() {
     [customFields, moduleFields],
   );
   const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.finance_io;
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const createRequested = searchParams.get("action") === "create";
-  const [selectedOrder, setSelectedOrder] = useState<InsertionOrder | null>(null);
   const {
     views,
     selectedViewId,
@@ -77,10 +71,6 @@ export default function InsertionOrdersPage() {
     totalCount,
     rangeStart,
     rangeEnd,
-    createOrder,
-    updateOrder,
-    isSaving,
-    isDeleting,
   } = useInsertionOrders(visibleColumns, activeFilters, sort);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const currentPageIds = useMemo(() => orders.map((order) => order.id), [orders]);
@@ -114,26 +104,9 @@ export default function InsertionOrdersPage() {
     }));
   }
 
-  const handleCreateClick = () => {
-    setSelectedOrder(null);
-    setDialogOpen(true);
-  };
-
-  const handleSubmit = async (payload: InsertionOrderPayload) => {
-    if (selectedOrder) {
-      await updateOrder(selectedOrder.id, payload);
-      toast.success("Insertion order updated.");
-      return;
-    }
-
-    await createOrder(payload);
-    toast.success("Insertion order created.");
-  };
-
   return (
     <div className="flex flex-col gap-6">
         <InsertionOrdersHeader
-          onCreateClick={handleCreateClick}
           onUploadSuccess={refresh}
           selectedIds={selectedIds}
           currentPageIds={currentPageIds}
@@ -236,18 +209,6 @@ export default function InsertionOrdersPage() {
           onPageChange={goToPage}
           onPageSizeChange={onPageSizeChange}
         />
-
-      <InsertionOrderDialog
-        open={dialogOpen || createRequested}
-        order={selectedOrder}
-        isSubmitting={isSaving || isDeleting}
-        onClose={() => {
-          setDialogOpen(false);
-          setSelectedOrder(null);
-          router.replace("/dashboard/finance/insertion-orders");
-        }}
-        onSubmit={handleSubmit}
-      />
     </div>
   );
 }

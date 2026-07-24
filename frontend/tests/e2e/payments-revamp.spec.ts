@@ -82,3 +82,55 @@ test("Payments distinguishes filtered empty results", async ({ page }) => {
   await expect(page.getByText("No payments match these filters")).toBeVisible();
   await expect(page.getByRole("button", { name: "Clear filters" })).toBeVisible();
 });
+
+test("Payment recording provides a responsive routed workflow with bounded amounts", async ({ page }) => {
+  let submittedPayload: { amount: number; payment_method?: string | null } | null = null;
+  await page.route(`**/finance/pos-invoices/${invoiceId}/payments`, async (route) => {
+    submittedPayload = route.request().postDataJSON() as { amount: number; payment_method?: string | null };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...invoiceFixture(),
+        amount_paid: 1000,
+        balance_due: 0,
+        status: "paid",
+        payment_status: "paid",
+      }),
+    });
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/dashboard/finance/payments/record");
+
+  await expect(page.getByRole("heading", { name: "Record payment" })).toBeVisible();
+  await page.getByRole("button", { name: /INV-PAY-001 · Acme Operations/ }).click();
+  await expect(page.getByLabel("Payment amount")).toHaveValue("750.00");
+
+  await page.getByLabel("Payment amount").fill("751");
+  await page.getByRole("button", { name: "Record payment", exact: true }).click();
+  await expect(page.getByText("Payment amount cannot exceed the outstanding balance.")).toBeVisible();
+
+  await page.getByLabel("Payment amount").fill("750");
+  await page.getByLabel("Payment method").fill("Card");
+  await page.getByRole("button", { name: "Record payment", exact: true }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/dashboard/finance/payments\\?recordedInvoiceId=${invoiceId}$`));
+  expect(submittedPayload).toEqual({ amount: 750, payment_method: "Card" });
+});
+
+test("Payment recording hides backend failure details", async ({ page }) => {
+  await page.route(`**/finance/pos-invoices/${invoiceId}/payments`, (route) =>
+    route.fulfill({
+      status: 409,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "SECRET ledger reconciliation failure" }),
+    }),
+  );
+  await page.goto("/dashboard/finance/payments/record");
+  await page.getByRole("button", { name: /INV-PAY-001 · Acme Operations/ }).click();
+  await page.getByRole("button", { name: "Record payment", exact: true }).click();
+
+  await expect(page.getByRole("alert")).toContainText("We could not record this payment.");
+  await expect(page.getByText(/SECRET ledger reconciliation failure/)).toHaveCount(0);
+});

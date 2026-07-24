@@ -329,17 +329,6 @@ async function readJsonSafely(res: Response) {
   }
 }
 
-function detailMessage(body: unknown, fallback: string) {
-  if (body && typeof body === "object" && "detail" in body) {
-    const detail = (body as { detail?: unknown }).detail;
-    if (typeof detail === "string") return detail;
-    if (detail && typeof detail === "object" && "message" in detail && typeof (detail as { message?: unknown }).message === "string") {
-      return (detail as { message: string }).message;
-    }
-  }
-  return fallback;
-}
-
 const INVALID_CLIENT_SESSION_DETAILS = new Set([
   "Invalid client token",
   "Invalid client token type",
@@ -364,7 +353,7 @@ async function crmJson<T>(path: string, init: RequestInit = {}, fallback = "Requ
     },
   });
   const body = await readJsonSafely(res);
-  if (!res.ok) throw new Error(detailMessage(body, fallback));
+  if (!res.ok) throw new Error(fallback);
   return body as T;
 }
 
@@ -382,7 +371,7 @@ async function publicJson<T>(path: string, init: RequestInit = {}, fallback = "R
   const body = await readJsonSafely(res);
   if (!res.ok) {
     if (shouldClearClientToken(res.status, body, Boolean(token))) clearClientToken();
-    throw new Error(detailMessage(body, fallback));
+    throw new Error(fallback);
   }
   return body as T;
 }
@@ -400,7 +389,7 @@ async function publicBlob(path: string, init: RequestInit = {}, fallback = "Requ
   if (!res.ok) {
     const body = await readJsonSafely(res);
     if (shouldClearClientToken(res.status, body, Boolean(token))) clearClientToken();
-    throw new Error(detailMessage(body, fallback));
+    throw new Error(fallback);
   }
   return res.blob();
 }

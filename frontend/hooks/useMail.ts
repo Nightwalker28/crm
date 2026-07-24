@@ -122,7 +122,7 @@ async function fetchMailContext(): Promise<MailContext> {
   const res = await apiFetch("/mail/context");
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load mail context.");
+    throw new Error("We could not load mail connection details.");
   }
   return body as MailContext;
 }
@@ -148,7 +148,7 @@ async function fetchMailMessages({
   const res = await apiFetch(`/mail/messages?${params.toString()}`);
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load mail messages.");
+    throw new Error("We could not load mail messages.");
   }
   return body as MailMessageList;
 }
@@ -162,7 +162,7 @@ async function connectMailProvider(provider: OAuthMailProvider): Promise<MailPro
   const res = await apiFetch(`/mail/connect/${provider}`, { method: "POST" });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || `Failed to connect ${provider} mail.`);
+    throw new Error("We could not start the mailbox connection.");
   }
   return body as MailProviderConnectResponse;
 }
@@ -175,7 +175,7 @@ async function connectImapSmtpProvider(payload: ImapSmtpConnectPayload): Promise
   });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to connect IMAP/SMTP mail.");
+    throw new Error("We could not verify the IMAP/SMTP mailbox.");
   }
   return body as MailContext;
 }
@@ -184,7 +184,7 @@ async function syncMailProvider(provider: MailProvider): Promise<MailSyncRespons
   const res = await apiFetch(`/mail/sync/${provider}`, { method: "POST" });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || `Failed to sync ${provider} mail.`);
+    throw new Error("We could not sync this mailbox.");
   }
   return body as MailSyncResponse;
 }
@@ -193,7 +193,7 @@ async function disconnectMailProvider(provider: MailProvider): Promise<MailDisco
   const res = await apiFetch(`/mail/connect/${provider}`, { method: "DELETE" });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || `Failed to disconnect ${provider} mail.`);
+    throw new Error("We could not disconnect this mailbox.");
   }
   return body as MailDisconnectResponse;
 }
@@ -206,7 +206,7 @@ async function sendMailMessage(payload: MailSendPayload): Promise<MailMessage> {
   });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to send mail.");
+    throw new Error("We could not send this email.");
   }
   return body as MailMessage;
 }
@@ -215,7 +215,7 @@ async function fetchMailMessage(messageId: number | string): Promise<MailMessage
   const res = await apiFetch(`/mail/messages/${messageId}`);
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load mail message.");
+    throw new Error("We could not load this mail message.");
   }
   return body as MailMessage;
 }
@@ -228,7 +228,7 @@ async function linkMailMessage({ messageId, payload }: { messageId: number; payl
   });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to link mail message.");
+    throw new Error("We could not link this mail message.");
   }
   return body as MailMessage;
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import Link from "next/link";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { Button } from "@/components/ui/button";
 import { Plus } from "lucide-react";
@@ -10,7 +11,6 @@ import { buildSavedViewExportPayload } from "@/lib/savedViewQuery";
 
 interface InsertionOrdersHeaderProps {
   onUploadSuccess: () => void;
-  onCreateClick: () => void;
   viewSelector?: ReactNode;
   selectedIds?: number[];
   currentPageIds?: number[];
@@ -19,7 +19,6 @@ interface InsertionOrdersHeaderProps {
 
 export default function InsertionOrdersHeader({
   onUploadSuccess,
-  onCreateClick,
   viewSelector,
   selectedIds = [],
   currentPageIds = [],
@@ -44,9 +43,11 @@ export default function InsertionOrdersHeader({
             currentPageIds={currentPageIds}
           />
 
-          <Button onClick={onCreateClick}>
-            <Plus />
-            <span className="hidden sm:inline">New Order</span>
+          <Button asChild>
+            <Link href="/dashboard/finance/insertion-orders/new">
+              <Plus />
+              <span className="hidden sm:inline">New Order</span>
+            </Link>
           </Button>
         </>
       }

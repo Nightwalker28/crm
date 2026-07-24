@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type Ref } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 
@@ -31,6 +31,8 @@ export type LinkedRecordOption = {
 };
 
 type Props = {
+  inputId?: string;
+  inputRef?: Ref<HTMLInputElement>;
   recordType: LinkedRecordType;
   valueId: number | null;
   displayValue: string;
@@ -100,7 +102,7 @@ async function searchLinkedRecords(
   const res = await apiFetch(endpoint);
   const body = await res.json().catch(() => ({ results: [] }));
   if (!res.ok) {
-    throw new Error(body?.detail ?? `Failed with ${res.status}`);
+    throw new Error("We could not search linked records.");
   }
 
   const results = Array.isArray(body?.results) ? body.results : [];
@@ -203,6 +205,8 @@ async function searchLinkedRecords(
 }
 
 export default function LinkedRecordPicker({
+  inputId,
+  inputRef,
   recordType,
   valueId,
   displayValue,
@@ -233,6 +237,8 @@ export default function LinkedRecordPicker({
     <div className="relative">
       <div className="flex gap-2">
         <Input
+          id={inputId}
+          ref={inputRef}
           value={displayValue}
           disabled={disabled}
           onFocus={() => setIsOpen(true)}

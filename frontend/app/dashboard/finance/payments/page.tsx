@@ -16,6 +16,7 @@ import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePaymentInvoices, type PosInvoice, type PosInvoiceSortState, type RecordPaymentPayload } from "@/hooks/finance/usePosInvoices";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import type { SavedViewConfig } from "@/hooks/useSavedViews";
@@ -28,6 +29,10 @@ const PAYMENT_DEFAULT_CONFIG: SavedViewConfig = {
 };
 
 export default function PaymentsPage() {
+  const { modules } = useAccessibleModules();
+  const invoiceActions = modules.find((module) => module.name === "finance_pos")?.actions;
+  const canCreateInvoice = Boolean(invoiceActions?.can_create);
+  const canRecordPayment = Boolean(invoiceActions?.can_edit);
   const { fields: moduleFields } = useModuleFieldConfigs("finance_pos");
   const definition = useMemo(() => buildModuleViewDefinition("finance_pos", [], moduleFields), [moduleFields]);
   const defaultConfig = definition ? PAYMENT_DEFAULT_CONFIG : MODULE_VIEW_DEFAULTS.finance_pos;
@@ -58,7 +63,7 @@ export default function PaymentsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader title="Payments" description="Track invoice balances and record customer payments without leaving the receivables workflow." eyebrow={totalCount ? `${totalCount} invoice${totalCount === 1 ? "" : "s"} in this view` : undefined} actions={<Button asChild variant="outline"><Link href="/dashboard/finance/pos"><ReceiptText />Open invoices</Link></Button>} />
+      <PageHeader title="Payments" description="Track invoice balances and record customer payments without leaving the receivables workflow." eyebrow={totalCount ? `${totalCount} invoice${totalCount === 1 ? "" : "s"} in this view` : undefined} actions={<><Button asChild variant="outline"><Link href="/dashboard/finance/pos"><ReceiptText />Open invoices</Link></Button>{canRecordPayment ? <Button asChild><Link href="/dashboard/finance/payments/record">Record payment</Link></Button> : null}</>} />
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -71,11 +76,11 @@ export default function PaymentsPage() {
         selectionNoun="invoice"
         onClearSelection={() => setSelectedIds([])}
         viewControls={<><SavedViewSelector moduleKey="finance_pos" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} /><Select value={paymentStatus} onValueChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, payment_status: value } }))}><SelectTrigger className="w-40" aria-label="Payment status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All payments</SelectItem><SelectItem value="unpaid">Unpaid</SelectItem><SelectItem value="partial">Partially paid</SelectItem><SelectItem value="paid">Paid</SelectItem><SelectItem value="refunded">Refunded</SelectItem></SelectContent></Select></>}
-        actionControls={selectedInvoice ? <Button type="button" size="sm" disabled={selectedInvoice.balance_due <= 0 || selectedInvoice.status === "void" || selectedInvoice.payment_status === "refunded"} onClick={() => setPaymentInvoice(selectedInvoice)}>Record selected payment</Button> : selectedIds.length > 1 ? <span className="text-xs text-copy-muted">Select one invoice to record a payment</span> : null}
+        actionControls={canRecordPayment ? selectedInvoice ? <Button type="button" size="sm" disabled={selectedInvoice.balance_due <= 0 || selectedInvoice.status === "void" || selectedInvoice.payment_status === "refunded"} onClick={() => setPaymentInvoice(selectedInvoice)}>Record selected payment</Button> : selectedIds.length > 1 ? <span className="text-xs text-copy-muted">Select one invoice to record a payment</span> : null : null}
       />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(filters) => setDraftConfig((current) => ({ ...current, filters }))} hideHeader />
       {error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"><span>We could not load payments. Check your connection and try again.</span><Button type="button" variant="outline" size="sm" onClick={() => void refresh()}>Try again</Button></div> : null}
-      <PaymentsTable invoices={invoices} visibleColumns={visibleColumns} isLoading={isLoading} isRefreshing={isFetching && !isLoading} selectedIds={selectedIds} sort={sort} hasActiveFilters={hasActiveFilters} onSortChange={(nextSort) => setDraftConfig((current) => ({ ...current, sort: nextSort }))} onToggle={(id, checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((item) => item !== id))} onTogglePage={(checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, ...currentPageIds])) : current.filter((id) => !currentPageIds.includes(id)))} onRecordPayment={setPaymentInvoice} onClearFilters={clearFilters} />
+      <PaymentsTable invoices={invoices} visibleColumns={visibleColumns} isLoading={isLoading} isRefreshing={isFetching && !isLoading} selectedIds={selectedIds} sort={sort} hasActiveFilters={hasActiveFilters} canCreateInvoice={canCreateInvoice} canRecordPayment={canRecordPayment} onSortChange={(nextSort) => setDraftConfig((current) => ({ ...current, sort: nextSort }))} onToggle={(id, checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((item) => item !== id))} onTogglePage={(checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, ...currentPageIds])) : current.filter((id) => !currentPageIds.includes(id)))} onRecordPayment={setPaymentInvoice} onClearFilters={clearFilters} />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
       <RecordPaymentDialog key={paymentInvoice?.id ?? "closed"} open={Boolean(paymentInvoice)} invoice={paymentInvoice} isSubmitting={isRecordingPayment} onClose={() => setPaymentInvoice(null)} onSubmit={submitPayment} />
     </div>

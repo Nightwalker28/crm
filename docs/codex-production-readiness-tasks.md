@@ -409,8 +409,8 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 
 - **Completed:** 2026-07-03
 - **Source items:** CAT-09, CAT-10, CAT-11, CAT-17, CAT-18, CAT-19, FIN-43, FIN-44, FIN-46, FIN-48, FIN-49
-- **Files:** `frontend/components/catalog/CatalogRecordDialog.tsx`, `frontend/components/finance/insertionOrderDialog.tsx`
-- **Result:** Catalog create/edit now shares a single validation path for disabled state and submit, matching backend constraints for required name, 3-letter uppercase currency, non-negative public unit price, and blank-or-non-negative stock quantity. Insertion orders now validate required customer context, optional numeric totals, effective/due date order, and service start/end date order before submit, with inline field errors using the same helpers as the submit guard.
+- **Files:** `frontend/components/catalog/CatalogRecordFormPage.tsx`, `frontend/components/finance/insertionOrderDialog.tsx`
+- **Result:** Catalog create/edit shares a routed form and one validation path for disabled state and submit, matching backend constraints for required name, 3-letter uppercase currency, non-negative public unit price, and blank-or-non-negative stock quantity. Insertion orders validate required customer context, optional numeric totals, effective/due date order, and service start/end date order before submit, with inline field errors using the same helpers as the submit guard.
 - **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
 
 ## FE-FORMS-CATALOG-TABLE-ACTIONS — Finish catalog table rendering and delete confirmation
@@ -425,8 +425,8 @@ Every task should satisfy the applicable shared criteria below instead of repeat
 
 - **Completed:** 2026-07-03
 - **Source items:** CON-10, CON-15, CON-16, CAL-10, CAL-15
-- **Files:** `frontend/components/contracts/CreateContractDialog.tsx`, `frontend/components/contracts/ContractsTable.tsx`, `frontend/components/calendar/CalendarEventDialog.tsx`, `frontend/app/dashboard/calendar/page.tsx`
-- **Result:** Contract creation now validates the same parsed amount and optional linked IDs that submit sends, preventing invalid optional fields from becoming `NaN`; the contracts table fallback now renders only primitive values so unexpected configured fields cannot show `[object Object]`. Calendar event dialogs now reset from open/event/draft inputs directly instead of relying on a parent key remount, and they block end times that are not after start times with inline feedback matching the backend contract.
+- **Files:** `frontend/components/contracts/ContractRecordFormPage.tsx`, `frontend/components/contracts/ContractsTable.tsx`, `frontend/components/calendar/CalendarEventDialog.tsx`, `frontend/app/dashboard/calendar/page.tsx`
+- **Result:** Contract creation and editing share a dedicated routed form that validates the parsed amount sent to the API; linked IDs are stored as nullable numbers instead of passing invalid values such as `NaN`. The contracts table fallback renders only primitive values so unexpected configured fields cannot show `[object Object]`. Calendar event dialogs reset from open/event/draft inputs directly instead of relying on a parent key remount, and they block end times that are not after start times with inline feedback matching the backend contract.
 - **Verification:** `docker compose exec -T frontend npm run lint`; `docker compose exec -T frontend npm run build`; `git diff --check`
 
 ## FE-FORMS-SALES-DISPLAY-POLICY — Normalize website labels and quote-number policy

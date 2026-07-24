@@ -34,7 +34,7 @@ function providerLabel(provider: string) {
 type Props = {
   documents: DocumentItem[];
   emptyText?: string;
-  onDelete?: (documentId: number) => void;
+  onDelete?: (document: DocumentItem) => void;
   isDeleting?: boolean;
   sort?: DocumentSortState;
   onSortChange?: (sort: DocumentSortState) => void;
@@ -55,11 +55,11 @@ const SORTABLE_COLUMNS = new Set<DocumentSortableColumn>([
   "updated_at",
 ]);
 
-function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+function errorMessage(_error: unknown, fallback: string) {
+  return fallback;
 }
 
-function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document: DocumentItem; onDelete?: (documentId: number) => void; isDeleting?: boolean; highlighted?: boolean }) {
+function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document: DocumentItem; onDelete?: (document: DocumentItem) => void; isDeleting?: boolean; highlighted?: boolean }) {
   const rowRef = useRef<HTMLTableRowElement>(null);
   const versionInputRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -189,7 +189,7 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
               View
             </Button>
             {onDelete ? (
-              <Button type="button" variant="outline" onClick={() => onDelete(document.id)} disabled={isDeleting}>
+              <Button type="button" variant="outline" onClick={() => onDelete(document)} disabled={isDeleting}>
                 <Trash2 className="h-4 w-4" />
                 Delete
               </Button>

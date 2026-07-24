@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 
 import ContractsHeader from "@/components/contracts/ContractsHeader";
 import ContractsTable from "@/components/contracts/ContractsTable";
-import CreateContractDialog from "@/components/contracts/CreateContractDialog";
+import { Button } from "@/components/ui/button";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import Pagination from "@/components/ui/Pagination";
 import SearchBar from "@/components/ui/SearchBar";
@@ -28,7 +30,7 @@ export default function ContractsPage() {
     <div className="flex flex-col gap-6">
       <ContractsHeader
         viewSelector={<SavedViewSelector moduleKey="contracts" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
-        primaryAction={<CreateContractDialog />}
+        primaryAction={<Button asChild><Link href="/dashboard/contracts/new"><Plus />New Contract</Link></Button>}
       />
       <SearchBar value={typeof activeFilters?.search === "string" ? activeFilters.search : ""} onChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: value } }))} placeholder="Search contracts" />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} />

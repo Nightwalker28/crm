@@ -1,16 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { toast } from "sonner";
 
-import InsertionOrderDialog from "@/components/finance/insertionOrderDialog";
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/button";
-import { updateInsertionOrder, useInsertionOrder, type InsertionOrderPayload } from "@/hooks/finance/useInsertionOrders";
+import { useInsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { getInsertionOrderStatusStyle } from "@/lib/statusStyles";
 
@@ -26,8 +24,6 @@ function formatMoney(amount?: number | null, currency?: string | null) {
 export default function InsertionOrderDetailPage() {
   const params = useParams<{ ioId: string }>();
   const orderQuery = useInsertionOrder(params.ioId);
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
   const order = orderQuery.data;
 
   if (orderQuery.isLoading) {
@@ -58,7 +54,7 @@ export default function InsertionOrderDetailPage() {
         backLabel="Back to insertion orders"
         title={order.io_number}
         description={order.customer_name || "Finance insertion order"}
-        primaryAction={<Button type="button" onClick={() => setDialogOpen(true)}>Edit</Button>}
+        primaryAction={<Button asChild><Link href={`/dashboard/finance/insertion-orders/${order.id}/edit`}>Edit</Link></Button>}
       />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
@@ -114,23 +110,6 @@ export default function InsertionOrderDetailPage() {
         entityId={order.id}
         recordLabel="Insertion order"
         taskSourceLabel={order.io_number}
-      />
-      <InsertionOrderDialog
-        open={dialogOpen}
-        order={order}
-        isSubmitting={saving}
-        onClose={() => setDialogOpen(false)}
-        onSubmit={async (payload: InsertionOrderPayload) => {
-          try {
-            setSaving(true);
-            await updateInsertionOrder(order.id, payload);
-            await orderQuery.refetch();
-            setDialogOpen(false);
-            toast.success("Insertion order updated.");
-          } finally {
-            setSaving(false);
-          }
-        }}
       />
     </div>
   );

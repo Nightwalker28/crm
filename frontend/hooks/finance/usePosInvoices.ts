@@ -167,7 +167,7 @@ async function recordInvoicePayment(id: number, payload: RecordPaymentPayload): 
     body: JSON.stringify(payload),
   });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorMessage(body, "We could not record this payment."));
+  if (!res.ok) throw new Error("We could not record this payment.");
   return body as PosInvoice;
 }
 

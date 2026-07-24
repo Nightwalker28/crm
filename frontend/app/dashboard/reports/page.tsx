@@ -23,6 +23,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { useConfirm } from "@/hooks/useConfirm";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { apiFetch } from "@/lib/api";
 import { downloadBlob } from "@/lib/browser";
@@ -295,6 +296,12 @@ function isoDateOffset(days: number) {
 export default function ReportsPage() {
   const queryClient = useQueryClient();
   const { confirm } = useConfirm();
+  const { modules: accessibleModules } = useAccessibleModules();
+  const reportActions = accessibleModules.find((module) => module.name === "reports")?.actions;
+  const canCreateReport = Boolean(reportActions?.can_create);
+  const canEditReport = Boolean(reportActions?.can_edit);
+  const canDeleteReport = Boolean(reportActions?.can_delete);
+  const canExportReport = Boolean(reportActions?.can_export);
   const chartRef = useRef<HTMLDivElement | null>(null);
   const [moduleKey, setModuleKey] = useState("");
   const [dimension, setDimension] = useState("");
@@ -537,18 +544,18 @@ export default function ReportsPage() {
         eyebrow={selectedModule ? `Viewing ${selectedModule.label}` : undefined}
         actions={
           <>
-            <Button type="button" variant="outline" size="sm" onClick={() => void exportCsv()} disabled={!chartData.length || Boolean(exporting)}>
+            {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={() => void exportCsv()} disabled={!chartData.length || Boolean(exporting)}>
               <FileDown />{exporting === "csv" ? "Preparing…" : "Export CSV"}
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={exportChartSvg} disabled={viewMode === "table" || !chartData.length || Boolean(exporting)}>
+            </Button> : null}
+            {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={exportChartSvg} disabled={viewMode === "table" || !chartData.length || Boolean(exporting)}>
               <Download />{exporting === "svg" ? "Preparing…" : "Export chart"}
-            </Button>
-            <Button type="button" variant="outline" size="sm" onClick={() => { setSaveName(""); setActionError(""); setSaveDialogOpen(true); }} disabled={!activeModuleKey || createMutation.isPending}>
+            </Button> : null}
+            {canCreateReport ? <Button type="button" variant="outline" size="sm" onClick={() => { setSaveName(""); setActionError(""); setSaveDialogOpen(true); }} disabled={!activeModuleKey || createMutation.isPending}>
               <Save />Save as
-            </Button>
-            <Button type="button" size="sm" onClick={() => void saveCurrentReport()} disabled={!isSavedReportDirty || updateMutation.isPending}>
+            </Button> : null}
+            {canEditReport ? <Button type="button" size="sm" onClick={() => void saveCurrentReport()} disabled={!isSavedReportDirty || updateMutation.isPending}>
               <Save />{updateMutation.isPending ? "Saving…" : "Save changes"}
-            </Button>
+            </Button> : null}
           </>
         }
       />
@@ -637,7 +644,7 @@ export default function ReportsPage() {
         </Card>
       )}
 
-      <Card className="p-4">
+      <Card id="report-builder" className="scroll-mt-6 p-4">
         <div className="mb-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
           <Field>
             <FieldLabel>Saved report</FieldLabel>
@@ -656,9 +663,9 @@ export default function ReportsPage() {
             <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedSavedId("")} disabled={!selectedSavedId}>
               Clear
             </Button>
-            <Button type="button" variant="destructive" size="sm" onClick={() => void confirmDeleteSavedReport()} disabled={!selectedSavedReport || deleteMutation.isPending}>
+            {canDeleteReport ? <Button type="button" variant="destructive" size="sm" onClick={() => void confirmDeleteSavedReport()} disabled={!selectedSavedReport || deleteMutation.isPending}>
               <Trash2 />{deleteMutation.isPending ? "Deleting…" : "Delete"}
-            </Button>
+            </Button> : null}
           </div>
         </div>
 

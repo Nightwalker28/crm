@@ -1,0 +1,260 @@
+"use client";
+
+import { useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { PlugZap, Send, Trash2 } from "lucide-react";
+import { toast } from "sonner";
+
+import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/Card";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
+import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { Pill } from "@/components/ui/Pill";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { useConfirm } from "@/hooks/useConfirm";
+import { apiFetch } from "@/lib/api";
+
+type NotificationChannel = {
+  id: number;
+  provider: string;
+  channel_name: string | null;
+  webhook_url_masked: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+type ChannelDraft = {
+  provider: string;
+  channel_name: string;
+  webhook_url: string;
+  is_active: boolean;
+};
+
+const emptyDraft: ChannelDraft = {
+  provider: "slack",
+  channel_name: "",
+  webhook_url: "",
+  is_active: true,
+};
+
+async function fetchNotificationChannels() {
+  const res = await apiFetch("/admin/notification-channels");
+  const body = await res.json().catch(() => null);
+  if (!res.ok) throw new Error("notification-channels-unavailable");
+  return Array.isArray(body?.results) ? body.results as NotificationChannel[] : [];
+}
+
+export function IntegrationWebhookWorkspace() {
+  const queryClient = useQueryClient();
+  const { confirm } = useConfirm();
+  const [draft, setDraft] = useState<ChannelDraft>(emptyDraft);
+  const [saving, setSaving] = useState(false);
+  const channelsQuery = useQuery({
+    queryKey: ["integrations", "notification-channels"],
+    queryFn: fetchNotificationChannels,
+  });
+
+  const channels = channelsQuery.data ?? [];
+  const loading = channelsQuery.isLoading || channelsQuery.isFetching;
+
+  async function createChannel() {
+    try {
+      setSaving(true);
+      const res = await apiFetch("/admin/notification-channels", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          provider: draft.provider,
+          channel_name: draft.channel_name.trim() || null,
+          webhook_url: draft.webhook_url.trim(),
+          is_active: draft.is_active,
+        }),
+      });
+      if (!res.ok) throw new Error("create-channel-failed");
+      setDraft(emptyDraft);
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "notification-channels"] });
+      toast.success("Notification channel added.");
+    } catch {
+      toast.error("The notification channel could not be added. Check the URL and try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function updateChannel(channel: NotificationChannel, payload: Partial<NotificationChannel>) {
+    try {
+      setSaving(true);
+      const res = await apiFetch(`/admin/notification-channels/${channel.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error("update-channel-failed");
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "notification-channels"] });
+      toast.success("Notification channel updated.");
+    } catch {
+      toast.error("The notification channel could not be updated. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function deleteChannel(channel: NotificationChannel) {
+    const confirmed = await confirm({
+      title: `Delete ${channel.channel_name || channel.provider} webhook?`,
+      description: "CRM event notifications will no longer be delivered through this channel.",
+      confirmLabel: "Delete webhook",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    try {
+      setSaving(true);
+      const res = await apiFetch(`/admin/notification-channels/${channel.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("delete-channel-failed");
+      await queryClient.invalidateQueries({ queryKey: ["integrations", "notification-channels"] });
+      toast.success("Notification channel deleted.");
+    } catch {
+      toast.error("The notification channel could not be deleted. Try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function sendTest(channel: NotificationChannel) {
+    try {
+      setSaving(true);
+      const res = await apiFetch(`/admin/notification-channels/${channel.id}/test`, { method: "POST" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error("test-channel-failed");
+      toast.success(body?.message ?? "Test message sent.");
+    } catch {
+      toast.error("The test message could not be sent. Check the webhook configuration and try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <section id="webhooks" aria-labelledby="webhooks-heading" className="grid scroll-mt-5 gap-5 lg:grid-cols-[380px_1fr]">
+      <Card className="px-5 py-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
+            <PlugZap size={17} className="text-copy-secondary" />
+          </div>
+          <div>
+            <h2 id="webhooks-heading" className="text-lg font-semibold text-copy-primary">Add Webhook</h2>
+            <p className="mt-1 text-sm text-copy-muted">Paste a Slack or Microsoft Teams incoming webhook URL. OAuth is not used in this phase.</p>
+          </div>
+        </div>
+
+        <FieldGroup className="mt-5 grid gap-4">
+          <Field>
+            <FieldLabel htmlFor="webhook-provider">Provider</FieldLabel>
+            <Select value={draft.provider} onValueChange={(value) => setDraft((current) => ({ ...current, provider: value }))}>
+              <SelectTrigger id="webhook-provider">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="slack">Slack</SelectItem>
+                <SelectItem value="teams">Microsoft Teams</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="webhook-channel-name">Channel Name</FieldLabel>
+            <Input id="webhook-channel-name" value={draft.channel_name} onChange={(event) => setDraft((current) => ({ ...current, channel_name: event.target.value }))} placeholder="#sales-alerts" />
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="webhook-url">Webhook URL</FieldLabel>
+            <Input
+              id="webhook-url"
+              type="url"
+              value={draft.webhook_url}
+              onChange={(event) => setDraft((current) => ({ ...current, webhook_url: event.target.value }))}
+              placeholder="https://hooks.slack.com/services/..."
+            />
+          </Field>
+          <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
+            Active
+            <input
+              type="checkbox"
+              aria-label="Create webhook as active"
+              checked={draft.is_active}
+              onChange={(event) => setDraft((current) => ({ ...current, is_active: event.target.checked }))}
+              className="h-4 w-4 accent-primary"
+            />
+          </label>
+          <Button type="button" disabled={saving || !draft.webhook_url.trim()} onClick={createChannel}>
+            Add Webhook
+          </Button>
+        </FieldGroup>
+      </Card>
+
+      <ModuleTableShell>
+        <Table className="min-w-[760px]">
+          <TableHeader>
+            <TableHeaderRow>
+              <TableHead>Provider</TableHead>
+              <TableHead>Channel</TableHead>
+              <TableHead>Webhook</TableHead>
+              <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableHeaderRow>
+          </TableHeader>
+          <TableBody>
+            {channelsQuery.isError ? (
+              <TableRow>
+                <TableCell colSpan={5} className="py-6">
+                  <IntegrationSectionError message="Notification channels could not be loaded. Existing webhooks are unchanged." retry={() => void channelsQuery.refetch()} />
+                </TableCell>
+              </TableRow>
+            ) : loading ? (
+              <TableRow>
+                <TableCell colSpan={5} className="py-10 text-center text-copy-muted">Loading notification channels...</TableCell>
+              </TableRow>
+            ) : channels.length ? (
+              channels.map((channel) => (
+                <TableRow key={channel.id}>
+                  <TableCell className="capitalize text-copy-primary">{channel.provider}</TableCell>
+                  <TableCell className="text-copy-muted">{channel.channel_name || "-"}</TableCell>
+                  <TableCell className="font-mono text-xs text-copy-muted">{channel.webhook_url_masked}</TableCell>
+                  <TableCell>
+                    <Pill
+                      bg={channel.is_active ? "bg-state-success-muted" : "bg-state-danger-muted"}
+                      text={channel.is_active ? "text-state-success" : "text-state-danger"}
+                      border={channel.is_active ? "border-state-success/40" : "border-state-danger/40"}
+                    >
+                      {channel.is_active ? "Active" : "Inactive"}
+                    </Pill>
+                  </TableCell>
+                  <TableCell>
+                    <div className="flex justify-end gap-2">
+                      <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => sendTest(channel)}>
+                        <Send size={14} />
+                        Test
+                      </Button>
+                      <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => updateChannel(channel, { is_active: !channel.is_active })}>
+                        {channel.is_active ? "Disable" : "Enable"}
+                      </Button>
+                      <Button type="button" variant="outline" size="icon-sm" disabled={saving} aria-label={`Delete ${channel.channel_name || channel.provider}`} onClick={() => deleteChannel(channel)}>
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : (
+              <TableRow>
+                <TableCell colSpan={5} className="py-10 text-center text-copy-muted">No notification channels configured.</TableCell>
+              </TableRow>
+            )}
+          </TableBody>
+        </Table>
+      </ModuleTableShell>
+    </section>
+  );
+}

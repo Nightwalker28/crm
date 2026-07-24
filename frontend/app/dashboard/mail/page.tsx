@@ -19,14 +19,6 @@ const FOLDERS = [
   { key: "sent", label: "Sent" },
   { key: "archive", label: "Archive" },
 ];
-const VARIABLE_TOKENS = [
-  "{{contact.first_name}}",
-  "{{contact.last_name}}",
-  "{{contact.full_name}}",
-  "{{contact.email}}",
-  "{{organization.name}}",
-  "{{opportunity.name}}",
-];
 const LINK_TARGET_MODULES = [
   { key: "sales_contacts", label: "Contact", searchPath: "/sales/contacts/search", idField: "contact_id", labelFields: ["first_name", "last_name", "primary_email"] },
   { key: "sales_opportunities", label: "Opportunity", searchPath: "/sales/opportunities/search", idField: "opportunity_id", labelFields: ["opportunity_name", "client"] },
@@ -148,7 +140,7 @@ async function createContactFromMessage(message: MailMessage) {
     }),
   });
   const body = await readJsonSafely(res);
-  if (!res.ok) throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to create contact.");
+  if (!res.ok) throw new Error("We could not create a contact from this message.");
   return body as { contact_id: number };
 }
 
@@ -163,7 +155,7 @@ async function searchLinkTargets(moduleKey: LinkTargetModuleKey, query: string):
   }
   const res = await apiFetch(`${moduleConfig.searchPath}?${params.toString()}`);
   const body = await readJsonSafely(res);
-  if (!res.ok) throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to search records.");
+  if (!res.ok) throw new Error("We could not search records to link.");
   const results = Array.isArray(body?.results) ? body.results : [];
   return results.map((record: Record<string, unknown>) => {
     const id = String(record[moduleConfig.idField] ?? "");
@@ -182,11 +174,6 @@ export default function MailPage() {
   const [folder, setFolder] = useState("");
   const [search, setSearch] = useState("");
   const [selectedMessageId, setSelectedMessageId] = useState<number | null>(null);
-  const [composeOpen, setComposeOpen] = useState(false);
-  const [composeProvider, setComposeProvider] = useState<MailProvider>("google");
-  const [composeTo, setComposeTo] = useState("");
-  const [composeSubject, setComposeSubject] = useState("");
-  const [composeBody, setComposeBody] = useState("");
   const [imapFormOpen, setImapFormOpen] = useState(false);
   const [imapForm, setImapForm] = useState<ImapForm>(emptyImapForm);
   const [linkModuleKey, setLinkModuleKey] = useState<LinkTargetModuleKey>("sales_contacts");
@@ -199,22 +186,16 @@ export default function MailPage() {
   const contextQuery = useMailContext();
   const messagesQuery = useMailMessages(folder || undefined, deferredSearch);
   const selectedMessageQuery = useMailMessage(selectedMessageId);
-  const { connectMail, connectImapSmtp, syncMail, disconnectMail, sendMail, linkMail, isConnectingMail, isSyncingMail, isDisconnectingMail, isSendingMail, isLinkingMail } = useMailActions();
+  const { connectMail, connectImapSmtp, syncMail, disconnectMail, linkMail, isConnectingMail, isSyncingMail, isDisconnectingMail, isLinkingMail } = useMailActions();
   const messages = useMemo(() => messagesQuery.data?.results ?? [], [messagesQuery.data?.results]);
   const selectedMessage = selectedMessageQuery.data ?? messages.find((message) => message.id === selectedMessageId) ?? null;
   const googleConnection = contextQuery.data?.connections.find((connection) => connection.provider === "google");
   const microsoftConnection = contextQuery.data?.connections.find((connection) => connection.provider === "microsoft");
   const imapSmtpConnection = contextQuery.data?.connections.find((connection) => connection.provider === "imap_smtp");
   const hasSendProvider = Boolean(googleConnection?.can_send || microsoftConnection?.can_send || imapSmtpConnection?.can_send);
-  const composeRequested = searchParams.get("action") === "compose";
   const mailConnectStatus = searchParams.get("mailConnect");
   const messageIdParam = searchParams.get("messageId");
   const requestedMessageId = messageIdParam && /^\d+$/.test(messageIdParam) ? Number(messageIdParam) : null;
-  const defaultComposeProvider = useMemo<MailProvider>(() => {
-    if (googleConnection?.can_send) return "google";
-    if (microsoftConnection?.can_send) return "microsoft";
-    return "imap_smtp";
-  }, [googleConnection?.can_send, microsoftConnection?.can_send]);
   useEffect(() => {
     if (mailConnectStatus === "connected") {
       toast.success("Gmail inbox connected.");
@@ -348,31 +329,6 @@ export default function MailPage() {
     }));
   }
 
-  async function handleSendMail() {
-    const recipients = composeTo.split(",").map((value) => value.trim()).filter(Boolean);
-    if (!recipients.length) {
-      toast.error("Add at least one recipient.");
-      return;
-    }
-    try {
-      await sendMail({
-        provider: composeOpen ? composeProvider : defaultComposeProvider,
-        to: recipients,
-        subject: composeSubject,
-        body_text: composeBody,
-      });
-      toast.success("Mail sent.");
-      setComposeTo("");
-      setComposeSubject("");
-      setComposeBody("");
-      setComposeOpen(false);
-      setFolder("sent");
-      router.replace("/dashboard/mail");
-    } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to send mail."));
-    }
-  }
-
   async function handleCreateContactFromSelectedMessage() {
     if (!selectedMessage) return;
     try {
@@ -405,16 +361,6 @@ export default function MailPage() {
     }
   }
 
-  function toggleCompose() {
-    if (composeOpen || composeRequested) {
-      setComposeOpen(false);
-      router.replace("/dashboard/mail");
-    } else {
-      setComposeProvider(defaultComposeProvider);
-      setComposeOpen(true);
-    }
-  }
-
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
@@ -442,9 +388,11 @@ export default function MailPage() {
                 IMAP/SMTP
               </Button>
             )}
-            <Button type="button" onClick={toggleCompose} disabled={!hasSendProvider}>
-              New Mail
-            </Button>
+            {hasSendProvider ? (
+              <Button asChild><Link href="/dashboard/mail/compose">New Mail</Link></Button>
+            ) : (
+              <Button type="button" disabled>New Mail</Button>
+            )}
           </>
         }
       />
@@ -487,7 +435,7 @@ export default function MailPage() {
                 {connection.last_failure_reason || connection.sync_unavailable_reason ? (
                   <div className="mt-3 flex gap-2 rounded-lg border border-amber-900/60 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    <span>{connection.last_failure_reason || connection.sync_unavailable_reason}</span>
+                    <span>The provider needs attention. Reconnect it, then try syncing again.</span>
                   </div>
                 ) : (
                   <div className="mt-3 flex gap-2 rounded-lg border border-emerald-900/50 bg-emerald-950/15 px-3 py-2 text-xs text-emerald-100">
@@ -533,69 +481,6 @@ export default function MailPage() {
           )}
         </div>
       </section>
-
-      {composeOpen || (composeRequested && hasSendProvider) ? (
-        <section className="rounded-2xl border border-neutral-800 bg-neutral-950/70 p-5">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-              <div>
-                <h2 className="text-base font-semibold text-neutral-100">Compose Mail</h2>
-                <p className="mt-1 text-sm text-neutral-500">CRM variables resolve from the linked record or matching contact recipient when mail is sent.</p>
-              </div>
-              <select
-                value={composeOpen ? composeProvider : defaultComposeProvider}
-                onChange={(event) => {
-                  setComposeProvider(event.target.value as MailProvider);
-                  setComposeOpen(true);
-                  router.replace("/dashboard/mail");
-                }}
-                className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none"
-              >
-                <option value="google" disabled={!googleConnection?.can_send}>Gmail</option>
-                <option value="microsoft" disabled={!microsoftConnection?.can_send}>Microsoft</option>
-                <option value="imap_smtp" disabled={!imapSmtpConnection?.can_send}>IMAP/SMTP</option>
-              </select>
-            </div>
-            <input
-              value={composeTo}
-              onChange={(event) => setComposeTo(event.target.value)}
-              placeholder="To: name@example.com, another@example.com"
-              className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600"
-            />
-            <input
-              value={composeSubject}
-              onChange={(event) => setComposeSubject(event.target.value)}
-              placeholder="Subject"
-              className="h-10 rounded-xl border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600"
-            />
-            <div className="flex flex-wrap gap-2">
-              {VARIABLE_TOKENS.map((token) => (
-                <button
-                  key={token}
-                  type="button"
-                  onClick={() => setComposeBody((current) => `${current}${current ? " " : ""}${token}`)}
-                  className="rounded-full border border-neutral-800 bg-neutral-900/70 px-3 py-1 text-xs text-neutral-400 hover:border-neutral-700 hover:text-neutral-200"
-                >
-                  {token}
-                </button>
-              ))}
-            </div>
-            <textarea
-              value={composeBody}
-              onChange={(event) => setComposeBody(event.target.value)}
-              placeholder="Write your message..."
-              rows={8}
-              className="rounded-xl border border-neutral-800 bg-neutral-950 px-3 py-3 text-sm text-neutral-100 outline-none placeholder:text-neutral-600"
-            />
-            <div className="flex justify-end gap-2">
-              <Button type="button" variant="outline" onClick={() => { setComposeOpen(false); router.replace("/dashboard/mail"); }}>Cancel</Button>
-              <Button type="button" onClick={() => void handleSendMail()} disabled={isSendingMail}>
-                {isSendingMail ? "Sending..." : "Send Mail"}
-              </Button>
-            </div>
-          </div>
-        </section>
-      ) : null}
 
       {imapFormOpen ? (
         <section className="rounded-2xl border border-neutral-800 bg-neutral-950/70 p-5">

@@ -1,17 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import { useMemo } from "react";
+import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
-import CatalogRecordDialog from "@/components/catalog/CatalogRecordDialog";
 import CatalogRecordsTable from "@/components/catalog/CatalogRecordsTable";
 import { Button } from "@/components/ui/button";
 import Pagination from "@/components/ui/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
 import SearchBar from "@/components/ui/SearchBar";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
-import type { CatalogKind, CatalogRecord, CatalogRecordPayload, CatalogSortState } from "@/hooks/catalog/useCatalogRecords";
+import type { CatalogKind, CatalogRecord, CatalogSortState } from "@/hooks/catalog/useCatalogRecords";
 import { useCatalogRecords } from "@/hooks/catalog/useCatalogRecords";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
@@ -23,9 +24,6 @@ type Props = {
 
 export default function CatalogRecordsPage({ kind }: Props) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const createRequested = searchParams.get("action") === "create";
   const isProduct = kind === "products";
   const title = isProduct ? "Products" : "Services";
   const lowerTitle = title.toLowerCase();
@@ -67,21 +65,10 @@ export default function CatalogRecordsPage({ kind }: Props) {
     goToPage,
     onPageSizeChange,
     refresh,
-    createRecord,
     updateRecord,
-    uploadMedia,
-    isSaving,
   } = useCatalogRecords(kind, visibleColumns, activeFilters, activeSort);
 
   const searchValue = useMemo(() => (typeof activeFilters.search === "string" ? activeFilters.search : ""), [activeFilters.search]);
-
-  async function handleSubmit(payload: CatalogRecordPayload, mediaFile: File | null) {
-    const created = await createRecord(payload);
-    if (mediaFile) {
-      await uploadMedia(created.id, mediaFile);
-    }
-    toast.success(`${isProduct ? "Product" : "Service"} created.`);
-  }
 
   function handleRowClick(record: CatalogRecord) {
     router.push(`/dashboard/catalog/${kind}/${record.id}`);
@@ -116,9 +103,7 @@ export default function CatalogRecordsPage({ kind }: Props) {
               selectedViewId={selectedViewId}
               onSelect={setSelectedViewId}
             />
-            <Button type="button" onClick={() => setDialogOpen(true)}>
-              New {isProduct ? "Product" : "Service"}
-            </Button>
+            <Button asChild><Link href={`/dashboard/catalog/${kind}/new`}><Plus />New {isProduct ? "Product" : "Service"}</Link></Button>
           </>
         }
       />
@@ -138,15 +123,9 @@ export default function CatalogRecordsPage({ kind }: Props) {
       />
 
       {error ? (
-        <div className="flex items-center justify-between rounded-lg border border-red-700 bg-red-900/40 px-4 py-3 text-sm text-red-200">
-          <span>{error}</span>
-          <button
-            type="button"
-            onClick={refresh}
-            className="text-red-100 underline underline-offset-2 hover:text-red-50"
-          >
-            Retry
-          </button>
+        <div role="alert" className="flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+          <span>Catalog {lowerTitle} could not be loaded. Check your connection and try again.</span>
+          <Button type="button" variant="outline" size="sm" onClick={refresh}>Retry</Button>
         </div>
       ) : null}
 
@@ -178,18 +157,6 @@ export default function CatalogRecordsPage({ kind }: Props) {
         isRefreshing={isFetching && !isLoading}
         onPageChange={goToPage}
         onPageSizeChange={onPageSizeChange}
-      />
-
-      <CatalogRecordDialog
-        open={dialogOpen || createRequested}
-        kind={kind}
-        record={null}
-        isSubmitting={isSaving}
-        onClose={() => {
-          setDialogOpen(false);
-          router.replace(`/dashboard/catalog/${kind}`);
-        }}
-        onSubmit={handleSubmit}
       />
     </div>
   );
