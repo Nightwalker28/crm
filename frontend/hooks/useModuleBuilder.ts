@@ -260,6 +260,28 @@ export function useCustomModuleRecord(moduleKey: string, recordId: string | numb
   };
 }
 
+export function useCreateCustomModuleRecord(moduleKey: string) {
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: async (payload: { title?: string; values: Record<string, unknown> }) =>
+      parseJson<CustomModuleRecord>(
+        await apiFetch(`/custom-modules/${moduleKey}/records`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        }),
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["custom-module-records", moduleKey] });
+    },
+  });
+
+  return {
+    createRecord: mutation.mutateAsync,
+    isSaving: mutation.isPending,
+  };
+}
+
 export function useCustomModuleRecords(moduleKey: string, page: number, search: string, sort: CustomModuleRecordSortState = null) {
   const queryClient = useQueryClient();
   const query = useQuery({
@@ -279,18 +301,6 @@ export function useCustomModuleRecords(moduleKey: string, page: number, search: 
     },
     enabled: Boolean(moduleKey),
     refetchOnWindowFocus: false,
-  });
-
-  const saveRecord = useMutation({
-    mutationFn: async (payload: { title?: string; values: Record<string, unknown> }) =>
-      parseJson<CustomModuleRecord>(
-        await apiFetch(`/custom-modules/${moduleKey}/records`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        }),
-      ),
-    onSuccess: async () => queryClient.invalidateQueries({ queryKey: ["custom-module-records", moduleKey] }),
   });
 
   const deleteRecord = useMutation({
@@ -320,10 +330,9 @@ export function useCustomModuleRecords(moduleKey: string, page: number, search: 
     totalCount: query.data?.total_count ?? 0,
     totalPages: query.data?.total_pages ?? 0,
     isLoading: query.isLoading,
-    saveRecord: saveRecord.mutateAsync,
     updateRecord: updateRecord.mutateAsync,
     deleteRecord: deleteRecord.mutateAsync,
     refresh: query.refetch,
-    isSaving: saveRecord.isPending || updateRecord.isPending || deleteRecord.isPending,
+    isSaving: updateRecord.isPending || deleteRecord.isPending,
   };
 }

@@ -125,7 +125,7 @@ export async function fetchDocuments(params: {
   const res = await apiFetch(`/documents${suffix ? `?${suffix}` : ""}`);
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load documents.");
+    throw new Error("Documents could not be loaded.");
   }
   return body as DocumentList;
 }
@@ -134,7 +134,7 @@ export async function fetchDocumentVersions(documentId: number): Promise<Documen
   const res = await apiFetch(`/documents/${documentId}/versions`);
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load document versions.");
+    throw new Error("Document versions could not be loaded.");
   }
   return (body?.results ?? []) as DocumentVersion[];
 }
@@ -143,7 +143,7 @@ export async function fetchDocumentStorageUsage(): Promise<DocumentStorageUsage>
   const res = await apiFetch("/documents/storage/usage");
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load document storage usage.");
+    throw new Error("Document storage usage could not be loaded.");
   }
   return body as DocumentStorageUsage;
 }
@@ -152,7 +152,7 @@ export async function fetchDocumentStorageConnections(): Promise<DocumentStorage
   const res = await apiFetch("/documents/storage/connections");
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load document storage connections.");
+    throw new Error("Document storage connections could not be loaded.");
   }
   return body as DocumentStorageConnection[];
 }
@@ -162,7 +162,7 @@ export async function connectGoogleDriveStorage(returnPath?: string): Promise<{ 
   const res = await apiFetch(`/documents/storage/connect/google-drive${query}`, { method: "POST" });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to connect Google Drive.");
+    throw new Error("Google Drive could not be connected.");
   }
   return body as { provider: string; auth_url: string };
 }
@@ -171,7 +171,7 @@ export async function disconnectGoogleDriveStorage(): Promise<DocumentStorageCon
   const res = await apiFetch("/documents/storage/connect/google-drive", { method: "DELETE" });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to disconnect Google Drive.");
+    throw new Error("Google Drive could not be disconnected.");
   }
   return body as DocumentStorageConnection;
 }
@@ -180,14 +180,14 @@ export async function connectMicrosoftOneDriveStorage(returnPath?: string): Prom
   const query = returnPath ? `?return_path=${encodeURIComponent(returnPath)}` : "";
   const res = await apiFetch(`/documents/storage/connect/microsoft-onedrive${query}`, { method: "POST" });
   const body = await readJsonSafely(res);
-  if (!res.ok) throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to connect Microsoft OneDrive.");
+  if (!res.ok) throw new Error("Microsoft OneDrive could not be connected.");
   return body as { provider: string; auth_url: string };
 }
 
 export async function disconnectMicrosoftOneDriveStorage(): Promise<DocumentStorageConnection> {
   const res = await apiFetch("/documents/storage/connect/microsoft-onedrive", { method: "DELETE" });
   const body = await readJsonSafely(res);
-  if (!res.ok) throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to disconnect Microsoft OneDrive.");
+  if (!res.ok) throw new Error("Microsoft OneDrive could not be disconnected.");
   return body as DocumentStorageConnection;
 }
 
@@ -204,7 +204,7 @@ export async function uploadDocument(payload: DocumentUploadPayload): Promise<Do
   const res = await apiFetch("/documents", { method: "POST", body: form });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to upload document.");
+    throw new Error("The document could not be uploaded.");
   }
   return body as DocumentItem;
 }
@@ -215,7 +215,7 @@ export async function uploadDocumentVersion(documentId: number, file: File): Pro
   const res = await apiFetch(`/documents/${documentId}/versions`, { method: "POST", body: form });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to upload document version.");
+    throw new Error("The document version could not be uploaded.");
   }
   return body as DocumentItem;
 }
@@ -231,7 +231,7 @@ export async function updateDocumentTemplateStatus(
   });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to update document template status.");
+    throw new Error("The document template status could not be updated.");
   }
   return body as DocumentItem;
 }
@@ -240,7 +240,7 @@ export async function deleteDocument(documentId: number): Promise<DocumentItem> 
   const res = await apiFetch(`/documents/${documentId}`, { method: "DELETE" });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to delete document.");
+    throw new Error("The document could not be removed.");
   }
   return body as DocumentItem;
 }
@@ -256,7 +256,7 @@ export async function shareDocumentWithClient(
   });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to share document.");
+    throw new Error("The document could not be shared.");
   }
   return body as DocumentClientShare;
 }
@@ -265,7 +265,7 @@ export async function revokeDocumentClientShare(documentId: number, shareId: num
   const res = await apiFetch(`/documents/${documentId}/client-shares/${shareId}`, { method: "DELETE" });
   const body = await readJsonSafely(res);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to revoke document access.");
+    throw new Error("Document access could not be revoked.");
   }
   return body as DocumentClientShare;
 }

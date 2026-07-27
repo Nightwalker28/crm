@@ -196,6 +196,12 @@ test("Users supports responsive bulk role and status updates", async ({
   });
 });
 
+test("opens Add User from the palette action deep link", async ({ page }) => {
+  await page.goto("/dashboard/settings/users?tab=users&action=create-user");
+
+  await expect(page.getByRole("heading", { name: "Add User" })).toBeVisible();
+});
+
 test("Administration settings are split into addressable tabs", async ({
   page,
 }) => {

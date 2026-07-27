@@ -3,17 +3,22 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
 import Link from "next/link";
-import { Copy, ExternalLink, KeyRound, Link2, Search, Send } from "lucide-react";
+import { Copy, ExternalLink, KeyRound, Link2, RefreshCw, Send, Users } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { FieldDescription } from "@/components/ui/field";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/PageHeader";
+import { Pill } from "@/components/ui/Pill";
+import { RequiredMark } from "@/components/ui/RequiredMark";
+import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useClientPortalActions, useClientPortalAccounts, useClientPortalPages, useCustomerOptions, type ClientAccountStatus, type ClientPortalSortState } from "@/hooks/useClientPortal";
+import { useConfirm } from "@/hooks/useConfirm";
 import { formatDateTime } from "@/lib/datetime";
 
 type LinkedType = "contact" | "organization";
@@ -49,6 +54,16 @@ function actionLabel(action: string) {
   return action === "request_changes" ? "Requested changes" : action === "accept" ? "Accepted" : action;
 }
 
+function statusTone(status: string) {
+  if (status === "active" || status === "published" || status === "accepted") {
+    return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" };
+  }
+  if (status === "inactive" || status === "expired" || status === "revoked") {
+    return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" };
+  }
+  return { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40" };
+}
+
 function nextSort(current: ClientPortalSortState, column: string): ClientPortalSortState {
   return current?.key === column
     ? { key: column, direction: current.direction === "asc" ? "desc" : "asc" }
@@ -74,51 +89,59 @@ function CustomerSelector({
   return (
     <div className="grid gap-2">
       <div className="grid grid-cols-[150px_1fr] gap-2">
-        <select
+        <Select
           value={linkedType}
-          onChange={(event) => {
-            onTypeChange(event.target.value as LinkedType);
+          onValueChange={(value) => {
+            onTypeChange(value as LinkedType);
             onIdChange("");
             setSearch("");
           }}
-          className="rounded-md border border-neutral-700 bg-neutral-950 px-3 text-sm text-neutral-100"
         >
-          <option value="contact">Contact</option>
-          <option value="organization">Organization</option>
-        </select>
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-neutral-500" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder={linkedType === "contact" ? "Search contacts" : "Search organizations"}
-            className="pl-9"
-          />
-        </div>
+          <SelectTrigger aria-label="Customer type"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="contact">Contact</SelectItem>
+            <SelectItem value="organization">Organization</SelectItem>
+          </SelectContent>
+        </Select>
+        <SearchBar
+          value={search}
+          onChange={setSearch}
+          placeholder={linkedType === "contact" ? "Search contacts" : "Search organizations"}
+          className="md:w-full"
+        />
       </div>
-      <div className="max-h-44 overflow-y-auto rounded-md border border-neutral-800 bg-neutral-950/70 p-1">
+      <div className="max-h-44 overflow-y-auto rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-1">
         {optionsQuery.isLoading ? (
-          <div className="px-3 py-3 text-sm text-neutral-500">Loading customers...</div>
+          <div className="px-3 py-3 text-sm text-copy-muted" aria-busy="true">Loading customers...</div>
+        ) : optionsQuery.isError ? (
+          <div role="alert" className="px-3 py-3 text-sm text-copy-secondary">
+            <p>Customers could not be loaded.</p>
+            <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => void optionsQuery.refetch()}>
+              <RefreshCw />Try again
+            </Button>
+          </div>
         ) : options.length ? (
           options.map((option) => (
-            <button
+            <Button
               key={option.id}
               type="button"
+              variant="ghost"
               onClick={() => onIdChange(String(option.id))}
               className={
-                "block w-full rounded px-3 py-2 text-left text-sm transition-colors " +
-                (String(option.id) === linkedId ? "bg-white/10 text-neutral-100" : "text-neutral-300 hover:bg-white/5")
+                "h-auto w-full justify-start whitespace-normal px-3 py-2 text-left " +
+                (String(option.id) === linkedId ? "bg-action-primary-muted text-copy-primary" : "")
               }
+              aria-pressed={String(option.id) === linkedId}
             >
               <span className="block font-medium">{option.label}</span>
-              {option.detail ? <span className="mt-0.5 block text-xs text-neutral-500">{option.detail}</span> : null}
-            </button>
+              {option.detail ? <span className="mt-0.5 block text-xs text-copy-muted">{option.detail}</span> : null}
+            </Button>
           ))
         ) : (
-          <div className="px-3 py-3 text-sm text-neutral-500">No matching customers.</div>
+          <div className="px-3 py-3 text-sm text-copy-muted">No matching customers.</div>
         )}
       </div>
-      <div className="text-xs text-neutral-500">
+      <div className="text-xs text-copy-muted">
         {selected ? `Selected: ${selected.label}` : "Select a customer before submitting."}
       </div>
     </div>
@@ -126,6 +149,7 @@ function CustomerSelector({
 }
 
 export default function ClientPortalDashboardPage() {
+  const { confirm } = useConfirm();
   const [pageSort, setPageSort] = useState<ClientPortalSortState>(null);
   const [accountSort, setAccountSort] = useState<ClientPortalSortState>(null);
   const pagesQuery = useClientPortalPages(pageSort);
@@ -153,7 +177,7 @@ export default function ClientPortalDashboardPage() {
     event.preventDefault();
     const linkedId = Number(accountForm.linkedId);
     if (!Number.isInteger(linkedId) || linkedId <= 0) {
-      toast.error("Enter a valid linked customer ID.");
+      toast.error("Select a customer before creating the setup link.");
       return;
     }
     try {
@@ -172,15 +196,34 @@ export default function ClientPortalDashboardPage() {
   }
 
   async function handleUpdateAccountStatus(accountId: number, status: ClientAccountStatus) {
+    const account = accountsQuery.data?.find((item) => item.id === accountId);
+    const confirmed = await confirm({
+      title: status === "active" ? "Activate client access?" : status === "inactive" ? "Deactivate client access?" : "Set client access to pending?",
+      description: status === "active"
+        ? `${account?.email ?? "This client"} will be able to sign in to the authenticated client portal.`
+        : status === "inactive"
+          ? `${account?.email ?? "This client"} will lose authenticated portal access. Existing records and audit history are retained.`
+          : `${account?.email ?? "This client"} will need to complete account setup before signing in.`,
+      confirmLabel: status === "active" ? "Activate access" : status === "inactive" ? "Deactivate access" : "Set pending",
+      variant: status === "inactive" ? "destructive" : "default",
+    });
+    if (!confirmed) return;
     try {
-      const account = await updateAccountStatus({ accountId, status });
-      toast.success(`Client access set to ${account.status}.`);
+      const updated = await updateAccountStatus({ accountId, status });
+      toast.success(`Client access set to ${updated.status}.`);
     } catch (error) {
       toast.error(errorMessage(error, "Failed to update client access."));
     }
   }
 
   async function handleRegenerateSetupLink(accountId: number) {
+    const account = accountsQuery.data?.find((item) => item.id === accountId);
+    const confirmed = await confirm({
+      title: "Regenerate setup link?",
+      description: `The previous setup link for ${account?.email ?? "this client"} will stop working. The new link is shown once for secure sharing.`,
+      confirmLabel: "Regenerate link",
+    });
+    if (!confirmed) return;
     try {
       const account = await regenerateAccountSetupLink(accountId);
       setLastSetupLink(account.setup_link ?? null);
@@ -192,6 +235,13 @@ export default function ClientPortalDashboardPage() {
   }
 
   async function handlePublish(pageId: number) {
+    const clientPage = pagesQuery.data?.find((item) => item.id === pageId);
+    const confirmed = await confirm({
+      title: "Publish client page?",
+      description: `"${clientPage?.title ?? "This page"}" will receive a scoped link that exposes its customer-specific pricing snapshot and attached documents until the link expires in 30 days.`,
+      confirmLabel: "Publish page",
+    });
+    if (!confirmed) return;
     try {
       const page = await publishPage({ pageId, expiresInDays: 30 });
       if (page.public_link) await copyText(page.public_link, "Client link");
@@ -205,7 +255,7 @@ export default function ClientPortalDashboardPage() {
   const accounts = accountsQuery.data ?? [];
 
   return (
-    <div className="flex flex-col gap-6 text-neutral-200">
+    <div className="flex flex-col gap-6 text-copy-primary">
       <PageHeader
         title="Client Portal"
         description="Create signed client pages, share pricing snapshots, and manage client login access."
@@ -215,26 +265,35 @@ export default function ClientPortalDashboardPage() {
       <div className="grid gap-4">
         <Card className="px-5 py-5">
           <div className="mb-4">
-            <h2 className="text-base font-semibold text-neutral-100">Client Login Access</h2>
+            <h2 className="text-base font-semibold text-copy-primary">Client Login Access</h2>
             <FieldDescription className="mt-1">Create a setup link manually linked to a contact or organization.</FieldDescription>
           </div>
-          <form className="grid gap-3" onSubmit={handleCreateAccount}>
-            <Input type="email" value={accountForm.email} onChange={(event) => setAccountForm((current) => ({ ...current, email: event.target.value }))} placeholder="client@example.com" required />
-            <CustomerSelector
-              linkedType={accountForm.linkedType}
-              linkedId={accountForm.linkedId}
-              onTypeChange={(linkedType) => setAccountForm((current) => ({ ...current, linkedType }))}
-              onIdChange={(linkedId) => setAccountForm((current) => ({ ...current, linkedId }))}
-            />
+          <form className="grid gap-4" onSubmit={handleCreateAccount}>
+            <FieldGroup>
+              <Field>
+                <FieldLabel htmlFor="client-account-email">Client email <RequiredMark /></FieldLabel>
+                <Input id="client-account-email" type="email" autoComplete="email" value={accountForm.email} onChange={(event) => setAccountForm((current) => ({ ...current, email: event.target.value }))} placeholder="client@example.com" required />
+              </Field>
+              <Field>
+                <FieldLabel>Linked customer <RequiredMark /></FieldLabel>
+                <CustomerSelector
+                  linkedType={accountForm.linkedType}
+                  linkedId={accountForm.linkedId}
+                  onTypeChange={(linkedType) => setAccountForm((current) => ({ ...current, linkedType }))}
+                  onIdChange={(linkedId) => setAccountForm((current) => ({ ...current, linkedId }))}
+                />
+              </Field>
+            </FieldGroup>
             <Button type="submit" disabled={isCreatingAccount}>
               <Send className="h-4 w-4" />
               {isCreatingAccount ? "Creating..." : "Create Setup Link"}
             </Button>
           </form>
           {lastSetupLink ? (
-            <div className="mt-4 rounded-md border border-neutral-800 bg-neutral-950/60 p-3 text-sm">
-              <div className="mb-2 text-xs uppercase text-neutral-500">Latest setup link</div>
-              <div className="break-all text-neutral-200">{lastSetupLink}</div>
+            <div className="mt-4 rounded-[var(--radius-control)] border border-state-info/40 bg-state-info-muted p-3 text-sm">
+              <div className="mb-2 text-xs uppercase text-copy-muted">Latest setup link</div>
+              <div className="break-all text-copy-primary">{lastSetupLink}</div>
+              <p className="mt-2 text-xs text-copy-muted">Share this link securely. Regenerating it invalidates the previous link.</p>
               <Button type="button" variant="outline" className="mt-3" onClick={() => void copyText(lastSetupLink, "Setup link")}>
                 <Copy className="h-4 w-4" />
                 Copy
@@ -247,16 +306,24 @@ export default function ClientPortalDashboardPage() {
       <Card className="px-5 py-5">
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-base font-semibold text-neutral-100">Shared Pages</h2>
+            <h2 className="text-base font-semibold text-copy-primary">Shared Pages</h2>
             <FieldDescription className="mt-1">Publish a signed link after the pricing snapshot is ready.</FieldDescription>
           </div>
         </div>
         {pagesQuery.isLoading ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-8 text-center text-sm text-neutral-500">Loading client pages...</div>
+          <div className="px-4 py-8 text-center text-sm text-copy-muted" aria-busy="true">Loading client pages...</div>
         ) : pagesQuery.error ? (
-          <div className="rounded-md border border-red-900/50 bg-red-950/20 px-4 py-4 text-sm text-red-300">{errorMessage(pagesQuery.error, "Failed to load client pages.")}</div>
+          <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-4 text-sm text-copy-secondary">
+            <p>Client pages could not be loaded.</p>
+            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void pagesQuery.refetch()}><RefreshCw />Try again</Button>
+          </div>
         ) : pages.length === 0 ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-8 text-center text-sm text-neutral-500">No client pages yet.</div>
+          <EmptyState
+            icon={Link2}
+            title="No client pages yet"
+            description="Create a private customer page, then publish a scoped link when it is ready."
+            action={<Button asChild><Link href="/dashboard/client-portal/pages/new">Create client page</Link></Button>}
+          />
         ) : (
           <div className="overflow-x-auto">
             <Table className="min-w-[1080px]">
@@ -281,27 +348,27 @@ export default function ClientPortalDashboardPage() {
                 {pages.map((page) => (
                   <TableRow key={page.id}>
                     <TableCell>
-                      <div className="font-medium text-neutral-100">{page.title}</div>
-                      <div className="text-xs text-neutral-500">{page.summary || "No summary"}</div>
+                      <div className="font-medium text-copy-primary">{page.title}</div>
+                      <div className="text-xs text-copy-muted">{page.summary || "No summary"}</div>
                     </TableCell>
-                    <TableCell className="text-neutral-300">
+                    <TableCell className="text-copy-secondary">
                       {customerLabel(page)}
                     </TableCell>
-                    <TableCell className="text-neutral-300">
+                    <TableCell className="text-copy-secondary">
                       {page.pricing_items[0] ? formatMoney(page.pricing_items[0].public_unit_price, page.pricing_items[0].currency) : "No items"}
                     </TableCell>
-                    <TableCell className="text-neutral-300">
+                    <TableCell className="text-copy-secondary">
                       {page.latest_action ? (
                         <div>
-                          <div className="text-neutral-200">{actionLabel(page.latest_action.action)}</div>
-                          <div className="text-xs text-neutral-500">{page.latest_action.actor_email || page.latest_action.actor_name || "Client response"} · {page.action_count} total</div>
+                          <div className="text-copy-primary">{actionLabel(page.latest_action.action)}</div>
+                          <div className="text-xs text-copy-muted">{page.latest_action.actor_email || page.latest_action.actor_name || "Client response"} · {page.action_count} total</div>
                         </div>
                       ) : (
-                        <span className="text-neutral-500">No responses</span>
+                        <span className="text-copy-muted">No responses</span>
                       )}
                     </TableCell>
-                    <TableCell className="capitalize text-neutral-300">{page.status}</TableCell>
-                    <TableCell className="text-neutral-400">{formatDateTime(page.updated_at)}</TableCell>
+                    <TableCell><Pill {...statusTone(page.status)} className="capitalize">{page.status}</Pill></TableCell>
+                    <TableCell className="text-copy-muted">{formatDateTime(page.updated_at)}</TableCell>
                     <TableCell>
                       <div className="flex justify-end gap-2">
                         {page.public_link ? (
@@ -333,13 +400,20 @@ export default function ClientPortalDashboardPage() {
       </Card>
 
       <Card className="px-5 py-5">
-        <h2 className="mb-4 text-base font-semibold text-neutral-100">Client Accounts</h2>
+        <h2 className="mb-4 text-base font-semibold text-copy-primary">Client Accounts</h2>
         {accountsQuery.isLoading ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-6 text-sm text-neutral-500">Loading accounts...</div>
+          <div className="px-4 py-8 text-center text-sm text-copy-muted" aria-busy="true">Loading accounts...</div>
         ) : accountsQuery.error ? (
-          <div className="rounded-md border border-red-900/50 bg-red-950/20 px-4 py-4 text-sm text-red-300">{errorMessage(accountsQuery.error, "Failed to load client accounts.")}</div>
+          <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-4 text-sm text-copy-secondary">
+            <p>Client accounts could not be loaded.</p>
+            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void accountsQuery.refetch()}><RefreshCw />Try again</Button>
+          </div>
         ) : accounts.length === 0 ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-8 text-center text-sm text-neutral-500">No client accounts yet.</div>
+          <EmptyState
+            icon={Users}
+            title="No client accounts yet"
+            description="Create a setup link above to provision authenticated client access."
+          />
         ) : (
           <div className="overflow-x-auto">
             <Table className="min-w-[1100px]">
@@ -367,11 +441,11 @@ export default function ClientPortalDashboardPage() {
               <TableBody>
                 {accounts.map((account) => (
                   <TableRow key={account.id}>
-                    <TableCell><span className="font-medium text-neutral-100">{account.email}</span></TableCell>
-                    <TableCell className="text-neutral-300">{customerLabel(account)}</TableCell>
-                    <TableCell className="text-neutral-300">
+                    <TableCell><span className="font-medium text-copy-primary">{account.email}</span></TableCell>
+                    <TableCell className="text-copy-secondary">{customerLabel(account)}</TableCell>
+                    <TableCell>
                       <Select value={account.status} onValueChange={(value) => void handleUpdateAccountStatus(account.id, value as ClientAccountStatus)} disabled={isUpdatingAccountStatus}>
-                        <SelectTrigger size="sm" className="w-[132px] border-neutral-700 bg-neutral-950 capitalize">
+                        <SelectTrigger size="sm" className="w-[132px] capitalize" aria-label={`Access status for ${account.email}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -381,9 +455,9 @@ export default function ClientPortalDashboardPage() {
                         </SelectContent>
                       </Select>
                     </TableCell>
-                    <TableCell className="text-neutral-400">{account.last_login_at ? formatDateTime(account.last_login_at) : "-"}</TableCell>
-                    <TableCell className="text-neutral-400">{account.setup_token_expires_at ? formatDateTime(account.setup_token_expires_at) : "-"}</TableCell>
-                    <TableCell className="text-neutral-400">{formatDateTime(account.updated_at)}</TableCell>
+                    <TableCell className="text-copy-muted">{account.last_login_at ? formatDateTime(account.last_login_at) : "-"}</TableCell>
+                    <TableCell className="text-copy-muted">{account.setup_token_expires_at ? formatDateTime(account.setup_token_expires_at) : "-"}</TableCell>
+                    <TableCell className="text-copy-muted">{formatDateTime(account.updated_at)}</TableCell>
                     <TableCell>
                       <div className="flex justify-end">
                         <Button

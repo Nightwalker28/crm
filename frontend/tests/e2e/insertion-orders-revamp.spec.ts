@@ -120,3 +120,19 @@ test("Insertion Order detail and edit use routed record workflows", async ({ pag
   await expect(page).toHaveURL(new RegExp(`/dashboard/finance/insertion-orders/${ioId}$`));
   expect(submitted).toMatchObject({ customer_name: "Acme Operations", customer_organization_id: 51, total_amount: 1250 });
 });
+
+test("Insertion Order detail failures do not expose backend details", async ({ page }) => {
+  await page.route(`**/finance/insertion-orders/${ioId}`, (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "sql_connection=detail-page-secret" }),
+    }),
+  );
+
+  await page.goto(`/dashboard/finance/insertion-orders/${ioId}`);
+
+  await expect(page.getByRole("heading", { name: "Unable to load insertion order" })).toBeVisible();
+  await expect(page.getByText("sql_connection=detail-page-secret")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+});

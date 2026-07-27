@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Upload } from "lucide-react";
+import { ArrowLeft, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
@@ -116,6 +116,15 @@ export default function DocumentUploadFormPage() {
                 Manage external storage connections from <Link href="/dashboard/settings/integrations" className="text-copy-primary underline-offset-4 hover:underline">Integrations</Link>.
               </FieldDescription>
             </Field>
+            {connectionsQuery.isError ? (
+              <div role="alert" className="mt-4 rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted px-3 py-3 text-sm text-copy-secondary">
+                <p>External storage destinations could not be checked. Local storage remains available.</p>
+                <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void connectionsQuery.refetch()}>
+                  <RefreshCw className="h-4 w-4" />
+                  Try again
+                </Button>
+              </div>
+            ) : null}
           </Card>
         }
         footer={

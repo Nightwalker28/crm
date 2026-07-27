@@ -6,9 +6,14 @@ import { toast } from "sonner";
 
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { Pill } from "@/components/ui/Pill";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { useConfirm } from "@/hooks/useConfirm";
 import {
   documentDownloadUrl,
   documentVersionDownloadUrl,
@@ -60,6 +65,7 @@ function errorMessage(_error: unknown, fallback: string) {
 }
 
 function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document: DocumentItem; onDelete?: (document: DocumentItem) => void; isDeleting?: boolean; highlighted?: boolean }) {
+  const { confirm } = useConfirm();
   const rowRef = useRef<HTMLTableRowElement>(null);
   const versionInputRef = useRef<HTMLInputElement>(null);
   const [expanded, setExpanded] = useState(false);
@@ -121,6 +127,12 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
 
   async function handleShareDocument() {
     if (!shareTargetId) return;
+    const confirmed = await confirm({
+      title: "Share document with client?",
+      description: `"${document.title}" will become available to the selected ${shareTargetType === "contact" ? "contact" : "account"} through authenticated client portal access${shareExpiresAt ? " until the selected expiry" : " without an expiry"}.`,
+      confirmLabel: "Share document",
+    });
+    if (!confirmed) return;
     try {
       await shareDocumentWithClient({
         documentId: document.id,
@@ -140,6 +152,13 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
   }
 
   async function handleRevokeShare(shareId: number) {
+    const confirmed = await confirm({
+      title: "Revoke client document access?",
+      description: `"${document.title}" will no longer be available through this client portal share. The document remains in the tenant library.`,
+      confirmLabel: "Revoke access",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
     try {
       await revokeDocumentClientShare({ documentId: document.id, shareId });
       toast.success("Client document access revoked.");
@@ -153,31 +172,31 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
       <TableRow ref={rowRef} className={highlighted ? "bg-action-primary-muted ring-1 ring-inset ring-primary/40" : undefined}>
         <TableCell>
           <div className="flex min-w-0 items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900">
-              <FileText className="h-4 w-4 text-neutral-400" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
+              <FileText className="h-4 w-4 text-copy-secondary" />
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <div className="truncate text-sm font-semibold text-neutral-100">{document.title}</div>
+                <div className="truncate text-sm font-semibold text-copy-primary">{document.title}</div>
                 {document.is_template ? (
-                  <span className="inline-flex items-center gap-1 rounded-sm border border-emerald-900/60 bg-emerald-950/30 px-2 py-0.5 text-xs text-emerald-300">
+                  <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">
                     <Tag className="h-3 w-3" />
                     {document.template_category || "Template"}
-                  </span>
+                  </Pill>
                 ) : null}
               </div>
-              <div className="mt-1 text-xs text-neutral-500">
+              <div className="mt-1 text-xs text-copy-muted">
                 {document.original_filename} / {document.extension.toUpperCase()} / {formatBytes(document.file_size_bytes)} / {providerLabel(document.storage_provider)}
               </div>
-              {document.description ? <div className="mt-2 line-clamp-2 text-sm text-neutral-400">{document.description}</div> : null}
+              {document.description ? <div className="mt-2 line-clamp-2 text-sm text-copy-secondary">{document.description}</div> : null}
             </div>
           </div>
         </TableCell>
-        <TableCell><span className="text-sm text-neutral-300">{document.extension.toUpperCase()}</span></TableCell>
-        <TableCell><span className="text-sm tabular-nums text-neutral-300">{formatBytes(document.file_size_bytes)}</span></TableCell>
-        <TableCell><span className="text-sm text-neutral-300">{providerLabel(document.storage_provider)}</span></TableCell>
-        <TableCell><span className="text-sm text-neutral-400">{formatDateTime(document.created_at)}</span></TableCell>
-        <TableCell><span className="text-sm text-neutral-400">{formatDateTime(document.updated_at)}</span></TableCell>
+        <TableCell><span className="text-sm text-copy-secondary">{document.extension.toUpperCase()}</span></TableCell>
+        <TableCell><span className="text-sm tabular-nums text-copy-secondary">{formatBytes(document.file_size_bytes)}</span></TableCell>
+        <TableCell><span className="text-sm text-copy-secondary">{providerLabel(document.storage_provider)}</span></TableCell>
+        <TableCell><span className="text-sm text-copy-muted">{formatDateTime(document.created_at)}</span></TableCell>
+        <TableCell><span className="text-sm text-copy-muted">{formatDateTime(document.updated_at)}</span></TableCell>
         <TableCell>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
             <Button type="button" variant="outline" onClick={() => setExpanded((value) => !value)}>
@@ -189,7 +208,7 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
               View
             </Button>
             {onDelete ? (
-              <Button type="button" variant="outline" onClick={() => onDelete(document)} disabled={isDeleting}>
+              <Button type="button" variant="dangerGhost" onClick={() => onDelete(document)} disabled={isDeleting}>
                 <Trash2 className="h-4 w-4" />
                 Delete
               </Button>
@@ -200,18 +219,19 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
 
       {expanded ? (
         <TableRow>
-          <TableCell colSpan={7} className="bg-neutral-950/80">
-            <div className="rounded-md border border-neutral-800 bg-neutral-950/50 p-3">
+          <TableCell colSpan={7} className="bg-surface-muted/50">
+            <div className="rounded-[var(--radius-control)] border border-line-default bg-surface p-3">
               <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
-                <div>
-                  <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-neutral-500">Template category</label>
+                <Field>
+                  <FieldLabel htmlFor={`document-template-category-${document.id}`}>Template category</FieldLabel>
                   <Input
+                    id={`document-template-category-${document.id}`}
                     value={templateCategory}
                     onChange={(event) => setTemplateCategory(event.target.value)}
                     placeholder="Optional category"
                     className="h-9"
                   />
-                </div>
+                </Field>
                 <Button
                   type="button"
                   variant="outline"
@@ -222,7 +242,7 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
                   {document.is_template ? "Remove Template" : "Mark Template"}
                 </Button>
                 <div>
-                  <input
+                  <Input
                     ref={versionInputRef}
                     type="file"
                     accept=".pdf,.doc,.docx,.txt,.rtf,.odt"
@@ -236,30 +256,35 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
                 </div>
               </div>
 
-              <div className="mt-5 rounded-md border border-neutral-800 bg-neutral-950/60 p-3">
-                <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
+              <div className="mt-5 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3">
+                <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-copy-muted">
                   <Share2 className="h-3.5 w-3.5" />
                   Client Portal Access
                 </div>
                 <div className="grid gap-3 lg:grid-cols-[160px_minmax(220px,1fr)_220px_auto] lg:items-end">
-                  <div>
-                    <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-neutral-500">Target</label>
-                    <select
+                  <Field>
+                    <FieldLabel>Target</FieldLabel>
+                    <Select
                       value={shareTargetType}
-                      onChange={(event) => {
-                        setShareTargetType(event.target.value as "contact" | "organization");
+                      onValueChange={(value) => {
+                        setShareTargetType(value as "contact" | "organization");
                         setShareTargetId(null);
                         setShareTargetDisplay("");
                       }}
-                      className="h-9 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 text-sm text-neutral-100"
                     >
-                      <option value="contact">Contact</option>
-                      <option value="organization">Account</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-neutral-500">{shareTargetType === "contact" ? "Contact" : "Account"}</label>
+                      <SelectTrigger aria-label="Client share target"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="contact">Contact</SelectItem>
+                        <SelectItem value="organization">Account</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`document-share-record-${document.id}`}>
+                      {shareTargetType === "contact" ? "Contact" : "Account"}
+                    </FieldLabel>
                     <LinkedRecordPicker
+                      inputId={`document-share-record-${document.id}`}
                       recordType={shareTargetType}
                       valueId={shareTargetId}
                       displayValue={shareTargetDisplay}
@@ -275,52 +300,53 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
                       placeholder={shareTargetType === "contact" ? "Search contacts" : "Search accounts"}
                       queryKeyPrefix={`document-client-share-${document.id}-${shareTargetType}`}
                     />
-                  </div>
-                  <div>
-                    <label className="mb-2 block text-xs font-medium uppercase tracking-wide text-neutral-500">Expires</label>
-                    <Input type="datetime-local" value={shareExpiresAt} onChange={(event) => setShareExpiresAt(event.target.value)} className="h-9" />
-                  </div>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor={`document-share-expires-${document.id}`}>Expires</FieldLabel>
+                    <Input id={`document-share-expires-${document.id}`} type="datetime-local" value={shareExpiresAt} onChange={(event) => setShareExpiresAt(event.target.value)} className="h-9" />
+                  </Field>
                   <Button type="button" variant="outline" onClick={() => void handleShareDocument()} disabled={!shareTargetId || isSharingDocument}>
                     <Share2 className="h-4 w-4" />
                     Share
                   </Button>
                 </div>
-                <div className="mt-4 divide-y divide-neutral-800 rounded-md border border-neutral-800">
+                <div className="mt-4 divide-y divide-line-subtle rounded-[var(--radius-control)] border border-line-default bg-surface">
                   {activeShares.length ? activeShares.map((share) => (
                     <div key={share.id} className="flex flex-col gap-2 px-3 py-3 md:flex-row md:items-center md:justify-between">
-                      <div className="text-sm text-neutral-300">
+                      <div className="text-sm text-copy-secondary">
                         {share.contact_id ? `Contact #${share.contact_id}` : `Account #${share.organization_id}`}
-                        <span className="ml-2 text-xs text-neutral-500">
+                        <span className="ml-2 text-xs text-copy-muted">
                           {share.expires_at ? `Expires ${formatDateTime(share.expires_at)}` : "No expiry"}
                         </span>
                       </div>
-                      <Button type="button" variant="outline" onClick={() => void handleRevokeShare(share.id)} disabled={isRevokingDocumentShare}>
+                      <Button type="button" variant="dangerGhost" onClick={() => void handleRevokeShare(share.id)} disabled={isRevokingDocumentShare}>
                         <XCircle className="h-4 w-4" />
                         Revoke
                       </Button>
                     </div>
-                  )) : <div className="px-3 py-3 text-sm text-neutral-500">Not shared with any client portal account.</div>}
+                  )) : <div className="px-3 py-3 text-sm text-copy-muted">Not shared with any client portal account.</div>}
                 </div>
               </div>
 
               <div className="mt-4">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-neutral-500">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-copy-muted">
                   <History className="h-3.5 w-3.5" />
                   Version History
                 </div>
                 {versionsQuery.isLoading ? (
-                  <div className="rounded-md border border-neutral-800 px-3 py-3 text-sm text-neutral-500">Loading versions...</div>
+                  <div className="rounded-[var(--radius-control)] border border-line-default px-3 py-3 text-sm text-copy-muted" aria-busy="true">Loading versions...</div>
                 ) : versionsQuery.error ? (
-                  <div className="rounded-md border border-red-900/50 bg-red-950/20 px-3 py-3 text-sm text-red-300">
-                    {errorMessage(versionsQuery.error, "Failed to load versions.")}
+                  <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-3 py-3 text-sm text-copy-secondary">
+                    <p>Document versions could not be loaded.</p>
+                    <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => void versionsQuery.refetch()}><History />Try again</Button>
                   </div>
                 ) : (
-                  <div className="divide-y divide-neutral-800 rounded-md border border-neutral-800">
+                  <div className="divide-y divide-line-subtle rounded-[var(--radius-control)] border border-line-default bg-surface">
                     {(versionsQuery.data ?? []).map((version) => (
                       <div key={version.id} className="flex flex-col gap-2 px-3 py-3 md:flex-row md:items-center md:justify-between">
                         <div>
-                          <div className="text-sm font-medium text-neutral-200">Version {version.version_number}</div>
-                          <div className="mt-1 text-xs text-neutral-500">
+                          <div className="text-sm font-medium text-copy-primary">Version {version.version_number}</div>
+                          <div className="mt-1 text-xs text-copy-muted">
                             {version.file_name} / {formatBytes(version.size_bytes)} / {formatDateTime(version.created_at)}
                           </div>
                         </div>
@@ -334,7 +360,7 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
                         </Button>
                       </div>
                     ))}
-                    {!versionsQuery.data?.length ? <div className="px-3 py-3 text-sm text-neutral-500">No versions recorded yet.</div> : null}
+                    {!versionsQuery.data?.length ? <div className="px-3 py-3 text-sm text-copy-muted">No versions recorded yet.</div> : null}
                   </div>
                 )}
               </div>
@@ -366,9 +392,11 @@ export default function DocumentList({ documents, emptyText = "No documents yet.
 
   if (!documents.length) {
     return (
-      <div className="rounded-md border border-dashed border-neutral-800 bg-neutral-950/40 px-4 py-8 text-center text-sm text-neutral-500">
-        {emptyText}
-      </div>
+      <EmptyState
+        icon={FileText}
+        title="No documents found"
+        description={emptyText}
+      />
     );
   }
 

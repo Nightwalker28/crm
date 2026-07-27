@@ -1,6 +1,7 @@
 "use client";
 
 import { Building2, Pencil, Plus, Trash2, UsersRound, type LucideIcon } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -240,6 +241,11 @@ function EntityCard({
 }
 
 export default function TeamsAndDepartmentsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedAction = searchParams.get("action");
+  const isCreateTeamAction = requestedAction === "create-team";
+  const isCreateDepartmentAction = requestedAction === "create-department";
   const {
     departments,
     teams,
@@ -267,6 +273,28 @@ export default function TeamsAndDepartmentsPage() {
     removeDepartment,
     removeTeam,
   } = useTeamsAndDepartments();
+
+  function closeTeamWorkflow() {
+    setTeamDialogOpen(false);
+    if (isCreateTeamAction) {
+      router.replace("/dashboard/settings/teams", { scroll: false });
+    }
+  }
+
+  function closeDepartmentWorkflow() {
+    setDepartmentDialogOpen(false);
+    if (isCreateDepartmentAction) {
+      router.replace("/dashboard/settings/teams", { scroll: false });
+    }
+  }
+
+  async function saveTeamWorkflow() {
+    if (await saveTeam()) closeTeamWorkflow();
+  }
+
+  async function saveDepartmentWorkflow() {
+    if (await saveDepartment()) closeDepartmentWorkflow();
+  }
 
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
@@ -351,24 +379,24 @@ export default function TeamsAndDepartmentsPage() {
       </div>
 
       <DepartmentDialog
-        open={departmentDialogOpen}
+        open={departmentDialogOpen || isCreateDepartmentAction}
         mode={departmentMode}
         form={departmentForm}
         submitting={departmentSubmitting}
-        onClose={() => setDepartmentDialogOpen(false)}
+        onClose={closeDepartmentWorkflow}
         onChange={setDepartmentForm}
-        onSubmit={saveDepartment}
+        onSubmit={() => void saveDepartmentWorkflow()}
       />
 
       <TeamDialog
-        open={teamDialogOpen}
+        open={teamDialogOpen || isCreateTeamAction}
         mode={teamMode}
         form={teamForm}
         departments={departments}
         submitting={teamSubmitting}
-        onClose={() => setTeamDialogOpen(false)}
+        onClose={closeTeamWorkflow}
         onChange={setTeamForm}
-        onSubmit={saveTeam}
+        onSubmit={() => void saveTeamWorkflow()}
       />
     </div>
   );

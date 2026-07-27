@@ -113,3 +113,81 @@ test("Document removal requires confirmation and redacts backend failures", asyn
   await expect(page.getByText("We could not remove this document. Try again.")).toBeVisible();
   await expect(page.getByText("storage_path=/private/tenant-secret")).toBeHidden();
 });
+
+test("Document library failures use recoverable messages without backend detail", async ({ page }) => {
+  await page.route("**/documents/storage/usage", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "tenant_storage_limit_bytes missing for tenant 9001" }),
+    }),
+  );
+  await page.route("**/documents?**", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "SELECT documents FROM tenant_9001 failed" }),
+    }),
+  );
+
+  await page.goto("/dashboard/documents");
+
+  await expect(page.getByText("Storage usage is unavailable. Upload limits are still enforced by the server.")).toBeVisible();
+  await expect(page.getByText("Documents could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("tenant_storage_limit_bytes missing for tenant 9001")).toBeHidden();
+  await expect(page.getByText("SELECT documents FROM tenant_9001 failed")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+});
+
+test("Revoking client document access requires confirmation", async ({ page }) => {
+  const shareId = 55;
+  const document = {
+    ...documentFixture(),
+    client_shares: [{
+      id: shareId,
+      document_id: documentId,
+      contact_id: 41,
+      organization_id: null,
+      expires_at: null,
+      revoked_at: null,
+      created_by_user_id: 1,
+      created_at: "2099-07-24T08:00:00Z",
+    }],
+  };
+  let revokeRequests = 0;
+  await page.route("**/documents?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: [document], total: 1 }),
+    }),
+  );
+  await page.route(`**/documents/${documentId}/versions`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: "[]",
+    }),
+  );
+  await page.route(`**/documents/${documentId}/client-shares/${shareId}`, (route) => {
+    revokeRequests += 1;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ...document.client_shares[0], revoked_at: "2099-07-24T09:00:00Z" }),
+    });
+  });
+
+  await page.goto("/dashboard/documents");
+  await page.getByRole("button", { name: "Versions" }).click();
+  await page.getByRole("button", { name: "Revoke", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "Revoke client document access?" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  expect(revokeRequests).toBe(0);
+
+  await page.getByRole("button", { name: "Revoke", exact: true }).click();
+  await page.getByRole("button", { name: "Revoke access" }).click();
+  await expect.poll(() => revokeRequests).toBe(1);
+});

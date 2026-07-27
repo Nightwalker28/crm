@@ -5,7 +5,10 @@ import type { FormEvent } from "react";
 import { useParams } from "next/navigation";
 import { Save } from "lucide-react";
 
-import { CustomModuleFieldInput } from "@/components/customModules/CustomModuleRecordDialog";
+import {
+  CustomModuleFieldInput,
+  getInitialCustomModuleValues,
+} from "@/components/customModules/CustomModuleFieldInput";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RecordTabs } from "@/components/ui/RecordTabs";
@@ -15,14 +18,6 @@ import { Input } from "@/components/ui/input";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useCustomModuleRecord, useCustomModuleSchema, type CustomModuleField, type CustomModuleRecord } from "@/hooks/useModuleBuilder";
-
-function getInitialValues(fields: CustomModuleField[], record: CustomModuleRecord) {
-  const values: Record<string, unknown> = {};
-  for (const field of fields) {
-    values[field.key] = record.values?.[field.key] ?? field.default_value ?? (field.field_type === "boolean" ? false : "");
-  }
-  return values;
-}
 
 function CustomModuleRecordOverview({
   fields,
@@ -36,7 +31,7 @@ function CustomModuleRecordOverview({
   onSave: (payload: { title?: string; values: Record<string, unknown> }) => Promise<unknown>;
 }) {
   const [title, setTitle] = useState(record.title);
-  const [values, setValues] = useState<Record<string, unknown>>(() => getInitialValues(fields, record));
+  const [values, setValues] = useState<Record<string, unknown>>(() => getInitialCustomModuleValues(fields, record));
   const [error, setError] = useState<string | null>(null);
 
   async function handleSubmit(event: FormEvent) {

@@ -3,22 +3,27 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useMemo, useState } from "react";
-import { ArrowLeft, Repeat2, Save } from "lucide-react";
+import { ArrowLeft, Building2, Repeat2, Save, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/Card";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
+import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { type ModuleAccess, useModuleAccessAdmin } from "@/hooks/admin/useModulesAdmin";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
 function parseModuleId(value: string | string[] | undefined) {
   const rawValue = Array.isArray(value) ? value[0] : value;
+  if (!rawValue || !/^\d+$/.test(rawValue)) return null;
   const parsed = Number(rawValue);
-  return Number.isFinite(parsed) ? parsed : null;
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
 }
 
 function toggleId(values: number[], id: number, checked: boolean) {
@@ -45,6 +50,7 @@ function ModuleAccessEditor({
   const [teamIds, setTeamIds] = useState<number[]>(
     () => access.teams.filter((team) => team.has_access).map((team) => team.id),
   );
+  const [saveError, setSaveError] = useState(false);
 
   const selectedDepartmentIds = useMemo(() => new Set(departmentIds), [departmentIds]);
   const selectedTeamIds = useMemo(() => new Set(teamIds), [teamIds]);
@@ -58,35 +64,40 @@ function ModuleAccessEditor({
     );
   }, [access, departmentIds, teamIds]);
 
+  useUnsavedChangesGuard(hasChanges, isSaving);
+
   async function handleSave() {
-    await updateAccess({
-      department_ids: departmentIds,
-      team_ids: teamIds,
-    });
+    try {
+      setSaveError(false);
+      await updateAccess({
+        department_ids: departmentIds,
+        team_ids: teamIds,
+      });
+    } catch {
+      setSaveError(true);
+    }
   }
 
   return (
-    <div className="flex flex-col gap-6 text-neutral-200">
+    <div className="flex flex-col gap-6 text-copy-primary">
       <PageHeader
         title={`${moduleDisplayName} Access Settings`}
         description="Choose which departments and teams can open this enabled module. Roles & Permissions still control actions inside the module."
         actions={
           <>
-            <Link
-              href={SETTINGS_ROUTES.modules}
-              className="inline-flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800"
-            >
-              <ArrowLeft size={15} />
-              Module Settings
-            </Link>
-            <Link
-              href={`${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(access.module.name)}`}
-              className="inline-flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800"
-            >
-              <Repeat2 size={15} />
-              Automation
-            </Link>
-            <Button onClick={handleSave} disabled={!hasChanges || isSaving}>
+            <Button asChild variant="outline">
+              <Link href={SETTINGS_ROUTES.modules}>
+                <ArrowLeft />
+                Module Settings
+              </Link>
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={`${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(access.module.name)}`}>
+                <Repeat2 />
+                Automation
+              </Link>
+            </Button>
+            <Button onClick={() => void handleSave()} disabled={!hasChanges || isSaving}>
               <Save />
               {isSaving ? "Saving..." : "Save Access"}
             </Button>
@@ -95,18 +106,33 @@ function ModuleAccessEditor({
       />
 
       {!access.module.is_enabled ? (
-        <div className="rounded-md border border-amber-800/70 bg-amber-950/30 px-4 py-3 text-sm text-amber-100">
+        <div className="rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted px-4 py-3 text-sm text-copy-secondary">
           This module is disabled for the tenant. Department and team access is saved here, but nobody can open the module until it is enabled.
         </div>
       ) : null}
 
+      {saveError ? (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-secondary">
+          <span>Module access could not be updated. Your unsaved selections are still available.</span>
+          <Button type="button" variant="outline" size="sm" onClick={() => void handleSave()} disabled={isSaving}>
+            Try again
+          </Button>
+        </div>
+      ) : null}
+
+      {hasChanges ? (
+        <div className="rounded-[var(--radius-control)] border border-state-info/40 bg-state-info-muted px-4 py-3 text-sm text-copy-secondary">
+          You have unsaved module access changes.
+        </div>
+      ) : null}
+
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-3 text-sm text-neutral-400">
+        <Card variant="status" className="px-4 py-3 text-sm text-copy-secondary">
           Department access grants the module to every user whose team belongs to that department.
-        </div>
-        <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-3 text-sm text-neutral-400">
+        </Card>
+        <Card variant="status" className="px-4 py-3 text-sm text-copy-secondary">
           Team access grants the module to specific teams. Team grants can add access even when the department is not selected.
-        </div>
+        </Card>
       </div>
 
       <ModuleTableShell className="min-h-[32vh] max-h-[44vh]">
@@ -122,7 +148,9 @@ function ModuleAccessEditor({
           <TableBody>
             {access.departments.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={4} className="py-10 text-center text-neutral-500">No departments found.</TableCell>
+                <TableCell colSpan={4}>
+                  <EmptyState icon={Building2} title="No departments found" description="Create a department before assigning department-level module access." />
+                </TableCell>
               </TableRow>
             ) : (
               access.departments.map((department) => {
@@ -130,25 +158,26 @@ function ModuleAccessEditor({
                 return (
                   <TableRow key={department.id}>
                     <TableCell>
-                      <div className="font-medium text-neutral-100">{department.name}</div>
+                      <div className="font-medium text-copy-primary">{department.name}</div>
                     </TableCell>
-                    <TableCell className="text-neutral-400">{department.description || "-"}</TableCell>
+                    <TableCell className="text-copy-secondary">{department.description || "-"}</TableCell>
                     <TableCell>
                       {checked ? (
-                        <Pill bg="bg-emerald-950/60" text="text-emerald-200" border="border-emerald-800/70" className="w-24">
+                        <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40" className="w-24">
                           Allowed
                         </Pill>
                       ) : (
-                        <Pill bg="bg-neutral-900" text="text-neutral-300" border="border-neutral-700" className="w-24">
+                        <Pill className="w-24">
                           Blocked
                         </Pill>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
                       <Checkbox
+                        aria-label={`Allow ${department.name} department`}
                         checked={checked}
                         onCheckedChange={(nextChecked) => setDepartmentIds((current) => toggleId(current, department.id, nextChecked === true))}
-                        className="ml-auto flex h-5 w-5 items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-white"
+                        className="ml-auto flex h-5 w-5 items-center justify-center rounded border border-line-strong bg-surface text-copy-primary focus-visible:ring-2 focus-visible:ring-primary"
                       >
                         <CheckboxIndicator className="h-3.5 w-3.5" />
                       </Checkbox>
@@ -175,7 +204,9 @@ function ModuleAccessEditor({
           <TableBody>
             {access.teams.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-neutral-500">No teams found.</TableCell>
+                <TableCell colSpan={5}>
+                  <EmptyState icon={Users} title="No teams found" description="Create a team before assigning team-level module access." />
+                </TableCell>
               </TableRow>
             ) : (
               access.teams.map((team) => {
@@ -184,30 +215,31 @@ function ModuleAccessEditor({
                 return (
                   <TableRow key={team.id}>
                     <TableCell>
-                      <div className="font-medium text-neutral-100">{team.name}</div>
+                      <div className="font-medium text-copy-primary">{team.name}</div>
                     </TableCell>
-                    <TableCell className="text-neutral-400">{team.department_name || "Unassigned"}</TableCell>
-                    <TableCell className="text-neutral-400">{team.description || "-"}</TableCell>
+                    <TableCell className="text-copy-secondary">{team.department_name || "Unassigned"}</TableCell>
+                    <TableCell className="text-copy-secondary">{team.description || "-"}</TableCell>
                     <TableCell>
                       {directAccess ? (
-                        <Pill bg="bg-emerald-950/60" text="text-emerald-200" border="border-emerald-800/70" className="w-24">
+                        <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40" className="w-24">
                           Allowed
                         </Pill>
                       ) : inheritedAccess ? (
-                        <Pill bg="bg-sky-950/60" text="text-sky-200" border="border-sky-800/70" className="w-32">
+                        <Pill bg="bg-state-info-muted" text="text-state-info" border="border-state-info/40" className="w-32">
                           Department
                         </Pill>
                       ) : (
-                        <Pill bg="bg-neutral-900" text="text-neutral-300" border="border-neutral-700" className="w-24">
+                        <Pill className="w-24">
                           Blocked
                         </Pill>
                       )}
                     </TableCell>
                     <TableCell className="text-right">
                       <Checkbox
+                        aria-label={`Allow ${team.name} team`}
                         checked={directAccess}
                         onCheckedChange={(nextChecked) => setTeamIds((current) => toggleId(current, team.id, nextChecked === true))}
-                        className="ml-auto flex h-5 w-5 items-center justify-center rounded border border-neutral-700 bg-neutral-900 text-white"
+                        className="ml-auto flex h-5 w-5 items-center justify-center rounded border border-line-strong bg-surface text-copy-primary focus-visible:ring-2 focus-visible:ring-primary"
                       >
                         <CheckboxIndicator className="h-3.5 w-3.5" />
                       </Checkbox>
@@ -226,7 +258,27 @@ function ModuleAccessEditor({
 export default function ModuleAccessPage() {
   const params = useParams<{ moduleId?: string }>();
   const moduleId = parseModuleId(params.moduleId);
-  const { access, isLoading, updateAccess, isSaving } = useModuleAccessAdmin(moduleId);
+  const { access, isLoading, error, refetch, updateAccess, isSaving } = useModuleAccessAdmin(moduleId);
+
+  if (moduleId === null) {
+    return <RouteNotFoundState recordLabel="Module" backHref={SETTINGS_ROUTES.modules} backLabel="Back to module settings" />;
+  }
+
+  if (isLoading) {
+    return <RouteLoadingState label="module access settings" />;
+  }
+
+  if (error) {
+    return (
+      <RouteErrorState
+        title="Module access could not be loaded"
+        description="Check your connection and try again. No access settings were changed."
+        reset={() => void refetch()}
+        backHref={SETTINGS_ROUTES.modules}
+        backLabel="Back to module settings"
+      />
+    );
+  }
 
   if (access) {
     const accessKey = [
@@ -238,33 +290,5 @@ export default function ModuleAccessPage() {
     return <ModuleAccessEditor key={accessKey} access={access} isSaving={isSaving} updateAccess={updateAccess} />;
   }
 
-  return (
-    <div className="flex flex-col gap-6 text-neutral-200">
-      <PageHeader
-        title="Module Access"
-        description="Choose which departments and teams can open this enabled module. Roles & Permissions still control actions inside the module."
-        actions={
-          <Link
-            href={SETTINGS_ROUTES.modules}
-            className="inline-flex items-center gap-2 rounded-md border border-neutral-700 bg-neutral-900 px-3 py-2 text-sm font-medium text-neutral-100 transition-colors hover:bg-neutral-800"
-          >
-            <ArrowLeft size={15} />
-            Module Settings
-          </Link>
-        }
-      />
-
-      <ModuleTableShell className="min-h-[32vh] max-h-[44vh]">
-        <Table className="min-w-[980px]">
-          <TableBody>
-            <TableRow>
-              <TableCell className="py-10 text-center text-neutral-500">
-                {isLoading ? "Loading module access..." : "Module access could not be loaded."}
-              </TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
-      </ModuleTableShell>
-    </div>
-  );
+  return <RouteNotFoundState recordLabel="Module" backHref={SETTINGS_ROUTES.modules} backLabel="Back to module settings" />;
 }

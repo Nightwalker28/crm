@@ -130,6 +130,14 @@ test.beforeEach(async ({ page }) => {
           is_enabled: true,
           actions: fullActions,
         },
+        {
+          id: 15,
+          name: "custom_projects",
+          base_route: "/dashboard/custom/custom_projects",
+          description: "Custom module: Projects",
+          is_enabled: true,
+          actions: fullActions,
+        },
       ]),
     }),
   );
@@ -152,11 +160,75 @@ test("shows only permitted module actions and opens routed create workflows", as
   await expect(page.getByText("Build report", { exact: true })).toBeVisible();
   await expect(page.getByText("Create message template", { exact: true })).toBeVisible();
   await expect(page.getByText("Configure integration", { exact: true })).toBeVisible();
+  await expect(page.getByText("Add user", { exact: true })).toBeVisible();
+  await expect(page.getByText("Create team", { exact: true })).toBeVisible();
+  await expect(page.getByText("Create department", { exact: true })).toBeVisible();
+  await expect(page.getByText("Create role", { exact: true })).toBeVisible();
+  await expect(page.getByText("Create Projects", { exact: true })).toBeVisible();
   await expect(page.getByText("Create contact", { exact: true })).toBeHidden();
 
   await page.getByText("Create lead", { exact: true }).click();
   await expect(page).toHaveURL(/\/dashboard\/sales\/leads\/new$/);
   await expect(page.getByRole("heading", { name: "Create lead" })).toBeVisible();
+});
+
+test("opens custom-module creation as a routed full-page workflow", async ({ page }) => {
+  await page.keyboard.press("Control+K");
+  await page.getByText("Create Projects", { exact: true }).click();
+
+  await expect(page).toHaveURL(/\/dashboard\/custom\/custom_projects\/new$/);
+});
+
+test("record-search failures stay recoverable without exposing backend details", async ({ page }) => {
+  await page.route("**/global-search?**", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "database_connection=private-secret" }),
+    }),
+  );
+
+  await page.keyboard.press("Control+K");
+  await page.getByLabel("Search records and modules").fill("private failure");
+
+  await expect(page.getByText("Search is temporarily unavailable. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("database_connection=private-secret")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+});
+
+test("routes administrator actions to their addressable create workflows", async ({ page }) => {
+  const workflows = [
+    { label: "Add user", path: "/dashboard/settings/users?tab=users&action=create-user" },
+    { label: "Create team", path: "/dashboard/settings/teams?action=create-team" },
+    { label: "Create department", path: "/dashboard/settings/teams?action=create-department" },
+    { label: "Create role", path: "/dashboard/settings/permissions?action=create-role" },
+  ];
+
+  for (const workflow of workflows) {
+    await page.goto("/dashboard");
+    await page.keyboard.press("Control+K");
+    await page.getByText(workflow.label, { exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`${workflow.path.replace(/[?]/g, "\\?")}$`));
+  }
+});
+
+test("opens team and department dialogs from palette action deep links", async ({ page }) => {
+  await page.route("**/admin/users/departments", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{ id: 1, name: "Operations", description: null }]),
+    }),
+  );
+  await page.route("**/admin/users/teams", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+  );
+
+  await page.goto("/dashboard/settings/teams?action=create-team");
+  await expect(page.getByRole("heading", { name: "Create Team" })).toBeVisible();
+
+  await page.goto("/dashboard/settings/teams?action=create-department");
+  await expect(page.getByRole("heading", { name: "Create Department" })).toBeVisible();
 });
 
 test("tracks actual route visits as user-scoped recent pages", async ({ page }) => {
@@ -406,4 +478,8 @@ test("hides admin-only actions from non-admin users even with module actions", a
   const palette = page.getByRole("dialog");
   await expect(palette.getByText("Configure integration", { exact: true })).toBeHidden();
   await expect(palette.getByText("Integrations", { exact: true })).toBeHidden();
+  await expect(palette.getByText("Add user", { exact: true })).toBeHidden();
+  await expect(palette.getByText("Create team", { exact: true })).toBeHidden();
+  await expect(palette.getByText("Create department", { exact: true })).toBeHidden();
+  await expect(palette.getByText("Create role", { exact: true })).toBeHidden();
 });

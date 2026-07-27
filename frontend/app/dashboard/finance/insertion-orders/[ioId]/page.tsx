@@ -5,9 +5,9 @@ import { useParams } from "next/navigation";
 
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/button";
+import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
 import { useInsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { getInsertionOrderStatusStyle } from "@/lib/statusStyles";
@@ -27,22 +27,23 @@ export default function InsertionOrderDetailPage() {
   const order = orderQuery.data;
 
   if (orderQuery.isLoading) {
-    return <div className="rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-6 text-sm text-neutral-500">Loading insertion order...</div>;
+    return <RouteLoadingState label="insertion order" />;
   }
 
   if (orderQuery.error) {
     return (
-      <div className="rounded-md border border-red-900/70 bg-red-950/30 px-4 py-6 text-sm text-red-100">
-        <div>{orderQuery.error instanceof Error ? orderQuery.error.message : "Failed to load insertion order."}</div>
-        <Button type="button" variant="secondary" className="mt-4" onClick={() => orderQuery.refetch()}>
-          Retry
-        </Button>
-      </div>
+      <RouteErrorState
+        title="Unable to load insertion order"
+        description="This insertion order could not be loaded. Check your connection and try again."
+        reset={() => void orderQuery.refetch()}
+        backHref="/dashboard/finance/insertion-orders"
+        backLabel="Back to insertion orders"
+      />
     );
   }
 
   if (!order) {
-    return <EmptyState title="Insertion order not found" description="This insertion order may have been deleted or you may not have access." />;
+    return <RouteNotFoundState recordLabel="Insertion order" backHref="/dashboard/finance/insertion-orders" backLabel="Back to insertion orders" />;
   }
 
   const status = getInsertionOrderStatusStyle(order.status);

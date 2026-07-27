@@ -49,7 +49,7 @@ export type ModuleAccess = {
 
 async function fetchModules(): Promise<AdminModule[]> {
   const res = await apiFetch("/admin/users/modules");
-  if (!res.ok) throw new Error(`Failed with ${res.status}`);
+  if (!res.ok) throw new Error("Module settings could not be loaded.");
   return res.json();
 }
 
@@ -59,13 +59,13 @@ async function updateModule(moduleId: number, payload: Partial<AdminModule>) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`Failed with ${res.status}`);
+  if (!res.ok) throw new Error("The module setting could not be updated.");
   return res.json();
 }
 
 async function fetchSidebarTabs(): Promise<SidebarTab[]> {
   const res = await apiFetch("/admin/users/sidebar-tabs");
-  if (!res.ok) throw new Error(`Failed with ${res.status}`);
+  if (!res.ok) throw new Error("Sidebar groups could not be loaded.");
   return res.json();
 }
 
@@ -75,7 +75,7 @@ async function createSidebarTab(payload: { label: string; key?: string; sort_ord
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`Failed with ${res.status}`);
+  if (!res.ok) throw new Error("The sidebar group could not be created.");
   return res.json();
 }
 
@@ -85,13 +85,13 @@ async function updateSidebarTab(tabKey: string, payload: { label?: string; sort_
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`Failed with ${res.status}`);
+  if (!res.ok) throw new Error("The sidebar group could not be updated.");
   return res.json();
 }
 
 async function fetchModuleAccess(moduleId: number): Promise<ModuleAccess> {
   const res = await apiFetch(`/admin/users/modules/${moduleId}/access`);
-  if (!res.ok) throw new Error(`Failed with ${res.status}`);
+  if (!res.ok) throw new Error("Module access could not be loaded.");
   return res.json();
 }
 
@@ -126,6 +126,8 @@ export function useSidebarTabsAdmin() {
   return {
     tabs: query.data ?? [],
     isLoading: query.isLoading,
+    error: query.error,
+    refetch: query.refetch,
     createTab: createMutation.mutateAsync,
     updateTab: (tabKey: string, payload: { label?: string; sort_order?: number }) =>
       updateMutation.mutateAsync({ tabKey, payload }),
@@ -142,7 +144,7 @@ async function updateModuleAccess(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`Failed with ${res.status}`);
+  if (!res.ok) throw new Error("Module access could not be updated.");
   return res.json();
 }
 
@@ -166,6 +168,8 @@ export function useModulesAdmin() {
   return {
     modules: query.data ?? [],
     isLoading: query.isLoading,
+    error: query.error,
+    refetch: query.refetch,
     updateModule: (moduleId: number, payload: Partial<AdminModule>) => mutation.mutateAsync({ moduleId, payload }),
     isSaving: mutation.isPending,
   };
@@ -195,6 +199,8 @@ export function useModuleAccessAdmin(moduleId: number | null) {
   return {
     access: query.data ?? null,
     isLoading: query.isLoading,
+    error: query.error,
+    refetch: query.refetch,
     updateAccess: mutation.mutateAsync,
     isSaving: mutation.isPending,
   };

@@ -15,6 +15,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { RequiredMark } from "@/components/ui/RequiredMark";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useClientPortalActions, type PricingItemPayload } from "@/hooks/useClientPortal";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
@@ -227,20 +228,21 @@ export default function ClientPageCreateForm() {
               <Field data-invalid={Boolean(errors.customer)}>
                 <FieldLabel htmlFor="client-page-customer">Customer <RequiredMark /></FieldLabel>
                 <div className="grid gap-2 sm:grid-cols-[150px_1fr]">
-                  <select
-                    aria-label="Customer type"
+                  <Select
                     value={form.linkedType}
-                    onChange={(event) => {
-                      update("linkedType", event.target.value as LinkedType);
+                    onValueChange={(value) => {
+                      update("linkedType", value as LinkedType);
                       update("linkedId", null);
                       update("linkedLabel", "");
                       setDocuments([]);
                     }}
-                    className="h-[38px] rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 text-sm text-copy-primary outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                   >
-                    <option value="contact">Contact</option>
-                    <option value="organization">Account</option>
-                  </select>
+                    <SelectTrigger aria-label="Customer type"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="contact">Contact</SelectItem>
+                      <SelectItem value="organization">Account</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <div ref={customerRef} tabIndex={-1}>
                     <LinkedRecordPicker
                       inputId="client-page-customer"
@@ -332,7 +334,7 @@ export default function ClientPageCreateForm() {
                   {documents.map((document) => (
                     <span key={document.id} className="inline-flex items-center gap-2 rounded-full border border-line-default bg-surface-muted px-3 py-1 text-xs text-copy-secondary">
                       {document.label}
-                      <button type="button" onClick={() => setDocuments((current) => current.filter((item) => item.id !== document.id))} aria-label={`Remove ${document.label}`}><X className="h-3 w-3" /></button>
+                      <Button type="button" variant="ghost" size="icon-sm" className="-mr-2 size-6 rounded-full" onClick={() => setDocuments((current) => current.filter((item) => item.id !== document.id))} aria-label={`Remove ${document.label}`}><X className="h-3 w-3" /></Button>
                     </span>
                   ))}
                 </div>

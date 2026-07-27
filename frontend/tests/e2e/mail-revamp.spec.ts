@@ -124,3 +124,52 @@ test("Mail hides technical provider and request failures", async ({ page }) => {
   await expect(page.getByText("oauth_token=private-secret")).toBeHidden();
   await expect(page.getByText("provider_stack_trace=private-secret")).toBeHidden();
 });
+
+test("IMAP settings use labeled controls and confirm mailbox disconnection", async ({ page }) => {
+  const imapContext = {
+    ...healthyContext,
+    connections: [{
+      ...healthyContext.connections[0],
+      provider: "imap_smtp",
+      account_email: "ops@example.com",
+      provider_mailbox_name: "Operations inbox",
+      scopes: [],
+      reconnect_label: "Reconfigure",
+    }],
+  };
+  let disconnectRequests = 0;
+  await page.route("**/mail/context", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(imapContext) }),
+  );
+  await page.route("**/mail/messages?**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [] }) }),
+  );
+  await page.route("**/mail/connect/imap_smtp", async (route) => {
+    if (route.request().method() === "DELETE") {
+      disconnectRequests += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ provider: "imap_smtp", status: "disconnected" }),
+      });
+      return;
+    }
+    await route.fallback();
+  });
+
+  await page.goto("/dashboard/mail");
+  await page.getByRole("button", { name: "Reconfigure IMAP" }).click();
+
+  await expect(page.getByLabel("Mailbox email")).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "IMAP security" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "SMTP security" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Disconnect IMAP" }).click();
+  await expect(page.getByRole("heading", { name: "Disconnect IMAP/SMTP?" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  expect(disconnectRequests).toBe(0);
+
+  await page.getByRole("button", { name: "Disconnect IMAP" }).click();
+  await page.getByRole("button", { name: "Disconnect mailbox" }).click();
+  await expect.poll(() => disconnectRequests).toBe(1);
+});

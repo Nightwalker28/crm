@@ -7,13 +7,20 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { Pill } from "@/components/ui/Pill";
+import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Switch, SwitchThumb } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useModulesAdmin } from "@/hooks/admin/useModulesAdmin";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { downloadBlob } from "@/lib/browser";
 import { formatDateTime } from "@/lib/datetime";
@@ -136,17 +143,10 @@ async function readJson(res: Response) {
   return res.json().catch(() => null);
 }
 
-function responseError(body: unknown, fallback: string) {
-  if (body && typeof body === "object" && "detail" in body && typeof (body as { detail?: unknown }).detail === "string") {
-    return (body as { detail: string }).detail;
-  }
-  return fallback;
-}
-
 async function fetchBackupSettings(): Promise<TenantBackupSettings> {
   const res = await apiFetch("/admin/tenant-backup-settings");
   const body = await readJson(res);
-  if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("Backup settings could not be loaded.");
   return body as TenantBackupSettings;
 }
 
@@ -157,21 +157,21 @@ async function saveBackupSettings(payload: BackupSettingsDraft): Promise<TenantB
     body: JSON.stringify(payload),
   });
   const body = await readJson(res);
-  if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("Backup settings could not be saved.");
   return body as TenantBackupSettings;
 }
 
 async function fetchBackupRuns(): Promise<TenantBackupRun[]> {
   const res = await apiFetch("/admin/tenant-backup-runs?page=1&page_size=10");
   const body = await readJson(res);
-  if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("Recent backup runs could not be loaded.");
   return ((body as TenantBackupRunList).results ?? []) as TenantBackupRun[];
 }
 
 async function fetchDestinationConnections(): Promise<TenantBackupDestinationConnection[]> {
   const res = await apiFetch("/admin/tenant-backup-settings/destinations/connections");
   const body = await readJson(res);
-  if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("Storage connections could not be loaded.");
   return body as TenantBackupDestinationConnection[];
 }
 
@@ -182,7 +182,7 @@ async function previewRestore(payload: { source_backup_run_id: number; module_ke
     body: JSON.stringify(payload),
   });
   const body = await readJson(res);
-  if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("The module restore could not be previewed.");
   return body as TenantRestorePreview;
 }
 
@@ -193,7 +193,7 @@ async function executeRestore(payload: { source_backup_run_id: number; module_ke
     body: JSON.stringify(payload),
   });
   const body = await readJson(res);
-  if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("The module restore could not be completed.");
   return body as { run: TenantRestoreRun; message: string };
 }
 
@@ -204,7 +204,7 @@ async function previewWholeRestore(payload: { source_backup_run_id: number }): P
     body: JSON.stringify(payload),
   });
   const body = await readJson(res);
-  if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("The whole-tenant restore could not be previewed.");
   return body as TenantRestorePreview;
 }
 
@@ -215,14 +215,14 @@ async function executeWholeRestore(payload: { source_backup_run_id: number; conf
     body: JSON.stringify(payload),
   });
   const body = await readJson(res);
-  if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("The whole-tenant restore could not be completed.");
   return body as { run: TenantRestoreRun; message: string };
 }
 
 async function deleteBackupRun(runId: number): Promise<{ run: TenantBackupRun; message: string }> {
   const res = await apiFetch(`/admin/tenant-backup-runs/${runId}`, { method: "DELETE" });
   const body = await readJson(res);
-  if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("The backup artifact could not be deleted.");
   return body as { run: TenantBackupRun; message: string };
 }
 
@@ -252,6 +252,7 @@ function connectionFor(connections: TenantBackupDestinationConnection[] | undefi
 
 export default function BackupSettingsPage() {
   const queryClient = useQueryClient();
+  const { confirm } = useConfirm();
   const settingsQuery = useQuery({ queryKey: ["tenant-backup-settings"], queryFn: fetchBackupSettings });
   const runsQuery = useQuery({ queryKey: ["tenant-backup-runs"], queryFn: fetchBackupRuns });
   const storageConnectionsQuery = useQuery({ queryKey: ["tenant-backup-destination-connections"], queryFn: fetchDestinationConnections });
@@ -265,6 +266,9 @@ export default function BackupSettingsPage() {
   const [wholeRestoreConfirmation, setWholeRestoreConfirmation] = useState("");
   const [wholeRestorePreview, setWholeRestorePreview] = useState<TenantRestorePreview | null>(null);
   const draft = draftOverride ?? toDraft(settingsQuery.data);
+  const isSettingsDirty = Boolean(
+    settingsQuery.data && JSON.stringify(draft) !== JSON.stringify(toDraft(settingsQuery.data)),
+  );
   const setDraft = (updater: BackupSettingsDraft | ((current: BackupSettingsDraft) => BackupSettingsDraft)) => {
     setDraftOverride((current) => {
       const base = current ?? toDraft(settingsQuery.data);
@@ -327,19 +331,20 @@ export default function BackupSettingsPage() {
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to save backup settings."),
   });
+  useUnsavedChangesGuard(isSettingsDirty, saveMutation.isPending);
 
   const manualRunMutation = useMutation({
     mutationFn: async () => {
       const res = await apiFetch("/admin/tenant-backup-runs/manual", { method: "POST" });
       const body = await readJson(res);
-      if (!res.ok) throw new Error(responseError(body, `Failed with ${res.status}`));
+      if (!res.ok) throw new Error("The tenant backup could not be created.");
       return body as { run: TenantBackupRun; message: string };
     },
     onSuccess: async (result) => {
       if (result.run.status === "completed") {
         toast.success("Tenant backup completed.");
       } else {
-        toast.error(result.run.error_message ?? "Tenant backup failed.");
+        toast.error("Tenant backup failed. Review the destination and try again.");
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["tenant-backup-settings"] }),
@@ -376,7 +381,7 @@ export default function BackupSettingsPage() {
       if (result.run.status === "completed") {
         toast.success("Module restore completed.");
       } else {
-        toast.error(result.run.error_message ?? "Module restore failed.");
+        toast.error("Module restore failed. No technical error details were exposed.");
       }
       await queryClient.invalidateQueries({ queryKey: ["activity-log"] });
     },
@@ -404,7 +409,7 @@ export default function BackupSettingsPage() {
       if (result.run.status === "completed") {
         toast.success("Whole-tenant restore completed.");
       } else {
-        toast.error(result.run.error_message ?? "Whole-tenant restore failed.");
+        toast.error("Whole-tenant restore failed. Review the preview and try again.");
       }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["tenant-backup-runs"] }),
@@ -429,8 +434,7 @@ export default function BackupSettingsPage() {
   async function downloadRun(run: TenantBackupRun) {
     const res = await apiFetch(`/admin/tenant-backup-runs/${run.id}/download`);
     if (!res.ok) {
-      const body = await readJson(res);
-      throw new Error(responseError(body, `Failed with ${res.status}`));
+      throw new Error("The backup artifact could not be downloaded.");
     }
     const blob = await res.blob();
     downloadBlob(blob, `tenant-backup-${run.id}.zip`);
@@ -448,24 +452,47 @@ export default function BackupSettingsPage() {
     });
   }
 
+  async function confirmDeleteRun(run: TenantBackupRun) {
+    const confirmed = await confirm({
+      title: "Delete backup artifact?",
+      description: `Backup #${run.id} will no longer be available for download or restore. This action cannot be undone.`,
+      confirmLabel: "Delete backup",
+      variant: "destructive",
+    });
+    if (confirmed) deleteRunMutation.mutate(run.id);
+  }
+
+  if (settingsQuery.isLoading) return <RouteLoadingState label="backup settings" />;
+  if (settingsQuery.isError) {
+    return (
+      <RouteErrorState
+        title="Unable to load backup settings"
+        description="Backup settings are unavailable right now. No backup or restore action has been started."
+        reset={() => void settingsQuery.refetch()}
+        backHref="/dashboard/settings"
+        backLabel="Back to settings"
+      />
+    );
+  }
+
   return (
-    <div className="flex flex-col gap-6 text-neutral-200">
+    <div className="flex flex-col gap-6 text-copy-primary">
       <PageHeader title="Backups" description="Configure tenant-scoped backup exports, schedules, retention, and local download storage." />
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Card className="px-5 py-5">
           <div className="mb-5 flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-lg font-semibold text-neutral-100">Tenant Backup Settings</h2>
-              <p className="mt-1 text-sm text-neutral-500">These settings apply only to this tenant.</p>
+              <h2 className="text-lg font-semibold text-copy-primary">Tenant Backup Settings</h2>
+              <p className="mt-1 text-sm text-copy-muted">These settings apply only to this tenant.</p>
             </div>
             <Switch
               checked={draft.enabled}
               onCheckedChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
-              className="relative h-6 w-11 shrink-0 rounded-full border border-neutral-700 bg-neutral-800 data-[state=checked]:bg-emerald-600"
+              className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised data-[state=checked]:bg-action-primary"
               aria-label="Enable tenant backups"
             >
-              <SwitchThumb className="block h-5 w-5 rounded-full bg-white shadow-sm data-[state=checked]:translate-x-5" />
+              <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
             </Switch>
           </div>
 
@@ -521,22 +548,25 @@ export default function BackupSettingsPage() {
 
             <Field className="md:col-span-2">
               <FieldLabel>Documents</FieldLabel>
-              <div className="flex items-center justify-between gap-4 rounded-md border border-neutral-800 bg-neutral-950/70 px-4 py-3">
+              <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
                 <FieldDescription>Include tenant documents in backup artifacts.</FieldDescription>
                 <Switch
                   checked={draft.include_documents}
                   onCheckedChange={(checked) => setDraft((current) => ({ ...current, include_documents: checked }))}
-                  className="relative h-6 w-11 shrink-0 rounded-full border border-neutral-700 bg-neutral-800 data-[state=checked]:bg-emerald-600"
+                  className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised data-[state=checked]:bg-action-primary"
                   aria-label="Include documents"
                 >
-                  <SwitchThumb className="block h-5 w-5 rounded-full bg-white shadow-sm data-[state=checked]:translate-x-5" />
+                  <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
                 </Switch>
               </div>
             </Field>
           </FieldGroup>
 
-          <div className="mt-5 flex justify-end">
-            <Button type="button" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || settingsQuery.isLoading}>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle pt-4">
+            <span className={`text-sm ${isSettingsDirty ? "text-state-warning" : "text-copy-muted"}`}>
+              {isSettingsDirty ? "You have unsaved changes." : "All backup settings are saved."}
+            </span>
+            <Button type="button" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !isSettingsDirty}>
               <Save />{saveMutation.isPending ? "Saving..." : "Save Settings"}
             </Button>
           </div>
@@ -544,30 +574,38 @@ export default function BackupSettingsPage() {
 
         <Card className="px-5 py-5">
           <div className="mb-4 flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-neutral-300">
+            <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary">
               <CalendarClock className="h-4 w-4" />
             </span>
             <div>
-              <h2 className="text-lg font-semibold text-neutral-100">Schedule State</h2>
-              <p className="mt-1 text-sm text-neutral-500">Current tenant backup schedule.</p>
+              <h2 className="text-lg font-semibold text-copy-primary">Schedule State</h2>
+              <p className="mt-1 text-sm text-copy-muted">Current tenant backup schedule.</p>
             </div>
           </div>
           <dl className="grid gap-3 text-sm">
-            <div className="flex items-center justify-between gap-4 rounded-md border border-neutral-800 px-3 py-2">
-              <dt className="text-neutral-500">Status</dt>
-              <dd className={draft.enabled ? "font-medium text-emerald-300" : "font-medium text-neutral-400"}>{draft.enabled ? "Enabled" : "Disabled"}</dd>
+            <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-subtle px-3 py-2">
+              <dt className="text-copy-muted">Status</dt>
+              <dd>
+                <Pill
+                  bg={draft.enabled ? "bg-state-success-muted" : "bg-surface-muted"}
+                  text={draft.enabled ? "text-state-success" : "text-copy-muted"}
+                  border={draft.enabled ? "border-state-success/40" : "border-line-default"}
+                >
+                  {draft.enabled ? "Enabled" : "Disabled"}
+                </Pill>
+              </dd>
             </div>
-            <div className="flex items-center justify-between gap-4 rounded-md border border-neutral-800 px-3 py-2">
-              <dt className="text-neutral-500">Last Run</dt>
-              <dd className="text-neutral-200">{settings?.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}</dd>
+            <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-subtle px-3 py-2">
+              <dt className="text-copy-muted">Last Run</dt>
+              <dd className="text-copy-secondary">{settings?.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}</dd>
             </div>
-            <div className="flex items-center justify-between gap-4 rounded-md border border-neutral-800 px-3 py-2">
-              <dt className="text-neutral-500">Next Run</dt>
-              <dd className="text-neutral-200">{settings?.next_run_at ? formatDateTime(settings.next_run_at) : "Manual"}</dd>
+            <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-subtle px-3 py-2">
+              <dt className="text-copy-muted">Next Run</dt>
+              <dd className="text-copy-secondary">{settings?.next_run_at ? formatDateTime(settings.next_run_at) : "Manual"}</dd>
             </div>
-            <div className="flex items-center justify-between gap-4 rounded-md border border-neutral-800 px-3 py-2">
-              <dt className="text-neutral-500">Updated</dt>
-              <dd className="text-neutral-200">{settings?.updated_at ? formatDateTime(settings.updated_at) : "Not saved"}</dd>
+            <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-subtle px-3 py-2">
+              <dt className="text-copy-muted">Updated</dt>
+              <dd className="text-copy-secondary">{settings?.updated_at ? formatDateTime(settings.updated_at) : "Not saved"}</dd>
             </div>
           </dl>
           <div className="mt-5">
@@ -580,53 +618,62 @@ export default function BackupSettingsPage() {
 
       <Card className="px-5 py-5">
         <div className="mb-4 flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-neutral-300">
+          <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary">
             <Archive className="h-4 w-4" />
           </span>
           <div>
-            <h2 className="text-lg font-semibold text-neutral-100">Module Selection</h2>
-            <p className="mt-1 text-sm text-neutral-500">Choose modules when the backup scope is set to selected modules.</p>
+            <h2 className="text-lg font-semibold text-copy-primary">Module Selection</h2>
+            <p className="mt-1 text-sm text-copy-muted">Choose modules when the backup scope is set to selected modules.</p>
           </div>
         </div>
 
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {modulesLoading ? (
-            <div className="rounded-md border border-neutral-800 px-4 py-8 text-center text-sm text-neutral-500 sm:col-span-2 lg:col-span-3">Loading modules...</div>
+            Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-12 rounded-[var(--radius-control)]" />)
           ) : moduleOptions.length ? (
             moduleOptions.map((module) => {
               const checked = draft.selected_modules.includes(module.value);
               const disabled = draft.scope !== "selected_modules";
               return (
-                <button
+                <label
                   key={module.value}
-                  type="button"
-                  disabled={disabled}
-                  aria-pressed={checked}
-                  onClick={() => toggleModule(module.value)}
-                  className={`rounded-md border px-4 py-3 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                  className={`flex items-center gap-3 rounded-[var(--radius-control)] border px-4 py-3 text-sm transition-colors ${
                     checked
-                      ? "border-emerald-800/80 bg-emerald-950/30 text-emerald-100"
-                      : "border-neutral-800 bg-neutral-950/70 text-neutral-300 hover:border-neutral-700"
-                  }`}
+                      ? "border-action-primary bg-action-primary-muted text-copy-primary"
+                      : "border-line-default bg-surface-muted text-copy-secondary hover:border-line-strong"
+                  } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
                 >
+                  <Checkbox
+                    checked={checked}
+                    disabled={disabled}
+                    onCheckedChange={() => toggleModule(module.value)}
+                    className="flex size-4 shrink-0 items-center justify-center rounded border border-line-strong bg-surface-raised text-primary"
+                  >
+                    <CheckboxIndicator className="size-3" />
+                  </Checkbox>
                   {module.label}
-                </button>
+                </label>
               );
             })
           ) : (
-            <div className="rounded-md border border-neutral-800 px-4 py-8 text-center text-sm text-neutral-500 sm:col-span-2 lg:col-span-3">No enabled modules available.</div>
+            <EmptyState
+              icon={Archive}
+              title="No enabled modules available"
+              description="Enable a supported module before using selected-module backups."
+              className="sm:col-span-2 lg:col-span-3"
+            />
           )}
         </div>
       </Card>
 
       <Card className="px-5 py-5">
         <div className="mb-4 flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-neutral-300">
+          <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary">
             <RotateCcw className="h-4 w-4" />
           </span>
           <div>
-            <h2 className="text-lg font-semibold text-neutral-100">Module Restore</h2>
-            <p className="mt-1 text-sm text-neutral-500">Preview and restore one module from a tenant backup artifact.</p>
+            <h2 className="text-lg font-semibold text-copy-primary">Module Restore</h2>
+            <p className="mt-1 text-sm text-copy-muted">Preview and restore one module from a tenant backup artifact.</p>
           </div>
         </div>
 
@@ -693,21 +740,21 @@ export default function BackupSettingsPage() {
 
         {restorePreview ? (
           <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-4">
-            <div className="rounded-md border border-neutral-800 px-3 py-2">
-              <dt className="text-neutral-500">Rows</dt>
-              <dd className="mt-1 text-neutral-100">{restorePreview.summary.total_rows ?? 0}</dd>
+            <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
+              <dt className="text-copy-muted">Rows</dt>
+              <dd className="mt-1 text-copy-primary">{restorePreview.summary.total_rows ?? 0}</dd>
             </div>
-            <div className="rounded-md border border-neutral-800 px-3 py-2">
-              <dt className="text-neutral-500">Existing</dt>
-              <dd className="mt-1 text-neutral-100">{restorePreview.summary.existing_matches ?? 0}</dd>
+            <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
+              <dt className="text-copy-muted">Existing</dt>
+              <dd className="mt-1 text-copy-primary">{restorePreview.summary.existing_matches ?? 0}</dd>
             </div>
-            <div className="rounded-md border border-neutral-800 px-3 py-2">
-              <dt className="text-neutral-500">Missing</dt>
-              <dd className="mt-1 text-neutral-100">{restorePreview.summary.missing_rows ?? 0}</dd>
+            <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
+              <dt className="text-copy-muted">Missing</dt>
+              <dd className="mt-1 text-copy-primary">{restorePreview.summary.missing_rows ?? 0}</dd>
             </div>
-            <div className="rounded-md border border-neutral-800 px-3 py-2">
-              <dt className="text-neutral-500">Invalid</dt>
-              <dd className="mt-1 text-neutral-100">{restorePreview.summary.invalid_rows ?? 0}</dd>
+            <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
+              <dt className="text-copy-muted">Invalid</dt>
+              <dd className="mt-1 text-copy-primary">{restorePreview.summary.invalid_rows ?? 0}</dd>
             </div>
           </dl>
         ) : null}
@@ -718,6 +765,7 @@ export default function BackupSettingsPage() {
           </Button>
           <Button
             type="button"
+            variant="destructive"
             onClick={() => executeRestoreMutation.mutate()}
             disabled={executeRestoreMutation.isPending || !restoreRunId || !restoreModule || (restoreMode === "replace_module_data" && restoreConfirmation !== `REPLACE ${restoreModule}`)}
           >
@@ -725,25 +773,25 @@ export default function BackupSettingsPage() {
           </Button>
         </div>
 
-        <div className="mt-6 border-t border-neutral-800 pt-5">
+        <div className="mt-6 border-t border-line-subtle pt-5">
           <div className="mb-4">
-            <h3 className="text-sm font-semibold text-neutral-100">Whole-Tenant Restore</h3>
-            <p className="mt-1 text-sm text-neutral-500">Creates a safety backup first, then replaces supported modules from a full-tenant backup.</p>
+            <h3 className="text-sm font-semibold text-copy-primary">Whole-Tenant Restore</h3>
+            <p className="mt-1 text-sm text-copy-muted">Creates a safety backup first, then replaces supported modules from a full-tenant backup.</p>
           </div>
 
           {wholeRestorePreview ? (
             <dl className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
-              <div className="rounded-md border border-neutral-800 px-3 py-2">
-                <dt className="text-neutral-500">Modules</dt>
-                <dd className="mt-1 text-neutral-100">{wholeRestorePreview.summary.total_modules ?? 0}</dd>
+              <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
+                <dt className="text-copy-muted">Modules</dt>
+                <dd className="mt-1 text-copy-primary">{wholeRestorePreview.summary.total_modules ?? 0}</dd>
               </div>
-              <div className="rounded-md border border-neutral-800 px-3 py-2">
-                <dt className="text-neutral-500">Rows</dt>
-                <dd className="mt-1 text-neutral-100">{wholeRestorePreview.summary.total_rows ?? 0}</dd>
+              <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
+                <dt className="text-copy-muted">Rows</dt>
+                <dd className="mt-1 text-copy-primary">{wholeRestorePreview.summary.total_rows ?? 0}</dd>
               </div>
-              <div className="rounded-md border border-neutral-800 px-3 py-2">
-                <dt className="text-neutral-500">Backup Type</dt>
-                <dd className="mt-1 text-neutral-100">{wholeRestorePreview.metadata.record_counts ? "Tenant" : "-"}</dd>
+              <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
+                <dt className="text-copy-muted">Backup Type</dt>
+                <dd className="mt-1 text-copy-primary">{wholeRestorePreview.metadata.record_counts ? "Tenant" : "-"}</dd>
               </div>
             </dl>
           ) : null}
@@ -764,6 +812,7 @@ export default function BackupSettingsPage() {
             </Button>
             <Button
               type="button"
+              variant="destructive"
               onClick={() => executeWholeRestoreMutation.mutate()}
               disabled={executeWholeRestoreMutation.isPending || !restoreRunId || !wholeRestoreConfirmationText || wholeRestoreConfirmation !== wholeRestoreConfirmationText}
             >
@@ -775,10 +824,11 @@ export default function BackupSettingsPage() {
 
       <Card className="px-5 py-5">
         <div className="mb-4">
-          <h2 className="text-lg font-semibold text-neutral-100">Recent Backup Runs</h2>
-          <p className="mt-1 text-sm text-neutral-500">Tenant backup artifacts are separate from platform backups.</p>
+          <h2 className="text-lg font-semibold text-copy-primary">Recent Backup Runs</h2>
+          <p className="mt-1 text-sm text-copy-muted">Tenant backup artifacts are separate from platform backups.</p>
         </div>
-        <Table>
+        <div className="overflow-x-auto rounded-[var(--radius-control)] border border-line-subtle">
+        <Table className="min-w-[880px]">
           <TableHeader>
             <TableHeaderRow>
               <TableHead>Run</TableHead>
@@ -794,24 +844,43 @@ export default function BackupSettingsPage() {
           <TableBody>
             {runsQuery.isLoading ? (
               <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-neutral-500">Loading backup runs...</TableCell>
+                <TableCell colSpan={8} className="py-8 text-center text-copy-muted" aria-busy="true">Loading backup runs...</TableCell>
+              </TableRow>
+            ) : runsQuery.isError ? (
+              <TableRow>
+                <TableCell colSpan={8} className="py-6 text-center">
+                  <div role="alert" className="mx-auto max-w-lg text-sm text-copy-secondary">
+                    <p>Recent backup runs could not be loaded.</p>
+                    <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void runsQuery.refetch()}>
+                      <RotateCcw />Try again
+                    </Button>
+                  </div>
+                </TableCell>
               </TableRow>
             ) : (runsQuery.data ?? []).length ? (
               (runsQuery.data ?? []).map((run) => (
                 <TableRow key={run.id}>
                   <TableCell>#{run.id}</TableCell>
                   <TableCell>
-                    <span className={run.status === "completed" ? "text-emerald-300" : run.status === "failed" ? "text-red-300" : "text-amber-300"}>
+                    <Pill
+                      bg={run.status === "completed" ? "bg-state-success-muted" : run.status === "failed" ? "bg-state-danger-muted" : "bg-state-warning-muted"}
+                      text={run.status === "completed" ? "text-state-success" : run.status === "failed" ? "text-state-danger" : "text-state-warning"}
+                      border={run.status === "completed" ? "border-state-success/40" : run.status === "failed" ? "border-state-danger/40" : "border-state-warning/40"}
+                    >
                       {run.status}
-                    </span>
+                    </Pill>
                   </TableCell>
                   <TableCell>{run.scope === "full_tenant" ? "Full tenant" : "Selected"}</TableCell>
                   <TableCell>{run.modules_included.length}</TableCell>
                   <TableCell>{formatBytes(run.size_bytes)}</TableCell>
                   <TableCell>
-                    <span className={run.destination_upload_status === "failed" ? "text-red-300" : run.destination_upload_status === "uploaded" ? "text-emerald-300" : "text-neutral-400"}>
+                    <Pill
+                      bg={run.destination_upload_status === "failed" ? "bg-state-danger-muted" : run.destination_upload_status === "uploaded" ? "bg-state-success-muted" : "bg-surface-muted"}
+                      text={run.destination_upload_status === "failed" ? "text-state-danger" : run.destination_upload_status === "uploaded" ? "text-state-success" : "text-copy-muted"}
+                      border={run.destination_upload_status === "failed" ? "border-state-danger/40" : run.destination_upload_status === "uploaded" ? "border-state-success/40" : "border-line-default"}
+                    >
                       {run.destination_upload_status.replaceAll("_", " ")}
-                    </span>
+                    </Pill>
                   </TableCell>
                   <TableCell>{run.completed_at ? formatDateTime(run.completed_at) : "-"}</TableCell>
                   <TableCell>
@@ -829,29 +898,36 @@ export default function BackupSettingsPage() {
                         </Button>
                         <Button
                           type="button"
-                          variant="outline"
+                          variant="dangerGhost"
                           size="sm"
-                          onClick={() => deleteRunMutation.mutate(run.id)}
+                          onClick={() => void confirmDeleteRun(run)}
                           disabled={deleteRunMutation.isPending}
                         >
                           <Trash2 />Delete
                         </Button>
                       </div>
                     ) : run.error_message ? (
-                      <span className="text-xs text-red-300">{run.error_message}</span>
+                      <span className="text-xs text-state-danger">Backup failed. Try again or review the destination.</span>
                     ) : (
-                      <span className="text-xs text-neutral-500">Unavailable</span>
+                      <span className="text-xs text-copy-muted">Unavailable</span>
                     )}
                   </TableCell>
                 </TableRow>
               ))
             ) : (
               <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-neutral-500">No tenant backup runs yet.</TableCell>
+                <TableCell colSpan={8} className="p-0">
+                  <EmptyState
+                    icon={Archive}
+                    title="No tenant backup runs yet"
+                    description="Run a backup to create the first tenant-scoped artifact."
+                  />
+                </TableCell>
               </TableRow>
             )}
           </TableBody>
         </Table>
+        </div>
       </Card>
     </div>
   );

@@ -2,10 +2,9 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 
-import { CustomModuleRecordDialog } from "@/components/customModules/CustomModuleRecordDialog";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/button";
 import { ColumnPicker } from "@/components/ui/ColumnPicker";
@@ -16,6 +15,7 @@ import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportCo
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useCustomModuleRecords, useCustomModuleSchema, type CustomModuleRecord, type CustomModuleRecordSortState } from "@/hooks/useModuleBuilder";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { formatDateTime } from "@/lib/datetime";
@@ -47,12 +47,10 @@ function renderRecordColumn(record: CustomModuleRecord, column: string) {
 export default function CustomModulePage() {
   const params = useParams<{ moduleKey: string }>();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const moduleKey = params.moduleKey;
   const [page, setPage] = useState(1);
-  const [isCreateOpen, setIsCreateOpen] = useState(false);
-  const createRequested = searchParams.get("action") === "create";
-  const [error, setError] = useState<string | null>(null);
+  const { modules } = useAccessibleModules();
+  const canCreate = Boolean(modules.find((module) => module.name === moduleKey)?.actions?.can_create);
   const schema = useCustomModuleSchema(moduleKey);
   const { fields: moduleFields } = useModuleFieldConfigs(moduleKey);
   const enabledFieldKeys = useMemo(
@@ -116,17 +114,6 @@ export default function CustomModulePage() {
     handleSortChange(nextSort);
   }
 
-  async function createRecord(payload: { title?: string; values: Record<string, unknown> }) {
-    setError(null);
-    try {
-      await records.saveRecord(payload);
-      setIsCreateOpen(false);
-      router.replace(`/dashboard/custom/${moduleKey}`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Unable to save record");
-    }
-  }
-
   return (
     <div className="flex flex-col gap-6 text-neutral-200">
       <PageHeader
@@ -145,15 +132,17 @@ export default function CustomModulePage() {
                 }}
               />
             ) : null}
-            <Button type="button" onClick={() => { setError(null); setIsCreateOpen(true); }} disabled={fields.length === 0}>
-              <Plus size={15} />
-              New Record
-            </Button>
+            {canCreate ? (
+              <Button asChild>
+                <Link href={`/dashboard/custom/${moduleKey}/new`}>
+                  <Plus size={15} />
+                  New Record
+                </Link>
+              </Button>
+            ) : null}
           </>
         }
       />
-
-      {error && !isCreateOpen ? <div className="rounded-md border border-red-900/70 bg-red-950/30 px-4 py-3 text-sm text-red-100">{error}</div> : null}
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Input
@@ -221,12 +210,14 @@ export default function CustomModulePage() {
                   <EmptyState
                     title="No records yet"
                     description="Create the first record for this custom module."
-                    action={
-                      <Button type="button" onClick={() => { setError(null); setIsCreateOpen(true); }} disabled={fields.length === 0}>
-                        <Plus size={15} />
-                        New Record
+                    action={canCreate ? (
+                      <Button asChild>
+                        <Link href={`/dashboard/custom/${moduleKey}/new`}>
+                          <Plus size={15} />
+                          New Record
+                        </Link>
                       </Button>
-                    }
+                    ) : undefined}
                   />
                 </TableCell>
               </TableRow>
@@ -279,22 +270,6 @@ export default function CustomModulePage() {
           <Button type="button" disabled={page >= records.totalPages} onClick={() => setPage((value) => value + 1)} className="border border-neutral-700 bg-neutral-900 text-neutral-100 hover:bg-neutral-800">Next</Button>
         </div>
       </div>
-
-      {isCreateOpen || createRequested ? (
-        <CustomModuleRecordDialog
-          open={isCreateOpen || createRequested}
-          mode="create"
-          fields={fields}
-          isSaving={records.isSaving}
-          error={error}
-          onClose={() => {
-            setIsCreateOpen(false);
-            setError(null);
-            router.replace(`/dashboard/custom/${moduleKey}`);
-          }}
-          onSubmit={createRecord}
-        />
-      ) : null}
     </div>
   );
 }

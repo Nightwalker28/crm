@@ -9,7 +9,7 @@ import {
   ShieldCheck,
   Trash2,
 } from "lucide-react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -129,11 +129,14 @@ function draftFromSsoSettings(settings: SsoSettings): SsoDraft {
 }
 
 export default function UserManagementPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const requestedTab = searchParams.get("tab");
+  const requestedAction = searchParams.get("action");
   const activeTab: AdminTab = ADMIN_TABS.includes(requestedTab as AdminTab)
     ? (requestedTab as AdminTab)
     : "users";
+  const isCreateUserAction = activeTab === "users" && requestedAction === "create-user";
   const { fields: moduleFields } = useModuleFieldConfigs("admin_users");
   const definition = useMemo(
     () => buildModuleViewDefinition("admin_users", [], moduleFields),
@@ -247,6 +250,13 @@ export default function UserManagementPage() {
     setIsSsoDraftDirty(true);
     setSsoDraft((current) => ({ ...current, [field]: value }));
   };
+
+  function closeCreateUserWorkflow() {
+    closeCreateModal();
+    if (isCreateUserAction) {
+      router.replace("/dashboard/settings/users?tab=users", { scroll: false });
+    }
+  }
 
   const resetSsoDraft = () => {
     if (!ssoSettings) return;
@@ -1149,10 +1159,10 @@ export default function UserManagementPage() {
       </Dialog>
 
       <CreateUserDialog
-        open={isCreateOpen}
+        open={isCreateOpen || isCreateUserAction}
         roles={roles}
         teams={teams}
-        onClose={closeCreateModal}
+        onClose={closeCreateUserWorkflow}
         onCreate={createUser}
       />
 

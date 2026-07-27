@@ -72,6 +72,29 @@ export const SETTINGS_NAV_ITEMS = [
   { href: SETTINGS_ROUTES.recycleBin, label: "Recycle Bin", sortOrder: 150 },
 ] as const;
 
+export const ADMIN_QUICK_ACTIONS = [
+  {
+    label: "Add user",
+    description: "Provision a user and assign their role and team",
+    href: `${SETTINGS_ROUTES.users}?tab=users&action=create-user`,
+  },
+  {
+    label: "Create team",
+    description: "Add a team to the tenant organization structure",
+    href: `${SETTINGS_ROUTES.teams}?action=create-team`,
+  },
+  {
+    label: "Create department",
+    description: "Add a department for team and module access targeting",
+    href: `${SETTINGS_ROUTES.teams}?action=create-department`,
+  },
+  {
+    label: "Create role",
+    description: "Create a permission role from a secure template",
+    href: `${SETTINGS_ROUTES.permissions}?action=create-role`,
+  },
+] as const;
+
 const MODULES_BY_KEY = new Map<string, ModuleRegistryEntry>(MODULE_REGISTRY.map((module) => [module.key, module]));
 const MODULES_BY_ROUTE = new Map<string, ModuleRegistryEntry>(MODULE_REGISTRY.map((module) => [module.route, module]));
 

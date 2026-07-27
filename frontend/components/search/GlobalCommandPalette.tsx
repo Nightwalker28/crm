@@ -6,12 +6,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Command } from "cmdk";
 import { CommandIcon, CornerDownLeft, Search } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { Dialog, DialogBackdrop, DialogPanel } from "@/components/ui/dialog";
 import { useAccessibleModules, type AccessibleModuleActions } from "@/hooks/useAccessibleModules";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
-import { getDependentModuleDefinitions, getModuleDefinition, getModuleRegistryLabel, getModuleRoute, isModuleVisibleInNavigation, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
+import { ADMIN_QUICK_ACTIONS, getDependentModuleDefinitions, getModuleDefinition, getModuleRegistryLabel, getModuleRoute, isModuleVisibleInNavigation, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
 import { describeRecentDashboardPage, getRecentPagesSnapshot, parseRecentPages, recordRecentPage, subscribeToRecentPages } from "@/lib/recent-pages";
 import { canonicalizeDashboardHref } from "@/lib/routes";
 
@@ -43,11 +44,10 @@ async function fetchGlobalSearch(query: string): Promise<SearchResponse> {
     limit_per_module: "5",
   });
   const res = await apiFetch(`/global-search?${params.toString()}`);
-  const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to search records.");
+    throw new Error("global-search-unavailable");
   }
-  return body as SearchResponse;
+  return res.json() as Promise<SearchResponse>;
 }
 
 function canUseQuickAction(
@@ -115,6 +115,7 @@ export default function GlobalCommandPalette() {
     queryFn: () => fetchGlobalSearch(deferredQuery),
     enabled: open && deferredQuery.length >= 2,
     staleTime: 15_000,
+    retry: false,
   });
 
   const quickLinks = useMemo(() => {
@@ -128,7 +129,7 @@ export default function GlobalCommandPalette() {
           return route ? [{
             label: `Create ${label}`,
             subtitle: `Add a record to ${label}`,
-            href: `${route}?action=create`,
+            href: `${route}/new`,
             group: "Actions",
           }] : [];
         }
@@ -171,6 +172,12 @@ export default function GlobalCommandPalette() {
           href: dependent.route,
           group: "Modules",
         }))),
+      ...(isAdmin ? ADMIN_QUICK_ACTIONS.map((action) => ({
+        label: action.label,
+        subtitle: action.description,
+        href: action.href,
+        group: "Actions",
+      })) : []),
       ...(isAdmin ? SETTINGS_NAV_ITEMS.map((item) => ({
         label: item.label,
         subtitle: item.href,
@@ -334,8 +341,11 @@ export default function GlobalCommandPalette() {
                     ) : isSearchPending ? (
                       <div className="px-3 py-8 text-center text-sm text-copy-muted">Searching records…</div>
                     ) : searchQuery.error ? (
-                      <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-                        {searchQuery.error instanceof Error ? searchQuery.error.message : "Failed to search records."}
+                      <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+                        <p>Search is temporarily unavailable. Check your connection and try again.</p>
+                        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void searchQuery.refetch()}>
+                          Try again
+                        </Button>
                       </div>
                     ) : groupedResults.length ? (
                       groupedResults.map(([group, items]) => (

@@ -132,3 +132,9 @@ test("warns before discarding changes when switching roles", async ({ page }) =>
   await page.getByRole("button", { name: /Manager/ }).click();
   await expect(page.getByRole("heading", { name: "Manager Permissions" })).toBeVisible();
 });
+
+test("opens Create Role from the palette action deep link", async ({ page }) => {
+  await page.goto("/dashboard/settings/permissions?action=create-role");
+
+  await expect(page.getByRole("heading", { name: "Create Role" })).toBeVisible();
+});

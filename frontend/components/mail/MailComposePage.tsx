@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useMailActions, useMailContext } from "@/hooks/useMail";
 import type { MailProvider } from "@/hooks/useMail";
@@ -140,19 +141,20 @@ export default function MailComposePage() {
             <Card className="p-5">
               <h2 className="text-sm font-semibold text-copy-primary">Sending mailbox</h2>
               <Field className="mt-4">
-                <FieldLabel htmlFor="mail-provider">Provider</FieldLabel>
-                <select
-                  id="mail-provider"
+                <FieldLabel>Provider</FieldLabel>
+                <Select
                   value={provider}
-                  onChange={(event) => setProviderOverride(event.target.value as MailProvider)}
-                  className="h-[38px] rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 text-sm text-copy-primary outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
+                  onValueChange={(value) => setProviderOverride(value as MailProvider)}
                 >
-                  {sendConnections.map((connection) => (
-                    <option key={connection.provider} value={connection.provider}>
-                      {providerLabel(connection.provider)}{connection.account_email ? ` — ${connection.account_email}` : ""}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger aria-label="Provider"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {sendConnections.map((connection) => (
+                      <SelectItem key={connection.provider} value={connection.provider}>
+                        {providerLabel(connection.provider)}{connection.account_email ? ` — ${connection.account_email}` : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <FieldDescription>The selected provider sends the message using your connected account.</FieldDescription>
               </Field>
             </Card>
@@ -163,14 +165,15 @@ export default function MailComposePage() {
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
                 {VARIABLE_TOKENS.map((token) => (
-                  <button
+                  <Button
                     key={token}
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     onClick={() => setBody((current) => `${current}${current ? " " : ""}${token}`)}
-                    className="rounded-full border border-line-default bg-surface-muted px-3 py-1 text-xs text-copy-secondary transition-colors hover:border-line-strong hover:text-copy-primary"
                   >
                     {token}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </Card>

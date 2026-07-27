@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { Upload } from "lucide-react";
+import { RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import DocumentList from "@/components/documents/DocumentList";
@@ -67,7 +67,7 @@ export default function RecordDocumentsPanel({ moduleKey, entityId }: Props) {
     <Card className="px-5 py-5">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-lg font-semibold text-neutral-100">Documents</h2>
+          <h2 className="text-lg font-semibold text-copy-primary">Documents</h2>
           <FieldDescription className="mt-1">PDF, DOC, DOCX, TXT, RTF, and ODT files linked to this record.</FieldDescription>
         </div>
         <div className="flex flex-col gap-2 md:w-72">
@@ -77,7 +77,7 @@ export default function RecordDocumentsPanel({ moduleKey, entityId }: Props) {
             placeholder="Optional document title"
             className="h-9"
           />
-          <input
+          <Input
             ref={inputRef}
             type="file"
             accept=".pdf,.doc,.docx,.txt,.rtf,.odt"
@@ -92,10 +92,22 @@ export default function RecordDocumentsPanel({ moduleKey, entityId }: Props) {
       </div>
       <div className="mt-4">
         {documentsQuery.isLoading ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-8 text-center text-sm text-neutral-500">Loading documents...</div>
+          <div
+            className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-8 text-center text-sm text-copy-muted"
+            aria-busy="true"
+          >
+            Loading documents...
+          </div>
         ) : documentsQuery.error ? (
-          <div className="rounded-md border border-red-900/50 bg-red-950/20 px-4 py-4 text-sm text-red-300">
-            {errorMessage(documentsQuery.error, "Failed to load documents.")}
+          <div
+            role="alert"
+            className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-4 text-sm text-copy-secondary"
+          >
+            <p>Documents could not be loaded.</p>
+            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void documentsQuery.refetch()}>
+              <RefreshCw className="h-4 w-4" />
+              Try again
+            </Button>
           </div>
         ) : (
           <DocumentList

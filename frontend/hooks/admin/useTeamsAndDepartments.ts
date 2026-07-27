@@ -199,8 +199,10 @@ export function useTeamsAndDepartments() {
       setDepartmentDialogOpen(false);
       setDepartmentForm(emptyDepartmentForm);
       await refreshData();
+      return true;
     } catch (error: unknown) {
       setError(getErrorMessage(error, "Failed to save department"));
+      return false;
     } finally {
       setDepartmentSubmitting(false);
     }
@@ -238,8 +240,10 @@ export function useTeamsAndDepartments() {
       setTeamDialogOpen(false);
       setTeamForm(emptyTeamForm);
       await refreshData();
+      return true;
     } catch (error: unknown) {
       setError(getErrorMessage(error, "Failed to save team"));
+      return false;
     } finally {
       setTeamSubmitting(false);
     }

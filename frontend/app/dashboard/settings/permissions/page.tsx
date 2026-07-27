@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { ShieldCheck } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -112,6 +113,9 @@ function productAreaLabel(area: string) {
 }
 
 export default function RolesPermissionsPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const requestedAction = searchParams.get("action");
   const {
     roles,
     templates,
@@ -141,6 +145,7 @@ export default function RolesPermissionsPage() {
   const loadedRoleId = useRef<number | null>(null);
 
   const isDirty = permissionSignature(localPermissions) !== permissionSignature(permissions);
+  const isCreateRoleAction = requestedAction === "create-role";
 
   useEffect(() => {
     if (loadedRoleId.current !== selectedRoleId || !isDirty) {
@@ -203,12 +208,19 @@ export default function RolesPermissionsPage() {
         description: newRoleDescription.trim() || undefined,
         template_key: newRoleTemplate,
       });
-      setDialogOpen(false);
+      closeCreateRoleDialog();
       setNewRoleName("");
       setNewRoleDescription("");
       setNewRoleTemplate("user");
     } catch (error) {
       setCreateError(error instanceof Error ? error.message : "The role could not be created.");
+    }
+  }
+
+  function closeCreateRoleDialog() {
+    setDialogOpen(false);
+    if (isCreateRoleAction) {
+      router.replace("/dashboard/settings/permissions", { scroll: false });
     }
   }
 
@@ -453,7 +465,7 @@ export default function RolesPermissionsPage() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onClose={() => { if (!isCreating) setDialogOpen(false); }}>
+      <Dialog open={dialogOpen || isCreateRoleAction} onClose={() => { if (!isCreating) closeCreateRoleDialog(); }}>
         <DialogBackdrop />
         <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
           <DialogPanel size="xl">
@@ -487,7 +499,7 @@ export default function RolesPermissionsPage() {
             </FieldGroup>
 
             <DialogFooter className="mt-5">
-              <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={isCreating}>Cancel</Button>
+              <Button variant="outline" onClick={closeCreateRoleDialog} disabled={isCreating}>Cancel</Button>
               <Button onClick={() => void handleCreateRole()} disabled={!newRoleName.trim() || isCreating}>
                 {isCreating ? "Creating…" : "Create Role"}
               </Button>
