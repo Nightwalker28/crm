@@ -114,7 +114,14 @@ export default function DashboardHomePage() {
   const [periodDays, setPeriodDays] = useState(30);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const { modules, isLoading: isModulesLoading } = useAccessibleModules();
-  const { notifications, unreadCount, isLoading: isNotificationsLoading } = useNotifications();
+  const {
+    notifications,
+    unreadCount,
+    isLoading: isNotificationsLoading,
+    isError: isNotificationsError,
+    refetch: refetchNotifications,
+    markRead: markNotificationRead,
+  } = useNotifications();
 
   const layoutQuery = useQuery({
     queryKey: ["dashboard-layout"],
@@ -354,7 +361,15 @@ export default function DashboardHomePage() {
       );
     }
     if (widget.type === "notifications") {
-      return <DashboardNotifications notifications={notifications} isLoading={isNotificationsLoading} />;
+      return (
+        <DashboardNotifications
+          notifications={notifications}
+          isLoading={isNotificationsLoading}
+          isError={isNotificationsError}
+          onRetry={() => void refetchNotifications()}
+          onRead={(notificationId) => void markNotificationRead(notificationId).catch(() => undefined)}
+        />
+      );
     }
     if (widget.type === "module_summary") {
       const dashboardModule = widget.module_key ? modulesByName.get(widget.module_key) : null;

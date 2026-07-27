@@ -2,10 +2,12 @@
 
 import { useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
 import { MenuItem } from "@headlessui/react";
-import { Upload } from "lucide-react";
+import { FileSpreadsheet, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/Card";
+import { DataTransferJobProgress } from "@/components/ui/DataTransferJobProgress";
 import {
   Dialog,
   DialogBackdrop,
@@ -15,15 +17,16 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   type DuplicateMode,
   type ImportExecutionResponse,
   type ImportPreviewResponse,
   type ImportSummaryResponse,
-  getErrorMessage,
 } from "@/components/ui/importExportUtils";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useJobPoller, type DataTransferJobResponse } from "@/hooks/useJobPoller";
 import { apiFetch } from "@/lib/api";
 
@@ -35,8 +38,24 @@ type Props = {
   onImportSuccess?: () => void;
 };
 
+const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function duplicateModeLabel(mode: DuplicateMode) {
+  if (mode === "overwrite") return "Overwrite duplicates";
+  if (mode === "merge") return "Merge duplicates";
+  return "Skip duplicates";
+}
+
 export function ImportControls({ importEndpoint, importLabel, fileAccept, disabled, onImportSuccess }: Props) {
+  const { confirm } = useConfirm();
   const inputRef = useRef<HTMLInputElement>(null);
+  const [isPreviewing, setIsPreviewing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -45,15 +64,14 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
   const [duplicateMode, setDuplicateMode] = useState<DuplicateMode>("skip");
   const [importSummary, setImportSummary] = useState<ImportSummaryResponse | null>(null);
   const [importJobId, setImportJobId] = useState<number | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
   const importJob = useJobPoller<ImportSummaryResponse>(
     importJobId,
     (job: DataTransferJobResponse<ImportSummaryResponse>) => {
-      if (job.summary) {
-        setImportSummary(job.summary);
-      }
+      if (job.summary) setImportSummary(job.summary);
       onImportSuccess?.();
     },
-    { failureMessage: "Background import failed." },
+    { failureMessage: "The background import could not be completed." },
   );
 
   const previewEndpoint = `${importEndpoint}/preview`;
@@ -65,19 +83,19 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
   async function loadPreview(file: File) {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await apiFetch(previewEndpoint, {
+    const response = await apiFetch(previewEndpoint, {
       method: "POST",
       body: formData,
     });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) {
-      throw new Error(getErrorMessage(body, `Preview failed with ${res.status}`));
-    }
+    const body = await response.json().catch(() => null);
+    if (!response.ok) throw new Error("The import preview could not be loaded.");
+
     const nextPreview = body as ImportPreviewResponse;
     setPreview(nextPreview);
     setMapping(nextPreview.suggested_mapping ?? {});
     setDuplicateMode(nextPreview.default_duplicate_mode ?? "skip");
     setImportSummary(null);
+    setImportError(null);
   }
 
   function resetImportState() {
@@ -87,51 +105,90 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
     setMapping({});
     setImportSummary(null);
     setImportJobId(null);
+    setImportError(null);
     importJob.reset();
     if (inputRef.current) inputRef.current.value = "";
   }
 
-  async function handleImportSubmit() {
-    if (!selectedFile) return;
-    if (missingRequiredTargets.length) {
-      toast.error(`Map all required fields before importing: ${missingRequiredTargets.join(", ")}`);
+  async function selectImportFile(file: File) {
+    if (!file.size || file.size > MAX_IMPORT_BYTES) {
+      toast.error("Choose a non-empty CSV file up to 50 MB.");
+      if (inputRef.current) inputRef.current.value = "";
       return;
     }
+
+    setIsPreviewing(true);
+    try {
+      setSelectedFile(file);
+      await loadPreview(file);
+      setIsImportDialogOpen(true);
+    } catch {
+      setSelectedFile(null);
+      toast.error("The import preview could not be loaded. Check the file and try again.");
+      if (inputRef.current) inputRef.current.value = "";
+    } finally {
+      setIsPreviewing(false);
+    }
+  }
+
+  async function handleImportSubmit() {
+    if (!selectedFile || !preview) return;
+    if (missingRequiredTargets.length) {
+      setImportError(`Map the required fields before importing: ${missingRequiredTargets.join(", ")}.`);
+      return;
+    }
+
+    if (duplicateMode !== "skip") {
+      const confirmed = await confirm({
+        title: `${duplicateModeLabel(duplicateMode)}?`,
+        description:
+          duplicateMode === "overwrite"
+            ? "Matching records may have their existing values replaced by values from this file."
+            : "Values from this file may be combined with matching existing records.",
+        confirmLabel: duplicateMode === "overwrite" ? "Run overwrite import" : "Run merge import",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
+
     setIsImporting(true);
+    setImportError(null);
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
       formData.append("mapping_json", JSON.stringify(mapping));
       const params = new URLSearchParams({ duplicate_mode: duplicateMode });
-      const res = await apiFetch(`${importEndpoint}?${params.toString()}`, {
+      const response = await apiFetch(`${importEndpoint}?${params.toString()}`, {
         method: "POST",
         body: formData,
       });
-      const body = (await res.json().catch(() => null)) as ImportExecutionResponse | null;
-      if (!res.ok) {
-        throw new Error(getErrorMessage(body, `Import failed with ${res.status}`));
-      }
+      const body = (await response.json().catch(() => null)) as ImportExecutionResponse | null;
+      if (!response.ok) throw new Error("The import could not be started.");
+
       if (body?.mode === "background" && body.job_id) {
         setImportJobId(body.job_id);
         importJob.start(body.job_status || "queued", "Import queued.");
         setImportSummary(null);
-        toast.success(body.message || `Import queued as job #${body.job_id}.`);
+        toast.success("Import queued. You can monitor its progress here.");
         return;
       }
-      const summary = body?.summary as ImportSummaryResponse | undefined;
+
+      const summary = body?.summary;
       if (summary) {
         setImportSummary(summary);
         setImportJobId(null);
         importJob.reset();
-        toast.success(body?.message || summary.message || "Import completed.");
+        toast.success("Import completed.");
         onImportSuccess?.();
       }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Import failed.");
+    } catch {
+      setImportError("The import could not be started. Review the mapping and try again.");
     } finally {
       setIsImporting(false);
     }
   }
+
+  const menuDisabled = disabled || isImporting || isPreviewing;
 
   return (
     <>
@@ -139,17 +196,12 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
         ref={inputRef}
         type="file"
         accept={fileAccept}
-        className="hidden"
-        onChange={async (event) => {
+        className="sr-only"
+        aria-label={importLabel}
+        tabIndex={-1}
+        onChange={(event) => {
           const file = event.target.files?.[0];
-          if (!file) return;
-          try {
-            setSelectedFile(file);
-            await loadPreview(file);
-            setIsImportDialogOpen(true);
-          } catch (error) {
-            toast.error(error instanceof Error ? error.message : "Failed to preview import.");
-          }
+          if (file) void selectImportFile(file);
         }}
       />
 
@@ -157,62 +209,73 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
         {({ focus }) => (
           <button
             type="button"
-            disabled={disabled || isImporting}
+            disabled={menuDisabled}
             onClick={() => inputRef.current?.click()}
-            className={
-              "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-neutral-200 transition-colors " +
-              (focus ? "bg-neutral-800 text-neutral-100" : "")
-            }
+            className={`flex w-full items-center gap-2 rounded-[var(--radius-control-sm)] px-3 py-2 text-sm text-copy-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:text-copy-disabled ${
+              focus ? "bg-action-primary-muted text-copy-primary" : ""
+            }`}
           >
-            <Upload className="h-4 w-4" />
-            {isImporting ? "Importing..." : importLabel}
+            <Upload aria-hidden="true" />
+            {isPreviewing ? "Reading file..." : isImporting ? "Importing..." : importLabel}
           </button>
         )}
       </MenuItem>
 
-      <Dialog open={isImportDialogOpen} onClose={resetImportState}>
+      <Dialog open={isImportDialogOpen} onClose={() => { if (!isImporting) resetImportState(); }}>
         <DialogBackdrop />
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
           <DialogPanel size="3xl">
             <DialogHeader className="mb-4">
               <div>
-                <DialogTitle className="text-lg text-neutral-100">
-                  {importSummary ? "Import Summary" : "Import Preview"}
+                <DialogTitle className="text-lg text-copy-primary">
+                  {importSummary ? "Import summary" : importJobId ? "Import progress" : "Import preview"}
                 </DialogTitle>
-                <DialogDescription className="mt-1 text-neutral-400">
+                <DialogDescription className="mt-1 text-copy-secondary">
                   {importSummary
-                    ? "Review the result of the import and any row-level failures."
-                    : "Review the detected header mapping and choose how duplicate records should be handled."}
+                    ? "Review imported rows and any records that need correction."
+                    : importJobId
+                      ? "The import continues as a tenant-scoped background job."
+                      : "Review the detected header mapping and choose how matching records should be handled."}
                 </DialogDescription>
               </div>
             </DialogHeader>
 
             <div className="space-y-5">
+              {importError ? (
+                <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+                  {importError}
+                </div>
+              ) : null}
+
               {importSummary ? (
                 <ImportSummary summary={importSummary} />
               ) : importJobId ? (
-                <ImportJobProgress
+                <DataTransferJobProgress
+                  operation="import"
                   jobId={importJobId}
                   status={importJob.status}
                   progress={importJob.progress}
                   message={importJob.message}
-                  error={importJob.error}
+                  hasError={Boolean(importJob.error)}
+                  completedDescription="Import finished."
+                  failureMessage="The background import could not be completed. Review the file and try again."
                 />
-              ) : null}
-
-              {!importSummary ? (
+              ) : (
                 <>
                   <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <Label className="mb-2 block">File</Label>
-                      <div className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-300">
-                        {selectedFile?.name || "No file selected"}
-                      </div>
-                    </div>
-                    <div>
-                      <Label className="mb-2 block">Duplicate handling</Label>
+                    <Field>
+                      <FieldLabel>File</FieldLabel>
+                      <Card variant="muted" className="flex min-h-[42px] items-center gap-3 px-3 py-2 text-sm text-copy-secondary">
+                        <FileSpreadsheet className="size-4 shrink-0 text-copy-muted" aria-hidden="true" />
+                        <span className="min-w-0 flex-1 truncate">{selectedFile?.name || "No file selected"}</span>
+                        {selectedFile ? <span className="shrink-0 text-xs text-copy-muted">{formatBytes(selectedFile.size)}</span> : null}
+                      </Card>
+                      <FieldDescription>CSV files are limited to 50 MB.</FieldDescription>
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="import-duplicate-mode">Duplicate handling</FieldLabel>
                       <Select value={duplicateMode} onValueChange={(value) => setDuplicateMode(value as DuplicateMode)}>
-                        <SelectTrigger className="w-full">
+                        <SelectTrigger id="import-duplicate-mode" className="w-full">
                           <SelectValue placeholder="Select duplicate mode" />
                         </SelectTrigger>
                         <SelectContent>
@@ -221,18 +284,22 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
                           <SelectItem value="merge">Merge duplicates</SelectItem>
                         </SelectContent>
                       </Select>
-                    </div>
+                      <FieldDescription>Overwrite and merge require confirmation before the import starts.</FieldDescription>
+                    </Field>
                   </div>
 
-                  {preview ? <ImportMapping preview={preview} mapping={mapping} onMappingChange={setMapping} /> : null}
+                  {preview ? <ImportMapping preview={preview} mapping={mapping} onMappingChange={(update) => {
+                    setImportError(null);
+                    setMapping(update);
+                  }} /> : null}
                 </>
-              ) : null}
+              )}
             </div>
 
             <DialogFooter className="mt-6">
               {importSummary || importJobId ? (
                 <Button type="button" onClick={resetImportState}>
-                  Done
+                  Close
                 </Button>
               ) : (
                 <>
@@ -240,7 +307,7 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
                     Cancel
                   </Button>
                   <Button type="button" onClick={() => void handleImportSubmit()} disabled={isImporting || !preview}>
-                    {isImporting ? "Importing..." : "Run Import"}
+                    {isImporting ? "Starting import..." : "Run import"}
                   </Button>
                 </>
               )}
@@ -257,8 +324,8 @@ function ImportSummary({ summary }: { summary: ImportSummaryResponse }) {
     <div className="space-y-5">
       <div className="grid gap-3 md:grid-cols-3">
         <SummaryCard label="Total rows" value={summary.total_rows} />
-        <SummaryCard label="Imported" value={summary.imported_rows} valueClassName="text-emerald-300" />
-        <SummaryCard label="Failed" value={summary.failed_rows} valueClassName="text-red-300" />
+        <SummaryCard label="Imported" value={summary.imported_rows} tone="success" />
+        <SummaryCard label="Failed" value={summary.failed_rows} tone="danger" />
       </div>
       <div className="grid gap-3 md:grid-cols-4">
         <SummaryCard label="New" value={summary.new_rows} size="sm" />
@@ -266,28 +333,30 @@ function ImportSummary({ summary }: { summary: ImportSummaryResponse }) {
         <SummaryCard label="Merged" value={summary.merged_rows} size="sm" />
         <SummaryCard label="Skipped" value={summary.skipped_rows} size="sm" />
       </div>
-      <div className="rounded-md border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-neutral-300">
+      <Card variant="muted" className="px-4 py-3 text-sm text-copy-secondary">
         {summary.message}
-      </div>
+      </Card>
       <div>
-        <h3 className="text-sm font-medium text-neutral-100">Failed rows</h3>
-        <div className="mt-3 max-h-[320px] space-y-2 overflow-y-auto pr-1">
+        <h3 className="text-sm font-medium text-copy-primary">Rows requiring attention</h3>
+        <div className="mt-3 max-h-[320px] overflow-y-auto pr-1">
           {summary.failures.length ? (
-            summary.failures.map((failure, index) => (
-              <div
-                key={`${failure.row_number ?? "row"}-${index}`}
-                className="rounded-md border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-100"
-              >
-                <div className="font-medium">
-                  Row {failure.row_number ?? "?"}
-                  {failure.record_identifier ? ` - ${failure.record_identifier}` : ""}
-                </div>
-                <div className="mt-1 text-red-200/90">{failure.reason}</div>
-              </div>
-            ))
+            <ul className="space-y-2">
+              {summary.failures.map((failure, index) => (
+                <li
+                  key={`${failure.row_number ?? "row"}-${index}`}
+                  className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"
+                >
+                  <div className="font-medium">
+                    Row {failure.row_number ?? "?"}
+                    {failure.record_identifier ? ` — ${failure.record_identifier}` : ""}
+                  </div>
+                  <div className="mt-1 text-copy-secondary">{failure.reason}</div>
+                </li>
+              ))}
+            </ul>
           ) : (
-            <div className="rounded-md border border-emerald-900/50 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-200">
-              No failed rows.
+            <div className="rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-4 py-3 text-sm text-state-success">
+              No rows require attention.
             </div>
           )}
         </div>
@@ -300,53 +369,20 @@ function SummaryCard({
   label,
   value,
   size = "lg",
-  valueClassName = "text-neutral-100",
+  tone = "default",
 }: {
   label: string;
   value: number;
   size?: "lg" | "sm";
-  valueClassName?: string;
+  tone?: "default" | "success" | "danger";
 }) {
+  const valueClassName =
+    tone === "success" ? "text-state-success" : tone === "danger" ? "text-state-danger" : "text-copy-primary";
   return (
-    <div className="rounded-md border border-neutral-800 bg-neutral-950 px-4 py-3">
-      <div className="text-xs uppercase tracking-wide text-neutral-500">{label}</div>
+    <Card variant="status" className="px-4 py-3">
+      <div className="text-xs uppercase tracking-wide text-copy-muted">{label}</div>
       <div className={`mt-1 font-semibold ${size === "lg" ? "text-2xl" : "text-lg"} ${valueClassName}`}>{value}</div>
-    </div>
-  );
-}
-
-function ImportJobProgress({
-  jobId,
-  status,
-  progress,
-  message,
-  error,
-}: {
-  jobId: number;
-  status: string | null;
-  progress: number;
-  message: string | null;
-  error: string | null;
-}) {
-  return (
-    <div className="space-y-4">
-      <div className="rounded-md border border-neutral-800 bg-neutral-950 px-4 py-4">
-        <div className="text-sm font-medium text-neutral-100">Background Import Job #{jobId}</div>
-        <div className="mt-1 text-sm text-neutral-400">
-          {status === "completed" ? "Import finished." : status === "failed" ? "Import failed." : "Import is running in the background."}
-        </div>
-        <div className="mt-4 h-2 overflow-hidden rounded-full bg-neutral-900">
-          <div className="h-full rounded-full bg-white transition-all" style={{ width: `${progress}%` }} />
-        </div>
-        <div className="mt-2 flex items-center justify-between text-xs text-neutral-500">
-          <span>{message || "Waiting for progress..."}</span>
-          <span>{progress}%</span>
-        </div>
-        <div className="mt-3 text-xs uppercase tracking-wide text-neutral-500">Status</div>
-        <div className="mt-1 text-lg font-semibold text-neutral-100">{status || "queued"}</div>
-      </div>
-      {error ? <div className="rounded-md border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-100">{error}</div> : null}
-    </div>
+    </Card>
   );
 }
 
@@ -362,18 +398,20 @@ function ImportMapping({
   return (
     <div className="space-y-3">
       <div>
-        <h3 className="text-sm font-medium text-neutral-100">Header mapping</h3>
-        <p className="mt-1 text-xs text-neutral-400">Auto-matched fields are preselected. Adjust any mapping before importing.</p>
+        <h3 className="text-sm font-medium text-copy-primary">Header mapping</h3>
+        <p className="mt-1 text-sm text-copy-muted">Auto-matched fields are preselected. Adjust any mapping before importing.</p>
       </div>
       <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1">
-        {preview.target_headers.map((targetHeader) => {
+        {preview.target_headers.map((targetHeader, index) => {
           const required = preview.required_headers.includes(targetHeader);
+          const missing = required && !mapping[targetHeader];
+          const triggerId = `import-mapping-${index}`;
           return (
             <div key={targetHeader} className="grid gap-2 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
-              <Label className="text-sm text-neutral-200">
+              <FieldLabel htmlFor={triggerId}>
                 {targetHeader}
-                {required ? <span className="ml-1 text-red-400">*</span> : null}
-              </Label>
+                {required ? <RequiredMark /> : null}
+              </FieldLabel>
               <Select
                 value={mapping[targetHeader] ?? "__none__"}
                 onValueChange={(value) =>
@@ -383,7 +421,7 @@ function ImportMapping({
                   }))
                 }
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={triggerId} className="w-full" aria-invalid={missing}>
                   <SelectValue placeholder="Do not import this field" />
                 </SelectTrigger>
                 <SelectContent>

@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { loginAsAdmin } from "./helpers/auth";
 
 const ioId = 7301;
+const moduleCacheKey = "lynk_modules:v3";
 
 function orderFixture() {
   return {
@@ -24,9 +25,37 @@ function orderFixture() {
     tax_amount: 100,
     total_amount: 1100,
     notes: "Renewal placement",
-    custom_fields: {},
+    custom_fields: {
+      campaign_type: "Renewal",
+      priority_booking: true,
+    },
+    file_name: "IO-2099-07301.pdf",
+    file_url: "http://localhost:8000/finance/insertion-orders/files/IO-2099-07301",
+    user_name: "Finance Owner",
     updated_at: "2099-07-24T09:00:00Z",
   };
+}
+
+async function cacheInsertionOrderPermissions(page: Parameters<typeof loginAsAdmin>[0], canEdit: boolean) {
+  await page.evaluate(
+    ({ cacheKey, editAllowed }) => {
+      window.sessionStorage.setItem(cacheKey, JSON.stringify([{
+        id: 73,
+        name: "finance_io",
+        is_enabled: true,
+        actions: {
+          can_view: true,
+          can_create: true,
+          can_edit: editAllowed,
+          can_delete: false,
+          can_restore: false,
+          can_export: false,
+          can_configure: false,
+        },
+      }]));
+    },
+    { cacheKey: moduleCacheKey, editAllowed: canEdit },
+  );
 }
 
 test.beforeEach(async ({ page }) => {
@@ -98,6 +127,7 @@ test("Insertion Order creation preserves commercial fields and redacts backend f
 });
 
 test("Insertion Order detail and edit use routed record workflows", async ({ page }) => {
+  await cacheInsertionOrderPermissions(page, true);
   let order = orderFixture();
   let submitted: Record<string, unknown> | null = null;
   await page.route(`**/finance/insertion-orders/${ioId}`, async (route) => {
@@ -109,7 +139,7 @@ test("Insertion Order detail and edit use routed record workflows", async ({ pag
   });
 
   await page.goto(`/dashboard/finance/insertion-orders/${ioId}`);
-  await page.getByRole("link", { name: "Edit" }).click();
+  await page.getByRole("link", { name: "Edit insertion order" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/finance/insertion-orders/${ioId}/edit$`));
   await expect(page.getByRole("heading", { name: "Edit IO-2099-07301" })).toBeVisible();
   await expect(page.getByLabel("Customer")).toHaveValue("Acme Operations");
@@ -119,6 +149,42 @@ test("Insertion Order detail and edit use routed record workflows", async ({ pag
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/finance/insertion-orders/${ioId}$`));
   expect(submitted).toMatchObject({ customer_name: "Acme Operations", customer_organization_id: 51, total_amount: 1250 });
+});
+
+test("Insertion Order detail uses the shared mobile summary and authenticated attachment", async ({ page }) => {
+  await cacheInsertionOrderPermissions(page, true);
+  await page.route(`**/finance/insertion-orders/${ioId}`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderFixture()) });
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/dashboard/finance/insertion-orders/${ioId}`);
+
+  await expect(page.getByRole("heading", { name: "Insertion order details" })).toBeVisible();
+  await expect(page.getByText("Active", { exact: true })).toBeVisible();
+  await expect(page.getByText("Finance Owner")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Acme Operations" })).toHaveAttribute("href", "/dashboard/sales/organizations/51");
+  await expect(page.getByRole("heading", { name: "Custom fields" })).toBeVisible();
+  await expect(page.getByText("Campaign Type")).toBeVisible();
+  await expect(page.getByText("Renewal")).toBeVisible();
+  await expect(page.getByRole("link", { name: "IO-2099-07301.pdf" })).toHaveAttribute(
+    "href",
+    "http://localhost:8000/finance/insertion-orders/files/IO-2099-07301",
+  );
+});
+
+test("Insertion Order detail is read-only without edit permission", async ({ page }) => {
+  await cacheInsertionOrderPermissions(page, false);
+  await page.route(`**/finance/insertion-orders/${ioId}`, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderFixture()) });
+  });
+
+  await page.goto(`/dashboard/finance/insertion-orders/${ioId}`);
+
+  await expect(page.getByRole("heading", { name: "IO-2099-07301" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit insertion order" })).toHaveCount(0);
+  await expect(page.getByText("Acme Operations")).toBeVisible();
+  await expect(page.getByText("$1,100.00")).toBeVisible();
 });
 
 test("Insertion Order detail failures do not expose backend details", async ({ page }) => {

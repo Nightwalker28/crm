@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { MenuItem } from "@headlessui/react";
-import { Download } from "lucide-react";
+import { Download, FileDown } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/Card";
+import { DataTransferJobProgress } from "@/components/ui/DataTransferJobProgress";
 import {
   Dialog,
   DialogBackdrop,
@@ -15,11 +17,8 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
-import {
-  type ExportMode,
-  getErrorMessage,
-  getFilenameFromDisposition,
-} from "@/components/ui/importExportUtils";
+import { type ExportMode, getFilenameFromDisposition } from "@/components/ui/importExportUtils";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useJobPoller } from "@/hooks/useJobPoller";
 import { apiFetch } from "@/lib/api";
 import { downloadBlob } from "@/lib/browser";
@@ -34,6 +33,23 @@ type Props = {
   disabled?: boolean;
   onExportSuccess?: () => void;
 };
+
+type ExportExecutionResponse = {
+  job_id?: number | null;
+  job_status?: string | null;
+};
+
+async function downloadResponse(response: Response, fallbackFilename = "export.csv") {
+  const blob = await response.blob();
+  const filename = getFilenameFromDisposition(response.headers.get("Content-Disposition"), fallbackFilename);
+  downloadBlob(blob, filename);
+}
+
+async function downloadExportJobResult(jobId: number) {
+  const response = await apiFetch(`/jobs/data-transfer/${jobId}/download`);
+  if (!response.ok) throw new Error("The export file could not be downloaded.");
+  await downloadResponse(response);
+}
 
 export function ExportControls({
   exportEndpoint,
@@ -51,13 +67,15 @@ export function ExportControls({
   const [exportMode, setExportMode] = useState<ExportMode>("all");
   const [exportJobId, setExportJobId] = useState<number | null>(null);
   const [exportSummary, setExportSummary] = useState<Record<string, unknown> | null>(null);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const supportsScopedExport = exportMethod === "POST";
   const exportJob = useJobPoller<Record<string, unknown>>(
     exportJobId,
     (job) => {
       setExportSummary(job.summary ?? null);
       onExportSuccess?.();
     },
-    { failureMessage: "Background export failed." },
+    { failureMessage: "The background export could not be completed." },
   );
 
   function resetExportState() {
@@ -66,45 +84,42 @@ export function ExportControls({
     setExportMode("all");
     setExportJobId(null);
     setExportSummary(null);
+    setExportError(null);
     exportJob.reset();
     downloadedExportJobRef.current = null;
   }
 
-  async function downloadExportJobResult(jobId: number) {
-    const res = await apiFetch(`/jobs/data-transfer/${jobId}/download`);
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      throw new Error(getErrorMessage(body, `Export download failed with ${res.status}`));
+  async function handleDownload(jobId: number) {
+    try {
+      setExportError(null);
+      await downloadExportJobResult(jobId);
+    } catch {
+      setExportError("The export file could not be downloaded. It may have expired; run the export again.");
     }
-    const blob = await res.blob();
-    const filename = getFilenameFromDisposition(res.headers.get("Content-Disposition"), "export.csv");
-    downloadBlob(blob, filename);
   }
 
   useEffect(() => {
     if (!exportJobId || exportJob.status !== "completed") return;
     if (downloadedExportJobRef.current === exportJobId) return;
 
-    // Polling can re-render the completed job state more than once; keep the browser download one-shot per job.
     downloadedExportJobRef.current = exportJobId;
-    void downloadExportJobResult(exportJobId).catch((error) => {
-      toast.error(error instanceof Error ? error.message : "Failed to download export.");
-    });
+    void handleDownload(exportJobId);
   }, [exportJobId, exportJob.status]);
 
   async function handleExportSubmit() {
-    if (exportMode === "selected" && !selectedIds.length) {
-      toast.error("Select at least one record before exporting selected rows.");
+    if (supportsScopedExport && exportMode === "selected" && !selectedIds.length) {
+      setExportError("Select at least one record before exporting selected rows.");
       return;
     }
-    if (exportMode === "current" && !currentPageIds.length) {
-      toast.error("There are no rows on the current page to export.");
+    if (supportsScopedExport && exportMode === "current" && !currentPageIds.length) {
+      setExportError("There are no rows on the current page to export.");
       return;
     }
 
     setIsExporting(true);
+    setExportError(null);
     try {
-      const res = await apiFetch(exportEndpoint, {
+      const response = await apiFetch(exportEndpoint, {
         method: exportMethod,
         headers: exportMethod === "POST" ? { "Content-Type": "application/json" } : undefined,
         body:
@@ -117,23 +132,35 @@ export function ExportControls({
               })
             : undefined,
       });
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(getErrorMessage(body, `Export failed with ${res.status}`));
+      if (!response.ok) throw new Error("The export could not be started.");
+
+      const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
+      const contentDisposition = response.headers.get("Content-Disposition");
+      if (contentDisposition || !contentType.includes("application/json")) {
+        await downloadResponse(response);
+        toast.success("Export downloaded.");
+        onExportSuccess?.();
+        resetExportState();
+        return;
       }
-      const body = (await res.json().catch(() => null)) as { job_id?: number | null; job_status?: string | null; message?: string } | null;
-      if (body?.job_id) {
-        setExportJobId(body.job_id);
-        setExportSummary(null);
-        exportJob.start(body.job_status || "queued", "Export queued.");
-        toast.success(body.message || `Export queued as job #${body.job_id}.`);
-      }
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Export failed.");
+
+      const body = (await response.json().catch(() => null)) as ExportExecutionResponse | null;
+      if (!body?.job_id) throw new Error("The export could not be started.");
+
+      setExportJobId(body.job_id);
+      setExportSummary(null);
+      exportJob.start(body.job_status || "queued", "Export queued.");
+      toast.success("Export queued. The download will start automatically when it is ready.");
+    } catch {
+      setExportError("The export could not be started. Check your access and try again.");
     } finally {
       setIsExporting(false);
     }
   }
+
+  const modeInvalid =
+    supportsScopedExport &&
+    ((exportMode === "selected" && !selectedIds.length) || (exportMode === "current" && !currentPageIds.length));
 
   return (
     <>
@@ -143,47 +170,75 @@ export function ExportControls({
             type="button"
             disabled={disabled || isExporting}
             onClick={() => setIsExportDialogOpen(true)}
-            className={
-              "flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-neutral-200 transition-colors " +
-              (focus ? "bg-neutral-800 text-neutral-100" : "")
-            }
+            className={`flex w-full items-center gap-2 rounded-[var(--radius-control-sm)] px-3 py-2 text-sm text-copy-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:text-copy-disabled ${
+              focus ? "bg-action-primary-muted text-copy-primary" : ""
+            }`}
           >
-            <Download className="h-4 w-4" />
-            {isExporting ? "Exporting..." : exportLabel}
+            <Download aria-hidden="true" />
+            {isExporting ? "Preparing export..." : exportLabel}
           </button>
         )}
       </MenuItem>
 
-      <Dialog open={isExportDialogOpen} onClose={resetExportState}>
+      <Dialog open={isExportDialogOpen} onClose={() => { if (!isExporting) resetExportState(); }}>
         <DialogBackdrop />
         <div className="fixed inset-0 z-40 flex items-center justify-center p-4">
           <DialogPanel size="xl">
             <DialogHeader className="mb-4">
               <div>
-                <DialogTitle className="text-lg text-neutral-100">Export Records</DialogTitle>
-                <DialogDescription className="mt-1 text-neutral-400">
-                  Choose which records to export. Exports run as background jobs and download automatically when ready.
+                <DialogTitle className="text-lg text-copy-primary">
+                  {exportJobId ? "Export progress" : "Export records"}
+                </DialogTitle>
+                <DialogDescription className="mt-1 text-copy-secondary">
+                  {exportJobId
+                    ? "The tenant-scoped export continues in the background. Its file downloads automatically when ready."
+                    : supportsScopedExport
+                      ? "Choose which records to export using the current view and selection."
+                      : "This module exports all records available to you as a CSV file."}
                 </DialogDescription>
               </div>
             </DialogHeader>
 
             <div className="space-y-5">
+              {exportError ? (
+                <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+                  {exportError}
+                </div>
+              ) : null}
+
               {exportJobId ? (
-                <ExportJobProgress
+                <DataTransferJobProgress
+                  operation="export"
                   jobId={exportJobId}
                   status={exportJob.status}
                   progress={exportJob.progress}
                   message={exportJob.message}
-                  error={exportJob.error}
-                  summary={exportSummary}
-                />
-              ) : (
+                  hasError={Boolean(exportJob.error)}
+                  completedDescription="Export finished. Your download should start automatically."
+                  failureMessage="The background export could not be completed. Run the export again."
+                >
+                  {exportSummary ? <ExportSummary summary={exportSummary} /> : null}
+                </DataTransferJobProgress>
+              ) : supportsScopedExport ? (
                 <ExportModePicker
                   exportMode={exportMode}
-                  setExportMode={setExportMode}
+                  setExportMode={(mode) => {
+                    setExportError(null);
+                    setExportMode(mode);
+                  }}
                   selectedIds={selectedIds}
                   currentPageIds={currentPageIds}
                 />
+              ) : (
+                <Card variant="muted" className="flex items-start gap-3 px-4 py-4">
+                  <FileDown className="mt-0.5 size-5 shrink-0 text-copy-muted" aria-hidden="true" />
+                  <div>
+                    <div className="text-sm font-medium text-copy-primary">All accessible records</div>
+                    <div className="mt-1 text-sm leading-6 text-copy-secondary">
+                      The download respects the module and tenant access enforced by the server.
+                    </div>
+                  </div>
+                </Card>
               )}
             </div>
 
@@ -191,22 +246,13 @@ export function ExportControls({
               {exportJobId ? (
                 <>
                   {exportJob.status === "completed" ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => {
-                        if (exportJobId) {
-                          void downloadExportJobResult(exportJobId).catch((error) => {
-                            toast.error(error instanceof Error ? error.message : "Failed to download export.");
-                          });
-                        }
-                      }}
-                    >
-                      Download Again
+                    <Button type="button" variant="outline" onClick={() => void handleDownload(exportJobId)}>
+                      <Download />
+                      Download again
                     </Button>
                   ) : null}
                   <Button type="button" onClick={resetExportState}>
-                    Done
+                    Close
                   </Button>
                 </>
               ) : (
@@ -214,12 +260,9 @@ export function ExportControls({
                   <Button type="button" variant="outline" onClick={resetExportState} disabled={isExporting}>
                     Cancel
                   </Button>
-                  <Button
-                    type="button"
-                    onClick={() => void handleExportSubmit()}
-                    disabled={isExporting || (exportMode === "selected" && !selectedIds.length)}
-                  >
-                    {isExporting ? "Queueing..." : "Run Export"}
+                  <Button type="button" onClick={() => void handleExportSubmit()} disabled={isExporting || modeInvalid}>
+                    <Download />
+                    {isExporting ? "Preparing..." : supportsScopedExport ? "Run export" : "Download CSV"}
                   </Button>
                 </>
               )}
@@ -243,115 +286,77 @@ function ExportModePicker({
   currentPageIds: number[];
 }) {
   return (
-    <>
-      <div className="grid gap-3 md:grid-cols-3">
-        <ExportModeButton
-          active={exportMode === "all"}
-          title="All records"
-          description="Export all records that match the active filters in this view."
-          onClick={() => setExportMode("all")}
-        />
-        <ExportModeButton
-          active={exportMode === "current"}
-          title="Current page"
-          description={`${currentPageIds.length} row(s) currently visible.`}
-          onClick={() => setExportMode("current")}
-        />
-        <ExportModeButton
-          active={exportMode === "selected"}
-          title="Selected rows"
-          description={`${selectedIds.length} row(s) selected across pages.`}
-          onClick={() => setExportMode("selected")}
-        />
-      </div>
-      {exportMode === "selected" && !selectedIds.length ? (
-        <div className="rounded-md border border-amber-900/50 bg-amber-950/30 px-4 py-3 text-sm text-amber-200">
-          No rows are selected yet. Use the table checkboxes to select records across pages first.
-        </div>
-      ) : null}
-    </>
+    <RadioGroup
+      value={exportMode}
+      onValueChange={(value) => setExportMode(value as ExportMode)}
+      className="grid gap-3 md:grid-cols-3"
+      aria-label="Export scope"
+    >
+      <ExportModeOption
+        value="all"
+        active={exportMode === "all"}
+        title="All matching records"
+        description="Export records matching the active filters in this view."
+      />
+      <ExportModeOption
+        value="current"
+        active={exportMode === "current"}
+        title="Current page"
+        description={`${currentPageIds.length} row(s) currently visible.`}
+      />
+      <ExportModeOption
+        value="selected"
+        active={exportMode === "selected"}
+        title="Selected rows"
+        description={`${selectedIds.length} row(s) selected across pages.`}
+      />
+    </RadioGroup>
   );
 }
 
-function ExportModeButton({
+function ExportModeOption({
+  value,
   active,
   title,
   description,
-  onClick,
 }: {
+  value: ExportMode;
   active: boolean;
   title: string;
   description: string;
-  onClick: () => void;
 }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        "rounded-md border px-4 py-3 text-left transition-colors " +
-        (active
-          ? "border-neutral-600 bg-neutral-900 text-neutral-100"
-          : "border-neutral-800 bg-neutral-950 text-neutral-400 hover:border-neutral-700 hover:text-neutral-200")
-      }
+    <RadioGroupItem
+      value={value}
+      className={`rounded-[var(--radius-card)] border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+        active
+          ? "border-primary bg-action-primary-muted text-copy-primary"
+          : "border-line-default bg-surface-muted text-copy-secondary hover:border-line-strong hover:bg-surface"
+      }`}
     >
-      <div className="text-sm font-medium">{title}</div>
-      <div className="mt-1 text-xs text-inherit/80">{description}</div>
-    </button>
+      <span className="block text-sm font-medium">{title}</span>
+      <span className="mt-1 block text-xs leading-5 text-copy-muted">{description}</span>
+    </RadioGroupItem>
   );
 }
 
-function ExportJobProgress({
-  jobId,
-  status,
-  progress,
-  message,
-  error,
-  summary,
-}: {
-  jobId: number;
-  status: string | null;
-  progress: number;
-  message: string | null;
-  error: string | null;
-  summary: Record<string, unknown> | null;
-}) {
+function ExportSummary({ summary }: { summary: Record<string, unknown> }) {
+  const fileName = typeof summary.file_name === "string" ? summary.file_name : null;
+  const mode = typeof summary.mode === "string" ? summary.mode : null;
+  if (!fileName && !mode) return null;
+
   return (
-    <div className="space-y-4">
-      <div className="rounded-md border border-neutral-800 bg-neutral-950 px-4 py-4">
-        <div className="text-sm font-medium text-neutral-100">Background Export Job #{jobId}</div>
-        <div className="mt-1 text-sm text-neutral-400">
-          {status === "completed"
-            ? "Export finished. Your download should start automatically."
-            : status === "failed"
-              ? "Export failed."
-              : "Export is running in the background."}
-        </div>
-        <div className="mt-4 h-2 overflow-hidden rounded-full bg-neutral-900">
-          <div className="h-full rounded-full bg-white transition-all" style={{ width: `${progress}%` }} />
-        </div>
-        <div className="mt-2 flex items-center justify-between text-xs text-neutral-500">
-          <span>{message || "Waiting for progress..."}</span>
-          <span>{progress}%</span>
-        </div>
-        <div className="mt-3 text-xs uppercase tracking-wide text-neutral-500">Status</div>
-        <div className="mt-1 text-lg font-semibold text-neutral-100">{status || "queued"}</div>
-      </div>
-      {summary ? (
-        <div className="rounded-md border border-neutral-800 bg-neutral-950 px-4 py-3 text-sm text-neutral-300">
-          {typeof summary.file_name === "string" ? (
-            <div>
-              Generated file: <span className="font-medium text-neutral-100">{summary.file_name}</span>
-            </div>
-          ) : null}
-          {typeof summary.mode === "string" ? (
-            <div className="mt-1">
-              Mode: <span className="font-medium text-neutral-100">{summary.mode}</span>
-            </div>
-          ) : null}
+    <Card variant="status" className="px-4 py-3 text-sm text-copy-secondary">
+      {fileName ? (
+        <div>
+          Generated file: <span className="font-medium text-copy-primary">{fileName}</span>
         </div>
       ) : null}
-      {error ? <div className="rounded-md border border-red-900/50 bg-red-950/30 px-4 py-3 text-sm text-red-100">{error}</div> : null}
-    </div>
+      {mode ? (
+        <div className={fileName ? "mt-1" : ""}>
+          Scope: <span className="font-medium text-copy-primary">{mode.replaceAll("_", " ")}</span>
+        </div>
+      ) : null}
+    </Card>
   );
 }

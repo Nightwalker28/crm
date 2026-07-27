@@ -18,11 +18,13 @@ import {
   Wrench,
 } from "lucide-react";
 
+import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
 const SETTINGS_SECTIONS = [
   {
+    key: "organization",
     title: "Organization",
     items: [
       {
@@ -52,6 +54,7 @@ const SETTINGS_SECTIONS = [
     ],
   },
   {
+    key: "access-control",
     title: "Access Control",
     items: [
       {
@@ -69,6 +72,7 @@ const SETTINGS_SECTIONS = [
     ],
   },
   {
+    key: "customization",
     title: "Customization",
     items: [
       {
@@ -110,6 +114,7 @@ const SETTINGS_SECTIONS = [
     ],
   },
   {
+    key: "system",
     title: "System",
     items: [
       {
@@ -127,7 +132,9 @@ const SETTINGS_SECTIONS = [
     ],
   },
   {
+    key: "danger-zone",
     title: "Danger Zone",
+    danger: true,
     items: [
       {
         title: "Recycle Bin",
@@ -141,7 +148,7 @@ const SETTINGS_SECTIONS = [
 
 export default function SettingsPage() {
   return (
-    <div className="flex flex-col gap-6 text-neutral-200">
+    <div className="flex flex-col gap-6 text-copy-secondary">
       <PageHeader
         title="Settings"
         description="Manage company setup, users, access control, modules, integrations, templates, and platform configuration."
@@ -149,8 +156,15 @@ export default function SettingsPage() {
 
       <div className="grid gap-6">
         {SETTINGS_SECTIONS.map((section) => (
-          <section key={section.title} className="grid gap-3">
-            <h2 className={section.title === "Danger Zone" ? "text-sm font-semibold uppercase tracking-[0.16em] text-red-500/80" : "text-sm font-semibold uppercase tracking-[0.16em] text-neutral-500"}>{section.title}</h2>
+          <section key={section.key} className="grid gap-3" aria-labelledby={`${section.key}-heading`}>
+            <h2
+              id={`${section.key}-heading`}
+              className={`text-sm font-semibold uppercase tracking-[0.16em] ${
+                section.danger ? "text-state-danger" : "text-copy-muted"
+              }`}
+            >
+              {section.title}
+            </h2>
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {section.items.map((item) => {
                 const Icon = item.icon;
@@ -158,23 +172,34 @@ export default function SettingsPage() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className="group rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4 transition-colors hover:border-neutral-700 hover:bg-neutral-900/60"
+                    className="group rounded-[var(--radius-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-app"
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <Card
+                      variant="interactive"
+                      className={`flex h-full items-start justify-between gap-3 px-5 py-5 ${
+                        section.danger ? "border-state-danger/30 hover:border-state-danger/60" : ""
+                      }`}
+                    >
                       <div className="flex min-w-0 gap-3">
-                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/[0.04] text-neutral-300">
+                        <span
+                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] border ${
+                            section.danger
+                              ? "border-state-danger/40 bg-state-danger-muted text-state-danger"
+                              : "border-line-default bg-surface-muted text-copy-secondary"
+                          }`}
+                        >
                           <Icon className="h-4 w-4" />
                         </span>
                         <span className="min-w-0">
-                          <span className="block text-sm font-semibold text-neutral-100">{item.title}</span>
-                          <span className="mt-1 block text-sm leading-6 text-neutral-400">{item.description}</span>
+                          <span className="block text-sm font-semibold text-copy-primary">{item.title}</span>
+                          <span className="mt-1 block text-sm leading-6 text-copy-muted">{item.description}</span>
                         </span>
                       </div>
-                      <span className="mt-1 flex shrink-0 items-center gap-1 text-xs font-medium text-neutral-500 transition-colors group-hover:text-neutral-200">
+                      <span className="mt-1 flex shrink-0 items-center gap-1 text-xs font-medium text-copy-muted transition-colors group-hover:text-copy-primary">
                         Open
                         <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                       </span>
-                    </div>
+                    </Card>
                   </Link>
                 );
               })}

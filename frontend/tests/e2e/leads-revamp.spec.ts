@@ -95,12 +95,14 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
 
   const ownerPicker = page.getByPlaceholder("Search owners (defaults to you)");
   await ownerPicker.fill("Ada");
-  await page.getByRole("button", { name: /Ada Owner/ }).click();
+  await ownerPicker.press("ArrowDown");
+  await expect(ownerPicker).toHaveAttribute("aria-activedescendant", /users-7$/);
+  await ownerPicker.press("Enter");
   await expect(ownerPicker).toHaveValue("Ada Owner");
 
   const teamPicker = page.getByPlaceholder("Search teams (defaults to yours)");
   await teamPicker.fill("Rev");
-  await page.getByRole("button", { name: "Revenue" }).click();
+  await page.getByRole("option", { name: "Revenue" }).click();
   await expect(teamPicker).toHaveValue("Revenue");
 
   const tagInput = page.getByPlaceholder("Type a tag and press Enter");

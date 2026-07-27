@@ -17,6 +17,7 @@ MEDIA_ROOT_DIR.mkdir(parents=True, exist_ok=True)
 ALLOWED_IMAGE_EXTENSIONS = {"jpg", "jpeg", "png", "webp"}
 ALLOWED_IMAGE_TYPES = {"jpeg": "jpg", "png": "png", "webp": "webp"}
 UPLOAD_READ_CHUNK_BYTES = 1024 * 1024
+IMAGE_MAX_UPLOAD_BYTES = 5 * 1024 * 1024
 
 
 def _detect_image_type(file_bytes: bytes) -> str | None:
@@ -31,9 +32,12 @@ def _detect_image_type(file_bytes: bytes) -> str | None:
 
 async def read_image_upload(file: UploadFile) -> tuple[bytes, str]:
     raw_extension = (file.filename or "").rsplit(".", 1)[-1].lower() if "." in (file.filename or "") else ""
-    file_bytes = await file.read()
-    if not file_bytes:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Uploaded image is empty.")
+    file_bytes = await read_upload_limited(
+        file,
+        max_bytes=IMAGE_MAX_UPLOAD_BYTES,
+        empty_detail="Uploaded image is empty.",
+        oversize_detail=f"Image exceeds the {IMAGE_MAX_UPLOAD_BYTES} byte upload limit.",
+    )
 
     detected_type = _detect_image_type(file_bytes)
     if detected_type not in ALLOWED_IMAGE_TYPES:

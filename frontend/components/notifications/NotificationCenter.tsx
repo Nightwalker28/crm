@@ -2,17 +2,27 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Bell, BellRing, CheckCheck, Loader2 } from "lucide-react";
+import { Bell, BellRing, CheckCheck, Loader2, RefreshCw } from "lucide-react";
 
 import { useNotifications } from "@/hooks/useNotifications";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatDateTime } from "@/lib/datetime";
-import { SETTINGS_ROUTES, canonicalizeDashboardHref } from "@/lib/routes";
+import { SETTINGS_ROUTES, resolveNotificationHref } from "@/lib/routes";
 
 export default function NotificationCenter() {
-  const { notifications, unreadCount, isLoading, isFetching, markRead, markAllRead } =
-    useNotifications();
+  const {
+    notifications,
+    unreadCount,
+    isLoading,
+    isFetching,
+    isError,
+    refetch,
+    markRead,
+    markAllRead,
+    isMarkingAllRead,
+  } = useNotifications();
+  const [actionError, setActionError] = useState<string | null>(null);
   const [browserPermission, setBrowserPermission] = useState<NotificationPermission | "unsupported">(() => {
     if (typeof window === "undefined" || !("Notification" in window)) {
       return "unsupported";
@@ -22,6 +32,7 @@ export default function NotificationCenter() {
 
   async function handleNotificationClick(notificationId: number) {
     try {
+      setActionError(null);
       await markRead(notificationId);
     } catch {
       // keep navigation usable even if the read mutation fails
@@ -34,84 +45,112 @@ export default function NotificationCenter() {
     setBrowserPermission(permission);
   }
 
+  async function handleMarkAllRead() {
+    try {
+      setActionError(null);
+      await markAllRead();
+    } catch {
+      setActionError("Notifications could not be marked as read. Try again.");
+    }
+  }
+
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <button
+        <Button
           type="button"
-          className="relative flex h-6 w-6 items-center justify-center rounded-md text-neutral-400 transition-colors hover:bg-white/8 hover:text-neutral-100"
-          aria-label="Open notifications"
+          variant="ghost"
+          size="icon-sm"
+          className="relative"
+          aria-label={unreadCount ? `Open notifications, ${unreadCount} unread` : "Open notifications"}
         >
-          <Bell className="h-3.5 w-3.5" />
+          <Bell className="h-4 w-4" />
           {unreadCount ? (
-            <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-white px-0.5 text-[9px] font-bold leading-none text-black">
+            <span className="absolute -right-1 -top-1 flex min-h-4 min-w-4 items-center justify-center rounded-full bg-primary px-0.5 text-[9px] font-bold leading-none text-primary-foreground">
               {unreadCount > 9 ? "9+" : unreadCount}
             </span>
           ) : null}
-        </button>
+        </Button>
       </PopoverTrigger>
 
       <PopoverContent
         align="end"
         side="bottom"
         sideOffset={10}
-        className="w-[min(360px,calc(100vw-2rem))] border-white/10 bg-neutral-950 p-0 text-neutral-100"
+        className="w-[min(380px,calc(100vw-2rem))] border-line-default bg-surface-raised p-0 text-copy-primary shadow-xl"
       >
-        <div className="flex items-center justify-between border-b border-white/10 px-4 py-3">
+        <div className="space-y-3 border-b border-line-default px-4 py-3">
           <div>
-            <p className="text-sm font-semibold text-neutral-100">Notifications</p>
-            <p className="text-xs text-neutral-400">
+            <p className="text-sm font-semibold text-copy-primary">Notifications</p>
+            <p className="text-xs text-copy-muted">
               Task assignments and background jobs appear here first.
             </p>
           </div>
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="h-7 px-2 text-xs text-neutral-300 hover:bg-white/8 hover:text-white"
-            onClick={() => void markAllRead()}
-            disabled={!notifications.length}
-          >
-            <CheckCheck className="h-3.5 w-3.5" />
-            Mark all
-          </Button>
-          {browserPermission === "default" ? (
+          <div className="flex flex-wrap gap-2">
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              className="h-7 px-2 text-xs text-neutral-300 hover:bg-white/8 hover:text-white"
-              onClick={() => void handleEnableBrowserNotifications()}
+              onClick={() => void handleMarkAllRead()}
+              disabled={!unreadCount || isMarkingAllRead}
             >
-              <BellRing className="h-3.5 w-3.5" />
-              Enable alerts
+              {isMarkingAllRead ? <Loader2 className="animate-spin" /> : <CheckCheck />}
+              Mark all read
             </Button>
+            {browserPermission === "default" ? (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleEnableBrowserNotifications()}
+              >
+                <BellRing />
+                Enable browser alerts
+              </Button>
+            ) : null}
+          </div>
+          {browserPermission === "denied" ? (
+            <p className="text-xs text-copy-muted">Browser alerts are blocked. You can re-enable them in your browser settings.</p>
           ) : null}
+          {actionError ? <p role="alert" className="text-xs text-state-danger">{actionError}</p> : null}
         </div>
 
         <div className="max-h-[420px] overflow-y-auto custom-scrollbar">
           {isLoading ? (
-            <div className="flex min-h-40 items-center justify-center text-neutral-400">
+            <div role="status" className="flex min-h-40 items-center justify-center gap-2 text-sm text-copy-muted">
               <Loader2 className="h-4 w-4 animate-spin" />
+              Loading notifications…
+            </div>
+          ) : isError ? (
+            <div role="alert" className="flex min-h-40 flex-col items-center justify-center gap-3 px-6 text-center">
+              <p className="text-sm font-medium text-copy-primary">Notifications could not be loaded.</p>
+              <p className="text-xs leading-5 text-copy-muted">Check your connection and try again.</p>
+              <Button type="button" variant="outline" size="sm" onClick={() => void refetch()}>
+                <RefreshCw />
+                Try again
+              </Button>
             </div>
           ) : notifications.length ? (
-            <div className="divide-y divide-white/8">
+            <div className="divide-y divide-line-subtle">
               {notifications.map((notification) => {
                 const content = (
                   <div
                     className={
                       "space-y-1 px-4 py-3 transition-colors " +
                       (notification.status === "unread"
-                        ? "bg-white/[0.03]"
+                        ? "bg-action-primary-muted"
                         : "bg-transparent") +
-                      " hover:bg-white/[0.05]"
+                      " hover:bg-surface-muted"
                     }
                   >
                     <div className="flex items-start justify-between gap-3">
-                      <p className="text-sm font-medium text-neutral-100">
-                        {notification.title}
-                      </p>
-                      <span className="shrink-0 text-[11px] text-neutral-500">
+                      <div className="flex min-w-0 items-start gap-2">
+                        {notification.status === "unread" ? (
+                          <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-primary" aria-label="Unread" />
+                        ) : null}
+                        <p className="text-sm font-medium text-copy-primary">{notification.title}</p>
+                      </div>
+                      <span className="shrink-0 text-[11px] text-copy-muted">
                         {formatDateTime(notification.created_at, {
                           month: "short",
                           day: "numeric",
@@ -120,7 +159,7 @@ export default function NotificationCenter() {
                         })}
                       </span>
                     </div>
-                    <p className="text-xs leading-5 text-neutral-400">
+                    <p className="text-xs leading-5 text-copy-secondary">
                       {notification.message}
                     </p>
                   </div>
@@ -130,9 +169,9 @@ export default function NotificationCenter() {
                   return (
                     <Link
                       key={notification.id}
-                      href={canonicalizeDashboardHref(notification.link_url)}
+                      href={resolveNotificationHref(notification.link_url)}
                       onClick={() => void handleNotificationClick(notification.id)}
-                      className="block"
+                      className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                     >
                       {content}
                     </Link>
@@ -144,7 +183,7 @@ export default function NotificationCenter() {
                     key={notification.id}
                     type="button"
                     onClick={() => void handleNotificationClick(notification.id)}
-                    className="block w-full text-left"
+                    className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                   >
                     {content}
                   </button>
@@ -153,9 +192,9 @@ export default function NotificationCenter() {
             </div>
           ) : (
             <div className="flex min-h-40 flex-col items-center justify-center px-6 text-center">
-              <Bell className="h-5 w-5 text-neutral-600" />
-              <p className="mt-3 text-sm font-medium text-neutral-200">No notifications yet</p>
-              <p className="mt-1 text-xs leading-5 text-neutral-500">
+              <Bell className="h-5 w-5 text-copy-disabled" />
+              <p className="mt-3 text-sm font-medium text-copy-primary">No notifications yet</p>
+              <p className="mt-1 text-xs leading-5 text-copy-muted">
                 Task assignments and background jobs will start writing updates here.
               </p>
             </div>
@@ -163,12 +202,12 @@ export default function NotificationCenter() {
         </div>
 
         {isFetching && !isLoading ? (
-          <div className="border-t border-white/10 px-4 py-2 text-[11px] text-neutral-500">
+          <div role="status" className="border-t border-line-default px-4 py-2 text-[11px] text-copy-muted">
             Refreshing…
           </div>
         ) : null}
-        <div className="border-t border-white/10 px-4 py-3">
-          <Link href={SETTINGS_ROUTES.activityLog} className="text-xs font-medium text-neutral-300 hover:text-white">
+        <div className="border-t border-line-default px-4 py-3">
+          <Link href={SETTINGS_ROUTES.activityLog} className="text-xs font-medium text-copy-secondary hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             View all activity
           </Link>
         </div>

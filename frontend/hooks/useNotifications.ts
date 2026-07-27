@@ -39,7 +39,7 @@ async function fetchNotifications(): Promise<NotificationListResponse> {
   const res = await apiFetch("/notifications?page=1&page_size=10");
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to fetch notifications.");
+    throw new Error("Notifications could not be loaded.");
   }
   return body as NotificationListResponse;
 }
@@ -50,7 +50,7 @@ async function markNotificationRead(notificationId: number) {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to update notification.");
+    throw new Error("The notification could not be updated.");
   }
   return body;
 }
@@ -61,14 +61,14 @@ async function markAllNotificationsRead() {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to update notifications.");
+    throw new Error("Notifications could not be updated.");
   }
   return body;
 }
 
-export function useNotifications() {
+export function useNotifications({ enableRealtime = false }: { enableRealtime?: boolean } = {}) {
   const queryClient = useQueryClient();
-  const realtime = useRealtimeNotifications();
+  const realtime = useRealtimeNotifications(enableRealtime);
 
   const query = useQuery({
     queryKey: ["user-notifications"],
@@ -84,7 +84,32 @@ export function useNotifications() {
 
   const markReadMutation = useMutation({
     mutationFn: markNotificationRead,
-    onSuccess: () => {
+    onMutate: async (notificationId) => {
+      await queryClient.cancelQueries({ queryKey: ["user-notifications"] });
+      const previous = queryClient.getQueryData<NotificationListResponse>(["user-notifications"]);
+      queryClient.setQueryData<NotificationListResponse>(["user-notifications"], (current) => {
+        if (!current) return current;
+        const wasUnread = current.results.some(
+          (notification) => notification.id === notificationId && notification.status === "unread",
+        );
+        return {
+          ...current,
+          unread_count: wasUnread ? Math.max(0, current.unread_count - 1) : current.unread_count,
+          results: current.results.map((notification) => (
+            notification.id === notificationId
+              ? { ...notification, status: "read", read_at: notification.read_at ?? new Date().toISOString() }
+              : notification
+          )),
+        };
+      });
+      return { previous };
+    },
+    onError: (_error, _notificationId, context) => {
+      if (context?.previous) {
+        queryClient.setQueryData(["user-notifications"], context.previous);
+      }
+    },
+    onSettled: () => {
       void queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
     },
   });
@@ -113,6 +138,9 @@ export function useNotifications() {
         queryClient.setQueryData(["user-notifications"], context.previous);
       }
     },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
+    },
   });
 
   return {
@@ -120,8 +148,11 @@ export function useNotifications() {
     unreadCount: query.data?.unreadCount ?? 0,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
+    isError: query.isError,
+    refetch: query.refetch,
     realtimeStatus: realtime.status,
     markRead: markReadMutation.mutateAsync,
     markAllRead: markAllReadMutation.mutateAsync,
+    isMarkingAllRead: markAllReadMutation.isPending,
   };
 }

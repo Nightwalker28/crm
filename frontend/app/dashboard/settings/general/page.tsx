@@ -1,16 +1,20 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ImageIcon, RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
+import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { RequiredMark } from "@/components/ui/RequiredMark";
+import { RouteErrorState } from "@/components/ui/RouteStates";
 import { Textarea } from "@/components/ui/textarea";
+import { useConfirm } from "@/hooks/useConfirm";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { apiFetch } from "@/lib/api";
 import { resolveMediaUrl } from "@/lib/media";
 
 type CompanyResponse = {
@@ -38,6 +42,9 @@ type CompanyForm = {
   logo_url: string;
 };
 
+const MAX_LOGO_BYTES = 5 * 1024 * 1024;
+const ACCEPTED_LOGO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
 const emptyForm: CompanyForm = {
   name: "",
   primary_email: "",
@@ -50,229 +57,313 @@ const emptyForm: CompanyForm = {
   logo_url: "",
 };
 
+function companyToForm(data: CompanyResponse): CompanyForm {
+  return {
+    name: data.name ?? "",
+    primary_email: data.primary_email ?? "",
+    website: data.website ?? "",
+    primary_phone: data.primary_phone ?? "",
+    industry: data.industry ?? "",
+    country: data.country ?? "",
+    operating_currencies:
+      Array.isArray(data.operating_currencies) && data.operating_currencies.length
+        ? data.operating_currencies.join(", ")
+        : "USD",
+    billing_address: data.billing_address ?? "",
+    logo_url: data.logo_url ?? "",
+  };
+}
+
+function companyPayload(form: CompanyForm) {
+  return {
+    name: form.name.trim(),
+    primary_email: form.primary_email.trim() || null,
+    website: form.website.trim() || null,
+    primary_phone: form.primary_phone.trim() || null,
+    industry: form.industry.trim() || null,
+    country: form.country.trim() || null,
+    operating_currencies: Array.from(
+      new Set(
+        form.operating_currencies
+          .split(",")
+          .map((value) => value.trim().toUpperCase())
+          .filter(Boolean),
+      ),
+    ),
+    billing_address: form.billing_address.trim() || null,
+    logo_url: form.logo_url.trim() || null,
+  };
+}
+
+async function readJson(response: Response) {
+  return response.json().catch(() => null);
+}
+
 export default function CompanyPage() {
+  const { confirm } = useConfirm();
   const [form, setForm] = useState<CompanyForm>(emptyForm);
   const [initialForm, setInitialForm] = useState<CompanyForm>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(initialForm), [form, initialForm]);
+
+  const loadCompany = useCallback(async (signal?: AbortSignal) => {
+    try {
+      setLoading(true);
+      setLoadFailed(false);
+      const response = await apiFetch("/users/company", { signal });
+      const body = await readJson(response);
+      if (!response.ok) throw new Error("Company profile could not be loaded.");
+
+      const nextForm = companyToForm(body as CompanyResponse);
+      setForm(nextForm);
+      setInitialForm(nextForm);
+    } catch (error) {
+      if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
+      setLoadFailed(true);
+    } finally {
+      if (!signal?.aborted) setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
+    void loadCompany(controller.signal);
+    return () => controller.abort();
+  }, [loadCompany]);
 
-    (async () => {
-      try {
-        setLoading(true);
-        setError(null);
-        const res = await apiFetch("/users/company");
-        const body = await res.json().catch(() => null);
-        if (!res.ok) {
-          throw new Error(body?.detail ?? `Failed with ${res.status}`);
-        }
-        if (cancelled) return;
-
-        const data = body as CompanyResponse;
-        const nextForm = {
-          name: data.name ?? "",
-          primary_email: data.primary_email ?? "",
-          website: data.website ?? "",
-          primary_phone: data.primary_phone ?? "",
-          industry: data.industry ?? "",
-          country: data.country ?? "",
-          operating_currencies: Array.isArray(data.operating_currencies) && data.operating_currencies.length
-            ? data.operating_currencies.join(", ")
-            : "USD",
-          billing_address: data.billing_address ?? "",
-          logo_url: data.logo_url ?? "",
-        };
-        setForm(nextForm);
-        setInitialForm(nextForm);
-      } catch (loadError) {
-        if (!cancelled) {
-          setError(loadError instanceof Error ? loadError.message : "Failed to load company profile");
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+  useUnsavedChangesGuard(isDirty, saving);
 
   async function handleSave() {
     try {
       setSaving(true);
-      setError(null);
-
-      const payload = {
-        name: form.name.trim() || null,
-        primary_email: form.primary_email.trim() || null,
-        website: form.website.trim() || null,
-        primary_phone: form.primary_phone.trim() || null,
-        industry: form.industry.trim() || null,
-        country: form.country.trim() || null,
-        operating_currencies: Array.from(
-          new Set(
-            form.operating_currencies
-              .split(",")
-              .map((value) => value.trim().toUpperCase())
-              .filter(Boolean),
-          ),
-        ),
-        billing_address: form.billing_address.trim() || null,
-        logo_url: form.logo_url.trim() || null,
-      };
-
-      const res = await apiFetch("/users/company", {
+      setActionError(null);
+      const response = await apiFetch("/users/company", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(companyPayload(form)),
       });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      }
+      const body = await readJson(response);
+      if (!response.ok) throw new Error("Company profile could not be saved.");
 
-      setInitialForm(form);
+      const savedForm = companyToForm(body as CompanyResponse);
+      setForm(savedForm);
+      setInitialForm(savedForm);
       toast.success("Company profile updated.");
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Failed to save company profile");
+    } catch {
+      setActionError("Company profile could not be saved. Review the fields and try again.");
     } finally {
       setSaving(false);
     }
   }
 
-  const isDirty = JSON.stringify(form) !== JSON.stringify(initialForm);
+  async function handleDiscard() {
+    const confirmed = await confirm({
+      title: "Discard company profile changes?",
+      description: "The company profile will return to the last saved values. An already uploaded logo remains saved.",
+      confirmLabel: "Discard changes",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    setForm(initialForm);
+    setActionError(null);
+  }
 
   async function handleLogoUpload(file: File) {
+    if (!ACCEPTED_LOGO_TYPES.has(file.type) || file.size > MAX_LOGO_BYTES) {
+      setActionError("Choose a JPG, PNG, or WebP image up to 5 MB.");
+      return;
+    }
+
     try {
       setUploadingLogo(true);
-      setError(null);
-
+      setActionError(null);
       const formData = new FormData();
       formData.append("file", file);
 
-      const res = await apiFetch("/users/company/logo", {
+      const response = await apiFetch("/users/company/logo", {
         method: "POST",
         body: formData,
       });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) {
-        throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      }
+      const body = await readJson(response);
+      if (!response.ok) throw new Error("Company logo could not be uploaded.");
 
-      setForm((current) => ({ ...current, logo_url: body.logo_url ?? "" }));
+      const logoUrl = typeof body?.logo_url === "string" ? body.logo_url : "";
+      setForm((current) => ({ ...current, logo_url: logoUrl }));
+      setInitialForm((current) => ({ ...current, logo_url: logoUrl }));
       toast.success("Company logo uploaded.");
-    } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Failed to upload company logo");
+    } catch {
+      setActionError("Company logo could not be uploaded. Choose a JPG, PNG, or WebP image up to 5 MB.");
     } finally {
       setUploadingLogo(false);
     }
   }
 
   return (
-    <div className="flex flex-col gap-6 text-neutral-200">
+    <div className="flex flex-col gap-6 text-copy-secondary">
       <PageHeader
-        title="Company"
-        description="Manage the primary company record used across the admin and operations surfaces."
+        title="General settings"
+        description="Manage the company identity, operating currencies, billing address, and branding used across Lynk."
+        eyebrow={isDirty ? "Unsaved company changes" : undefined}
       />
 
-      {error ? (
-        <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
-          {error}
-        </div>
-      ) : null}
+      {loadFailed ? (
+        <RouteErrorState
+          title="Company profile could not be loaded"
+          description="Your saved company settings are unchanged. Check your connection and try again."
+          reset={() => void loadCompany()}
+          backHref="/dashboard/settings"
+          backLabel="Back to settings"
+        />
+      ) : loading ? (
+        <Card className="px-5 py-8 text-sm text-copy-muted" aria-busy="true">
+          Loading company profile...
+        </Card>
+      ) : (
+        <form
+          className="grid gap-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSave();
+          }}
+        >
+          {actionError ? (
+            <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+              {actionError}
+            </div>
+          ) : null}
 
-      {isDirty && !saving ? (
-        <div className="rounded-md border border-amber-500/20 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
-          You have unsaved changes.
-        </div>
-      ) : null}
+          <Card>
+            <CardHeader>
+              <div>
+                <h2 className="text-base font-semibold text-copy-primary">Company profile</h2>
+                <p className="mt-1 text-sm leading-6 text-copy-muted">Primary business details shown across administrative and operational surfaces.</p>
+              </div>
+            </CardHeader>
+            <CardBody>
+              <FieldGroup className="grid gap-4 md:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor="company-name">Company name <RequiredMark /></FieldLabel>
+                  <Input id="company-name" required maxLength={150} value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="company-primary-email">Primary email</FieldLabel>
+                  <Input id="company-primary-email" type="email" maxLength={150} value={form.primary_email} onChange={(event) => setForm((current) => ({ ...current, primary_email: event.target.value }))} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="company-website">Website</FieldLabel>
+                  <Input id="company-website" type="url" maxLength={255} value={form.website} onChange={(event) => setForm((current) => ({ ...current, website: event.target.value }))} placeholder="https://company.com" />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="company-primary-phone">Primary phone</FieldLabel>
+                  <Input id="company-primary-phone" type="tel" maxLength={50} value={form.primary_phone} onChange={(event) => setForm((current) => ({ ...current, primary_phone: event.target.value }))} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="company-industry">Industry</FieldLabel>
+                  <Input id="company-industry" maxLength={120} value={form.industry} onChange={(event) => setForm((current) => ({ ...current, industry: event.target.value }))} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="company-country">Country</FieldLabel>
+                  <Input id="company-country" maxLength={120} value={form.country} onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))} />
+                </Field>
+              </FieldGroup>
+            </CardBody>
+          </Card>
 
-      <Card className="px-5 py-5">
-        {loading ? (
-          <div className="text-sm text-neutral-500">Loading company profile...</div>
-        ) : (
-          <div className="space-y-6">
-            <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <div>
+                <h2 className="text-base font-semibold text-copy-primary">Commercial defaults</h2>
+                <p className="mt-1 text-sm leading-6 text-copy-muted">Shared currency and billing information used by commercial records.</p>
+              </div>
+            </CardHeader>
+            <CardBody>
+              <FieldGroup className="grid gap-4 md:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor="company-operating-currencies">Operating currencies <RequiredMark /></FieldLabel>
+                  <Input
+                    id="company-operating-currencies"
+                    required
+                    pattern="([A-Za-z]{3})(\s*,\s*[A-Za-z]{3})*"
+                    title="Enter three-letter currency codes separated by commas."
+                    value={form.operating_currencies}
+                    onChange={(event) => setForm((current) => ({ ...current, operating_currencies: event.target.value }))}
+                    placeholder="USD, EUR, GBP"
+                  />
+                  <FieldDescription>Comma-separated three-letter ISO codes used across opportunities, insertion orders, and other commercial records.</FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="company-billing-address">Billing address</FieldLabel>
+                  <Textarea id="company-billing-address" value={form.billing_address} onChange={(event) => setForm((current) => ({ ...current, billing_address: event.target.value }))} rows={5} />
+                  <FieldDescription>One primary company record is supported. Multi-company tenancy remains deferred.</FieldDescription>
+                </Field>
+              </FieldGroup>
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <div>
+                <h2 className="text-base font-semibold text-copy-primary">Branding</h2>
+                <p className="mt-1 text-sm leading-6 text-copy-muted">Use a hosted logo URL or upload a tenant company logo.</p>
+              </div>
+            </CardHeader>
+            <CardBody className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto]">
               <Field>
-                <FieldLabel>Company Name <RequiredMark /></FieldLabel>
-                <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+                <FieldLabel htmlFor="company-logo-url">Logo URL</FieldLabel>
+                <Input id="company-logo-url" maxLength={500} value={form.logo_url} onChange={(event) => setForm((current) => ({ ...current, logo_url: event.target.value }))} placeholder="https://..." />
+                <FieldDescription>Changing this URL is saved with the rest of the form.</FieldDescription>
               </Field>
-              <Field>
-                <FieldLabel>Primary Email</FieldLabel>
-                <Input type="email" value={form.primary_email} onChange={(event) => setForm((current) => ({ ...current, primary_email: event.target.value }))} />
-              </Field>
-              <Field>
-                <FieldLabel>Website</FieldLabel>
-                <Input value={form.website} onChange={(event) => setForm((current) => ({ ...current, website: event.target.value }))} placeholder="https://company.com" />
-              </Field>
-              <Field>
-                <FieldLabel>Primary Phone</FieldLabel>
-                <Input value={form.primary_phone} onChange={(event) => setForm((current) => ({ ...current, primary_phone: event.target.value }))} />
-              </Field>
-              <Field>
-                <FieldLabel>Industry</FieldLabel>
-                <Input value={form.industry} onChange={(event) => setForm((current) => ({ ...current, industry: event.target.value }))} />
-              </Field>
-              <Field>
-                <FieldLabel>Country</FieldLabel>
-                <Input value={form.country} onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))} />
-              </Field>
-              <Field>
-                <FieldLabel>Operating Currencies <RequiredMark /></FieldLabel>
-                <Input
-                  value={form.operating_currencies}
-                  onChange={(event) => setForm((current) => ({ ...current, operating_currencies: event.target.value }))}
-                  placeholder="USD, EUR, GBP"
-                />
-                <FieldDescription>Comma-separated ISO currency codes used across opportunities, insertion orders, and other commercial records.</FieldDescription>
-              </Field>
-              <Field>
-                <FieldLabel>Logo URL</FieldLabel>
-                <Input value={form.logo_url} onChange={(event) => setForm((current) => ({ ...current, logo_url: event.target.value }))} placeholder="https://..." />
-                <div className="mt-3 flex items-center gap-3">
+              <div className="flex items-center gap-4">
+                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-muted">
                   {form.logo_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={resolveMediaUrl(form.logo_url)}
-                      alt="Company logo preview"
-                      className="h-12 w-12 rounded-lg border border-neutral-800 object-cover"
-                    />
-                  ) : null}
-                  <label className="inline-flex cursor-pointer items-center rounded-md border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-sm text-neutral-200 hover:bg-neutral-900">
-                    {uploadingLogo ? "Uploading..." : "Upload Logo"}
-                    <input
-                      type="file"
-                      accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                      className="hidden"
-                      onChange={(event) => {
-                        const file = event.target.files?.[0];
-                        if (file) void handleLogoUpload(file);
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                  </label>
+                    <img src={resolveMediaUrl(form.logo_url)} alt="Company logo preview" className="h-full w-full object-cover" />
+                  ) : (
+                    <ImageIcon aria-hidden="true" />
+                  )}
                 </div>
-              </Field>
-              <Field className="md:col-span-2">
-                <FieldLabel>Billing Address</FieldLabel>
-                <Textarea value={form.billing_address} onChange={(event) => setForm((current) => ({ ...current, billing_address: event.target.value }))} rows={4} />
-                <FieldDescription>One primary company record is supported in this increment. Multi-company per tenant stays deferred.</FieldDescription>
-              </Field>
-            </FieldGroup>
-
-            <div className="flex justify-end">
-              <Button onClick={handleSave} disabled={saving || !form.name.trim() || !isDirty}>
-                {saving ? "Saving..." : "Save Company"}
-              </Button>
-            </div>
-          </div>
-        )}
-      </Card>
+                <Field>
+                  <FieldLabel htmlFor="company-logo-upload">Upload logo</FieldLabel>
+                  <Input
+                    id="company-logo-upload"
+                    type="file"
+                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
+                    disabled={uploadingLogo}
+                    aria-describedby="company-logo-upload-description"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) void handleLogoUpload(file);
+                      event.currentTarget.value = "";
+                    }}
+                  />
+                  <FieldDescription id="company-logo-upload-description">
+                    JPG, PNG, or WebP up to 5 MB. Uploading saves the logo immediately.
+                  </FieldDescription>
+                </Field>
+              </div>
+            </CardBody>
+            <CardFooter className="flex flex-wrap items-center justify-between gap-3">
+              <span className={`text-sm ${isDirty ? "text-state-warning" : "text-state-success"}`}>
+                {isDirty ? "You have unsaved company changes." : "All company settings are saved."}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="outline" disabled={!isDirty || saving || uploadingLogo} onClick={() => void handleDiscard()}>
+                  <RotateCcw />
+                  Discard
+                </Button>
+                <Button type="submit" disabled={saving || uploadingLogo || !isDirty || !form.name.trim()}>
+                  <Save />
+                  {saving ? "Saving..." : "Save company"}
+                </Button>
+              </div>
+            </CardFooter>
+          </Card>
+        </form>
+      )}
     </div>
   );
 }

@@ -77,6 +77,20 @@ export function canonicalizeDashboardHref(href: string): string {
   return href;
 }
 
+export function resolveNotificationHref(
+  href: string | null | undefined,
+  fallback: string = SETTINGS_ROUTES.activityLog,
+): string {
+  const candidate = href?.trim();
+  const isDashboardPath = candidate === "/dashboard" ||
+    candidate?.startsWith("/dashboard/") ||
+    candidate?.startsWith("/dashboard?");
+  if (!candidate || !isDashboardPath || /[\u0000-\u001f\u007f\\]/.test(candidate)) {
+    return fallback;
+  }
+  return canonicalizeDashboardHref(candidate);
+}
+
 const FRIENDLY_ROUTE_LABELS: Record<string, string> = {
   leads: "Leads",
   organizations: "Accounts",

@@ -103,6 +103,8 @@ export default function CalendarParticipantPicker({
       initialHelpText="Start typing to find users or teams to include."
       noResultsText="No calendar participants matched that search."
       teamDescription="Team-shared events appear for current team members immediately."
+      triggerLabel="Select calendar invitees"
+      searchLabel="Search calendar invitees"
     />
   );
 }

@@ -75,7 +75,7 @@ test("Account create, detail, edit, and related-record tabs use the shared workf
   await expect(page.getByLabel("Account name")).toBeFocused();
   const ownerPicker = page.getByPlaceholder("Search owners (defaults to you)");
   await ownerPicker.fill("Ada");
-  await page.getByRole("button", { name: /Ada Owner/ }).click();
+  await page.getByRole("option", { name: /Ada Owner/ }).click();
   await expect(ownerPicker).toHaveValue("Ada Owner");
 
   await page.goto(`/dashboard/sales/organizations/${fakeAccountId}`);

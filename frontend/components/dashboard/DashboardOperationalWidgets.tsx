@@ -7,7 +7,7 @@ import type { UserNotification } from "@/hooks/useNotifications";
 import { formatDateTime } from "@/lib/datetime";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getModuleRoute } from "@/lib/module-registry";
-import { SETTINGS_ROUTES, canonicalizeDashboardHref } from "@/lib/routes";
+import { SETTINGS_ROUTES, resolveNotificationHref } from "@/lib/routes";
 
 export type DashboardActivityItem = {
   id: number;
@@ -144,19 +144,34 @@ export function DashboardRecentActivity({
 export function DashboardNotifications({
   notifications,
   isLoading,
+  isError,
+  onRetry,
+  onRead,
 }: {
   notifications: UserNotification[];
   isLoading: boolean;
+  isError: boolean;
+  onRetry: () => void;
+  onRead: (notificationId: number) => void;
 }) {
   if (isLoading) return <div className="text-sm text-copy-muted">Loading notifications...</div>;
+  if (isError) {
+    return (
+      <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-4 text-sm text-copy-primary">
+        <span>Notifications could not be loaded.</span>
+        <Button type="button" variant="outline" size="sm" onClick={onRetry}>Try again</Button>
+      </div>
+    );
+  }
   if (!notifications.length) return <DashboardEmptyMessage>No notifications yet.</DashboardEmptyMessage>;
   return (
     <div className="divide-y divide-line-subtle rounded-[var(--radius-card)] border border-line-default">
       {notifications.slice(0, 6).map((notification) => (
         <Link
           key={notification.id}
-          href={canonicalizeDashboardHref(notification.link_url || SETTINGS_ROUTES.activityLog)}
-          className="block px-4 py-4 transition-colors hover:bg-surface-muted"
+          href={resolveNotificationHref(notification.link_url, SETTINGS_ROUTES.activityLog)}
+          onClick={() => onRead(notification.id)}
+          className="block px-4 py-4 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">

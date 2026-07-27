@@ -8,11 +8,13 @@ import { toast } from "sonner";
 
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import { Button } from "@/components/ui/button";
+import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import type { CatalogKind } from "@/hooks/catalog/useCatalogRecords";
 import { useCatalogRecord, useCatalogRecordActions } from "@/hooks/catalog/useCatalogRecords";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { resolveMediaUrl } from "@/lib/media";
 import { formatDateTime } from "@/lib/datetime";
@@ -46,22 +48,28 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
   const noun = isProduct ? "Product" : "Service";
   const moduleKey = isProduct ? "catalog_products" : "catalog_services";
   const listHref = `/dashboard/catalog/${kind}`;
+  const { modules } = useAccessibleModules();
   const recordQuery = useCatalogRecord(kind, recordId);
   const { deleteRecord, isDeleting } = useCatalogRecordActions(kind);
   const record = recordQuery.data ?? null;
+  const moduleActions = modules.find((module) => module.name === moduleKey)?.actions;
+  const canEdit = Boolean(moduleActions?.can_edit);
+  const canDelete = Boolean(moduleActions?.can_delete);
 
   async function handleDelete() {
     const confirmed = await confirm({
       title: `Delete ${noun.toLowerCase()}?`,
-      description: record?.name ? `Delete "${record.name}" from the catalog?` : undefined,
-      confirmLabel: "Delete",
+      description: record?.name
+        ? `Move "${record.name}" to the Recycle Bin? It can be restored by an administrator.`
+        : "Move this catalog record to the Recycle Bin? It can be restored by an administrator.",
+      confirmLabel: "Move to Recycle Bin",
       variant: "destructive",
     });
     if (!confirmed) return;
 
     try {
       await deleteRecord(recordId);
-      toast.success(`${noun} deleted.`);
+      toast.success(`${noun} moved to the Recycle Bin.`);
       router.push(listHref);
     } catch {
       toast.error(`We could not delete this ${noun.toLowerCase()}. Try again.`);
@@ -86,130 +94,149 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
         title={record?.name ?? noun}
         description={record ? `${noun} catalog record` : "Loading catalog record"}
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button type="button" variant="outline" asChild>
               <Link href={listHref}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
                 Back
               </Link>
             </Button>
-            <Button type="button" variant="outline" asChild>
-              <Link href={`${listHref}/${recordId}/edit`}>
+            {canEdit ? (
+              <Button type="button" variant="outline" asChild>
+                <Link href={`${listHref}/${recordId}/edit`}>
                   <Pencil className="mr-2 h-4 w-4" />
                   Edit {noun.toLowerCase()}
-              </Link>
-            </Button>
-            <Button type="button" variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-              <Trash2 className="mr-2 h-4 w-4" />
-              Delete {noun.toLowerCase()}
-            </Button>
+                </Link>
+              </Button>
+            ) : null}
+            {canDelete ? (
+              <Button type="button" variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete {noun.toLowerCase()}
+              </Button>
+            ) : null}
           </div>
         }
       />
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
-          <section className="rounded-md border border-neutral-800 bg-neutral-950/70 p-5">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <h2 className="text-base font-semibold text-neutral-100">Details</h2>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
+        <section aria-labelledby="catalog-details-heading">
+          <Card>
+            <CardHeader>
+              <div className="min-w-0">
+                <h2 id="catalog-details-heading" className="text-base font-semibold text-copy-primary">Details</h2>
                 {record.description ? (
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-300">{record.description}</p>
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{record.description}</p>
                 ) : (
-                  <p className="mt-2 text-sm text-neutral-500">No description recorded.</p>
+                  <p className="mt-2 text-sm text-copy-muted">No description recorded.</p>
                 )}
               </div>
               {record.is_active ? (
-                <Pill bg="bg-emerald-900/30" text="text-emerald-300" border="border-emerald-700/40" className="w-20">
+                <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">
                   Active
                 </Pill>
               ) : (
-                <Pill bg="bg-neutral-800/60" text="text-neutral-400" border="border-neutral-700/50" className="w-20">
-                  Inactive
-                </Pill>
+                <Pill>Inactive</Pill>
               )}
-            </div>
-
-            <dl className="mt-6 grid gap-4 sm:grid-cols-2">
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-neutral-500">Public Slug</dt>
-                <dd className="mt-1 font-mono text-sm text-neutral-200">{record.slug || "-"}</dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-neutral-500">Website Feed</dt>
-                <dd className="mt-1 text-sm text-neutral-200">{record.is_public ? "Public" : "Private"}</dd>
-              </div>
-              {isProduct ? (
+            </CardHeader>
+            <CardBody>
+              <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
+                <DetailField label="Public slug" value={record.slug || "Not set"} mono />
                 <div>
-                  <dt className="text-xs uppercase tracking-wide text-neutral-500">SKU</dt>
-                  <dd className="mt-1 font-mono text-sm text-neutral-200">{record.sku || "-"}</dd>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">Website feed</dt>
+                  <dd className="mt-1.5">
+                    {record.is_public ? (
+                      <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">
+                        Public
+                      </Pill>
+                    ) : (
+                      <Pill>Private</Pill>
+                    )}
+                  </dd>
                 </div>
-              ) : null}
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-neutral-500">Price</dt>
-                <dd className="mt-1 text-sm font-semibold text-emerald-300">
-                  {formatAmount(record.public_unit_price, record.currency)}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-neutral-500">Currency</dt>
-                <dd className="mt-1 text-sm text-neutral-200">{record.currency}</dd>
-              </div>
-              {isProduct ? (
-                <>
-                  <div>
-                    <dt className="text-xs uppercase tracking-wide text-neutral-500">Stock Status</dt>
-                    <dd className="mt-1 text-sm text-neutral-200">{stockLabel(record.stock_status)}</dd>
-                  </div>
-                  <div>
-                    <dt className="text-xs uppercase tracking-wide text-neutral-500">Stock Quantity</dt>
-                    <dd className="mt-1 text-sm text-neutral-200">{record.stock_quantity ?? "Untracked"}</dd>
-                  </div>
-                </>
-              ) : null}
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-neutral-500">Created</dt>
-                <dd className="mt-1 text-sm text-neutral-300">{formatDateTime(record.created_at)}</dd>
-              </div>
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-neutral-500">Updated</dt>
-                <dd className="mt-1 text-sm text-neutral-300">{formatDateTime(record.updated_at)}</dd>
-              </div>
-            </dl>
-          </section>
-
-          <aside className="rounded-md border border-neutral-800 bg-neutral-950/70 p-5">
-            <h2 className="text-base font-semibold text-neutral-100">Media</h2>
-            {record.media_url ? (
-              <div className="mt-4">
-                <Image
-                  src={resolveMediaUrl(record.media_url)}
-                  alt=""
-                  width={320}
-                  height={240}
-                  unoptimized
-                  className="aspect-[4/3] w-full rounded-md object-cover"
-                />
-                {record.media_original_filename ? (
-                  <p className="mt-2 truncate text-xs text-neutral-500" title={record.media_original_filename}>
-                    {record.media_original_filename}
+                {isProduct ? <DetailField label="SKU" value={record.sku || "Not set"} mono /> : null}
+                <div>
+                  <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">Public base price</dt>
+                  <dd className="mt-1 text-sm font-semibold text-copy-primary">
+                    {formatAmount(record.public_unit_price, record.currency)}
+                  </dd>
+                  <p className="mt-1 text-xs leading-5 text-copy-muted">
+                    Customer-specific pricing is resolved separately for authenticated customers.
                   </p>
+                </div>
+                <DetailField label="Currency" value={record.currency} mono />
+                {isProduct ? (
+                  <>
+                    <DetailField label="Stock status" value={stockLabel(record.stock_status)} />
+                    <DetailField label="Stock quantity" value={record.stock_quantity ?? "Untracked"} />
+                  </>
                 ) : null}
-              </div>
-            ) : (
-              <div className="mt-4 flex aspect-[4/3] items-center justify-center rounded-md border border-dashed border-neutral-700 text-sm text-neutral-600">
-                No media uploaded
-              </div>
-            )}
-          </aside>
+                <DetailField label="Created" value={formatDateTime(record.created_at)} />
+                <DetailField label="Updated" value={formatDateTime(record.updated_at)} />
+              </dl>
+            </CardBody>
+          </Card>
+        </section>
 
-          <CrmRecordActivitySection
-            className="xl:col-span-2"
-            moduleKey={moduleKey}
-            entityId={record.id}
-            recordLabel={noun}
-            taskSourceLabel={record.name}
-          />
-        </div>
+        <aside aria-labelledby="catalog-media-heading">
+          <Card>
+            <CardHeader>
+              <div>
+                <h2 id="catalog-media-heading" className="text-base font-semibold text-copy-primary">Media</h2>
+                <p className="mt-1 text-sm text-copy-muted">Customer-facing catalog image</p>
+              </div>
+            </CardHeader>
+            <CardBody className="pt-4">
+              {record.media_url ? (
+                <div>
+                  <Image
+                    src={resolveMediaUrl(record.media_url)}
+                    alt={`${record.name} catalog image`}
+                    width={320}
+                    height={240}
+                    unoptimized
+                    className="aspect-[4/3] w-full rounded-[var(--radius-control)] object-cover"
+                  />
+                  {record.media_original_filename ? (
+                    <p className="mt-2 truncate text-xs text-copy-muted" title={record.media_original_filename}>
+                      {record.media_original_filename}
+                    </p>
+                  ) : null}
+                </div>
+              ) : (
+                <div className="flex aspect-[4/3] items-center justify-center rounded-[var(--radius-control)] border border-dashed border-line-strong bg-surface-muted text-sm text-copy-muted">
+                  No media uploaded
+                </div>
+              )}
+            </CardBody>
+          </Card>
+        </aside>
+
+        <CrmRecordActivitySection
+          className="xl:col-span-2"
+          moduleKey={moduleKey}
+          entityId={record.id}
+          recordLabel={noun}
+          taskSourceLabel={record.name}
+        />
+      </div>
+    </div>
+  );
+}
+
+function DetailField({
+  label,
+  value,
+  mono = false,
+}: {
+  label: string;
+  value: string | number;
+  mono?: boolean;
+}) {
+  return (
+    <div>
+      <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</dt>
+      <dd className={`mt-1 text-sm text-copy-primary ${mono ? "font-mono" : ""}`}>{value}</dd>
     </div>
   );
 }

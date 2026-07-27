@@ -62,9 +62,9 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
           <DialogPanel size="md" className="space-y-5">
             <div className="space-y-2">
-              <DialogTitle className="text-base text-neutral-100">{pending?.title}</DialogTitle>
+              <DialogTitle className="text-base text-copy-primary">{pending?.title}</DialogTitle>
               {pending?.description ? (
-                <DialogDescription className="text-sm leading-6 text-neutral-400">
+                <DialogDescription className="text-sm leading-6 text-copy-secondary">
                   {pending.description}
                 </DialogDescription>
               ) : null}

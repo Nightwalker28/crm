@@ -24,15 +24,20 @@ export function getGenericStatusStyle(status: string): StatusStyle {
 
 export function getInsertionOrderStatusStyle(status: string): StatusStyle {
   const styles: Record<string, StatusStyle> = {
-    draft: { bg: "bg-neutral-800/60", text: "text-neutral-300", border: "border-neutral-700/50", label: "Draft" },
-    issued: { bg: "bg-sky-900/30", text: "text-sky-300", border: "border-sky-700/40", label: "Issued" },
-    active: { bg: "bg-emerald-900/30", text: "text-emerald-300", border: "border-emerald-700/40", label: "Active" },
-    completed: { bg: "bg-teal-900/30", text: "text-teal-300", border: "border-teal-700/40", label: "Completed" },
-    cancelled: { bg: "bg-red-900/30", text: "text-red-300", border: "border-red-700/40", label: "Cancelled" },
-    imported: { bg: "bg-violet-900/30", text: "text-violet-300", border: "border-violet-700/40", label: "Imported" },
+    draft: { bg: "bg-surface-muted", text: "text-copy-secondary", border: "border-line-default", label: "Draft" },
+    issued: { bg: "bg-action-primary-muted", text: "text-primary", border: "border-action-primary/40", label: "Issued" },
+    active: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Active" },
+    completed: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Completed" },
+    cancelled: { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40", label: "Cancelled" },
+    imported: { bg: "bg-action-primary-muted", text: "text-primary", border: "border-action-primary/40", label: "Imported" },
   };
 
-  return styles[status.toLowerCase()] ?? getGenericStatusStyle(status);
+  return styles[status.toLowerCase()] ?? {
+    bg: "bg-surface-muted",
+    text: "text-copy-secondary",
+    border: "border-line-default",
+    label: labelize(status || "Unknown"),
+  };
 }
 
 export function getOpportunityStageStyle(stage: string): StatusStyle {

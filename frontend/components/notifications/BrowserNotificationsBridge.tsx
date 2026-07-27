@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 import { useNotifications } from "@/hooks/useNotifications";
-import { canonicalizeDashboardHref } from "@/lib/routes";
+import { DASHBOARD_ROUTES, resolveNotificationHref } from "@/lib/routes";
 
 const SEEN_KEY = "lynk:browser-notification-seen";
 const MAX_SEEN_IDS = 200;
@@ -29,7 +29,7 @@ function persistSeenIds(values: Set<number>) {
 
 export default function BrowserNotificationsBridge() {
   const router = useRouter();
-  const { notifications } = useNotifications();
+  const { notifications } = useNotifications({ enableRealtime: true });
   const seenIdsRef = useRef<Set<number>>(readSeenIds());
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export default function BrowserNotificationsBridge() {
 
         browserNotification.onclick = () => {
           window.focus();
-          router.push(canonicalizeDashboardHref(notification.link_url || "/dashboard/tasks"));
+          router.push(resolveNotificationHref(notification.link_url, DASHBOARD_ROUTES.tasks));
           browserNotification.close();
         };
       });

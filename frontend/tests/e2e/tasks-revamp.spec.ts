@@ -105,6 +105,36 @@ test("Task creation labels required fields and validates the schedule", async ({
   await expect(page.getByRole("button", { name: "Create Task" })).toBeDisabled();
 });
 
+test("Task assignees use the shared accessible user and team picker", async ({ page }) => {
+  await page.unroute("**/tasks/options**");
+  await page.route("**/tasks/options**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        users: [{ id: 7, name: "Ada Owner", email: "ada@example.com", team_name: "Revenue" }],
+        teams: [{ id: 4, name: "Revenue" }],
+      }),
+    }),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/dashboard/tasks?action=create");
+
+  await page.getByRole("button", { name: "Select task assignees" }).click();
+  const search = page.getByLabel("Search task assignees");
+  await expect(search).toBeVisible();
+  await search.fill("Revenue");
+
+  const userOption = page.getByRole("button", { name: /Ada Owner/ });
+  const teamOption = page.getByRole("button", { name: /RevenueTeam assignment/ });
+  await expect(userOption).toHaveAttribute("aria-pressed", "false");
+  await userOption.click();
+  await teamOption.click();
+  await expect(page.getByRole("button", { name: "Select task assignees" })).toContainText("2 assignees selected");
+  await expect(page.getByRole("button", { name: "Remove Ada Owner" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove Revenue" })).toBeVisible();
+});
+
 test("Task list failures do not expose backend details", async ({ page }) => {
   await page.unroute("**/tasks?**");
   await page.route("**/tasks?**", (route) =>

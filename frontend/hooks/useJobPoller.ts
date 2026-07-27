@@ -50,7 +50,7 @@ export function useJobPoller<TSummary>(
       setError(null);
       onCompleteRef.current(body);
     } else if (body.status === "failed") {
-      setError(body.error_message || failureMessageRef.current);
+      setError(failureMessageRef.current);
     }
   }, [updateStatus]);
 

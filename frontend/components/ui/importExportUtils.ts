@@ -38,8 +38,19 @@ export type ImportExecutionResponse = {
 
 export function getFilenameFromDisposition(header: string | null, fallback: string) {
   if (!header) return fallback;
-  const match = header.match(/filename="?([^"]+)"?/i);
-  return match?.[1] || fallback;
+  const encodedMatch = header.match(/filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i);
+  const filenameMatch = header.match(/filename\s*=\s*(?:\"([^\"]+)\"|([^;]+))/i);
+  const raw = encodedMatch?.[1] ?? filenameMatch?.[1] ?? filenameMatch?.[2];
+  if (!raw) return fallback;
+
+  let decoded = raw.trim().replace(/^["']|["']$/g, "");
+  try {
+    decoded = decodeURIComponent(decoded);
+  } catch {
+    // Keep a malformed encoded filename usable without exposing it as an error.
+  }
+  const basename = decoded.split(/[\\/]/).pop()?.replace(/[\u0000-\u001f\u007f]/g, "").trim();
+  return basename || fallback;
 }
 
 export function getErrorMessage(body: unknown, fallback: string) {

@@ -461,6 +461,20 @@ class ImageUploadTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(exc.exception.status_code, 400)
 
+    async def test_read_image_upload_rejects_oversized_image(self):
+        upload = UploadFile(
+            file=io.BytesIO(b"\x89PNG\r\n\x1a\npayload"),
+            filename="logo.png",
+            headers=Headers({"content-type": "image/png"}),
+        )
+
+        with patch.object(uploads, "IMAGE_MAX_UPLOAD_BYTES", 8):
+            with self.assertRaises(HTTPException) as exc:
+                await uploads.read_image_upload(upload)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertIn("upload limit", exc.exception.detail)
+
 
 if __name__ == "__main__":
     unittest.main()

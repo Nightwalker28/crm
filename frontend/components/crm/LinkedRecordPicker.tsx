@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type Ref } from "react";
+import { useId, useState, type KeyboardEvent, type Ref } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 
@@ -224,7 +224,10 @@ export default function LinkedRecordPicker({
   sourceAction = "create",
   allowClear = true,
 }: Props) {
+  const generatedListboxId = useId();
+  const listboxId = `${generatedListboxId}-options`;
   const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const debouncedSearch = useDebouncedValue(displayValue.trim(), 250);
   const query = useQuery({
     queryKey: [queryKeyPrefix, recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey, sourceAction],
@@ -232,6 +235,35 @@ export default function LinkedRecordPicker({
     enabled: !disabled && isOpen && debouncedSearch.length > 0,
     staleTime: 30_000,
   });
+  const options = query.data ?? [];
+
+  function selectOption(option: LinkedRecordOption) {
+    onSelect(option);
+    setIsOpen(false);
+    setActiveIndex(-1);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      setIsOpen(false);
+      setActiveIndex(-1);
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setIsOpen(true);
+      if (!options.length) return;
+      setActiveIndex((current) => {
+        if (event.key === "ArrowDown") return current >= options.length - 1 ? 0 : current + 1;
+        return current <= 0 ? options.length - 1 : current - 1;
+      });
+      return;
+    }
+    if (event.key === "Enter" && isOpen && activeIndex >= 0 && options[activeIndex]) {
+      event.preventDefault();
+      selectOption(options[activeIndex]);
+    }
+  }
 
   return (
     <div className="relative">
@@ -243,11 +275,23 @@ export default function LinkedRecordPicker({
           disabled={disabled}
           onFocus={() => setIsOpen(true)}
           onBlur={() => window.setTimeout(() => setIsOpen(false), 120)}
+          onKeyDown={handleKeyDown}
           onChange={(event) => {
             onDisplayValueChange(event.target.value);
             setIsOpen(true);
+            setActiveIndex(-1);
           }}
           placeholder={placeholder}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={isOpen && Boolean(displayValue.trim())}
+          aria-controls={listboxId}
+          aria-activedescendant={
+            activeIndex >= 0 && options[activeIndex]
+              ? `${listboxId}-${recordType}-${options[activeIndex].id}`
+              : undefined
+          }
+          autoComplete="off"
         />
         {valueId && allowClear ? (
           <Button
@@ -265,35 +309,41 @@ export default function LinkedRecordPicker({
       </div>
 
       {isOpen && displayValue.trim() ? (
-        <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-md border border-neutral-800 bg-neutral-950 shadow-2xl">
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-label={`${placeholder} results`}
+          className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-[var(--radius-control)] border border-line-default bg-surface-raised shadow-xl"
+        >
           {query.isLoading ? (
-            <div className="px-3 py-2 text-sm text-neutral-500">Searching...</div>
+            <div role="status" className="px-3 py-2 text-sm text-copy-muted">Searching…</div>
           ) : query.error ? (
-            <div className="px-3 py-2 text-sm text-red-300">
-              {query.error instanceof Error ? query.error.message : "Failed to search records."}
+            <div role="alert" className="px-3 py-2 text-sm text-state-danger">
+              We could not search these records. Try again.
             </div>
-          ) : (query.data ?? []).length ? (
+          ) : options.length ? (
             <div className="max-h-56 overflow-y-auto py-1">
-              {(query.data ?? []).map((option) => (
+              {options.map((option, optionIndex) => (
                 <button
                   key={`${recordType}-${option.id}`}
+                  id={`${listboxId}-${recordType}-${option.id}`}
                   type="button"
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-neutral-900"
+                  role="option"
+                  aria-selected={optionIndex === activeIndex}
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
                   onMouseDown={(event) => event.preventDefault()}
-                  onClick={() => {
-                    onSelect(option);
-                    setIsOpen(false);
-                  }}
+                  onMouseEnter={() => setActiveIndex(optionIndex)}
+                  onClick={() => selectOption(option)}
                 >
-                  <span className="min-w-0 truncate text-sm text-neutral-100">{option.label}</span>
+                  <span className="min-w-0 truncate text-sm text-copy-primary">{option.label}</span>
                   {option.description ? (
-                    <span className="shrink-0 truncate text-xs text-neutral-500">{option.description}</span>
+                    <span className="shrink-0 truncate text-xs text-copy-muted">{option.description}</span>
                   ) : null}
                 </button>
               ))}
             </div>
           ) : (
-            <div className="px-3 py-2 text-sm text-neutral-500">{noResultsText}</div>
+            <div role="status" className="px-3 py-2 text-sm text-copy-muted">{noResultsText}</div>
           )}
         </div>
       ) : null}

@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 import { loginAsAdmin } from "./helpers/auth";
 
 const contractId = 7123;
+const moduleCacheKey = "lynk_modules:v3";
 
 function contractFixture() {
   return {
@@ -30,6 +31,61 @@ function contractFixture() {
     signers: [],
     events: [],
   };
+}
+
+function populatedContractFixture() {
+  return {
+    ...contractFixture(),
+    parties: [{
+      id: 81,
+      contract_id: contractId,
+      name: "Northwind Operations",
+      email: "operations@northwind.test",
+      role: "counterparty",
+      created_at: "2099-07-24T08:10:00Z",
+    }],
+    signers: [{
+      id: 91,
+      contract_id: contractId,
+      party_id: 81,
+      name: "Alex Morgan",
+      email: "alex@northwind.test",
+      signing_order: 1,
+      status: "pending",
+      signed_at: null,
+      created_at: "2099-07-24T08:20:00Z",
+    }],
+    events: [{
+      id: 101,
+      contract_id: contractId,
+      event_type: "contract_created",
+      payload_json: {},
+      created_by_id: 1,
+      created_at: "2099-07-24T08:00:00Z",
+    }],
+  };
+}
+
+async function cacheContractPermissions(page: Parameters<typeof loginAsAdmin>[0], canEdit: boolean) {
+  await page.evaluate(
+    ({ cacheKey, editAllowed }) => {
+      window.sessionStorage.setItem(cacheKey, JSON.stringify([{
+        id: 71,
+        name: "contracts",
+        is_enabled: true,
+        actions: {
+          can_view: true,
+          can_create: true,
+          can_edit: editAllowed,
+          can_delete: false,
+          can_restore: false,
+          can_export: false,
+          can_configure: false,
+        },
+      }]));
+    },
+    { cacheKey: moduleCacheKey, editAllowed: canEdit },
+  );
 }
 
 test.beforeEach(async ({ page }) => {
@@ -84,6 +140,7 @@ test("Contract creation omits disabled fields and opens the created record", asy
 });
 
 test("Contract detail and edit share a routed record workflow", async ({ page }) => {
+  await cacheContractPermissions(page, true);
   let contract = contractFixture();
   let updatedPayload: Record<string, unknown> | null = null;
   await page.route(`**/contracts/${contractId}`, async (route) => {
@@ -112,4 +169,58 @@ test("Contract detail and edit share a routed record workflow", async ({ page })
   await expect(page).toHaveURL(new RegExp(`/dashboard/contracts/${contractId}$`));
   expect(updatedPayload).toMatchObject({ title: "Renewed services agreement", status: "draft" });
   expect(updatedPayload).not.toHaveProperty("currency");
+});
+
+test("Contract detail confirms lifecycle changes and keeps the mobile workflow accessible", async ({ page }) => {
+  await cacheContractPermissions(page, true);
+  let contract = populatedContractFixture();
+  let updatedPayload: Record<string, unknown> | null = null;
+  await page.route(`**/contracts/${contractId}`, async (route) => {
+    if (route.request().method() === "PATCH") {
+      updatedPayload = route.request().postDataJSON() as Record<string, unknown>;
+      contract = { ...contract, ...updatedPayload, updated_at: "2099-07-24T10:00:00Z" };
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(contract),
+    });
+  });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`/dashboard/contracts/${contractId}`);
+
+  await expect(page.getByRole("heading", { name: "Contract details" })).toBeVisible();
+  await expect(page.getByLabel("Name").first()).toBeVisible();
+  await expect(page.getByLabel("Email").first()).toBeVisible();
+  await expect(page.getByText("Northwind Operations")).toBeVisible();
+  await expect(page.getByText("Alex Morgan")).toBeVisible();
+  await page.getByLabel("Status", { exact: true }).first().click();
+  await page.getByRole("option", { name: "Review" }).click();
+  await page.getByRole("button", { name: "Save status" }).click();
+
+  await expect(page.getByText("Move CTR-2407-001 from Draft to Review? This change is recorded in the contract event history.")).toBeVisible();
+  await page.getByRole("button", { name: "Change status" }).click();
+  await expect.poll(() => updatedPayload).toEqual({ status: "review" });
+});
+
+test("Contract detail is read-only without edit permission", async ({ page }) => {
+  await cacheContractPermissions(page, false);
+  await page.route(`**/contracts/${contractId}`, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(populatedContractFixture()),
+    });
+  });
+
+  await page.goto(`/dashboard/contracts/${contractId}`);
+
+  await expect(page.getByRole("heading", { name: "CTR-2407-001" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit contract" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save status" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Add party" })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Add signer" })).toHaveCount(0);
+  await expect(page.getByLabel("Status", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Pending", { exact: true })).toBeVisible();
 });

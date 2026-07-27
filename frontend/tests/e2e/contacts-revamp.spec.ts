@@ -72,7 +72,7 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
 
   const ownerPicker = page.getByPlaceholder("Search owners (defaults to you)");
   await ownerPicker.fill("Ada");
-  await page.getByRole("button", { name: /Ada Owner/ }).click();
+  await page.getByRole("option", { name: /Ada Owner/ }).click();
   await expect(ownerPicker).toHaveValue("Ada Owner");
   const accountPicker = page.getByPlaceholder("Search accounts");
   await accountPicker.fill("Lynk");

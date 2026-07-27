@@ -61,13 +61,23 @@ export default function TaskAssigneePicker({
       .map((assignee) => {
         if (assignee.assignee_type === "user" && assignee.user_id) {
           const user = users.find((candidate) => candidate.id === assignee.user_id);
-          if (!user) return null;
-          return { key: `user-${user.id}`, type: "user" as const, id: user.id, label: user.name, typeLabel: "User" };
+          return {
+            key: `user-${assignee.user_id}`,
+            type: "user" as const,
+            id: assignee.user_id,
+            label: user?.name ?? `User #${assignee.user_id}`,
+            typeLabel: "User",
+          };
         }
         if (assignee.assignee_type === "team" && assignee.team_id) {
           const team = teams.find((candidate) => candidate.id === assignee.team_id);
-          if (!team) return null;
-          return { key: `team-${team.id}`, type: "team" as const, id: team.id, label: team.name, typeLabel: "Team" };
+          return {
+            key: `team-${assignee.team_id}`,
+            type: "team" as const,
+            id: assignee.team_id,
+            label: team?.name ?? `Team #${assignee.team_id}`,
+            typeLabel: "Team",
+          };
         }
         return null;
       })
@@ -87,6 +97,8 @@ export default function TaskAssigneePicker({
       initialHelpText="Start typing to find users or teams."
       noResultsText="No assignees matched that search."
       teamDescription="Team assignment notifies current team members."
+      triggerLabel="Select task assignees"
+      searchLabel="Search task assignees"
     />
   );
 }
