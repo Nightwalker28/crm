@@ -44,23 +44,15 @@ export const emptyTeamForm: TeamForm = {
 const emptyDepartments: Department[] = [];
 const emptyTeams: Team[] = [];
 
-function getErrorMessage(error: unknown, fallback: string) {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return fallback;
-}
-
 async function fetchDepartments(): Promise<Department[]> {
   const res = await apiFetch("/admin/users/departments");
-  if (!res.ok) throw new Error("Failed to load departments");
+  if (!res.ok) throw new Error("request-failed");
   return res.json();
 }
 
 async function fetchTeams(): Promise<Team[]> {
   const res = await apiFetch("/admin/users/teams");
-  if (!res.ok) throw new Error("Failed to load teams");
+  if (!res.ok) throw new Error("request-failed");
   return res.json();
 }
 
@@ -79,6 +71,8 @@ export function useTeamsAndDepartments() {
   const [teamSubmitting, setTeamSubmitting] = useState(false);
   const [departmentForm, setDepartmentForm] = useState<DepartmentForm>(emptyDepartmentForm);
   const [teamForm, setTeamForm] = useState<TeamForm>(emptyTeamForm);
+  const [initialDepartmentForm, setInitialDepartmentForm] = useState<DepartmentForm>(emptyDepartmentForm);
+  const [initialTeamForm, setInitialTeamForm] = useState<TeamForm>(emptyTeamForm);
 
   const departmentsQuery = useQuery({
     queryKey: ["admin-departments"],
@@ -92,6 +86,13 @@ export function useTeamsAndDepartments() {
 
   const departments = departmentsQuery.data ?? emptyDepartments;
   const teams = teamsQuery.data ?? emptyTeams;
+  const departmentDirty =
+    departmentForm.name !== initialDepartmentForm.name ||
+    departmentForm.description !== initialDepartmentForm.description;
+  const teamDirty =
+    teamForm.name !== initialTeamForm.name ||
+    teamForm.description !== initialTeamForm.description ||
+    teamForm.department_id !== initialTeamForm.department_id;
 
   const groupedTeams = useMemo(() => {
     const grouped = departments.map((department) => ({
@@ -131,6 +132,7 @@ export function useTeamsAndDepartments() {
     setDepartmentMode("create");
     setEditingDepartmentId(null);
     setDepartmentForm(emptyDepartmentForm);
+    setInitialDepartmentForm(emptyDepartmentForm);
     setDepartmentDialogOpen(true);
   }
 
@@ -138,10 +140,12 @@ export function useTeamsAndDepartments() {
     setError(null);
     setDepartmentMode("edit");
     setEditingDepartmentId(department.id);
-    setDepartmentForm({
+    const nextForm = {
       name: department.name,
       description: department.description ?? "",
-    });
+    };
+    setDepartmentForm(nextForm);
+    setInitialDepartmentForm(nextForm);
     setDepartmentDialogOpen(true);
   }
 
@@ -149,10 +153,12 @@ export function useTeamsAndDepartments() {
     setError(null);
     setTeamMode("create");
     setEditingTeamId(null);
-    setTeamForm({
+    const nextForm = {
       ...emptyTeamForm,
       department_id: departments[0] ? String(departments[0].id) : "",
-    });
+    };
+    setTeamForm(nextForm);
+    setInitialTeamForm(nextForm);
     setTeamDialogOpen(true);
   }
 
@@ -160,11 +166,13 @@ export function useTeamsAndDepartments() {
     setError(null);
     setTeamMode("edit");
     setEditingTeamId(team.id);
-    setTeamForm({
+    const nextForm = {
       name: team.name,
       description: team.description ?? "",
       department_id: team.department_id ? String(team.department_id) : "",
-    });
+    };
+    setTeamForm(nextForm);
+    setInitialTeamForm(nextForm);
     setTeamDialogOpen(true);
   }
 
@@ -192,16 +200,21 @@ export function useTeamsAndDepartments() {
             });
 
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? "Failed to save department");
+        setError(
+          res.status === 400
+            ? "A department with this name already exists."
+            : "We could not save this department. Try again.",
+        );
+        return false;
       }
 
       setDepartmentDialogOpen(false);
       setDepartmentForm(emptyDepartmentForm);
+      setInitialDepartmentForm(emptyDepartmentForm);
       await refreshData();
       return true;
-    } catch (error: unknown) {
-      setError(getErrorMessage(error, "Failed to save department"));
+    } catch {
+      setError("We could not save this department. Try again.");
       return false;
     } finally {
       setDepartmentSubmitting(false);
@@ -233,16 +246,23 @@ export function useTeamsAndDepartments() {
             });
 
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? "Failed to save team");
+        setError(
+          res.status === 400
+            ? "A team with this name already exists."
+            : res.status === 404
+              ? "The selected department is no longer available. Refresh and try again."
+              : "We could not save this team. Try again.",
+        );
+        return false;
       }
 
       setTeamDialogOpen(false);
       setTeamForm(emptyTeamForm);
+      setInitialTeamForm(emptyTeamForm);
       await refreshData();
       return true;
-    } catch (error: unknown) {
-      setError(getErrorMessage(error, "Failed to save team"));
+    } catch {
+      setError("We could not save this team. Try again.");
       return false;
     } finally {
       setTeamSubmitting(false);
@@ -252,7 +272,7 @@ export function useTeamsAndDepartments() {
   async function removeDepartment(department: Department) {
     const confirmed = await confirm({
       title: "Delete department?",
-      description: `Delete department "${department.name}"?`,
+      description: `Permanently delete "${department.name}"? Departments with assigned teams cannot be deleted.`,
       confirmLabel: "Delete Department",
       variant: "destructive",
     });
@@ -264,12 +284,16 @@ export function useTeamsAndDepartments() {
         method: "DELETE",
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? "Failed to delete department");
+        setError(
+          res.status === 400
+            ? "Move or delete this department's teams before deleting it."
+            : "We could not delete this department. Try again.",
+        );
+        return;
       }
       await refreshData();
-    } catch (error: unknown) {
-      setError(getErrorMessage(error, "Failed to delete department"));
+    } catch {
+      setError("We could not delete this department. Try again.");
     }
   }
 
@@ -288,12 +312,12 @@ export function useTeamsAndDepartments() {
         method: "DELETE",
       });
       if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        throw new Error(body?.detail ?? "Failed to delete team");
+        setError("We could not delete this team. Try again.");
+        return;
       }
       await refreshData();
-    } catch (error: unknown) {
-      setError(getErrorMessage(error, "Failed to delete team"));
+    } catch {
+      setError("We could not delete this team. Try again.");
     }
   }
 
@@ -302,7 +326,15 @@ export function useTeamsAndDepartments() {
     teams,
     groupedTeams,
     error,
+    clearError: () => setError(null),
     loading: departmentsQuery.isLoading || teamsQuery.isLoading,
+    refreshing: departmentsQuery.isFetching || teamsQuery.isFetching,
+    loadError: Boolean(departmentsQuery.error || teamsQuery.error),
+    retryLoad: async () => {
+      await Promise.all([departmentsQuery.refetch(), teamsQuery.refetch()]);
+    },
+    departmentDirty,
+    teamDirty,
     departmentDialogOpen,
     teamDialogOpen,
     departmentMode,

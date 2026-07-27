@@ -28,6 +28,7 @@ import {
   getReadableColumnLabel,
   isCustomFieldColumnKey,
 } from "@/lib/moduleViewConfigs";
+import { getQuoteStatusStyle } from "@/lib/statusStyles";
 
 type SortState = { column: string; direction: "asc" | "desc" } | null;
 
@@ -45,42 +46,6 @@ type QuotesTableProps = {
   onSortChange?: (sort: SortState) => void;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
-};
-
-const STATUS_STYLES: Record<
-  string,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  draft: {
-    bg: "bg-surface-muted",
-    text: "text-copy-secondary",
-    border: "border-line-default",
-    label: "Draft",
-  },
-  sent: {
-    bg: "bg-state-info-muted",
-    text: "text-state-info",
-    border: "border-state-info/40",
-    label: "Sent",
-  },
-  accepted: {
-    bg: "bg-state-success-muted",
-    text: "text-state-success",
-    border: "border-state-success/40",
-    label: "Accepted",
-  },
-  declined: {
-    bg: "bg-state-danger-muted",
-    text: "text-state-danger",
-    border: "border-state-danger/40",
-    label: "Declined",
-  },
-  expired: {
-    bg: "bg-state-warning-muted",
-    text: "text-state-warning",
-    border: "border-state-warning/40",
-    label: "Expired",
-  },
 };
 
 function formatMoney(
@@ -154,7 +119,7 @@ export default function QuotesTable({
           </TableCell>
         );
       case "status": {
-        const style = STATUS_STYLES[quote.status ?? ""] ?? STATUS_STYLES.draft;
+        const style = getQuoteStatusStyle(quote.status ?? "");
         return (
           <TableCell>
             <Pill bg={style.bg} text={style.text} border={style.border}>

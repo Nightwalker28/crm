@@ -167,7 +167,7 @@ class CreateUserTests(unittest.TestCase):
         payload = SimpleNamespace(model_dump=lambda exclude_unset=True: {"is_active": UserStatus.pending})
 
         with self.assertRaises(HTTPException) as exc:
-            admin_users.update_user(db, user_id=1, payload=payload, tenant_id=1)
+            admin_users.update_user(db, user_id=1, payload=payload, tenant_id=1, actor_user_id=1)
 
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "Pending status is no longer supported")
@@ -186,7 +186,7 @@ class CreateUserTests(unittest.TestCase):
         db = FakeDB(user=user, role=role, team=team)
         payload = SimpleNamespace(model_dump=lambda exclude_unset=True: {"role_id": 5, "team_id": 8})
 
-        updated = admin_users.update_user(db, user_id=1, payload=payload, tenant_id=1)
+        updated = admin_users.update_user(db, user_id=1, payload=payload, tenant_id=1, actor_user_id=99)
 
         self.assertTrue(db.committed)
         self.assertEqual(updated.role_id, 5)
@@ -195,6 +195,52 @@ class CreateUserTests(unittest.TestCase):
         self.assertEqual(updated._serialized_role_name, "Manager")
         self.assertEqual(updated._serialized_role_level, 50)
         self.assertEqual(updated._serialized_team_name, "Revenue")
+
+    def test_update_user_prevents_self_deactivation(self):
+        user = SimpleNamespace(id=1, role_id=4, is_active=UserStatus.active)
+        db = FakeDB(user=user)
+        payload = SimpleNamespace(model_dump=lambda exclude_unset=True: {"is_active": UserStatus.inactive})
+
+        with self.assertRaises(HTTPException) as exc:
+            admin_users.update_user(db, user_id=1, payload=payload, tenant_id=1, actor_user_id=1)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "You cannot deactivate your own account")
+        self.assertFalse(db.committed)
+
+    def test_update_user_prevents_self_role_change(self):
+        user = SimpleNamespace(id=1, role_id=4, is_active=UserStatus.active)
+        db = FakeDB(user=user)
+        payload = SimpleNamespace(model_dump=lambda exclude_unset=True: {"role_id": 5})
+
+        with self.assertRaises(HTTPException) as exc:
+            admin_users.update_user(db, user_id=1, payload=payload, tenant_id=1, actor_user_id=1)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "You cannot change your own role")
+        self.assertFalse(db.committed)
+
+    def test_update_user_route_forwards_authenticated_admin_id(self):
+        db = object()
+        payload = object()
+        admin = SimpleNamespace(id=99, tenant_id=10)
+        updated = object()
+        serialized = object()
+
+        with (
+            patch.object(admin_routes.admin_users, "update_user", return_value=updated) as update_user,
+            patch.object(admin_routes.admin_users, "serialize_user_profile", return_value=serialized),
+        ):
+            result = admin_routes.update_user(7, payload, db, admin)
+
+        self.assertIs(result, serialized)
+        update_user.assert_called_once_with(
+            db,
+            7,
+            payload,
+            tenant_id=10,
+            actor_user_id=99,
+        )
 
     def test_create_user_returns_setup_link_for_manual_users(self):
         db = FakeDB(user=None, role=SimpleNamespace(id=5), team=SimpleNamespace(id=8))

@@ -1,15 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CalendarDays, CheckCircle2, Clock3 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CalendarDays, CheckCircle2, Clock3, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { RequiredMark } from "@/components/ui/RequiredMark";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { RequiredMark } from "@/components/ui/RequiredMark";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { apiFetch } from "@/lib/api";
+import { apiUrl } from "@/lib/runtime-config";
 
 type BookingQuestion = {
   id?: number | null;
@@ -34,26 +35,26 @@ type PublicSlot = {
   label: string;
 };
 
+type LoadFailure = "unavailable" | "temporary";
+type SubmitFailure = "slot" | "rate" | "temporary";
+
 const DISPLAY_TIMEZONES = ["UTC", "America/New_York", "Europe/London", "Asia/Colombo", "Asia/Dubai", "Asia/Singapore", "Australia/Sydney"];
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+class BookingLoadError extends Error {
+  constructor(readonly kind: LoadFailure) {
+    super(kind);
+  }
+}
+
+class BookingSubmitError extends Error {
+  constructor(readonly kind: SubmitFailure) {
+    super(kind);
+  }
+}
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function browserTimezone() {
-  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
-}
-
-function formatSlotTime(value: string, timeZone: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    timeZone,
-    timeZoneName: "short",
-  }).format(new Date(value));
 }
 
 function addDaysIso(days: number) {
@@ -62,37 +63,90 @@ function addDaysIso(days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-async function readJson(res: Response) {
-  return res.json().catch(() => null);
+function browserTimezone() {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 }
 
-async function fetchBookingType(slug: string) {
-  const res = await apiFetch(`/booking-links/${slug}`);
-  const body = await readJson(res);
-  if (!res.ok) throw new Error("This booking link is unavailable.");
-  return body as PublicBookingType;
+function formatSlotTime(value: string, timeZone: string) {
+  try {
+    return new Intl.DateTimeFormat("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone,
+      timeZoneName: "short",
+    }).format(new Date(value));
+  } catch {
+    return value;
+  }
 }
 
-async function fetchSlots(slug: string, startDate: string, endDate: string) {
-  const params = new URLSearchParams({ start_date: startDate, end_date: endDate });
-  const res = await apiFetch(`/booking-links/${slug}/slots?${params.toString()}`);
-  const body = await readJson(res);
-  if (!res.ok) throw new Error("Available times could not be loaded.");
-  return (body?.results ?? []) as PublicSlot[];
+function isBookingType(value: unknown): value is PublicBookingType {
+  if (!value || typeof value !== "object") return false;
+  const bookingType = value as Partial<PublicBookingType>;
+  return (
+    typeof bookingType.name === "string"
+    && typeof bookingType.slug === "string"
+    && typeof bookingType.duration_minutes === "number"
+    && typeof bookingType.timezone === "string"
+    && Array.isArray(bookingType.questions)
+  );
+}
+
+function isPublicSlot(value: unknown): value is PublicSlot {
+  if (!value || typeof value !== "object") return false;
+  const slot = value as Partial<PublicSlot>;
+  return typeof slot.start_at === "string" && typeof slot.end_at === "string" && typeof slot.label === "string";
+}
+
+async function readJson(response: Response): Promise<unknown> {
+  return response.json().catch(() => null);
+}
+
+async function publicFetch(path: string, init?: RequestInit) {
+  return fetch(apiUrl(path), {
+    ...init,
+    cache: "no-store",
+    credentials: "omit",
+    headers: { Accept: "application/json", ...init?.headers },
+  });
+}
+
+async function fetchBookingType(slug: string, signal?: AbortSignal) {
+  const response = await publicFetch(`/booking-links/${encodeURIComponent(slug)}`, { signal });
+  const body = await readJson(response);
+  if (response.status === 404) throw new BookingLoadError("unavailable");
+  if (!response.ok || !isBookingType(body)) throw new BookingLoadError("temporary");
+  return body;
+}
+
+async function fetchSlots(slug: string, signal?: AbortSignal) {
+  const params = new URLSearchParams({ start_date: todayIso(), end_date: addDaysIso(14) });
+  const response = await publicFetch(`/booking-links/${encodeURIComponent(slug)}/slots?${params.toString()}`, { signal });
+  const body = await readJson(response);
+  if (response.status === 404) throw new BookingLoadError("unavailable");
+  if (!response.ok || !body || typeof body !== "object" || !Array.isArray((body as { results?: unknown }).results)) {
+    throw new BookingLoadError("temporary");
+  }
+  return (body as { results: unknown[] }).results.filter(isPublicSlot);
 }
 
 async function submitBooking(slug: string, payload: Record<string, unknown>) {
-  const res = await apiFetch(`/booking-links/${slug}/book`, {
+  const response = await publicFetch(`/booking-links/${encodeURIComponent(slug)}/book`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  const body = await readJson(res);
-  if (!res.ok) throw new Error("This time could not be booked. Refresh the page and choose another slot.");
-  return body;
+  if (response.status === 409) throw new BookingSubmitError("slot");
+  if (response.status === 429) throw new BookingSubmitError("rate");
+  if (!response.ok) throw new BookingSubmitError("temporary");
 }
 
 export default function BookingForm({ slug }: { slug: string }) {
+  const nameRef = useRef<HTMLInputElement>(null);
+  const emailRef = useRef<HTMLInputElement>(null);
   const [bookingType, setBookingType] = useState<PublicBookingType | null>(null);
   const [slots, setSlots] = useState<PublicSlot[]>([]);
   const [selectedSlot, setSelectedSlot] = useState<PublicSlot | null>(null);
@@ -102,44 +156,92 @@ export default function BookingForm({ slug }: { slug: string }) {
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [displayTimezone, setDisplayTimezone] = useState(() => browserTimezone());
   const [loading, setLoading] = useState(true);
+  const [slotsLoading, setSlotsLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState<LoadFailure | null>(null);
+  const [slotsError, setSlotsError] = useState(false);
+  const [submitError, setSubmitError] = useState<SubmitFailure | null>(null);
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const [booked, setBooked] = useState(false);
-  const requiredAnswersComplete = bookingType?.questions
-    .filter((question) => question.required)
-    .every((question) => Boolean(answers[String(question.id ?? question.label)]?.trim())) ?? true;
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     async function load() {
+      setLoading(true);
+      setLoadError(null);
+      setSlotsError(false);
       try {
-        setLoading(true);
-        setError("");
-        const [typeData, slotData] = await Promise.all([
-          fetchBookingType(slug),
-          fetchSlots(slug, todayIso(), addDaysIso(14)),
-        ]);
-        if (cancelled) return;
+        const typeData = await fetchBookingType(slug, controller.signal);
         setBookingType(typeData);
-        setSlots(slotData);
         setDisplayTimezone((current) => current || typeData.timezone || browserTimezone());
-      } catch (loadError) {
-        if (!cancelled) setError(loadError instanceof Error ? loadError.message : "Booking link is unavailable.");
+        try {
+          setSlotsLoading(true);
+          setSlots(await fetchSlots(slug, controller.signal));
+        } catch (error) {
+          if (error instanceof DOMException && error.name === "AbortError") return;
+          if (error instanceof BookingLoadError && error.kind === "unavailable") {
+            setBookingType(null);
+            setLoadError("unavailable");
+          } else {
+            setSlotsError(true);
+          }
+        } finally {
+          if (!controller.signal.aborted) setSlotsLoading(false);
+        }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") return;
+        setBookingType(null);
+        setLoadError(error instanceof BookingLoadError ? error.kind : "temporary");
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
     void load();
-    return () => {
-      cancelled = true;
-    };
-  }, [slug]);
+    return () => controller.abort();
+  }, [slug, reloadKey]);
 
-  async function handleSubmit() {
-    if (!selectedSlot) return;
+  async function refreshSlots() {
+    setSlotsLoading(true);
+    setSlotsError(false);
+    try {
+      setSlots(await fetchSlots(slug));
+    } catch {
+      setSlotsError(true);
+    } finally {
+      setSlotsLoading(false);
+    }
+  }
+
+  function firstMissingRequiredQuestion() {
+    return bookingType?.questions.find((question) => {
+      const key = String(question.id ?? question.label);
+      return question.required && !answers[key]?.trim();
+    });
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedSlot || !bookingType) return;
+    setValidationAttempted(true);
+    setSubmitError(null);
+    if (!guestName.trim()) {
+      nameRef.current?.focus();
+      return;
+    }
+    if (!EMAIL_PATTERN.test(guestEmail.trim())) {
+      emailRef.current?.focus();
+      return;
+    }
+    const missingQuestion = firstMissingRequiredQuestion();
+    if (missingQuestion) {
+      const key = String(missingQuestion.id ?? missingQuestion.label).replace(/[^a-zA-Z0-9_-]/g, "-");
+      document.getElementById(`booking-question-${key}`)?.focus();
+      return;
+    }
+
     try {
       setSubmitting(true);
-      setError("");
       await submitBooking(slug, {
         start_at: selectedSlot.start_at,
         guest_name: guestName.trim(),
@@ -148,125 +250,228 @@ export default function BookingForm({ slug }: { slug: string }) {
         answers,
       });
       setBooked(true);
-    } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to book this meeting.");
+    } catch (error) {
+      const failure = error instanceof BookingSubmitError ? error.kind : "temporary";
+      setSubmitError(failure);
+      if (failure === "slot") {
+        setSelectedSlot(null);
+        await refreshSlots();
+      }
     } finally {
       setSubmitting(false);
     }
   }
 
   if (loading) {
-    return <Card className="px-5 py-5 text-sm text-copy-muted">Loading booking link...</Card>;
-  }
-  if (error && !bookingType) {
-    return <Card role="alert" className="border-state-danger/40 bg-state-danger-muted px-5 py-5 text-sm text-copy-primary">{error}</Card>;
-  }
-  if (!bookingType) return null;
-  if (booked) {
     return (
-      <Card className="px-6 py-8 text-center">
-        <CheckCircle2 className="mx-auto h-10 w-10 text-emerald-300" />
-        <h1 className="mt-4 text-xl font-semibold text-neutral-100">Meeting booked</h1>
-        <p className="mt-2 text-sm text-neutral-400">Your time is confirmed with {bookingType.owner_name || "the team"}.</p>
-        {selectedSlot ? (
-          <p className="mt-3 text-sm text-neutral-300">{formatSlotTime(selectedSlot.start_at, displayTimezone)}</p>
+      <Card className="flex min-h-64 items-center justify-center p-6" role="status" aria-busy="true">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin text-copy-muted" aria-hidden="true" />
+        <span className="text-sm text-copy-secondary">Loading booking page…</span>
+      </Card>
+    );
+  }
+
+  if (loadError || !bookingType) {
+    return (
+      <Card role="alert" className="flex min-h-64 flex-col items-center justify-center border-state-danger/40 bg-state-danger-muted p-6 text-center">
+        <CalendarDays className="h-9 w-9 text-state-danger" aria-hidden="true" />
+        <h1 className="mt-4 text-xl font-semibold text-copy-primary">
+          {loadError === "unavailable" ? "This booking link is unavailable" : "The booking page could not be loaded"}
+        </h1>
+        <p className="mt-2 max-w-md text-sm leading-6 text-copy-secondary">
+          {loadError === "unavailable"
+            ? "The link may be disabled or no longer available. Ask the organizer for an updated link."
+            : "Check your connection and try again."}
+        </p>
+        {loadError === "temporary" ? (
+          <Button type="button" variant="outline" className="mt-5" onClick={() => setReloadKey((current) => current + 1)}>
+            <RefreshCw />
+            Try again
+          </Button>
         ) : null}
       </Card>
     );
   }
 
-  return (
-    <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-      <Card className="px-5 py-5">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-neutral-800 bg-neutral-950">
-            <CalendarDays className="h-5 w-5 text-neutral-300" />
-          </div>
-          <div>
-            <h1 className="text-xl font-semibold text-neutral-100">{bookingType.name}</h1>
-            <p className="mt-1 text-sm text-neutral-400">{bookingType.owner_name || "Lynk"} · {bookingType.timezone}</p>
-          </div>
-        </div>
-        <div className="mt-5 flex items-center gap-2 text-sm text-neutral-300">
-          <Clock3 className="h-4 w-4 text-neutral-500" />
-          {bookingType.duration_minutes} minutes
-        </div>
-        <div className="mt-5 rounded-lg border border-neutral-800 bg-neutral-950/70 px-3 py-3">
-          <label className="text-xs font-medium uppercase tracking-[0.14em] text-neutral-500">Display timezone</label>
-          <select
-            value={displayTimezone}
-            onChange={(event) => setDisplayTimezone(event.target.value)}
-            className="mt-2 w-full rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none"
-          >
-            {Array.from(new Set([browserTimezone(), bookingType.timezone, ...DISPLAY_TIMEZONES])).map((zone) => (
-              <option key={zone} value={zone}>{zone}</option>
-            ))}
-          </select>
+  if (booked) {
+    return (
+      <Card className="px-6 py-10 text-center" role="status">
+        <CheckCircle2 className="mx-auto h-11 w-11 text-state-success" aria-hidden="true" />
+        <h1 className="mt-4 text-xl font-semibold text-copy-primary">Meeting booked</h1>
+        <p className="mt-2 text-sm text-copy-secondary">Your time is confirmed with {bookingType.owner_name || "the team"}.</p>
+        {selectedSlot ? (
+          <p className="mt-3 font-medium text-copy-primary">
+            <time dateTime={selectedSlot.start_at}>{formatSlotTime(selectedSlot.start_at, displayTimezone)}</time>
+          </p>
+        ) : null}
+        <div className="mx-auto mt-5 flex max-w-md items-center justify-center gap-2 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-4 py-3 text-sm text-copy-secondary">
+          <ShieldCheck className="h-4 w-4 text-state-success" aria-hidden="true" />
+          Confirmation details were sent to the meeting organizer.
         </div>
       </Card>
+    );
+  }
 
-      <Card className="px-5 py-5">
-        <div className="grid gap-5 xl:grid-cols-2">
-          <div>
-            <h2 className="text-sm font-semibold text-neutral-100">Choose a time</h2>
-            <div className="mt-3 grid max-h-[28rem] gap-2 overflow-y-auto pr-1">
-              {slots.length ? slots.map((slot) => (
-                <button
-                  key={slot.start_at}
-                  type="button"
-                  onClick={() => setSelectedSlot(slot)}
-                  className={`rounded-md border px-3 py-3 text-left text-sm transition ${
-                    selectedSlot?.start_at === slot.start_at
-                      ? "border-emerald-500 bg-emerald-950/40 text-emerald-100"
-                      : "border-neutral-800 bg-neutral-950 text-neutral-200 hover:border-neutral-700"
-                  }`}
-                >
-                  {formatSlotTime(slot.start_at, displayTimezone)}
-                </button>
-              )) : <div className="rounded-md border border-dashed border-neutral-800 px-3 py-5 text-sm text-neutral-500">No slots are available in the next two weeks.</div>}
-            </div>
+  const timezoneOptions = Array.from(new Set([browserTimezone(), bookingType.timezone, ...DISPLAY_TIMEZONES]));
+
+  return (
+    <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
+      <Card className="p-5 sm:p-6">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
+            <CalendarDays className="h-5 w-5 text-copy-secondary" aria-hidden="true" />
           </div>
-
           <div>
-            <h2 className="text-sm font-semibold text-neutral-100">Your details</h2>
-            {selectedSlot ? (
-              <div className="mt-3 rounded-md border border-emerald-900/60 bg-emerald-950/20 px-3 py-2 text-sm text-emerald-100">
-                {formatSlotTime(selectedSlot.start_at, displayTimezone)}
+            <h1 className="text-xl font-semibold text-copy-primary">{bookingType.name}</h1>
+            <p className="mt-1 text-sm text-copy-muted">{bookingType.owner_name || "Lynk"}</p>
+          </div>
+        </div>
+        <div className="mt-5 flex items-center gap-2 text-sm text-copy-secondary">
+          <Clock3 className="h-4 w-4 text-copy-muted" aria-hidden="true" />
+          {bookingType.duration_minutes} minutes
+        </div>
+        <Field className="mt-5 rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted p-4">
+          <FieldLabel htmlFor="booking-display-timezone">Display timezone</FieldLabel>
+          <Select value={displayTimezone} onValueChange={setDisplayTimezone}>
+            <SelectTrigger id="booking-display-timezone" className="w-full">
+              <SelectValue placeholder="Select timezone" />
+            </SelectTrigger>
+            <SelectContent>
+              {timezoneOptions.map((zone) => <SelectItem key={zone} value={zone}>{zone.replaceAll("_", " ")}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <FieldDescription>Available times are shown in this timezone.</FieldDescription>
+        </Field>
+      </Card>
+
+      <Card className="p-5 sm:p-6">
+        <div className="grid gap-6 xl:grid-cols-2">
+          <section aria-labelledby="booking-times-heading">
+            <div className="flex items-center justify-between gap-3">
+              <h2 id="booking-times-heading" className="text-sm font-semibold text-copy-primary">Choose a time</h2>
+              <Button type="button" variant="ghost" size="sm" onClick={() => void refreshSlots()} disabled={slotsLoading}>
+                <RefreshCw className={slotsLoading ? "animate-spin" : undefined} />
+                Refresh
+              </Button>
+            </div>
+            {slotsLoading ? (
+              <div className="mt-3 flex min-h-32 items-center justify-center rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted text-sm text-copy-muted" role="status">
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+                Loading available times…
               </div>
-            ) : null}
-            <FieldGroup className="mt-3 grid gap-3">
+            ) : slotsError ? (
+              <div className="mt-3 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted p-4 text-sm text-copy-secondary" role="alert">
+                <p>Available times could not be loaded.</p>
+                <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void refreshSlots()}>Try again</Button>
+              </div>
+            ) : slots.length ? (
+              <div className="mt-3 grid max-h-[28rem] gap-2 overflow-y-auto pr-1" role="radiogroup" aria-label="Available meeting times">
+                {slots.map((slot) => {
+                  const selected = selectedSlot?.start_at === slot.start_at;
+                  return (
+                    <button
+                      key={slot.start_at}
+                      type="button"
+                      role="radio"
+                      aria-checked={selected}
+                      onClick={() => {
+                        setSelectedSlot(slot);
+                        setSubmitError(null);
+                      }}
+                      className={`rounded-[var(--radius-control)] border px-3 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                        selected
+                          ? "border-state-success/60 bg-state-success-muted text-copy-primary"
+                          : "border-line-default bg-surface-muted text-copy-secondary hover:border-line-strong hover:bg-surface-raised"
+                      }`}
+                    >
+                      <time dateTime={slot.start_at}>{formatSlotTime(slot.start_at, displayTimezone)}</time>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-3 rounded-[var(--radius-control)] border border-dashed border-line-default bg-surface-muted px-4 py-6 text-sm text-copy-muted">
+                No times are available in the next two weeks.
+              </div>
+            )}
+          </section>
+
+          <form onSubmit={handleSubmit} noValidate>
+            <h2 className="text-sm font-semibold text-copy-primary">Your details</h2>
+            {selectedSlot ? (
+              <div className="mt-3 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-3 py-2 text-sm text-copy-primary">
+                Selected: <time dateTime={selectedSlot.start_at}>{formatSlotTime(selectedSlot.start_at, displayTimezone)}</time>
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-copy-muted">Choose an available time to continue.</p>
+            )}
+            <FieldGroup className="mt-4 grid gap-4">
               <Field>
                 <FieldLabel htmlFor="booking-guest-name">Name <RequiredMark /></FieldLabel>
-                <Input id="booking-guest-name" value={guestName} onChange={(event) => setGuestName(event.target.value)} />
+                <Input
+                  ref={nameRef}
+                  id="booking-guest-name"
+                  value={guestName}
+                  maxLength={160}
+                  autoComplete="name"
+                  aria-invalid={validationAttempted && !guestName.trim()}
+                  aria-describedby={validationAttempted && !guestName.trim() ? "booking-name-error" : undefined}
+                  onChange={(event) => setGuestName(event.target.value)}
+                />
+                {validationAttempted && !guestName.trim() ? <FieldError id="booking-name-error">Enter your name.</FieldError> : null}
               </Field>
               <Field>
                 <FieldLabel htmlFor="booking-guest-email">Email <RequiredMark /></FieldLabel>
-                <Input id="booking-guest-email" type="email" value={guestEmail} onChange={(event) => setGuestEmail(event.target.value)} />
+                <Input
+                  ref={emailRef}
+                  id="booking-guest-email"
+                  type="email"
+                  value={guestEmail}
+                  maxLength={255}
+                  autoComplete="email"
+                  inputMode="email"
+                  aria-invalid={validationAttempted && !EMAIL_PATTERN.test(guestEmail.trim())}
+                  aria-describedby={validationAttempted && !EMAIL_PATTERN.test(guestEmail.trim()) ? "booking-email-error" : undefined}
+                  onChange={(event) => setGuestEmail(event.target.value)}
+                />
+                {validationAttempted && !EMAIL_PATTERN.test(guestEmail.trim()) ? <FieldError id="booking-email-error">Enter a valid email address.</FieldError> : null}
               </Field>
               {bookingType.questions.map((question) => {
                 const key = String(question.id ?? question.label);
-                const inputId = `booking-question-${key.replace(/[^a-zA-Z0-9_-]/g, "-")}`;
+                const safeKey = key.replace(/[^a-zA-Z0-9_-]/g, "-");
+                const inputId = `booking-question-${safeKey}`;
+                const invalid = validationAttempted && question.required && !answers[key]?.trim();
                 return (
                   <Field key={key}>
                     <FieldLabel htmlFor={inputId}>{question.label}{question.required ? <RequiredMark /> : null}</FieldLabel>
                     {question.field_type === "textarea" ? (
-                      <Textarea id={inputId} value={answers[key] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} />
+                      <Textarea id={inputId} value={answers[key] ?? ""} maxLength={2000} aria-invalid={invalid} aria-describedby={invalid ? `${inputId}-error` : undefined} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} />
                     ) : (
-                      <Input id={inputId} value={answers[key] ?? ""} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} />
+                      <Input id={inputId} value={answers[key] ?? ""} maxLength={2000} aria-invalid={invalid} aria-describedby={invalid ? `${inputId}-error` : undefined} onChange={(event) => setAnswers((current) => ({ ...current, [key]: event.target.value }))} />
                     )}
+                    {invalid ? <FieldError id={`${inputId}-error`}>Answer this required question.</FieldError> : null}
                   </Field>
                 );
               })}
               <Field>
                 <FieldLabel htmlFor="booking-guest-note">Note</FieldLabel>
-                <Textarea id="booking-guest-note" value={guestNote} onChange={(event) => setGuestNote(event.target.value)} />
+                <Textarea id="booking-guest-note" value={guestNote} maxLength={2000} rows={4} onChange={(event) => setGuestNote(event.target.value)} />
+                <FieldDescription>Optional context for the meeting organizer.</FieldDescription>
               </Field>
             </FieldGroup>
-            {error ? <div role="alert" aria-live="polite" className="mt-3 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-3 py-2 text-sm text-copy-primary">{error}</div> : null}
-            <Button className="mt-4 w-full" onClick={handleSubmit} disabled={!selectedSlot || !guestName.trim() || !guestEmail.trim() || !requiredAnswersComplete || submitting}>
-              {submitting ? "Booking..." : "Book meeting"}
+            {submitError ? (
+              <div role="alert" aria-live="polite" className="mt-4 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-3 py-3 text-sm text-copy-secondary">
+                {submitError === "slot"
+                  ? "That time is no longer available. Choose another time."
+                  : submitError === "rate"
+                    ? "Too many booking attempts were made. Please try again later."
+                    : "The meeting could not be booked. Check your details and try again."}
+              </div>
+            ) : null}
+            <Button type="submit" className="mt-4 w-full" disabled={!selectedSlot || submitting}>
+              {submitting ? <><Loader2 className="animate-spin" />Booking…</> : "Book meeting"}
             </Button>
-          </div>
+          </form>
         </div>
       </Card>
     </div>

@@ -63,14 +63,6 @@ async function fetchOrganizations(
   return res.json();
 }
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
-  return "Failed to load organizations";
-}
-
 export function useOrganizations(
   visibleColumns: string[],
   viewFilters: SavedViewFilters,
@@ -87,7 +79,7 @@ export function useOrganizations(
     sort,
     initialPage,
     initialPageSize,
-    errorMessage: getErrorMessage,
+    errorMessage: () => "Accounts could not be loaded. Check your connection and try again.",
   });
 
   return {

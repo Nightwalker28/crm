@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -180,7 +181,11 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
             </div>
             <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-primary">
               Active
-              <input type="checkbox" checked={draft.is_active} onChange={(event) => setDraft((current) => ({ ...current, is_active: event.target.checked }))} className="h-4 w-4 accent-primary" />
+              <Checkbox
+                checked={draft.is_active}
+                onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_active: checked === true }))}
+                aria-label="Active"
+              />
             </label>
           </FieldGroup>
         </FormSection>

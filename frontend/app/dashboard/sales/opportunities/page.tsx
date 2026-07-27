@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
-import { Columns3, Plus, Table2 } from "lucide-react";
+import { Columns3, Plus, RotateCcw, Table2 } from "lucide-react";
 import { toast } from "sonner";
 
 import OpportunitiesPipelineBoard from "@/components/opportunities/OpportunitiesPipelineBoard";
@@ -30,7 +30,13 @@ const EMPTY_STAGES: PipelineSummary["stages"] = [
   ["lead", "Lead"], ["qualified", "Qualified"], ["proposal", "Proposal"], ["negotiation", "Negotiation"], ["closed_won", "Closed Won"], ["closed_lost", "Closed Lost"], ["unstaged", "Unstaged"],
 ].map(([stage_key, label]) => ({ stage_key, label, count: 0, total_value: 0 }));
 
-async function fetchPipelineSummary(filters: SavedViewFilters) { const params = new URLSearchParams(); appendSavedViewFilterParams(params, filters); const res = await apiFetch(`/sales/opportunities/pipeline-summary?${params.toString()}`); const body = await res.json().catch(() => null); if (!res.ok) throw new Error(body?.detail ?? "Failed to load pipeline summary."); return body as PipelineSummary; }
+async function fetchPipelineSummary(filters: SavedViewFilters) {
+  const params = new URLSearchParams();
+  appendSavedViewFilterParams(params, filters);
+  const res = await apiFetch(`/sales/opportunities/pipeline-summary?${params.toString()}`);
+  if (!res.ok) throw new Error("deal-pipeline-summary-unavailable");
+  return res.json() as Promise<PipelineSummary>;
+}
 
 export default function OpportunitiesPage() {
   const router = useRouter(); const { data: customFields = [] } = useModuleCustomFields("sales_opportunities"); const { fields: moduleFields } = useModuleFieldConfigs("sales_opportunities");
@@ -49,8 +55,17 @@ export default function OpportunitiesPage() {
     <PageHeader title="Deals" description="Track value, confidence, ownership, and stage movement across the sales pipeline." eyebrow={totalCount ? `${totalCount} deal${totalCount === 1 ? "" : "s"} in this view` : undefined} actions={<Button asChild><Link href="/dashboard/sales/opportunities/new"><Plus />Add deal</Link></Button>} />
     <ModuleListToolbar searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""} onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))} searchPlaceholder="Search deals" filtersOpen={Boolean(activeFilters.filtersOpen)} activeFilterCount={activeFilterCount} onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))} onClearFilters={clearFilters} selectedCount={selectedIds.length} selectionNoun="deal" onClearSelection={() => setSelectedIds([])} viewControls={<><SavedViewSelector moduleKey="sales_opportunities" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} /><div className="inline-flex rounded-md border border-line-default p-0.5" aria-label="Deal display"><Button type="button" variant={displayMode === "table" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "table"} onClick={() => setDisplayMode("table")}><Table2 />Table</Button><Button type="button" variant={displayMode === "pipeline" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "pipeline"} onClick={() => setDisplayMode("pipeline")}><Columns3 />Pipeline</Button></div></>} actionControls={<ModuleImportExportControls importEndpoint="/sales/opportunities/import" exportEndpoint="/sales/opportunities/export" exportMethod="POST" exportBody={buildSavedViewExportPayload(activeFilters)} onImportSuccess={refresh} selectedIds={selectedIds} currentPageIds={currentPageIds} />} />
     <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(filters) => setDraftConfig((current) => ({ ...current, filters }))} hideHeader />
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">{stages.map((stage) => <div key={stage.stage_key} className="rounded-[var(--radius-card)] border border-line-default bg-surface px-4 py-3"><div className="text-xs font-medium uppercase tracking-[0.12em] text-copy-muted">{stage.label}</div><div className="mt-2 flex items-end justify-between gap-2"><span className="text-xl font-semibold text-copy-primary">{summaryQuery.isLoading ? "—" : stage.count}</span><span className="text-xs text-copy-muted">{stage.total_value ? new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(stage.total_value) : "No value"}</span></div></div>)}</div>
-    {error ? <div className="flex justify-between rounded-lg border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-state-danger"><span>We could not load deals.</span><button onClick={refresh} className="underline underline-offset-2">Retry</button></div> : null}
+    {summaryQuery.isError ? (
+      <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+        <span>Deal pipeline totals could not be loaded. The deal list remains available.</span>
+        <Button type="button" variant="outline" size="sm" disabled={summaryQuery.isFetching} onClick={() => void summaryQuery.refetch()}>
+          <RotateCcw />{summaryQuery.isFetching ? "Retrying..." : "Retry totals"}
+        </Button>
+      </div>
+    ) : (
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">{stages.map((stage) => <div key={stage.stage_key} className="rounded-[var(--radius-card)] border border-line-default bg-surface px-4 py-3"><div className="text-xs font-medium uppercase tracking-[0.12em] text-copy-muted">{stage.label}</div><div className="mt-2 flex items-end justify-between gap-2"><span className="text-xl font-semibold text-copy-primary">{summaryQuery.isLoading ? "—" : stage.count}</span><span className="text-xs text-copy-muted">{stage.total_value ? new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(stage.total_value) : "No value"}</span></div></div>)}</div>
+    )}
+    {error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"><span>We could not load deals.</span><Button type="button" variant="outline" size="sm" onClick={() => void refresh()}>Retry</Button></div> : null}
     {displayMode === "table" ? <OpportunitiesTable opportunities={opportunities} isLoading={isLoading} isRefreshing={isFetching && !isLoading} visibleColumns={visibleColumns} columnOptions={definition?.columns ?? []} selectedIds={selectedIds} currentPageSelectionState={pageSelection} onToggleRow={(id, checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((item) => item !== id))} onToggleCurrentPage={(checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, ...currentPageIds])) : current.filter((id) => !currentPageIds.includes(id)))} sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null} onSortChange={(sort) => setDraftConfig((current) => ({ ...current, sort: sort ? { key: sort.column, direction: sort.direction } : null }))} onEdit={(opportunity) => router.push(`/dashboard/sales/opportunities/${opportunity.opportunity_id}`)} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} /> : <div className="space-y-3"><div className="rounded-lg border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">Showing loaded records {rangeStart}-{rangeEnd} of {totalCount}. Drag a card to another stage, or use its stage menu for keyboard access.</div><OpportunitiesPipelineBoard opportunities={opportunities} isLoading={isLoading} isRefreshing={isFetching && !isLoading} onEdit={(opportunity) => router.push(`/dashboard/sales/opportunities/${opportunity.opportunity_id}`)} onStageChange={(opportunity, stage) => changeStage(opportunity.opportunity_id, opportunity.sales_stage, stage)} /></div>}
     <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
   </div>;

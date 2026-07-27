@@ -8,12 +8,12 @@ export default function AuthLayout({
   children: React.ReactNode;
 }) {
   return (
-    <main className="relative flex min-h-screen items-center justify-center bg-black text-white overflow-hidden">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-app text-copy-primary">
       {/* hexagon background */}
       <HexagonBackground
         hexagonMargin={5}
         hexagonSize={70}
-        className="absolute inset-0 z-0 text-slate-600/40"
+        className="absolute inset-0 z-0 text-copy-muted/40"
       />
 
       {/* noise-like grid shimmer */}
@@ -23,7 +23,7 @@ export default function AuthLayout({
       <div className="pointer-events-none absolute inset-0 z-2 bg-[radial-gradient(circle_at_center,transparent_55%,rgba(0,0,0,0.40))]" />
 
       {/* card */}
-      <div className="relative z-20 w-full max-w-sm overflow-hidden rounded-md border border-white/10 bg-white/5 px-8 py-8 backdrop-blur-xl shadow-[0_30px_120px_rgba(0,0,0,0.7)]">
+      <div className="relative z-20 w-full max-w-sm overflow-hidden rounded-[var(--radius-dialog)] border border-line-default bg-surface/80 px-8 py-8 shadow-[var(--shadow-panel)] backdrop-blur-xl">
         {/* inner card gradients */}
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.15),transparent_60%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.07),transparent_60%)] opacity-80" />
 

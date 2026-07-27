@@ -93,11 +93,6 @@ type PosInvoicesResponse = {
   page_size: number;
 };
 
-function errorMessage(body: unknown, fallback: string) {
-  if (body && typeof body === "object" && "detail" in body && typeof body.detail === "string") return body.detail;
-  return fallback;
-}
-
 async function fetchInvoices(
   page: number,
   pageSize: number,
@@ -118,14 +113,14 @@ async function fetchInvoices(
   }
   const res = await apiFetch(`/finance/pos-invoices?${params.toString()}`);
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorMessage(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("Invoices could not be loaded.");
   return body as PosInvoicesResponse;
 }
 
 export async function fetchPosInvoice(id: number): Promise<PosInvoice> {
   const res = await apiFetch(`/finance/pos-invoices/${id}`);
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorMessage(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("The invoice could not be loaded.");
   return body as PosInvoice;
 }
 
@@ -145,7 +140,7 @@ async function createInvoice(payload: PosInvoicePayload): Promise<PosInvoice> {
     body: JSON.stringify(payload),
   });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorMessage(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("The invoice could not be created.");
   return body as PosInvoice;
 }
 
@@ -156,7 +151,7 @@ async function updateInvoice(id: number, payload: PosInvoiceUpdatePayload): Prom
     body: JSON.stringify(payload),
   });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(errorMessage(body, `Failed with ${res.status}`));
+  if (!res.ok) throw new Error("The invoice could not be updated.");
   return body as PosInvoice;
 }
 
@@ -173,10 +168,7 @@ async function recordInvoicePayment(id: number, payload: RecordPaymentPayload): 
 
 async function deleteInvoice(id: number): Promise<void> {
   const res = await apiFetch(`/finance/pos-invoices/${id}`, { method: "DELETE" });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(errorMessage(body, `Failed with ${res.status}`));
-  }
+  if (!res.ok) throw new Error("The invoice could not be deleted.");
 }
 
 export function usePosInvoices(
@@ -218,7 +210,7 @@ export function usePosInvoices(
     totalPages: query.data?.total_pages ?? 1,
     isLoading: query.isLoading,
     isFetching: query.isFetching,
-    error: query.error instanceof Error ? query.error.message : null,
+    error: query.error ? "We could not load invoices." : null,
     refresh: query.refetch,
     createInvoice: createMutation.mutateAsync,
     updateInvoice: (id: number, payload: PosInvoiceUpdatePayload) => updateMutation.mutateAsync({ id, payload }),
@@ -245,7 +237,7 @@ export function usePaymentInvoices(filters: SavedViewFilters, sort: PosInvoiceSo
     initialPageSize: 10,
     refetchOnWindowFocus: false,
     staleTime: 30_000,
-    errorMessage: (error) => error instanceof Error ? error.message : "We could not load payments.",
+    errorMessage: () => "We could not load payments.",
   });
   const paymentMutation = useMutation({
     mutationFn: ({ id, payload }: { id: number; payload: RecordPaymentPayload }) => recordInvoicePayment(id, payload),
@@ -290,7 +282,7 @@ export function useInvoiceList(filters: SavedViewFilters, sort: PosInvoiceSortSt
     initialPageSize: 10,
     refetchOnWindowFocus: false,
     staleTime: 30_000,
-    errorMessage: (error) => error instanceof Error ? error.message : "We could not load invoices.",
+    errorMessage: () => "We could not load invoices.",
   });
 
   return {

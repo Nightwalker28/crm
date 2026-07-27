@@ -47,7 +47,7 @@ function HexagonBackground({
     <div
       data-slot="hexagon-background"
       className={cn(
-        'relative size-full overflow-hidden dark:bg-neutral-900 bg-neutral-100',
+        'relative size-full overflow-hidden bg-app',
         className,
       )}
       {...props}
@@ -80,10 +80,10 @@ function HexagonBackground({
                   className={cn(
                     'relative',
                     '[clip-path:polygon(50%_0%,100%_25%,100%_75%,50%_100%,0%_75%,0%_25%)]',
-                    "before:content-[''] before:absolute before:top-0 before:left-0 before:w-full before:h-full dark:before:bg-neutral-950 before:bg-white before:opacity-100 before:transition-all before:duration-1000",
-                    "after:content-[''] after:absolute after:inset-(--hexagon-margin) dark:after:bg-neutral-950 after:bg-white",
+                    "before:content-[''] before:absolute before:top-0 before:left-0 before:h-full before:w-full before:bg-line-subtle before:opacity-100 before:transition-all before:duration-1000",
+                    "after:content-[''] after:absolute after:inset-(--hexagon-margin) after:bg-app",
                     'after:[clip-path:polygon(50%_0%,100%_25%,100%_75%,50%_100%,0%_75%,0%_25%)]',
-                    'hover:before:bg-neutral-200 dark:hover:before:bg-neutral-800 hover:before:opacity-100 hover:before:duration-0 dark:hover:after:bg-neutral-900 hover:after:bg-neutral-100 hover:after:opacity-100 hover:after:duration-0',
+                    'hover:before:bg-line-strong hover:before:opacity-100 hover:before:duration-0 hover:after:bg-surface hover:after:opacity-100 hover:after:duration-0',
                     hexagonProps?.className,
                   )}
                 />

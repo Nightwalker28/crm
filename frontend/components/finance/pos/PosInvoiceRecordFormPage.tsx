@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import {
   RouteErrorState,
@@ -43,6 +44,7 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import type { PosInvoice } from "@/hooks/finance/usePosInvoices";
 import { apiFetch } from "@/lib/api";
@@ -174,13 +176,17 @@ export default function PosInvoiceRecordFormPage({
   mode?: "create" | "edit";
   invoiceId?: string;
 }) {
+  const { modules, isLoading: modulesLoading } = useAccessibleModules();
+  const actions = modules.find((module) => module.name === "finance_pos")?.actions;
+  const permitted = mode === "edit" ? Boolean(actions?.can_edit) : Boolean(actions?.can_create);
   const query = useQuery({
     queryKey: ["pos-invoice", invoiceId ? Number(invoiceId) : null],
     queryFn: () => fetchInvoiceForEdit(invoiceId as string),
     enabled: mode === "edit" && Boolean(invoiceId),
     staleTime: 30_000,
   });
-  if (mode === "edit" && query.isLoading) return <RouteLoadingState />;
+  if (modulesLoading || (mode === "edit" && query.isLoading)) return <RouteLoadingState label="invoice form" />;
+  if (!permitted) return <PermissionDeniedState />;
   if (mode === "edit" && query.error)
     return (
       <RouteErrorState

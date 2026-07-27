@@ -59,6 +59,37 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("Leads list keeps its controls usable in a narrow viewport", async ({ page }) => {
+  await page.route("**/sales/leads?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [{
+          lead_id: fakeLeadId,
+          first_name: "Browser",
+          last_name: "Fixture",
+          company: "Lynk QA",
+          primary_email: "browser.fixture@example.com",
+          phone: null,
+          title: "QA Lead",
+          source: "Browser verification",
+          status: "qualified",
+          assigned_to: 7,
+          assigned_to_name: "Ada Owner",
+          created_time: "2099-07-20T09:30:00Z",
+          score: 45,
+          score_grade: "warm",
+          tags: [],
+          custom_fields: {},
+        }],
+        range_start: 1,
+        range_end: 1,
+        total_count: 1,
+        total_pages: 1,
+        page: 1,
+      }),
+    }),
+  );
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/dashboard/sales/leads");
 
@@ -69,6 +100,8 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
 
   const tableRegion = page.getByRole("region", { name: "Data table" });
   await expect(tableRegion).toBeVisible();
+  await expect(tableRegion.locator("span.bg-state-success-muted", { hasText: "Qualified" })).toBeVisible();
+  await expect(tableRegion.locator("span.bg-state-warning-muted", { hasText: "Warm" })).toBeVisible();
   const stickyPositions = await tableRegion.locator("thead th").evaluateAll((headers) =>
     headers.slice(0, 2).map((header) => window.getComputedStyle(header).position),
   );
@@ -118,6 +151,7 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await expect(page.getByText("Revenue", { exact: true })).toBeVisible();
   await expect(page.getByText("Enterprise", { exact: true })).toBeVisible();
   await expect(page.getByText("Warm", { exact: true })).toBeVisible();
+  await expect(page.locator("div.bg-state-warning-muted", { hasText: "Lead Score" })).toBeVisible();
   await expect(page.getByText("Next follow-up", { exact: true })).toBeVisible();
 
   await page.getByRole("tab", { name: "Audit history" }).click();
@@ -142,4 +176,97 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await page.goto(`/dashboard/sales/leads/${fakeLeadId}/convert`);
   await expect(page.getByRole("heading", { name: "Convert Browser Fixture" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Confirm conversion" })).toBeVisible();
+});
+
+test("Lead tags support keyboard suggestions and redact lookup failures", async ({ page }) => {
+  let shouldFail = false;
+  await page.route("**/linked-record-options/tags?**", (route) =>
+    route.fulfill({
+      status: shouldFail ? 500 : 200,
+      contentType: "application/json",
+      body: shouldFail
+        ? JSON.stringify({ detail: "tenant_id=42 database_password=private-secret" })
+        : JSON.stringify({ results: [{ name: "Enterprise" }, { name: "Expansion" }] }),
+    }),
+  );
+
+  await page.goto("/dashboard/sales/leads/new");
+  const tagInput = page.getByLabel("Tags");
+  await tagInput.fill("Ent");
+  await expect(page.getByRole("option", { name: "Enterprise" })).toBeVisible();
+  await tagInput.press("ArrowDown");
+  await expect(tagInput).toHaveAttribute("aria-activedescendant", /options-0$/);
+  await tagInput.press("Enter");
+  await expect(page.getByRole("button", { name: "Remove Enterprise tag" })).toBeVisible();
+
+  shouldFail = true;
+  await tagInput.fill("private");
+  await expect(page.getByText("Tag suggestions could not be loaded.")).toBeVisible();
+  await expect(page.getByText("tenant_id=42 database_password=private-secret")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+});
+
+test("Lead custom fields are labeled and preserve required false boolean values", async ({ page }) => {
+  let submitted: Record<string, unknown> | null = null;
+  await page.route("**/custom-fields/sales_leads", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        {
+          id: 301,
+          module_key: "sales_leads",
+          field_key: "renewal_tier",
+          label: "Renewal tier",
+          field_type: "text",
+          placeholder: "Gold",
+          help_text: "Internal qualification tier.",
+          is_required: true,
+          is_active: true,
+          sort_order: 10,
+        },
+        {
+          id: 302,
+          module_key: "sales_leads",
+          field_key: "priority_account",
+          label: "Priority account",
+          field_type: "boolean",
+          placeholder: null,
+          help_text: "Include this lead in priority reviews.",
+          is_required: true,
+          is_active: true,
+          sort_order: 20,
+        },
+      ]),
+    }),
+  );
+  await page.route("**/sales/leads", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    submitted = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ lead_id: fakeLeadId }),
+    });
+  });
+
+  await page.goto("/dashboard/sales/leads/new");
+  await expect(page.getByLabel("Renewal tier")).toHaveAttribute("required", "");
+  await expect(page.getByText("Internal qualification tier.")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: /Priority account.*Enabled|Enabled.*Priority account/ })).not.toBeChecked();
+
+  await page.getByLabel("Email").fill("qualified@example.test");
+  await page.getByLabel("Renewal tier").fill("Gold");
+  await page.getByRole("button", { name: "Create lead" }).click();
+
+  expect(submitted).toMatchObject({
+    primary_email: "qualified@example.test",
+    custom_fields: {
+      renewal_tier: "Gold",
+      priority_account: false,
+    },
+  });
 });

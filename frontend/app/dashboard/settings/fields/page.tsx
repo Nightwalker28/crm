@@ -557,7 +557,7 @@ export default function FieldsPage() {
                         title={field.is_protected ? "Protected fields cannot be disabled because records depend on them." : undefined}
                         className="relative h-6 w-11 rounded-full border border-line-strong bg-surface-muted p-0.5 data-[state=checked]:bg-primary"
                       >
-                        <SwitchThumb className="block h-4 w-4 rounded-full bg-white shadow-sm data-[state=checked]:translate-x-5" />
+                        <SwitchThumb className="block h-4 w-4 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
                       </Switch>
                       <Popover>
                         <PopoverTrigger asChild>
@@ -688,7 +688,7 @@ export default function FieldsPage() {
                       aria-label={`Field ${inspectorDraft.is_enabled ? "enabled" : "disabled"}`}
                       className="relative h-6 w-11 rounded-full border border-line-strong bg-surface p-0.5 data-[state=checked]:bg-primary"
                     >
-                      <SwitchThumb className="block h-4 w-4 rounded-full bg-white shadow-sm data-[state=checked]:translate-x-5" />
+                      <SwitchThumb className="block h-4 w-4 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
                     </Switch>
                     <div>
                       <FieldLabel htmlFor="inspector-field-enabled">Enabled</FieldLabel>

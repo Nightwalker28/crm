@@ -13,6 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import type { PosInvoice, PosInvoiceSortState } from "@/hooks/finance/usePosInvoices";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { getPosInvoiceStatusStyle, getPosPaymentStatusStyle } from "@/lib/statusStyles";
 
 type Props = {
   invoices: PosInvoice[];
@@ -22,6 +23,7 @@ type Props = {
   selectedIds: number[];
   sort: PosInvoiceSortState;
   hasActiveFilters: boolean;
+  canCreateInvoice: boolean;
   onSortChange: (sort: PosInvoiceSortState) => void;
   onToggle: (id: number, checked: boolean) => void;
   onTogglePage: (checked: boolean) => void;
@@ -29,19 +31,6 @@ type Props = {
 };
 
 const SORTABLE = new Set(["invoice_number", "customer_name", "status", "payment_status", "total_amount", "issue_date", "due_date", "template_id", "updated_at"]);
-const INVOICE_STATUS: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  draft: { bg: "bg-surface-muted", text: "text-copy-secondary", border: "border-line-default", label: "Draft" },
-  issued: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40", label: "Issued" },
-  paid: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Paid" },
-  void: { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40", label: "Void" },
-};
-const PAYMENT_STATUS: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  unpaid: { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40", label: "Unpaid" },
-  partial: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40", label: "Partially paid" },
-  paid: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Paid" },
-  refunded: { bg: "bg-surface-muted", text: "text-copy-secondary", border: "border-line-default", label: "Refunded" },
-};
-
 function money(amount: number, currency: string) {
   try { return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount); }
   catch { return `${currency} ${amount.toFixed(2)}`; }
@@ -55,16 +44,16 @@ function nextSort(sort: PosInvoiceSortState, column: string): PosInvoiceSortStat
   return sort?.key === column ? { key: column, direction: sort.direction === "asc" ? "desc" : "asc" } : { key: column, direction: "asc" };
 }
 
-function statusPill(value: string, styles: typeof INVOICE_STATUS) {
-  const style = styles[value] ?? styles.draft ?? styles.unpaid;
+function statusPill(value: string, type: "invoice" | "payment") {
+  const style = type === "invoice" ? getPosInvoiceStatusStyle(value) : getPosPaymentStatusStyle(value);
   return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
 }
 
 function cell(invoice: PosInvoice, column: string) {
   if (column === "invoice_number") return <TableCell className="sticky left-10 z-10 bg-surface"><Link href={`/dashboard/finance/pos/${invoice.id}`} className="font-mono text-xs font-semibold text-copy-primary hover:underline">{invoice.invoice_number}</Link></TableCell>;
   if (column === "customer_name") return <TableCell><span className="font-medium text-copy-primary">{invoice.customer_name}</span></TableCell>;
-  if (column === "status") return <TableCell>{statusPill(invoice.status, INVOICE_STATUS)}</TableCell>;
-  if (column === "payment_status") return <TableCell>{statusPill(invoice.payment_status, PAYMENT_STATUS)}</TableCell>;
+  if (column === "status") return <TableCell>{statusPill(invoice.status, "invoice")}</TableCell>;
+  if (column === "payment_status") return <TableCell>{statusPill(invoice.payment_status, "payment")}</TableCell>;
   if (column === "total_amount") return <TableCell className="text-right font-medium text-copy-primary">{money(invoice.total_amount, invoice.currency)}</TableCell>;
   if (column === "amount_paid") return <TableCell className="text-right text-copy-secondary">{money(invoice.amount_paid, invoice.currency)}</TableCell>;
   if (column === "balance_due") return <TableCell className={`text-right font-semibold ${invoice.balance_due > 0 ? "text-state-warning" : "text-state-success"}`}>{money(invoice.balance_due, invoice.currency)}</TableCell>;
@@ -76,7 +65,7 @@ function cell(invoice: PosInvoice, column: string) {
   return <TableCell>—</TableCell>;
 }
 
-export default function InvoicesTable({ invoices, visibleColumns, isLoading, isRefreshing, selectedIds, sort, hasActiveFilters, onSortChange, onToggle, onTogglePage, onClearFilters }: Props) {
+export default function InvoicesTable({ invoices, visibleColumns, isLoading, isRefreshing, selectedIds, sort, hasActiveFilters, canCreateInvoice, onSortChange, onToggle, onTogglePage, onClearFilters }: Props) {
   const allSelected = invoices.length > 0 && invoices.every((invoice) => selectedIds.includes(invoice.id));
   return (
     <ModuleTableShell isRefreshing={isRefreshing}>
@@ -88,7 +77,7 @@ export default function InvoicesTable({ invoices, visibleColumns, isLoading, isR
         </TableHeaderRow></TableHeader>
         <TableBody>
           {isLoading ? <ModuleTableLoading columnCount={visibleColumns.length + 2} /> : invoices.length === 0 ? (
-            <TableRow><TableCell colSpan={visibleColumns.length + 2} className="py-12"><EmptyState icon={FileText} title={hasActiveFilters ? "No invoices match these filters" : "No invoices yet"} description={hasActiveFilters ? "Clear one or more filters and try again." : "Create an itemized invoice to start tracking receivables."} action={hasActiveFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button> : <Button asChild><Link href="/dashboard/finance/pos/new">Create invoice</Link></Button>} /></TableCell></TableRow>
+            <TableRow><TableCell colSpan={visibleColumns.length + 2} className="py-12"><EmptyState icon={FileText} title={hasActiveFilters ? "No invoices match these filters" : "No invoices yet"} description={hasActiveFilters ? "Clear one or more filters and try again." : canCreateInvoice ? "Create an itemized invoice to start tracking receivables." : "Invoices will appear here when a teammate creates one."} action={hasActiveFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button> : canCreateInvoice ? <Button asChild><Link href="/dashboard/finance/pos/new">Create invoice</Link></Button> : undefined} /></TableCell></TableRow>
           ) : invoices.map((invoice) => (
             <TableRow key={invoice.id}>
               <TableCell className="sticky left-0 z-10 bg-surface"><Checkbox aria-label={`Select ${invoice.invoice_number}`} checked={selectedIds.includes(invoice.id)} onCheckedChange={(checked) => onToggle(invoice.id, checked === true)} /></TableCell>

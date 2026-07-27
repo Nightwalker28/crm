@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState, type KeyboardEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 
@@ -15,6 +15,7 @@ type Props = {
   moduleKey: string;
   action: "create" | "edit";
   disabled?: boolean;
+  inputId?: string;
 };
 
 const MAX_TAGS = 20;
@@ -28,15 +29,20 @@ async function searchTags(moduleKey: string, action: Props["action"], query: str
   const params = new URLSearchParams({ module_key: moduleKey, action, query, limit: "10" });
   const res = await apiFetch(`/linked-record-options/tags?${params.toString()}`);
   const body = await res.json().catch(() => ({ results: [] }));
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new Error("Tag suggestions could not be loaded.");
   return (Array.isArray(body?.results) ? body.results : [])
     .map((item: { name?: unknown }) => typeof item.name === "string" ? item.name : "")
     .filter(Boolean) as string[];
 }
 
-export default function RecordTagInput({ value, onChange, moduleKey, action, disabled = false }: Props) {
+export default function RecordTagInput({ value, onChange, moduleKey, action, disabled = false, inputId }: Props) {
+  const generatedId = useId();
+  const resolvedInputId = inputId ?? `${generatedId}-input`;
+  const listboxId = `${generatedId}-options`;
+  const errorId = `${generatedId}-error`;
   const [draft, setDraft] = useState("");
   const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [error, setError] = useState<string | null>(null);
   const debouncedDraft = useDebouncedValue(draft, 200);
   const query = useQuery({
@@ -54,7 +60,7 @@ export default function RecordTagInput({ value, onChange, moduleKey, action, dis
       return;
     }
     if (value.length >= MAX_TAGS) {
-      setError(`A Lead can have at most ${MAX_TAGS} tags.`);
+      setError(`This record can have at most ${MAX_TAGS} tags.`);
       return;
     }
     if (value.some((current) => current.toLocaleLowerCase() === tag.toLocaleLowerCase())) {
@@ -66,18 +72,47 @@ export default function RecordTagInput({ value, onChange, moduleKey, action, dis
     setDraft("");
     setError(null);
     setIsOpen(false);
+    setActiveIndex(-1);
   }
 
   const suggestions = (query.data ?? []).filter(
     (suggestion) => !value.some((current) => current.toLocaleLowerCase() === suggestion.toLocaleLowerCase()),
   );
+  const normalizedDraft = normalizeTag(draft);
+  const options = suggestions.length ? suggestions : normalizedDraft && !query.isLoading ? [normalizedDraft] : [];
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      setIsOpen(false);
+      setActiveIndex(-1);
+      return;
+    }
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      setIsOpen(true);
+      if (!options.length) return;
+      setActiveIndex((current) => {
+        if (event.key === "ArrowDown") return current >= options.length - 1 ? 0 : current + 1;
+        return current <= 0 ? options.length - 1 : current - 1;
+      });
+      return;
+    }
+    if (event.key === "Enter" && isOpen && activeIndex >= 0 && options[activeIndex]) {
+      event.preventDefault();
+      addTag(options[activeIndex]);
+      return;
+    }
+    if (event.key !== "Enter" && event.key !== ",") return;
+    event.preventDefault();
+    addTag(draft);
+  }
 
   return (
     <div className="space-y-2">
       {value.length ? (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2" aria-label="Selected tags">
           {value.map((tag) => (
-            <span key={tag.toLocaleLowerCase()} className="inline-flex items-center gap-1 rounded-full border border-neutral-700 bg-neutral-900 px-2.5 py-1 text-xs text-neutral-200">
+            <span key={tag.toLocaleLowerCase()} className="inline-flex items-center gap-1 rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-xs text-copy-primary">
               {tag}
               <Button
                 type="button"
@@ -88,7 +123,7 @@ export default function RecordTagInput({ value, onChange, moduleKey, action, dis
                 onClick={() => onChange(value.filter((current) => current !== tag))}
                 aria-label={`Remove ${tag} tag`}
               >
-                <X className="h-3 w-3" />
+                <X className="h-3 w-3" aria-hidden="true" />
               </Button>
             </span>
           ))}
@@ -97,51 +132,75 @@ export default function RecordTagInput({ value, onChange, moduleKey, action, dis
 
       <div className="relative">
         <Input
+          id={resolvedInputId}
           value={draft}
           disabled={disabled || value.length >= MAX_TAGS}
           placeholder="Type a tag and press Enter"
           onFocus={() => setIsOpen(true)}
-          onBlur={() => window.setTimeout(() => setIsOpen(false), 120)}
+          onBlur={() => window.setTimeout(() => {
+            setIsOpen(false);
+            setActiveIndex(-1);
+          }, 120)}
           onChange={(event) => {
             setDraft(event.target.value);
             setError(null);
             setIsOpen(true);
+            setActiveIndex(-1);
           }}
-          onKeyDown={(event) => {
-            if (event.key !== "Enter" && event.key !== ",") return;
-            event.preventDefault();
-            addTag(draft);
-          }}
+          onKeyDown={handleKeyDown}
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={isOpen && Boolean(draft.trim())}
+          aria-controls={listboxId}
+          aria-activedescendant={activeIndex >= 0 && options[activeIndex] ? `${listboxId}-${activeIndex}` : undefined}
+          aria-invalid={Boolean(error)}
+          aria-describedby={error ? errorId : undefined}
+          autoComplete="off"
         />
         {isOpen && draft.trim() ? (
-          <div className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-md border border-neutral-800 bg-neutral-950 py-1 shadow-2xl">
-            {query.isLoading ? <div className="px-3 py-2 text-sm text-neutral-500">Searching…</div> : null}
-            {query.error ? <div className="px-3 py-2 text-sm text-red-300">Failed to load tag suggestions.</div> : null}
-            {suggestions.map((tag) => (
+          <div id={listboxId} role="listbox" aria-label="Tag suggestions" className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-[var(--radius-control)] border border-line-default bg-surface-raised py-1 shadow-xl">
+            {query.isLoading ? <div role="status" className="px-3 py-2 text-sm text-copy-muted">Searching…</div> : null}
+            {query.error ? (
+              <div role="alert" className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-state-danger">
+                <span>Tag suggestions could not be loaded.</span>
+                <Button type="button" variant="outline" size="sm" disabled={query.isFetching} onMouseDown={(event) => event.preventDefault()} onClick={() => void query.refetch()}>
+                  Try again
+                </Button>
+              </div>
+            ) : null}
+            {suggestions.map((tag, optionIndex) => (
               <button
                 key={tag.toLocaleLowerCase()}
+                id={`${listboxId}-${optionIndex}`}
                 type="button"
-                className="block w-full px-3 py-2 text-left text-sm text-neutral-100 hover:bg-neutral-900"
+                role="option"
+                aria-selected={optionIndex === activeIndex}
+                className="block w-full px-3 py-2 text-left text-sm text-copy-primary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary aria-selected:bg-action-primary-muted"
                 onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setActiveIndex(optionIndex)}
                 onClick={() => addTag(tag)}
               >
                 {tag}
               </button>
             ))}
-            {!query.isLoading && !suggestions.length ? (
+            {!query.isLoading && !suggestions.length && normalizedDraft ? (
               <button
+                id={`${listboxId}-0`}
                 type="button"
-                className="block w-full px-3 py-2 text-left text-sm text-neutral-300 hover:bg-neutral-900"
+                role="option"
+                aria-selected={activeIndex === 0}
+                className="block w-full px-3 py-2 text-left text-sm text-copy-secondary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
                 onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setActiveIndex(0)}
                 onClick={() => addTag(draft)}
               >
-                Create “{normalizeTag(draft)}”
+                Create “{normalizedDraft}”
               </button>
             ) : null}
           </div>
         ) : null}
       </div>
-      {error ? <p role="alert" className="text-xs text-red-300">{error}</p> : null}
+      {error ? <p id={errorId} role="alert" className="text-xs text-state-danger">{error}</p> : null}
     </div>
   );
 }

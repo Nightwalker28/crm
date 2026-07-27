@@ -1,5 +1,6 @@
 import { Fragment } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { FileSpreadsheet } from "lucide-react";
 import type { InsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import {
@@ -18,6 +19,7 @@ import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { resolveMediaUrl } from "@/lib/media";
@@ -39,6 +41,11 @@ type InsertionOrdersListProps = {
   onToggleCurrentPage?: (checked: boolean) => void;
   sort: InsertionOrderTableSortState;
   onSortChange: (sort: InsertionOrderTableSortState) => void;
+  selectionEnabled?: boolean;
+  hasActiveFilters?: boolean;
+  hasError?: boolean;
+  canCreate?: boolean;
+  onClearFilters?: () => void;
 };
 
 const SORTABLE_COLUMNS = new Set([
@@ -78,21 +85,6 @@ function isDuePast(dateStr?: string | null): boolean {
   }
 }
 
-function statusBorderClass(status?: string | null) {
-  switch (status) {
-    case "issued":
-      return "border-l-2 border-l-sky-400";
-    case "active":
-      return "border-l-2 border-l-emerald-400";
-    case "completed":
-      return "border-l-2 border-l-teal-600";
-    case "cancelled":
-      return "border-l-2 border-l-red-500";
-    default:
-      return "border-l-2 border-l-neutral-700";
-  }
-}
-
 function getNumericValue(order: InsertionOrder, column: keyof InsertionOrder) {
   const value = order[column];
   return typeof value === "number" ? value : null;
@@ -103,26 +95,26 @@ function getStringValue(order: InsertionOrder, column: keyof InsertionOrder) {
   return typeof value === "string" ? value : null;
 }
 
-function renderEmptyText(className = "text-neutral-600 text-sm") {
+function renderEmptyText(className = "text-copy-disabled text-sm") {
   return <span className={className}>—</span>;
 }
 
-function renderDateCell(value: string | null | undefined, className = "text-sm text-neutral-400 tabular-nums") {
+function renderDateCell(value: string | null | undefined, className = "text-sm text-copy-secondary tabular-nums") {
   return (
     <TableCell>
       {value ? (
         <span className={className}>{formatDateOnly(value)}</span>
       ) : (
-        renderEmptyText("text-neutral-600")
+        renderEmptyText()
       )}
     </TableCell>
   );
 }
 
-function renderTextCell(value: string | null | undefined, className = "text-sm text-neutral-400") {
+function renderTextCell(value: string | null | undefined, className = "text-sm text-copy-secondary") {
   return (
     <TableCell>
-      {value ? <span className={className}>{value}</span> : renderEmptyText("text-neutral-600")}
+      {value ? <span className={className}>{value}</span> : renderEmptyText()}
     </TableCell>
   );
 }
@@ -140,8 +132,13 @@ export default function InsertionOrdersList({
   onToggleCurrentPage,
   sort,
   onSortChange,
+  selectionEnabled = true,
+  hasActiveFilters = false,
+  hasError = false,
+  canCreate = false,
+  onClearFilters,
 }: InsertionOrdersListProps) {
-  const columnCount = visibleColumns.length + 1;
+  const columnCount = visibleColumns.length + (selectionEnabled ? 1 : 0);
   const headers: Record<string, string> = {
     io_number: "IO Number",
     customer_name: "Customer",
@@ -170,29 +167,23 @@ export default function InsertionOrdersList({
       case "io_number":
         return (
           <TableCell>
-            <span className="text-xs font-bold text-neutral-300 tracking-wider font-mono bg-neutral-800/60 border border-neutral-700/50 rounded px-2 py-0.5">
-              {order.io_number || <span className="text-neutral-600">—</span>}
-            </span>
+            {order.io_number ? (
+              <Link
+                href={`/dashboard/finance/insertion-orders/${order.id}`}
+                onClick={(event) => event.stopPropagation()}
+                className="rounded-[var(--radius-control-sm)] font-mono text-sm font-medium text-copy-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                {order.io_number}
+              </Link>
+            ) : renderEmptyText()}
           </TableCell>
         );
       case "customer_name":
         return (
           <TableCell>
-            <div className="flex items-center gap-2">
-              {order.photo_url ? (
-                <Image
-                  src={resolveMediaUrl(order.photo_url)}
-                  alt={order.user_name ?? ""}
-                  width={24}
-                  height={24}
-                  unoptimized
-                  className="h-6 w-6 rounded-full object-cover shrink-0"
-                />
-              ) : null}
-              <span className="text-sm font-medium text-neutral-100 truncate max-w-[180px]">
-                {order.customer_name || <span className="text-neutral-600">—</span>}
-              </span>
-            </div>
+            <span className="block max-w-[180px] truncate text-sm font-medium text-copy-primary">
+              {order.customer_name || renderEmptyText()}
+            </span>
           </TableCell>
         );
       case "status":
@@ -205,13 +196,13 @@ export default function InsertionOrdersList({
                   {style.label}
                 </Pill>
               );
-            })() : <span className="text-neutral-600 text-sm">—</span>}
+            })() : renderEmptyText()}
           </TableCell>
         );
       case "currency":
         return (
           <TableCell>
-            <span className="text-xs font-bold text-neutral-400 tracking-wider bg-neutral-800/60 border border-neutral-700/50 rounded px-1.5 py-0.5">
+            <span className="rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted px-1.5 py-0.5 text-xs font-semibold tracking-wider text-copy-secondary">
               {order.currency || "—"}
             </span>
           </TableCell>
@@ -223,11 +214,11 @@ export default function InsertionOrdersList({
         return (
           <TableCell>
             {amount != null ? (
-              <span className="text-sm font-semibold text-emerald-300 tabular-nums">
+              <span className="text-sm font-semibold tabular-nums text-copy-primary">
                 {formatAmount(amount, order.currency)}
               </span>
             ) : (
-              <span className="text-neutral-600 text-sm">—</span>
+              renderEmptyText()
             )}
           </TableCell>
         );
@@ -243,8 +234,8 @@ export default function InsertionOrdersList({
           order.due_date,
           `text-sm font-medium tabular-nums ${
             isDuePast(order.due_date) && order.status !== "completed" && order.status !== "cancelled"
-              ? "text-red-400"
-              : "text-neutral-300"
+              ? "text-state-danger"
+              : "text-copy-primary"
           }`,
         );
       case "external_reference":
@@ -252,17 +243,33 @@ export default function InsertionOrdersList({
         const textValue = getStringValue(order, column);
         return renderTextCell(
           textValue,
-          "text-sm text-neutral-400 font-mono tracking-tight truncate block max-w-[140px]",
+          "block max-w-[140px] truncate font-mono text-sm tracking-tight text-copy-secondary",
         );
       }
       case "user_name":
-        return renderTextCell(order.user_name);
+        return (
+          <TableCell>
+            <div className="flex items-center gap-2">
+              {order.photo_url ? (
+                <Image
+                  src={resolveMediaUrl(order.photo_url)}
+                  alt=""
+                  width={24}
+                  height={24}
+                  unoptimized
+                  className="size-6 shrink-0 rounded-full object-cover"
+                />
+              ) : null}
+              {order.user_name ? <span className="text-sm text-copy-secondary">{order.user_name}</span> : renderEmptyText()}
+            </div>
+          </TableCell>
+        );
       case "updated_at": {
         const dateTimeValue = getStringValue(order, column);
         return (
           <TableCell>
-            <span className="text-sm text-neutral-500 tabular-nums">
-              {dateTimeValue ? formatDateTime(dateTimeValue, { hour: "numeric", minute: "2-digit" }) : <span className="text-neutral-600">—</span>}
+            <span className="text-sm tabular-nums text-copy-muted">
+              {dateTimeValue ? formatDateTime(dateTimeValue, { hour: "numeric", minute: "2-digit" }) : renderEmptyText()}
             </span>
           </TableCell>
         );
@@ -285,16 +292,16 @@ export default function InsertionOrdersList({
       <Table className="min-w-[1040px]">
         <TableHeader>
           <TableHeaderRow>
-            <TableHead className="w-12 pr-0">
+            {selectionEnabled ? <TableHead className="w-12 pr-0">
               <Checkbox
                 checked={currentPageSelectionState}
                 onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
-                className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                className="flex size-4 items-center justify-center rounded border border-line-strong bg-surface text-primary"
                 aria-label="Select current page insertion orders"
               >
                 <CheckboxIndicator className="h-3 w-3" />
               </Checkbox>
-            </TableHead>
+            </TableHead> : null}
             {visibleColumns.map((column) => {
               const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
               const sortable = !isCustomFieldColumnKey(column) && SORTABLE_COLUMNS.has(column);
@@ -316,33 +323,52 @@ export default function InsertionOrdersList({
 
         <TableBody>
           {isLoading ? (
-            <ModuleTableLoading columnCount={columnCount} />
+            <ModuleTableLoading columnCount={columnCount} withCheckbox={selectionEnabled} />
+          ) : hasError ? (
+            <TableRow>
+              <TableCell colSpan={columnCount} className="py-12">
+                <EmptyState icon={FileSpreadsheet} title="Insertion orders unavailable" description="Use Try again above to reload insertion orders." />
+              </TableCell>
+            </TableRow>
           ) : orders.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={columnCount} className="py-16 text-center">
-                <EmptyState icon={FileSpreadsheet} title="No insertion orders found" description="Insertion orders matching the current view will appear here." />
+              <TableCell colSpan={columnCount} className="py-12">
+                <EmptyState
+                  icon={FileSpreadsheet}
+                  title={hasActiveFilters ? "No insertion orders match this view" : "No insertion orders yet"}
+                  description={hasActiveFilters
+                    ? "Clear the search or filters and try again."
+                    : canCreate
+                      ? "Create or import the first insertion order."
+                      : "Insertion orders will appear here when a teammate creates one."}
+                  action={hasActiveFilters && onClearFilters
+                    ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button>
+                    : canCreate
+                      ? <Button asChild><Link href="/dashboard/finance/insertion-orders/new">Create insertion order</Link></Button>
+                      : undefined}
+                />
               </TableCell>
             </TableRow>
           ) : (
             orders.map((order) => (
               <TableRow
                 key={order.id}
-                className={`group cursor-pointer ${statusBorderClass(order.status)}`}
+                className="group cursor-pointer"
                 onClick={() => onRowClick(order)}
               >
-                <TableCell
+                {selectionEnabled ? <TableCell
                   className="w-12 pr-0"
                   onClick={(event) => event.stopPropagation()}
                 >
                   <Checkbox
                     checked={selectedIds.includes(order.id)}
                     onCheckedChange={(checked) => onToggleRow?.(order.id, checked === true)}
-                    className="h-4 w-4 rounded border border-neutral-700 bg-neutral-900"
+                    className="flex size-4 items-center justify-center rounded border border-line-strong bg-surface text-primary"
                     aria-label={`Select insertion order ${order.io_number}`}
                   >
                     <CheckboxIndicator className="h-3 w-3" />
                   </Checkbox>
-                </TableCell>
+                </TableCell> : null}
                 {visibleColumns.map((column) => (
                   <Fragment key={column}>{renderCell(order, column)}</Fragment>
                 ))}

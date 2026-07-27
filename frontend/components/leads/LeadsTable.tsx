@@ -26,6 +26,7 @@ import type { Lead } from "@/hooks/sales/useLeads";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateTime } from "@/lib/datetime";
+import { getLeadScoreStyle, getLeadStatusStyle } from "@/lib/statusStyles";
 
 type SortState = { column: string; direction: "asc" | "desc" } | null;
 
@@ -43,20 +44,6 @@ type LeadsTableProps = {
   onSortChange?: (sort: SortState) => void;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
-};
-
-const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  new: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40", label: "New" },
-  contacted: { bg: "bg-violet-900/30", text: "text-violet-300", border: "border-violet-700/40", label: "Contacted" },
-  qualified: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Qualified" },
-  unqualified: { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default", label: "Unqualified" },
-  converted: { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40", label: "Converted" },
-};
-
-const SCORE_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  hot: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Hot" },
-  warm: { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40", label: "Warm" },
-  cold: { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default", label: "Cold" },
 };
 
 function initials(lead: Lead) {
@@ -111,11 +98,11 @@ export default function LeadsTable({
       case "primary_email":
         return <TableCell className={stickyClassName}><span className="font-mono text-sm tracking-tight text-copy-secondary">{lead.primary_email || <span className="text-copy-disabled">-</span>}</span></TableCell>;
       case "status": {
-        const style = STATUS_STYLES[lead.status ?? ""] ?? STATUS_STYLES.new;
+        const style = getLeadStatusStyle(lead.status ?? "");
         return <TableCell className={stickyClassName}><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
       }
       case "score": {
-        const style = SCORE_STYLES[lead.score_grade ?? "cold"] ?? SCORE_STYLES.cold;
+        const style = getLeadScoreStyle(lead.score_grade ?? "cold");
         return (
           <TableCell className={stickyClassName}>
             <Pill bg={style.bg} text={style.text} border={style.border}>{lead.score ?? 0}</Pill>
@@ -123,7 +110,7 @@ export default function LeadsTable({
         );
       }
       case "score_grade": {
-        const style = SCORE_STYLES[lead.score_grade ?? "cold"] ?? SCORE_STYLES.cold;
+        const style = getLeadScoreStyle(lead.score_grade ?? "cold");
         return <TableCell className={stickyClassName}><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
       }
       case "created_time":

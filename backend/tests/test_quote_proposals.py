@@ -1,7 +1,7 @@
 import unittest
 from datetime import datetime, timedelta, timezone
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request, Response
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -9,6 +9,11 @@ from app.core.database import Base
 from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesQuote, SalesQuoteDocument, SalesQuoteOpenEvent
+from app.modules.sales.routes.quotes_routes import (
+    record_public_quote_proposal_event,
+    view_public_quote_proposal,
+)
+from app.modules.sales.schema import SalesQuoteProposalPublicEventRequest
 from app.modules.sales.services.quotes_services import (
     generate_quote_proposal,
     get_public_quote_proposal_or_404,
@@ -149,6 +154,43 @@ class QuoteProposalTests(unittest.TestCase):
         self.assertEqual(exc.exception.detail, "Invalid proposal event type")
         self.assertEqual([event.event_type for event in list_quote_proposal_events(self.db, proposal.quote)], ["sent"])
 
+    def test_public_tracking_deduplicates_immediate_replay(self):
+        quote = self.db.query(SalesQuote).filter(SalesQuote.quote_id == 100).one()
+        proposal, public_url_path, _expires_at = send_quote_proposal(
+            self.db,
+            quote,
+            sent_to="buyer@example.com",
+            current_user=self.user,
+        )
+        public_proposal, _public_quote = get_public_quote_proposal_or_404(
+            self.db,
+            public_url_path.rsplit("/", 1)[-1],
+        )
+
+        first = record_quote_proposal_event(
+            self.db,
+            proposal=public_proposal,
+            event_type="viewed",
+            ip_address="203.0.113.5",
+            user_agent="UnitTest/1.0",
+        )
+        replay = record_quote_proposal_event(
+            self.db,
+            proposal=public_proposal,
+            event_type="viewed",
+            ip_address="203.0.113.5",
+            user_agent="UnitTest/1.0",
+        )
+
+        self.assertEqual(replay.id, first.id)
+        self.assertEqual(
+            self.db.query(SalesQuoteOpenEvent).filter(
+                SalesQuoteOpenEvent.quote_document_id == proposal.id,
+                SalesQuoteOpenEvent.event_type == "viewed",
+            ).count(),
+            1,
+        )
+
     def test_expired_public_link_is_not_resolved(self):
         quote = self.db.query(SalesQuote).filter(SalesQuote.quote_id == 100).one()
         proposal, public_url_path, _expires_at = send_quote_proposal(
@@ -172,6 +214,42 @@ class QuoteProposalTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 404)
         self.assertEqual(self.db.query(SalesQuoteDocument).count(), 0)
+
+    def test_public_routes_disable_caching_for_proposal_content_and_events(self):
+        quote = self.db.query(SalesQuote).filter(SalesQuote.quote_id == 100).one()
+        _proposal, public_url_path, _expires_at = send_quote_proposal(
+            self.db,
+            quote,
+            sent_to="buyer@example.com",
+            current_user=self.user,
+        )
+        token = public_url_path.rsplit("/", 1)[-1]
+        request = Request({
+            "type": "http",
+            "method": "GET",
+            "path": public_url_path,
+            "query_string": b"",
+            "headers": [(b"user-agent", b"UnitTest/1.0")],
+            "client": ("203.0.113.5", 443),
+            "server": ("testserver", 443),
+            "scheme": "https",
+        })
+
+        proposal_response = Response()
+        payload = view_public_quote_proposal(token, request, proposal_response, self.db)
+        self.assertEqual(payload["quote_number"], "Q-100")
+        self.assertEqual(proposal_response.headers["cache-control"], "private, no-store")
+
+        event_response = Response()
+        event_payload = record_public_quote_proposal_event(
+            token,
+            SalesQuoteProposalPublicEventRequest(event_type="downloaded"),
+            request,
+            event_response,
+            self.db,
+        )
+        self.assertEqual(event_payload["results"][0].event_type, "downloaded")
+        self.assertEqual(event_response.headers["cache-control"], "private, no-store")
 
 
 if __name__ == "__main__":

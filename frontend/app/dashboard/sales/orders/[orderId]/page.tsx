@@ -27,6 +27,15 @@ import {
   RouteErrorState,
   RouteLoadingState,
 } from "@/components/ui/RouteStates";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableHeaderRow,
+  TableRow,
+} from "@/components/ui/Table";
 import type { Order } from "@/hooks/sales/useOrders";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -275,47 +284,47 @@ export default function OrderDetailPage() {
         <Card className="px-5 py-5 lg:col-span-2">
           <h2 className="text-lg font-semibold text-copy-primary">Items</h2>
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead className="text-left text-xs uppercase tracking-wide text-copy-muted">
-                <tr>
-                  <th className="py-2 pr-4">Name</th>
-                  <th className="py-2 pr-4">Qty</th>
-                  <th className="py-2 pr-4">Unit</th>
-                  <th className="py-2 pr-4">Discount</th>
-                  <th className="py-2 pr-4">Tax</th>
-                  <th className="py-2 text-right">Line Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-line-default">
+            <Table className="min-w-[720px]">
+              <TableHeader>
+                <TableHeaderRow>
+                  <TableHead className="py-2 pr-4">Name</TableHead>
+                  <TableHead className="py-2 pr-4">Qty</TableHead>
+                  <TableHead className="py-2 pr-4">Unit</TableHead>
+                  <TableHead className="py-2 pr-4">Discount</TableHead>
+                  <TableHead className="py-2 pr-4">Tax</TableHead>
+                  <TableHead className="py-2 text-right">Line Total</TableHead>
+                </TableHeaderRow>
+              </TableHeader>
+              <TableBody>
                 {(order.items ?? []).map((item) => (
-                  <tr key={item.id}>
-                    <td className="py-3 pr-4 text-copy-primary">
+                  <TableRow key={item.id}>
+                    <TableCell className="py-3 pr-4 text-copy-primary">
                       <div>{item.name}</div>
                       {item.description ? (
                         <div className="mt-1 text-xs text-copy-muted">
                           {item.description}
                         </div>
                       ) : null}
-                    </td>
-                    <td className="py-3 pr-4 tabular-nums text-copy-secondary">
+                    </TableCell>
+                    <TableCell className="py-3 pr-4 tabular-nums text-copy-secondary">
                       {String(item.quantity)}
-                    </td>
-                    <td className="py-3 pr-4 tabular-nums text-copy-secondary">
+                    </TableCell>
+                    <TableCell className="py-3 pr-4 tabular-nums text-copy-secondary">
                       {formatMoney(item.unit_price, order.currency)}
-                    </td>
-                    <td className="py-3 pr-4 tabular-nums text-copy-secondary">
+                    </TableCell>
+                    <TableCell className="py-3 pr-4 tabular-nums text-copy-secondary">
                       {formatMoney(item.discount_amount, order.currency)}
-                    </td>
-                    <td className="py-3 pr-4 tabular-nums text-copy-secondary">
+                    </TableCell>
+                    <TableCell className="py-3 pr-4 tabular-nums text-copy-secondary">
                       {formatMoney(item.tax_amount, order.currency)}
-                    </td>
-                    <td className="py-3 text-right tabular-nums text-copy-primary">
+                    </TableCell>
+                    <TableCell className="py-3 text-right tabular-nums text-copy-primary">
                       {formatMoney(item.line_total, order.currency)}
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </Card>
 

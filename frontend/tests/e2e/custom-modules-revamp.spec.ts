@@ -21,6 +21,22 @@ const moduleFixture = {
   actions: fullActions,
 };
 
+const recordFixture = {
+  id: 91,
+  custom_module_id: 81,
+  title: "Renewal rollout",
+  values: {
+    project_name: "Renewal rollout",
+    budget: "25000",
+    status: "planned",
+    tags: ["priority"],
+    billable: true,
+    notes: "Coordinate the tenant renewal.",
+  },
+  created_at: "2099-07-24T08:00:00Z",
+  updated_at: "2099-07-24T09:00:00Z",
+};
+
 const schemaFixture = {
   id: 81,
   name: "Projects",
@@ -74,6 +90,21 @@ test.beforeEach(async ({ page }) => {
   );
   await loginAsAdmin(page);
 });
+
+async function cachePermissions(
+  page: Parameters<typeof loginAsAdmin>[0],
+  overrides: Partial<typeof fullActions>,
+) {
+  await page.evaluate(
+    ({ module, actions }) => {
+      window.sessionStorage.setItem(
+        "lynk_modules:v3",
+        JSON.stringify([{ ...module, actions: { ...module.actions, ...actions } }]),
+      );
+    },
+    { module: moduleFixture, actions: overrides },
+  );
+}
 
 test("creates a custom-module record from the responsive routed form", async ({ page }) => {
   let submitted: { title?: string; values: Record<string, unknown> } | null = null;
@@ -157,4 +188,137 @@ test("blocks the routed create form without custom-module create permission", as
   await page.goto("/dashboard/custom/custom_projects/new");
 
   await expect(page.getByRole("heading", { name: "You do not have permission to view this page" })).toBeVisible();
+});
+
+test("custom-module list uses permission-aware actions and recoverable deletion", async ({ page }) => {
+  await page.route("**/custom-modules/custom_projects/records?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [recordFixture],
+        total_count: 1,
+        total_pages: 1,
+        page: 1,
+        page_size: 25,
+      }),
+    }),
+  );
+  await page.route("**/custom-modules/custom_projects/records/91", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "tenant_id=42 database_password=secret" }),
+    }),
+  );
+
+  await page.goto("/dashboard/custom/custom_projects");
+
+  await expect(page.getByRole("link", { name: "Renewal rollout" })).toHaveAttribute(
+    "href",
+    "/dashboard/custom/custom_projects/91",
+  );
+  await expect(page.getByRole("link", { name: "New record" })).toBeVisible();
+  await page.getByRole("button", { name: "Delete Renewal rollout" }).click();
+  await expect(page.getByRole("dialog")).toContainText("An administrator can restore it later.");
+  await page.getByRole("button", { name: "Move to Recycle Bin" }).click();
+
+  await expect(page.getByText("We could not delete this record. Try again.")).toBeVisible();
+  await expect(page.getByText("tenant_id=42 database_password=secret")).toHaveCount(0);
+});
+
+test("custom-module viewers receive read-only list and detail routes", async ({ page }) => {
+  await cachePermissions(page, {
+    can_create: false,
+    can_edit: false,
+    can_delete: false,
+    can_export: false,
+  });
+  await page.route("**/custom-modules/custom_projects/records?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [recordFixture],
+        total_count: 1,
+        total_pages: 1,
+        page: 1,
+        page_size: 25,
+      }),
+    }),
+  );
+  await page.route("**/custom-modules/custom_projects/records/91", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(recordFixture),
+    }),
+  );
+
+  await page.goto("/dashboard/custom/custom_projects");
+  await expect(page.getByRole("link", { name: "New record" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Import CSV" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Export CSV" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete Renewal rollout" })).toHaveCount(0);
+
+  await page.goto("/dashboard/custom/custom_projects/91");
+  await expect(page.getByText("You have view-only access to this record.")).toBeVisible();
+  await expect(page.getByLabel("Record title")).toBeDisabled();
+  await expect(page.getByLabel("Project name")).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
+});
+
+test("custom-module detail validates required fields and redacts save failures", async ({ page }) => {
+  await page.route("**/custom-modules/custom_projects/records/91", (route) => {
+    if (route.request().method() === "PUT") {
+      return route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ detail: "custom_values_table=private-secret" }),
+      });
+    }
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(recordFixture),
+    });
+  });
+
+  await page.goto("/dashboard/custom/custom_projects/91");
+  await page.getByLabel("Project name").fill("");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("Project name is required.")).toBeVisible();
+  await expect(page.getByLabel("Project name")).toBeFocused();
+
+  await page.getByLabel("Project name").fill("Renewal relaunch");
+  await page.getByRole("button", { name: "Save" }).click();
+  await expect(page.getByText("We could not save this record.")).toBeVisible();
+  await expect(page.getByText("custom_values_table=private-secret")).toHaveCount(0);
+});
+
+test("custom-module routes distinguish not-found and recoverable list failures", async ({ page }) => {
+  await page.route("**/custom-modules/custom_projects/records?**", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "tenant_id=42 database_password=secret" }),
+    }),
+  );
+  await page.route("**/custom-modules/custom_projects/records/404", (route) =>
+    route.fulfill({
+      status: 404,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "record 404 for tenant 42" }),
+    }),
+  );
+
+  await page.goto("/dashboard/custom/custom_projects");
+  await expect(page.getByText("Records could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("tenant_id=42 database_password=secret")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+
+  await page.goto("/dashboard/custom/custom_projects/404");
+  await expect(page.getByRole("heading", { name: "Record not found" })).toBeVisible();
+  await expect(page.getByText("record 404 for tenant 42")).toHaveCount(0);
 });

@@ -15,6 +15,8 @@ interface InsertionOrdersHeaderProps {
   selectedIds?: number[];
   currentPageIds?: number[];
   exportFilters?: SavedViewFilters;
+  canCreate?: boolean;
+  canExport?: boolean;
 }
 
 export default function InsertionOrdersHeader({
@@ -23,6 +25,8 @@ export default function InsertionOrdersHeader({
   selectedIds = [],
   currentPageIds = [],
   exportFilters,
+  canCreate = false,
+  canExport = false,
 }: InsertionOrdersHeaderProps) {
   return (
     <PageHeader
@@ -32,8 +36,8 @@ export default function InsertionOrdersHeader({
         <>
           {viewSelector}
           <ModuleImportExportControls
-            importEndpoint="/finance/insertion-orders/import"
-            exportEndpoint="/finance/insertion-orders/export"
+            importEndpoint={canCreate ? "/finance/insertion-orders/import" : undefined}
+            exportEndpoint={canExport ? "/finance/insertion-orders/export" : undefined}
             exportMethod="POST"
             exportBody={buildSavedViewExportPayload(exportFilters)}
             importLabel="Import"
@@ -43,12 +47,14 @@ export default function InsertionOrdersHeader({
             currentPageIds={currentPageIds}
           />
 
-          <Button asChild>
-            <Link href="/dashboard/finance/insertion-orders/new">
-              <Plus />
-              <span className="hidden sm:inline">New Order</span>
-            </Link>
-          </Button>
+          {canCreate ? (
+            <Button asChild>
+              <Link href="/dashboard/finance/insertion-orders/new">
+                <Plus />
+                <span className="hidden sm:inline">New Order</span>
+              </Link>
+            </Button>
+          ) : null}
         </>
       }
     />

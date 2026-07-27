@@ -56,6 +56,7 @@ PROPOSAL_LINK_TTL_DAYS = 30
 PROPOSAL_SENT_EVENT_TYPE = "sent"
 INTERNAL_PROPOSAL_EVENT_TYPES = {PROPOSAL_SENT_EVENT_TYPE}
 PUBLIC_PROPOSAL_EVENT_TYPES = {"opened", "viewed", "downloaded"}
+PUBLIC_PROPOSAL_EVENT_DEDUPE_WINDOW = timedelta(minutes=5)
 CLIENT_QUOTE_RESPONDABLE_STATUSES = {PROPOSAL_SENT_EVENT_TYPE}
 
 
@@ -619,14 +620,38 @@ def record_quote_proposal_event(
 ) -> SalesQuoteOpenEvent:
     if event_type not in PUBLIC_PROPOSAL_EVENT_TYPES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid proposal event type")
+    resolved_recipient = recipient_email or proposal.sent_to
+    ip_hash = _hash_value(ip_address)
+    user_agent_hash = _hash_value(user_agent)
+    replay_query = db.query(SalesQuoteOpenEvent).filter(
+        SalesQuoteOpenEvent.tenant_id == proposal.tenant_id,
+        SalesQuoteOpenEvent.quote_id == proposal.quote_id,
+        SalesQuoteOpenEvent.quote_document_id == proposal.id,
+        SalesQuoteOpenEvent.event_type == event_type,
+        SalesQuoteOpenEvent.occurred_at >= utc_now() - PUBLIC_PROPOSAL_EVENT_DEDUPE_WINDOW,
+    )
+    replay_query = replay_query.filter(
+        SalesQuoteOpenEvent.recipient_email == resolved_recipient
+        if resolved_recipient
+        else SalesQuoteOpenEvent.recipient_email.is_(None),
+        SalesQuoteOpenEvent.ip_hash == ip_hash
+        if ip_hash
+        else SalesQuoteOpenEvent.ip_hash.is_(None),
+        SalesQuoteOpenEvent.user_agent_hash == user_agent_hash
+        if user_agent_hash
+        else SalesQuoteOpenEvent.user_agent_hash.is_(None),
+    )
+    replay = replay_query.order_by(SalesQuoteOpenEvent.occurred_at.desc(), SalesQuoteOpenEvent.id.desc()).first()
+    if replay:
+        return replay
     event = SalesQuoteOpenEvent(
         tenant_id=proposal.tenant_id,
         quote_id=proposal.quote_id,
         quote_document_id=proposal.id,
         event_type=event_type,
-        recipient_email=recipient_email or proposal.sent_to,
-        ip_hash=_hash_value(ip_address),
-        user_agent_hash=_hash_value(user_agent),
+        recipient_email=resolved_recipient,
+        ip_hash=ip_hash,
+        user_agent_hash=user_agent_hash,
     )
     db.add(event)
     db.commit()

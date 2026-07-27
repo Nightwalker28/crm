@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { CLIENT_TOKEN_STORAGE_KEY, clientLogin } from "@/hooks/useClientPortal";
 
-function getError(error: unknown) {
-  return error instanceof Error ? error.message : "Failed to sign in.";
+function getError() {
+  return "Sign-in failed. Check your credentials and try again.";
 }
 
 function safeClientRedirect(value: string | null) {
@@ -50,23 +50,23 @@ function ClientLoginContent() {
       window.localStorage.setItem(CLIENT_TOKEN_STORAGE_KEY, result.access_token);
       router.replace(redirect);
       router.refresh();
-    } catch (submitError) {
-      setError(getError(submitError));
+    } catch {
+      setError(getError());
     } finally {
       setIsSubmitting(false);
     }
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 px-4 py-10 text-neutral-100">
+    <main className="min-h-screen bg-app px-4 py-10 text-copy-primary">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-md flex-col justify-center">
         <div className="mb-8">
-          <div className="mb-3 font-lynk text-4xl text-white">Lynk</div>
+          <div className="mb-3 font-lynk text-4xl text-copy-primary">Lynk</div>
           <h1 className="text-2xl font-semibold">Client sign in</h1>
-          <p className="mt-2 text-sm text-neutral-400">Sign in to view personalized pricing for shared pages.</p>
+          <p className="mt-2 text-sm text-copy-secondary">Sign in to view personalized pricing for shared pages.</p>
         </div>
 
-        <form className="space-y-4 rounded-md border border-neutral-800 bg-neutral-900 p-5" onSubmit={handleSubmit}>
+        <form className="space-y-4 rounded-md border border-line-default bg-surface p-5" onSubmit={handleSubmit}>
           <div>
             <label className="mb-2 block text-sm font-medium">Email</label>
             <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
@@ -78,7 +78,7 @@ function ClientLoginContent() {
           <Button type="submit" className="w-full" disabled={isSubmitting}>
             {isSubmitting ? "Signing in..." : "Sign In"}
           </Button>
-          {error ? <p className="text-sm text-red-300">{error}</p> : null}
+          {error ? <p className="text-sm text-state-danger">{error}</p> : null}
         </form>
       </div>
     </main>
@@ -87,7 +87,7 @@ function ClientLoginContent() {
 
 export default function ClientLoginPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-neutral-950 p-8 text-sm text-neutral-400">Loading sign in...</main>}>
+    <Suspense fallback={<main className="min-h-screen bg-app p-8 text-sm text-copy-secondary">Loading sign in...</main>}>
       <ClientLoginContent />
     </Suspense>
   );

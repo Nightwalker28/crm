@@ -37,7 +37,42 @@ test("Order creation uses the shared itemized transaction workflow", async ({
 test("Orders list routes manual creation to the dedicated page", async ({
   page,
 }) => {
+  await page.route("**/sales/orders?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [{
+          id: 987654342,
+          order_number: "SO-BROWSER-1",
+          quote_id: null,
+          organization_id: 51,
+          contact_id: 41,
+          opportunity_id: null,
+          organization_name: "Acme Operations",
+          contact_name: "Grace Buyer",
+          opportunity_name: null,
+          status: "fulfilled",
+          currency: "USD",
+          subtotal: "200",
+          tax_total: "19",
+          discount_total: "10",
+          grand_total: "209",
+          owner_id: 7,
+          owner_name: "Ada Owner",
+          created_at: "2099-07-01T10:00:00Z",
+          updated_at: "2099-07-10T10:00:00Z",
+        }],
+        range_start: 1,
+        range_end: 1,
+        total_count: 1,
+        total_pages: 1,
+        page: 1,
+      }),
+    }),
+  );
   await page.goto("/dashboard/sales/orders");
+  await expect(page.locator("span.bg-state-success-muted", { hasText: "Fulfilled" })).toBeVisible();
   const createLink = page.getByRole("link", { name: "Create order" });
   await expect(createLink).toBeVisible();
   await createLink.click();

@@ -21,50 +21,50 @@ export default function ClientDocumentsPage() {
   async function handleDownload(document: ClientDocument) {
     try {
       await downloadClientDocument(document);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to download document.");
+    } catch {
+      toast.error("Failed to download document.");
     }
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
+    <main className="min-h-screen bg-app text-copy-primary">
       <div className="mx-auto max-w-6xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-white">Lynk</Link>
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
+          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
           <Button asChild variant="outline" size="sm">
             <Link href="/client">Overview</Link>
           </Button>
         </header>
 
         <section className="mb-5">
-          <div className="flex items-center gap-2 text-sm text-neutral-400">
+          <div className="flex items-center gap-2 text-sm text-copy-secondary">
             <FileText className="h-4 w-4" />
             Client documents
           </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-neutral-50">Shared documents</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">Shared documents</h1>
         </section>
 
         {documentsQuery.isLoading ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">Loading documents...</div>
+          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading documents...</div>
         ) : documentsQuery.error ? (
-          <div className="rounded-md border border-red-900/60 bg-red-950/20 p-5 text-sm text-red-200">
+          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {documentsQuery.error instanceof Error ? documentsQuery.error.message : "Failed to load documents."}
           </div>
         ) : documents.length === 0 ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">No documents have been shared with you yet.</div>
+          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No documents have been shared with you yet.</div>
         ) : (
           <div className="grid gap-3">
             {documents.map((document) => (
-              <div key={document.share_id} className="rounded-md border border-neutral-800 bg-neutral-900 p-4">
+              <div key={document.share_id} className="rounded-md border border-line-default bg-surface p-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-xs uppercase text-neutral-500">{document.extension}</div>
-                    <h2 className="mt-1 truncate font-semibold text-neutral-100">{document.title}</h2>
-                    <p className="mt-1 text-xs text-neutral-500">
+                    <div className="text-xs uppercase text-copy-muted">{document.extension}</div>
+                    <h2 className="mt-1 truncate font-semibold text-copy-primary">{document.title}</h2>
+                    <p className="mt-1 text-xs text-copy-muted">
                       {document.original_filename} / {formatBytes(document.file_size_bytes)} / Updated {formatDateTime(document.updated_at)}
                     </p>
-                    {document.description ? <p className="mt-2 line-clamp-2 text-sm text-neutral-400">{document.description}</p> : null}
-                    {document.expires_at ? <p className="mt-2 text-xs text-amber-300">Access expires {formatDateTime(document.expires_at)}</p> : null}
+                    {document.description ? <p className="mt-2 line-clamp-2 text-sm text-copy-secondary">{document.description}</p> : null}
+                    {document.expires_at ? <p className="mt-2 text-xs text-state-warning">Access expires {formatDateTime(document.expires_at)}</p> : null}
                   </div>
                   <Button type="button" variant="outline" onClick={() => void handleDownload(document)}>
                     <Download className="h-4 w-4" />

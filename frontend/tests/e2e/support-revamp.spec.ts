@@ -88,6 +88,8 @@ test("Support list exposes shared controls and keyboard case navigation", async 
   await expect(page.getByPlaceholder("Search support cases")).toBeVisible();
   await expect(page.getByText("CASE-2407-001")).toBeVisible();
   await expect(page.getByText("1", { exact: true }).first()).toBeVisible();
+  await expect(page.locator("span.bg-state-warning-muted", { hasText: "Open" })).toBeVisible();
+  await expect(page.locator("span.bg-state-danger-muted", { hasText: "Urgent" })).toBeVisible();
 
   const row = page.getByRole("row", { name: /Open CASE-2407-001/ });
   await row.focus();
@@ -114,6 +116,8 @@ test("Support detail prioritizes the requester and conversation with guarded sav
   await expect(page.getByRole("heading", { name: "Conversation" })).toBeVisible();
   await expect(page.getByText("We are reviewing the account permissions.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
+  await expect(page.locator("span.bg-state-warning-muted", { hasText: "Open" })).toBeVisible();
+  await expect(page.locator("span.bg-state-danger-muted", { hasText: "Urgent" })).toBeVisible();
 
   await page.getByRole("combobox", { name: "Priority" }).click();
   await page.getByRole("option", { name: "High" }).click();

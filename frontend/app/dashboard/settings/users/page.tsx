@@ -14,6 +14,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -705,13 +706,13 @@ export default function UserManagementPage() {
               </div>
               {activeTab === "authentication" ? (
                 <label className="flex items-center gap-2 text-sm text-copy-secondary">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={ssoDraft.enabled}
                     disabled={isSsoSettingsLoading || isSsoSettingsSaving}
-                    onChange={(event) =>
-                      updateSsoDraftField("enabled", event.target.checked)
+                    onCheckedChange={(checked) =>
+                      updateSsoDraftField("enabled", checked === true)
                     }
+                    aria-label="Enable OIDC SSO"
                   />
                   Enabled
                 </label>
@@ -913,15 +914,15 @@ export default function UserManagementPage() {
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               {activeTab === "provisioning" ? (
                 <label className="flex items-center gap-2 text-sm text-copy-secondary">
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={ssoDraft.auto_provision_users}
-                    onChange={(event) =>
+                    onCheckedChange={(checked) =>
                       updateSsoDraftField(
                         "auto_provision_users",
-                        event.target.checked,
+                        checked === true,
                       )
                     }
+                    aria-label="Auto-provision users"
                   />
                   Auto-provision users
                 </label>

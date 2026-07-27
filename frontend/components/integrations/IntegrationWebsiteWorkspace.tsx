@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
@@ -327,22 +328,18 @@ export function IntegrationWebsiteWorkspace() {
             <div className="grid gap-2">
               <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
                 Catalog read
-                <input
-                  type="checkbox"
+                <Checkbox
                   aria-label="Allow catalog read access"
                   checked={apiKeyDraft.allowCatalogRead}
-                  onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowCatalogRead: event.target.checked }))}
-                  className="h-4 w-4 accent-primary"
+                  onCheckedChange={(checked) => setApiKeyDraft((current) => ({ ...current, allowCatalogRead: checked === true }))}
                 />
               </label>
               <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
                 Order writeback
-                <input
-                  type="checkbox"
+                <Checkbox
                   aria-label="Allow order writeback access"
                   checked={apiKeyDraft.allowOrdersWrite}
-                  onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowOrdersWrite: event.target.checked }))}
-                  className="h-4 w-4 accent-primary"
+                  onCheckedChange={(checked) => setApiKeyDraft((current) => ({ ...current, allowOrdersWrite: checked === true }))}
                 />
               </label>
             </div>

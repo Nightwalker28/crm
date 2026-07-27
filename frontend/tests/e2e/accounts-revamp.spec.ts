@@ -44,6 +44,34 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("Accounts list keeps shared controls usable on mobile", async ({ page }) => {
+  await page.route("**/sales/organizations?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [{
+          org_id: fakeAccountId,
+          org_name: "Browser Account",
+          primary_email: "account@example.com",
+          website: "https://example.com",
+          industry: "Media & Entertainment",
+          annual_revenue: "$10M - $25M",
+          primary_phone: "+94770000002",
+          billing_country: "Sri Lanka",
+          assigned_to: 7,
+          assigned_to_name: "Ada Owner",
+          created_time: "2099-07-20T09:30:00Z",
+          updated_at: "2099-07-20T09:30:00Z",
+          custom_fields: {},
+        }],
+        range_start: 1,
+        range_end: 1,
+        total_count: 1,
+        total_pages: 1,
+        page: 1,
+      }),
+    }),
+  );
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/dashboard/sales/organizations");
 
@@ -56,6 +84,7 @@ test("Accounts list keeps shared controls usable on mobile", async ({ page }) =>
   await expect(page.getByText("Filter Conditions")).toBeVisible();
   const tableRegion = page.getByRole("region", { name: "Data table" });
   await expect(tableRegion).toBeVisible();
+  await expect(tableRegion.locator("span.bg-surface-muted", { hasText: "Media & Entertainment" })).toBeVisible();
   expect(await tableRegion.locator("thead th").evaluateAll((headers) => headers.slice(0, 2).map((header) => window.getComputedStyle(header).position))).toEqual(["sticky", "sticky"]);
 });
 

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
@@ -14,6 +14,7 @@ import SearchBar from "@/components/ui/SearchBar";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import type { CatalogKind, CatalogRecord, CatalogSortState } from "@/hooks/catalog/useCatalogRecords";
 import { useCatalogRecords } from "@/hooks/catalog/useCatalogRecords";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
@@ -28,6 +29,11 @@ export default function CatalogRecordsPage({ kind }: Props) {
   const title = isProduct ? "Products" : "Services";
   const lowerTitle = title.toLowerCase();
   const moduleKey = isProduct ? "catalog_products" : "catalog_services";
+  const { modules } = useAccessibleModules();
+  const moduleActions = modules.find((module) => module.name === moduleKey)?.actions;
+  const canCreate = Boolean(moduleActions?.can_create);
+  const canEdit = Boolean(moduleActions?.can_edit);
+  const [togglingRecordId, setTogglingRecordId] = useState<number | null>(null);
   const { fields: moduleFields } = useModuleFieldConfigs(moduleKey);
   const definition = useMemo(() => buildModuleViewDefinition(moduleKey, [], moduleFields), [moduleKey, moduleFields]);
   const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS[moduleKey];
@@ -69,25 +75,34 @@ export default function CatalogRecordsPage({ kind }: Props) {
   } = useCatalogRecords(kind, visibleColumns, activeFilters, activeSort);
 
   const searchValue = useMemo(() => (typeof activeFilters.search === "string" ? activeFilters.search : ""), [activeFilters.search]);
+  const hasActiveFilters = Boolean(searchValue.trim());
 
   function handleRowClick(record: CatalogRecord) {
     router.push(`/dashboard/catalog/${kind}/${record.id}`);
   }
 
   async function handleToggleActive(record: CatalogRecord, active: boolean) {
-    await updateRecord(record.id, {
-      name: record.name,
-      slug: record.slug ?? null,
-      description: record.description ?? null,
-      sku: record.sku ?? null,
-      currency: record.currency,
-      public_unit_price: Number(record.public_unit_price) || 0,
-      stock_status: record.stock_status,
-      stock_quantity: record.stock_quantity == null ? null : Number(record.stock_quantity),
-      is_public: record.is_public,
-      is_active: active,
-    });
-    toast.success(`${isProduct ? "Product" : "Service"} ${active ? "activated" : "deactivated"}.`);
+    if (!canEdit || togglingRecordId !== null) return;
+    setTogglingRecordId(record.id);
+    try {
+      await updateRecord(record.id, {
+        name: record.name,
+        slug: record.slug ?? null,
+        description: record.description ?? null,
+        sku: record.sku ?? null,
+        currency: record.currency,
+        public_unit_price: Number(record.public_unit_price) || 0,
+        stock_status: record.stock_status,
+        stock_quantity: record.stock_quantity == null ? null : Number(record.stock_quantity),
+        is_public: record.is_public,
+        is_active: active,
+      });
+      toast.success(`${isProduct ? "Product" : "Service"} ${active ? "activated" : "deactivated"}.`);
+    } catch {
+      toast.error(`We could not ${active ? "activate" : "deactivate"} this ${isProduct ? "product" : "service"}. Try again.`);
+    } finally {
+      setTogglingRecordId(null);
+    }
   }
 
   return (
@@ -103,7 +118,7 @@ export default function CatalogRecordsPage({ kind }: Props) {
               selectedViewId={selectedViewId}
               onSelect={setSelectedViewId}
             />
-            <Button asChild><Link href={`/dashboard/catalog/${kind}/new`}><Plus />New {isProduct ? "Product" : "Service"}</Link></Button>
+            {canCreate ? <Button asChild><Link href={`/dashboard/catalog/${kind}/new`}><Plus />New {isProduct ? "Product" : "Service"}</Link></Button> : null}
           </>
         }
       />
@@ -144,7 +159,16 @@ export default function CatalogRecordsPage({ kind }: Props) {
           }))
         }
         onRowClick={handleRowClick}
-        onToggleActive={handleToggleActive}
+        onToggleActive={canEdit ? handleToggleActive : undefined}
+        togglingRecordId={togglingRecordId}
+        hasActiveFilters={hasActiveFilters}
+        canCreate={canCreate}
+        onClearFilters={() =>
+          setDraftConfig((current) => ({
+            ...current,
+            filters: { ...current.filters, search: "" },
+          }))
+        }
       />
 
       <Pagination

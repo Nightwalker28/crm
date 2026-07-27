@@ -5,7 +5,7 @@ const HEX_CLIP =
 
 export default function LynkSplash() {
   return (
-    <div className="relative flex flex-col h-screen w-screen items-center justify-center bg-black text-white overflow-hidden">
+    <div className="relative flex h-screen w-screen flex-col items-center justify-center overflow-hidden bg-app text-copy-primary">
       {/* subtle neutral gray vignette */}
       <div className="pointer-events-none absolute inset-0 vignette-overlay" />
 
@@ -16,14 +16,14 @@ export default function LynkSplash() {
           className="absolute -inset-5 z-0"
           style={{
             clipPath: HEX_CLIP,
-            background: "rgba(56,189,248,0.18)", // cyan glow
+            background: "color-mix(in srgb, var(--color-primary) 18%, transparent)",
             animation: "lynk-hex-ripple 1.7s ease-out infinite",
           }}
         />
 
         {/* 2) border hex around inner hex */}
         <div
-          className="absolute inset-2.5 z-10 bg-neutral-600/20"
+          className="absolute inset-2.5 z-10 bg-line-strong/40"
           style={{
             clipPath: HEX_CLIP,
           }}
@@ -31,7 +31,7 @@ export default function LynkSplash() {
 
         {/* 1) inner hex for Lynk text, with extra space */}
         <div
-          className="absolute inset-4 z-20 bg-neutral-950"
+          className="absolute inset-4 z-20 bg-app"
           style={{
             clipPath: HEX_CLIP,
           }}
@@ -39,7 +39,7 @@ export default function LynkSplash() {
 
         {/* Lynk text, centered over inner hex */}
         <div className="relative z-30 flex items-center justify-center">
-          <span className="font-lynk text-7xl leading-none text-white">
+          <span className="font-lynk text-7xl leading-none text-copy-primary">
             Lynk
           </span>
         </div>
@@ -47,7 +47,7 @@ export default function LynkSplash() {
 
       {/* custom hex loader */}
       <div className="mt-10 flex flex-col items-center gap-4">
-        <p className="text-[11px] uppercase tracking-[0.25em] pl-[0.2em] text-center text-zinc-500">
+        <p className="pl-[0.2em] text-center text-[11px] uppercase tracking-[0.25em] text-copy-muted">
           Loading
         </p>
       </div>

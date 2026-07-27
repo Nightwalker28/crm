@@ -15,38 +15,19 @@ import {
   RouteErrorState,
   RouteLoadingState,
 } from "@/components/ui/RouteStates";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableHeaderRow,
+  TableRow,
+} from "@/components/ui/Table";
 import { usePosInvoice } from "@/hooks/finance/usePosInvoices";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-
-const STATUS_STYLE: Record<
-  string,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  draft: {
-    bg: "bg-surface-muted",
-    text: "text-copy-secondary",
-    border: "border-line-default",
-    label: "Draft",
-  },
-  issued: {
-    bg: "bg-state-info-muted",
-    text: "text-state-info",
-    border: "border-state-info/40",
-    label: "Issued",
-  },
-  paid: {
-    bg: "bg-state-success-muted",
-    text: "text-state-success",
-    border: "border-state-success/40",
-    label: "Paid",
-  },
-  void: {
-    bg: "bg-state-danger-muted",
-    text: "text-state-danger",
-    border: "border-state-danger/40",
-    label: "Void",
-  },
-};
+import { getPosInvoiceStatusStyle, getPosPaymentStatusStyle } from "@/lib/statusStyles";
 
 function money(amount: number, currency: string) {
   try {
@@ -61,12 +42,13 @@ function money(amount: number, currency: string) {
 
 export default function InvoiceDetailPage() {
   const params = useParams<{ invoiceId: string }>();
+  const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const invoiceId = /^\d+$/.test(params.invoiceId)
     ? Number(params.invoiceId)
     : null;
   const query = usePosInvoice(invoiceId);
 
-  if (query.isLoading) return <RouteLoadingState />;
+  if (query.isLoading || modulesLoading) return <RouteLoadingState label="invoice" />;
   if (query.error || !query.data)
     return (
       <RouteErrorState
@@ -78,7 +60,11 @@ export default function InvoiceDetailPage() {
     );
 
   const invoice = query.data;
-  const status = STATUS_STYLE[invoice.status] ?? STATUS_STYLE.draft;
+  const actions = modules.find((module) => module.name === "finance_pos")?.actions;
+  const canEdit = Boolean(actions?.can_edit);
+  const canDelete = Boolean(actions?.can_delete);
+  const status = getPosInvoiceStatusStyle(invoice.status);
+  const paymentStatus = getPosPaymentStatusStyle(invoice.payment_status);
   const overview = (
     <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
       <Card className="p-5">
@@ -118,7 +104,7 @@ export default function InvoiceDetailPage() {
           />
           <Summary
             label="Payment status"
-            value={invoice.payment_status.replaceAll("_", " ")}
+            value={paymentStatus.label}
           />
           <Summary
             label="Updated"
@@ -180,37 +166,37 @@ export default function InvoiceDetailPage() {
       <Card className="p-5 lg:col-span-2">
         <h2 className="text-lg font-semibold text-copy-primary">Line items</h2>
         <div className="mt-4 overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="border-b border-line-default text-left text-xs uppercase tracking-wide text-copy-muted">
-                <th className="px-3 py-2">Description</th>
-                <th className="px-3 py-2 text-right">Quantity</th>
-                <th className="px-3 py-2 text-right">Unit price</th>
-                <th className="px-3 py-2 text-right">Total</th>
-              </tr>
-            </thead>
-            <tbody>
+          <Table className="min-w-[640px]">
+            <TableHeader>
+              <TableHeaderRow>
+                <TableHead className="px-3 py-2">Description</TableHead>
+                <TableHead className="px-3 py-2 text-right">Quantity</TableHead>
+                <TableHead className="px-3 py-2 text-right">Unit price</TableHead>
+                <TableHead className="px-3 py-2 text-right">Total</TableHead>
+              </TableHeaderRow>
+            </TableHeader>
+            <TableBody>
               {(invoice.lines ?? []).map((line) => (
-                <tr key={line.id} className="border-b border-line-subtle">
-                  <td className="px-3 py-3 font-medium text-copy-primary">
+                <TableRow key={line.id}>
+                  <TableCell className="px-3 py-3 font-medium text-copy-primary">
                     {line.description}
-                  </td>
-                  <td className="px-3 py-3 text-right tabular-nums text-copy-secondary">
+                  </TableCell>
+                  <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
                     {line.quantity}
-                  </td>
-                  <td className="px-3 py-3 text-right tabular-nums text-copy-secondary">
+                  </TableCell>
+                  <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
                     {money(line.unit_price, invoice.currency)}
-                  </td>
-                  <td className="px-3 py-3 text-right font-medium tabular-nums text-copy-primary">
+                  </TableCell>
+                  <TableCell className="px-3 py-3 text-right font-medium tabular-nums text-copy-primary">
                     {money(
                       line.line_total ?? line.quantity * line.unit_price,
                       invoice.currency,
                     )}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
         </div>
       </Card>
       {invoice.payment_terms || invoice.notes ? (
@@ -242,25 +228,29 @@ export default function InvoiceDetailPage() {
         description={`${invoice.customer_name} · ${money(invoice.total_amount, invoice.currency)}`}
         primaryAction={
           <>
-            <RecordDeleteButton
-              endpoint={`/finance/pos-invoices/${invoice.id}`}
-              label="Invoice"
-              recordName={invoice.invoice_number}
-              redirectHref="/dashboard/finance/pos"
-              queryKeys={["pos-invoices"]}
-            />
+            {canDelete ? (
+              <RecordDeleteButton
+                endpoint={`/finance/pos-invoices/${invoice.id}`}
+                label="Invoice"
+                recordName={invoice.invoice_number}
+                redirectHref="/dashboard/finance/pos"
+                queryKeys={["pos-invoices"]}
+              />
+            ) : null}
             <Button asChild variant="outline">
               <Link href={`/dashboard/finance/pos/${invoice.id}/print`}>
                 <ExternalLink />
                 Print
               </Link>
             </Button>
-            <Button asChild>
-              <Link href={`/dashboard/finance/pos/${invoice.id}/edit`}>
-                <Pencil />
-                Edit invoice
-              </Link>
-            </Button>
+            {canEdit ? (
+              <Button asChild>
+                <Link href={`/dashboard/finance/pos/${invoice.id}/edit`}>
+                  <Pencil />
+                  Edit invoice
+                </Link>
+              </Button>
+            ) : null}
           </>
         }
       />

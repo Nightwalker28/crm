@@ -12,8 +12,8 @@ const buttonVariants = cva(
         default: "bg-primary text-primary-foreground hover:bg-action-primary-hover active:bg-action-primary-active",
         primary: "bg-primary text-primary-foreground hover:bg-action-primary-hover active:bg-action-primary-active",
         destructive:
-          "bg-state-danger text-white hover:bg-state-danger/90 focus-visible:ring-state-danger",
-        danger: "bg-state-danger text-white hover:bg-state-danger/90 focus-visible:ring-state-danger",
+          "bg-state-danger text-primary-foreground hover:bg-state-danger/90 focus-visible:ring-state-danger",
+        danger: "bg-state-danger text-primary-foreground hover:bg-state-danger/90 focus-visible:ring-state-danger",
         dangerGhost: "text-state-danger hover:bg-state-danger-muted hover:text-state-danger focus-visible:ring-state-danger",
         outline:
           "border border-line-default bg-surface text-copy-secondary hover:border-line-strong hover:bg-surface-muted hover:text-copy-primary",

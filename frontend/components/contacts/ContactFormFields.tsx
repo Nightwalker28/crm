@@ -3,6 +3,7 @@
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { FormSection } from "@/components/forms/RecordFormLayout";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RequiredMark } from "@/components/ui/RequiredMark";
@@ -84,7 +85,12 @@ export function ContactFormMainFields({ value, onChange, customFields, customFie
         </div>
         {enabled("email_opt_out") ? (
           <label className="mt-4 flex items-start gap-3 rounded-md border border-line-subtle bg-surface-muted px-4 py-3 text-sm text-copy-secondary">
-            <input type="checkbox" checked={value.email_opt_out} onChange={(event) => onChange({ ...value, email_opt_out: event.target.checked })} className="mt-0.5 h-4 w-4 rounded border-line-strong bg-app" />
+            <Checkbox
+              checked={value.email_opt_out}
+              onCheckedChange={(checked) => onChange({ ...value, email_opt_out: checked === true })}
+              className="mt-0.5"
+              aria-label="Email opt-out"
+            />
             <span><span className="block font-medium text-copy-primary">Email opt-out</span><span className="mt-0.5 block text-xs text-copy-muted">Prevent routine marketing email actions for this contact.</span></span>
           </label>
         ) : null}

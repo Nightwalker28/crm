@@ -25,50 +25,50 @@ export default function ClientQuotesPage() {
   const quotes = quotesQuery.data?.results ?? [];
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
+    <main className="min-h-screen bg-app text-copy-primary">
       <div className="mx-auto max-w-6xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-white">Lynk</Link>
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
+          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
           <Button asChild variant="outline" size="sm">
             <Link href="/client">Overview</Link>
           </Button>
         </header>
 
         <section className="mb-5">
-          <div className="flex items-center gap-2 text-sm text-neutral-400">
+          <div className="flex items-center gap-2 text-sm text-copy-secondary">
             <ScrollText className="h-4 w-4" />
             Client quotes
           </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-neutral-50">Quotes</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">Quotes</h1>
         </section>
 
         {quotesQuery.isLoading ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">Loading quotes...</div>
+          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading quotes...</div>
         ) : quotesQuery.error ? (
-          <div className="rounded-md border border-red-900/60 bg-red-950/20 p-5 text-sm text-red-200">
+          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {quotesQuery.error instanceof Error ? quotesQuery.error.message : "Failed to load quotes."}
           </div>
         ) : quotes.length === 0 ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">No quotes are assigned to your portal account yet.</div>
+          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No quotes are assigned to your portal account yet.</div>
         ) : (
           <div className="grid gap-3">
             {quotes.map((quote) => (
-              <Link key={quote.quote_id} href={`/client/quotes/${quote.quote_id}`} className="group rounded-md border border-neutral-800 bg-neutral-900 p-4 transition-colors hover:border-neutral-600 hover:bg-neutral-800/70">
+              <Link key={quote.quote_id} href={`/client/quotes/${quote.quote_id}`} className="group rounded-md border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-xs uppercase text-neutral-500">{quote.quote_number}</div>
-                    <h2 className="mt-1 truncate font-semibold text-neutral-100">{quoteTitle(quote)}</h2>
-                    <p className="mt-1 text-xs text-neutral-500">
+                    <div className="text-xs uppercase text-copy-muted">{quote.quote_number}</div>
+                    <h2 className="mt-1 truncate font-semibold text-copy-primary">{quoteTitle(quote)}</h2>
+                    <p className="mt-1 text-xs text-copy-muted">
                       Updated {formatDateTime(quote.updated_at ?? quote.created_time)}
                       {quote.expiry_date ? ` / Expires ${formatDateOnly(quote.expiry_date)}` : ""}
                     </p>
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-right">
-                      <div className="capitalize text-neutral-300">{statusLabel(quote.status)}</div>
-                      <div className="text-sm font-semibold text-neutral-50">{money(quote.total_amount, quote.currency)}</div>
+                      <div className="capitalize text-copy-secondary">{statusLabel(quote.status)}</div>
+                      <div className="text-sm font-semibold text-copy-primary">{money(quote.total_amount, quote.currency)}</div>
                     </div>
-                    <ArrowRight className="h-4 w-4 text-neutral-500 transition-transform group-hover:translate-x-0.5" />
+                    <ArrowRight className="h-4 w-4 text-copy-muted transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </div>
               </Link>

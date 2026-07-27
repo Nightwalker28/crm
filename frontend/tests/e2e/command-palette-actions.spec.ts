@@ -138,6 +138,54 @@ test.beforeEach(async ({ page }) => {
           is_enabled: true,
           actions: fullActions,
         },
+        {
+          id: 16,
+          name: "sales_organizations",
+          base_route: "/dashboard/sales/organizations",
+          description: "Sales organizations",
+          is_enabled: true,
+          actions: fullActions,
+        },
+        {
+          id: 17,
+          name: "sales_opportunities",
+          base_route: "/dashboard/sales/opportunities",
+          description: "Sales opportunities",
+          is_enabled: true,
+          actions: fullActions,
+        },
+        {
+          id: 18,
+          name: "sales_quotes",
+          base_route: "/dashboard/sales/quotes",
+          description: "Sales quotes",
+          is_enabled: true,
+          actions: fullActions,
+        },
+        {
+          id: 19,
+          name: "sales_orders",
+          base_route: "/dashboard/sales/orders",
+          description: "Sales orders",
+          is_enabled: true,
+          actions: fullActions,
+        },
+        {
+          id: 20,
+          name: "calendar",
+          base_route: "/dashboard/calendar",
+          description: "Calendar",
+          is_enabled: true,
+          actions: fullActions,
+        },
+        {
+          id: 21,
+          name: "support_cases",
+          base_route: "/dashboard/support/cases",
+          description: "Support cases",
+          is_enabled: true,
+          actions: fullActions,
+        },
       ]),
     }),
   );
@@ -170,6 +218,44 @@ test("shows only permitted module actions and opens routed create workflows", as
   await page.getByText("Create lead", { exact: true }).click();
   await expect(page).toHaveURL(/\/dashboard\/sales\/leads\/new$/);
   await expect(page.getByRole("heading", { name: "Create lead" })).toBeVisible();
+});
+
+test("exposes every accessible module destination and supports Arrow and Enter navigation", async ({ page }) => {
+  const moduleDestinations = [
+    "/dashboard/sales/leads",
+    "/dashboard/sales/organizations",
+    "/dashboard/sales/contacts",
+    "/dashboard/sales/opportunities",
+    "/dashboard/sales/quotes",
+    "/dashboard/sales/orders",
+    "/dashboard/contracts",
+    "/dashboard/catalog/products",
+    "/dashboard/catalog/services",
+    "/dashboard/documents",
+    "/dashboard/calendar",
+    "/dashboard/mail",
+    "/dashboard/tasks",
+    "/dashboard/support/cases",
+    "/dashboard/client-portal",
+    "/dashboard/finance/insertion-orders",
+    "/dashboard/finance/pos",
+    "/dashboard/reports",
+    "/dashboard/settings/message-templates",
+    "/dashboard/settings/integrations",
+    "/dashboard/custom/custom_projects",
+  ];
+
+  await page.keyboard.press("Control+K");
+  const palette = page.getByRole("dialog");
+  for (const href of moduleDestinations) {
+    await expect(palette.locator(`[data-testid="palette-link"][data-href="${href}"]`)).toHaveCount(1);
+  }
+
+  await page.getByLabel("Search records and modules").fill("Create lead");
+  await expect(palette.getByText("Create lead", { exact: true })).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/dashboard\/sales\/leads\/new$/);
 });
 
 test("opens custom-module creation as a routed full-page workflow", async ({ page }) => {

@@ -42,6 +42,15 @@ import {
   RouteErrorState,
   RouteLoadingState,
 } from "@/components/ui/RouteStates";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableHeaderRow,
+  TableRow,
+} from "@/components/ui/Table";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import {
@@ -916,24 +925,21 @@ export default function QuoteDetailPage() {
                   Pricing totals are calculated from these persisted items.
                 </FieldDescription>
                 <div className="mt-4 overflow-x-auto">
-                  <table className="w-full min-w-[760px] text-sm">
-                    <thead>
-                      <tr className="border-b border-line-default text-left text-xs uppercase tracking-wide text-copy-muted">
-                        <th className="px-3 py-2">Item</th>
-                        <th className="px-3 py-2 text-right">Quantity</th>
-                        <th className="px-3 py-2 text-right">Unit price</th>
-                        <th className="px-3 py-2 text-right">Discount</th>
-                        <th className="px-3 py-2 text-right">Tax</th>
-                        <th className="px-3 py-2 text-right">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
+                  <Table className="min-w-[760px]">
+                    <TableHeader>
+                      <TableHeaderRow>
+                        <TableHead className="px-3 py-2">Item</TableHead>
+                        <TableHead className="px-3 py-2 text-right">Quantity</TableHead>
+                        <TableHead className="px-3 py-2 text-right">Unit price</TableHead>
+                        <TableHead className="px-3 py-2 text-right">Discount</TableHead>
+                        <TableHead className="px-3 py-2 text-right">Tax</TableHead>
+                        <TableHead className="px-3 py-2 text-right">Total</TableHead>
+                      </TableHeaderRow>
+                    </TableHeader>
+                    <TableBody>
                       {summary.quote.items.map((item) => (
-                        <tr
-                          key={item.id}
-                          className="border-b border-line-subtle"
-                        >
-                          <td className="px-3 py-3">
+                        <TableRow key={item.id}>
+                          <TableCell className="px-3 py-3">
                             <div className="font-medium text-copy-primary">
                               {item.name}
                             </div>
@@ -942,38 +948,38 @@ export default function QuoteDetailPage() {
                                 {item.description}
                               </div>
                             ) : null}
-                          </td>
-                          <td className="px-3 py-3 text-right tabular-nums text-copy-secondary">
+                          </TableCell>
+                          <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
                             {Number(item.quantity)}
-                          </td>
-                          <td className="px-3 py-3 text-right tabular-nums text-copy-secondary">
+                          </TableCell>
+                          <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
                             {formatMoney(
                               item.unit_price,
                               summary.quote.currency,
                             )}
-                          </td>
-                          <td className="px-3 py-3 text-right tabular-nums text-copy-secondary">
+                          </TableCell>
+                          <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
                             {formatMoney(
                               item.discount_amount,
                               summary.quote.currency,
                             )}
-                          </td>
-                          <td className="px-3 py-3 text-right tabular-nums text-copy-secondary">
+                          </TableCell>
+                          <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
                             {formatMoney(
                               item.tax_amount,
                               summary.quote.currency,
                             )}
-                          </td>
-                          <td className="px-3 py-3 text-right font-medium tabular-nums text-copy-primary">
+                          </TableCell>
+                          <TableCell className="px-3 py-3 text-right font-medium tabular-nums text-copy-primary">
                             {formatMoney(
                               item.line_total,
                               summary.quote.currency,
                             )}
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                       ))}
-                    </tbody>
-                  </table>
+                    </TableBody>
+                  </Table>
                 </div>
               </Card>
             ) : null}
@@ -1154,7 +1160,7 @@ export default function QuoteDetailPage() {
                 </div>
                 {proposalLinkPath ? (
                   <a
-                    className="inline-flex w-fit items-center gap-2 text-sm text-sky-300 hover:text-sky-200"
+                    className="inline-flex w-fit items-center gap-2 text-sm text-action-primary transition-colors hover:text-action-primary-hover"
                     href={proposalLinkPath}
                     target="_blank"
                     rel="noreferrer"

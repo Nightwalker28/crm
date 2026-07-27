@@ -10,8 +10,8 @@ import { Input } from "@/components/ui/input";
 import { setupClientPassword } from "@/hooks/useClientPortal";
 import { apiFetch } from "@/lib/api";
 
-function getError(error: unknown) {
-  return error instanceof Error ? error.message : "Failed to set password.";
+function getError() {
+  return "The password could not be set. Check the requirements or request a new setup link.";
 }
 
 function loginHref(tenantSlug: string | null) {
@@ -85,19 +85,19 @@ function ClientSetupContent() {
     try {
       await setupClientPassword({ token, password, tenant_slug: tenantSlug });
       setStatus("done");
-    } catch (submitError) {
-      setError(getError(submitError));
+    } catch {
+      setError(getError());
       setStatus("idle");
     }
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 px-4 py-10 text-neutral-100">
+    <main className="min-h-screen bg-app px-4 py-10 text-copy-primary">
       <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-md flex-col justify-center">
         <div className="mb-8">
-          <div className="mb-3 font-lynk text-4xl text-white">Lynk</div>
+          <div className="mb-3 font-lynk text-4xl text-copy-primary">Lynk</div>
           <h1 className="text-2xl font-semibold">Set client password</h1>
-          <p className="mt-2 text-sm text-neutral-400">Create the password for your client portal access.</p>
+          <p className="mt-2 text-sm text-copy-secondary">Create the password for your client portal access.</p>
         </div>
 
         {status === "done" ? (
@@ -108,18 +108,18 @@ function ClientSetupContent() {
             </Button>
           </div>
         ) : (
-          <form className="space-y-4 rounded-md border border-neutral-800 bg-neutral-900 p-5" onSubmit={handleSubmit}>
+          <form className="space-y-4 rounded-md border border-line-default bg-surface p-5" onSubmit={handleSubmit}>
             <div>
               <label className="mb-2 block text-sm font-medium">Password</label>
               <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
               {passwordPolicy ? (
-                <ul className="mt-2 space-y-1 text-xs text-neutral-400">
+                <ul className="mt-2 space-y-1 text-xs text-copy-secondary">
                   {passwordPolicy.requirements.map((requirement) => (
                     <li key={requirement}>{requirement}</li>
                   ))}
                 </ul>
               ) : (
-                <p className="mt-2 text-xs text-neutral-400">Password must meet the current security policy.</p>
+                <p className="mt-2 text-xs text-copy-secondary">Password must meet the current security policy.</p>
               )}
             </div>
             <div>
@@ -129,7 +129,7 @@ function ClientSetupContent() {
             <Button type="submit" className="w-full" disabled={status === "saving"}>
               {status === "saving" ? "Saving..." : "Set Password"}
             </Button>
-            {error ? <p className="text-sm text-red-300">{error}</p> : null}
+            {error ? <p className="text-sm text-state-danger">{error}</p> : null}
           </form>
         )}
       </div>
@@ -139,7 +139,7 @@ function ClientSetupContent() {
 
 export default function ClientSetupPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-neutral-950 p-8 text-sm text-neutral-400">Loading setup link...</main>}>
+    <Suspense fallback={<main className="min-h-screen bg-app p-8 text-sm text-copy-secondary">Loading setup link...</main>}>
       <ClientSetupContent />
     </Suspense>
   );

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogBackdrop,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogPanel,
@@ -15,7 +16,7 @@ import {
 } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { RequiredMark } from "@/components/ui/RequiredMark";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -52,29 +53,36 @@ const emptyForm = {
   is_active: "active" as UserStatus,
 };
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+}
+
 export default function CreateUserDialog({ open, roles, teams, onClose, onCreate }: Props) {
   const [form, setForm] = useState(emptyForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [hasError, setHasError] = useState(false);
   const [setupLink, setSetupLink] = useState<string | null>(null);
+  const email = form.email.trim();
+  const emailIsInvalid = Boolean(email) && !isValidEmail(email);
 
   const canSubmit = useMemo(
-    () => Boolean(form.email.trim() && form.role_id && form.team_id),
-    [form.email, form.role_id, form.team_id],
+    () => Boolean(email && !emailIsInvalid && form.role_id && form.team_id),
+    [email, emailIsInvalid, form.role_id, form.team_id],
   );
 
   function handleClose() {
+    if (isSubmitting) return;
     setForm(emptyForm);
-    setError(null);
+    setHasError(false);
     setSetupLink(null);
-    setIsSubmitting(false);
     onClose();
   }
 
   async function handleCreate() {
+    if (!canSubmit || isSubmitting) return;
     try {
       setIsSubmitting(true);
-      setError(null);
+      setHasError(false);
 
       const result = await onCreate({
         first_name: form.first_name.trim(),
@@ -90,8 +98,8 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
       if (!result.setup_link) {
         handleClose();
       }
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "Failed to create user");
+    } catch {
+      setHasError(true);
     } finally {
       setIsSubmitting(false);
     }
@@ -99,32 +107,45 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
 
   async function copySetupLink() {
     if (!setupLink) return;
-    await navigator.clipboard.writeText(setupLink);
-    toast.success("Setup link copied.");
+    try {
+      await navigator.clipboard.writeText(setupLink);
+      toast.success("Setup link copied.");
+    } catch {
+      toast.error("The setup link could not be copied. Copy it manually instead.");
+    }
   }
 
   return (
-    <Dialog open={open} onClose={handleClose}>
+    <Dialog open={open} onClose={() => {
+      if (!isSubmitting) handleClose();
+    }}>
       <DialogBackdrop />
 
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
         <DialogPanel size="xl">
           <DialogHeader>
-            <DialogTitle>{setupLink ? "User Created" : "Add User"}</DialogTitle>
+            <div>
+              <DialogTitle>{setupLink ? "User created" : "Add user"}</DialogTitle>
+              <DialogDescription className="mt-1 text-copy-muted">
+                {setupLink
+                  ? "Share this one-time setup link through a trusted channel."
+                  : "Provision a CRM user and assign their initial access."}
+              </DialogDescription>
+            </div>
             <DialogIconClose />
           </DialogHeader>
 
           {setupLink ? (
             <div className="mt-4 space-y-4">
-              <div className="rounded-md border border-emerald-800/60 bg-emerald-950/30 px-4 py-3 text-sm text-emerald-200">
+              <div role="status" className="rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-4 py-3 text-sm text-state-success">
                 Manual sign-in is enabled for this user. Share the setup link below so they can create their password.
               </div>
 
               <Field>
-                <FieldLabel>Setup Link</FieldLabel>
-                <div className="flex gap-2">
-                  <Input value={setupLink} readOnly />
-                  <Button type="button" variant="outline" onClick={copySetupLink}>
+                <FieldLabel htmlFor="create-user-setup-link">Setup link</FieldLabel>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input id="create-user-setup-link" value={setupLink} readOnly />
+                  <Button type="button" variant="outline" onClick={() => void copySetupLink()}>
                     <Copy />
                     Copy
                   </Button>
@@ -133,42 +154,54 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
             </div>
           ) : (
             <div className="mt-4 space-y-4">
-              {error && (
-                <div className="rounded-md border border-red-800/60 bg-red-950/30 px-4 py-3 text-sm text-red-200">
-                  {error}
+              {hasError && (
+                <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+                  The user could not be created. Review the details and try again.
                 </div>
               )}
 
               <FieldGroup className="grid gap-4 sm:grid-cols-2">
                 <Field>
-                  <FieldLabel>First Name</FieldLabel>
+                  <FieldLabel htmlFor="create-user-first-name">First name</FieldLabel>
                   <Input
+                    id="create-user-first-name"
+                    name="first_name"
+                    autoComplete="given-name"
                     value={form.first_name}
                     onChange={(event) => setForm((current) => ({ ...current, first_name: event.target.value }))}
                   />
                 </Field>
 
                 <Field>
-                  <FieldLabel>Last Name</FieldLabel>
+                  <FieldLabel htmlFor="create-user-last-name">Last name</FieldLabel>
                   <Input
+                    id="create-user-last-name"
+                    name="last_name"
+                    autoComplete="family-name"
                     value={form.last_name}
                     onChange={(event) => setForm((current) => ({ ...current, last_name: event.target.value }))}
                   />
                 </Field>
 
-                <Field className="sm:col-span-2">
-                  <FieldLabel>Email <RequiredMark /></FieldLabel>
+                <Field className="sm:col-span-2" data-invalid={emailIsInvalid || undefined}>
+                  <FieldLabel htmlFor="create-user-email">Email <RequiredMark /></FieldLabel>
                   <Input
+                    id="create-user-email"
+                    name="email"
                     type="email"
+                    autoComplete="email"
+                    required
+                    aria-invalid={emailIsInvalid || undefined}
                     value={form.email}
                     onChange={(event) => setForm((current) => ({ ...current, email: event.target.value }))}
                   />
+                  {emailIsInvalid ? <FieldError>Enter a valid email address.</FieldError> : null}
                 </Field>
 
                 <Field>
-                  <FieldLabel>Team <RequiredMark /></FieldLabel>
+                  <FieldLabel htmlFor="create-user-team">Team <RequiredMark /></FieldLabel>
                   <Select value={form.team_id} onValueChange={(value) => setForm((current) => ({ ...current, team_id: value }))}>
-                    <SelectTrigger>
+                    <SelectTrigger id="create-user-team" aria-label="Team">
                       <SelectValue placeholder="Select team" />
                     </SelectTrigger>
                     <SelectContent>
@@ -182,9 +215,9 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
                 </Field>
 
                 <Field>
-                  <FieldLabel>Role <RequiredMark /></FieldLabel>
+                  <FieldLabel htmlFor="create-user-role">Role <RequiredMark /></FieldLabel>
                   <Select value={form.role_id} onValueChange={(value) => setForm((current) => ({ ...current, role_id: value }))}>
-                    <SelectTrigger>
+                    <SelectTrigger id="create-user-role" aria-label="Role">
                       <SelectValue placeholder="Select role" />
                     </SelectTrigger>
                     <SelectContent>
@@ -198,12 +231,12 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
                 </Field>
 
                 <Field>
-                  <FieldLabel>Sign-In Mode</FieldLabel>
+                  <FieldLabel htmlFor="create-user-auth-mode">Sign-in mode</FieldLabel>
                   <Select
                     value={form.auth_mode}
                     onValueChange={(value: AuthMode) => setForm((current) => ({ ...current, auth_mode: value }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="create-user-auth-mode" aria-label="Sign-in mode">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -217,12 +250,12 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
                 </Field>
 
                 <Field>
-                  <FieldLabel>Status</FieldLabel>
+                  <FieldLabel htmlFor="create-user-status">Status</FieldLabel>
                   <Select
                     value={form.is_active}
                     onValueChange={(value: UserStatus) => setForm((current) => ({ ...current, is_active: value }))}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger id="create-user-status" aria-label="Status">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -236,12 +269,12 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
           )}
 
           <DialogFooter className="mt-5">
-            <Button variant="outline" onClick={handleClose}>
+            <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
               {setupLink ? "Done" : "Cancel"}
             </Button>
             {!setupLink && (
-              <Button onClick={handleCreate} disabled={!canSubmit || isSubmitting}>
-                {isSubmitting ? "Creating..." : "Create User"}
+              <Button type="button" onClick={() => void handleCreate()} disabled={!canSubmit || isSubmitting}>
+                {isSubmitting ? "Creating…" : "Create user"}
               </Button>
             )}
           </DialogFooter>

@@ -199,7 +199,14 @@ def create_user(
     )
 
 
-def update_user(db: Session, user_id: int, payload: UpdateUserRequest, *, tenant_id: int) -> User:
+def update_user(
+    db: Session,
+    user_id: int,
+    payload: UpdateUserRequest,
+    *,
+    tenant_id: int,
+    actor_user_id: int,
+) -> User:
     update_data = payload.model_dump(exclude_unset=True)
     if "is_active" in update_data:
         update_data["is_active"] = _coerce_user_status(update_data["is_active"])
@@ -221,6 +228,18 @@ def update_user(db: Session, user_id: int, payload: UpdateUserRequest, *, tenant
     )
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    if user.id == actor_user_id:
+        if update_data.get("is_active") == UserStatus.inactive:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot deactivate your own account",
+            )
+        if "role_id" in update_data and update_data["role_id"] != user.role_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="You cannot change your own role",
+            )
 
     loaded_role, loaded_team = _load_user_assignment_refs_or_404(
         db,

@@ -65,10 +65,12 @@ test("Tasks expose list, board, and calendar views with quick review", async ({ 
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(page.getByPlaceholder("Search tasks")).toBeVisible();
   await expect(page.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("span.bg-state-danger-muted", { hasText: "High" })).toBeVisible();
 
   await page.getByRole("button", { name: "Board" }).click();
   await expect(page.getByText(/Drag cards between columns/)).toBeVisible();
   await expect(page.getByRole("region", { name: "To Do tasks" })).toContainText("Prepare renewal brief");
+  await expect(page.getByRole("region", { name: "To Do tasks" }).locator("span.bg-surface-muted", { hasText: "To Do" })).toBeVisible();
   await page.getByRole("button", { name: "Prepare renewal brief" }).click();
   await expect(page.getByRole("heading", { name: "Edit Task" })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/dashboard/tasks\\?taskId=${taskId}$`));

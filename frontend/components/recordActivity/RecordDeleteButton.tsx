@@ -36,13 +36,12 @@ export default function RecordDeleteButton({ endpoint, label, recordName, redire
     try {
       setIsDeleting(true);
       const res = await apiFetch(endpoint, { method: "DELETE" });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      if (!res.ok) throw new Error("Record deletion failed.");
       await Promise.all(queryKeys.map((queryKey) => queryClient.invalidateQueries({ queryKey: [queryKey] })));
       toast.success(`${label} moved to recycle bin.`);
       router.push(redirectHref);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : `Failed to delete ${label.toLowerCase()}.`);
+    } catch {
+      toast.error(`Failed to delete ${label.toLowerCase()}. Please try again.`);
     } finally {
       setIsDeleting(false);
     }

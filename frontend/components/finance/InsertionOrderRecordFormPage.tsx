@@ -314,20 +314,23 @@ function InsertionOrderFormEditor({
               <Field data-invalid={Boolean(errors.customer)}>
                 <FieldLabel htmlFor="io-customer">Customer <RequiredMark /></FieldLabel>
                 <div className="grid gap-2 sm:grid-cols-[150px_1fr]">
-                  <select
-                    aria-label="Customer type"
+                  <Select
                     value={form.linked_type}
-                    onChange={(event) => {
-                      update("linked_type", event.target.value as LinkedType);
+                    onValueChange={(value) => {
+                      update("linked_type", value as LinkedType);
                       update("customer_contact_id", null);
                       update("customer_organization_id", null);
                       update("customer_name", "");
                     }}
-                    className="h-[38px] rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 text-sm text-copy-primary outline-none focus:border-primary focus:ring-2 focus:ring-primary/30"
                   >
-                    <option value="contact">Contact</option>
-                    <option value="organization">Account</option>
-                  </select>
+                    <SelectTrigger aria-label="Customer type" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="contact">Contact</SelectItem>
+                      <SelectItem value="organization">Account</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <LinkedRecordPicker
                     inputId="io-customer"
                     inputRef={customerRef}

@@ -141,7 +141,7 @@ export default function TasksCalendar({ tasks, isLoading, isRefreshing = false, 
               const today = dateKey(date) === dateKey(new Date());
               return (
                 <div key={date.toISOString()} className={`min-h-28 border-b border-r border-line-subtle p-2 ${outsideMonth ? "bg-surface-muted/50" : "bg-surface"}`}>
-                  <div className={`mb-2 flex h-6 w-6 items-center justify-center rounded-full text-xs ${today ? "bg-action-primary text-white" : outsideMonth ? "text-copy-disabled" : "text-copy-muted"}`}>{date.getDate()}</div>
+                  <div className={`mb-2 flex h-6 w-6 items-center justify-center rounded-full text-xs ${today ? "bg-action-primary text-primary-foreground" : outsideMonth ? "text-copy-disabled" : "text-copy-muted"}`}>{date.getDate()}</div>
                   <div className="space-y-1.5">
                     {entries.slice(0, 3).map((task) => {
                       const priority = getTaskPriorityStyle(task.priority);

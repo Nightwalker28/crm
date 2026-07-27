@@ -89,8 +89,7 @@ export type CustomModuleFieldPayload = {
 
 async function parseJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail || `Request failed with ${res.status}`);
+    throw new Error(res.status === 404 ? "not-found" : "The request could not be completed.");
   }
   return res.json();
 }
@@ -250,12 +249,26 @@ export function useCustomModuleRecord(moduleKey: string, recordId: string | numb
     },
   });
 
+  const deleteRecord = useMutation({
+    mutationFn: async () =>
+      parseJson<CustomModuleRecord>(
+        await apiFetch(`/custom-modules/${moduleKey}/records/${recordId}`, {
+          method: "DELETE",
+        }),
+      ),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["custom-module-records", moduleKey] });
+    },
+  });
+
   return {
     record: query.data ?? null,
     isLoading: query.isLoading,
     error: query.error,
     updateRecord: updateRecord.mutateAsync,
+    deleteRecord: deleteRecord.mutateAsync,
     isSaving: updateRecord.isPending,
+    isDeleting: deleteRecord.isPending,
     refresh: query.refetch,
   };
 }
@@ -282,12 +295,18 @@ export function useCreateCustomModuleRecord(moduleKey: string) {
   };
 }
 
-export function useCustomModuleRecords(moduleKey: string, page: number, search: string, sort: CustomModuleRecordSortState = null) {
+export function useCustomModuleRecords(
+  moduleKey: string,
+  page: number,
+  pageSize: number,
+  search: string,
+  sort: CustomModuleRecordSortState = null,
+) {
   const queryClient = useQueryClient();
   const query = useQuery({
-    queryKey: ["custom-module-records", moduleKey, page, search, sort],
+    queryKey: ["custom-module-records", moduleKey, page, pageSize, search, sort],
     queryFn: async () => {
-      const params = new URLSearchParams({ page: String(page), page_size: "25" });
+      const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
       if (search.trim()) {
         params.set("search", search.trim());
       }
@@ -329,7 +348,11 @@ export function useCustomModuleRecords(moduleKey: string, page: number, search: 
     records: query.data?.results ?? [],
     totalCount: query.data?.total_count ?? 0,
     totalPages: query.data?.total_pages ?? 0,
+    page: query.data?.page ?? page,
+    pageSize: query.data?.page_size ?? pageSize,
     isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    error: query.error,
     updateRecord: updateRecord.mutateAsync,
     deleteRecord: deleteRecord.mutateAsync,
     refresh: query.refetch,

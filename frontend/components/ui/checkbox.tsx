@@ -6,6 +6,7 @@ import { motion, SVGMotionProps, type HTMLMotionProps } from 'motion/react';
 
 import { getStrictContext } from '@/lib/get-strict-context';
 import { useControlledState } from '@/hooks/use-controlled-state';
+import { cn } from '@/lib/utils';
 
 type CheckboxContextType = {
   isChecked: boolean | 'indeterminate';
@@ -26,6 +27,9 @@ function Checkbox({
   required,
   name,
   value,
+  className,
+  children,
+  type = 'button',
   ...props
 }: CheckboxProps) {
   const [isChecked, setIsChecked] = useControlledState({
@@ -48,10 +52,17 @@ function Checkbox({
       >
         <motion.button
           data-slot="checkbox"
+          type={type}
           whileTap={{ scale: 0.95 }}
           whileHover={{ scale: 1.05 }}
+          className={cn(
+            'inline-flex size-4 shrink-0 items-center justify-center rounded border border-line-strong bg-surface-raised text-primary transition-colors outline-none data-[state=checked]:border-primary data-[state=checked]:bg-action-primary-muted focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-app disabled:cursor-not-allowed disabled:opacity-50',
+            className,
+          )}
           {...props}
-        />
+        >
+          {children ?? <CheckboxIndicator className="size-3" />}
+        </motion.button>
       </CheckboxPrimitive.Root>
     </CheckboxProvider>
   );

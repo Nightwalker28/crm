@@ -199,7 +199,83 @@ test("Users supports responsive bulk role and status updates", async ({
 test("opens Add User from the palette action deep link", async ({ page }) => {
   await page.goto("/dashboard/settings/users?tab=users&action=create-user");
 
-  await expect(page.getByRole("heading", { name: "Add User" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add user" })).toBeVisible();
+});
+
+test("Add user validates labeled fields and redacts create failures", async ({
+  page,
+}) => {
+  await page.route("**/admin/users", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "database_password=private-secret" }),
+    }),
+  );
+  await page.goto("/dashboard/settings/users?tab=users&action=create-user");
+
+  const email = page.getByLabel("Email");
+  await email.fill("not-an-email");
+  await expect(page.getByText("Enter a valid email address.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create user" })).toBeDisabled();
+
+  await email.fill("new.user@example.test");
+  await page.getByRole("combobox", { name: "Team", exact: true }).click();
+  await page.getByRole("option", { name: "Sales" }).click();
+  await page.getByRole("combobox", { name: "Role", exact: true }).click();
+  await page.getByRole("option", { name: "Sales Rep" }).click();
+  await expect(page.getByRole("combobox", { name: "Sign-in mode" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Status", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Create user" }).click();
+  await expect(
+    page.getByText("The user could not be created. Review the details and try again."),
+  ).toBeVisible();
+  await expect(page.getByText("database_password=private-secret")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create user" })).toBeEnabled();
+});
+
+test("Edit user enforces self-protection and semantic MFA state", async ({
+  page,
+}) => {
+  await page.evaluate((userId) => {
+    window.sessionStorage.setItem("lynk_user", JSON.stringify({ id: userId }));
+  }, users[0].id);
+  await page.goto("/dashboard/settings/users");
+
+  await page.getByRole("row", { name: /Amina Silva/ }).click();
+  await expect(page.getByRole("heading", { name: "Edit user" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Role", exact: true })).toBeDisabled();
+  await expect(page.getByRole("combobox", { name: "Status", exact: true })).toBeDisabled();
+  await expect(page.getByText("You cannot deactivate your own account.")).toBeVisible();
+  await expect(page.locator("span.bg-surface-muted", { hasText: "Off" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
+});
+
+test("Edit user prevents repeat saves and redacts update failures", async ({
+  page,
+}) => {
+  await page.route(`**/admin/users/${users[1].id}`, async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "tenant_id=42 internal_trace=private" }),
+    });
+  });
+  await page.goto("/dashboard/settings/users");
+
+  await page.getByRole("row", { name: /Noah Fernando/ }).click();
+  await page.getByRole("combobox", { name: "Role", exact: true }).click();
+  await page.getByRole("option", { name: "Manager" }).click();
+  const saveButton = page.getByRole("button", { name: "Save changes" });
+  await saveButton.click();
+  await expect(page.getByRole("button", { name: "Saving…" })).toBeDisabled();
+  await expect(
+    page.getByText("The user could not be updated. Review the selections and try again."),
+  ).toBeVisible();
+  await expect(page.getByText("tenant_id=42 internal_trace=private")).toHaveCount(0);
+  await expect(saveButton).toBeEnabled();
 });
 
 test("Administration settings are split into addressable tabs", async ({

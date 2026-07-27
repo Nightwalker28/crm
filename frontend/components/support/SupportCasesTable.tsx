@@ -13,6 +13,7 @@ import type { SupportCase } from "@/hooks/support/useCases";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { formatDateTime } from "@/lib/datetime";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
+import { getSupportCasePriorityStyle, getSupportCaseStatusStyle } from "@/lib/statusStyles";
 
 type SortState = { column: string; direction: "asc" | "desc" } | null;
 
@@ -25,21 +26,6 @@ type SupportCasesTableProps = {
   sort?: SortState;
   onSortChange?: (sort: SortState) => void;
   isFiltered?: boolean;
-};
-
-const STATUS_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  new: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40", label: "New" },
-  open: { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40", label: "Open" },
-  pending: { bg: "bg-surface-muted", text: "text-copy-secondary", border: "border-line-default", label: "Pending" },
-  resolved: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Resolved" },
-  closed: { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default", label: "Closed" },
-};
-
-const PRIORITY_STYLES: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  low: { bg: "bg-surface-muted", text: "text-copy-secondary", border: "border-line-default", label: "Low" },
-  medium: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40", label: "Medium" },
-  high: { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40", label: "High" },
-  urgent: { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40", label: "Urgent" },
 };
 
 const SORTABLE_COLUMNS = new Set([
@@ -79,11 +65,11 @@ export default function SupportCasesTable({ cases, isLoading, isRefreshing = fal
       case "subject":
         return <TableCell><span className="text-sm font-medium text-copy-primary">{item.subject}</span></TableCell>;
       case "status": {
-        const style = STATUS_STYLES[item.status] ?? STATUS_STYLES.new;
+        const style = getSupportCaseStatusStyle(item.status);
         return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
       }
       case "priority": {
-        const style = PRIORITY_STYLES[item.priority] ?? PRIORITY_STYLES.medium;
+        const style = getSupportCasePriorityStyle(item.priority);
         return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
       }
       case "assigned_to_name":

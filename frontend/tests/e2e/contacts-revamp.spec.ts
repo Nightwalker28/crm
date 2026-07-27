@@ -43,6 +43,56 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("Contacts list keeps the shared controls usable on mobile", async ({ page }) => {
+  await page.route("**/users/saved-views/sales_contacts?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        views: [{
+          id: 901,
+          module_key: "sales_contacts",
+          name: "Contact classification",
+          config: {
+            visible_columns: ["first_name", "organization_name", "primary_email", "region"],
+            filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
+            sort: null,
+          },
+          is_default: true,
+          is_system: false,
+        }],
+      }),
+    }),
+  );
+  await page.route("**/sales/contacts?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [{
+          contact_id: fakeContactId,
+          first_name: "Browser",
+          last_name: "Contact",
+          primary_email: "browser.contact@example.com",
+          contact_telephone: "+94770000001",
+          linkedin_url: null,
+          current_title: "Operations Lead",
+          region: "EMEA",
+          country: "Sri Lanka",
+          organization_name: "Lynk QA",
+          assigned_to: 7,
+          assigned_to_name: "Ada Owner",
+          created_time: "2099-07-20T09:30:00Z",
+          last_contacted_at: null,
+          custom_fields: {},
+        }],
+        range_start: 1,
+        range_end: 1,
+        total_count: 1,
+        total_pages: 1,
+        page: 1,
+      }),
+    }),
+  );
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/dashboard/sales/contacts");
 
@@ -55,6 +105,7 @@ test("Contacts list keeps the shared controls usable on mobile", async ({ page }
   await expect(page.getByText("Filter Conditions")).toBeVisible();
   const tableRegion = page.getByRole("region", { name: "Data table" });
   await expect(tableRegion).toBeVisible();
+  await expect(tableRegion.locator("span.bg-surface-muted", { hasText: "EMEA" })).toBeVisible();
   expect(await tableRegion.locator("thead th").evaluateAll((headers) => headers.slice(0, 2).map((header) => window.getComputedStyle(header).position))).toEqual(["sticky", "sticky"]);
 });
 

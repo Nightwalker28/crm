@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -220,7 +220,8 @@ def export_quotes(payload: DataTransferExportRequest = Body(default=DataTransfer
 
 
 @router.get("/proposal/public/{token}", response_model=SalesQuoteProposalPublicResponse)
-def view_public_quote_proposal(token: str, request: Request, db: Session = Depends(get_db)):
+def view_public_quote_proposal(token: str, request: Request, response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "private, no-store"
     proposal, quote = get_public_quote_proposal_or_404(db, token)
     record_quote_proposal_event(
         db,
@@ -241,7 +242,8 @@ def view_public_quote_proposal(token: str, request: Request, db: Session = Depen
 
 
 @router.post("/proposal/public/{token}/events", response_model=SalesQuoteProposalEventsResponse)
-def record_public_quote_proposal_event(token: str, payload: SalesQuoteProposalPublicEventRequest, request: Request, db: Session = Depends(get_db)):
+def record_public_quote_proposal_event(token: str, payload: SalesQuoteProposalPublicEventRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "private, no-store"
     proposal, _quote = get_public_quote_proposal_or_404(db, token)
     event = record_quote_proposal_event(
         db,

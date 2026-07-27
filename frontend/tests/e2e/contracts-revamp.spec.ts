@@ -66,9 +66,21 @@ function populatedContractFixture() {
   };
 }
 
-async function cacheContractPermissions(page: Parameters<typeof loginAsAdmin>[0], canEdit: boolean) {
+async function cacheContractPermissions(
+  page: Parameters<typeof loginAsAdmin>[0],
+  canEdit: boolean,
+  overrides: Partial<{
+    can_view: boolean;
+    can_create: boolean;
+    can_edit: boolean;
+    can_delete: boolean;
+    can_restore: boolean;
+    can_export: boolean;
+    can_configure: boolean;
+  }> = {},
+) {
   await page.evaluate(
-    ({ cacheKey, editAllowed }) => {
+    ({ cacheKey, editAllowed, moduleOverrides }) => {
       window.sessionStorage.setItem(cacheKey, JSON.stringify([{
         id: 71,
         name: "contracts",
@@ -81,10 +93,11 @@ async function cacheContractPermissions(page: Parameters<typeof loginAsAdmin>[0]
           can_restore: false,
           can_export: false,
           can_configure: false,
+          ...moduleOverrides,
         },
       }]));
     },
-    { cacheKey: moduleCacheKey, editAllowed: canEdit },
+    { cacheKey: moduleCacheKey, editAllowed: canEdit, moduleOverrides: overrides },
   );
 }
 
@@ -223,4 +236,62 @@ test("Contract detail is read-only without edit permission", async ({ page }) =>
   await expect(page.getByRole("heading", { name: "Add signer" })).toHaveCount(0);
   await expect(page.getByLabel("Status", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Pending", { exact: true })).toBeVisible();
+});
+
+test("Contract list uses permission-aware identity links and filtered empty states", async ({ page }) => {
+  await cacheContractPermissions(page, false, { can_create: false });
+  await page.route("**/contracts?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [contractFixture()],
+        range_start: 1,
+        range_end: 1,
+        total_count: 1,
+        total_pages: 1,
+        page: 1,
+      }),
+    }),
+  );
+  await page.route("**/contracts/search?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [],
+        range_start: 0,
+        range_end: 0,
+        total_count: 0,
+        total_pages: 0,
+        page: 1,
+      }),
+    }),
+  );
+
+  await page.goto("/dashboard/contracts");
+  await expect(page.getByRole("link", { name: "CTR-2407-001" })).toHaveAttribute("href", `/dashboard/contracts/${contractId}`);
+  await expect(page.getByRole("link", { name: "New Contract" })).toHaveCount(0);
+
+  await page.getByPlaceholder("Search contracts").fill("missing");
+  await expect(page.getByText("No contracts match this view")).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(page.getByRole("link", { name: "CTR-2407-001" })).toBeVisible();
+});
+
+test("Contract list failures use fixed recoverable guidance", async ({ page }) => {
+  await cacheContractPermissions(page, false);
+  await page.route("**/contracts?**", (route) =>
+    route.fulfill({
+      status: 500,
+      contentType: "application/json",
+      body: JSON.stringify({ detail: "tenant_id=42 database_password=private-secret" }),
+    }),
+  );
+
+  await page.goto("/dashboard/contracts");
+
+  await expect(page.getByText("Contracts could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("tenant_id=42 database_password=private-secret")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });

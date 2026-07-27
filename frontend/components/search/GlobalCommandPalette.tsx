@@ -297,10 +297,12 @@ export default function GlobalCommandPalette() {
                       Quick Links
                     </div>
                     {quickLinks.map((item) => (
-                      <Command.Item
-                        key={item.href}
-                        value={item.href}
-                        onSelect={() => handleNavigate(item.href)}
+                          <Command.Item
+                            key={item.href}
+                            value={item.href}
+                            data-testid="palette-link"
+                            data-href={item.href}
+                            onSelect={() => handleNavigate(item.href)}
                         className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-3 py-3 text-sm text-copy-secondary outline-none data-[selected=true]:bg-action-primary-muted data-[selected=true]:text-copy-primary"
                       >
                         <div>
@@ -322,6 +324,8 @@ export default function GlobalCommandPalette() {
                           <Command.Item
                             key={`module-${item.href}`}
                             value={`module-${item.label}-${item.href}`}
+                            data-testid="palette-link"
+                            data-href={item.href}
                             onSelect={() => handleNavigate(item.href)}
                             className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-3 py-3 text-sm text-copy-secondary outline-none data-[selected=true]:bg-action-primary-muted data-[selected=true]:text-copy-primary"
                           >

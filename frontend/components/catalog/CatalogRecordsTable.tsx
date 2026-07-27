@@ -2,8 +2,10 @@
 
 import { Fragment } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { ImageIcon, Package, Wrench } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import {
   SortableHead,
   Table,
@@ -18,6 +20,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
+import { Switch, SwitchThumb } from "@/components/ui/switch";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import type { CatalogKind, CatalogRecord } from "@/hooks/catalog/useCatalogRecords";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
@@ -35,6 +38,10 @@ type Props = {
   onSortChange?: (sort: SortState) => void;
   onRowClick: (record: CatalogRecord) => void;
   onToggleActive?: (record: CatalogRecord, active: boolean) => void;
+  togglingRecordId?: number | null;
+  hasActiveFilters?: boolean;
+  canCreate?: boolean;
+  onClearFilters?: () => void;
 };
 
 type SortState = { column: string; direction: "asc" | "desc" } | null;
@@ -84,13 +91,13 @@ function stockLabel(value?: string | null) {
 function stockStyle(value?: string | null) {
   switch (value) {
     case "in_stock":
-      return "bg-emerald-400";
+      return "bg-state-success";
     case "preorder":
-      return "bg-amber-400";
+      return "bg-state-warning";
     case "out_of_stock":
-      return "bg-red-400";
+      return "bg-state-danger";
     default:
-      return "bg-neutral-500";
+      return "bg-copy-disabled";
   }
 }
 
@@ -105,6 +112,10 @@ export default function CatalogRecordsTable({
   onSortChange,
   onRowClick,
   onToggleActive,
+  togglingRecordId = null,
+  hasActiveFilters = false,
+  canCreate = false,
+  onClearFilters,
 }: Props) {
   const isProduct = kind === "products";
   const effectiveVisibleColumns = visibleColumns.length ? visibleColumns : ["name"];
@@ -125,9 +136,15 @@ export default function CatalogRecordsTable({
         return (
           <TableCell>
             <div className="flex min-w-0 flex-col">
-              <span className="truncate text-sm font-medium text-neutral-100">{record.name}</span>
+              <Link
+                href={`/dashboard/catalog/${kind}/${record.id}`}
+                onClick={(event) => event.stopPropagation()}
+                className="truncate text-sm font-semibold text-copy-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+              >
+                {record.name}
+              </Link>
               {record.description ? (
-                <span className="max-w-[320px] truncate text-xs text-neutral-500">{record.description}</span>
+                <span className="max-w-[320px] truncate text-xs text-copy-muted">{record.description}</span>
               ) : null}
             </div>
           </TableCell>
@@ -135,48 +152,48 @@ export default function CatalogRecordsTable({
       case "sku":
         return isProduct ? (
           <TableCell>
-            <span className="rounded border border-neutral-700/50 bg-neutral-800/60 px-2 py-0.5 font-mono text-xs tracking-wider text-neutral-300">
-              {record.sku || <span className="text-neutral-600">-</span>}
+            <span className="rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted px-2 py-0.5 font-mono text-xs tracking-wider text-copy-secondary">
+              {record.sku || <span className="text-copy-disabled">—</span>}
             </span>
           </TableCell>
         ) : null;
       case "slug":
         return (
           <TableCell>
-            <span className="font-mono text-xs text-neutral-400">{record.slug || "-"}</span>
+            <span className="font-mono text-xs text-copy-secondary">{record.slug || "—"}</span>
           </TableCell>
         );
       case "description":
         return (
           <TableCell>
-            <span className="block max-w-[360px] truncate text-sm text-neutral-400" title={record.description ?? undefined}>
-              {record.description || "-"}
+            <span className="block max-w-[360px] truncate text-sm text-copy-secondary" title={record.description ?? undefined}>
+              {record.description || "—"}
             </span>
           </TableCell>
         );
       case "public_unit_price":
         return (
           <TableCell>
-            <span className="text-sm font-semibold tabular-nums text-emerald-300">
-              {formatAmount(record.public_unit_price, record.currency)}
+            <span className="text-sm font-semibold tabular-nums text-copy-primary">
+              {formatAmount(record.public_unit_price, record.currency) || "—"}
             </span>
           </TableCell>
         );
       case "currency":
         return (
           <TableCell>
-            <span className="font-mono text-xs text-neutral-400">{record.currency || "-"}</span>
+            <span className="font-mono text-xs text-copy-secondary">{record.currency || "—"}</span>
           </TableCell>
         );
       case "stock_status":
         return isProduct ? (
           <TableCell>
             <div className="flex flex-col gap-1">
-              <span className="inline-flex items-center gap-2 text-sm text-neutral-300">
-                <span className={`h-2 w-2 rounded-full ${stockStyle(record.stock_status)}`} />
+              <span className="inline-flex items-center gap-2 text-sm text-copy-secondary">
+                <span className={`h-2 w-2 rounded-full ${stockStyle(record.stock_status)}`} aria-hidden="true" />
                 {stockLabel(record.stock_status)}
               </span>
-              <span className="text-xs text-neutral-500">
+              <span className="text-xs text-copy-muted">
                 {record.stock_quantity == null ? "Quantity untracked" : `${record.stock_quantity} units`}
               </span>
             </div>
@@ -185,7 +202,7 @@ export default function CatalogRecordsTable({
       case "stock_quantity":
         return isProduct ? (
           <TableCell>
-            <span className="text-sm tabular-nums text-neutral-300">
+            <span className="text-sm tabular-nums text-copy-secondary">
               {record.stock_quantity == null ? "Untracked" : record.stock_quantity}
             </span>
           </TableCell>
@@ -193,26 +210,39 @@ export default function CatalogRecordsTable({
       case "is_active":
         return (
           <TableCell onClick={(event) => event.stopPropagation()}>
-            <label className="inline-flex items-center gap-2 text-sm text-neutral-300">
-              <input
-                type="checkbox"
-                checked={record.is_active}
-                onChange={(event) => onToggleActive?.(record, event.target.checked)}
-                className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
-              />
-              {record.is_active ? "Active" : "Inactive"}
-            </label>
+            {onToggleActive ? (
+              <div className="inline-flex items-center gap-2">
+                <Switch
+                  aria-label={`${record.is_active ? "Deactivate" : "Activate"} ${record.name}`}
+                  checked={record.is_active}
+                  disabled={togglingRecordId === record.id}
+                  onCheckedChange={(checked) => onToggleActive(record, checked)}
+                  className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:bg-action-primary"
+                >
+                  <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
+                </Switch>
+                <span className="text-sm text-copy-secondary">{record.is_active ? "Active" : "Inactive"}</span>
+              </div>
+            ) : (
+              <Pill
+                bg={record.is_active ? "bg-state-success-muted" : "bg-surface-muted"}
+                text={record.is_active ? "text-state-success" : "text-copy-muted"}
+                border={record.is_active ? "border-state-success/40" : "border-line-default"}
+              >
+                {record.is_active ? "Active" : "Inactive"}
+              </Pill>
+            )}
           </TableCell>
         );
       case "is_public":
         return (
           <TableCell>
             {record.is_public ? (
-              <Pill bg="bg-emerald-900/30" text="text-emerald-300" border="border-emerald-700/40" className="w-20">
+              <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40" className="w-20">
                 Public
               </Pill>
             ) : (
-              <Pill bg="bg-neutral-800/60" text="text-neutral-400" border="border-neutral-700/50" className="w-20">
+              <Pill bg="bg-surface-muted" text="text-copy-muted" border="border-line-default" className="w-20">
                 Private
               </Pill>
             )}
@@ -224,15 +254,15 @@ export default function CatalogRecordsTable({
             {record.media_url ? (
               <Image
                 src={resolveMediaUrl(record.media_url)}
-                alt=""
                 width={32}
                 height={32}
                 unoptimized
-                className="h-8 w-8 rounded-md border border-neutral-800 object-cover"
+                className="h-8 w-8 rounded-[var(--radius-control-sm)] border border-line-default object-cover"
+                alt={`${record.name} catalog image`}
               />
             ) : (
-              <span className="flex h-8 w-8 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-neutral-600">
-                <ImageIcon className="h-4 w-4" />
+              <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted text-copy-disabled" title="No catalog image">
+                <ImageIcon className="h-4 w-4" aria-hidden="true" />
               </span>
             )}
           </TableCell>
@@ -240,23 +270,23 @@ export default function CatalogRecordsTable({
       case "updated_at":
         return (
           <TableCell>
-            <span className="text-sm tabular-nums text-neutral-500">
-              {record.updated_at ? formatDateTime(record.updated_at, { hour: "numeric", minute: "2-digit" }) : "-"}
+            <span className="text-sm tabular-nums text-copy-muted">
+              {record.updated_at ? formatDateTime(record.updated_at, { hour: "numeric", minute: "2-digit" }) : "—"}
             </span>
           </TableCell>
         );
       case "created_at":
         return (
           <TableCell>
-            <span className="text-sm tabular-nums text-neutral-500">
-              {record.created_at ? formatDateTime(record.created_at, { hour: "numeric", minute: "2-digit" }) : "-"}
+            <span className="text-sm tabular-nums text-copy-muted">
+              {record.created_at ? formatDateTime(record.created_at, { hour: "numeric", minute: "2-digit" }) : "—"}
             </span>
           </TableCell>
         );
       default:
         return (
           <TableCell>
-            <span className="text-sm text-neutral-600">-</span>
+            <span className="text-sm text-copy-disabled">—</span>
           </TableCell>
         );
     }
@@ -283,7 +313,20 @@ export default function CatalogRecordsTable({
           ) : records.length === 0 ? (
             <TableRow>
               <TableCell colSpan={columnCount} className="py-16 text-center">
-                <EmptyState icon={EmptyIcon} title="No records found" description={`No catalog ${kind} match the current view.`} />
+                <EmptyState
+                  icon={EmptyIcon}
+                  title={hasActiveFilters ? `No ${kind} match this search` : `No ${kind} yet`}
+                  description={hasActiveFilters
+                    ? "Clear the search or try another term."
+                    : canCreate
+                      ? `Create the first ${isProduct ? "product" : "service"} for this catalog.`
+                      : `${isProduct ? "Products" : "Services"} will appear here when a teammate creates one.`}
+                  action={hasActiveFilters && onClearFilters
+                    ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear search</Button>
+                    : canCreate
+                      ? <Button asChild><Link href={`/dashboard/catalog/${kind}/new`}>Create {isProduct ? "product" : "service"}</Link></Button>
+                      : undefined}
+                />
               </TableCell>
             </TableRow>
           ) : (

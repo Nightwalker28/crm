@@ -579,5 +579,11 @@ def update_user(
     admin = Depends(require_admin),
 ):
     return admin_users.serialize_user_profile(
-        admin_users.update_user(db, user_id, payload, tenant_id=admin.tenant_id)
+        admin_users.update_user(
+            db,
+            user_id,
+            payload,
+            tenant_id=admin.tenant_id,
+            actor_user_id=admin.id,
+        )
     )

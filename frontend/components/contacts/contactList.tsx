@@ -53,16 +53,6 @@ function getInitials(firstName?: string | null, lastName?: string | null, email?
   return "?";
 }
 
-function getRegionStyle(region?: string | null): { bg: string; text: string; border: string } {
-  const map: Record<string, { bg: string; text: string; border: string }> = {
-    APAC: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40" },
-    EMEA: { bg: "bg-violet-900/30", text: "text-violet-300", border: "border-violet-700/40" },
-    NA: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" },
-    LATAM: { bg: "bg-orange-900/30", text: "text-orange-300", border: "border-orange-700/40" },
-  };
-  return map[region ?? ""] ?? { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default" };
-}
-
 export default function ContactList({
   contacts,
   isLoading,
@@ -180,14 +170,9 @@ export default function ContactList({
       case "region":
         return (
           <TableCell>
-            {contact.region ? (() => {
-              const style = getRegionStyle(contact.region);
-              return (
-                <Pill bg={style.bg} text={style.text} border={style.border}>
-                  {contact.region}
-                </Pill>
-              );
-            })() : <span className="text-sm text-copy-disabled">—</span>}
+            {contact.region
+              ? <Pill>{contact.region}</Pill>
+              : <span className="text-sm text-copy-disabled">—</span>}
           </TableCell>
         );
       case "country":

@@ -40,8 +40,8 @@ export default function ClientQuoteDetailPage() {
     if (!quote) return;
     try {
       await downloadClientQuoteProposal(quote);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to download quote proposal.");
+    } catch {
+      toast.error("Failed to download quote proposal.");
     }
   }
 
@@ -51,65 +51,65 @@ export default function ClientQuoteDetailPage() {
       await respondToQuote({ quoteId: quote.quote_id, action, message: message.trim() || null });
       setMessage("");
       toast.success(action === "approve" ? "Quote approved." : "Quote rejected.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update quote.");
+    } catch {
+      toast.error("Failed to update quote.");
     }
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
+    <main className="min-h-screen bg-app text-copy-primary">
       <div className="mx-auto max-w-5xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-white">Lynk</Link>
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
+          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
           <Button asChild variant="outline" size="sm">
             <Link href="/client/quotes">Quotes</Link>
           </Button>
         </header>
 
         {quoteQuery.isLoading ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">Loading quote...</div>
+          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading quote...</div>
         ) : quoteQuery.error || !quote ? (
-          <div className="rounded-md border border-red-900/60 bg-red-950/20 p-5 text-sm text-red-200">
+          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {quoteQuery.error instanceof Error ? quoteQuery.error.message : "Quote not found."}
           </div>
         ) : (
           <div className="grid gap-5">
-            <section className="rounded-md border border-neutral-800 bg-neutral-900 p-5">
+            <section className="rounded-md border border-line-default bg-surface p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-sm text-neutral-400">
+                  <div className="flex items-center gap-2 text-sm text-copy-secondary">
                     <ScrollText className="h-4 w-4" />
                     {quote.quote_number}
                   </div>
-                  <h1 className="mt-2 text-2xl font-semibold tracking-normal text-neutral-50">{quoteTitle(quote)}</h1>
-                  <p className="mt-1 text-sm text-neutral-400">{quote.customer_name}</p>
+                  <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">{quoteTitle(quote)}</h1>
+                  <p className="mt-1 text-sm text-copy-secondary">{quote.customer_name}</p>
                 </div>
                 <div className="text-right">
-                  <div className="capitalize text-neutral-300">{statusLabel(quote.status)}</div>
-                  <div className="mt-1 text-xl font-semibold text-neutral-50">{money(quote.total_amount, quote.currency)}</div>
+                  <div className="capitalize text-copy-secondary">{statusLabel(quote.status)}</div>
+                  <div className="mt-1 text-xl font-semibold text-copy-primary">{money(quote.total_amount, quote.currency)}</div>
                 </div>
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-md border border-neutral-800 bg-neutral-950 p-3">
-                  <div className="text-xs uppercase text-neutral-500">Issued</div>
-                  <div className="mt-1 text-sm text-neutral-200">{quote.issue_date ? formatDateOnly(quote.issue_date) : "Not set"}</div>
+                <div className="rounded-md border border-line-default bg-app p-3">
+                  <div className="text-xs uppercase text-copy-muted">Issued</div>
+                  <div className="mt-1 text-sm text-copy-secondary">{quote.issue_date ? formatDateOnly(quote.issue_date) : "Not set"}</div>
                 </div>
-                <div className="rounded-md border border-neutral-800 bg-neutral-950 p-3">
-                  <div className="text-xs uppercase text-neutral-500">Expires</div>
-                  <div className="mt-1 text-sm text-neutral-200">{quote.expiry_date ? formatDateOnly(quote.expiry_date) : "No expiry"}</div>
+                <div className="rounded-md border border-line-default bg-app p-3">
+                  <div className="text-xs uppercase text-copy-muted">Expires</div>
+                  <div className="mt-1 text-sm text-copy-secondary">{quote.expiry_date ? formatDateOnly(quote.expiry_date) : "No expiry"}</div>
                 </div>
-                <div className="rounded-md border border-neutral-800 bg-neutral-950 p-3">
-                  <div className="text-xs uppercase text-neutral-500">Updated</div>
-                  <div className="mt-1 text-sm text-neutral-200">{formatDateTime(quote.updated_at ?? quote.created_time)}</div>
+                <div className="rounded-md border border-line-default bg-app p-3">
+                  <div className="text-xs uppercase text-copy-muted">Updated</div>
+                  <div className="mt-1 text-sm text-copy-secondary">{formatDateTime(quote.updated_at ?? quote.created_time)}</div>
                 </div>
               </div>
             </section>
 
-            <section className="rounded-md border border-neutral-800 bg-neutral-900 p-5">
+            <section className="rounded-md border border-line-default bg-surface p-5">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h2 className="font-semibold text-neutral-100">Proposal</h2>
-                  {quote.proposal_generated_at ? <p className="mt-1 text-xs text-neutral-500">Generated {formatDateTime(quote.proposal_generated_at)}</p> : null}
+                  <h2 className="font-semibold text-copy-primary">Proposal</h2>
+                  {quote.proposal_generated_at ? <p className="mt-1 text-xs text-copy-muted">Generated {formatDateTime(quote.proposal_generated_at)}</p> : null}
                 </div>
                 <Button type="button" variant="outline" onClick={() => void handleDownload()} disabled={!quote.proposal_content_text}>
                   <Download className="h-4 w-4" />
@@ -117,15 +117,15 @@ export default function ClientQuoteDetailPage() {
                 </Button>
               </div>
               {quote.proposal_content_text ? (
-                <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border border-neutral-800 bg-neutral-950 p-4 text-sm leading-6 text-neutral-300">{quote.proposal_content_text}</pre>
+                <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border border-line-default bg-app p-4 text-sm leading-6 text-copy-secondary">{quote.proposal_content_text}</pre>
               ) : (
-                <div className="rounded-md border border-neutral-800 bg-neutral-950 p-4 text-sm text-neutral-500">No generated proposal is attached to this quote yet.</div>
+                <div className="rounded-md border border-line-default bg-app p-4 text-sm text-copy-muted">No generated proposal is attached to this quote yet.</div>
               )}
             </section>
 
-            <section className="rounded-md border border-neutral-800 bg-neutral-900 p-5">
-              <h2 className="font-semibold text-neutral-100">Response</h2>
-              <p className="mt-1 text-sm text-neutral-500">
+            <section className="rounded-md border border-line-default bg-surface p-5">
+              <h2 className="font-semibold text-copy-primary">Response</h2>
+              <p className="mt-1 text-sm text-copy-muted">
                 {quote.can_respond ? "Approve the quote or send a rejection reason for the team to review." : "This quote is not currently open for portal response."}
               </p>
               <Textarea

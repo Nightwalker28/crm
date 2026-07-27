@@ -14,11 +14,14 @@ import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useInvoiceList, type PosInvoiceSortState } from "@/hooks/finance/usePosInvoices";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 
 export default function PosInvoicesPage() {
+  const { modules } = useAccessibleModules();
+  const canCreateInvoice = Boolean(modules.find((module) => module.name === "finance_pos")?.actions?.can_create);
   const { fields: moduleFields } = useModuleFieldConfigs("finance_pos");
   const definition = useMemo(() => buildModuleViewDefinition("finance_pos", [], moduleFields), [moduleFields]);
   const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.finance_pos;
@@ -44,7 +47,7 @@ export default function PosInvoicesPage() {
         title="Invoices"
         description="Create itemized customer invoices, track payment status, and choose the print template per invoice."
         eyebrow={totalCount ? `${totalCount} invoice${totalCount === 1 ? "" : "s"} in this view` : undefined}
-        actions={<Button asChild><Link href="/dashboard/finance/pos/new"><Plus />Create invoice</Link></Button>}
+        actions={canCreateInvoice ? <Button asChild><Link href="/dashboard/finance/pos/new"><Plus />Create invoice</Link></Button> : undefined}
       />
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
@@ -61,7 +64,7 @@ export default function PosInvoicesPage() {
       />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(filters) => setDraftConfig((current) => ({ ...current, filters }))} hideHeader />
       {error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"><span>We could not load invoices. Check your connection and try again.</span><Button type="button" variant="outline" size="sm" onClick={() => void refresh()}>Try again</Button></div> : null}
-      <InvoicesTable invoices={invoices} visibleColumns={visibleColumns} isLoading={isLoading} isRefreshing={isFetching && !isLoading} selectedIds={selectedIds} sort={sort} hasActiveFilters={hasActiveFilters} onSortChange={(nextSort) => setDraftConfig((current) => ({ ...current, sort: nextSort }))} onToggle={(id, checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((item) => item !== id))} onTogglePage={(checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, ...currentPageIds])) : current.filter((id) => !currentPageIds.includes(id)))} onClearFilters={clearFilters} />
+      <InvoicesTable invoices={invoices} visibleColumns={visibleColumns} isLoading={isLoading} isRefreshing={isFetching && !isLoading} selectedIds={selectedIds} sort={sort} hasActiveFilters={hasActiveFilters} canCreateInvoice={canCreateInvoice} onSortChange={(nextSort) => setDraftConfig((current) => ({ ...current, sort: nextSort }))} onToggle={(id, checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((item) => item !== id))} onTogglePage={(checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, ...currentPageIds])) : current.filter((id) => !currentPageIds.includes(id)))} onClearFilters={clearFilters} />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
     </div>
   );

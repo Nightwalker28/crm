@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useClientOrder } from "@/hooks/useClientPortal";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -20,10 +21,10 @@ export default function ClientOrderDetailPage() {
   const order = orderQuery.data;
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
+    <main className="min-h-screen bg-app text-copy-primary">
       <div className="mx-auto max-w-5xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-white">Lynk</Link>
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
+          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
           <Button asChild variant="outline" size="sm">
             <Link href="/client/orders">
               <ArrowLeft className="h-4 w-4" />
@@ -33,51 +34,51 @@ export default function ClientOrderDetailPage() {
         </header>
 
         {orderQuery.isLoading ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">Loading order...</div>
+          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading order...</div>
         ) : orderQuery.error ? (
-          <div className="rounded-md border border-red-900/60 bg-red-950/20 p-5 text-sm text-red-200">
+          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {orderQuery.error instanceof Error ? orderQuery.error.message : "Order unavailable."}
           </div>
         ) : order ? (
           <div className="grid gap-5">
-            <section className="rounded-md border border-neutral-800 bg-neutral-900 p-5">
-              <div className="text-xs uppercase text-neutral-500">{order.external_reference}</div>
+            <section className="rounded-md border border-line-default bg-surface p-5">
+              <div className="text-xs uppercase text-copy-muted">{order.external_reference}</div>
               <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
                 <div>
-                  <h1 className="text-3xl font-semibold tracking-normal text-neutral-50">Order details</h1>
-                  <p className="mt-1 text-sm text-neutral-400">{formatDateTime(order.created_at)}</p>
+                  <h1 className="text-3xl font-semibold tracking-normal text-copy-primary">Order details</h1>
+                  <p className="mt-1 text-sm text-copy-secondary">{formatDateTime(order.created_at)}</p>
                 </div>
                 <div className="text-right">
-                  <div className="capitalize text-neutral-300">{order.status.replaceAll("_", " ")}</div>
-                  <div className="text-xl font-semibold text-neutral-50">{money(order.subtotal_amount, order.currency)}</div>
+                  <div className="capitalize text-copy-secondary">{order.status.replaceAll("_", " ")}</div>
+                  <div className="text-xl font-semibold text-copy-primary">{money(order.subtotal_amount, order.currency)}</div>
                 </div>
               </div>
             </section>
 
-            <section className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-900">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-neutral-800 text-xs uppercase text-neutral-500">
-                  <tr>
-                    <th className="px-4 py-3 font-medium">Item</th>
-                    <th className="px-4 py-3 text-right font-medium">Qty</th>
-                    <th className="px-4 py-3 text-right font-medium">Unit</th>
-                    <th className="px-4 py-3 text-right font-medium">Total</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-800">
+            <section className="overflow-hidden rounded-md border border-line-default bg-surface">
+              <Table>
+                <TableHeader>
+                  <TableHeaderRow>
+                    <TableHead>Item</TableHead>
+                    <TableHead className="text-right">Qty</TableHead>
+                    <TableHead className="text-right">Unit</TableHead>
+                    <TableHead className="text-right">Total</TableHead>
+                  </TableHeaderRow>
+                </TableHeader>
+                <TableBody>
                   {order.line_items.map((line) => (
-                    <tr key={line.id}>
-                      <td className="px-4 py-4">
-                        <div className="font-medium text-neutral-100">{line.name}</div>
-                        <div className="mt-1 text-xs uppercase text-neutral-500">{line.item_type}</div>
-                      </td>
-                      <td className="px-4 py-4 text-right text-neutral-300">{line.quantity}</td>
-                      <td className="px-4 py-4 text-right text-neutral-300">{money(line.unit_price_snapshot, line.currency)}</td>
-                      <td className="px-4 py-4 text-right font-semibold text-neutral-50">{money(line.line_total, line.currency)}</td>
-                    </tr>
+                    <TableRow key={line.id}>
+                      <TableCell>
+                        <div className="font-medium text-copy-primary">{line.name}</div>
+                        <div className="mt-1 text-xs uppercase text-copy-muted">{line.item_type}</div>
+                      </TableCell>
+                      <TableCell className="text-right text-copy-secondary">{line.quantity}</TableCell>
+                      <TableCell className="text-right text-copy-secondary">{money(line.unit_price_snapshot, line.currency)}</TableCell>
+                      <TableCell className="text-right font-semibold text-copy-primary">{money(line.line_total, line.currency)}</TableCell>
+                    </TableRow>
                   ))}
-                </tbody>
-              </table>
+                </TableBody>
+              </Table>
             </section>
           </div>
         ) : null}

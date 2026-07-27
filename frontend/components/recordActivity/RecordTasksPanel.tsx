@@ -6,11 +6,18 @@ import { CheckCircle2, ClipboardList, Plus } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import {
+  RecordPanelEmpty,
+  RecordPanelError,
+  RecordPanelHeader,
+  RecordPanelLoading,
+} from "@/components/recordActivity/RecordPanelStates";
 import TaskAssigneePicker from "@/components/tasks/TaskAssigneePicker";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
@@ -89,7 +96,7 @@ async function createRecordTask({
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to create task.");
+    throw new Error("The linked task could not be created.");
   }
   return body as Task;
 }
@@ -105,7 +112,7 @@ async function completeTask(task: Task) {
   });
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to complete task.");
+    throw new Error("The linked task could not be completed.");
   }
   return body as Task;
 }
@@ -149,8 +156,8 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
       setIsCreating(false);
       await refreshTaskQueries();
       toast.success("Task linked to record.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to create task.");
+    } catch {
+      toast.error("The linked task could not be created. Check your access and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -162,8 +169,8 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
       await completeTask(task);
       await refreshTaskQueries();
       toast.success("Task marked complete.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to complete task.");
+    } catch {
+      toast.error("The linked task could not be completed. Check your access and try again.");
     } finally {
       setCompletingTaskId(null);
     }
@@ -171,34 +178,36 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
 
   return (
     <Card className="px-5 py-5">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-neutral-100">Tasks & Reminders</h2>
-          <FieldDescription className="mt-1">Follow-up tasks linked to this record.</FieldDescription>
-        </div>
-        <div className="flex items-center gap-2">
+      <RecordPanelHeader
+        title="Tasks & reminders"
+        description="Follow-up tasks linked to this record."
+        icon={ClipboardList}
+        action={
           <Button type="button" variant="outline" size="sm" onClick={() => setIsCreating((current) => !current)}>
             <Plus className="h-4 w-4" />
-            {isCreating ? "Close" : "Add Task"}
+            {isCreating ? "Close" : "Add task"}
           </Button>
-          <ClipboardList className="h-5 w-5 text-neutral-500" />
-        </div>
-      </div>
+        }
+      />
 
       {isCreating ? (
-        <form onSubmit={handleCreateTask} className="mb-4 rounded-lg border border-neutral-800 bg-neutral-950/60 p-4">
+        <form onSubmit={handleCreateTask} className="my-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-4">
           <FieldGroup className="grid gap-4 md:grid-cols-2">
             <Field className="md:col-span-2">
-              <FieldLabel>Task Title</FieldLabel>
+              <FieldLabel htmlFor={`record-task-title-${moduleKey}-${entityId}`}>Task title</FieldLabel>
               <Input
+                id={`record-task-title-${moduleKey}-${entityId}`}
+                required
+                maxLength={255}
                 value={draft.title}
                 onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
                 placeholder="Schedule next customer follow-up"
               />
             </Field>
             <Field className="md:col-span-2">
-              <FieldLabel>Description</FieldLabel>
+              <FieldLabel htmlFor={`record-task-description-${moduleKey}-${entityId}`}>Description</FieldLabel>
               <Textarea
+                id={`record-task-description-${moduleKey}-${entityId}`}
                 rows={3}
                 value={draft.description}
                 onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
@@ -206,20 +215,21 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
               />
             </Field>
             <Field>
-              <FieldLabel>Due</FieldLabel>
+              <FieldLabel htmlFor={`record-task-due-${moduleKey}-${entityId}`}>Due</FieldLabel>
               <Input
+                id={`record-task-due-${moduleKey}-${entityId}`}
                 type="datetime-local"
                 value={draft.dueAt}
                 onChange={(event) => setDraft((current) => ({ ...current, dueAt: event.target.value }))}
               />
             </Field>
             <Field>
-              <FieldLabel>Priority</FieldLabel>
+              <FieldLabel htmlFor={`record-task-priority-${moduleKey}-${entityId}`}>Priority</FieldLabel>
               <Select
                 value={draft.priority}
                 onValueChange={(value) => setDraft((current) => ({ ...current, priority: value as TaskPriority }))}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`record-task-priority-${moduleKey}-${entityId}`} className="w-full">
                   <SelectValue placeholder="Select priority" />
                 </SelectTrigger>
                 <SelectContent>
@@ -230,12 +240,12 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
               </Select>
             </Field>
             <Field>
-              <FieldLabel>Status</FieldLabel>
+              <FieldLabel htmlFor={`record-task-status-${moduleKey}-${entityId}`}>Status</FieldLabel>
               <Select
                 value={draft.status}
                 onValueChange={(value) => setDraft((current) => ({ ...current, status: value as TaskStatus }))}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger id={`record-task-status-${moduleKey}-${entityId}`} className="w-full">
                   <SelectValue placeholder="Select status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -247,15 +257,11 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
               </Select>
             </Field>
             <Field className="md:col-span-2">
-              <FieldLabel>Assigned User or Team</FieldLabel>
+              <FieldLabel>Assigned user or team</FieldLabel>
               {optionsQuery.isLoading ? (
-                <div className="rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-3 text-sm text-neutral-500">
-                  Loading assignees...
-                </div>
+                <RecordPanelLoading label="Loading assignees…" />
               ) : optionsQuery.error ? (
-                <div className="rounded-md border border-red-900/50 bg-red-950/20 px-4 py-3 text-sm text-red-300">
-                  {optionsQuery.error instanceof Error ? optionsQuery.error.message : "Failed to load assignees."}
-                </div>
+                <RecordPanelError message="Task assignment options could not be loaded." onRetry={() => void optionsQuery.refetch()} />
               ) : (
                 <TaskAssigneePicker
                   users={optionsQuery.data?.users ?? []}
@@ -280,39 +286,38 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
               Cancel
             </Button>
             <Button type="submit" disabled={submitting || !draft.title.trim()}>
-              {submitting ? "Creating..." : "Create Linked Task"}
+              {submitting ? "Creating…" : "Create linked task"}
             </Button>
           </div>
         </form>
       ) : null}
 
       {query.isLoading ? (
-        <div className="rounded-md border border-neutral-800 bg-neutral-950/40 px-4 py-6 text-sm text-neutral-500">Loading tasks...</div>
+        <div className="mt-4"><RecordPanelLoading label="Loading linked tasks…" /></div>
       ) : query.error ? (
-        <div className="rounded-md border border-red-900/50 bg-red-950/20 px-4 py-4 text-sm text-red-300">
-          {query.error instanceof Error ? query.error.message : "Failed to load tasks."}
-        </div>
+        <div className="mt-4"><RecordPanelError message="Linked tasks could not be loaded." onRetry={() => void query.refetch()} /></div>
       ) : tasks.length ? (
-        <div className="space-y-3">
+        <ol className="mt-4 space-y-3" aria-label="Linked tasks">
           {tasks.map((task) => (
-            <div
+            <li
               key={task.id}
-              className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4"
+              className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4"
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
                   <Link
                     href={`/dashboard/tasks?taskId=${task.id}`}
-                    className="block truncate text-sm font-semibold text-neutral-100 hover:text-white"
+                    className="block truncate text-sm font-semibold text-copy-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
                     {task.title}
                   </Link>
-                  <div className="mt-1 text-xs capitalize text-neutral-500">
-                    {statusLabel(task.status)} / {task.priority}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Pill>{statusLabel(task.status)}</Pill>
+                    <Pill>{task.priority} priority</Pill>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
-                  {task.due_at ? <div className="text-xs text-neutral-400">Due {formatDateTime(task.due_at)}</div> : null}
+                  {task.due_at ? <div className="text-xs text-copy-muted">Due {formatDateTime(task.due_at)}</div> : null}
                   {task.status !== "completed" ? (
                     <Button
                       type="button"
@@ -323,22 +328,20 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
                         void handleCompleteTask(task);
                       }}
                       disabled={completingTaskId === task.id}
-                      className="h-7 gap-1 border-emerald-800/60 bg-emerald-950/20 px-2 text-[11px] text-emerald-300 hover:bg-emerald-950/40 hover:text-emerald-200"
+                      className="h-7 gap-1 border-state-success/40 bg-state-success-muted px-2 text-[11px] text-state-success hover:bg-state-success-muted hover:text-state-success"
                     >
                       <CheckCircle2 className="h-3.5 w-3.5" />
-                      {completingTaskId === task.id ? "Saving..." : "Complete"}
+                      {completingTaskId === task.id ? "Saving…" : "Complete"}
                     </Button>
                   ) : null}
                 </div>
               </div>
-              {task.description ? <div className="mt-2 line-clamp-2 text-sm text-neutral-400">{task.description}</div> : null}
-            </div>
+              {task.description ? <div className="mt-3 line-clamp-2 text-sm leading-6 text-copy-secondary">{task.description}</div> : null}
+            </li>
           ))}
-        </div>
+        </ol>
       ) : (
-        <div className="rounded-md border border-dashed border-neutral-800 bg-neutral-950/40 px-4 py-6 text-sm text-neutral-500">
-          No tasks are linked to this record yet.
-        </div>
+        <div className="mt-4"><RecordPanelEmpty icon={ClipboardList} title="No linked tasks yet" description="Create a task here to keep the next action attached to this record." /></div>
       )}
     </Card>
   );

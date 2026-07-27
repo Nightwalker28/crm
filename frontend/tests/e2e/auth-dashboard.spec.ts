@@ -10,6 +10,10 @@ test("guest dashboard access redirects to login", async ({ page }) => {
 
 test("failed required MFA setup returns login form to a usable state", async ({ page }) => {
   await page.route("**/auth/login", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -31,7 +35,8 @@ test("failed required MFA setup returns login form to a usable state", async ({ 
   await page.getByLabel("Password").fill("correct horse battery staple");
   await page.getByRole("button", { name: "Sign in with email" }).click();
 
-  await expect(page.getByText("MFA setup is temporarily unavailable")).toBeVisible();
+  await expect(page.getByText("Failed to start MFA setup")).toBeVisible();
+  await expect(page.getByText("MFA setup is temporarily unavailable")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Sign in with email" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Continue with SSO" })).toBeEnabled();
 });

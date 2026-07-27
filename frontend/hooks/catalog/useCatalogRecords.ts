@@ -54,16 +54,6 @@ type CatalogRecordsResponse = {
 const DEFAULT_ERROR = "Something went wrong while loading catalog records";
 const CATALOG_LIST_STALE_TIME_MS = 30_000;
 
-function toApiErrorMessage(body: unknown, fallback: string) {
-  if (body && typeof body === "object") {
-    const detail = "detail" in body ? body.detail : undefined;
-    const message = "message" in body ? body.message : undefined;
-    if (typeof detail === "string" && detail.trim()) return detail;
-    if (typeof message === "string" && message.trim()) return message;
-  }
-  return fallback;
-}
-
 function getErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) {
     return error.message;
@@ -81,8 +71,7 @@ function catalogLabel(kind: CatalogKind) {
 
 async function parseJsonResponse<T>(res: Response, fallback: string): Promise<T> {
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(toApiErrorMessage(body, fallback));
+    throw new Error(fallback);
   }
   return res.json();
 }

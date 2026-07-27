@@ -178,8 +178,9 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
         ) : null}
         {enabled("tags") ? (
           <Field>
-            <FieldLabel>Tags</FieldLabel>
+            <FieldLabel htmlFor="lead-tags">Tags</FieldLabel>
             <RecordTagInput
+              inputId="lead-tags"
               value={value.tags}
               onChange={(tags) => onChange({ ...value, tags })}
               moduleKey="sales_leads"

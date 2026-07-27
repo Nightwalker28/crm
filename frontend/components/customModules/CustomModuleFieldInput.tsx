@@ -41,11 +41,13 @@ export function CustomModuleFieldInput({
   value,
   onChange,
   invalid = false,
+  disabled = false,
 }: {
   field: CustomModuleField;
   value: unknown;
   onChange: (value: unknown) => void;
   invalid?: boolean;
+  disabled?: boolean;
 }) {
   const inputId = `custom-field-${field.key}`;
   const options = field.validation_json?.options ?? [];
@@ -56,6 +58,7 @@ export function CustomModuleFieldInput({
       <Select
         value={selectedValue}
         onValueChange={(next) => onChange(next === EMPTY_SELECT_VALUE ? "" : next)}
+        disabled={disabled}
       >
         <SelectTrigger id={inputId} className="w-full" aria-invalid={invalid}>
           <SelectValue placeholder="Select an option" />
@@ -90,10 +93,14 @@ export function CustomModuleFieldInput({
           return (
             <label
               key={option}
-              className="flex cursor-pointer items-center gap-2 rounded-[var(--radius-control-sm)] px-2 py-2 text-sm text-copy-secondary hover:bg-surface-raised"
+              className={cn(
+                "flex items-center gap-2 rounded-[var(--radius-control-sm)] px-2 py-2 text-sm text-copy-secondary",
+                disabled ? "cursor-default opacity-70" : "cursor-pointer hover:bg-surface-raised",
+              )}
             >
               <Checkbox
                 checked={checked}
+                disabled={disabled}
                 onCheckedChange={(nextChecked) => {
                   const next = nextChecked
                     ? [...selected, option]
@@ -122,6 +129,7 @@ export function CustomModuleFieldInput({
         placeholder={field.placeholder ?? field.label}
         required={field.is_required}
         aria-invalid={invalid}
+        disabled={disabled}
         rows={5}
       />
     );
@@ -131,7 +139,10 @@ export function CustomModuleFieldInput({
     return (
       <label
         htmlFor={inputId}
-        className="flex min-h-10 cursor-pointer items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary"
+        className={cn(
+          "flex min-h-10 items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary",
+          disabled ? "cursor-default opacity-70" : "cursor-pointer",
+        )}
       >
         <span className="flex items-center gap-2">
           {field.label}
@@ -140,6 +151,7 @@ export function CustomModuleFieldInput({
         <Checkbox
           id={inputId}
           checked={Boolean(value)}
+          disabled={disabled}
           onCheckedChange={(checked) => onChange(Boolean(checked))}
           className="flex size-4 items-center justify-center rounded border border-line-strong bg-surface text-primary"
           aria-invalid={invalid}
@@ -159,6 +171,7 @@ export function CustomModuleFieldInput({
       placeholder={field.placeholder ?? field.label}
       required={field.is_required}
       aria-invalid={invalid}
+      disabled={disabled}
       step={field.field_type === "number" || field.field_type === "currency" ? "any" : undefined}
     />
   );

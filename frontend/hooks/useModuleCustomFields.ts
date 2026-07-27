@@ -20,8 +20,7 @@ export type CustomFieldDefinition = {
 async function fetchModuleCustomFields(moduleKey: string): Promise<CustomFieldDefinition[]> {
   const res = await apiFetch(`/custom-fields/${moduleKey}`);
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? `Failed with ${res.status}`);
+    throw new Error("Custom fields could not be loaded.");
   }
   return res.json();
 }

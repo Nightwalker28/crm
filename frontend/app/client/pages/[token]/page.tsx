@@ -9,6 +9,7 @@ import { Check, Download, FileText, LogIn, MessageSquare, RefreshCw } from "luci
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
 import { CLIENT_TOKEN_STORAGE_KEY, downloadPublicClientPageDocument, recordClientPageAction, usePublicClientPage } from "@/hooks/useClientPortal";
 import { resolveMediaUrl } from "@/lib/media";
@@ -18,8 +19,8 @@ function money(value: string | number, currency: string) {
   return `${currency} ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
 }
 
-function getError(error: unknown) {
-  return error instanceof Error ? error.message : "Failed to submit response.";
+function getError() {
+  return "The response could not be submitted. Try again.";
 }
 
 function formatBytes(value: number) {
@@ -53,8 +54,8 @@ export default function PublicClientPage() {
       await recordClientPageAction(token, action, { message });
       setMessage("");
       toast.success(action === "accept" ? "Accepted." : "Change request sent.");
-    } catch (error) {
-      toast.error(getError(error));
+    } catch {
+      toast.error(getError());
     } finally {
       setIsSubmitting(null);
     }
@@ -64,18 +65,18 @@ export default function PublicClientPage() {
     setOpeningDocumentId(document.id);
     try {
       await downloadPublicClientPageDocument(token, document);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to open document.");
+    } catch {
+      toast.error("Failed to open document.");
     } finally {
       setOpeningDocumentId(null);
     }
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
+    <main className="min-h-screen bg-app text-copy-primary">
       <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-6">
-        <header className="flex items-center justify-between border-b border-neutral-800 pb-4">
-          <Link href="/" className="flex items-center gap-3 text-white">
+        <header className="flex items-center justify-between border-b border-line-default pb-4">
+          <Link href="/" className="flex items-center gap-3 text-copy-primary">
             {logoUrl ? (
               <Image src={logoUrl} alt="" width={36} height={36} unoptimized className="h-9 w-9 rounded-md object-contain" />
             ) : (
@@ -99,68 +100,68 @@ export default function PublicClientPage() {
         </header>
 
         {pageQuery.isLoading ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-neutral-500">Loading client page...</div>
+          <div className="flex flex-1 items-center justify-center text-sm text-copy-muted">Loading client page...</div>
         ) : pageQuery.error ? (
-          <div className="my-8 rounded-md border border-red-900/60 bg-red-950/20 p-5 text-sm text-red-200">
+          <div className="my-8 rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {pageQuery.error instanceof Error ? pageQuery.error.message : "Client page unavailable."}
           </div>
         ) : page ? (
           <div className="grid flex-1 gap-6 py-8 lg:grid-cols-[minmax(0,1.4fr)_360px]">
             <section>
               <div className="mb-6 border-l-4 pl-4" style={{ borderColor: accentColor }}>
-                <h1 className="text-3xl font-semibold tracking-normal text-neutral-50">{page.title}</h1>
-                {page.summary ? <p className="mt-3 max-w-3xl text-sm leading-6 text-neutral-400">{page.summary}</p> : null}
+                <h1 className="text-3xl font-semibold tracking-normal text-copy-primary">{page.title}</h1>
+                {page.summary ? <p className="mt-3 max-w-3xl text-sm leading-6 text-copy-secondary">{page.summary}</p> : null}
               </div>
 
               {page.proposal_sections.length ? (
                 <div className="mb-4 grid gap-3">
                   {page.proposal_sections.map((section) => (
-                    <div key={`${section.sort_order}-${section.title}`} className="rounded-md border border-neutral-800 bg-neutral-900 p-4">
-                      <h2 className="text-sm font-semibold text-neutral-100">{section.title}</h2>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-400">{section.body}</p>
+                    <div key={`${section.sort_order}-${section.title}`} className="rounded-md border border-line-default bg-surface p-4">
+                      <h2 className="text-sm font-semibold text-copy-primary">{section.title}</h2>
+                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{section.body}</p>
                     </div>
                   ))}
                 </div>
               ) : null}
 
-              <div className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-900">
-                <table className="w-full text-left text-sm">
-                  <thead className="border-b border-neutral-800 text-xs uppercase text-neutral-500">
-                    <tr>
-                      <th className="px-4 py-3 font-medium">Item</th>
-                      <th className="px-4 py-3 text-right font-medium">Qty</th>
-                      <th className="px-4 py-3 text-right font-medium">Public</th>
-                      <th className="px-4 py-3 text-right font-medium">Your Price</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-neutral-800">
+              <div className="overflow-hidden rounded-md border border-line-default bg-surface">
+                <Table>
+                  <TableHeader>
+                    <TableHeaderRow>
+                      <TableHead>Item</TableHead>
+                      <TableHead className="text-right">Qty</TableHead>
+                      <TableHead className="text-right">Public</TableHead>
+                      <TableHead className="text-right">Your Price</TableHead>
+                    </TableHeaderRow>
+                  </TableHeader>
+                  <TableBody>
                     {page.pricing_items.map((item, index) => (
-                      <tr key={`${item.name}-${index}`}>
-                        <td className="px-4 py-4">
-                          <div className="font-medium text-neutral-100">{item.name}</div>
-                          {item.description ? <div className="mt-1 text-xs text-neutral-500">{item.description}</div> : null}
-                        </td>
-                        <td className="px-4 py-4 text-right text-neutral-300">{item.quantity}</td>
-                        <td className="px-4 py-4 text-right text-neutral-400">{money(item.public_unit_price, item.currency)}</td>
-                        <td className="px-4 py-4 text-right font-semibold text-neutral-50">{money(item.resolved_total, item.currency)}</td>
-                      </tr>
+                      <TableRow key={`${item.name}-${index}`}>
+                        <TableCell>
+                          <div className="font-medium text-copy-primary">{item.name}</div>
+                          {item.description ? <div className="mt-1 text-xs text-copy-muted">{item.description}</div> : null}
+                        </TableCell>
+                        <TableCell className="text-right text-copy-secondary">{item.quantity}</TableCell>
+                        <TableCell className="text-right text-copy-secondary">{money(item.public_unit_price, item.currency)}</TableCell>
+                        <TableCell className="text-right font-semibold text-copy-primary">{money(item.resolved_total, item.currency)}</TableCell>
+                      </TableRow>
                     ))}
-                  </tbody>
-                </table>
+                  </TableBody>
+                </Table>
               </div>
 
               {page.documents.length ? (
-                <div className="mt-4 rounded-md border border-neutral-800 bg-neutral-900 p-4">
-                  <h2 className="text-sm font-semibold text-neutral-100">Documents</h2>
+                <div className="mt-4 rounded-md border border-line-default bg-surface p-4">
+                  <h2 className="text-sm font-semibold text-copy-primary">Documents</h2>
                   <div className="mt-3 grid gap-2">
                     {page.documents.map((document) => (
-                      <div key={document.id} className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950 px-3 py-3">
+                      <div key={document.id} className="flex items-center justify-between gap-3 rounded-md border border-line-default bg-app px-3 py-3">
                         <div className="min-w-0">
-                          <div className="flex items-center gap-2 text-sm font-medium text-neutral-100">
-                            <FileText className="h-4 w-4 text-neutral-500" />
+                          <div className="flex items-center gap-2 text-sm font-medium text-copy-primary">
+                            <FileText className="h-4 w-4 text-copy-muted" />
                             <span className="truncate">{document.title || document.original_filename}</span>
                           </div>
-                          <div className="mt-1 text-xs text-neutral-500">
+                          <div className="mt-1 text-xs text-copy-muted">
                             {document.original_filename} · {document.extension.toUpperCase()} · {formatBytes(document.file_size_bytes)}
                           </div>
                         </div>
@@ -175,9 +176,9 @@ export default function PublicClientPage() {
               ) : null}
             </section>
 
-            <aside className="h-fit rounded-md border border-neutral-800 bg-neutral-900 p-5">
-              <h2 className="text-base font-semibold text-neutral-100">Response</h2>
-              <p className="mt-1 text-sm text-neutral-400">
+            <aside className="h-fit rounded-md border border-line-default bg-surface p-5">
+              <h2 className="text-base font-semibold text-copy-primary">Response</h2>
+              <p className="mt-1 text-sm text-copy-secondary">
                 {page.pricing_mode === "personalized"
                   ? `Pricing resolved for ${page.customer_group?.name ?? "your account"}.`
                   : "Sign in to view any personalized pricing available to your account."}

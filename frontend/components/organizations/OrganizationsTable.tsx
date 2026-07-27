@@ -46,21 +46,6 @@ type Props = {
   onClearFilters?: () => void;
 };
 
-const INDUSTRY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  SaaS: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40" },
-  Technology: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40" },
-  Finance: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" },
-  Healthcare: { bg: "bg-teal-900/30", text: "text-teal-300", border: "border-teal-700/40" },
-  Media: { bg: "bg-violet-900/30", text: "text-violet-300", border: "border-violet-700/40" },
-  Retail: { bg: "bg-orange-900/30", text: "text-orange-300", border: "border-orange-700/40" },
-};
-
-function getIndustryStyle(industry?: string | null) {
-  if (!industry) return { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default" };
-  const key = Object.keys(INDUSTRY_STYLES).find(k => industry.toLowerCase().includes(k.toLowerCase()));
-  return key ? INDUSTRY_STYLES[key] : { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default" };
-}
-
 function getOrgInitials(name: string): string {
   return name.split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() ?? "").join("");
 }
@@ -168,14 +153,9 @@ export default function OrganizationsTable({
       case "industry":
         return (
           <TableCell>
-            {org.industry ? (() => {
-              const style = getIndustryStyle(org.industry);
-              return (
-                <Pill bg={style.bg} text={style.text} border={style.border} className="w-28">
-                  {org.industry}
-                </Pill>
-              );
-            })() : <span className="text-sm text-copy-disabled">—</span>}
+            {org.industry
+              ? <Pill className="max-w-36">{org.industry}</Pill>
+              : <span className="text-sm text-copy-disabled">—</span>}
           </TableCell>
         );
       case "annual_revenue":

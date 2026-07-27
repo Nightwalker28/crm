@@ -13,9 +13,9 @@ export function CustomFieldCell({ column, values, className }: Props) {
   const value = values?.[fieldKey];
   return (
     <TableCell className={cn(className)}>
-      <span className="text-sm text-neutral-300">
+      <span className="text-sm text-copy-secondary">
         {value == null || value === "" ? (
-          <span className="text-neutral-600">—</span>
+          <span className="text-copy-disabled">—</span>
         ) : String(value)}
       </span>
     </TableCell>

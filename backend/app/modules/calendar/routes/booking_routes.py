@@ -13,6 +13,7 @@ from app.modules.calendar.schema import (
     MeetingBookingTypeListResponse,
     MeetingBookingTypeResponse,
     MeetingBookingTypeUpdateRequest,
+    PublicMeetingBookingConfirmationResponse,
     PublicMeetingBookingSubmitRequest,
     PublicMeetingBookingTypeResponse,
     PublicMeetingSlotListResponse,
@@ -114,17 +115,20 @@ def disable_booking_type(
 
 
 @public_router.get("/{slug}", response_model=PublicMeetingBookingTypeResponse)
-def get_public_booking_type(slug: str, db: Session = Depends(get_db)):
+def get_public_booking_type(slug: str, response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "private, no-store"
     return booking_services.get_public_booking_type(db, slug=slug)
 
 
 @public_router.get("/{slug}/slots", response_model=PublicMeetingSlotListResponse)
 def get_public_booking_slots(
     slug: str,
+    response: Response,
     start_date: str = Query(...),
     end_date: str = Query(...),
     db: Session = Depends(get_db),
 ):
+    response.headers["Cache-Control"] = "private, no-store"
     try:
         parsed_start = date.fromisoformat(start_date)
         parsed_end = date.fromisoformat(end_date)
@@ -133,13 +137,15 @@ def get_public_booking_slots(
     return {"results": booking_services.available_slots(db, slug=slug, start_date=parsed_start, end_date=parsed_end)}
 
 
-@public_router.post("/{slug}/book", response_model=MeetingBookingResponse, status_code=status.HTTP_201_CREATED)
+@public_router.post("/{slug}/book", response_model=PublicMeetingBookingConfirmationResponse, status_code=status.HTTP_201_CREATED)
 def submit_public_booking(
     slug: str,
     payload: PublicMeetingBookingSubmitRequest,
     request: Request,
+    response: Response,
     db: Session = Depends(get_db),
 ):
+    response.headers["Cache-Control"] = "private, no-store"
     client_host = request.client.host if request.client else None
     booking_services.check_public_booking_rate_limit(slug=slug, client_host=client_host)
     booking_services.record_public_booking_attempt(slug=slug, client_host=client_host)

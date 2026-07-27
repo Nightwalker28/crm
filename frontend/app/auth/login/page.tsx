@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { AnimatedShinyText } from "@/components/ui/AnimatedShinyText";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
@@ -21,8 +22,8 @@ const emptySignIn: SignInForm = {
   password: "",
 };
 
-function getErrorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
+function getErrorMessage(fallback: string) {
+  return fallback;
 }
 
 function GoogleMark() {
@@ -59,12 +60,12 @@ export default function LoginPage() {
       setGoogleLoading(true);
 
       const res = await apiFetch("/auth/google");
-      if (!res.ok) throw new Error(`Status ${res.status}`);
+      if (!res.ok) throw new Error("Google sign-in could not be started. Try again.");
 
       const data = await res.json();
       window.location.href = data.auth_url;
-    } catch (loginError) {
-      setError(getErrorMessage(loginError, "Failed to start Google sign-in"));
+    } catch {
+      setError(getErrorMessage("Failed to start Google sign-in"));
       setGoogleLoading(false);
     }
   }
@@ -74,11 +75,11 @@ export default function LoginPage() {
       setError(null);
       setMicrosoftLoading(true);
       const res = await apiFetch("/auth/microsoft");
-      if (!res.ok) throw new Error(`Status ${res.status}`);
+      if (!res.ok) throw new Error("Microsoft sign-in could not be started. Try again.");
       const data = await res.json();
       window.location.href = data.auth_url;
-    } catch (loginError) {
-      setError(getErrorMessage(loginError, "Failed to start Microsoft sign-in"));
+    } catch {
+      setError(getErrorMessage("Failed to start Microsoft sign-in"));
       setMicrosoftLoading(false);
     }
   }
@@ -95,11 +96,11 @@ export default function LoginPage() {
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(data?.detail ?? data?.message ?? `Status ${res.status}`);
+        throw new Error("SSO sign-in could not be started. Check your email or contact an administrator.");
       }
       window.location.href = data.auth_url;
-    } catch (loginError) {
-      setError(getErrorMessage(loginError, "Failed to start SSO sign-in"));
+    } catch {
+      setError(getErrorMessage("Failed to start SSO sign-in"));
       setSsoLoading(false);
     }
   }
@@ -124,16 +125,9 @@ export default function LoginPage() {
             window.location.href = detail.setup_link;
             return;
           }
-          throw new Error(detail.message ?? "This account still needs a password setup link.");
+          throw new Error("This account still needs a password setup link. Contact an administrator.");
         }
-
-        const detailMessage =
-          typeof detail === "string"
-            ? detail
-            : typeof detail?.message === "string"
-              ? detail.message
-              : data?.message;
-        throw new Error(detailMessage ?? `Status ${res.status}`);
+        throw new Error("Sign-in failed. Check your credentials and try again.");
       }
 
       if (data?.status === "mfa_required" && typeof data.mfa_token === "string") {
@@ -151,8 +145,8 @@ export default function LoginPage() {
 
       router.replace("/dashboard");
       router.refresh();
-    } catch (loginError) {
-      setError(getErrorMessage(loginError, "Failed to sign in"));
+    } catch {
+      setError(getErrorMessage("Failed to sign in"));
     } finally {
       setFormLoading(false);
     }
@@ -163,19 +157,19 @@ export default function LoginPage() {
     try {
       const res = await apiFetch("/auth/mfa/setup", { method: "POST" });
       const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.detail ?? data?.message ?? `Status ${res.status}`);
+      if (!res.ok) throw new Error("MFA setup could not be started. Try again.");
       setMfaSecret(data.secret ?? "");
       setMfaOtpAuthUri(data.otpauth_uri ?? "");
       setMfaCode("");
       setMfaRecoveryCodes([]);
       setLoginStep("mfa_setup");
-    } catch (setupError) {
+    } catch {
       setLoginStep("login");
       setMfaSecret("");
       setMfaOtpAuthUri("");
       setMfaCode("");
       setMfaRecoveryCodes([]);
-      setError(getErrorMessage(setupError, "Failed to start MFA setup"));
+      setError(getErrorMessage("Failed to start MFA setup"));
     } finally {
       setMfaLoading(false);
     }
@@ -195,12 +189,12 @@ export default function LoginPage() {
           backup_code: mfaBackupCode.trim() || null,
         }),
       });
-      const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.detail ?? data?.message ?? `Status ${res.status}`);
+      await res.json().catch(() => null);
+      if (!res.ok) throw new Error("The authenticator or recovery code was not accepted.");
       router.replace("/dashboard");
       router.refresh();
-    } catch (challengeError) {
-      setError(getErrorMessage(challengeError, "Failed to verify MFA"));
+    } catch {
+      setError(getErrorMessage("Failed to verify MFA"));
     } finally {
       setMfaLoading(false);
     }
@@ -217,10 +211,10 @@ export default function LoginPage() {
         body: JSON.stringify({ code: mfaCode.trim() }),
       });
       const data = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(data?.detail ?? data?.message ?? `Status ${res.status}`);
+      if (!res.ok) throw new Error("MFA could not be enabled. Check the code and try again.");
       setMfaRecoveryCodes(Array.isArray(data?.backup_codes) ? data.backup_codes : []);
-    } catch (enableError) {
-      setError(getErrorMessage(enableError, "Failed to enable MFA"));
+    } catch {
+      setError(getErrorMessage("Failed to enable MFA"));
     } finally {
       setMfaLoading(false);
     }
@@ -228,11 +222,11 @@ export default function LoginPage() {
 
   return (
     <>
-      <h1 className="mb-3 bg-linear-to-b from-gray-50 to-gray-300 bg-clip-text text-7xl font-lynk text-transparent">
+      <h1 className="mb-3 bg-linear-to-b from-copy-primary to-copy-secondary bg-clip-text text-7xl font-lynk text-transparent">
         Lynk
       </h1>
 
-      <p className="mb-6 text-sm text-slate-200/80">Sign in with your provisioned account.</p>
+      <p className="mb-6 text-sm text-copy-secondary">Sign in with your provisioned account.</p>
 
       {loginStep === "login" ? (
       <form className="space-y-4 text-left" onSubmit={handleManualSignIn}>
@@ -259,19 +253,19 @@ export default function LoginPage() {
           />
         </div>
 
-        <button
+        <Button
           type="submit"
           disabled={formLoading || googleLoading || microsoftLoading || ssoLoading}
-          className="w-full cursor-pointer rounded-md border border-white/20 bg-white px-4 py-3 text-sm font-medium text-black transition-all hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full"
         >
           {formLoading ? "Signing in..." : "Sign in with email"}
-        </button>
+        </Button>
       </form>
       ) : null}
 
       {loginStep === "mfa_challenge" ? (
         <form className="space-y-4 text-left" onSubmit={handleMfaChallenge}>
-          <div className="rounded-md border border-amber-800/50 bg-amber-950/30 px-3 py-3 text-sm text-amber-100">
+          <div className="rounded-md border border-state-warning/40 bg-state-warning-muted px-3 py-3 text-sm text-state-warning">
             Enter your authenticator code or one recovery code to finish signing in.
           </div>
           <div className="space-y-2">
@@ -292,13 +286,13 @@ export default function LoginPage() {
               onChange={(event) => setMfaBackupCode(event.target.value)}
             />
           </div>
-          <button
+          <Button
             type="submit"
             disabled={mfaLoading || (!mfaCode.trim() && !mfaBackupCode.trim())}
-            className="w-full cursor-pointer rounded-md border border-white/20 bg-white px-4 py-3 text-sm font-medium text-black transition-all hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="w-full"
           >
             {mfaLoading ? "Verifying..." : "Verify MFA"}
-          </button>
+          </Button>
         </form>
       ) : null}
 
@@ -306,34 +300,34 @@ export default function LoginPage() {
         <form className="space-y-4 text-left" onSubmit={handleEnableMfa}>
           {mfaRecoveryCodes.length ? (
             <>
-              <div className="rounded-md border border-emerald-800/50 bg-emerald-950/30 px-3 py-3 text-sm text-emerald-100">
+              <div className="rounded-md border border-state-success/40 bg-state-success-muted px-3 py-3 text-sm text-state-success">
                 MFA is enabled. Save these recovery codes before continuing.
               </div>
-              <div className="grid gap-2 rounded-md border border-neutral-800 bg-neutral-950/70 p-3 font-mono text-xs text-neutral-200">
+              <div className="grid gap-2 rounded-md border border-line-default bg-app/70 p-3 font-mono text-xs text-copy-secondary">
                 {mfaRecoveryCodes.map((code) => <div key={code}>{code}</div>)}
               </div>
-              <button
+              <Button
                 type="button"
                 onClick={() => {
                   router.replace("/dashboard");
                   router.refresh();
                 }}
-                className="w-full cursor-pointer rounded-md border border-white/20 bg-white px-4 py-3 text-sm font-medium text-black transition-all hover:bg-white/90"
+                className="w-full"
               >
                 Continue to dashboard
-              </button>
+              </Button>
             </>
           ) : (
             <>
-              <div className="rounded-md border border-amber-800/50 bg-amber-950/30 px-3 py-3 text-sm text-amber-100">
+              <div className="rounded-md border border-state-warning/40 bg-state-warning-muted px-3 py-3 text-sm text-state-warning">
                 Your tenant requires MFA. Add this secret to an authenticator app, then enter the 6-digit code.
               </div>
-              <div className="rounded-md border border-neutral-800 bg-neutral-950/70 p-3">
-                <div className="text-xs uppercase tracking-wide text-neutral-500">Secret</div>
-                <div className="mt-2 break-all font-mono text-sm text-neutral-100">{mfaSecret}</div>
+              <div className="rounded-md border border-line-default bg-app/70 p-3">
+                <div className="text-xs uppercase tracking-wide text-copy-muted">Secret</div>
+                <div className="mt-2 break-all font-mono text-sm text-copy-primary">{mfaSecret}</div>
               </div>
               {mfaOtpAuthUri ? (
-                <a className="block break-all text-xs text-neutral-400 underline-offset-4 hover:underline" href={mfaOtpAuthUri}>
+                <a className="block break-all text-xs text-copy-secondary underline-offset-4 hover:underline" href={mfaOtpAuthUri}>
                   Open authenticator setup link
                 </a>
               ) : null}
@@ -348,43 +342,46 @@ export default function LoginPage() {
                   required
                 />
               </div>
-              <button
+              <Button
                 type="submit"
                 disabled={mfaLoading || !mfaCode.trim()}
-                className="w-full cursor-pointer rounded-md border border-white/20 bg-white px-4 py-3 text-sm font-medium text-black transition-all hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+                className="w-full"
               >
                 {mfaLoading ? "Enabling..." : "Enable MFA"}
-              </button>
+              </Button>
             </>
           )}
         </form>
       ) : null}
 
-      {loginStep === "login" ? <div className="my-5 flex items-center gap-3 text-xs uppercase tracking-[0.25em] text-slate-400/70">
-        <div className="h-px flex-1 bg-white/10" />
+      {loginStep === "login" ? <div className="my-5 flex items-center gap-3 text-xs uppercase tracking-[0.25em] text-copy-muted">
+        <div className="h-px flex-1 bg-line-subtle" />
         <span>or</span>
-        <div className="h-px flex-1 bg-white/10" />
+        <div className="h-px flex-1 bg-line-subtle" />
       </div> : null}
 
       {loginStep === "login" ? (
       <>
-      <button
+      <Button
         type="button"
         onClick={handleSsoLogin}
         disabled={googleLoading || microsoftLoading || formLoading || ssoLoading}
-        className="group relative mt-2 w-full cursor-pointer overflow-hidden rounded-md border border-white/25 bg-neutral-950/90 px-4 py-3 text-sm font-medium text-neutral-50 shadow-[0_0_15px_rgba(0,0,0,0.45)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-white/60 hover:shadow-[0_12px_25px_rgba(0,0,0,0.65)] disabled:cursor-not-allowed disabled:opacity-60"
+        variant="outline"
+        className="group relative mt-2 w-full overflow-hidden"
       >
         <span className="relative z-10 flex items-center justify-center gap-3">
           <AnimatedShinyText shimmerWidth={40}>
             {ssoLoading ? "Redirecting..." : "Continue with SSO"}
           </AnimatedShinyText>
         </span>
-      </button>
+      </Button>
 
-      <button
+      <Button
+        type="button"
         onClick={handleGoogleLogin}
         disabled={googleLoading || microsoftLoading || formLoading || ssoLoading}
-        className="group relative mt-2 w-full cursor-pointer overflow-hidden rounded-md border border-white/25 bg-neutral-950/90 px-4 py-3 text-sm font-medium text-neutral-50 shadow-[0_0_15px_rgba(0,0,0,0.45)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-white/60 hover:shadow-[0_12px_25px_rgba(0,0,0,0.65)] disabled:cursor-not-allowed disabled:opacity-60"
+        variant="outline"
+        className="group relative mt-2 w-full overflow-hidden"
       >
         <span className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-500 bg-[radial-gradient(circle_at_15%_20%,rgba(255,255,255,0.10),transparent_65%),radial-gradient(circle_at_85%_80%,rgba(255,255,255,0.06),transparent_65%)] group-hover:opacity-100" />
 
@@ -394,12 +391,14 @@ export default function LoginPage() {
             {googleLoading ? "Redirecting..." : "Sign in with Google"}
           </AnimatedShinyText>
         </span>
-      </button>
+      </Button>
 
-      <button
+      <Button
+        type="button"
         onClick={handleMicrosoftLogin}
         disabled={googleLoading || microsoftLoading || formLoading || ssoLoading}
-        className="group relative mt-3 w-full cursor-pointer overflow-hidden rounded-md border border-white/25 bg-neutral-950/90 px-4 py-3 text-sm font-medium text-neutral-50 shadow-[0_0_15px_rgba(0,0,0,0.45)] backdrop-blur-sm transition-all duration-300 hover:-translate-y-0.5 hover:border-white/60 hover:shadow-[0_12px_25px_rgba(0,0,0,0.65)] disabled:cursor-not-allowed disabled:opacity-60"
+        variant="outline"
+        className="group relative mt-3 w-full overflow-hidden"
       >
         <span className="relative z-10 flex items-center justify-center gap-3">
           <span className="grid h-5 w-5 grid-cols-2 gap-0.5" aria-hidden="true">
@@ -412,11 +411,11 @@ export default function LoginPage() {
             {microsoftLoading ? "Redirecting..." : "Sign in with Microsoft"}
           </AnimatedShinyText>
         </span>
-      </button>
+      </Button>
       </>
       ) : null}
 
-      {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
+      {error && <p className="mt-3 text-xs text-state-danger">{error}</p>}
     </>
   );
 }

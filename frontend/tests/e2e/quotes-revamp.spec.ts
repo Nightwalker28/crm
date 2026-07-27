@@ -33,7 +33,42 @@ test("Quote creation uses an itemized full-page workflow", async ({ page }) => {
 });
 
 test("Quotes list routes creation to the dedicated page", async ({ page }) => {
+  await page.route("**/sales/quotes?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [{
+          quote_id: 987654341,
+          quote_number: "Q-BROWSER-1",
+          title: "Browser proposal",
+          customer_name: "Browser Customer",
+          contact_id: null,
+          organization_id: null,
+          opportunity_id: null,
+          assigned_to: null,
+          status: "sent",
+          issue_date: "2099-07-01",
+          expiry_date: "2099-07-31",
+          currency: "USD",
+          subtotal_amount: "200",
+          discount_amount: "10",
+          tax_amount: "19",
+          total_amount: "209",
+          created_time: "2099-07-01T10:00:00Z",
+          updated_at: "2099-07-10T10:00:00Z",
+          custom_fields: {},
+        }],
+        range_start: 1,
+        range_end: 1,
+        total_count: 1,
+        total_pages: 1,
+        page: 1,
+      }),
+    }),
+  );
   await page.goto("/dashboard/sales/quotes");
+  await expect(page.locator("span.bg-state-info-muted", { hasText: "Sent" })).toBeVisible();
   const createLink = page.getByRole("link", { name: "Create quote" });
   await expect(createLink).toBeVisible();
   await createLink.click();

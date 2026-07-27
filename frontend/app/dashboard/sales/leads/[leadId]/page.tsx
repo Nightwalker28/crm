@@ -32,6 +32,7 @@ import {
 } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { getLeadScoreStyle } from "@/lib/statusStyles";
 
 type LeadScoreFactor = {
   key: string;
@@ -68,12 +69,6 @@ type LeadSummary = {
     assigned_to?: number | null;
     assigned_to_name?: string | null;
   };
-};
-
-const SCORE_GRADE_STYLES: Record<string, string> = {
-  hot: "border-state-success/40 bg-state-success-muted text-state-success",
-  warm: "border-state-warning/40 bg-state-warning-muted text-state-warning",
-  cold: "border-line-default bg-surface-muted text-copy-muted",
 };
 
 async function fetchLeadSummary(leadId: string) {
@@ -436,11 +431,9 @@ function ScoreTile({
   factors: LeadScoreFactor[];
   calculatedAt?: string | null;
 }) {
-  const normalizedGrade = grade || "cold";
-  const gradeClassName =
-    SCORE_GRADE_STYLES[normalizedGrade] ?? SCORE_GRADE_STYLES.cold;
+  const gradeStyle = getLeadScoreStyle(grade || "cold");
   return (
-    <div className={`rounded-md border px-4 py-4 ${gradeClassName}`}>
+    <div className={`rounded-md border px-4 py-4 ${gradeStyle.border} ${gradeStyle.bg} ${gradeStyle.text}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="text-xs uppercase tracking-wide opacity-75">
@@ -450,9 +443,7 @@ function ScoreTile({
             <span className="text-3xl font-semibold leading-none">
               {score ?? 0}
             </span>
-            <span className="text-sm font-medium capitalize">
-              {normalizedGrade}
-            </span>
+            <span className="text-sm font-medium">{gradeStyle.label}</span>
           </div>
         </div>
         <div className="text-right text-[11px] opacity-70">
@@ -468,7 +459,7 @@ function ScoreTile({
             factors.map((factor) => (
               <div
                 key={factor.key}
-                className="rounded border border-current/15 bg-black/10 px-3 py-2"
+                className="rounded border border-current/15 bg-app/20 px-3 py-2"
               >
                 <div className="flex items-center justify-between gap-3 text-sm">
                   <span className="font-medium">{factor.label}</span>

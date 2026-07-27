@@ -7,12 +7,15 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/ui/PageHeader";
 import {
   RouteErrorState,
   RouteLoadingState,
 } from "@/components/ui/RouteStates";
 import { apiFetch } from "@/lib/api";
+import { formatDateOnly } from "@/lib/datetime";
 import { resolveMediaUrl } from "@/lib/media";
+import { getPosInvoiceStatusStyle, getPosPaymentStatusStyle } from "@/lib/statusStyles";
 import { fetchPosInvoice } from "@/hooks/finance/usePosInvoices";
 
 type CompanyProfile = {
@@ -42,9 +45,10 @@ function money(amount: number, currency: string) {
   }
 }
 
-function lines(value?: string | null) {
+function multiline(value?: string | null) {
   return (value || "")
     .split("\n")
+    .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => (
       <span key={line}>
@@ -52,6 +56,10 @@ function lines(value?: string | null) {
         <br />
       </span>
     ));
+}
+
+function safeAccentColor(value: string) {
+  return /^#[0-9a-f]{6}$/i.test(value) ? value : "#0f766e";
 }
 
 export default function PosInvoicePrintPage() {
@@ -88,37 +96,49 @@ export default function PosInvoicePrintPage() {
   }
 
   const isClassic = invoice.template_id === "classic";
+  const isCompact = invoice.template_id === "compact";
   const logoUrl = company.logo_url ? resolveMediaUrl(company.logo_url) : "";
+  const accentColor = safeAccentColor(invoice.accent_color);
+  const invoiceStatus = getPosInvoiceStatusStyle(invoice.status);
+  const paymentStatus = getPosPaymentStatusStyle(invoice.payment_status);
 
   // Printable customer documents use fixed colors so exports remain stable
   // regardless of the dashboard theme selected by the current CRM user.
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex items-center justify-between gap-3 print:hidden">
-        <Button asChild variant="outline">
-          <Link href="/dashboard/finance/pos">
-            <ArrowLeft /> Invoices
-          </Link>
-        </Button>
-        <Button onClick={() => window.print()}>
-          <Printer /> Print
-        </Button>
-      </div>
+      <PageHeader
+        className="print:hidden"
+        title="Print invoice"
+        description={`Review ${invoice.invoice_number} before opening the browser print dialog.`}
+        actions={
+          <>
+            <Button asChild variant="outline">
+              <Link href={`/dashboard/finance/pos/${invoice.id}`}>
+                <ArrowLeft /> Back to invoice
+              </Link>
+            </Button>
+            <Button type="button" onClick={() => window.print()} aria-label={`Print invoice ${invoice.invoice_number}`}>
+              <Printer /> Print invoice
+            </Button>
+          </>
+        }
+      />
 
       <section
-        className={`invoice-print-area overflow-hidden rounded-md border shadow-2xl ${isClassic ? "border-neutral-300 bg-neutral-100 text-neutral-950" : "border-neutral-800 bg-neutral-950 text-neutral-100"}`}
+        aria-labelledby="print-invoice-number"
+        className={`invoice-print-area overflow-hidden rounded-[var(--radius-card)] border shadow-xl ${isClassic ? "border-neutral-300 bg-neutral-100 text-neutral-950" : "border-neutral-800 bg-neutral-950 text-neutral-100"}`}
       >
         <div
-          className="p-8"
+          className={isCompact ? "p-5 sm:p-6" : "p-5 sm:p-8"}
           style={{
             borderTop:
               invoice.template_id === "modern"
-                ? `8px solid ${invoice.accent_color}`
+                ? `8px solid ${accentColor}`
                 : undefined,
           }}
         >
-          <header className="flex flex-col justify-between gap-6 sm:flex-row">
+          <header className={`flex flex-col justify-between sm:flex-row ${isCompact ? "gap-4" : "gap-6"}`}>
             <div className="flex gap-4">
               {logoUrl ? (
                 <Image
@@ -127,12 +147,13 @@ export default function PosInvoicePrintPage() {
                   width={56}
                   height={56}
                   unoptimized
-                  className="h-14 w-14 rounded-md object-cover"
+                  className="h-14 w-14 rounded-[var(--radius-control)] object-cover"
                 />
               ) : (
                 <div
-                  className="flex h-14 w-14 items-center justify-center rounded-md text-lg font-bold text-white"
-                  style={{ backgroundColor: invoice.accent_color }}
+                  className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-control)] text-lg font-bold text-white"
+                  style={{ backgroundColor: accentColor }}
+                  aria-hidden="true"
                 >
                   {(company.name || "P").slice(0, 1)}
                 </div>
@@ -144,40 +165,39 @@ export default function PosInvoicePrintPage() {
                 <div
                   className={`mt-2 text-sm leading-6 ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
                 >
-                  {lines(company.billing_address)}
-                  {company.primary_email}
-                  <br />
-                  {company.primary_phone}
-                  <br />
-                  {company.website}
+                  {multiline(company.billing_address)}
+                  {[company.primary_email, company.primary_phone, company.website].filter(Boolean).map((item) => (
+                    <span key={item}>
+                      {item}
+                      <br />
+                    </span>
+                  ))}
                 </div>
               </div>
             </div>
             <div
-              className={`min-w-[230px] rounded-md border p-4 ${isClassic ? "border-neutral-300 bg-white" : "border-neutral-800 bg-neutral-900/70"}`}
+              className={`min-w-[230px] rounded-[var(--radius-control)] border p-4 ${isClassic ? "border-neutral-300 bg-white" : "border-neutral-800 bg-neutral-900/70"}`}
             >
               <div
                 className="text-xs font-semibold uppercase tracking-[0.2em]"
-                style={{ color: invoice.accent_color }}
+                style={{ color: accentColor }}
               >
                 POS Invoice
               </div>
-              <div className="mt-2 text-2xl font-semibold">
+              <h1 id="print-invoice-number" className="mt-2 text-2xl font-semibold">
                 {invoice.invoice_number}
-              </div>
+              </h1>
               <dl
                 className={`mt-4 grid grid-cols-2 gap-2 text-sm ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
               >
                 <dt>Issued</dt>
-                <dd className="text-right">{invoice.issue_date || "—"}</dd>
+                <dd className="text-right">{invoice.issue_date ? <time dateTime={invoice.issue_date}>{formatDateOnly(invoice.issue_date)}</time> : "Not recorded"}</dd>
                 <dt>Due</dt>
-                <dd className="text-right">{invoice.due_date || "—"}</dd>
+                <dd className="text-right">{invoice.due_date ? <time dateTime={invoice.due_date}>{formatDateOnly(invoice.due_date)}</time> : "Not set"}</dd>
                 <dt>Status</dt>
-                <dd className="text-right capitalize">{invoice.status}</dd>
+                <dd className="text-right">{invoiceStatus.label}</dd>
                 <dt>Payment</dt>
-                <dd className="text-right capitalize">
-                  {invoice.payment_status}
-                </dd>
+                <dd className="text-right">{paymentStatus.label}</dd>
               </dl>
             </div>
           </header>
@@ -186,7 +206,7 @@ export default function PosInvoicePrintPage() {
             <div>
               <div
                 className="text-xs font-semibold uppercase tracking-[0.18em]"
-                style={{ color: invoice.accent_color }}
+                style={{ color: accentColor }}
               >
                 Bill To
               </div>
@@ -196,12 +216,12 @@ export default function PosInvoicePrintPage() {
               <div
                 className={`mt-2 text-sm leading-6 ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
               >
-                {lines(invoice.customer_address)}
-                {invoice.customer_email}
+                {multiline(invoice.customer_address)}
+                {invoice.customer_email || "Email not provided"}
               </div>
             </div>
             <div
-              className={`rounded-md border p-4 ${isClassic ? "border-neutral-300 bg-white text-neutral-700" : "border-neutral-800 bg-neutral-900/50 text-neutral-400"}`}
+              className={`rounded-[var(--radius-control)] border p-4 ${isClassic ? "border-neutral-300 bg-white text-neutral-700" : "border-neutral-800 bg-neutral-900/50 text-neutral-400"}`}
             >
               <div>
                 <span
@@ -245,10 +265,11 @@ export default function PosInvoicePrintPage() {
           </div>
 
           <div
-            className={`mt-8 overflow-hidden rounded-md border ${isClassic ? "border-neutral-300" : "border-neutral-800"}`}
+            className={`overflow-x-auto rounded-[var(--radius-control)] border ${isCompact ? "mt-5" : "mt-8"} ${isClassic ? "border-neutral-300" : "border-neutral-800"}`}
           >
-            <table className="w-full border-collapse text-sm">
-              <thead style={{ backgroundColor: invoice.accent_color }}>
+            <table className="w-full min-w-[560px] border-collapse text-sm">
+              <caption className="sr-only">Line items for invoice {invoice.invoice_number}</caption>
+              <thead style={{ backgroundColor: accentColor }}>
                 <tr className="text-left text-white">
                   <th className="px-4 py-3">Description</th>
                   <th className="px-4 py-3 text-right">Qty</th>
@@ -282,38 +303,43 @@ export default function PosInvoicePrintPage() {
                     </td>
                   </tr>
                 ))}
+                {!invoice.lines?.length ? (
+                  <tr>
+                    <td className="px-4 py-6 text-center" colSpan={4}>No line items recorded.</td>
+                  </tr>
+                ) : null}
               </tbody>
             </table>
           </div>
 
           <div className="mt-6 flex justify-end">
-            <div
-              className={`w-full max-w-sm rounded-md border p-4 ${isClassic ? "border-neutral-300 bg-white text-neutral-800" : "border-neutral-800 bg-neutral-900/60 text-neutral-300"}`}
+            <dl
+              className={`w-full max-w-sm rounded-[var(--radius-control)] border p-4 ${isClassic ? "border-neutral-300 bg-white text-neutral-800" : "border-neutral-800 bg-neutral-900/60 text-neutral-300"}`}
             >
               <div className="flex justify-between py-1 text-sm">
-                <span>Subtotal</span>
-                <span>{money(invoice.subtotal_amount, invoice.currency)}</span>
+                <dt>Subtotal</dt>
+                <dd>{money(invoice.subtotal_amount, invoice.currency)}</dd>
               </div>
               <div className="flex justify-between py-1 text-sm">
-                <span>Discount</span>
-                <span>-{money(invoice.discount_amount, invoice.currency)}</span>
+                <dt>Discount</dt>
+                <dd>− {money(invoice.discount_amount, invoice.currency)}</dd>
               </div>
               <div className="flex justify-between py-1 text-sm">
-                <span>Tax</span>
-                <span>{money(invoice.tax_amount, invoice.currency)}</span>
+                <dt>Tax</dt>
+                <dd>{money(invoice.tax_amount, invoice.currency)}</dd>
               </div>
               <div className="flex justify-between py-1 text-sm">
-                <span>Paid</span>
-                <span>{money(invoice.amount_paid, invoice.currency)}</span>
+                <dt>Paid</dt>
+                <dd>− {money(invoice.amount_paid, invoice.currency)}</dd>
               </div>
               <div
                 className="mt-3 flex justify-between border-t pt-3 text-lg font-semibold"
-                style={{ borderColor: invoice.accent_color }}
+                style={{ borderColor: accentColor }}
               >
-                <span>Balance</span>
-                <span>{money(invoice.balance_due, invoice.currency)}</span>
+                <dt>Balance due</dt>
+                <dd>{money(invoice.balance_due, invoice.currency)}</dd>
               </div>
-            </div>
+            </dl>
           </div>
         </div>
       </section>

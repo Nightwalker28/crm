@@ -1,12 +1,14 @@
 "use client";
 
-import { Download, FileText, RefreshCw } from "lucide-react";
+import { Download, FileText, Link2Off, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/Card";
 import { downloadBlob } from "@/lib/browser";
+import { formatDateOnly } from "@/lib/datetime";
 import { apiUrl } from "@/lib/runtime-config";
 
 type PublicQuoteProposal = {
@@ -19,7 +21,9 @@ type PublicQuoteProposal = {
   expiry_date?: string | null;
 };
 
-async function readJsonSafely(res: Response) {
+type ProposalLoadError = "unavailable" | "temporary";
+
+async function readJsonSafely(res: Response): Promise<unknown> {
   try {
     return await res.json();
   } catch {
@@ -27,17 +31,35 @@ async function readJsonSafely(res: Response) {
   }
 }
 
-function detailMessage(body: unknown, fallback: string) {
-  if (body && typeof body === "object" && "detail" in body) {
-    const detail = (body as { detail?: unknown }).detail;
-    if (typeof detail === "string") return detail;
-  }
-  return fallback;
-}
-
 function money(value: string | number | null | undefined, currency: string | null | undefined) {
   const amount = Number(value);
-  return `${currency || "USD"} ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
+  const currencyCode = currency || "USD";
+  if (!Number.isFinite(amount)) return `${currencyCode} 0.00`;
+  try {
+    return new Intl.NumberFormat(undefined, { style: "currency", currency: currencyCode }).format(amount);
+  } catch {
+    return `${currencyCode} ${amount.toFixed(2)}`;
+  }
+}
+
+function isPublicQuoteProposal(value: unknown): value is PublicQuoteProposal {
+  if (!value || typeof value !== "object") return false;
+  const proposal = value as Partial<PublicQuoteProposal>;
+  return (
+    typeof proposal.quote_number === "string"
+    && typeof proposal.customer_name === "string"
+    && typeof proposal.title === "string"
+    && typeof proposal.content_text === "string"
+  );
+}
+
+function proposalFilename(quoteNumber: string) {
+  const safeQuoteNumber = quoteNumber
+    .trim()
+    .replace(/[^a-z0-9._-]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+  return `${safeQuoteNumber || "quote"}-proposal.txt`;
 }
 
 function downloadText(filename: string, text: string) {
@@ -49,104 +71,162 @@ export default function PublicQuoteProposalPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
   const [proposal, setProposal] = useState<PublicQuoteProposal | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<ProposalLoadError | null>(null);
   const [loading, setLoading] = useState(true);
   const [downloading, setDownloading] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
 
   const apiPath = useMemo(() => `/sales/quotes/proposal/public/${encodeURIComponent(token)}`, [token]);
 
   useEffect(() => {
-    let active = true;
+    const controller = new AbortController();
     async function loadProposal() {
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch(apiUrl(apiPath), { headers: { Accept: "application/json" } });
+        const res = await fetch(apiUrl(apiPath), {
+          cache: "no-store",
+          credentials: "omit",
+          headers: { Accept: "application/json" },
+          signal: controller.signal,
+        });
         const body = await readJsonSafely(res);
-        if (!res.ok) throw new Error(detailMessage(body, "Proposal link not found."));
-        if (active) setProposal(body as PublicQuoteProposal);
+        if (res.status === 404) {
+          setProposal(null);
+          setError("unavailable");
+          return;
+        }
+        if (!res.ok || !isPublicQuoteProposal(body)) {
+          setProposal(null);
+          setError("temporary");
+          return;
+        }
+        setProposal(body);
       } catch (loadError) {
-        if (active) setError(loadError instanceof Error ? loadError.message : "Proposal link not found.");
+        if (loadError instanceof DOMException && loadError.name === "AbortError") return;
+        setProposal(null);
+        setError("temporary");
       } finally {
-        if (active) setLoading(false);
+        if (!controller.signal.aborted) setLoading(false);
       }
     }
     void loadProposal();
-    return () => {
-      active = false;
-    };
-  }, [apiPath]);
+    return () => controller.abort();
+  }, [apiPath, reloadKey]);
 
-  async function handleDownload() {
-    if (!proposal) return;
-    setDownloading(true);
+  async function recordDownloadEvent() {
     try {
-      const res = await fetch(apiUrl(`${apiPath}/events`), {
+      await fetch(apiUrl(`${apiPath}/events`), {
         method: "POST",
+        cache: "no-store",
+        credentials: "omit",
         headers: { Accept: "application/json", "Content-Type": "application/json" },
         body: JSON.stringify({ event_type: "downloaded" }),
       });
-      if (!res.ok) {
-        const body = await readJsonSafely(res);
-        throw new Error(detailMessage(body, "Could not record proposal download."));
-      }
-      downloadText(`${proposal.quote_number}-proposal.txt`, proposal.content_text);
-    } catch (downloadError) {
-      toast.error(downloadError instanceof Error ? downloadError.message : "Failed to download proposal.");
+    } catch {
+      // Analytics must never block access to the customer document.
+    }
+  }
+
+  function handleDownload() {
+    if (!proposal) return;
+    setDownloading(true);
+    try {
+      downloadText(proposalFilename(proposal.quote_number), proposal.content_text);
+      void recordDownloadEvent();
+    } catch {
+      toast.error("The proposal could not be downloaded. Please try again.");
     } finally {
       setDownloading(false);
     }
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
-      <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-4 py-6">
-        <header className="border-b border-neutral-800 pb-4">
-          <div className="font-lynk text-3xl text-white">Lynk</div>
+    <main className="min-h-screen bg-app text-copy-primary">
+      <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-4 py-6 sm:px-6 sm:py-8">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line-subtle pb-4">
+          <div className="font-lynk text-3xl text-copy-primary">Lynk</div>
+          <div className="flex items-center gap-2 text-xs text-copy-muted">
+            <ShieldCheck className="h-4 w-4 text-state-success" aria-hidden="true" />
+            Time-limited proposal link
+          </div>
         </header>
 
-        <section className="flex flex-1 flex-col py-6">
+        <section className="flex flex-1 flex-col py-6 sm:py-8" aria-live="polite">
           {loading ? (
-            <div className="flex flex-1 items-center justify-center rounded-md border border-neutral-800 bg-neutral-900 text-sm text-neutral-400">
-              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-              Loading proposal...
-            </div>
+            <Card className="flex min-h-64 flex-1 items-center justify-center p-6" role="status" aria-busy="true">
+              <Loader2 className="mr-2 h-4 w-4 animate-spin text-copy-muted" aria-hidden="true" />
+              <span className="text-sm text-copy-secondary">Loading proposal…</span>
+            </Card>
           ) : error || !proposal ? (
-            <div className="rounded-md border border-red-900/60 bg-red-950/20 p-5 text-sm text-red-200">
-              {error || "Proposal link not found."}
-            </div>
+            <Card className="flex min-h-64 flex-col items-center justify-center border-state-danger/40 bg-state-danger-muted p-6 text-center" role="alert">
+              <Link2Off className="h-9 w-9 text-state-danger" aria-hidden="true" />
+              <h1 className="mt-4 text-xl font-semibold text-copy-primary">
+                {error === "unavailable" ? "This proposal link is unavailable" : "The proposal could not be loaded"}
+              </h1>
+              <p className="mt-2 max-w-md text-sm leading-6 text-copy-secondary">
+                {error === "unavailable"
+                  ? "The link may have expired or been replaced. Ask the sender for a new proposal link."
+                  : "Check your connection and try again. If the problem continues, contact the sender."}
+              </p>
+              {error === "temporary" ? (
+                <Button type="button" variant="outline" className="mt-5" onClick={() => setReloadKey((current) => current + 1)}>
+                  <RefreshCw />
+                  Try again
+                </Button>
+              ) : null}
+            </Card>
           ) : (
             <div className="grid gap-5">
-              <div className="rounded-md border border-neutral-800 bg-neutral-900 p-5">
+              <Card className="p-5 sm:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-sm text-neutral-400">
-                      <FileText className="h-4 w-4" />
+                    <div className="flex items-center gap-2 text-sm text-copy-muted">
+                      <FileText className="h-4 w-4" aria-hidden="true" />
                       {proposal.quote_number}
                     </div>
-                    <h1 className="mt-2 text-2xl font-semibold tracking-normal text-neutral-50">{proposal.title}</h1>
-                    <p className="mt-1 text-sm text-neutral-400">{proposal.customer_name}</p>
+                    <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">{proposal.title}</h1>
+                    <p className="mt-1 text-sm text-copy-secondary">Prepared for {proposal.customer_name}</p>
                   </div>
                   <div className="text-left sm:text-right">
-                    <div className="text-xl font-semibold text-neutral-50">{money(proposal.total_amount, proposal.currency)}</div>
-                    {proposal.expiry_date ? <div className="mt-1 text-sm text-neutral-500">Expires {proposal.expiry_date}</div> : null}
+                    <div className="text-xl font-semibold tabular-nums text-copy-primary">{money(proposal.total_amount, proposal.currency)}</div>
+                    {proposal.expiry_date ? (
+                      <div className="mt-1 text-sm text-copy-muted">
+                        Quote valid until <time dateTime={proposal.expiry_date}>{formatDateOnly(proposal.expiry_date)}</time>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
-              </div>
+              </Card>
 
-              <div className="rounded-md border border-neutral-800 bg-neutral-900 p-5">
+              <Card className="p-5 sm:p-6">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                  <h2 className="font-semibold text-neutral-100">Proposal</h2>
-                  <Button type="button" variant="outline" onClick={() => void handleDownload()} disabled={downloading}>
-                    {downloading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                    Download
+                  <div>
+                    <h2 className="font-semibold text-copy-primary">Proposal</h2>
+                    <p className="mt-1 text-sm text-copy-muted">Review the scope, pricing, and terms supplied by the sender.</p>
+                  </div>
+                  <Button type="button" variant="outline" onClick={handleDownload} disabled={downloading} aria-label={`Download proposal ${proposal.quote_number}`}>
+                    {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                    {downloading ? "Preparing…" : "Download proposal"}
                   </Button>
                 </div>
-                <pre className="max-h-[42rem] overflow-auto whitespace-pre-wrap rounded-md border border-neutral-800 bg-neutral-950 p-4 text-sm leading-6 text-neutral-300">{proposal.content_text}</pre>
-              </div>
+                {proposal.content_text.trim() ? (
+                  <article className="whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted p-4 text-sm leading-7 text-copy-secondary sm:p-5">
+                    {proposal.content_text}
+                  </article>
+                ) : (
+                  <div className="rounded-[var(--radius-control)] border border-dashed border-line-default bg-surface-muted p-6 text-center text-sm text-copy-muted">
+                    No proposal content was provided.
+                  </div>
+                )}
+              </Card>
             </div>
           )}
         </section>
+
+        <footer className="border-t border-line-subtle pt-4 text-center text-xs leading-5 text-copy-muted">
+          This link provides access only to the proposal shared by its sender.
+        </footer>
       </div>
     </main>
   );

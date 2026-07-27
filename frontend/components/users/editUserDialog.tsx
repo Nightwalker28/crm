@@ -8,6 +8,7 @@ import {
   DialogPanel,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogFooter,
   DialogBackdrop,
 } from "@/components/ui/dialog";
@@ -26,6 +27,7 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
+import { Pill } from "@/components/ui/Pill";
 import { resolveMediaUrl } from "@/lib/media";
 import { useConfirm } from "@/hooks/useConfirm";
 
@@ -75,75 +77,112 @@ export default function EditUserDialog({
   const [team, setTeam] = useState<number>(user.team_id);
   const [authMode, setAuthMode] = useState<"manual_only" | "manual_or_google">(user.auth_mode ?? "manual_or_google");
   const [status, setStatus] = useState<"active" | "inactive">(user.is_active);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState(false);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     setRole(user.role_id);
     setTeam(user.team_id);
     setAuthMode(user.auth_mode ?? "manual_or_google");
     setStatus(user.is_active);
+    setIsSaving(false);
+    setSaveError(false);
   }, [user]);
 
   const isSelf = currentUserId != null && user.id === currentUserId;
+  const isDirty =
+    role !== user.role_id ||
+    team !== user.team_id ||
+    authMode !== (user.auth_mode ?? "manual_or_google") ||
+    status !== user.is_active;
+  const mfaStyle = user.mfa_enabled
+    ? { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Enabled" }
+    : user.mfa_required
+      ? { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40", label: "Required" }
+      : { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default", label: "Off" };
+
+  async function handleClose() {
+    if (isSaving || isResettingMfa) return;
+    if (isDirty) {
+      const confirmed = await confirm({
+        title: "Discard user changes?",
+        description: "The role, team, sign-in, or status changes in this dialog will be lost.",
+        confirmLabel: "Discard changes",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
+    onClose();
+  }
+
+  async function handleSave() {
+    if (!isDirty || isSaving) return;
+    try {
+      setIsSaving(true);
+      setSaveError(false);
+      await onSave(user.id, { role_id: role, team_id: team, auth_mode: authMode, is_active: status });
+    } catch {
+      setSaveError(true);
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
-    <Dialog open={open} onClose={onClose}>
+    <Dialog open={open} onClose={() => void handleClose()}>
       <DialogBackdrop />
 
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
         <DialogPanel size="md">
           <DialogHeader>
-            <DialogTitle>Editing User</DialogTitle>
+            <div>
+              <DialogTitle>Edit user</DialogTitle>
+              <DialogDescription className="mt-1 text-copy-muted">
+                Manage this user&apos;s tenant role, team, sign-in mode, and account access.
+              </DialogDescription>
+            </div>
             <DialogIconClose />
           </DialogHeader>
 
-          <div className="flex flex-col gap-4 mt-2">
-            <div className="relative rounded-md">
-              <div
-                className="noise-overlay absolute inset-0 pointer-events-none rounded-md opacity-25"
-              />
-
-              <div
-                className="relative z-10 flex items-center gap-2 px-3 py-2 rounded-md
-                border border-white/10 bg-white/6 backdrop-blur-md
-                text-neutral-100 transition-colors duration-150"
-              >
-                {user.photo_url ? (
-                  <Image
-                    src={resolveMediaUrl(user.photo_url)}
-                    alt=""
-                    width={34}
-                    height={34}
-                    unoptimized
-                    className="h-8.5 w-8.5 rounded-md object-cover shadow-sm"
-                  />
-                ) : (
-                  <div className="h-8 w-8 rounded-md bg-neutral-100 text-black flex items-center justify-center text-xs font-bold shadow-sm">
-                    {user.first_name[0]}
-                  </div>
-                )}
-
-                <div className="flex flex-col text-[13px]">
-                  <span className="font-semibold text-neutral-100 whitespace-nowrap overflow-hidden">
-                    {user.first_name} {user.last_name}
-                  </span>
-
-                  <span className="text-neutral-300 whitespace-nowrap overflow-hidden">
-                    {user.email}
-                  </span>
+          <div className="mt-4 flex flex-col gap-4">
+            <div className="flex items-center gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3">
+              {user.photo_url ? (
+                <Image
+                  src={resolveMediaUrl(user.photo_url)}
+                  alt=""
+                  width={36}
+                  height={36}
+                  unoptimized
+                  className="h-9 w-9 rounded-[var(--radius-control-sm)] object-cover"
+                />
+              ) : (
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-raised text-xs font-semibold text-copy-secondary">
+                  {(user.first_name[0] || user.email[0] || "?").toUpperCase()}
                 </div>
+              )}
+              <div className="min-w-0 text-sm">
+                <div className="truncate font-medium text-copy-primary">
+                  {[user.first_name, user.last_name].filter(Boolean).join(" ") || "Unnamed user"}
+                </div>
+                <div className="truncate text-xs text-copy-muted">{user.email}</div>
               </div>
             </div>
 
+            {saveError ? (
+              <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+                The user could not be updated. Review the selections and try again.
+              </div>
+            ) : null}
+
             <FieldGroup>
               <Field>
-                <FieldLabel>Team</FieldLabel>
+                <FieldLabel htmlFor="edit-user-team">Team</FieldLabel>
 
                 <Select
                   value={String(team)}
                   onValueChange={(v) => setTeam(Number(v))}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="edit-user-team" aria-label="Team">
                     <SelectValue placeholder="Select team" />
                   </SelectTrigger>
 
@@ -162,14 +201,14 @@ export default function EditUserDialog({
               </Field>
 
               <Field>
-                <FieldLabel>Role</FieldLabel>
+                <FieldLabel htmlFor="edit-user-role">Role</FieldLabel>
 
                 <Select
                   value={String(role)}
                   onValueChange={(v) => setRole(Number(v))}
                   disabled={isSelf}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="edit-user-role" aria-label="Role">
                     <SelectValue placeholder="Select role" />
                   </SelectTrigger>
 
@@ -192,12 +231,12 @@ export default function EditUserDialog({
               </Field>
 
               <Field>
-                <FieldLabel>Sign-In Mode</FieldLabel>
+                <FieldLabel htmlFor="edit-user-auth-mode">Sign-in mode</FieldLabel>
                 <Select
                   value={authMode}
                   onValueChange={(value: "manual_only" | "manual_or_google") => setAuthMode(value)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="edit-user-auth-mode" aria-label="Sign-in mode">
                     <SelectValue placeholder="Select sign-in mode" />
                   </SelectTrigger>
                   <SelectContent>
@@ -212,12 +251,13 @@ export default function EditUserDialog({
               </Field>
 
               <Field>
-                <FieldLabel>Status</FieldLabel>
+                <FieldLabel htmlFor="edit-user-status">Status</FieldLabel>
                 <Select
                   value={status}
                   onValueChange={(value: "active" | "inactive") => setStatus(value)}
+                  disabled={isSelf}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="edit-user-status" aria-label="Status">
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -227,18 +267,20 @@ export default function EditUserDialog({
                 </Select>
 
                 <FieldDescription>
-                  Inactive users cannot sign in until they are reactivated.
+                  {isSelf
+                    ? "You cannot deactivate your own account."
+                    : "Inactive users cannot sign in until they are reactivated."}
                 </FieldDescription>
               </Field>
 
               <Field>
                 <FieldLabel>MFA</FieldLabel>
-                <div className="flex items-center justify-between gap-3 rounded-md border border-neutral-800 bg-neutral-950/50 px-3 py-2">
+                <div className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3">
                   <div className="min-w-0 text-sm">
-                    <div className="font-medium text-neutral-200">
-                      {user.mfa_enabled ? "Enabled" : user.mfa_required ? "Required" : "Off"}
-                    </div>
-                    <div className="text-xs text-neutral-500">
+                    <Pill bg={mfaStyle.bg} text={mfaStyle.text} border={mfaStyle.border}>
+                      {mfaStyle.label}
+                    </Pill>
+                    <div className="mt-2 text-xs text-copy-muted">
                       {user.mfa_enabled ? "Reset removes the user MFA secret and recovery codes." : "No local MFA secret is active for this user."}
                     </div>
                   </div>
@@ -246,7 +288,7 @@ export default function EditUserDialog({
                     type="button"
                     size="sm"
                     variant="outline"
-                    disabled={!user.mfa_enabled || isResettingMfa}
+                    disabled={!user.mfa_enabled || isResettingMfa || isSaving}
                     onClick={async () => {
                       if (!onResetMfa) return;
                       const confirmed = await confirm({
@@ -256,7 +298,11 @@ export default function EditUserDialog({
                         variant: "destructive",
                       });
                       if (!confirmed) return;
-                      await onResetMfa(user.id);
+                      try {
+                        await onResetMfa(user.id);
+                      } catch {
+                        // The mutation owns fixed user-facing failure guidance.
+                      }
                     }}
                   >
                     Reset
@@ -267,16 +313,15 @@ export default function EditUserDialog({
           </div>
 
           <DialogFooter className="mt-4">
-            <Button size="sm" variant="outline" onClick={onClose}>
+            <Button size="sm" variant="outline" onClick={() => void handleClose()} disabled={isSaving || isResettingMfa}>
               Cancel
             </Button>
             <Button
               size="sm"
-              onClick={async () => {
-                await onSave(user.id, { role_id: role, team_id: team, auth_mode: authMode, is_active: status });
-              }}
+              disabled={!isDirty || isSaving || isResettingMfa}
+              onClick={() => void handleSave()}
             >
-              Save
+              {isSaving ? "Saving…" : "Save changes"}
             </Button>
           </DialogFooter>
         </DialogPanel>

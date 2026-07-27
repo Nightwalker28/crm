@@ -82,7 +82,7 @@ async function fetchContracts(page: number, pageSize: number, _visibleColumns: s
   const searchTerm = typeof filters.search === "string" ? filters.search.trim() : "";
   const path = searchTerm ? `/contracts/search?query=${encodeURIComponent(searchTerm)}&${params.toString()}` : `/contracts?${params.toString()}`;
   const res = await apiFetch(path);
-  if (!res.ok) throw new Error(`Failed with ${res.status}`);
+  if (!res.ok) throw new Error("request-failed");
   return res.json();
 }
 
@@ -95,7 +95,7 @@ export function useContracts(visibleColumns: string[], viewFilters: SavedViewFil
     sort,
     initialPage,
     initialPageSize,
-    errorMessage: () => "Failed to load contracts",
+    errorMessage: () => "Contracts could not be loaded.",
   });
 
   return {

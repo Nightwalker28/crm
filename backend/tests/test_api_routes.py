@@ -1503,7 +1503,70 @@ class APIRouteTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(len(response.json()["results"]), 1)
+        self.assertEqual(response.headers["cache-control"], "private, no-store")
         slots_mock.assert_called_once()
+
+    def test_public_booking_routes_disable_caching_and_limit_confirmation_fields(self):
+        app.dependency_overrides[get_db] = self._override_db
+        booking_type = {
+            "name": "Discovery",
+            "slug": "discovery",
+            "duration_minutes": 30,
+            "timezone": "UTC",
+            "owner_name": "Owner User",
+            "questions": [],
+        }
+        booking = SimpleNamespace(
+            id=91,
+            booking_type_id=7,
+            calendar_event_id=88,
+            crm_source_module_key="sales_leads",
+            crm_source_entity_id="55",
+            guest_name="Grace Hopper",
+            guest_email="grace@example.com",
+            start_at=datetime(2099, 6, 1, 9, 0),
+            end_at=datetime(2099, 6, 1, 9, 30),
+            timezone="UTC",
+            status="confirmed",
+        )
+
+        with patch(
+            "app.modules.calendar.routes.booking_routes.booking_services.get_public_booking_type",
+            return_value=booking_type,
+        ):
+            type_response = self.client.get("/api/v1/booking-links/discovery")
+
+        self.assertEqual(type_response.status_code, 200)
+        self.assertEqual(type_response.headers["cache-control"], "private, no-store")
+
+        with patch(
+            "app.modules.calendar.routes.booking_routes.booking_services.check_public_booking_rate_limit",
+        ) as check_mock, patch(
+            "app.modules.calendar.routes.booking_routes.booking_services.record_public_booking_attempt",
+        ) as record_mock, patch(
+            "app.modules.calendar.routes.booking_routes.booking_services.submit_public_booking",
+            return_value=booking,
+        ) as submit_mock:
+            submit_response = self.client.post(
+                "/api/v1/booking-links/discovery/book",
+                json={
+                    "start_at": "2099-06-01T09:00:00Z",
+                    "guest_name": "Grace Hopper",
+                    "guest_email": "grace@example.com",
+                    "guest_note": "Discovery",
+                    "answers": {},
+                },
+            )
+
+        self.assertEqual(submit_response.status_code, 201)
+        self.assertEqual(submit_response.headers["cache-control"], "private, no-store")
+        self.assertEqual(
+            set(submit_response.json()),
+            {"start_at", "end_at", "timezone", "status"},
+        )
+        check_mock.assert_called_once()
+        record_mock.assert_called_once()
+        submit_mock.assert_called_once()
 
     def test_document_templates_route_calls_service_before_dynamic_document_route(self):
         app.dependency_overrides[require_user] = self._active_user

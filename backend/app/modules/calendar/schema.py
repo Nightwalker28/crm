@@ -309,6 +309,15 @@ class PublicMeetingBookingSubmitRequest(BaseModel):
     answers: dict[str, str] = Field(default_factory=dict)
 
 
+class PublicMeetingBookingConfirmationResponse(BaseModel):
+    start_at: datetime
+    end_at: datetime
+    timezone: str
+    status: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class MeetingBookingResponse(BaseModel):
     id: int
     booking_type_id: int

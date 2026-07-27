@@ -4,12 +4,13 @@ import type { FormEvent } from "react";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
 
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Failed to set password";
+function getErrorMessage() {
+  return "The password could not be set. Check the requirements or request a new setup link.";
 }
 
 type PasswordPolicy = {
@@ -77,15 +78,15 @@ function SetupPasswordPageContent() {
         body: JSON.stringify({ token, password }),
       });
 
-      const data = await res.json().catch(() => null);
+      await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error(data?.detail ?? data?.message ?? `Status ${res.status}`);
+        throw new Error("The password could not be set. Check the requirements or request a new setup link.");
       }
 
       setSuccess("Password set successfully. Redirecting to login...");
       window.setTimeout(() => router.replace("/auth/login"), 1000);
-    } catch (submitError) {
-      setError(getErrorMessage(submitError));
+    } catch {
+      setError(getErrorMessage());
     } finally {
       setIsSubmitting(false);
     }
@@ -93,11 +94,11 @@ function SetupPasswordPageContent() {
 
   return (
     <>
-      <h1 className="mb-3 bg-linear-to-b from-gray-50 to-gray-300 bg-clip-text text-5xl font-lynk text-transparent">
+      <h1 className="mb-3 bg-linear-to-b from-copy-primary to-copy-secondary bg-clip-text text-5xl font-lynk text-transparent">
         Set Password
       </h1>
 
-      <p className="mb-6 text-sm text-slate-200/80">Create a password for your account to finish setup.</p>
+      <p className="mb-6 text-sm text-copy-secondary">Create a password for your account to finish setup.</p>
 
       <form className="space-y-4 text-left" onSubmit={handleSubmit}>
         <div className="space-y-2">
@@ -111,13 +112,13 @@ function SetupPasswordPageContent() {
             required
           />
           {passwordPolicy ? (
-            <ul className="space-y-1 text-xs text-slate-300/80">
+            <ul className="space-y-1 text-xs text-copy-secondary">
               {passwordPolicy.requirements.map((requirement) => (
                 <li key={requirement}>{requirement}</li>
               ))}
             </ul>
           ) : (
-            <p className="text-xs text-slate-300/80">Password must meet the current security policy.</p>
+            <p className="text-xs text-copy-secondary">Password must meet the current security policy.</p>
           )}
         </div>
 
@@ -133,24 +134,24 @@ function SetupPasswordPageContent() {
           />
         </div>
 
-        <button
+        <Button
           type="submit"
           disabled={isSubmitting}
-          className="w-full cursor-pointer rounded-md border border-white/20 bg-white px-4 py-3 text-sm font-medium text-black transition-all hover:bg-white/90 disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full"
         >
           {isSubmitting ? "Saving..." : "Set Password"}
-        </button>
+        </Button>
       </form>
 
-      {success && <p className="mt-3 text-xs text-emerald-300">{success}</p>}
-      {error && <p className="mt-3 text-xs text-red-300">{error}</p>}
+      {success && <p className="mt-3 text-xs text-state-success">{success}</p>}
+      {error && <p className="mt-3 text-xs text-state-danger">{error}</p>}
     </>
   );
 }
 
 export default function SetupPasswordPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-slate-300/80">Loading setup link...</p>}>
+    <Suspense fallback={<p className="text-sm text-copy-secondary">Loading setup link...</p>}>
       <SetupPasswordPageContent />
     </Suspense>
   );

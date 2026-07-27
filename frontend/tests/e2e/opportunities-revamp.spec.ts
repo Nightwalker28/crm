@@ -9,6 +9,12 @@ const summary = {
   organization: { org_id: 51, org_name: "Acme" },
   related_quotes: [], related_insertion_orders: [], inferred_services: ["Demand generation"], insertion_order_count: 0,
 };
+const pipelineSummary = {
+  total_count: 2,
+  stages: [
+    { stage_key: "lead", label: "Lead", count: 2, total_value: 125000 },
+  ],
+};
 
 test.beforeEach(async ({ page }) => { await loginAsAdmin(page); });
 
@@ -23,6 +29,28 @@ test("Deals expose the shared table and pipeline controls", async ({ page }) => 
   await expect(page.getByText(/Drag a card to another stage/)).toBeVisible();
 });
 
+test("Deals keep the list available when pipeline totals fail and retry with fixed guidance", async ({ page }) => {
+  let shouldFail = true;
+  await page.route("**/sales/opportunities/pipeline-summary?**", (route) =>
+    route.fulfill({
+      status: shouldFail ? 500 : 200,
+      contentType: "application/json",
+      body: shouldFail
+        ? JSON.stringify({ detail: "sql_connection=private-secret" })
+        : JSON.stringify(pipelineSummary),
+    }),
+  );
+
+  await page.goto("/dashboard/sales/opportunities");
+
+  await expect(page.getByText("Deal pipeline totals could not be loaded. The deal list remains available.")).toBeVisible();
+  await expect(page.getByText("sql_connection=private-secret")).toHaveCount(0);
+  shouldFail = false;
+  await page.getByRole("button", { name: "Retry totals" }).click();
+  const leadCard = page.getByText("Lead", { exact: true }).locator("..").locator("..");
+  await expect(leadCard.getByText("2", { exact: true })).toBeVisible();
+});
+
 test("Deal create, detail, and edit use routed record workflows", async ({ page }) => {
   await page.route(`**/sales/opportunities/${dealId}/summary`, async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(summary) }));
   await page.goto("/dashboard/sales/opportunities/new");
@@ -35,6 +63,7 @@ test("Deal create, detail, and edit use routed record workflows", async ({ page 
   await page.goto(`/dashboard/sales/opportunities/${dealId}`);
   await expect(page.getByRole("heading", { name: "Browser Deal" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("span.bg-action-primary-muted", { hasText: "Proposal" })).toBeVisible();
   await expect(page.getByText("Ada Owner", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /Related/ }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/opportunities/${dealId}\\?tab=related$`));

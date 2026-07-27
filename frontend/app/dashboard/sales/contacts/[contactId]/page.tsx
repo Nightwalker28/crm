@@ -17,6 +17,7 @@ import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RecordTabs } from "@/components/ui/RecordTabs";
@@ -608,13 +609,12 @@ function ContactOverview(props: OverviewProps) {
               </SelectContent>
             </Select>
             <label className="flex items-center gap-2 text-sm text-copy-secondary">
-              <input
-                type="checkbox"
+              <Checkbox
                 checked={props.createWhatsAppReminder}
-                onChange={(event) =>
-                  props.setCreateWhatsAppReminder(event.target.checked)
+                onCheckedChange={(checked) =>
+                  props.setCreateWhatsAppReminder(checked === true)
                 }
-                className="h-4 w-4 rounded border-line-strong bg-app"
+                aria-label="Create follow-up task"
               />
               Create follow-up task
             </label>

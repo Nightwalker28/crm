@@ -23,47 +23,47 @@ export default function ClientOrdersPage() {
   const orders = ordersQuery.data?.results ?? [];
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
+    <main className="min-h-screen bg-app text-copy-primary">
       <div className="mx-auto max-w-6xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-white">Lynk</Link>
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
+          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
           <Button asChild variant="outline" size="sm">
             <Link href="/client/catalog">Catalog</Link>
           </Button>
         </header>
 
         <section className="mb-5">
-          <div className="flex items-center gap-2 text-sm text-neutral-400">
+          <div className="flex items-center gap-2 text-sm text-copy-secondary">
             <ShoppingCart className="h-4 w-4" />
             Client orders
           </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-neutral-50">Order history</h1>
+          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">Order history</h1>
         </section>
 
         {ordersQuery.isLoading ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">Loading orders...</div>
+          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading orders...</div>
         ) : ordersQuery.error ? (
-          <div className="rounded-md border border-red-900/60 bg-red-950/20 p-5 text-sm text-red-200">
+          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {ordersQuery.error instanceof Error ? ordersQuery.error.message : "Failed to load orders."}
           </div>
         ) : orders.length === 0 ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">No orders submitted yet.</div>
+          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No orders submitted yet.</div>
         ) : (
           <div className="grid gap-3">
             {orders.map((order) => (
-              <Link key={order.id} href={`/client/orders/${order.id}`} className="group rounded-md border border-neutral-800 bg-neutral-900 p-4 transition-colors hover:border-neutral-600 hover:bg-neutral-800/70">
+              <Link key={order.id} href={`/client/orders/${order.id}`} className="group rounded-md border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <div className="text-xs uppercase text-neutral-500">{order.external_reference}</div>
-                    <h2 className="mt-1 font-semibold text-neutral-100">{firstLine(order)}</h2>
-                    <p className="mt-1 text-xs text-neutral-500">{formatDateTime(order.created_at)}</p>
+                    <div className="text-xs uppercase text-copy-muted">{order.external_reference}</div>
+                    <h2 className="mt-1 font-semibold text-copy-primary">{firstLine(order)}</h2>
+                    <p className="mt-1 text-xs text-copy-muted">{formatDateTime(order.created_at)}</p>
                   </div>
                   <div className="flex items-center gap-4">
                     <div className="text-right">
-                      <div className="capitalize text-neutral-300">{order.status.replaceAll("_", " ")}</div>
-                      <div className="text-sm font-semibold text-neutral-50">{money(order.subtotal_amount, order.currency)}</div>
+                      <div className="capitalize text-copy-secondary">{order.status.replaceAll("_", " ")}</div>
+                      <div className="text-sm font-semibold text-copy-primary">{money(order.subtotal_amount, order.currency)}</div>
                     </div>
-                    <ArrowRight className="h-4 w-4 text-neutral-500 transition-transform group-hover:translate-x-0.5" />
+                    <ArrowRight className="h-4 w-4 text-copy-muted transition-transform group-hover:translate-x-0.5" />
                   </div>
                 </div>
               </Link>

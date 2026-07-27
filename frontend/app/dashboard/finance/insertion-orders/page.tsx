@@ -11,7 +11,11 @@ import SearchBar from "@/components/ui/SearchBar";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import type { InsertionOrderSortState } from "@/hooks/finance/useInsertionOrders";
 import { Button } from "@/components/ui/button";
+import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
+import { RouteLoadingState } from "@/components/ui/RouteStates";
+import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
@@ -21,6 +25,10 @@ type InsertionOrderTableSortState = { column: string; direction: "asc" | "desc" 
 
 export default function InsertionOrdersPage() {
   const router = useRouter();
+  const { modules, isLoading: modulesLoading } = useAccessibleModules();
+  const accessibleModule = modules.find((module) => module.name === "finance_io");
+  const canCreate = Boolean(accessibleModule?.actions?.can_create);
+  const canExport = Boolean(accessibleModule?.actions?.can_export);
   const { data: customFields = [] } = useModuleCustomFields("finance_io");
   const { fields: moduleFields } = useModuleFieldConfigs("finance_io");
   const definition = useMemo(
@@ -73,6 +81,11 @@ export default function InsertionOrdersPage() {
     rangeEnd,
   } = useInsertionOrders(visibleColumns, activeFilters, sort);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const { allConditions, anyConditions } = getConditionGroups(activeFilters);
+  const activeFilterCount = allConditions.length + anyConditions.length + (statusFilter === "all" ? 0 : 1);
+  const hasActiveFilters = Boolean(
+    (typeof activeFilters.search === "string" && activeFilters.search.trim()) || activeFilterCount,
+  );
   const currentPageIds = useMemo(() => orders.map((order) => order.id), [orders]);
   const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
     if (!currentPageIds.length) return false;
@@ -104,6 +117,28 @@ export default function InsertionOrdersPage() {
     }));
   }
 
+  function clearFilters() {
+    setDraftConfig((current) => ({
+      ...current,
+      filters: {
+        ...current.filters,
+        search: "",
+        status: "all",
+        conditions: [],
+        all_conditions: [],
+        any_conditions: [],
+      },
+    }));
+  }
+
+  if (modulesLoading) {
+    return <RouteLoadingState label="insertion orders" />;
+  }
+
+  if (!accessibleModule?.actions?.can_view) {
+    return <PermissionDeniedState />;
+  }
+
   return (
     <div className="flex flex-col gap-6">
         <InsertionOrdersHeader
@@ -111,6 +146,8 @@ export default function InsertionOrdersPage() {
           selectedIds={selectedIds}
           currentPageIds={currentPageIds}
           exportFilters={activeFilters}
+          canCreate={canCreate}
+          canExport={canExport}
           viewSelector={
             <SavedViewSelector
             moduleKey="finance_io"
@@ -171,17 +208,12 @@ export default function InsertionOrdersPage() {
           }
         />
 
-        {error && (
-          <div className="bg-red-900/40 border border-red-700 text-red-200 text-sm rounded-lg px-4 py-3 flex items-center justify-between">
-            <span>{error}</span>
-            <button
-              onClick={refresh}
-              className="underline underline-offset-2 text-red-100 hover:text-red-50"
-            >
-              Retry
-            </button>
+        {error ? (
+          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+            <span>Insertion orders could not be loaded. Check your connection and try again.</span>
+            <Button type="button" variant="outline" size="sm" onClick={() => void refresh()}>Try again</Button>
           </div>
-        )}
+        ) : null}
 
         <InsertionOrdersList
           orders={orders}
@@ -196,9 +228,14 @@ export default function InsertionOrdersPage() {
           onToggleCurrentPage={toggleCurrentPage}
           sort={sort ? { column: sort.key, direction: sort.direction } : null}
           onSortChange={handleSortChange}
+          selectionEnabled={canExport}
+          hasActiveFilters={hasActiveFilters}
+          hasError={Boolean(error)}
+          canCreate={canCreate}
+          onClearFilters={clearFilters}
         />
 
-        <Pagination
+        {!error ? <Pagination
           page={page}
           totalPages={totalPages}
           totalCount={totalCount}
@@ -208,7 +245,7 @@ export default function InsertionOrdersPage() {
           isRefreshing={isFetching && !isLoading}
           onPageChange={goToPage}
           onPageSizeChange={onPageSizeChange}
-        />
+        /> : null}
     </div>
   );
 }

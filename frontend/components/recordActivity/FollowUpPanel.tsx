@@ -8,9 +8,11 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { FieldDescription } from "@/components/ui/field";
+import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { RecordPanelHeader } from "@/components/recordActivity/RecordPanelStates";
 import { formatDateTime } from "@/lib/datetime";
 
 type Channel = "whatsapp" | "email" | "call";
@@ -35,10 +37,6 @@ function toIsoOrNull(value: string) {
   if (!value.trim()) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
-}
-
-function errorMessage(error: unknown, fallback: string) {
-  return error instanceof Error ? error.message : fallback;
 }
 
 export default function FollowUpPanel({
@@ -70,7 +68,7 @@ export default function FollowUpPanel({
         }),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      if (!res.ok) throw new Error(`The ${channelLabels[channel]} follow-up could not be logged.`);
       if (channel === "email" && email) window.location.href = `mailto:${email}`;
       if (channel === "call" && phone) window.location.href = `tel:${phone}`;
       if (channel === "whatsapp" && phone) window.open(`https://wa.me/${phone.replace(/\D/g, "")}`, "_blank", "noopener,noreferrer");
@@ -80,8 +78,8 @@ export default function FollowUpPanel({
       await queryClient.invalidateQueries({ queryKey: ["user-notifications"] });
       toast.success(body?.follow_up_task_id ? `${channelLabels[channel]} logged and reminder created.` : `${channelLabels[channel]} logged.`);
       await onLogged?.();
-    } catch (error) {
-      toast.error(errorMessage(error, `Failed to log ${channelLabels[channel]}.`));
+    } catch {
+      toast.error(`The ${channelLabels[channel]} follow-up could not be logged. Try again.`);
     } finally {
       setIsLogging(null);
     }
@@ -89,36 +87,48 @@ export default function FollowUpPanel({
 
   return (
     <Card className="px-5 py-5">
-      <div className="mb-4">
-        <h2 className="text-lg font-semibold text-neutral-100">{title}</h2>
-        <FieldDescription className="mt-1">
-          {lastContactedAt
+      <RecordPanelHeader
+        title={title}
+        description={
+          lastContactedAt
             ? `Last contacted via ${lastContactedChannel ? channelLabels[lastContactedChannel as Channel] ?? lastContactedChannel : "follow-up"} on ${formatDateTime(lastContactedAt)}`
-            : "No follow-up logged yet"}
-        </FieldDescription>
-      </div>
-      <div className="grid gap-3">
-        <Textarea
-          rows={3}
-          value={note}
-          onChange={(event) => setNote(event.target.value)}
-          placeholder="Follow-up note"
-        />
-        <label className="flex items-center gap-2 text-sm text-neutral-300">
-          <input
-            type="checkbox"
-            checked={createReminder}
-            onChange={(event) => setCreateReminder(event.target.checked)}
-            className="h-4 w-4 rounded border-neutral-700 bg-neutral-950"
+            : "No follow-up logged yet"
+        }
+        icon={MessageCircle}
+      />
+      <div className="mt-4 grid gap-3">
+        <Field>
+          <FieldLabel htmlFor="record-follow-up-note">Follow-up note</FieldLabel>
+          <Textarea
+            id="record-follow-up-note"
+            rows={3}
+            maxLength={5000}
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Capture the outcome and next action."
           />
+        </Field>
+        <label className="flex items-center gap-2 text-sm text-copy-secondary">
+          <Checkbox
+            checked={createReminder}
+            onCheckedChange={(checked) => setCreateReminder(checked === true)}
+            className="flex h-4 w-4 items-center justify-center rounded border border-line-strong bg-surface-raised text-copy-primary"
+          >
+            <CheckboxIndicator className="h-3 w-3" />
+          </Checkbox>
           Create reminder task
         </label>
         {createReminder ? (
-          <Input
-            type="datetime-local"
-            value={dueAt}
-            onChange={(event) => setDueAt(event.target.value)}
-          />
+          <Field>
+            <FieldLabel htmlFor="record-follow-up-due">Reminder due</FieldLabel>
+            <Input
+              id="record-follow-up-due"
+              type="datetime-local"
+              value={dueAt}
+              onChange={(event) => setDueAt(event.target.value)}
+            />
+            <FieldDescription>Leave blank to create the reminder without a due time.</FieldDescription>
+          </Field>
         ) : null}
         <div className="grid gap-2 sm:grid-cols-3">
           <Button type="button" variant="outline" onClick={() => void logFollowUp("whatsapp")} disabled={isLogging !== null || !phone}>

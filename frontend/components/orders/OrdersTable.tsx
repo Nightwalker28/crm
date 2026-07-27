@@ -23,6 +23,7 @@ import type { Order } from "@/hooks/sales/useOrders";
 import type { TableColumnOption } from "@/hooks/useTablePreferences";
 import { formatDateTime } from "@/lib/datetime";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
+import { getOrderStatusStyle } from "@/lib/statusStyles";
 
 type SortState = { column: string; direction: "asc" | "desc" } | null;
 
@@ -36,36 +37,6 @@ type OrdersTableProps = {
   onSortChange?: (sort: SortState) => void;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
-};
-
-const STATUS_STYLES: Record<
-  string,
-  { bg: string; text: string; border: string; label: string }
-> = {
-  draft: {
-    bg: "bg-surface-muted",
-    text: "text-copy-secondary",
-    border: "border-line-default",
-    label: "Draft",
-  },
-  confirmed: {
-    bg: "bg-state-info-muted",
-    text: "text-state-info",
-    border: "border-state-info/40",
-    label: "Confirmed",
-  },
-  fulfilled: {
-    bg: "bg-state-success-muted",
-    text: "text-state-success",
-    border: "border-state-success/40",
-    label: "Fulfilled",
-  },
-  cancelled: {
-    bg: "bg-state-danger-muted",
-    text: "text-state-danger",
-    border: "border-state-danger/40",
-    label: "Cancelled",
-  },
 };
 
 function formatMoney(
@@ -130,7 +101,7 @@ export default function OrdersTable({
           </TableCell>
         );
       case "status": {
-        const style = STATUS_STYLES[order.status] ?? STATUS_STYLES.draft;
+        const style = getOrderStatusStyle(order.status);
         return (
           <TableCell>
             <Pill bg={style.bg} text={style.text} border={style.border}>

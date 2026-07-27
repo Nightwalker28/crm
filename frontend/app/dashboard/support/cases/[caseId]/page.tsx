@@ -26,6 +26,7 @@ import {
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { getSupportCasePriorityStyle, getSupportCaseStatusStyle } from "@/lib/statusStyles";
 
 const STATUSES = ["new", "open", "pending", "resolved", "closed"] as const;
 const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
@@ -240,24 +241,9 @@ function SupportCaseWorkspace({ item }: { item: SupportCase }) {
 }
 
 function CasePill({ value, type }: { value: string; type: "status" | "priority" }) {
-  const style = type === "priority" ? PRIORITY_STYLES[value] ?? PRIORITY_STYLES.medium : STATUS_STYLES[value] ?? STATUS_STYLES.new;
-  return <Pill bg={style.bg} text={style.text} border={style.border}>{titleCase(value)}</Pill>;
+  const style = type === "priority" ? getSupportCasePriorityStyle(value) : getSupportCaseStatusStyle(value);
+  return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
 }
-
-const STATUS_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  new: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40" },
-  open: { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40" },
-  pending: { bg: "bg-surface-muted", text: "text-copy-secondary", border: "border-line-default" },
-  resolved: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" },
-  closed: { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default" },
-};
-
-const PRIORITY_STYLES: Record<string, { bg: string; text: string; border: string }> = {
-  low: { bg: "bg-surface-muted", text: "text-copy-secondary", border: "border-line-default" },
-  medium: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40" },
-  high: { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40" },
-  urgent: { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" },
-};
 
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (

@@ -32,8 +32,8 @@ export default function ClientSupportDetailPage() {
       await addComment({ caseId, body: reply.trim() });
       setReply("");
       toast.success("Reply added.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to add reply.");
+    } catch {
+      toast.error("Failed to add reply.");
     }
   }
 
@@ -41,16 +41,16 @@ export default function ClientSupportDetailPage() {
     try {
       await updateStatus({ caseId, action });
       toast.success(action === "close" ? "Ticket closed." : "Ticket reopened.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update ticket.");
+    } catch {
+      toast.error("Failed to update ticket.");
     }
   }
 
   return (
-    <main className="min-h-screen bg-neutral-950 text-neutral-100">
+    <main className="min-h-screen bg-app text-copy-primary">
       <div className="mx-auto max-w-5xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-neutral-800 pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-white">Lynk</Link>
+        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
+          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
           <Button asChild variant="outline" size="sm">
             <Link href="/client/support">
               <ArrowLeft className="h-4 w-4" />
@@ -60,24 +60,24 @@ export default function ClientSupportDetailPage() {
         </header>
 
         {caseQuery.isLoading ? (
-          <div className="rounded-md border border-neutral-800 bg-neutral-900 p-8 text-center text-sm text-neutral-500">Loading ticket...</div>
+          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading ticket...</div>
         ) : caseQuery.error ? (
-          <div className="rounded-md border border-red-900/60 bg-red-950/20 p-5 text-sm text-red-200">
+          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {caseQuery.error instanceof Error ? caseQuery.error.message : "Support ticket unavailable."}
           </div>
         ) : item ? (
           <div className="grid gap-5">
-            <section className="rounded-md border border-neutral-800 bg-neutral-900 p-5">
-              <div className="text-xs uppercase text-neutral-500">{item.case_number}</div>
+            <section className="rounded-md border border-line-default bg-surface p-5">
+              <div className="text-xs uppercase text-copy-muted">{item.case_number}</div>
               <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h1 className="text-3xl font-semibold tracking-normal text-neutral-50">{item.subject}</h1>
-                  <p className="mt-1 text-sm text-neutral-400">{formatDateTime(item.created_at)}</p>
+                  <h1 className="text-3xl font-semibold tracking-normal text-copy-primary">{item.subject}</h1>
+                  <p className="mt-1 text-sm text-copy-secondary">{formatDateTime(item.created_at)}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-right">
-                    <div className="capitalize text-neutral-200">{statusLabel(item.status)}</div>
-                    <div className="text-xs capitalize text-neutral-500">{item.category || "general"} · {item.priority}</div>
+                  <div className="rounded-md border border-line-default bg-app px-3 py-2 text-right">
+                    <div className="capitalize text-copy-secondary">{statusLabel(item.status)}</div>
+                    <div className="text-xs capitalize text-copy-muted">{item.category || "general"} · {item.priority}</div>
                   </div>
                   {closed ? (
                     <Button type="button" variant="outline" size="sm" disabled={isUpdatingStatus} onClick={() => void changeStatus("reopen")}>
@@ -92,24 +92,24 @@ export default function ClientSupportDetailPage() {
                   )}
                 </div>
               </div>
-              {item.description ? <p className="mt-5 whitespace-pre-wrap text-sm leading-6 text-neutral-300">{item.description}</p> : null}
+              {item.description ? <p className="mt-5 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{item.description}</p> : null}
             </section>
 
-            <section className="rounded-md border border-neutral-800 bg-neutral-900 p-5">
+            <section className="rounded-md border border-line-default bg-surface p-5">
               <div className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-neutral-400" />
-                <h2 className="text-base font-semibold text-neutral-100">Thread</h2>
+                <MessageSquare className="h-4 w-4 text-copy-secondary" />
+                <h2 className="text-base font-semibold text-copy-primary">Thread</h2>
               </div>
               <div className="mt-4 grid gap-3">
                 {item.comments.length ? item.comments.map((comment) => (
-                  <div key={comment.id} className="rounded-md border border-neutral-800 bg-neutral-950 p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-neutral-500">
+                  <div key={comment.id} className="rounded-md border border-line-default bg-app p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-copy-muted">
                       <span>{comment.author_display_name || (comment.author_type === "team" ? "Support team" : "You")}</span>
                       <span>{formatDateTime(comment.created_at)}</span>
                     </div>
-                    <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-neutral-200">{comment.body}</div>
+                    <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{comment.body}</div>
                   </div>
-                )) : <div className="text-sm text-neutral-500">No replies yet.</div>}
+                )) : <div className="text-sm text-copy-muted">No replies yet.</div>}
               </div>
               <form className="mt-4 grid gap-3" onSubmit={(event) => void submitReply(event)}>
                 <Textarea value={reply} onChange={(event) => setReply(event.target.value)} rows={4} placeholder="Write a reply" />

@@ -5,8 +5,15 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { MessageSquareText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  RecordPanelEmpty,
+  RecordPanelError,
+  RecordPanelHeader,
+  RecordPanelLoading,
+} from "@/components/recordActivity/RecordPanelStates";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
 import { apiFetch } from "@/lib/api";
@@ -44,7 +51,7 @@ async function fetchRecordComments(moduleKey: Props["moduleKey"], entityId: stri
   const res = await apiFetch(`/record-comments?${params.toString()}`);
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load notes.");
+    throw new Error("Record notes could not be loaded.");
   }
   return body as CommentsResponse;
 }
@@ -62,7 +69,7 @@ async function fetchMentionableUsers(
   const res = await apiFetch(`/record-comments/mentionable-users?${params.toString()}`);
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load mention suggestions.");
+    throw new Error("Mention suggestions could not be loaded.");
   }
   return body as MentionableUsersResponse;
 }
@@ -159,9 +166,8 @@ export default function RecordCommentsPanel({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body, mentioned_user_ids: mentionedUserIdsForBody(body) }),
       });
-      const responseBody = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error((responseBody && typeof responseBody.detail === "string" && responseBody.detail) || "Failed to add note.");
+        throw new Error("The note could not be added.");
       }
       setDraft("");
       setSelectedMentions([]);
@@ -169,8 +175,8 @@ export default function RecordCommentsPanel({
       setMentionQuery(null);
       await refreshPanels();
       toast.success("Note added.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to add note.");
+    } catch {
+      toast.error("The note could not be added. Check your access and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -179,7 +185,7 @@ export default function RecordCommentsPanel({
   async function handleDelete(commentId: number) {
     const confirmed = await confirm({
       title: "Delete note?",
-      description: "Delete this note?",
+      description: "Delete this internal note? This action cannot be undone.",
       confirmLabel: "Delete Note",
       variant: "destructive",
     });
@@ -192,14 +198,13 @@ export default function RecordCommentsPanel({
       const res = await apiFetch(`/record-comments/${commentId}`, {
         method: "DELETE",
       });
-      const responseBody = await res.json().catch(() => null);
       if (!res.ok) {
-        throw new Error((responseBody && typeof responseBody.detail === "string" && responseBody.detail) || "Failed to delete note.");
+        throw new Error("The note could not be deleted.");
       }
       await refreshPanels();
       toast.success("Note deleted.");
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to delete note.");
+    } catch {
+      toast.error("The note could not be deleted. Check your access and try again.");
     } finally {
       setDeletingId(null);
     }
@@ -207,90 +212,97 @@ export default function RecordCommentsPanel({
 
   return (
     <Card className="px-5 py-5">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h2 className="text-lg font-semibold text-neutral-100">{title}</h2>
-          <p className="mt-1 text-sm text-neutral-500">{description}</p>
-        </div>
-        <MessageSquareText className="mt-1 h-4 w-4 text-neutral-500" />
-      </div>
+      <RecordPanelHeader title={title} description={description} icon={MessageSquareText} />
 
       <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
-        <div className="relative">
-          <Textarea
-            value={draft}
-            onChange={(event) => updateDraft(event.target.value, event.target.selectionStart)}
-            onClick={(event) => updateDraft(event.currentTarget.value, event.currentTarget.selectionStart)}
-            onKeyUp={(event) => updateDraft(event.currentTarget.value, event.currentTarget.selectionStart)}
-            rows={4}
-            maxLength={5000}
-            placeholder="Add internal context, decisions, or follow-up notes for this record. Type @ to mention a teammate."
-          />
-          {mentionQuery !== null ? (
-            <div className="absolute left-2 right-2 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-md border border-neutral-800 bg-neutral-950 py-1 shadow-xl">
-              {mentionQueryResult.isLoading ? (
-                <div className="px-3 py-2 text-sm text-neutral-500">Loading people...</div>
-              ) : mentionQueryResult.data?.results.length ? (
-                mentionQueryResult.data.results.map((user) => (
-                  <button
-                    key={user.id}
-                    type="button"
-                    className="flex w-full flex-col px-3 py-2 text-left hover:bg-white/8"
-                    onClick={() => insertMention(user)}
-                  >
-                    <span className="text-sm font-medium text-neutral-100">{user.label}</span>
-                    <span className="text-xs text-neutral-500">{user.email}</span>
-                  </button>
-                ))
-              ) : (
-                <div className="px-3 py-2 text-sm text-neutral-500">No matching users with record access.</div>
-              )}
-            </div>
-          ) : null}
-        </div>
+        <Field>
+          <FieldLabel htmlFor={`record-note-${moduleKey}-${entityId}`}>Add internal note</FieldLabel>
+          <div className="relative">
+            <Textarea
+              id={`record-note-${moduleKey}-${entityId}`}
+              value={draft}
+              onChange={(event) => updateDraft(event.target.value, event.target.selectionStart)}
+              onClick={(event) => updateDraft(event.currentTarget.value, event.currentTarget.selectionStart)}
+              onKeyUp={(event) => updateDraft(event.currentTarget.value, event.currentTarget.selectionStart)}
+              rows={4}
+              maxLength={5000}
+              placeholder="Capture context, decisions, or next steps. Type @ to mention a teammate."
+              aria-describedby={`record-note-help-${moduleKey}-${entityId}`}
+              autoComplete="off"
+            />
+            {mentionQuery !== null ? (
+              <div
+                role="listbox"
+                aria-label="Mention suggestions"
+                className="absolute left-2 right-2 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-[var(--radius-control)] border border-line-default bg-surface-raised py-1 shadow-xl"
+              >
+                {mentionQueryResult.isLoading ? (
+                  <div role="status" className="px-3 py-2 text-sm text-copy-muted">Loading people…</div>
+                ) : mentionQueryResult.isError ? (
+                  <div role="alert" className="px-3 py-2 text-sm text-state-danger">Mention suggestions could not be loaded.</div>
+                ) : mentionQueryResult.data?.results.length ? (
+                  mentionQueryResult.data.results.map((user) => (
+                    <button
+                      key={user.id}
+                      type="button"
+                      role="option"
+                      aria-selected="false"
+                      className="flex w-full flex-col px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                      onClick={() => insertMention(user)}
+                    >
+                      <span className="text-sm font-medium text-copy-primary">{user.label}</span>
+                      <span className="text-xs text-copy-muted">{user.email}</span>
+                    </button>
+                  ))
+                ) : (
+                  <div role="status" className="px-3 py-2 text-sm text-copy-muted">No matching users with record access.</div>
+                )}
+              </div>
+            ) : null}
+          </div>
+          <FieldDescription id={`record-note-help-${moduleKey}-${entityId}`}>
+            Mentions only include active users who can view this module. {draft.length}/5000 characters.
+          </FieldDescription>
+        </Field>
         <div className="flex items-center justify-between gap-3">
-          <div className="text-xs text-neutral-500">Mentions only include users who can view this module.</div>
+          <div />
           <Button type="submit" disabled={submitting || !draft.trim()}>
-            {submitting ? "Saving..." : "Add Note"}
+            {submitting ? "Saving…" : "Add note"}
           </Button>
         </div>
       </form>
 
       {query.isLoading ? (
-        <div className="mt-4 text-sm text-neutral-500">Loading notes…</div>
+        <div className="mt-4"><RecordPanelLoading label="Loading notes…" /></div>
       ) : query.error ? (
-        <div className="mt-4 rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">
-          {query.error instanceof Error ? query.error.message : "Failed to load notes."}
-        </div>
+        <div className="mt-4"><RecordPanelError message="Record notes could not be loaded." onRetry={() => void query.refetch()} /></div>
       ) : query.data?.results.length ? (
-        <div className="mt-4 space-y-3">
+        <ol className="mt-4 space-y-3" aria-label="Record notes">
           {query.data.results.map((item) => (
-            <div key={item.id} className="rounded-md border border-neutral-800 bg-neutral-950/60 px-4 py-4">
+            <li key={item.id} className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-neutral-100">{item.author_name}</div>
-                  <div className="mt-1 text-xs text-neutral-500">{formatDateTime(item.created_at)}</div>
+                  <div className="text-sm font-semibold text-copy-primary">{item.author_name}</div>
+                  <div className="mt-1 text-xs text-copy-muted">{formatDateTime(item.created_at)}</div>
                 </div>
                 <Button
                   type="button"
                   variant="ghost"
                   size="icon-sm"
-                  className="text-neutral-500 hover:text-red-300"
+                  className="text-copy-muted hover:bg-state-danger-muted hover:text-state-danger"
                   onClick={() => void handleDelete(item.id)}
                   disabled={deletingId === item.id}
+                  aria-label={`Delete note by ${item.author_name}`}
                 >
                   <Trash2 className="h-4 w-4" />
-                  <span className="sr-only">Delete note</span>
                 </Button>
               </div>
-              <div className="mt-3 whitespace-pre-wrap text-sm text-neutral-200">{item.body}</div>
-            </div>
+              <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{item.body}</div>
+            </li>
           ))}
-        </div>
+        </ol>
       ) : (
-        <div className="mt-4 rounded-md border border-dashed border-neutral-800 bg-neutral-950/40 px-4 py-6 text-sm text-neutral-500">
-          No notes on this record yet.
-        </div>
+        <div className="mt-4"><RecordPanelEmpty icon={MessageSquareText} title="No notes yet" description="Add internal context or mention a teammate to begin collaborating." /></div>
       )}
     </Card>
   );

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
@@ -180,12 +181,10 @@ export function IntegrationWebhookWorkspace() {
           </Field>
           <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
             Active
-            <input
-              type="checkbox"
+            <Checkbox
               aria-label="Create webhook as active"
               checked={draft.is_active}
-              onChange={(event) => setDraft((current) => ({ ...current, is_active: event.target.checked }))}
-              className="h-4 w-4 accent-primary"
+              onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_active: checked === true }))}
             />
           </label>
           <Button type="button" disabled={saving || !draft.webhook_url.trim()} onClick={createChannel}>

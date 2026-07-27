@@ -187,7 +187,7 @@ function Toggle({
         onCheckedChange={onCheckedChange}
         className="h-5 w-10 rounded-full border border-line-strong bg-surface-raised p-0.5 data-[state=checked]:bg-primary"
       >
-        <SwitchThumb className="block h-4 w-4 rounded-full bg-white shadow-sm data-[state=checked]:translate-x-5" />
+        <SwitchThumb className="block h-4 w-4 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
       </Switch>
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
     </Field>

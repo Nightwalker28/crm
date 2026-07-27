@@ -28,32 +28,31 @@ const Toaster = ({ ...props }: ToasterProps) => {
             "before:bg-[image:var(--noise-texture)] before:bg-repeat before:bg-[size:140px_140px]",
             "before:opacity-[0.1] before:mix-blend-overlay before:content-['']",
 
-            // 3. Base Styles (Glassmorphism)
-            "!backdrop-blur-md !shadow-lg",
-            "!bg-neutral-600/20 !border-neutral-200/20 !text-neutral-50",
+            // 3. Base Styles
+            "!border-line-default !bg-surface-raised/95 !text-copy-primary !shadow-[var(--shadow-panel)] !backdrop-blur-md",
 
             // 4. Colors
-            "data-[type=success]:!bg-emerald-900/20 data-[type=success]:!border-emerald-500/20 data-[type=success]:!text-emerald-50",
-            "data-[type=error]:!bg-red-900/20 data-[type=error]:!border-red-500/20 data-[type=error]:!text-red-50",
-            "data-[type=warning]:!bg-amber-900/20 data-[type=warning]:!border-amber-500/20 data-[type=warning]:!text-amber-50",
-            "data-[type=info]:!bg-blue-900/20 data-[type=info]:!border-blue-500/20 data-[type=info]:!text-blue-50",
+            "data-[type=success]:!border-state-success/40 data-[type=success]:!bg-state-success-muted",
+            "data-[type=error]:!border-state-danger/40 data-[type=error]:!bg-state-danger-muted",
+            "data-[type=warning]:!border-state-warning/40 data-[type=warning]:!bg-state-warning-muted",
+            "data-[type=info]:!border-state-info/40 data-[type=info]:!bg-state-info-muted",
           ].join(" "),
           
           description: "group-[.toast]:text-inherit opacity-80 font-normal",
           
           actionButton:
-            "group-[.toast]:bg-neutral-50 group-[.toast]:text-neutral-950 font-semibold shadow-sm",
+            "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground font-semibold shadow-sm",
             
           cancelButton:
-            "group-[.toast]:bg-white/10 group-[.toast]:text-neutral-50 hover:group-[.toast]:bg-white/20",
+            "group-[.toast]:bg-surface-muted group-[.toast]:text-copy-secondary hover:group-[.toast]:bg-surface",
         },
       }}
       icons={{
-        success: <CircleCheckIcon className="size-5 text-emerald-400" />,
-        info: <InfoIcon className="size-5 text-blue-400" />,
-        warning: <TriangleAlertIcon className="size-5 text-amber-400" />,
-        error: <OctagonXIcon className="size-5 text-red-400" />,
-        loading: <Loader2Icon className="size-5 animate-spin text-neutral-400" />,
+        success: <CircleCheckIcon className="size-5 text-state-success" />,
+        info: <InfoIcon className="size-5 text-state-info" />,
+        warning: <TriangleAlertIcon className="size-5 text-state-warning" />,
+        error: <OctagonXIcon className="size-5 text-state-danger" />,
+        loading: <Loader2Icon className="size-5 animate-spin text-copy-muted" />,
       }}
       {...props}
     />

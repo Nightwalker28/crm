@@ -36,9 +36,21 @@ function orderFixture() {
   };
 }
 
-async function cacheInsertionOrderPermissions(page: Parameters<typeof loginAsAdmin>[0], canEdit: boolean) {
+async function cacheInsertionOrderPermissions(
+  page: Parameters<typeof loginAsAdmin>[0],
+  canEdit: boolean,
+  overrides: Partial<{
+    can_view: boolean;
+    can_create: boolean;
+    can_edit: boolean;
+    can_delete: boolean;
+    can_restore: boolean;
+    can_export: boolean;
+    can_configure: boolean;
+  }> = {},
+) {
   await page.evaluate(
-    ({ cacheKey, editAllowed }) => {
+    ({ cacheKey, editAllowed, moduleOverrides }) => {
       window.sessionStorage.setItem(cacheKey, JSON.stringify([{
         id: 73,
         name: "finance_io",
@@ -51,10 +63,11 @@ async function cacheInsertionOrderPermissions(page: Parameters<typeof loginAsAdm
           can_restore: false,
           can_export: false,
           can_configure: false,
+          ...moduleOverrides,
         },
       }]));
     },
-    { cacheKey: moduleCacheKey, editAllowed: canEdit },
+    { cacheKey: moduleCacheKey, editAllowed: canEdit, moduleOverrides: overrides },
   );
 }
 
@@ -80,6 +93,15 @@ test("Insertion Order creation is routed, responsive, and focuses the required c
   await page.goto("/dashboard/finance/insertion-orders/new");
 
   await expect(page.getByRole("heading", { name: "Create insertion order" })).toBeVisible();
+  const customerType = page.getByRole("combobox", { name: "Customer type" });
+  await expect(customerType).toBeVisible();
+  await customerType.click();
+  await page.getByRole("option", { name: "Account" }).click();
+  await expect(page.getByLabel("Customer")).toHaveAttribute("placeholder", "Search accounts or enter a customer");
+  await customerType.click();
+  await page.getByRole("option", { name: "Contact" }).click();
+  await expect(page.getByLabel("Customer")).toHaveAttribute("placeholder", "Search contacts or enter a customer");
+
   await page.getByRole("button", { name: "Create order" }).click();
   await expect(page.getByText("Customer name is required.")).toBeVisible();
   await expect(page.getByLabel("Customer")).toBeFocused();
@@ -200,5 +222,68 @@ test("Insertion Order detail failures do not expose backend details", async ({ p
 
   await expect(page.getByRole("heading", { name: "Unable to load insertion order" })).toBeVisible();
   await expect(page.getByText("sql_connection=detail-page-secret")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+});
+
+test("Insertion Order list hides ungranted actions and keeps record identity keyboard accessible", async ({ page }) => {
+  await cacheInsertionOrderPermissions(page, false, { can_create: false, can_export: false });
+  await page.route("**/finance/insertion-orders?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [orderFixture()],
+        range_start: 1,
+        range_end: 1,
+        total_count: 1,
+        total_pages: 1,
+        page: 1,
+        page_size: 10,
+      }),
+    }),
+  );
+
+  await page.goto("/dashboard/finance/insertion-orders");
+
+  await expect(page.getByRole("link", { name: "IO-2099-07301" })).toHaveAttribute(
+    "href",
+    `/dashboard/finance/insertion-orders/${ioId}`,
+  );
+  await expect(page.getByRole("link", { name: "New Order" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Actions" })).toHaveCount(0);
+  await expect(page.getByRole("checkbox", { name: "Select current page insertion orders" })).toHaveCount(0);
+});
+
+test("Insertion Order list distinguishes filtered empty and fixed failure states", async ({ page }) => {
+  await cacheInsertionOrderPermissions(page, false);
+  let shouldFail = false;
+  await page.route("**/finance/insertion-orders?**", (route) =>
+    route.fulfill({
+      status: shouldFail ? 500 : 200,
+      contentType: "application/json",
+      body: shouldFail
+        ? JSON.stringify({ detail: "tenant_id=42 sql_connection=private-secret" })
+        : JSON.stringify({
+            results: [],
+            range_start: 0,
+            range_end: 0,
+            total_count: 0,
+            total_pages: 0,
+            page: 1,
+            page_size: 10,
+          }),
+    }),
+  );
+
+  await page.goto("/dashboard/finance/insertion-orders");
+  await expect(page.getByText("No insertion orders yet")).toBeVisible();
+  await page.getByRole("button", { name: "Active" }).click();
+  await expect(page.getByText("No insertion orders match this view")).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+
+  shouldFail = true;
+  await page.reload();
+  await expect(page.getByText("Insertion orders could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("tenant_id=42 sql_connection=private-secret")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });
