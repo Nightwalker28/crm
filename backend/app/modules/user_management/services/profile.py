@@ -21,7 +21,16 @@ TABLE_PREFERENCE_MODULES = {
     "finance_io",
 }
 
-SAVED_VIEW_MODULES = set(TABLE_PREFERENCE_MODULES)
+SAVED_VIEW_MODULES = {
+    *TABLE_PREFERENCE_MODULES,
+    "sales_orders",
+    "contracts",
+    "support_cases",
+    "finance_pos",
+    "finance_payments",
+    "catalog_products",
+    "catalog_services",
+}
 SYSTEM_DEFAULT_VIEW_NAME = "Default View"
 COMPANY_OPERATING_CURRENCIES_CACHE_TTL_SECONDS = 300
 SAVED_VIEW_MAX_CONFIG_BYTES = 64_000
@@ -567,7 +576,11 @@ def list_saved_views(
     default_visible_columns: list[str],
 ) -> list[dict]:
     _ensure_supported_saved_view_module(db, user, module_key)
-    legacy_preference = get_user_table_preference(db, user, module_key)
+    legacy_preference = (
+        get_user_table_preference(db, user, module_key)
+        if module_key in TABLE_PREFERENCE_MODULES or module_key not in SAVED_VIEW_MODULES
+        else None
+    )
     default_columns = (
         legacy_preference.visible_columns
         if legacy_preference and legacy_preference.visible_columns

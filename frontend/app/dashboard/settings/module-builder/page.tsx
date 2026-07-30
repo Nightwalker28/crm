@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronUp,
   GripVertical,
-  LayoutPanelLeft,
   LockKeyhole,
   Plus,
   RotateCcw,
@@ -21,6 +20,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -30,7 +30,6 @@ import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch, SwitchThumb } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useModuleBuilder,
@@ -179,17 +178,18 @@ function Toggle({
 }) {
   return (
     <Field orientation="horizontal" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3">
-      <Switch
+      <Checkbox
         id={id}
         aria-label={label}
         checked={checked}
         disabled={disabled}
-        onCheckedChange={onCheckedChange}
-        className="h-5 w-10 rounded-full border border-line-strong bg-surface-raised p-0.5 data-[state=checked]:bg-primary"
-      >
-        <SwitchThumb className="block h-4 w-4 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
-      </Switch>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        onCheckedChange={(value) => onCheckedChange(value === true)}
+        className="size-5"
+      />
+      <div>
+        <FieldLabel htmlFor={id}>{label}</FieldLabel>
+        <FieldDescription>{checked ? "Enabled" : "Disabled"}</FieldDescription>
+      </div>
     </Field>
   );
 }
@@ -467,7 +467,7 @@ function ModuleWorkspace({
   const tabLabel = (value: EditorTab) => value.charAt(0).toUpperCase() + value.slice(1);
 
   return (
-    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+    <div className="grid min-w-0 gap-4">
       <Card className="min-w-0">
         <CardHeader className="flex-col gap-4 sm:flex-row sm:items-center">
           <div className="min-w-0">
@@ -619,15 +619,7 @@ function ModuleWorkspace({
           disabled={disabled}
           onChange={(update) => selectedFieldId && updateField(selectedFieldId, update)}
         />
-      ) : (
-        <Card className="hidden min-h-72 xl:block">
-          <EmptyState
-            icon={tab === "permissions" ? ShieldCheck : tab === "automation" ? Bot : LayoutPanelLeft}
-            title={`${tabLabel(tab)} settings`}
-            description={tab === "general" ? "Edit the module identity and runtime state." : tab === "layout" ? "Control where this module appears in navigation." : "This capability uses a shared administration workspace."}
-          />
-        </Card>
-      )}
+      ) : null}
     </div>
   );
 }
@@ -670,7 +662,7 @@ function CreateModulePanel({
   }
 
   return (
-    <Card className="xl:col-span-2">
+    <Card>
       <form onSubmit={submit}>
         <CardHeader>
           <div>

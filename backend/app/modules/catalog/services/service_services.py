@@ -77,6 +77,8 @@ def list_services(
     limit: int = 50,
     sort_by: str | None = None,
     sort_direction: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[CatalogService], int]:
     return service_repository.list_services(
         db,
@@ -87,6 +89,8 @@ def list_services(
         limit=limit,
         sort_by=sort_by,
         sort_direction=sort_direction,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
     )
 
 

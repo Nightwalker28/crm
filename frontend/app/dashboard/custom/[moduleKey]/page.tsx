@@ -56,12 +56,12 @@ export default function CustomModulePage() {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
-  const accessibleModule = modules.find((module) => module.name === moduleKey);
+  const schema = useCustomModuleSchema(moduleKey);
+  const accessibleModule = modules.find((module) => module.id === schema.data?.module_id);
   const actions = accessibleModule?.actions;
   const canCreate = Boolean(actions?.can_create);
   const canDelete = Boolean(actions?.can_delete);
   const canExport = Boolean(actions?.can_export);
-  const schema = useCustomModuleSchema(moduleKey);
   const { fields: moduleFields, isLoading: fieldsLoading, error: fieldsError, refresh: refreshFields } = useModuleFieldConfigs(moduleKey);
   const enabledFieldKeys = useMemo(
     () => new Map(moduleFields.map((field) => [field.field_key, field.is_protected || field.is_enabled])),

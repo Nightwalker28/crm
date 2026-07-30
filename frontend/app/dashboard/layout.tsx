@@ -66,6 +66,9 @@ function getBreadcrumbItems(pathname: string) {
 }
 
 function BreadcrumbBar({ pathname }: { pathname: string }) {
+  if (pathname === "/dashboard/views" || pathname.startsWith("/dashboard/views/")) {
+    return null;
+  }
   const items = getBreadcrumbItems(pathname);
 
   return (

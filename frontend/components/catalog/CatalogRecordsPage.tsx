@@ -7,10 +7,12 @@ import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import CatalogRecordsTable from "@/components/catalog/CatalogRecordsTable";
+import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
+import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { Button } from "@/components/ui/button";
 import Pagination from "@/components/ui/Pagination";
 import { PageHeader } from "@/components/ui/PageHeader";
-import SearchBar from "@/components/ui/SearchBar";
+import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import type { CatalogKind, CatalogRecord, CatalogSortState } from "@/hooks/catalog/useCatalogRecords";
 import { useCatalogRecords } from "@/hooks/catalog/useCatalogRecords";
@@ -75,7 +77,9 @@ export default function CatalogRecordsPage({ kind }: Props) {
   } = useCatalogRecords(kind, visibleColumns, activeFilters, activeSort);
 
   const searchValue = useMemo(() => (typeof activeFilters.search === "string" ? activeFilters.search : ""), [activeFilters.search]);
-  const hasActiveFilters = Boolean(searchValue.trim());
+  const { allConditions, anyConditions } = getConditionGroups(activeFilters);
+  const activeFilterCount = allConditions.length + anyConditions.length;
+  const hasActiveFilters = Boolean(searchValue.trim() || activeFilterCount);
 
   function handleRowClick(record: CatalogRecord) {
     router.push(`/dashboard/catalog/${kind}/${record.id}`);
@@ -111,30 +115,25 @@ export default function CatalogRecordsPage({ kind }: Props) {
         title={title}
         description={`Manage first-class catalog ${lowerTitle}.`}
         actions={
-          <>
-            <SavedViewSelector
-              moduleKey={moduleKey}
-              views={views}
-              selectedViewId={selectedViewId}
-              onSelect={setSelectedViewId}
-            />
-            {canCreate ? <Button asChild><Link href={`/dashboard/catalog/${kind}/new`}><Plus />New {isProduct ? "Product" : "Service"}</Link></Button> : null}
-          </>
+          canCreate ? <Button asChild><Link href={`/dashboard/catalog/${kind}/new`}><Plus />New {isProduct ? "Product" : "Service"}</Link></Button> : undefined
         }
       />
 
-      <SearchBar
-        value={searchValue}
-        onChange={(value) =>
-          setDraftConfig((current) => ({
-            ...current,
-            filters: {
-              ...current.filters,
-              search: value,
-            },
-          }))
-        }
-        placeholder={`Search ${lowerTitle}`}
+      <ModuleListToolbar
+        searchValue={searchValue}
+        onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
+        searchPlaceholder={`Search ${lowerTitle}`}
+        filtersOpen={Boolean(activeFilters.filtersOpen)}
+        activeFilterCount={activeFilterCount}
+        onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))}
+        onClearFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }))}
+        viewControls={<SavedViewSelector moduleKey={moduleKey} views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
+      />
+      <InlineSavedViewFilters
+        filterFields={definition?.filterFields ?? []}
+        filters={activeFilters}
+        onChange={(filters) => setDraftConfig((current) => ({ ...current, filters }))}
+        hideHeader
       />
 
       {error ? (
@@ -166,7 +165,7 @@ export default function CatalogRecordsPage({ kind }: Props) {
         onClearFilters={() =>
           setDraftConfig((current) => ({
             ...current,
-            filters: { ...current.filters, search: "" },
+            filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] },
           }))
         }
       />

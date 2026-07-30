@@ -56,9 +56,10 @@ export default function ManageModuleViewPage() {
   const moduleKey = params.moduleKey;
   const builtInDefinition = getModuleViewDefinition(moduleKey);
   const shouldLoadCustomModule = !builtInDefinition;
+  const fieldConfigModuleKey = moduleKey === "finance_payments" ? "finance_pos" : moduleKey;
   const customFieldsQuery = useModuleCustomFields(moduleKey, CUSTOM_FIELD_SUPPORTED_MODULES.has(moduleKey));
   const customModuleSchema = useCustomModuleSchema(moduleKey, shouldLoadCustomModule);
-  const moduleFieldsQuery = useModuleFieldConfigs(moduleKey);
+  const moduleFieldsQuery = useModuleFieldConfigs(fieldConfigModuleKey);
   const definition = useMemo(() => {
     const moduleDefinition = buildModuleViewDefinition(moduleKey, customFieldsQuery.data ?? [], moduleFieldsQuery.fields);
     if (moduleDefinition) return moduleDefinition;
@@ -320,7 +321,7 @@ export default function ManageModuleViewPage() {
         }
       />
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(220px,0.8fr)_minmax(280px,1fr)_minmax(360px,1.3fr)]">
+      <div className="grid items-start gap-4 xl:grid-cols-2">
         <Card className="overflow-visible">
           <div className="border-b border-line-subtle p-4">
             <h2 className="font-semibold text-copy-primary">Available fields</h2>
@@ -385,7 +386,7 @@ export default function ManageModuleViewPage() {
           </div>
         </Card>
 
-        <Card className="overflow-visible p-4">
+        <Card className="overflow-visible p-4 xl:col-span-2">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <h2 className="font-semibold text-copy-primary">View preview & filters</h2>

@@ -37,11 +37,11 @@ function createConditionId() {
   return `condition-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function buildCondition(): SavedViewCondition {
+export function buildCondition(field?: ModuleFilterField): SavedViewCondition {
   return {
     id: createConditionId(),
-    field: "",
-    operator: "is",
+    field: field?.key ?? "",
+    operator: field?.operators?.[0] ?? "is",
     value: "",
     values: [],
   };
@@ -105,7 +105,7 @@ function ConditionGroupsContent({
   }
 
   function addCondition(group: "all" | "any") {
-    updateGroup(group, (currentConditions) => [...currentConditions, buildCondition()]);
+    updateGroup(group, (currentConditions) => [...currentConditions, buildCondition(filterFields[0])]);
   }
 
   function removeCondition(group: "all" | "any", index: number) {
@@ -135,7 +135,13 @@ function ConditionGroupsContent({
                   : "Records must satisfy at least one condition in this section."}
               </p>
             </div>
-            <Button type="button" variant="outline" onClick={() => addCondition(groupKey)}>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={!filterFields.length}
+              title={filterFields.length ? undefined : "This module does not expose filterable fields yet."}
+              onClick={() => addCondition(groupKey)}
+            >
               <Plus className="h-4 w-4" />
               Add {groupKey === "all" ? "AND" : "OR"} Condition
             </Button>

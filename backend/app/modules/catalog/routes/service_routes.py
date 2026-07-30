@@ -1,8 +1,9 @@
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
+from app.core.module_filters import parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
@@ -39,22 +40,29 @@ def get_services(
     include_inactive: bool = Query(default=True),
     sort_by: str | None = Query(default=None, max_length=80),
     sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
     pagination: Pagination = Depends(get_pagination),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access(CATALOG_SERVICES_MODULE)),
     require_permission=Depends(require_action_access(CATALOG_SERVICES_MODULE, "view")),
 ):
-    services, total = list_services(
-        db,
-        tenant_id=current_user.tenant_id,
-        search=search,
-        include_inactive=include_inactive,
-        offset=pagination.offset,
-        limit=pagination.limit,
-        sort_by=sort_by,
-        sort_direction=sort_direction,
-    )
+    try:
+        services, total = list_services(
+            db,
+            tenant_id=current_user.tenant_id,
+            search=search,
+            include_inactive=include_inactive,
+            offset=pagination.offset,
+            limit=pagination.limit,
+            sort_by=sort_by,
+            sort_direction=sort_direction,
+            all_filter_conditions=parse_filter_conditions(filters_all),
+            any_filter_conditions=parse_filter_conditions(filters_any),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return build_paged_response([_response(service) for service in services], total_count=total, pagination=pagination)
 
 

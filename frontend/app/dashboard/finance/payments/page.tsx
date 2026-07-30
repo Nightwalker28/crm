@@ -19,14 +19,7 @@ import { usePaymentInvoices, type PosInvoice, type PosInvoiceSortState, type Rec
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
-import type { SavedViewConfig } from "@/hooks/useSavedViews";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
-
-const PAYMENT_DEFAULT_CONFIG: SavedViewConfig = {
-  visible_columns: ["invoice_number", "customer_name", "payment_status", "total_amount", "amount_paid", "balance_due", "due_date", "payment_method", "updated_at"],
-  filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [], payment_status: "all", filtersOpen: false },
-  sort: { key: "due_date", direction: "asc" },
-};
 
 export default function PaymentsPage() {
   const { modules } = useAccessibleModules();
@@ -34,9 +27,9 @@ export default function PaymentsPage() {
   const canCreateInvoice = Boolean(invoiceActions?.can_create);
   const canRecordPayment = Boolean(invoiceActions?.can_edit);
   const { fields: moduleFields } = useModuleFieldConfigs("finance_pos");
-  const definition = useMemo(() => buildModuleViewDefinition("finance_pos", [], moduleFields), [moduleFields]);
-  const defaultConfig = definition ? PAYMENT_DEFAULT_CONFIG : MODULE_VIEW_DEFAULTS.finance_pos;
-  const { views, selectedViewId, setSelectedViewId, draftConfig, setDraftConfig } = useSavedViews("finance_pos", defaultConfig);
+  const definition = useMemo(() => buildModuleViewDefinition("finance_payments", [], moduleFields), [moduleFields]);
+  const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.finance_payments;
+  const { views, selectedViewId, setSelectedViewId, draftConfig, setDraftConfig } = useSavedViews("finance_payments", defaultConfig);
   const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
   const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig);
   const sort = useMemo<PosInvoiceSortState>(() => draftConfig.sort && typeof draftConfig.sort.key === "string" ? { key: draftConfig.sort.key, direction: draftConfig.sort.direction === "desc" ? "desc" : "asc" } : null, [draftConfig.sort]);
@@ -75,7 +68,7 @@ export default function PaymentsPage() {
         selectedCount={selectedIds.length}
         selectionNoun="invoice"
         onClearSelection={() => setSelectedIds([])}
-        viewControls={<><SavedViewSelector moduleKey="finance_pos" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} /><Select value={paymentStatus} onValueChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, payment_status: value } }))}><SelectTrigger className="w-40" aria-label="Payment status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All payments</SelectItem><SelectItem value="unpaid">Unpaid</SelectItem><SelectItem value="partial">Partially paid</SelectItem><SelectItem value="paid">Paid</SelectItem><SelectItem value="refunded">Refunded</SelectItem></SelectContent></Select></>}
+        viewControls={<><SavedViewSelector moduleKey="finance_payments" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} /><Select value={paymentStatus} onValueChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, payment_status: value } }))}><SelectTrigger className="w-40" aria-label="Payment status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All payments</SelectItem><SelectItem value="unpaid">Unpaid</SelectItem><SelectItem value="partial">Partially paid</SelectItem><SelectItem value="paid">Paid</SelectItem><SelectItem value="refunded">Refunded</SelectItem></SelectContent></Select></>}
         actionControls={canRecordPayment ? selectedInvoice ? <Button type="button" size="sm" disabled={selectedInvoice.balance_due <= 0 || selectedInvoice.status === "void" || selectedInvoice.payment_status === "refunded"} onClick={() => setPaymentInvoice(selectedInvoice)}>Record selected payment</Button> : selectedIds.length > 1 ? <span className="text-xs text-copy-muted">Select one invoice to record a payment</span> : null : null}
       />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(filters) => setDraftConfig((current) => ({ ...current, filters }))} hideHeader />

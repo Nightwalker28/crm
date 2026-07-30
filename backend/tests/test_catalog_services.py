@@ -187,6 +187,38 @@ class CatalogServiceServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(total, 3)
         self.assertEqual([service.name for service in listed], ["Enterprise Setup"])
 
+    def test_list_services_applies_saved_view_conditions_with_tenant_scope(self):
+        services.create_service(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Design Review", "public_unit_price": "250.00", "is_active": True},
+        )
+        services.create_service(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Archived Review", "public_unit_price": "25.00", "is_active": False},
+        )
+        services.create_service(
+            self.db,
+            tenant_id=99,
+            actor_user_id=None,
+            payload={"name": "Other Review", "public_unit_price": "500.00", "is_active": True},
+        )
+
+        listed, total = services.list_services(
+            self.db,
+            tenant_id=10,
+            all_filter_conditions=[
+                {"field": "name", "operator": "contains", "value": "review"},
+                {"field": "is_active", "operator": "is", "value": "true"},
+            ],
+        )
+
+        self.assertEqual(total, 1)
+        self.assertEqual([service.name for service in listed], ["Design Review"])
+
     async def test_service_media_uses_upload_helper_and_serializes_media_url(self):
         service = services.create_service(
             self.db,

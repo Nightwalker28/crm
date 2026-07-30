@@ -1,5 +1,6 @@
 import unittest
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from sqlalchemy.exc import IntegrityError
 
@@ -100,6 +101,66 @@ class SavedViewRaceTests(unittest.TestCase):
 class SavedViewConfigTests(unittest.TestCase):
     def test_saved_view_modules_do_not_alias_table_preference_modules(self):
         self.assertIsNot(profile.SAVED_VIEW_MODULES, profile.TABLE_PREFERENCE_MODULES)
+
+    def test_saved_view_modules_cover_every_configurable_builtin_list(self):
+        self.assertTrue(
+            {
+                "tasks",
+                "sales_leads",
+                "sales_contacts",
+                "sales_organizations",
+                "sales_opportunities",
+                "sales_quotes",
+                "sales_orders",
+                "contracts",
+                "support_cases",
+                "finance_io",
+                "finance_pos",
+                "finance_payments",
+                "catalog_products",
+                "catalog_services",
+                "admin_users",
+            }.issubset(profile.SAVED_VIEW_MODULES)
+        )
+
+    def test_list_saved_views_does_not_require_legacy_table_preferences_for_view_only_modules(self):
+        view_only_modules = {
+            "sales_orders",
+            "contracts",
+            "support_cases",
+            "finance_pos",
+            "finance_payments",
+            "catalog_products",
+            "catalog_services",
+        }
+        user = SimpleNamespace(id=7, tenant_id=1)
+
+        for module_key in view_only_modules:
+            with self.subTest(module_key=module_key):
+                system_view = UserSavedView(
+                    id=9,
+                    user_id=7,
+                    module_key=module_key,
+                    name=profile.SYSTEM_DEFAULT_VIEW_NAME,
+                    config={"_meta": {"system_default": True}},
+                    is_default=1,
+                )
+                db = SavedViewListDB([system_view])
+
+                with patch.object(
+                    profile,
+                    "get_user_table_preference",
+                    side_effect=AssertionError("legacy table preferences must not be loaded"),
+                ):
+                    views = profile.list_saved_views(
+                        db,
+                        user,
+                        module_key,
+                        default_visible_columns=["name", "status"],
+                    )
+
+                self.assertEqual(views[0]["module_key"], module_key)
+                self.assertEqual(views[0]["id"], 9)
 
     def test_normalize_saved_view_config_rejects_deep_nested_json(self):
         nested = current = {}

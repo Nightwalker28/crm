@@ -14,7 +14,7 @@ const fullActions = {
 
 const moduleFixture = {
   id: 71,
-  name: "custom_projects",
+  name: "custom_42_custom_projects",
   base_route: "/dashboard/custom/custom_projects",
   description: "Custom module: Projects",
   is_enabled: true,

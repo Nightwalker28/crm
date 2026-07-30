@@ -177,10 +177,10 @@ export default function CustomModuleRecordDetailPage() {
   const moduleKey = params.moduleKey;
   const recordId = params.recordId;
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
-  const accessibleModule = modules.find((module) => module.name === moduleKey);
+  const schema = useCustomModuleSchema(moduleKey);
+  const accessibleModule = modules.find((module) => module.id === schema.data?.module_id);
   const canEdit = Boolean(accessibleModule?.actions?.can_edit);
   const canDelete = Boolean(accessibleModule?.actions?.can_delete);
-  const schema = useCustomModuleSchema(moduleKey);
   const recordQuery = useCustomModuleRecord(moduleKey, recordId);
   const moduleFields = useModuleFieldConfigs(moduleKey);
   const enabledFieldKeys = useMemo(

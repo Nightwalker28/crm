@@ -90,6 +90,8 @@ def list_products(
     limit: int = 50,
     sort_by: str | None = None,
     sort_direction: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[CatalogProduct], int]:
     return product_repository.list_products(
         db,
@@ -100,6 +102,8 @@ def list_products(
         limit=limit,
         sort_by=sort_by,
         sort_direction=sort_direction,
+        all_filter_conditions=all_filter_conditions,
+        any_filter_conditions=any_filter_conditions,
     )
 
 

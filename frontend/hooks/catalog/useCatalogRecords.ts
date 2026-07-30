@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/api";
 import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
+import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 
 export type CatalogKind = "products" | "services";
 export type CatalogSortState = PagedListSort;
@@ -89,10 +90,7 @@ async function fetchCatalogRecords(
     include_inactive: "true",
   });
 
-  const search = typeof filters.search === "string" ? filters.search.trim() : "";
-  if (search) {
-    params.set("search", search);
-  }
+  appendSavedViewFilterParams(params, filters);
   if (sort) {
     params.set("sort_by", sort.key);
     params.set("sort_direction", sort.direction);

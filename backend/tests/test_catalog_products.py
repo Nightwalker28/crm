@@ -169,6 +169,38 @@ class CatalogProductServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(total, 3)
         self.assertEqual([product.name for product in products], ["Pro Camera"])
 
+    def test_list_products_applies_saved_view_conditions_with_tenant_scope(self):
+        services.create_product(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Public Camera", "public_unit_price": "250.00", "stock_status": "in_stock", "is_public": True},
+        )
+        services.create_product(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Internal Cable", "public_unit_price": "25.00", "stock_status": "in_stock", "is_public": False},
+        )
+        services.create_product(
+            self.db,
+            tenant_id=99,
+            actor_user_id=None,
+            payload={"name": "Other Camera", "public_unit_price": "500.00", "stock_status": "in_stock", "is_public": True},
+        )
+
+        products, total = services.list_products(
+            self.db,
+            tenant_id=10,
+            all_filter_conditions=[
+                {"field": "name", "operator": "contains", "value": "camera"},
+                {"field": "is_public", "operator": "is", "value": "true"},
+            ],
+        )
+
+        self.assertEqual(total, 1)
+        self.assertEqual([product.name for product in products], ["Public Camera"])
+
     async def test_product_media_uses_upload_helper_and_serializes_media_url(self):
         product = services.create_product(
             self.db,

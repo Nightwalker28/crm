@@ -37,7 +37,7 @@ export default function CustomModuleRecordCreatePage({ moduleKey }: { moduleKey:
   const schema = useCustomModuleSchema(moduleKey);
   const moduleFields = useModuleFieldConfigs(moduleKey);
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
-  const accessibleModule = modules.find((module) => module.name === moduleKey);
+  const accessibleModule = modules.find((module) => module.id === schema.data?.module_id);
   const enabledFieldKeys = useMemo(
     () => new Map(moduleFields.fields.map((field) => [field.field_key, field.is_protected || field.is_enabled])),
     [moduleFields.fields],

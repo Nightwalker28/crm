@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.module_filters import apply_filter_conditions
 from app.modules.catalog.models import CatalogProduct, CatalogService
 
 
@@ -68,6 +69,8 @@ def list_products(
     limit: int = 50,
     sort_by: str | None = None,
     sort_direction: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[CatalogProduct], int]:
     query = db.query(CatalogProduct).filter(
         CatalogProduct.tenant_id == tenant_id,
@@ -84,6 +87,21 @@ def list_products(
                 CatalogProduct.description.ilike(pattern),
             )
         )
+    field_map = {
+        "name": {"expression": CatalogProduct.name, "type": "text"},
+        "slug": {"expression": CatalogProduct.slug, "type": "text"},
+        "sku": {"expression": CatalogProduct.sku, "type": "text"},
+        "currency": {"expression": CatalogProduct.currency, "type": "text"},
+        "public_unit_price": {"expression": CatalogProduct.public_unit_price, "type": "number"},
+        "stock_status": {"expression": CatalogProduct.stock_status, "type": "text"},
+        "stock_quantity": {"expression": CatalogProduct.stock_quantity, "type": "number"},
+        "is_public": {"expression": CatalogProduct.is_public, "type": "boolean"},
+        "is_active": {"expression": CatalogProduct.is_active, "type": "boolean"},
+        "created_at": {"expression": CatalogProduct.created_at, "type": "date"},
+        "updated_at": {"expression": CatalogProduct.updated_at, "type": "date"},
+    }
+    query = apply_filter_conditions(query, conditions=all_filter_conditions, logic="all", field_map=field_map)
+    query = apply_filter_conditions(query, conditions=any_filter_conditions, logic="any", field_map=field_map)
     total = query.count()
     products = apply_product_sort(query, sort_by=sort_by, sort_direction=sort_direction).offset(offset).limit(limit).all()
     return products, total

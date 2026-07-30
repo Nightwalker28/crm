@@ -120,6 +120,17 @@ test("adds and reorders fields, updates preview, and saves from mobile", async (
   await expect(page.getByText("All changes saved")).toBeVisible();
 });
 
+test("adds editable AND and OR conditions and omits the redundant views breadcrumb", async ({ page }) => {
+  await page.goto("/dashboard/views/sales_contacts?viewId=72");
+
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Add AND Condition" }).click();
+  await expect(page.getByText("No AND conditions yet.")).toHaveCount(0);
+  await page.getByRole("button", { name: "Add OR Condition" }).click();
+  await expect(page.getByText("No OR conditions yet.")).toHaveCount(0);
+  await expect(page.getByText("2 saved conditions")).toBeVisible();
+});
+
 test("supports drag ordering, guards switching, and saves a new view from default", async ({ page }) => {
   await page.goto("/dashboard/views/sales_contacts?viewId=72");
   await page.getByTestId("selected-column-primary_email").dragTo(page.getByTestId("selected-column-first_name"));

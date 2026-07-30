@@ -3,6 +3,7 @@ from __future__ import annotations
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
+from app.core.module_filters import apply_filter_conditions
 from app.modules.catalog.models import CatalogProduct, CatalogService
 
 
@@ -65,6 +66,8 @@ def list_services(
     limit: int = 50,
     sort_by: str | None = None,
     sort_direction: str | None = None,
+    all_filter_conditions: list[dict] | None = None,
+    any_filter_conditions: list[dict] | None = None,
 ) -> tuple[list[CatalogService], int]:
     query = db.query(CatalogService).filter(
         CatalogService.tenant_id == tenant_id,
@@ -75,6 +78,18 @@ def list_services(
     if search and search.strip():
         pattern = f"%{search.strip()}%"
         query = query.filter(or_(CatalogService.name.ilike(pattern), CatalogService.description.ilike(pattern)))
+    field_map = {
+        "name": {"expression": CatalogService.name, "type": "text"},
+        "slug": {"expression": CatalogService.slug, "type": "text"},
+        "currency": {"expression": CatalogService.currency, "type": "text"},
+        "public_unit_price": {"expression": CatalogService.public_unit_price, "type": "number"},
+        "is_public": {"expression": CatalogService.is_public, "type": "boolean"},
+        "is_active": {"expression": CatalogService.is_active, "type": "boolean"},
+        "created_at": {"expression": CatalogService.created_at, "type": "date"},
+        "updated_at": {"expression": CatalogService.updated_at, "type": "date"},
+    }
+    query = apply_filter_conditions(query, conditions=all_filter_conditions, logic="all", field_map=field_map)
+    query = apply_filter_conditions(query, conditions=any_filter_conditions, logic="any", field_map=field_map)
     total = query.count()
     services = apply_service_sort(query, sort_by=sort_by, sort_direction=sort_direction).offset(offset).limit(limit).all()
     return services, total
