@@ -15,12 +15,12 @@ import {
   Settings2,
   ShieldCheck,
   Trash2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -30,6 +30,18 @@ import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SettingsSwitchRow } from "@/components/ui/SettingsSwitchRow";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useModuleBuilder,
@@ -163,37 +175,6 @@ function snapshot(draft: ModuleDraft, fields: EditableField[], deletedIds: numbe
   return JSON.stringify({ draft, fields, deletedIds });
 }
 
-function Toggle({
-  id,
-  label,
-  checked,
-  disabled = false,
-  onCheckedChange,
-}: {
-  id: string;
-  label: string;
-  checked: boolean;
-  disabled?: boolean;
-  onCheckedChange: (checked: boolean) => void;
-}) {
-  return (
-    <Field orientation="horizontal" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3">
-      <Checkbox
-        id={id}
-        aria-label={label}
-        checked={checked}
-        disabled={disabled}
-        onCheckedChange={(value) => onCheckedChange(value === true)}
-        className="size-5"
-      />
-      <div>
-        <FieldLabel htmlFor={id}>{label}</FieldLabel>
-        <FieldDescription>{checked ? "Enabled" : "Disabled"}</FieldDescription>
-      </div>
-    </Field>
-  );
-}
-
 function FieldInspector({
   field,
   disabled,
@@ -203,34 +184,31 @@ function FieldInspector({
   disabled: boolean;
   onChange: (update: Partial<EditableField>) => void;
 }) {
-  if (!field) {
-    return (
-      <Card className="min-h-72">
-        <EmptyState
-          icon={Settings2}
-          title="Select a field"
-          description="Choose a field from the editor to inspect its settings."
-        />
-      </Card>
-    );
-  }
+  if (!field) return null;
 
   const isNew = !field.serverId;
   const supportsOptions = field.field_type === "single_select" || field.field_type === "multi_select";
 
   return (
-    <Card className="xl:sticky xl:top-4">
-      <CardHeader>
-        <div>
+    <>
+      <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+        <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h2 className="text-base font-semibold text-copy-primary">Field inspector</h2>
+            <SheetTitle className="text-base font-semibold text-copy-primary">Edit field</SheetTitle>
             {field.is_protected ? <LockKeyhole className="h-4 w-4 text-primary" aria-label="Protected field" /> : null}
+            <Pill>{isNew ? "Draft" : fieldTypeLabel(field.field_type)}</Pill>
           </div>
-          <p className="mt-1 break-all text-sm text-copy-muted">{field.key ?? "New field"}</p>
+          <SheetDescription className="mt-1 break-all text-sm text-copy-muted">
+            {field.key ?? "Configure the new field before saving the module."}
+          </SheetDescription>
         </div>
-        <Pill>{isNew ? "Draft" : fieldTypeLabel(field.field_type)}</Pill>
-      </CardHeader>
-      <CardBody>
+        <SheetClose asChild>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label="Close field editor">
+            <X />
+          </Button>
+        </SheetClose>
+      </SheetHeader>
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
         {field.is_protected ? (
           <div className="mb-4 rounded-[var(--radius-control)] border border-primary/30 bg-action-primary-muted p-3 text-sm text-copy-secondary">
             This identifier field is protected because module records and routing depend on it. It cannot be disabled or deleted.
@@ -288,13 +266,19 @@ function FieldInspector({
               <Textarea id="builder-field-options" value={field.options_text} onChange={(event) => onChange({ options_text: event.target.value })} placeholder="One option per line" disabled={disabled} />
             </Field>
           ) : null}
-          <Toggle id="builder-field-required" label="Required" checked={field.is_required} onCheckedChange={(checked) => onChange({ is_required: checked })} disabled={disabled} />
-          <Toggle id="builder-field-unique" label="Unique values" checked={field.is_unique} onCheckedChange={(checked) => onChange({ is_unique: checked })} disabled={disabled || field.field_type === "multi_select"} />
-          <Toggle id="builder-field-list" label="Show in list" checked={field.display_in_list} onCheckedChange={(checked) => onChange({ display_in_list: checked })} disabled={disabled} />
-          <Toggle id="builder-field-active" label="Enabled" checked={field.is_active} onCheckedChange={(checked) => onChange({ is_active: checked })} disabled={disabled || field.is_protected} />
+          <SettingsSwitchRow id="builder-field-required" label="Required" description="Require a value when records are saved." checked={field.is_required} onCheckedChange={(checked) => onChange({ is_required: checked })} disabled={disabled} />
+          <SettingsSwitchRow id="builder-field-unique" label="Unique values" description="Prevent two records from using the same value." checked={field.is_unique} onCheckedChange={(checked) => onChange({ is_unique: checked })} disabled={disabled || field.field_type === "multi_select"} />
+          <SettingsSwitchRow id="builder-field-list" label="Show in list" description="Include this field in the module's default table." checked={field.display_in_list} onCheckedChange={(checked) => onChange({ display_in_list: checked })} disabled={disabled} />
+          <SettingsSwitchRow id="builder-field-active" label="Enabled" description={field.is_protected ? "Protected fields must remain enabled." : "Make this field available in records, lists, and filters."} checked={field.is_active} onCheckedChange={(checked) => onChange({ is_active: checked })} disabled={disabled || field.is_protected} />
         </FieldGroup>
-      </CardBody>
-    </Card>
+      </div>
+      <SheetFooter className="flex items-center justify-between gap-3 border-t border-line-subtle bg-surface px-5 py-4">
+        <p className="text-xs text-copy-muted">Changes are saved with the module.</p>
+        <SheetClose asChild>
+          <Button type="button">Done editing field</Button>
+        </SheetClose>
+      </SheetFooter>
+    </>
   );
 }
 
@@ -384,6 +368,7 @@ function ModuleWorkspace({
   const [fields, setFields] = useState(initialFields);
   const [deletedIds, setDeletedIds] = useState<number[]>([]);
   const [selectedFieldId, setSelectedFieldId] = useState<string | null>(initialFields[0]?.clientId ?? null);
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [baseline, setBaseline] = useState(initialSnapshot);
   const [saveError, setSaveError] = useState<string | null>(null);
   const deleted = Boolean(module.deleted_at);
@@ -406,6 +391,7 @@ function ModuleWorkspace({
     setFields((current) => [...current, field]);
     setSelectedFieldId(field.clientId);
     setTab("fields");
+    setInspectorOpen(true);
   }
 
   function removeField(field: EditableField) {
@@ -414,6 +400,7 @@ function ModuleWorkspace({
     setFields((current) => current.filter((candidate) => candidate.clientId !== field.clientId));
     if (field.serverId) setDeletedIds((current) => [...current, field.serverId as number]);
     setSelectedFieldId((current) => current === field.clientId ? null : current);
+    if (selectedFieldId === field.clientId) setInspectorOpen(false);
   }
 
   function moveField(clientId: string, direction: -1 | 1) {
@@ -492,7 +479,10 @@ function ModuleWorkspace({
                 type="button"
                 role="tab"
                 aria-selected={tab === value}
-                onClick={() => setTab(value)}
+                onClick={() => {
+                  setTab(value);
+                  if (value !== "fields") setInspectorOpen(false);
+                }}
                 className={cn(
                   "rounded-[var(--radius-control-sm)] px-3 py-2 text-sm font-medium text-copy-secondary hover:bg-surface-muted hover:text-copy-primary",
                   tab === value && "bg-action-primary-muted text-primary",
@@ -522,7 +512,7 @@ function ModuleWorkspace({
                 <FieldLabel htmlFor="builder-module-description">Description</FieldLabel>
                 <Textarea id="builder-module-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} disabled={disabled} />
               </Field>
-              <Toggle id="builder-module-active" label="Module enabled" checked={draft.is_active} onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_active: checked }))} disabled={disabled} />
+              <SettingsSwitchRow id="builder-module-active" label="Module enabled" description="Make this module available to users who have access to it." checked={draft.is_active} onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_active: checked }))} disabled={disabled} />
             </FieldGroup>
           ) : tab === "fields" ? (
             <div>
@@ -548,7 +538,15 @@ function ModuleWorkspace({
                     )}
                   >
                     <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" />
-                    <button type="button" onClick={() => setSelectedFieldId(field.clientId)} className="min-w-0 flex-1 text-left">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFieldId(field.clientId);
+                        setInspectorOpen(true);
+                      }}
+                      className="min-w-0 flex-1 text-left"
+                      aria-label={`Edit ${field.label || "untitled field"}`}
+                    >
                       <span className="flex items-center gap-2">
                         <span className="truncate text-sm font-medium text-copy-primary">{field.label || "Untitled field"}</span>
                         {field.is_protected ? <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Protected" /> : null}
@@ -613,13 +611,24 @@ function ModuleWorkspace({
         </CardFooter>
       </Card>
 
-      {tab === "fields" && !deleted ? (
-        <FieldInspector
-          field={selectedField}
-          disabled={disabled}
-          onChange={(update) => selectedFieldId && updateField(selectedFieldId, update)}
-        />
-      ) : null}
+      <Sheet
+        open={tab === "fields" && !deleted && Boolean(selectedField) && inspectorOpen}
+        onOpenChange={setInspectorOpen}
+      >
+        <SheetPortal>
+          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
+          <SheetContent
+            side="right"
+            className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none"
+          >
+            <FieldInspector
+              field={selectedField}
+              disabled={disabled}
+              onChange={(update) => selectedFieldId && updateField(selectedFieldId, update)}
+            />
+          </SheetContent>
+        </SheetPortal>
+      </Sheet>
     </div>
   );
 }

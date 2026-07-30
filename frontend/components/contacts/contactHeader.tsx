@@ -9,6 +9,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 export default function ContactsHeader({ eyebrow }: { eyebrow?: React.ReactNode }) {
   return (
     <PageHeader
+      variant="module"
       title="Contacts"
       description="Manage people, their accounts, ownership, and communication history."
       eyebrow={eyebrow}

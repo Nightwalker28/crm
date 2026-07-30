@@ -41,8 +41,8 @@ export default function OrdersPage() {
   const clearFilters = () => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }));
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title="Orders" description="Track confirmed sales orders created from accepted quotes or entered manually." eyebrow={totalCount ? `${totalCount} order${totalCount === 1 ? "" : "s"} in this view` : undefined} actions={<Button asChild><Link href="/dashboard/sales/orders/new"><Plus />Create order</Link></Button>} />
+    <div className="flex flex-col gap-4">
+      <PageHeader variant="module" title="Orders" description="Track confirmed sales orders created from accepted quotes or entered manually." eyebrow={totalCount ? `${totalCount} order${totalCount === 1 ? "" : "s"} in this view` : undefined} actions={<Button asChild><Link href="/dashboard/sales/orders/new"><Plus />Create order</Link></Button>} />
       <ModuleListToolbar searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""} onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))} searchPlaceholder="Search orders" filtersOpen={Boolean(activeFilters.filtersOpen)} activeFilterCount={activeFilterCount} onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))} onClearFilters={clearFilters} viewControls={<SavedViewSelector moduleKey="sales_orders" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />} />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />
       {error ? (

@@ -132,6 +132,8 @@ test("filters fields, explains protected controls, and saves inspector changes o
 
   await page.getByRole("button", { name: "required", exact: true }).click();
   await page.getByRole("button", { name: /Contract Term/ }).click();
+  await expect(page.getByRole("dialog", { name: "Edit field" })).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Enabled" })).toBeChecked();
   await page.getByLabel("Label", { exact: true }).fill("Agreement Term");
   await expect(page.getByText("Unsaved changes")).toBeVisible();
 
@@ -140,16 +142,18 @@ test("filters fields, explains protected controls, and saves inspector changes o
   const request = await customUpdate;
   expect(request.postDataJSON()).toMatchObject({ label: "Agreement Term", is_required: true, is_active: true });
   await expect(page.getByText("All changes saved")).toBeVisible();
+  await page.getByRole("button", { name: "Close field editor" }).click();
 
   await page.getByRole("button", { name: "all", exact: true }).click();
   await page.getByRole("button", { name: /Email System.*Protected/ }).click();
   await expect(page.getByText(/protected field stays enabled/i)).toBeVisible();
-  await expect(page.getByRole("switch", { name: "Disable Email" })).toBeDisabled();
+  await expect(page.getByRole("switch", { name: "Enabled" })).toBeDisabled();
 });
 
 test("creates a required custom field and opens it in the inspector", async ({ page }) => {
   await page.goto("/dashboard/settings/fields");
   await page.getByRole("button", { name: "New Field" }).click();
+  await expect(page.getByRole("dialog", { name: "Create custom field" })).toBeVisible();
   await page.getByLabel("Label", { exact: true }).fill("Renewal Window");
   await expect(page.getByLabel("Field Key")).toHaveValue("renewal_window");
   await page.getByLabel("Require a value when records are saved").click();
@@ -159,6 +163,6 @@ test("creates a required custom field and opens it in the inspector", async ({ p
   const request = await createRequest;
   expect(request.postDataJSON()).toMatchObject({ field_key: "renewal_window", label: "Renewal Window", is_required: true });
 
-  await expect(page.getByRole("heading", { name: "Field inspector" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Edit field" })).toBeVisible();
   await expect(page.getByLabel("Label", { exact: true })).toHaveValue("Renewal Window");
 });

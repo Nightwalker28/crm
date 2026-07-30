@@ -9,14 +9,16 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { ColumnPicker } from "@/components/ui/ColumnPicker";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Input } from "@/components/ui/input";
+import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
+import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { PageHeader } from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -113,6 +115,9 @@ export default function CustomModulePage() {
   const actionColumnCount = canDelete ? 1 : 0;
   const columnCount = Math.max(1, tableColumns.length + actionColumnCount);
   const hasSearch = Boolean(search.trim());
+  const { allConditions, anyConditions } = getConditionGroups(draftConfig.filters);
+  const activeFilterCount = allConditions.length + anyConditions.length;
+  const hasActiveFilters = hasSearch || activeFilterCount > 0;
   const rangeStart = records.totalCount ? (records.page - 1) * records.pageSize + 1 : 0;
   const rangeEnd = records.totalCount ? Math.min(records.page * records.pageSize, records.totalCount) : 0;
 
@@ -130,6 +135,20 @@ export default function CustomModulePage() {
         ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
         : { column, direction: "asc" };
     handleSortChange(nextSort);
+  }
+
+  function clearFilters() {
+    setDraftConfig((current) => ({
+      ...current,
+      filters: {
+        ...current.filters,
+        search: "",
+        conditions: [],
+        all_conditions: [],
+        any_conditions: [],
+      },
+    }));
+    setPage(1);
   }
 
   async function handleDelete(record: CustomModuleRecord) {
@@ -169,52 +188,57 @@ export default function CustomModulePage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <PageHeader
+        variant="module"
         title={schema.data.name}
         description={schema.data.description ?? "Tenant custom module records."}
         eyebrow={records.totalCount ? `${records.totalCount} record${records.totalCount === 1 ? "" : "s"}` : undefined}
         actions={
-          <>
-            {viewDefinition ? (
-              <SavedViewSelector
-                moduleKey={moduleKey}
-                views={views}
-                selectedViewId={selectedViewId}
-                onSelect={(viewId) => {
-                  setSelectedViewId(viewId);
-                  setPage(1);
-                }}
-              />
-            ) : null}
-            {canCreate ? (
-              <Button asChild>
-                <Link href={`/dashboard/custom/${moduleKey}/new`}>
-                  <Plus />
-                  New record
-                </Link>
-              </Button>
-            ) : null}
-          </>
+          canCreate ? (
+            <Button asChild>
+              <Link href={`/dashboard/custom/${moduleKey}/new`}>
+                <Plus />
+                New record
+              </Link>
+            </Button>
+          ) : null
         }
       />
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Input
-          value={search}
-          onChange={(event) => {
+      <ModuleListToolbar
+        searchValue={search}
+        onSearchChange={(value) => {
             setDraftConfig((current) => ({
               ...current,
-              filters: { ...current.filters, search: event.target.value },
+              filters: { ...current.filters, search: value },
             }));
             setPage(1);
           }}
-          placeholder="Search records"
-          aria-label="Search custom module records"
-          className="max-w-sm"
-        />
-        <div className="flex flex-wrap items-center gap-2">
-          {viewDefinition ? (
+        searchPlaceholder="Search records"
+        filtersOpen={Boolean(draftConfig.filters.filtersOpen)}
+        activeFilterCount={activeFilterCount}
+        onToggleFilters={() =>
+          setDraftConfig((current) => ({
+            ...current,
+            filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen },
+          }))
+        }
+        onClearFilters={clearFilters}
+        viewControls={viewDefinition ? (
+          <SavedViewSelector
+            moduleKey={moduleKey}
+            views={views}
+            selectedViewId={selectedViewId}
+            onSelect={(viewId) => {
+              setSelectedViewId(viewId);
+              setPage(1);
+            }}
+          />
+        ) : undefined}
+        actionControls={
+          <>
+            {viewDefinition ? (
             <ColumnPicker
               options={viewDefinition.columns}
               visibleColumns={visibleColumns}
@@ -225,8 +249,8 @@ export default function CustomModulePage() {
                 }))
               }
             />
-          ) : null}
-          {canCreate || canExport ? (
+            ) : null}
+            {canCreate || canExport ? (
             <ModuleImportExportControls
               importEndpoint={canCreate ? `/custom-modules/${moduleKey}/import` : undefined}
               exportEndpoint={canExport ? `/custom-modules/${moduleKey}/export` : undefined}
@@ -234,9 +258,22 @@ export default function CustomModulePage() {
               exportLabel="Export CSV"
               onImportSuccess={() => records.refresh()}
             />
-          ) : null}
-        </div>
-      </div>
+            ) : null}
+          </>
+        }
+      />
+
+      {viewDefinition ? (
+        <InlineSavedViewFilters
+          filterFields={viewDefinition.filterFields}
+          filters={draftConfig.filters}
+          onChange={(filters) => {
+            setDraftConfig((current) => ({ ...current, filters }));
+            setPage(1);
+          }}
+          hideHeader
+        />
+      ) : null}
 
       {records.error ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
@@ -282,14 +319,14 @@ export default function CustomModulePage() {
               <TableRow>
                 <TableCell colSpan={columnCount} className="py-12">
                   <EmptyState
-                    title={hasSearch ? "No records match this search" : "No records yet"}
-                    description={hasSearch
-                      ? "Clear the search or try another term."
+                    title={hasActiveFilters ? "No records match this view" : "No records yet"}
+                    description={hasActiveFilters
+                      ? "Clear the filters or adjust this saved view."
                       : canCreate
                         ? "Create the first record for this custom module."
                         : "Records will appear here when a teammate creates one."}
-                    action={hasSearch
-                      ? <Button type="button" variant="outline" onClick={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "" } }))}>Clear search</Button>
+                    action={hasActiveFilters
+                      ? <Button type="button" variant="outline" onClick={clearFilters}>Clear filters</Button>
                       : canCreate
                         ? <Button asChild><Link href={`/dashboard/custom/${moduleKey}/new`}>Create record</Link></Button>
                         : undefined}

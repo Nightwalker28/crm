@@ -1,7 +1,7 @@
 "use client";
 
 import { type FormEvent, useMemo, useState } from "react";
-import { Filter, Lock, MoreHorizontal, Plus, Settings2, Sparkles } from "lucide-react";
+import { Filter, Lock, MoreHorizontal, Plus, Settings2, Sparkles, X } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
@@ -18,7 +18,17 @@ import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch, SwitchThumb } from "@/components/ui/switch";
+import { SettingsSwitch, SettingsSwitchRow } from "@/components/ui/SettingsSwitchRow";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { isProtectedFieldKey, useModuleFieldConfigs, type ModuleFieldSource } from "@/hooks/useModuleFieldConfigs";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
 import { useModuleBuilder, type CustomModuleDefinition, type CustomModuleField } from "@/hooks/useModuleBuilder";
@@ -204,6 +214,7 @@ export default function FieldsPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FieldFilter>("all");
   const [panelMode, setPanelMode] = useState<PanelMode>("inspect");
+  const [panelOpen, setPanelOpen] = useState(false);
   const [selectedFieldKey, setSelectedFieldKey] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftField>(emptyDraft);
   const [inspectorEdit, setInspectorEdit] = useState<{ fieldKey: string; value: InspectorDraft } | null>(null);
@@ -251,6 +262,7 @@ export default function FieldsPage() {
       ]);
       setSelectedFieldKey(getCustomFieldColumnKey(created.field_key));
       setPanelMode("inspect");
+      setPanelOpen(true);
       toast.success("Custom field created.");
     },
     onError: (error) => {
@@ -343,6 +355,7 @@ export default function FieldsPage() {
     setSearch("");
     setFilter("all");
     setPanelMode("inspect");
+    setPanelOpen(false);
     setSelectedFieldKey(null);
     setInspectorEdit(null);
     setDraft(emptyDraft);
@@ -351,18 +364,50 @@ export default function FieldsPage() {
   }
 
   function selectField(fieldKey: string) {
-    if (fieldKey === selectedField?.field_key && panelMode === "inspect") return;
+    if (fieldKey === selectedField?.field_key && panelMode === "inspect") {
+      setPanelOpen(true);
+      return;
+    }
     if (!confirmDiscard()) return;
     setPanelMode("inspect");
     setSelectedFieldKey(fieldKey);
     setInspectorEdit(null);
     setInspectorError(null);
+    setPanelOpen(true);
   }
 
   function showCreatePanel() {
     if (!supportsCustomFields || !confirmDiscard()) return;
+    setDraft(emptyDraft);
+    setFieldKeyEdited(false);
     setPanelMode("create");
     setCreateError(null);
+    setPanelOpen(true);
+  }
+
+  function discardPanelChanges() {
+    if (panelMode === "create") {
+      setDraft(emptyDraft);
+      setFieldKeyEdited(false);
+      setCreateError(null);
+    } else {
+      setInspectorEdit(null);
+      setInspectorError(null);
+    }
+  }
+
+  function closePanel() {
+    if (!confirmDiscard()) return;
+    discardPanelChanges();
+    setPanelOpen(false);
+  }
+
+  function handlePanelOpenChange(open: boolean) {
+    if (open) {
+      setPanelOpen(true);
+      return;
+    }
+    closePanel();
   }
 
   function updateInspectorDraft(update: (current: InspectorDraft) => InspectorDraft) {
@@ -498,7 +543,7 @@ export default function FieldsPage() {
           <Button className="mt-4" variant="outline" onClick={() => void retryAll()}>Try again</Button>
         </Card>
       ) : (
-        <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+        <>
           <Card className="overflow-visible">
             <div className="border-b border-line-subtle p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -549,16 +594,12 @@ export default function FieldsPage() {
                     </button>
 
                     <div className="flex items-center gap-2">
-                      <Switch
+                      <SettingsSwitch
                         checked={field.is_enabled}
                         disabled={field.is_protected || isSaving}
                         onCheckedChange={() => void toggleField(field)}
                         aria-label={`${field.is_enabled ? "Disable" : "Enable"} ${field.label}`}
-                        title={field.is_protected ? "Protected fields cannot be disabled because records depend on them." : undefined}
-                        className="relative h-6 w-11 rounded-full border border-line-strong bg-surface-muted p-0.5 data-[state=checked]:bg-primary"
-                      >
-                        <SwitchThumb className="block h-4 w-4 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
-                      </Switch>
+                      />
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button type="button" size="icon-sm" variant="ghost" aria-label={`More actions for ${field.label}`}><MoreHorizontal /></Button>
@@ -592,14 +633,28 @@ export default function FieldsPage() {
             )}
           </Card>
 
-          <Card className="overflow-visible p-5 xl:sticky xl:top-5">
-            {panelMode === "create" ? (
-              <form className="grid gap-4" onSubmit={handleCreate}>
-                <div>
-                  <h2 className="text-lg font-semibold text-copy-primary">Create custom field</h2>
-                  <p className="mt-1 text-sm text-copy-secondary">Add a field to this built-in module. Its key cannot be changed after creation.</p>
-                </div>
-                <FieldGroup>
+          <Sheet open={panelOpen} onOpenChange={handlePanelOpenChange}>
+            <SheetPortal>
+              <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
+              <SheetContent
+                side="right"
+                className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none"
+              >
+                {panelMode === "create" ? (
+                  <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleCreate}>
+                    <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+                      <div>
+                        <SheetTitle className="text-lg font-semibold text-copy-primary">Create custom field</SheetTitle>
+                        <SheetDescription className="mt-1 text-sm text-copy-secondary">
+                          Add a field to this built-in module. Its key cannot be changed after creation.
+                        </SheetDescription>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Close field editor" onClick={closePanel}>
+                        <X />
+                      </Button>
+                    </SheetHeader>
+                    <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                      <FieldGroup>
                   <Field>
                     <FieldLabel htmlFor="create-field-label">Label <RequiredMark /></FieldLabel>
                     <Input id="create-field-label" value={draft.label} onChange={(event) => handleLabelChange(event.target.value)} placeholder="Contract Term" disabled={createMutation.isPending} required />
@@ -630,28 +685,35 @@ export default function FieldsPage() {
                     </Checkbox>
                     <FieldLabel htmlFor="create-field-required">Require a value when records are saved</FieldLabel>
                   </Field>
-                </FieldGroup>
-                {createError ? <p className="text-sm text-state-danger" role="alert">{createError}</p> : null}
-                <div className="flex justify-end gap-2 border-t border-line-subtle pt-4">
-                  <Button type="button" variant="outline" onClick={() => { if (confirmDiscard()) setPanelMode("inspect"); }} disabled={createMutation.isPending}>Cancel</Button>
-                  <Button type="submit" disabled={!canCreate}>{createMutation.isPending ? "Creating…" : "Create Field"}</Button>
-                </div>
-              </form>
-            ) : selectedField ? (
-              <div className="grid gap-4">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-lg font-semibold text-copy-primary">Field inspector</h2>
-                    {selectedField.is_protected ? <Lock className="h-4 w-4 text-primary" aria-label="Protected field" /> : null}
-                  </div>
-                  <p className="mt-1 break-all text-sm text-copy-muted">{selectedField.field_key}</p>
-                </div>
-                {selectedField.is_protected ? (
-                  <div className="rounded-[var(--radius-control)] border border-primary/30 bg-action-primary-muted p-3 text-sm text-copy-secondary">
-                    This protected field stays enabled because module records, relationships, or routing depend on it.
-                  </div>
-                ) : null}
-                <FieldGroup>
+                      </FieldGroup>
+                      {createError ? <p className="mt-4 text-sm text-state-danger" role="alert">{createError}</p> : null}
+                    </div>
+                    <SheetFooter className="flex justify-end gap-2 border-t border-line-subtle bg-surface px-5 py-4">
+                      <Button type="button" variant="outline" onClick={closePanel} disabled={createMutation.isPending}>Cancel</Button>
+                      <Button type="submit" disabled={!canCreate}>{createMutation.isPending ? "Creating…" : "Create Field"}</Button>
+                    </SheetFooter>
+                  </form>
+                ) : selectedField ? (
+                  <>
+                    <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <SheetTitle className="text-lg font-semibold text-copy-primary">Edit field</SheetTitle>
+                          {selectedField.is_protected ? <Lock className="h-4 w-4 text-primary" aria-label="Protected field" /> : null}
+                        </div>
+                        <SheetDescription className="mt-1 break-all text-sm text-copy-muted">{selectedField.field_key}</SheetDescription>
+                      </div>
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Close field editor" onClick={closePanel}>
+                        <X />
+                      </Button>
+                    </SheetHeader>
+                    <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                      {selectedField.is_protected ? (
+                        <div className="mb-4 rounded-[var(--radius-control)] border border-primary/30 bg-action-primary-muted p-3 text-sm text-copy-secondary">
+                          This protected field stays enabled because module records, relationships, or routing depend on it.
+                        </div>
+                      ) : null}
+                      <FieldGroup>
                   <Field>
                     <FieldLabel htmlFor="inspector-field-label">Label <RequiredMark /></FieldLabel>
                     <Input id="inspector-field-label" value={inspectorDraft.label} onChange={(event) => updateInspectorDraft((current) => ({ ...current, label: event.target.value }))} disabled={isSaving} required />
@@ -679,37 +741,30 @@ export default function FieldsPage() {
                       </Field>
                     </>
                   ) : null}
-                  <Field orientation="horizontal" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3">
-                    <Switch
-                      id="inspector-field-enabled"
-                      checked={inspectorDraft.is_enabled}
-                      disabled={selectedField.is_protected || isSaving}
-                      onCheckedChange={(checked) => updateInspectorDraft((current) => ({ ...current, is_enabled: checked }))}
-                      aria-label={`Field ${inspectorDraft.is_enabled ? "enabled" : "disabled"}`}
-                      className="relative h-6 w-11 rounded-full border border-line-strong bg-surface p-0.5 data-[state=checked]:bg-primary"
-                    >
-                      <SwitchThumb className="block h-4 w-4 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
-                    </Switch>
-                    <div>
-                      <FieldLabel htmlFor="inspector-field-enabled">Enabled</FieldLabel>
-                      <FieldDescription>{selectedField.is_protected ? "Locked on for record safety." : "Disabled fields are removed from lists, filters, and supported forms."}</FieldDescription>
+                  <SettingsSwitchRow
+                    id="inspector-field-enabled"
+                    label="Enabled"
+                    description={selectedField.is_protected ? "Locked on for record safety." : "Disabled fields are removed from lists, filters, and supported forms."}
+                    checked={inspectorDraft.is_enabled}
+                    disabled={selectedField.is_protected || isSaving}
+                    onCheckedChange={(checked) => updateInspectorDraft((current) => ({ ...current, is_enabled: checked }))}
+                  />
+                      </FieldGroup>
+                      {inspectorError ? <p className="mt-4 text-sm text-state-danger" role="alert">{inspectorError}</p> : null}
                     </div>
-                  </Field>
-                </FieldGroup>
-                {inspectorError ? <p className="text-sm text-state-danger" role="alert">{inspectorError}</p> : null}
-                <div className="flex flex-col gap-3 border-t border-line-subtle pt-4 sm:flex-row sm:items-center sm:justify-between">
-                  <span className={`text-sm ${inspectorDirty ? "text-state-warning" : "text-state-success"}`}>{inspectorDirty ? "Unsaved changes" : "All changes saved"}</span>
-                  <div className="flex gap-2">
-                    <Button type="button" variant="outline" disabled={!inspectorDirty || isSaving} onClick={() => setInspectorEdit(null)}>Discard</Button>
-                    <Button type="button" disabled={!inspectorDirty || isSaving || !inspectorDraft.label.trim()} onClick={() => void saveInspector()}>{isSaving ? "Saving…" : "Save Field"}</Button>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <EmptyState icon={Settings2} title="Select a field" description="Choose a field from the catalog to inspect its configuration." />
-            )}
-          </Card>
-        </div>
+                    <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                      <span className={`text-sm ${inspectorDirty ? "text-state-warning" : "text-state-success"}`}>{inspectorDirty ? "Unsaved changes" : "All changes saved"}</span>
+                      <div className="flex gap-2">
+                        <Button type="button" variant="outline" disabled={!inspectorDirty || isSaving} onClick={() => setInspectorEdit(null)}>Discard</Button>
+                        <Button type="button" disabled={!inspectorDirty || isSaving || !inspectorDraft.label.trim()} onClick={() => void saveInspector()}>{isSaving ? "Saving…" : "Save Field"}</Button>
+                      </div>
+                    </SheetFooter>
+                  </>
+                ) : null}
+              </SheetContent>
+            </SheetPortal>
+          </Sheet>
+        </>
       )}
     </div>
   );

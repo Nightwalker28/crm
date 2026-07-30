@@ -182,8 +182,9 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <PageHeader
+        variant="module"
         title="Tasks"
         description="Coordinate team work, assign follow-ups, and turn notifications into actionable next steps."
         eyebrow={totalCount ? `${totalCount} task${totalCount === 1 ? "" : "s"} in this view` : undefined}

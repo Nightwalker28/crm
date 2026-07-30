@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, Plus, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
@@ -15,7 +15,17 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch, SwitchThumb } from "@/components/ui/switch";
+import { SettingsSwitchRow } from "@/components/ui/SettingsSwitchRow";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useCalendarContext } from "@/hooks/useCalendar";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -139,6 +149,7 @@ export default function CalendarBookingSettingsPage() {
   const bookingTypesQuery = useQuery({ queryKey: ["calendar-booking-types"], queryFn: fetchBookingTypes });
   const [draft, setDraft] = useState<BookingDraft>(emptyDraft);
   const [initialDraft, setInitialDraft] = useState<BookingDraft>(emptyDraft);
+  const [editorOpen, setEditorOpen] = useState(false);
   const bookingTypes = bookingTypesQuery.data ?? [];
   const isEditing = Boolean(draft.id);
   const isDirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(initialDraft), [draft, initialDraft]);
@@ -153,6 +164,7 @@ export default function CalendarBookingSettingsPage() {
       await queryClient.invalidateQueries({ queryKey: ["calendar-booking-types"] });
       setDraft(emptyDraft);
       setInitialDraft(emptyDraft);
+      setEditorOpen(false);
       toast.success(`Booking link ${saved.name} saved.`);
     },
     onError: () => toast.error("The booking link could not be saved. Check the fields and try again."),
@@ -170,12 +182,7 @@ export default function CalendarBookingSettingsPage() {
 
   async function editBookingType(item: BookingType) {
     if (isDirty && item.id !== draft.id) {
-      const confirmed = await confirm({
-        title: "Discard unsaved changes?",
-        description: "Switching booking links will discard the changes in this form.",
-        confirmLabel: "Discard changes",
-        variant: "destructive",
-      });
+      const confirmed = await confirmDiscardDraft("Switching booking links will discard the changes in this form.");
       if (!confirmed) return;
     }
     const nextDraft: BookingDraft = {
@@ -193,11 +200,42 @@ export default function CalendarBookingSettingsPage() {
     };
     setDraft(nextDraft);
     setInitialDraft(nextDraft);
+    setEditorOpen(true);
   }
 
   function resetDraft() {
     setDraft(emptyDraft);
     setInitialDraft(emptyDraft);
+  }
+
+  async function confirmDiscardDraft(description: string) {
+    if (!isDirty) return true;
+    return confirm({
+      title: "Discard unsaved changes?",
+      description,
+      confirmLabel: "Discard changes",
+      variant: "destructive",
+    });
+  }
+
+  async function startNewBookingLink() {
+    if (!await confirmDiscardDraft("Starting a new booking link will discard the changes in this form.")) return;
+    resetDraft();
+    setEditorOpen(true);
+  }
+
+  async function closeEditor() {
+    if (!await confirmDiscardDraft("Closing this editor will discard the changes in this form.")) return;
+    resetDraft();
+    setEditorOpen(false);
+  }
+
+  function handleEditorOpenChange(open: boolean) {
+    if (open) {
+      setEditorOpen(true);
+      return;
+    }
+    void closeEditor();
   }
 
   async function confirmDisableBookingType(item: BookingType) {
@@ -230,7 +268,12 @@ export default function CalendarBookingSettingsPage() {
         title="Booking Links"
         description="Create public meeting links that offer available calendar slots and write confirmed bookings back to the CRM calendar."
         eyebrow={isDirty ? "Unsaved booking-link changes" : undefined}
-        actions={<Button asChild variant="outline"><Link href={SETTINGS_ROUTES.integrations}>Integrations</Link></Button>}
+        actions={
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+            <Button asChild variant="outline"><Link href={SETTINGS_ROUTES.integrations}>Integrations</Link></Button>
+            <Button type="button" onClick={() => void startNewBookingLink()}><Plus />New booking link</Button>
+          </div>
+        }
       />
 
       {bookingTypesQuery.isError ? (
@@ -240,14 +283,37 @@ export default function CalendarBookingSettingsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-5 xl:grid-cols-[0.9fr_1.1fr]">
-        <Card className="px-5 py-5">
+      <>
+        <Sheet open={editorOpen} onOpenChange={handleEditorOpenChange}>
+          <SheetPortal>
+            <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
+            <SheetContent
+              side="right"
+              className="z-50 flex h-full w-full max-w-[38rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none"
+            >
+              <form
+                className="flex min-h-0 flex-1 flex-col"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  saveMutation.mutate(draft);
+                }}
+              >
+                <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+                  <div>
+                    <SheetTitle className="text-lg font-semibold text-copy-primary">{isEditing ? "Edit booking link" : "Create booking link"}</SheetTitle>
+                    <SheetDescription className="mt-1 text-sm text-copy-muted">Set the public schedule, meeting owner, and questions guests must answer.</SheetDescription>
+                  </div>
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label="Close booking link editor" onClick={() => void closeEditor()}>
+                    <X />
+                  </Button>
+                </SheetHeader>
+                <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-semibold text-copy-primary">{isEditing ? "Edit booking link" : "Create booking link"}</h2>
-              <p className="mt-1 text-sm text-copy-muted">Set the public schedule, meeting owner, and questions guests must answer.</p>
+              <h3 className="text-sm font-semibold text-copy-primary">Booking details</h3>
+              <p className="mt-1 text-sm text-copy-muted">Public link identity, ownership, and availability.</p>
             </div>
-            {isEditing ? <Button variant="ghost" size="sm" onClick={resetDraft}>New</Button> : null}
+            {isEditing ? <Button type="button" variant="ghost" size="sm" onClick={() => void startNewBookingLink()}>New</Button> : null}
           </div>
 
           <FieldGroup className="grid gap-4 md:grid-cols-2">
@@ -286,19 +352,13 @@ export default function CalendarBookingSettingsPage() {
               <Input type="number" min="15" max="240" value={draft.duration_minutes} onChange={(event) => setDraft((current) => ({ ...current, duration_minutes: Number(event.target.value) }))} />
               {draft.duration_minutes < 15 || draft.duration_minutes > 240 ? <FieldError>Use a duration between 15 and 240 minutes.</FieldError> : null}
             </Field>
-            <Field>
-              <FieldLabel>Enabled</FieldLabel>
-              <div className="flex h-10 items-center">
-                <Switch
-                  aria-label="Booking link enabled"
-                  checked={draft.enabled}
-                  onCheckedChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
-                  className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-muted data-[state=checked]:bg-primary"
-                >
-                  <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
-                </Switch>
-              </div>
-            </Field>
+            <SettingsSwitchRow
+              id="booking-link-enabled"
+              label="Booking link enabled"
+              description="Allow customers to use this public booking link."
+              checked={draft.enabled}
+              onCheckedChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
+            />
           </FieldGroup>
 
           <div className="mt-5 space-y-3">
@@ -353,16 +413,13 @@ export default function CalendarBookingSettingsPage() {
             {draft.questions.map((question, index) => (
               <div key={`question-${index}`} className="grid gap-2 md:grid-cols-[1fr_auto_auto]">
                 <Input aria-label={`Question ${index + 1} label`} value={question.label} placeholder="Question label" onChange={(event) => updateQuestion(index, { label: event.target.value })} />
-                <div className="flex items-center gap-2 rounded-[var(--radius-control)] border border-line-default px-3 py-2 text-sm text-copy-secondary">
-                  Required
-                  <Switch
-                    checked={question.required}
-                    onCheckedChange={(checked) => updateQuestion(index, { required: checked })}
-                    className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-muted data-[state=checked]:bg-primary"
-                  >
-                    <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
-                  </Switch>
-                </div>
+                <SettingsSwitchRow
+                  id={`booking-question-${index}-required`}
+                  label="Required"
+                  checked={question.required}
+                  onCheckedChange={(checked) => updateQuestion(index, { required: checked })}
+                  compact
+                />
                 <Button aria-label={`Remove question ${index + 1}`} variant="ghost" size="icon-sm" onClick={() => setDraft((current) => ({ ...current, questions: current.questions.filter((_, itemIndex) => itemIndex !== index) }))}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -370,19 +427,32 @@ export default function CalendarBookingSettingsPage() {
             ))}
           </div>
 
-          <div className="mt-5 flex justify-end gap-2">
-            <Button variant="ghost" onClick={resetDraft}>Reset</Button>
-            <Button
-              onClick={() => saveMutation.mutate(draft)}
-              disabled={!isDirty || !draft.name.trim() || !draft.slug.trim() || !draft.availability.length || draft.duration_minutes < 15 || draft.duration_minutes > 240 || saveMutation.isPending}
-            >
-              {saveMutation.isPending ? "Saving..." : "Save"}
-            </Button>
-          </div>
-        </Card>
+                </div>
+                <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <span className={`text-sm ${isDirty ? "text-state-warning" : "text-state-success"}`}>{isDirty ? "Unsaved changes" : "All changes saved"}</span>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" onClick={() => void closeEditor()} disabled={saveMutation.isPending}>Cancel</Button>
+                    <Button
+                      type="submit"
+                      disabled={!isDirty || !draft.name.trim() || !draft.slug.trim() || !draft.availability.length || draft.duration_minutes < 15 || draft.duration_minutes > 240 || saveMutation.isPending}
+                    >
+                      {saveMutation.isPending ? "Saving..." : "Save booking link"}
+                    </Button>
+                  </div>
+                </SheetFooter>
+              </form>
+            </SheetContent>
+          </SheetPortal>
+        </Sheet>
 
         <Card className="px-5 py-5">
-          <h2 className="text-lg font-semibold text-copy-primary">Booking links</h2>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-copy-primary">Booking links</h2>
+              <p className="mt-1 text-sm text-copy-muted">Manage public scheduling links and their current availability.</p>
+            </div>
+            <Button type="button" size="sm" onClick={() => void startNewBookingLink()}><Plus />New link</Button>
+          </div>
           <div className="mt-4 overflow-x-auto rounded-[var(--radius-card)] border border-line-default">
             <Table>
               <TableHeader>
@@ -442,7 +512,7 @@ export default function CalendarBookingSettingsPage() {
             </Table>
           </div>
         </Card>
-      </div>
+      </>
     </div>
   );
 }

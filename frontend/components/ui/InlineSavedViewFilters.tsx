@@ -20,8 +20,10 @@ export function InlineSavedViewFilters({ filterFields, filters, onChange, hideHe
   const { allConditions, anyConditions } = getConditionGroups(filters);
   const activeCount = allConditions.length + anyConditions.length;
 
+  if (hideHeader && !isOpen) return null;
+
   return (
-    <div className="flex flex-col gap-4 text-copy-secondary">
+    <div className="flex flex-col gap-3 text-copy-secondary">
       {!hideHeader ? <Card className="px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div>

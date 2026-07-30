@@ -56,7 +56,7 @@ export default function ContactsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <ContactsHeader eyebrow={totalCount ? `${totalCount} contact${totalCount === 1 ? "" : "s"} in this view` : undefined} />
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}

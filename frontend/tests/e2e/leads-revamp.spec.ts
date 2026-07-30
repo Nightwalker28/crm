@@ -59,6 +59,40 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("Leads list keeps its controls usable in a narrow viewport", async ({ page }) => {
+  await page.route("**/users/saved-views/sales_leads?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        views: [
+          {
+            id: 41,
+            module_key: "sales_leads",
+            name: "All leads",
+            config: {
+              visible_columns: ["first_name", "last_name", "company", "status"],
+              filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
+              sort: null,
+            },
+            is_default: true,
+            is_system: true,
+          },
+          {
+            id: 42,
+            module_key: "sales_leads",
+            name: "My qualified leads",
+            config: {
+              visible_columns: ["first_name", "company", "status"],
+              filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
+              sort: null,
+            },
+            is_default: false,
+            is_system: false,
+          },
+        ],
+      }),
+    }),
+  );
   await page.route("**/sales/leads?**", (route) =>
     route.fulfill({
       status: 200,
@@ -97,9 +131,19 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
   await expect(page.getByPlaceholder("Search leads")).toBeVisible();
   await expect(page.getByRole("button", { name: /Filters/ })).toBeVisible();
   await expect(page.getByRole("link", { name: "Create lead" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
+  await expect(page.getByRole("tablist", { name: "Record views" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: /All leads/ })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "My qualified leads" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Manage views" })).toBeVisible();
+  await page.getByRole("tab", { name: /All leads/ }).focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(page.getByRole("tab", { name: "My qualified leads" })).toHaveAttribute("aria-selected", "true");
 
   const tableRegion = page.getByRole("region", { name: "Data table" });
   await expect(tableRegion).toBeVisible();
+  const tableBounds = await tableRegion.boundingBox();
+  expect(tableBounds?.height).toBeLessThan(400);
   await expect(tableRegion.locator("span.bg-state-success-muted", { hasText: "Qualified" })).toBeVisible();
   await expect(tableRegion.locator("span.bg-state-warning-muted", { hasText: "Warm" })).toBeVisible();
   const stickyPositions = await tableRegion.locator("thead th").evaluateAll((headers) =>

@@ -11,7 +11,7 @@ type Props = {
 export function ModuleTableShell({ children, className = "", isRefreshing = false }: Props) {
   return (
     <div
-      className={`scrollbar-hide relative max-h-[70vh] min-h-80 overflow-auto overscroll-contain rounded-[var(--radius-card)] border border-line-default bg-surface md:min-h-[34rem] after:pointer-events-none after:sticky after:right-0 after:top-0 after:block after:h-full after:w-8 after:float-right after:bg-gradient-to-l after:from-surface after:to-transparent md:after:hidden ${className}`.trim()}
+      className={`scrollbar-hide relative max-h-[70vh] min-h-56 overflow-auto overscroll-contain rounded-[var(--radius-card)] border border-line-default bg-surface after:pointer-events-none after:sticky after:right-0 after:top-0 after:block after:h-full after:w-8 after:float-right after:bg-gradient-to-l after:from-surface after:to-transparent md:after:hidden ${className}`.trim()}
       role="region"
       aria-label="Data table"
       aria-busy={isRefreshing}

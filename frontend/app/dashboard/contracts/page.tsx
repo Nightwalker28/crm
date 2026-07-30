@@ -60,7 +60,7 @@ export default function ContractsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <ContractsHeader
         primaryAction={canCreate ? <Button asChild><Link href="/dashboard/contracts/new"><Plus />New Contract</Link></Button> : undefined}
       />

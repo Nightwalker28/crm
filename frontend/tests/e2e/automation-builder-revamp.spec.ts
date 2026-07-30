@@ -146,14 +146,20 @@ test("edits flow steps, reorders actions, and saves from mobile", async ({ page 
 
   await expect(page.getByRole("heading", { name: "Automation Builder" })).toBeVisible();
   await page.getByRole("button", { name: /High priority lead follow-up/ }).click();
+  await expect(page.getByRole("dialog", { name: "Rule settings" })).toBeVisible();
   await page.getByLabel("Name", { exact: true }).fill("Urgent lead workflow");
+  await page.getByRole("button", { name: "Done editing" }).click();
 
   await page.getByTestId("automation-condition-0").getByRole("button").first().click();
+  await expect(page.getByRole("dialog", { name: "Condition" })).toBeVisible();
   await page.getByLabel("Condition value").click();
   await page.getByRole("option", { name: "Qualified" }).click();
+  await page.getByRole("button", { name: "Done editing" }).click();
 
   await page.getByTestId("automation-action-0").getByRole("button").first().click();
+  await expect(page.getByRole("dialog", { name: "Action" })).toBeVisible();
   await page.getByLabel("Title", { exact: true }).fill("Call qualified lead");
+  await page.getByRole("button", { name: "Done editing" }).click();
   await page.getByRole("button", { name: "Move action 2 up" }).click();
   await expect(page.getByText("Unsaved changes")).toBeVisible();
 

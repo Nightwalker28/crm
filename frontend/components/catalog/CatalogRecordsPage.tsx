@@ -110,8 +110,9 @@ export default function CatalogRecordsPage({ kind }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <PageHeader
+        variant="module"
         title={title}
         description={`Manage first-class catalog ${lowerTitle}.`}
         actions={

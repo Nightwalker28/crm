@@ -57,7 +57,7 @@ export default function SupportCasesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <SupportCasesHeader
         eyebrow={totalCount ? `${totalCount} case${totalCount === 1 ? "" : "s"} in this view` : undefined}
         primaryAction={<Button asChild><Link href="/dashboard/support/cases/new"><Plus />New case</Link></Button>}

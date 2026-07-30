@@ -42,8 +42,9 @@ export default function PosInvoicesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className="flex flex-col gap-4">
       <PageHeader
+        variant="module"
         title="Invoices"
         description="Create itemized customer invoices, track payment status, and choose the print template per invoice."
         eyebrow={totalCount ? `${totalCount} invoice${totalCount === 1 ? "" : "s"} in this view` : undefined}

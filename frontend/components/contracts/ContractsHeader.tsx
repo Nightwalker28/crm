@@ -12,6 +12,7 @@ type ContractsHeaderProps = {
 export default function ContractsHeader({ viewSelector, primaryAction }: ContractsHeaderProps) {
   return (
     <PageHeader
+      variant="module"
       title="Contracts"
       description="Manage contract value, renewal dates, linked CRM records, parties, signers, and lifecycle status."
       actions={<div className="flex flex-wrap items-center gap-2">{viewSelector}{primaryAction}</div>}

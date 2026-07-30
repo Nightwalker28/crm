@@ -9,6 +9,7 @@ type PageHeaderProps = {
   eyebrow?: React.ReactNode;
   className?: string;
   sticky?: boolean;
+  variant?: "default" | "module";
 };
 
 export function PageHeader({
@@ -18,16 +19,19 @@ export function PageHeader({
   eyebrow,
   className,
   sticky = false,
+  variant = "default",
 }: PageHeaderProps) {
   return (
     <div
       className={cn(
-        "-mx-4 border-b border-line-subtle bg-surface/95 px-4 py-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
+        variant === "module"
+          ? "bg-transparent py-1"
+          : "-mx-4 border-b border-line-subtle bg-surface/95 px-4 py-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
         sticky && "sticky top-0 z-20 backdrop-blur-sm",
         className,
       )}
     >
-      <div className="flex min-h-14 flex-col items-start justify-between gap-4 sm:flex-row">
+      <div className={cn("flex flex-col items-start justify-between gap-4 sm:flex-row", variant === "default" && "min-h-14")}>
         <div className="min-w-0">
           {eyebrow ? <div className="mb-1 text-xs font-medium uppercase tracking-[0.14em] text-copy-muted">{eyebrow}</div> : null}
           <h1 className="text-[22px] font-semibold leading-[30px] text-copy-primary">{title}</h1>

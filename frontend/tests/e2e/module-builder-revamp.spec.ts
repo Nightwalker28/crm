@@ -126,8 +126,12 @@ test("edits and reorders fields from one module-level save on mobile", async ({ 
 
   await expect(page.getByRole("heading", { name: "Module Builder" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Fields" })).toHaveAttribute("aria-selected", "true");
-  await page.getByRole("button", { name: /^Priority/ }).click();
+  await page.getByRole("button", { name: "Edit Priority" }).click();
+  await expect(page.getByRole("dialog", { name: "Edit field" })).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Required" })).toBeVisible();
+  await expect(page.getByRole("switch", { name: "Show in list" })).toBeChecked();
   await page.getByLabel("Label", { exact: true }).fill("Request Priority");
+  await page.getByRole("button", { name: "Done editing field" }).click();
   await page.getByRole("button", { name: "Move Request Priority up" }).click();
   await expect(page.getByText("Unsaved changes")).toBeVisible();
 
@@ -150,6 +154,7 @@ test("adds a field in the inspector and exposes shared builder destinations", as
   await page.getByLabel("Field type").click();
   await page.getByRole("option", { name: "single select" }).click();
   await page.getByLabel("Options").fill("New\nResolved");
+  await page.getByRole("button", { name: "Done editing field" }).click();
 
   const createRequest = page.waitForRequest((request) =>
     request.method() === "POST"

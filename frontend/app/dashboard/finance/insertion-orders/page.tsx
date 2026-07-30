@@ -7,8 +7,9 @@ import InsertionOrdersList from "@/components/finance/insertionOrderList";
 import { useInsertionOrders } from "@/hooks/finance/useInsertionOrders";
 import InsertionOrdersHeader from "../../../../components/finance/InsertionOrdersHeader";
 import Pagination from "@/components/ui/Pagination";
-import SearchBar from "@/components/ui/SearchBar";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
+import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
+import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import type { InsertionOrderSortState } from "@/hooks/finance/useInsertionOrders";
 import { Button } from "@/components/ui/button";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
@@ -20,6 +21,7 @@ import { useSavedViews } from "@/hooks/useSavedViews";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
+import { buildSavedViewExportPayload } from "@/lib/savedViewQuery";
 
 type InsertionOrderTableSortState = { column: string; direction: "asc" | "desc" } | null;
 
@@ -140,62 +142,70 @@ export default function InsertionOrdersPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-        <InsertionOrdersHeader
-          onUploadSuccess={refresh}
-          selectedIds={selectedIds}
-          currentPageIds={currentPageIds}
-          exportFilters={activeFilters}
-          canCreate={canCreate}
-          canExport={canExport}
-          viewSelector={
+    <div className="flex flex-col gap-4">
+        <InsertionOrdersHeader canCreate={canCreate} />
+
+        <ModuleListToolbar
+          searchValue={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
+          onSearchChange={(value) =>
+            setDraftConfig((current) => ({
+              ...current,
+              filters: { ...current.filters, search: value },
+            }))
+          }
+          searchPlaceholder="Search insertion orders"
+          filtersOpen={Boolean(activeFilters.filtersOpen)}
+          activeFilterCount={activeFilterCount}
+          onToggleFilters={() =>
+            setDraftConfig((current) => ({
+              ...current,
+              filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen },
+            }))
+          }
+          onClearFilters={clearFilters}
+          selectedCount={selectedIds.length}
+          selectionNoun="order"
+          onClearSelection={() => setSelectedIds([])}
+          viewControls={
             <SavedViewSelector
-            moduleKey="finance_io"
-            views={views}
-            selectedViewId={selectedViewId}
-            onSelect={setSelectedViewId}
-          />
+              moduleKey="finance_io"
+              views={views}
+              selectedViewId={selectedViewId}
+              onSelect={setSelectedViewId}
+            />
+          }
+          actionControls={
+            <>
+              <div className="flex flex-wrap gap-1" aria-label="Order status">
+                {["all", "draft", "issued", "active", "completed", "cancelled"].map((status) => (
+                  <Button
+                    key={status}
+                    type="button"
+                    size="sm"
+                    variant={statusFilter === status ? "secondary" : "ghost"}
+                    onClick={() =>
+                      setDraftConfig((current) => ({
+                        ...current,
+                        filters: { ...current.filters, status },
+                      }))
+                    }
+                  >
+                    {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)}
+                  </Button>
+                ))}
+              </div>
+              <ModuleImportExportControls
+                importEndpoint={canCreate ? "/finance/insertion-orders/import" : undefined}
+                exportEndpoint={canExport ? "/finance/insertion-orders/export" : undefined}
+                exportMethod="POST"
+                exportBody={buildSavedViewExportPayload(activeFilters)}
+                onImportSuccess={refresh}
+                selectedIds={selectedIds}
+                currentPageIds={currentPageIds}
+              />
+            </>
           }
         />
-
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div className="flex w-full flex-col gap-3 md:flex-row md:items-center">
-            <SearchBar
-              value={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
-              onChange={(value) =>
-                setDraftConfig((current) => ({
-                  ...current,
-                  filters: {
-                    ...current.filters,
-                    search: value,
-                  },
-                }))
-              }
-              placeholder="Search by customer, IO number, reference, or notes"
-            />
-            <div className="flex flex-wrap gap-2">
-              {["all", "draft", "issued", "active", "completed", "cancelled"].map((status) => (
-                <Button
-                  key={status}
-                  type="button"
-                  size="sm"
-                  variant={statusFilter === status ? "default" : "outline"}
-                  onClick={() =>
-                    setDraftConfig((current) => ({
-                      ...current,
-                      filters: {
-                        ...current.filters,
-                        status,
-                      },
-                    }))
-                  }
-                >
-                  {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)}
-                </Button>
-              ))}
-            </div>
-          </div>
-        </div>
 
         <InlineSavedViewFilters
           filterFields={definition?.filterFields ?? []}
@@ -206,6 +216,7 @@ export default function InsertionOrdersPage() {
               filters: nextFilters,
             }))
           }
+          hideHeader
         />
 
         {error ? (

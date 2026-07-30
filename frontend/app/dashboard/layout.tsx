@@ -66,7 +66,14 @@ function getBreadcrumbItems(pathname: string) {
 }
 
 function BreadcrumbBar({ pathname }: { pathname: string }) {
-  if (pathname === "/dashboard/views" || pathname.startsWith("/dashboard/views/")) {
+  const isTopLevelCustomModule = /^\/dashboard\/custom\/[^/]+$/.test(pathname);
+  if (
+    pathname === "/dashboard" ||
+    MODULE_ROUTE_PREFIXES.includes(pathname) ||
+    isTopLevelCustomModule ||
+    pathname === "/dashboard/views" ||
+    pathname.startsWith("/dashboard/views/")
+  ) {
     return null;
   }
   const items = getBreadcrumbItems(pathname);

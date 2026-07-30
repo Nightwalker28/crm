@@ -21,6 +21,7 @@ import {
   Save,
   Trash2,
   Workflow,
+  X,
   Zap,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -36,7 +37,18 @@ import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch, SwitchThumb } from "@/components/ui/switch";
+import { SettingsSwitchRow } from "@/components/ui/SettingsSwitchRow";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
@@ -385,32 +397,6 @@ function StepCard({
   );
 }
 
-function Toggle({
-  id,
-  label,
-  checked,
-  onCheckedChange,
-}: {
-  id: string;
-  label: string;
-  checked: boolean;
-  onCheckedChange: (checked: boolean) => void;
-}) {
-  return (
-    <Field orientation="horizontal" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3">
-      <Switch
-        id={id}
-        checked={checked}
-        onCheckedChange={onCheckedChange}
-        className="h-5 w-10 rounded-full border border-line-strong bg-surface-raised p-0.5 data-[state=checked]:bg-primary"
-      >
-        <SwitchThumb className="block h-4 w-4 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
-      </Switch>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-    </Field>
-  );
-}
-
 export default function AutomationSettingsPage() {
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -422,6 +408,7 @@ export default function AutomationSettingsPage() {
   const [draft, setDraft] = useState<RuleDraft>(() => emptyDraft());
   const [baseline, setBaseline] = useState(() => draftSignature(emptyDraft()));
   const [selection, setSelection] = useState<InspectorSelection>({ kind: "settings" });
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [mode, setMode] = useState<AutomationMode>("builder");
   const [ruleSearch, setRuleSearch] = useState("");
   const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
@@ -526,12 +513,17 @@ export default function AutomationSettingsPage() {
     return !isDirty || window.confirm("Discard unsaved automation changes?");
   }
 
+  function inspect(nextSelection: InspectorSelection) {
+    setSelection(nextSelection);
+    setInspectorOpen(true);
+  }
+
   function chooseRule(rule: AutomationRule) {
     if (!confirmDiscard()) return;
     const next = ruleToDraft(rule);
     setDraft(next);
     setBaseline(draftSignature(next));
-    setSelection({ kind: "settings" });
+    inspect({ kind: "settings" });
     setMode("builder");
   }
 
@@ -540,7 +532,7 @@ export default function AutomationSettingsPage() {
     const next = emptyDraft(firstVisibleTriggerKey);
     setDraft(next);
     setBaseline(draftSignature(next));
-    setSelection({ kind: "settings" });
+    inspect({ kind: "settings" });
     setMode("builder");
   }
 
@@ -554,12 +546,12 @@ export default function AutomationSettingsPage() {
   function addCondition() {
     const condition = buildCondition(conditionFields[0]);
     setDraft((current) => ({ ...current, trigger_event: effectiveTriggerEvent, conditions: [...current.conditions, condition] }));
-    setSelection({ kind: "condition", id: condition.id });
+    inspect({ kind: "condition", id: condition.id });
   }
 
   function removeCondition(id: string) {
     setDraft((current) => ({ ...current, conditions: current.conditions.filter((condition) => condition.id !== id) }));
-    setSelection({ kind: "validation" });
+    inspect({ kind: "validation" });
   }
 
   function updateAction(id: string, patch: Partial<AutomationActionConfig>) {
@@ -572,12 +564,12 @@ export default function AutomationSettingsPage() {
   function addAction() {
     const action = buildAction(actionDefinitions[0]);
     setDraft((current) => ({ ...current, trigger_event: effectiveTriggerEvent, actions: [...current.actions, action] }));
-    setSelection({ kind: "action", id: action.id });
+    inspect({ kind: "action", id: action.id });
   }
 
   function removeAction(id: string) {
     setDraft((current) => ({ ...current, actions: current.actions.filter((action) => action.id !== id) }));
-    setSelection({ kind: "validation" });
+    inspect({ kind: "validation" });
   }
 
   function moveAction(id: string, direction: -1 | 1) {
@@ -632,6 +624,7 @@ export default function AutomationSettingsPage() {
       setDraft(next);
       setBaseline(draftSignature(next));
       setSelection({ kind: "settings" });
+      setInspectorOpen(false);
       toast.success("Automation rule deleted.");
       await queryClient.invalidateQueries({ queryKey: ["automation-rules"] });
     },
@@ -664,6 +657,11 @@ export default function AutomationSettingsPage() {
     ? draft.actions.find((action) => action.id === selection.id) ?? null
     : null;
   const selectedActionDefinition = selectedAction ? actionDefinitionMap.get(selectedAction.type) : null;
+  const inspectorTitle = selection.kind === "settings" ? "Rule settings"
+    : selection.kind === "trigger" ? "Trigger"
+      : selection.kind === "condition" ? "Condition"
+        : selection.kind === "action" ? "Action"
+          : "Validation";
 
   return (
     <div className="flex flex-col gap-6">
@@ -735,15 +733,15 @@ export default function AutomationSettingsPage() {
           </CardBody>
           <CardFooter className="grid grid-cols-2 gap-2">
             <Button type="button" variant={mode === "builder" ? "secondary" : "ghost"} size="sm" onClick={() => setMode("builder")}><Workflow />Builder</Button>
-            <Button type="button" variant={mode === "runs" ? "secondary" : "ghost"} size="sm" onClick={() => setMode("runs")}><History />Runs</Button>
+            <Button type="button" variant={mode === "runs" ? "secondary" : "ghost"} size="sm" onClick={() => { setMode("runs"); setInspectorOpen(false); }}><History />Runs</Button>
           </CardFooter>
         </Card>
 
         {mode === "builder" ? (
-          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="min-w-0">
             <Card className="min-w-0">
               <CardHeader>
-                <button type="button" className="min-w-0 text-left" onClick={() => setSelection({ kind: "settings" })}>
+                <button type="button" className="min-w-0 text-left" onClick={() => inspect({ kind: "settings" })}>
                   <div className="flex flex-wrap items-center gap-2">
                     <h2 className="truncate text-lg font-semibold text-copy-primary">{draft.name || "Untitled automation"}</h2>
                     <Pill>{draft.enabled ? "Enabled" : "Draft"}</Pill>
@@ -759,7 +757,7 @@ export default function AutomationSettingsPage() {
                     title={selectedTrigger?.label ?? effectiveTriggerEvent}
                     description={selectedTrigger?.description ?? "Choose the event that starts this rule."}
                     selected={selection.kind === "trigger"}
-                    onClick={() => setSelection({ kind: "trigger" })}
+                    onClick={() => inspect({ kind: "trigger" })}
                     testId="automation-trigger-step"
                   />
 
@@ -767,7 +765,7 @@ export default function AutomationSettingsPage() {
 
                   <div className="rounded-[var(--radius-card)] border border-line-subtle bg-surface-raised p-3">
                     <div className="mb-3 flex items-center justify-between gap-3">
-                      <button type="button" onClick={() => setSelection({ kind: "validation" })} className="text-left">
+                      <button type="button" onClick={() => inspect({ kind: "validation" })} className="text-left">
                         <span className="text-[11px] font-semibold uppercase tracking-wide text-copy-muted">If</span>
                         <span className="mt-0.5 block text-sm font-semibold text-copy-primary">
                           {draft.conditions.length
@@ -788,7 +786,7 @@ export default function AutomationSettingsPage() {
                             title={field?.label ?? "Choose a field"}
                             description={`${OPERATOR_LABELS[condition.operator] ?? condition.operator}${isBlankValue(condition.value) ? "" : ` · ${valueAsString(condition.value)}`}`}
                             selected={selection.kind === "condition" && selection.id === condition.id}
-                            onClick={() => setSelection({ kind: "condition", id: condition.id })}
+                            onClick={() => inspect({ kind: "condition", id: condition.id })}
                             testId={`automation-condition-${index}`}
                             actions={
                               <Button type="button" variant="dangerGhost" size="icon-sm" aria-label={`Delete condition ${index + 1}`} onClick={() => removeCondition(condition.id)}><Trash2 /></Button>
@@ -822,7 +820,7 @@ export default function AutomationSettingsPage() {
                             title={definition?.label ?? "Choose an action"}
                             description={definition?.description ?? "Configure this action in the inspector."}
                             selected={selection.kind === "action" && selection.id === action.id}
-                            onClick={() => setSelection({ kind: "action", id: action.id })}
+                            onClick={() => inspect({ kind: "action", id: action.id })}
                             testId={`automation-action-${index}`}
                             actions={
                               <div className="flex items-center gap-0.5">
@@ -839,7 +837,7 @@ export default function AutomationSettingsPage() {
 
                   <button
                     type="button"
-                    onClick={() => setSelection({ kind: "validation" })}
+                    onClick={() => inspect({ kind: "validation" })}
                     className={cn(
                       "flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-line-default bg-surface px-4 py-3 text-left",
                       selection.kind === "validation" && "border-primary bg-action-primary-muted",
@@ -877,20 +875,27 @@ export default function AutomationSettingsPage() {
               </CardFooter>
             </Card>
 
-            <Card className="h-fit xl:sticky xl:top-4">
-              <CardHeader>
-                <div>
-                  <h2 className="text-base font-semibold text-copy-primary">
-                    {selection.kind === "settings" ? "Rule settings"
-                      : selection.kind === "trigger" ? "Trigger"
-                        : selection.kind === "condition" ? "Condition"
-                          : selection.kind === "action" ? "Action"
-                            : "Validation"}
-                  </h2>
-                  <p className="mt-1 text-sm text-copy-muted">Changes remain local until the rule is saved.</p>
-                </div>
-              </CardHeader>
-              <CardBody>
+            <Sheet open={inspectorOpen} onOpenChange={setInspectorOpen}>
+              <SheetPortal>
+                <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
+                <SheetContent
+                  side="right"
+                  className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none"
+                >
+                  <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+                    <div>
+                      <SheetTitle className="text-lg font-semibold text-copy-primary">{inspectorTitle}</SheetTitle>
+                      <SheetDescription className="mt-1 text-sm text-copy-muted">
+                        Changes remain local until the rule is saved.
+                      </SheetDescription>
+                    </div>
+                    <SheetClose asChild>
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Close automation editor">
+                        <X />
+                      </Button>
+                    </SheetClose>
+                  </SheetHeader>
+                  <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
                 {selection.kind === "settings" ? (
                   <FieldGroup>
                     <Field>
@@ -901,8 +906,13 @@ export default function AutomationSettingsPage() {
                       <FieldLabel htmlFor="automation-rule-description">Description</FieldLabel>
                       <Textarea id="automation-rule-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} />
                     </Field>
-                    <Toggle id="automation-rule-enabled" label="Rule enabled" checked={draft.enabled} onCheckedChange={(enabled) => setDraft((current) => ({ ...current, enabled }))} />
-                    <FieldDescription>Enabled rules begin matching new events after this draft is saved.</FieldDescription>
+                    <SettingsSwitchRow
+                      id="automation-rule-enabled"
+                      label="Rule enabled"
+                      description="Enabled rules begin matching new events after this draft is saved."
+                      checked={draft.enabled}
+                      onCheckedChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
+                    />
                   </FieldGroup>
                 ) : selection.kind === "trigger" ? (
                   <FieldGroup>
@@ -998,8 +1008,16 @@ export default function AutomationSettingsPage() {
                 ) : (
                   <ValidationInspector messages={builderMessages} preview={previewMutation.data} error={previewMutation.isError} />
                 )}
-              </CardBody>
-            </Card>
+                  </div>
+                  <SheetFooter className="flex items-center justify-between gap-3 border-t border-line-subtle bg-surface px-5 py-4">
+                    <p className="text-xs text-copy-muted">Save the rule from the workflow footer.</p>
+                    <SheetClose asChild>
+                      <Button type="button">Done editing</Button>
+                    </SheetClose>
+                  </SheetFooter>
+                </SheetContent>
+              </SheetPortal>
+            </Sheet>
           </div>
         ) : (
           <RunHistory

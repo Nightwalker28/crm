@@ -102,7 +102,7 @@ test("saves responsive tenant backup settings with shared controls", async ({ pa
   await page.goto("/dashboard/settings/backups");
 
   await expect(page.getByRole("heading", { name: "Backups" })).toBeVisible();
-  await page.getByRole("switch", { name: "Enable tenant backups" }).click();
+  await page.getByRole("switch", { name: "Scheduled backups" }).click();
 
   const scopeField = page.getByText("Scope", { exact: true }).locator("..");
   await scopeField.getByRole("combobox").click();

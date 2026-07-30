@@ -14,6 +14,7 @@ type LeadsHeaderProps = {
 export default function LeadsHeader({ eyebrow }: LeadsHeaderProps) {
   return (
     <PageHeader
+      variant="module"
       title="Leads"
       description="Capture and qualify early sales leads before they become contacts or deals."
       eyebrow={eyebrow}

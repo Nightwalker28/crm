@@ -15,8 +15,8 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SettingsSwitchRow } from "@/components/ui/SettingsSwitchRow";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Switch, SwitchThumb } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useModulesAdmin } from "@/hooks/admin/useModulesAdmin";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -481,20 +481,21 @@ export default function BackupSettingsPage() {
 
       <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
         <Card className="px-5 py-5">
-          <div className="mb-5 flex items-start justify-between gap-4">
+          <div className="mb-5">
             <div>
               <h2 className="text-lg font-semibold text-copy-primary">Tenant Backup Settings</h2>
               <p className="mt-1 text-sm text-copy-muted">These settings apply only to this tenant.</p>
             </div>
-            <Switch
-              checked={draft.enabled}
-              onCheckedChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
-              className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised data-[state=checked]:bg-action-primary"
-              aria-label="Enable tenant backups"
-            >
-              <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
-            </Switch>
           </div>
+
+          <SettingsSwitchRow
+            id="tenant-backups-enabled"
+            label="Scheduled backups"
+            description="Run tenant backups automatically using the frequency and retention settings below."
+            checked={draft.enabled}
+            onCheckedChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
+            className="mb-4"
+          />
 
           <FieldGroup className="grid gap-4 md:grid-cols-2">
             <Field>
@@ -546,20 +547,14 @@ export default function BackupSettingsPage() {
               </FieldDescription>
             </Field>
 
-            <Field className="md:col-span-2">
-              <FieldLabel>Documents</FieldLabel>
-              <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
-                <FieldDescription>Include tenant documents in backup artifacts.</FieldDescription>
-                <Switch
-                  checked={draft.include_documents}
-                  onCheckedChange={(checked) => setDraft((current) => ({ ...current, include_documents: checked }))}
-                  className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised data-[state=checked]:bg-action-primary"
-                  aria-label="Include documents"
-                >
-                  <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
-                </Switch>
-              </div>
-            </Field>
+            <SettingsSwitchRow
+              id="backup-include-documents"
+              label="Include documents"
+              description="Include tenant documents in backup artifacts."
+              checked={draft.include_documents}
+              onCheckedChange={(checked) => setDraft((current) => ({ ...current, include_documents: checked }))}
+              className="md:col-span-2"
+            />
           </FieldGroup>
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle pt-4">
@@ -677,7 +672,7 @@ export default function BackupSettingsPage() {
           </div>
         </div>
 
-        <FieldGroup className="grid gap-4 md:grid-cols-3">
+        <FieldGroup className="grid max-w-4xl gap-4 md:grid-cols-2">
           <Field>
             <FieldLabel>Backup Run</FieldLabel>
             <Select

@@ -55,8 +55,8 @@ export default function PaymentsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title="Payments" description="Track invoice balances and record customer payments without leaving the receivables workflow." eyebrow={totalCount ? `${totalCount} invoice${totalCount === 1 ? "" : "s"} in this view` : undefined} actions={<><Button asChild variant="outline"><Link href="/dashboard/finance/pos"><ReceiptText />Open invoices</Link></Button>{canRecordPayment ? <Button asChild><Link href="/dashboard/finance/payments/record">Record payment</Link></Button> : null}</>} />
+    <div className="flex flex-col gap-4">
+      <PageHeader variant="module" title="Payments" description="Track invoice balances and record customer payments without leaving the receivables workflow." eyebrow={totalCount ? `${totalCount} invoice${totalCount === 1 ? "" : "s"} in this view` : undefined} actions={<><Button asChild variant="outline"><Link href="/dashboard/finance/pos"><ReceiptText />Open invoices</Link></Button>{canRecordPayment ? <Button asChild><Link href="/dashboard/finance/payments/record">Record payment</Link></Button> : null}</>} />
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}

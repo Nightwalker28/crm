@@ -11,6 +11,7 @@ type SupportCasesHeaderProps = {
 export default function SupportCasesHeader({ primaryAction, eyebrow }: SupportCasesHeaderProps) {
   return (
     <PageHeader
+      variant="module"
       title="Support Cases"
       description="Track customer issues, ownership, SLA due dates, and resolution status."
       eyebrow={eyebrow}
