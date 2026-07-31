@@ -69,6 +69,8 @@ test("validates percentage pricing and confirms a new tenant default on mobile",
   });
 
   await page.goto("/dashboard/settings/customer-groups");
+  await page.getByRole("button", { name: "New customer group" }).click();
+  await expect(page.getByRole("dialog", { name: "Create customer group" })).toBeVisible();
   await page.getByLabel("Name").fill("VIP Clients");
   await page.getByLabel("Key").fill("vip clients");
   await page.getByLabel("Discount Type").click();
@@ -115,8 +117,9 @@ test("confirms deactivation and redacts customer-group update failures", async (
   await page.goto("/dashboard/settings/customer-groups");
   const wholesaleRow = page.getByRole("row").filter({ hasText: "Wholesale" });
   await wholesaleRow.getByRole("button", { name: "Edit" }).click();
+  await expect(page.getByRole("dialog", { name: "Edit customer group" })).toBeVisible();
   await page.getByLabel("Active").click();
-  await expect(page.getByText("You have unsaved customer group changes.")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
 
   await page.getByRole("button", { name: "Save Group" }).click();
   await expect(page.getByRole("heading", { name: "Deactivate this customer group?" })).toBeVisible();

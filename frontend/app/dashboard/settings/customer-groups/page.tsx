@@ -1,13 +1,11 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { BadgePercent, RefreshCw } from "lucide-react";
+import { BadgePercent, Plus, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -16,6 +14,17 @@ import { Pill } from "@/components/ui/Pill";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SettingsSwitchRow } from "@/components/ui/SettingsSwitchRow";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -67,6 +76,7 @@ export default function CustomerGroupsSettingsPage() {
   const [draft, setDraft] = useState<CustomerGroupDraft>({ ...EMPTY_DRAFT });
   const [draftErrors, setDraftErrors] = useState<DraftErrors>({});
   const [saveError, setSaveError] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
 
   const isDirty = useMemo(() => {
     if (!editingGroup) {
@@ -98,6 +108,7 @@ export default function CustomerGroupsSettingsPage() {
       is_default: group.is_default,
       is_active: group.is_active,
     });
+    setEditorOpen(true);
   }
 
   async function editGroup(group: CustomerGroup) {
@@ -120,7 +131,7 @@ export default function CustomerGroupsSettingsPage() {
     setSaveError(false);
   }
 
-  async function discardDraft() {
+  async function closeEditor() {
     if (isDirty) {
       const confirmed = await confirm({
         title: "Discard customer group changes?",
@@ -131,6 +142,29 @@ export default function CustomerGroupsSettingsPage() {
       if (!confirmed) return;
     }
     resetDraft();
+    setEditorOpen(false);
+  }
+
+  async function startNewGroup() {
+    if (isDirty) {
+      const confirmed = await confirm({
+        title: "Discard unsaved customer group changes?",
+        description: "Starting a new group will replace the current draft.",
+        confirmLabel: "Discard changes",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
+    resetDraft();
+    setEditorOpen(true);
+  }
+
+  function handleEditorOpenChange(open: boolean) {
+    if (open) {
+      setEditorOpen(true);
+      return;
+    }
+    void closeEditor();
   }
 
   function validateDraft() {
@@ -204,6 +238,7 @@ export default function CustomerGroupsSettingsPage() {
         toast.success("Customer group created.");
       }
       resetDraft();
+      setEditorOpen(false);
     } catch {
       setSaveError(true);
       toast.error("Customer group changes could not be saved.");
@@ -233,18 +268,24 @@ export default function CustomerGroupsSettingsPage() {
       <PageHeader
         title="Customer Groups"
         description="Manage customer segments used by contacts, accounts, and client portal pricing context."
+        actions={<Button type="button" onClick={() => void startNewGroup()}><Plus />New customer group</Button>}
       />
 
-      <Card className="px-5 py-5">
-        <form onSubmit={saveGroup} className="space-y-4">
-          <div>
-            <h2 className="text-base font-semibold text-copy-primary">
-              {editingGroup ? "Edit Group" : "Create Group"}
-            </h2>
-            <FieldDescription className="mt-1">
-              Discounts are resolved for authenticated customer context; public catalog pricing remains unchanged.
-            </FieldDescription>
-          </div>
+      <Sheet open={editorOpen} onOpenChange={handleEditorOpenChange}>
+        <SheetPortal>
+          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
+          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+            <form onSubmit={saveGroup} className="flex min-h-0 flex-1 flex-col">
+              <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+                <div>
+                  <SheetTitle className="text-lg font-semibold text-copy-primary">{editingGroup ? "Edit customer group" : "Create customer group"}</SheetTitle>
+                  <SheetDescription className="mt-1 text-sm text-copy-muted">
+                    Discounts apply to authenticated customer context; public catalog pricing remains unchanged.
+                  </SheetDescription>
+                </div>
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="Close customer group editor" onClick={() => void closeEditor()}><X /></Button>
+              </SheetHeader>
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
           {saveError ? (
             <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-secondary">
               Customer group changes could not be saved. Check the group key and discount, then try again.
@@ -328,49 +369,43 @@ export default function CustomerGroupsSettingsPage() {
               <Textarea id="customer-group-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} />
             </Field>
           </FieldGroup>
-          <div className="flex flex-wrap items-center gap-4 text-sm text-copy-secondary">
-            <Field orientation="horizontal" className="w-auto">
-              <Checkbox
-                id="customer-group-default"
-                checked={draft.is_default}
-                onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_default: checked === true }))}
-                className="flex size-5 items-center justify-center rounded border border-line-strong bg-surface text-copy-primary focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <CheckboxIndicator className="size-3.5" />
-              </Checkbox>
-              <FieldLabel htmlFor="customer-group-default">Default group</FieldLabel>
-            </Field>
-            <Field orientation="horizontal" className="w-auto">
-              <Checkbox
-                id="customer-group-active"
-                checked={draft.is_active}
-                onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_active: checked === true }))}
-                className="flex size-5 items-center justify-center rounded border border-line-strong bg-surface text-copy-primary focus-visible:ring-2 focus-visible:ring-primary"
-              >
-                <CheckboxIndicator className="size-3.5" />
-              </Checkbox>
-              <FieldLabel htmlFor="customer-group-active">Active</FieldLabel>
-            </Field>
-            <div className="ml-auto flex gap-2">
-              {isDirty ? (
-                <Button type="button" variant="outline" onClick={() => void discardDraft()}>
-                  {editingGroup ? "Cancel" : "Reset"}
-                </Button>
-              ) : null}
-              <Button type="submit" disabled={isSaving || !draft.name.trim() || !draft.group_key.trim()}>
-                {isSaving ? "Saving..." : editingGroup ? "Save Group" : "Create Group"}
-              </Button>
-            </div>
-          </div>
-          {isDirty ? <p className="text-sm text-state-info">You have unsaved customer group changes.</p> : null}
-        </form>
-      </Card>
+                <div className="mt-4 grid gap-3">
+                  <SettingsSwitchRow
+                    id="customer-group-default"
+                    label="Default group"
+                    description="Use this group when a customer has no explicit group assignment."
+                    checked={draft.is_default}
+                    onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_default: checked }))}
+                  />
+                  <SettingsSwitchRow
+                    id="customer-group-active"
+                    label="Active"
+                    description="Allow this group to be assigned and used for customer pricing."
+                    checked={draft.is_active}
+                    onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_active: checked }))}
+                  />
+                </div>
+              </div>
+              <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <span className={`text-sm ${isDirty ? "text-state-warning" : "text-state-success"}`}>{isDirty ? "Unsaved changes" : "All changes saved"}</span>
+                <div className="flex gap-2">
+                  <Button type="button" variant="outline" onClick={() => void closeEditor()} disabled={isSaving}>Cancel</Button>
+                  <Button type="submit" disabled={isSaving || !draft.name.trim() || !draft.group_key.trim()}>
+                    {isSaving ? "Saving..." : editingGroup ? "Save Group" : "Create Group"}
+                  </Button>
+                </div>
+              </SheetFooter>
+            </form>
+          </SheetContent>
+        </SheetPortal>
+      </Sheet>
 
       <ModuleTableShell>
         <div className="flex flex-col gap-3 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
           <SearchBar value={search} onChange={setSearch} placeholder="Search customer groups" className="sm:max-w-sm" />
-          <div className="text-sm text-copy-muted">
-            {groups.isLoading ? "Loading..." : `${visibleGroups.length} of ${groups.data?.length ?? 0} groups`}
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-copy-muted">{groups.isLoading ? "Loading..." : `${visibleGroups.length} of ${groups.data?.length ?? 0} groups`}</span>
+            <Button type="button" size="sm" onClick={() => void startNewGroup()}><Plus />New group</Button>
           </div>
         </div>
         <Table>
