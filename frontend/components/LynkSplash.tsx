@@ -1,16 +1,24 @@
 "use client";
 
+import { HexagonBackground } from "@/components/ui/HexagonBackground";
+
 const HEX_CLIP =
   "polygon(25% 5.77%, 75% 5.77%, 100% 50%, 75% 94.23%, 25% 94.23%, 0 50%)";
 
 export default function LynkSplash() {
   return (
     <div className="relative flex h-screen w-screen flex-col items-center justify-center overflow-hidden bg-app text-copy-primary">
-      {/* subtle neutral gray vignette */}
-      <div className="pointer-events-none absolute inset-0 vignette-overlay" />
+      <HexagonBackground
+        aria-hidden="true"
+        hexagonMargin={5}
+        hexagonSize={70}
+        className="pointer-events-none absolute inset-0 z-0 text-copy-muted/40"
+      />
+      <div className="pointer-events-none absolute inset-0 z-1 mix-blend-soft-light opacity-[0.5] bg-[linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] bg-size-[2.5px_2.5px]" />
+      <div className="pointer-events-none absolute inset-0 z-2 bg-[radial-gradient(circle_at_center,transparent_55%,rgba(0,0,0,0.40))]" />
 
       {/* three hexes stack */}
-      <div className="relative flex h-72 w-72 items-center justify-center">
+      <div className="relative z-10 flex h-72 w-72 items-center justify-center">
         {/* 3) ripple hex, largest and behind */}
         <div
           className="absolute -inset-5 z-0"
@@ -46,7 +54,7 @@ export default function LynkSplash() {
       </div>
 
       {/* custom hex loader */}
-      <div className="mt-10 flex flex-col items-center gap-4">
+      <div className="relative z-10 mt-10 flex flex-col items-center gap-4">
         <p className="pl-[0.2em] text-center text-[11px] uppercase tracking-[0.25em] text-copy-muted">
           Loading
         </p>
@@ -68,31 +76,6 @@ export default function LynkSplash() {
             opacity: 0;
           }
         }
-
-        /* soft corner vignette */
-        .vignette-overlay {
-          background: radial-gradient(
-              circle at top left,
-              rgba(120, 120, 120, 0.15),
-              transparent 60%
-            ),
-            radial-gradient(
-              circle at top right,
-              rgba(120, 120, 120, 0.15),
-              transparent 60%
-            ),
-            radial-gradient(
-              circle at bottom left,
-              rgba(120, 120, 120, 0.15),
-              transparent 60%
-            ),
-            radial-gradient(
-              circle at bottom right,
-              rgba(120, 120, 120, 0.15),
-              transparent 60%
-            );
-        }
-
         @keyframes lynk-hex-pulse {
           0%,
           100% {

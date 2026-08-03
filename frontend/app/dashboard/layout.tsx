@@ -139,8 +139,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           aria-hidden="true"
           hexagonMargin={5}
           hexagonSize={80}
-          className="absolute inset-0 opacity-[0.18]"
+          className="absolute inset-0 opacity-[0.32]"
         />
+        <div className="absolute inset-0 bg-surface/68" />
         <div className="absolute inset-0 bg-[image:var(--background-accent-glow)]" />
       </div>
 
@@ -155,8 +156,8 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         </SheetPortal>
       </Sheet>
 
-      <main className="relative z-10 flex min-w-0 flex-1 overflow-hidden p-3 sm:p-4 lg:p-6">
-        <div className="relative z-20 flex h-full w-full min-w-0 flex-col overflow-hidden rounded-[var(--radius-panel)] border border-line-subtle bg-surface/80 shadow-[var(--shadow-panel)]">
+      <main className="relative z-10 flex min-w-0 flex-1 overflow-hidden">
+        <div className="relative z-20 flex h-full w-full min-w-0 flex-col overflow-hidden bg-transparent">
           <div className="relative z-10 flex min-h-16 flex-col justify-center gap-3 border-b border-line-subtle px-4 py-3 sm:px-6 xl:flex-row xl:items-center xl:justify-between xl:py-0">
             <div className="flex min-w-0 items-center gap-2">
               <Button type="button" variant="ghost" size="icon-sm" className="md:hidden" aria-label="Open navigation" aria-expanded={mobileNavigationOpen} onClick={() => setMobileNavigationOpen(true)}><Menu /></Button>

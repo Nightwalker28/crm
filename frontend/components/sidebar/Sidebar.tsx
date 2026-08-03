@@ -194,7 +194,7 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
     <aside
       aria-label={mobile ? "Mobile navigation" : "Primary navigation"}
       className={
-        "relative z-10 h-full shrink-0 flex-col border-r border-line-subtle bg-sidebar/80 transition-[width] duration-200 motion-reduce:transition-none " +
+        "relative z-10 h-full shrink-0 flex-col bg-transparent transition-[width] duration-200 motion-reduce:transition-none " +
         (mobile ? "flex w-72" : `hidden md:flex ${collapsed ? "w-[4.5rem]" : "w-60"}`)
       }
     >
