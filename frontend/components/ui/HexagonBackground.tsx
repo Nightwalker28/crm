@@ -25,6 +25,7 @@ function HexagonBackground({
   const computedMarginTop = baseMarginTop + hexagonMargin;
   const oddRowMarginLeft = -(hexagonSize / 2);
   const evenRowMarginLeft = hexagonMargin / 2;
+  const gridRef = React.useRef<HTMLDivElement>(null);
 
   const [gridDimensions, setGridDimensions] = React.useState({
     rows: 0,
@@ -32,13 +33,21 @@ function HexagonBackground({
   });
 
   const updateGridDimensions = React.useCallback(() => {
-    const rows = Math.ceil(window.innerHeight / rowSpacing);
-    const columns = Math.ceil(window.innerWidth / hexagonWidth) + 1;
+    const width = gridRef.current?.clientWidth || window.innerWidth;
+    const height = gridRef.current?.clientHeight || window.innerHeight;
+    const rows = Math.ceil(height / rowSpacing);
+    const columns = Math.ceil(width / hexagonWidth) + 1;
     setGridDimensions({ rows, columns });
   }, [rowSpacing, hexagonWidth]);
 
   React.useEffect(() => {
     updateGridDimensions();
+    const grid = gridRef.current;
+    if (grid && typeof ResizeObserver !== 'undefined') {
+      const observer = new ResizeObserver(updateGridDimensions);
+      observer.observe(grid);
+      return () => observer.disconnect();
+    }
     window.addEventListener('resize', updateGridDimensions);
     return () => window.removeEventListener('resize', updateGridDimensions);
   }, [updateGridDimensions]);
@@ -53,7 +62,7 @@ function HexagonBackground({
       {...props}
     >
       <style>{`:root { --hexagon-margin: ${hexagonMargin}px; }`}</style>
-      <div className="absolute top-0 left-0 size-full overflow-hidden">
+      <div ref={gridRef} className="absolute top-0 left-0 size-full overflow-hidden">
         {Array.from({ length: gridDimensions.rows }).map((_, rowIndex) => (
           <div
             key={`row-${rowIndex}`}

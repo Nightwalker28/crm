@@ -1,16 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
-import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -20,6 +17,7 @@ import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/compon
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
@@ -38,6 +36,7 @@ import {
 
 function TemplateEditor({ template }: { template: MessageTemplate | null }) {
   const router = useRouter();
+  const { confirm } = useConfirm();
   const nameRef = useRef<HTMLInputElement>(null);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
   const initialDraft = useMemo(() => template ? templateToDraft(template) : EMPTY_TEMPLATE_DRAFT, [template]);
@@ -109,57 +108,41 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
     }
   }
 
+  async function returnToTemplates() {
+    if (isDirty) {
+      const confirmed = await confirm({
+        title: "Discard template changes?",
+        description: "Leaving this editor will discard the unsaved template details, message content, and variables.",
+        confirmLabel: "Discard and leave",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
+    router.push("/dashboard/settings/message-templates");
+  }
+
   return (
     <div className="grid gap-6">
       <PageHeader
         title={template ? "Edit message template" : "Create message template"}
         description="Prepare reusable WhatsApp or email content with CRM variables."
-        actions={<Button asChild variant="outline"><Link href="/dashboard/settings/message-templates"><ArrowLeft />Back to templates</Link></Button>}
+        actions={<Button type="button" variant="outline" onClick={() => void returnToTemplates()}><ArrowLeft />Back to templates</Button>}
       />
-      <RecordFormLayout
-        sidebar={
-          <>
-            <Card className="p-5">
-              <h2 className="text-sm font-semibold text-copy-primary">Template summary</h2>
-              <dl className="mt-4 grid gap-3 text-sm">
-                <div><dt className="text-copy-muted">Channel</dt><dd className="mt-1 text-copy-primary">{CHANNEL_OPTIONS.find((item) => item.value === draft.channel)?.label ?? draft.channel}</dd></div>
-                <div><dt className="text-copy-muted">Module</dt><dd className="mt-1 text-copy-primary">{getModuleDisplayName(draft.module_key)}</dd></div>
-                <div><dt className="text-copy-muted">Variables</dt><dd className="mt-1 text-copy-primary">{visibleVariables.length}</dd></div>
-                <div><dt className="text-copy-muted">Status</dt><dd className="mt-1 text-copy-primary">{draft.is_active ? "Active" : "Inactive"}</dd></div>
-              </dl>
-            </Card>
-            <Card className="p-5">
-              <h2 className="text-sm font-semibold text-copy-primary">Suggested variables</h2>
-              <p className="mt-2 text-sm leading-6 text-copy-secondary">Choose a token to declare it for this template.</p>
-              <div className="mt-4 flex flex-wrap gap-2">
-                {suggestedVariables.map((variable) => (
-                  <button key={variable} type="button" className="rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-xs text-copy-secondary hover:border-line-strong hover:text-copy-primary" onClick={() => setDraft((current) => ({ ...current, variables: mergedTemplateVariables(current.body, `${current.variables}, ${variable}`).join(", ") }))}>
-                    {`{{${variable}}}`}
-                  </button>
-                ))}
-              </div>
-            </Card>
-          </>
-        }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">{isDirty ? "Unsaved template changes" : "No unsaved changes"}</span>
-            <div className="flex gap-2">
-              <Button asChild variant="outline"><Link href="/dashboard/settings/message-templates">Cancel</Link></Button>
-              <Button type="button" onClick={() => void saveTemplate()} disabled={isSaving}>
-                <Save />{isSaving ? "Saving..." : isEdit ? "Save template" : "Create template"}
-              </Button>
+      <Card className="overflow-hidden">
+        {!isEdit ? (
+          <section className="border-b border-line-subtle px-5 py-5 md:px-6" aria-labelledby="template-presets-heading">
+            <h2 id="template-presets-heading" className="text-base font-semibold text-copy-primary">Start from a preset</h2>
+            <p className="mt-1 text-sm text-copy-muted">Presets are editable starting points and do not send messages.</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {CRM_TEMPLATE_PRESETS.map((preset) => <Button key={preset.label} type="button" variant="outline" onClick={() => applyPreset(preset)}><Sparkles />{preset.label}</Button>)}
             </div>
-          </div>
-        }
-      >
-        {!isEdit ? <FormSection title="Start from a preset" description="Presets are editable starting points and do not send messages.">
-          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            {CRM_TEMPLATE_PRESETS.map((preset) => <Button key={preset.label} type="button" variant="outline" className="justify-start" onClick={() => applyPreset(preset)}><Sparkles />{preset.label}</Button>)}
-          </div>
-        </FormSection> : null}
-        <FormSection title="Template details" description="Name the template and choose where it is available.">
-          <FieldGroup>
+          </section>
+        ) : null}
+
+        <section className="border-b border-line-subtle px-5 py-5 md:px-6" aria-labelledby="template-details-heading">
+          <h2 id="template-details-heading" className="text-base font-semibold text-copy-primary">Template details</h2>
+          <p className="mt-1 text-sm text-copy-muted">Name the template and choose where it is available.</p>
+          <FieldGroup className="mt-5">
             <Field data-invalid={error?.field === "name"}>
               <FieldLabel htmlFor="template-name">Name <RequiredMark /></FieldLabel>
               <Input ref={nameRef} id="template-name" value={draft.name} maxLength={180} onChange={(event) => { setDraft((current) => ({ ...current, name: event.target.value })); setError(null); }} aria-invalid={error?.field === "name"} placeholder="Quote follow-up" />
@@ -179,18 +162,21 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
                 <Select value={draft.module_key} onValueChange={(value) => setDraft((current) => ({ ...current, module_key: value }))}><SelectTrigger aria-label="Module"><SelectValue /></SelectTrigger><SelectContent>{MODULE_OPTIONS.map((moduleName) => <SelectItem key={moduleName} value={moduleName}>{getModuleDisplayName(moduleName)}</SelectItem>)}</SelectContent></Select>
               </Field>
             </div>
-            <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-primary">
-              Active
-              <Checkbox
-                checked={draft.is_active}
-                onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_active: checked === true }))}
-                aria-label="Active"
-              />
-            </label>
+            <Field>
+              <FieldLabel>Template status</FieldLabel>
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Template status">
+                <Button type="button" variant={draft.is_active ? "secondary" : "outline"} aria-pressed={draft.is_active} onClick={() => setDraft((current) => ({ ...current, is_active: true }))}>Active</Button>
+                <Button type="button" variant={!draft.is_active ? "secondary" : "outline"} aria-pressed={!draft.is_active} onClick={() => setDraft((current) => ({ ...current, is_active: false }))}>Inactive</Button>
+              </div>
+              <FieldDescription>Inactive templates remain saved but cannot be selected for new messages.</FieldDescription>
+            </Field>
           </FieldGroup>
-        </FormSection>
-        <FormSection title="Message content" description="Variables wrapped in braces are detected and saved automatically.">
-          <FieldGroup>
+        </section>
+
+        <section className="px-5 py-5 md:px-6" aria-labelledby="template-content-heading">
+          <h2 id="template-content-heading" className="text-base font-semibold text-copy-primary">Message content</h2>
+          <p className="mt-1 text-sm text-copy-muted">Variables wrapped in braces are detected and saved automatically.</p>
+          <FieldGroup className="mt-5">
             <Field data-invalid={error?.field === "body" || error?.field === "form"}>
               <FieldLabel htmlFor="template-body">Body <RequiredMark /></FieldLabel>
               <Textarea ref={bodyRef} id="template-body" value={draft.body} onChange={(event) => { setDraft((current) => ({ ...current, body: event.target.value })); setError(null); }} className="min-h-48" aria-invalid={error?.field === "body" || error?.field === "form"} />
@@ -202,9 +188,32 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
               <Input id="template-variables" value={draft.variables} onChange={(event) => setDraft((current) => ({ ...current, variables: event.target.value }))} placeholder="contact_first_name, organization_name" />
               {visibleVariables.length ? <div className="mt-2 flex flex-wrap gap-2">{visibleVariables.map((variable) => <span key={variable} className="rounded-full border border-line-default bg-surface-muted px-2 py-1 text-xs text-copy-secondary">{`{{${variable}}}`}</span>)}</div> : null}
             </Field>
+            <Field>
+              <FieldLabel>Suggested variables</FieldLabel>
+              <FieldDescription>Choose a token to add it to this template&apos;s declared variables.</FieldDescription>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {suggestedVariables.map((variable) => (
+                  <button key={variable} type="button" className="rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-xs text-copy-secondary hover:border-line-strong hover:text-copy-primary" onClick={() => setDraft((current) => ({ ...current, variables: mergedTemplateVariables(current.body, `${current.variables}, ${variable}`).join(", ") }))}>
+                    {`{{${variable}}}`}
+                  </button>
+                ))}
+              </div>
+            </Field>
           </FieldGroup>
-        </FormSection>
-      </RecordFormLayout>
+        </section>
+      </Card>
+
+      <div className="sticky bottom-0 z-20 -mx-4 border-t border-line-default bg-app/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <span className={`text-sm font-medium ${isDirty ? "text-state-warning" : "text-state-success"}`}>{isDirty ? "Unsaved changes" : "All changes saved"}</span>
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" onClick={() => void returnToTemplates()}>Cancel</Button>
+            <Button type="button" onClick={() => void saveTemplate()} disabled={isSaving || !isDirty}>
+              <Save />{isSaving ? "Saving..." : isEdit ? "Save template" : "Create template"}
+            </Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

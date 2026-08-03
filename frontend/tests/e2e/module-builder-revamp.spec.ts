@@ -78,6 +78,15 @@ test.beforeEach(async ({ page }) => {
       },
     ],
   };
+  const secondModule: BuilderModule = {
+    ...builderModule,
+    id: 12,
+    name: "Assets",
+    key: "assets",
+    display_name: "Assets",
+    description: "Tenant assets",
+    fields: [builderModule.fields[0]],
+  };
 
   await page.route("**/admin/users/sidebar-tabs", (route) =>
     route.fulfill({
@@ -90,7 +99,7 @@ test.beforeEach(async ({ page }) => {
     }),
   );
   await page.route("**/module-builder?include_deleted=true", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([builderModule]) }),
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([builderModule, secondModule]) }),
   );
   await page.route(/\/module-builder\/11$/, async (route) => {
     const payload = route.request().postDataJSON() as Partial<BuilderModule>;
@@ -125,6 +134,7 @@ test("edits and reorders fields from one module-level save on mobile", async ({ 
   await page.goto("/dashboard/settings/module-builder");
 
   await expect(page.getByRole("heading", { name: "Module Builder" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Module" })).toContainText("Requests");
   await expect(page.getByRole("tab", { name: "Fields" })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("button", { name: "Edit Priority" }).click();
   await expect(page.getByRole("dialog", { name: "Edit field" })).toBeVisible();
@@ -144,6 +154,25 @@ test("edits and reorders fields from one module-level save on mobile", async ({ 
 
   expect(request.postDataJSON()).toMatchObject({ label: "Request Priority", sort_order: 0 });
   await expect(page.getByText("All changes saved")).toBeVisible();
+});
+
+test("uses the workspace module selector and guards dirty switching", async ({ page }) => {
+  await page.goto("/dashboard/settings/module-builder");
+
+  await page.getByRole("button", { name: "Edit Priority" }).click();
+  await page.getByLabel("Label", { exact: true }).fill("Urgency");
+  await page.getByRole("button", { name: "Done editing field" }).click();
+
+  await page.getByRole("combobox", { name: "Module" }).click();
+  await page.getByRole("option", { name: "Assets" }).click();
+  await expect(page.getByRole("heading", { name: "Discard module changes?" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("heading", { name: "Requests" })).toBeVisible();
+
+  await page.getByRole("combobox", { name: "Module" }).click();
+  await page.getByRole("option", { name: "Assets" }).click();
+  await page.getByRole("button", { name: "Discard and switch" }).click();
+  await expect(page.getByRole("heading", { name: "Assets" })).toBeVisible();
 });
 
 test("adds a field in the inspector and exposes shared builder destinations", async ({ page }) => {

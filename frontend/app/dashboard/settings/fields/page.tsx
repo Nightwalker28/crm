@@ -18,7 +18,6 @@ import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SettingsSwitch, SettingsSwitchRow } from "@/components/ui/SettingsSwitchRow";
 import {
   Sheet,
   SheetContent,
@@ -32,6 +31,7 @@ import {
 import { isProtectedFieldKey, useModuleFieldConfigs, type ModuleFieldSource } from "@/hooks/useModuleFieldConfigs";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
 import { useModuleBuilder, type CustomModuleDefinition, type CustomModuleField } from "@/hooks/useModuleBuilder";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
@@ -188,6 +188,7 @@ function buildCustomModuleCatalog(module: CustomModuleDefinition | null): FieldC
 
 export default function FieldsPage() {
   const queryClient = useQueryClient();
+  const { confirm } = useConfirm();
   const {
     modules: customModules,
     updateField: updateCustomModuleField,
@@ -337,8 +338,14 @@ export default function FieldsPage() {
   const hasLoadError = Boolean(customModulesError || moduleFieldsError || customFieldsQuery.error);
   const isSaving = isSavingModuleFields || updateCustomFieldMutation.isPending || isSavingCustomModule;
 
-  function confirmDiscard() {
-    return !hasUnsavedChanges || window.confirm("Discard the unsaved field changes?");
+  async function confirmDiscard(description: string) {
+    if (!hasUnsavedChanges) return true;
+    return confirm({
+      title: "Discard field changes?",
+      description,
+      confirmLabel: "Discard changes",
+      variant: "destructive",
+    });
   }
 
   function handleLabelChange(value: string) {
@@ -349,8 +356,8 @@ export default function FieldsPage() {
     }));
   }
 
-  function handleModuleChange(nextModuleKey: string) {
-    if (!confirmDiscard()) return;
+  async function handleModuleChange(nextModuleKey: string) {
+    if (!await confirmDiscard("Your unsaved field changes will be lost when you switch modules.")) return;
     setModuleKey(nextModuleKey);
     setSearch("");
     setFilter("all");
@@ -363,12 +370,12 @@ export default function FieldsPage() {
     setCreateError(null);
   }
 
-  function selectField(fieldKey: string) {
+  async function selectField(fieldKey: string) {
     if (fieldKey === selectedField?.field_key && panelMode === "inspect") {
       setPanelOpen(true);
       return;
     }
-    if (!confirmDiscard()) return;
+    if (!await confirmDiscard("Your unsaved changes will be lost when you open another field.")) return;
     setPanelMode("inspect");
     setSelectedFieldKey(fieldKey);
     setInspectorEdit(null);
@@ -376,8 +383,9 @@ export default function FieldsPage() {
     setPanelOpen(true);
   }
 
-  function showCreatePanel() {
-    if (!supportsCustomFields || !confirmDiscard()) return;
+  async function showCreatePanel() {
+    if (!supportsCustomFields) return;
+    if (!await confirmDiscard("Your unsaved changes will be lost when you create another field.")) return;
     setDraft(emptyDraft);
     setFieldKeyEdited(false);
     setPanelMode("create");
@@ -396,8 +404,8 @@ export default function FieldsPage() {
     }
   }
 
-  function closePanel() {
-    if (!confirmDiscard()) return;
+  async function closePanel() {
+    if (!await confirmDiscard("Your unsaved field changes will be lost when you close the editor.")) return;
     discardPanelChanges();
     setPanelOpen(false);
   }
@@ -407,7 +415,7 @@ export default function FieldsPage() {
       setPanelOpen(true);
       return;
     }
-    closePanel();
+    void closePanel();
   }
 
   function updateInspectorDraft(update: (current: InspectorDraft) => InspectorDraft) {
@@ -521,7 +529,7 @@ export default function FieldsPage() {
         description="Control field visibility and custom metadata without disabling the identifiers each module needs to operate safely."
         actions={
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <Select value={moduleKey} onValueChange={handleModuleChange}>
+            <Select value={moduleKey} onValueChange={(value) => void handleModuleChange(value)}>
               <SelectTrigger className="w-full sm:w-72" aria-label="Select module">
                 <SelectValue />
               </SelectTrigger>
@@ -529,7 +537,7 @@ export default function FieldsPage() {
                 {moduleOptions.map((moduleName) => <SelectItem key={moduleName.key} value={moduleName.key}>{moduleName.label}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Button onClick={showCreatePanel} disabled={!supportsCustomFields} title={supportsCustomFields ? undefined : "Custom fields for this module are managed in Module Builder."}>
+            <Button onClick={() => void showCreatePanel()} disabled={!supportsCustomFields} title={supportsCustomFields ? undefined : "Custom fields for this module are managed in Module Builder."}>
               <Plus />New Field
             </Button>
           </div>
@@ -580,7 +588,7 @@ export default function FieldsPage() {
                       type="button"
                       className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary"
                       aria-pressed={selectedField?.field_key === field.field_key && panelMode === "inspect"}
-                      onClick={() => selectField(field.field_key)}
+                      onClick={() => void selectField(field.field_key)}
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-copy-primary">{field.label}</span>
@@ -594,18 +602,12 @@ export default function FieldsPage() {
                     </button>
 
                     <div className="flex items-center gap-2">
-                      <SettingsSwitch
-                        checked={field.is_enabled}
-                        disabled={field.is_protected || isSaving}
-                        onCheckedChange={() => void toggleField(field)}
-                        aria-label={`${field.is_enabled ? "Disable" : "Enable"} ${field.label}`}
-                      />
                       <Popover>
                         <PopoverTrigger asChild>
                           <Button type="button" size="icon-sm" variant="ghost" aria-label={`More actions for ${field.label}`}><MoreHorizontal /></Button>
                         </PopoverTrigger>
                         <PopoverContent align="end" className="w-52 border-line-default bg-surface-raised p-2 text-copy-primary">
-                          <Button className="w-full justify-start" variant="ghost" onClick={() => selectField(field.field_key)}><Settings2 />Inspect field</Button>
+                          <Button className="w-full justify-start" variant="ghost" onClick={() => void selectField(field.field_key)}><Settings2 />Inspect field</Button>
                           <Button
                             className="mt-1 w-full justify-start"
                             variant="ghost"
@@ -649,7 +651,7 @@ export default function FieldsPage() {
                           Add a field to this built-in module. Its key cannot be changed after creation.
                         </SheetDescription>
                       </div>
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Close field editor" onClick={closePanel}>
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Close field editor" onClick={() => void closePanel()}>
                         <X />
                       </Button>
                     </SheetHeader>
@@ -689,7 +691,7 @@ export default function FieldsPage() {
                       {createError ? <p className="mt-4 text-sm text-state-danger" role="alert">{createError}</p> : null}
                     </div>
                     <SheetFooter className="flex justify-end gap-2 border-t border-line-subtle bg-surface px-5 py-4">
-                      <Button type="button" variant="outline" onClick={closePanel} disabled={createMutation.isPending}>Cancel</Button>
+                      <Button type="button" variant="outline" onClick={() => void closePanel()} disabled={createMutation.isPending}>Cancel</Button>
                       <Button type="submit" disabled={!canCreate}>{createMutation.isPending ? "Creating…" : "Create Field"}</Button>
                     </SheetFooter>
                   </form>
@@ -703,7 +705,7 @@ export default function FieldsPage() {
                         </div>
                         <SheetDescription className="mt-1 break-all text-sm text-copy-muted">{selectedField.field_key}</SheetDescription>
                       </div>
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Close field editor" onClick={closePanel}>
+                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Close field editor" onClick={() => void closePanel()}>
                         <X />
                       </Button>
                     </SheetHeader>
@@ -741,14 +743,32 @@ export default function FieldsPage() {
                       </Field>
                     </>
                   ) : null}
-                  <SettingsSwitchRow
-                    id="inspector-field-enabled"
-                    label="Enabled"
-                    description={selectedField.is_protected ? "Locked on for record safety." : "Disabled fields are removed from lists, filters, and supported forms."}
-                    checked={inspectorDraft.is_enabled}
-                    disabled={selectedField.is_protected || isSaving}
-                    onCheckedChange={(checked) => updateInspectorDraft((current) => ({ ...current, is_enabled: checked }))}
-                  />
+                  <Field>
+                    <FieldLabel>Field availability</FieldLabel>
+                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Field availability">
+                      <Button
+                        type="button"
+                        variant={inspectorDraft.is_enabled ? "secondary" : "outline"}
+                        aria-pressed={inspectorDraft.is_enabled}
+                        disabled={selectedField.is_protected || isSaving}
+                        onClick={() => updateInspectorDraft((current) => ({ ...current, is_enabled: true }))}
+                      >
+                        Enabled
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={!inspectorDraft.is_enabled ? "secondary" : "outline"}
+                        aria-pressed={!inspectorDraft.is_enabled}
+                        disabled={selectedField.is_protected || isSaving}
+                        onClick={() => updateInspectorDraft((current) => ({ ...current, is_enabled: false }))}
+                      >
+                        Disabled
+                      </Button>
+                    </div>
+                    <FieldDescription>
+                      {selectedField.is_protected ? "Locked on for record safety." : "Disabled fields are removed from lists, filters, and supported forms."}
+                    </FieldDescription>
+                  </Field>
                       </FieldGroup>
                       {inspectorError ? <p className="mt-4 text-sm text-state-danger" role="alert">{inspectorError}</p> : null}
                     </div>

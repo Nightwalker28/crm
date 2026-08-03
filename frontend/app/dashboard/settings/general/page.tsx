@@ -236,7 +236,7 @@ export default function CompanyPage() {
             </div>
           ) : null}
 
-          <Card>
+          <Card className="overflow-visible" aria-label="Company settings workspace">
             <CardHeader>
               <div>
                 <h2 className="text-base font-semibold text-copy-primary">Company profile</h2>
@@ -271,9 +271,7 @@ export default function CompanyPage() {
                 </Field>
               </FieldGroup>
             </CardBody>
-          </Card>
-
-          <Card>
+            <section className="border-t border-line-subtle">
             <CardHeader>
               <div>
                 <h2 className="text-base font-semibold text-copy-primary">Commercial defaults</h2>
@@ -302,9 +300,9 @@ export default function CompanyPage() {
                 </Field>
               </FieldGroup>
             </CardBody>
-          </Card>
+            </section>
 
-          <Card>
+            <section className="border-t border-line-subtle">
             <CardHeader>
               <div>
                 <h2 className="text-base font-semibold text-copy-primary">Branding</h2>
@@ -346,7 +344,9 @@ export default function CompanyPage() {
                 </Field>
               </div>
             </CardBody>
-            <CardFooter className="flex flex-wrap items-center justify-between gap-3">
+            </section>
+
+            <CardFooter className="sticky bottom-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-b-[var(--radius-card)] bg-surface-raised/95 backdrop-blur">
               <span className={`text-sm ${isDirty ? "text-state-warning" : "text-state-success"}`}>
                 {isDirty ? "You have unsaved company changes." : "All company settings are saved."}
               </span>

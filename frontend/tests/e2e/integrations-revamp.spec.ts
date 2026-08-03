@@ -105,12 +105,30 @@ test("Integrations show provider account and safe recovery guidance on mobile", 
 test("API key creation labels scopes and exposes the secret only until dismissed", async ({ page }) => {
   await page.goto("/dashboard/settings/integrations");
 
+  await page.getByRole("button", { name: "New API key" }).click();
+  const apiKeyEditor = page.getByRole("dialog", { name: "Create API key" });
+  await expect(apiKeyEditor).toBeVisible();
   await page.getByLabel("Key Name").fill("Website");
   await expect(page.getByLabel("Allow catalog read access")).toBeChecked();
   await page.getByRole("button", { name: "Create API Key" }).click();
   await expect(page.getByText("lynk_live_visible_once")).toBeVisible();
   await page.getByRole("button", { name: "Dismiss" }).click();
   await expect(page.getByText("lynk_live_visible_once")).toBeHidden();
+  await expect(apiKeyEditor).toHaveCount(0);
+});
+
+test("Webhook creation uses an explicit guarded drawer", async ({ page }) => {
+  await page.goto("/dashboard/settings/integrations");
+
+  await page.getByRole("button", { name: "New webhook" }).click();
+  const webhookEditor = page.getByRole("dialog", { name: "Create webhook" });
+  await expect(webhookEditor).toBeVisible();
+  await expect(webhookEditor.getByRole("button", { name: "Active", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByLabel("Channel Name").fill("#operations");
+  await webhookEditor.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("heading", { name: "Discard webhook draft?" })).toBeVisible();
+  await page.getByRole("button", { name: "Discard draft" }).click();
+  await expect(webhookEditor).toHaveCount(0);
 });
 
 test("Sensitive integration actions require confirmation", async ({ page }) => {

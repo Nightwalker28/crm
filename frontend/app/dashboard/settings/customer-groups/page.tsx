@@ -14,7 +14,6 @@ import { Pill } from "@/components/ui/Pill";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SettingsSwitchRow } from "@/components/ui/SettingsSwitchRow";
 import {
   Sheet,
   SheetContent,
@@ -291,7 +290,7 @@ export default function CustomerGroupsSettingsPage() {
               Customer group changes could not be saved. Check the group key and discount, then try again.
             </div>
           ) : null}
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <FieldGroup>
             <Field>
               <FieldLabel htmlFor="customer-group-name">Name <RequiredMark /></FieldLabel>
               <Input
@@ -364,27 +363,57 @@ export default function CustomerGroupsSettingsPage() {
               />
               {draftErrors.discount_value ? <FieldError id="customer-group-discount-value-error">{draftErrors.discount_value}</FieldError> : null}
             </Field>
-            <Field className="md:col-span-2">
+            <Field>
               <FieldLabel htmlFor="customer-group-description">Description</FieldLabel>
               <Textarea id="customer-group-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} />
             </Field>
           </FieldGroup>
-                <div className="mt-4 grid gap-3">
-                  <SettingsSwitchRow
-                    id="customer-group-default"
-                    label="Default group"
-                    description="Use this group when a customer has no explicit group assignment."
-                    checked={draft.is_default}
-                    onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_default: checked }))}
-                  />
-                  <SettingsSwitchRow
-                    id="customer-group-active"
-                    label="Active"
-                    description="Allow this group to be assigned and used for customer pricing."
-                    checked={draft.is_active}
-                    onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_active: checked }))}
-                  />
-                </div>
+                <FieldGroup className="mt-5 border-t border-line-subtle pt-5">
+                  <Field>
+                    <FieldLabel>Default assignment</FieldLabel>
+                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Default assignment">
+                      <Button
+                        type="button"
+                        variant={draft.is_default ? "secondary" : "outline"}
+                        aria-pressed={draft.is_default}
+                        onClick={() => setDraft((current) => ({ ...current, is_default: true }))}
+                      >
+                        Default group
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={!draft.is_default ? "secondary" : "outline"}
+                        aria-pressed={!draft.is_default}
+                        onClick={() => setDraft((current) => ({ ...current, is_default: false }))}
+                      >
+                        Not default
+                      </Button>
+                    </div>
+                    <FieldDescription>Use the default group when a customer has no explicit group assignment.</FieldDescription>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Group availability</FieldLabel>
+                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Group availability">
+                      <Button
+                        type="button"
+                        variant={draft.is_active ? "secondary" : "outline"}
+                        aria-pressed={draft.is_active}
+                        onClick={() => setDraft((current) => ({ ...current, is_active: true }))}
+                      >
+                        Active
+                      </Button>
+                      <Button
+                        type="button"
+                        variant={!draft.is_active ? "secondary" : "outline"}
+                        aria-pressed={!draft.is_active}
+                        onClick={() => setDraft((current) => ({ ...current, is_active: false }))}
+                      >
+                        Inactive
+                      </Button>
+                    </div>
+                    <FieldDescription>Active groups can be assigned and used for customer pricing.</FieldDescription>
+                  </Field>
+                </FieldGroup>
               </div>
               <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
                 <span className={`text-sm ${isDirty ? "text-state-warning" : "text-state-success"}`}>{isDirty ? "Unsaved changes" : "All changes saved"}</span>

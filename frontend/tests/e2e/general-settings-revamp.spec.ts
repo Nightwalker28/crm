@@ -40,6 +40,10 @@ test("saves responsive company settings with normalized currencies", async ({ pa
   await page.goto("/dashboard/settings/general");
 
   await expect(page.getByRole("heading", { name: "General settings" })).toBeVisible();
+  const workspace = page.locator('[aria-label="Company settings workspace"]');
+  await expect(workspace.getByRole("heading", { name: "Company profile" })).toBeVisible();
+  await expect(workspace.getByRole("heading", { name: "Commercial defaults" })).toBeVisible();
+  await expect(workspace.getByRole("heading", { name: "Branding" })).toBeVisible();
   await expect(page.getByLabel("Company name")).toHaveValue("Lynk Holdings");
 
   await page.getByLabel("Company name").fill("Lynk International");
@@ -49,7 +53,7 @@ test("saves responsive company settings with normalized currencies", async ({ pa
   const saveRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith("/users/company"),
   );
-  await page.getByRole("button", { name: "Save company" }).click();
+  await workspace.getByRole("button", { name: "Save company" }).click();
   const request = await saveRequest;
 
   expect(request.postDataJSON()).toMatchObject({

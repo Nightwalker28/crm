@@ -15,7 +15,6 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SettingsSwitchRow } from "@/components/ui/SettingsSwitchRow";
 import {
   Sheet,
   SheetContent,
@@ -316,7 +315,7 @@ export default function CalendarBookingSettingsPage() {
             {isEditing ? <Button type="button" variant="ghost" size="sm" onClick={() => void startNewBookingLink()}>New</Button> : null}
           </div>
 
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <FieldGroup>
             <Field>
               <FieldLabel htmlFor="booking-link-name">Name <RequiredMark /></FieldLabel>
               <Input
@@ -352,13 +351,28 @@ export default function CalendarBookingSettingsPage() {
               <Input type="number" min="15" max="240" value={draft.duration_minutes} onChange={(event) => setDraft((current) => ({ ...current, duration_minutes: Number(event.target.value) }))} />
               {draft.duration_minutes < 15 || draft.duration_minutes > 240 ? <FieldError>Use a duration between 15 and 240 minutes.</FieldError> : null}
             </Field>
-            <SettingsSwitchRow
-              id="booking-link-enabled"
-              label="Booking link enabled"
-              description="Allow customers to use this public booking link."
-              checked={draft.enabled}
-              onCheckedChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
-            />
+            <Field>
+              <FieldLabel>Link availability</FieldLabel>
+              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Link availability">
+                <Button
+                  type="button"
+                  variant={draft.enabled ? "secondary" : "outline"}
+                  aria-pressed={draft.enabled}
+                  onClick={() => setDraft((current) => ({ ...current, enabled: true }))}
+                >
+                  Enabled
+                </Button>
+                <Button
+                  type="button"
+                  variant={!draft.enabled ? "secondary" : "outline"}
+                  aria-pressed={!draft.enabled}
+                  onClick={() => setDraft((current) => ({ ...current, enabled: false }))}
+                >
+                  Disabled
+                </Button>
+              </div>
+              <FieldDescription>Enabled links accept new public bookings. Existing calendar events remain when a link is disabled.</FieldDescription>
+            </Field>
           </FieldGroup>
 
           <div className="mt-5 space-y-3">
@@ -411,15 +425,28 @@ export default function CalendarBookingSettingsPage() {
               </Button>
             </div>
             {draft.questions.map((question, index) => (
-              <div key={`question-${index}`} className="grid gap-2 md:grid-cols-[1fr_auto_auto]">
+              <div key={`question-${index}`} className="grid gap-2 md:grid-cols-[minmax(0,1fr)_12rem_auto]">
                 <Input aria-label={`Question ${index + 1} label`} value={question.label} placeholder="Question label" onChange={(event) => updateQuestion(index, { label: event.target.value })} />
-                <SettingsSwitchRow
-                  id={`booking-question-${index}-required`}
-                  label="Required"
-                  checked={question.required}
-                  onCheckedChange={(checked) => updateQuestion(index, { required: checked })}
-                  compact
-                />
+                <div className="grid grid-cols-2 gap-2" role="group" aria-label={`Question ${index + 1} requirement`}>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={question.required ? "secondary" : "outline"}
+                    aria-pressed={question.required}
+                    onClick={() => updateQuestion(index, { required: true })}
+                  >
+                    Required
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={!question.required ? "secondary" : "outline"}
+                    aria-pressed={!question.required}
+                    onClick={() => updateQuestion(index, { required: false })}
+                  >
+                    Optional
+                  </Button>
+                </div>
                 <Button aria-label={`Remove question ${index + 1}`} variant="ghost" size="icon-sm" onClick={() => setDraft((current) => ({ ...current, questions: current.questions.filter((_, itemIndex) => itemIndex !== index) }))}>
                   <Trash2 className="h-4 w-4" />
                 </Button>

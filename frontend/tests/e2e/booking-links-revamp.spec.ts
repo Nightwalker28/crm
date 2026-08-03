@@ -57,11 +57,22 @@ test("edits a booking link from the focused drawer on mobile", async ({ page }) 
   await expect(page.getByRole("dialog", { name: "Edit booking link" })).toBeVisible();
 
   await page.getByLabel("Name", { exact: true }).fill("Customer discovery");
+  await expect(page.getByRole("button", { name: "Enabled", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Disabled", exact: true }).click();
+  await page.getByRole("button", { name: "Question", exact: true }).click();
+  await page.getByLabel("Question 1 label").fill("What should we prepare?");
+  await expect(page.getByRole("button", { name: "Optional", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Required", exact: true }).click();
   const updateRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith("/calendar/booking-types/17"),
   );
   await page.getByRole("button", { name: "Save booking link" }).click();
-  expect((await updateRequest).postDataJSON()).toMatchObject({ name: "Customer discovery", slug: "discovery-call" });
+  expect((await updateRequest).postDataJSON()).toMatchObject({
+    name: "Customer discovery",
+    slug: "discovery-call",
+    enabled: false,
+    questions: [{ label: "What should we prepare?", field_type: "text", required: true }],
+  });
 
   await expect(page.getByRole("dialog", { name: "Edit booking link" })).toHaveCount(0);
   await expect(page.getByText("Customer discovery", { exact: true })).toBeVisible();

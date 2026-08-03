@@ -51,6 +51,7 @@ import {
   type CustomModuleFieldPayload,
 } from "@/hooks/useModuleBuilder";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useSidebarTabsAdmin, type SidebarTab } from "@/hooks/admin/useModulesAdmin";
 import { cn } from "@/lib/utils";
 
@@ -713,6 +714,7 @@ function CreateModulePanel({
 }
 
 export default function ModuleBuilderPage() {
+  const { confirm } = useConfirm();
   const {
     modules,
     isLoading,
@@ -734,25 +736,41 @@ export default function ModuleBuilderPage() {
   const [workspaceDirty, setWorkspaceDirty] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
 
-  const filteredModules = useMemo(() => {
-    const query = search.trim().toLowerCase();
-    if (!query) return modules;
-    return modules.filter((module) => [module.name, module.display_name, module.key].some((value) => value?.toLowerCase().includes(query)));
-  }, [modules, search]);
   const selectedModule = modules.find((module) => module.id === selectedModuleId)
     ?? modules.find((module) => !module.deleted_at)
     ?? modules[0]
     ?? null;
+  const selectableModules = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return modules;
+    const matches = modules.filter((module) => [module.name, module.display_name, module.key].some((value) => value?.toLowerCase().includes(query)));
+    return selectedModule && !matches.some((module) => module.id === selectedModule.id) ? [selectedModule, ...matches] : matches;
+  }, [modules, search, selectedModule]);
 
-  function canLeaveWorkspace() {
-    return !workspaceDirty || window.confirm("Discard unsaved module changes?");
+  async function canLeaveWorkspace() {
+    if (!workspaceDirty) return true;
+    return confirm({
+      title: "Discard module changes?",
+      description: "Switching modules will discard the unsaved configuration and field changes in this workspace.",
+      confirmLabel: "Discard and switch",
+      variant: "destructive",
+    });
   }
 
-  function selectModule(moduleId: number) {
-    if (!canLeaveWorkspace()) return;
+  async function selectModule(moduleId: number) {
+    if (moduleId === selectedModule?.id && !creating) return;
+    if (!(await canLeaveWorkspace())) return;
     setWorkspaceDirty(false);
     setCreating(false);
+    setSearch("");
     setSelectedModuleId(moduleId);
+  }
+
+  async function startCreating() {
+    if (!(await canLeaveWorkspace())) return;
+    setWorkspaceDirty(false);
+    setSearch("");
+    setCreating(true);
   }
 
   async function run(action: () => Promise<unknown>, failureMessage: string) {
@@ -782,59 +800,27 @@ export default function ModuleBuilderPage() {
       <PageHeader
         title="Module Builder"
         description="Configure the existing tenant module runtime, fields, navigation, permissions, and automation entry points."
+        actions={(
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+            <SearchBar value={search} onChange={setSearch} placeholder="Search modules" className="sm:w-56" />
+            {modules.length ? (
+              <Select value={creating || !selectedModule ? "" : String(selectedModule.id)} onValueChange={(value) => void selectModule(Number(value))}>
+                <SelectTrigger className="w-full sm:w-72" aria-label="Module"><SelectValue placeholder={creating ? "New module" : "Select module"} /></SelectTrigger>
+                <SelectContent>
+                  {selectableModules.map((module) => (
+                    <SelectItem key={module.id} value={String(module.id)}>
+                      {module.display_name || module.name}{module.deleted_at ? " · Deleted" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : null}
+            <Button type="button" onClick={() => void startCreating()}><Plus />New module</Button>
+          </div>
+        )}
       />
 
-      <div className="grid gap-4 lg:grid-cols-[260px_minmax(0,1fr)]">
-        <Card className="h-fit lg:sticky lg:top-4">
-          <CardHeader className="flex-col gap-3">
-            <div className="flex w-full items-center justify-between gap-2">
-              <div>
-                <h2 className="font-semibold text-copy-primary">Modules</h2>
-                <p className="text-sm text-copy-muted">{modules.length} configured</p>
-              </div>
-              <Button
-                type="button"
-                size="icon-sm"
-                aria-label="New module"
-                onClick={() => {
-                  if (!canLeaveWorkspace()) return;
-                  setWorkspaceDirty(false);
-                  setCreating(true);
-                }}
-              >
-                <Plus />
-              </Button>
-            </div>
-            <SearchBar value={search} onChange={setSearch} placeholder="Search modules" className="md:w-full" />
-          </CardHeader>
-          <CardBody className="max-h-[62vh] overflow-y-auto px-3 pt-1">
-            <div className="grid gap-1">
-              {filteredModules.map((module) => {
-                const selected = !creating && selectedModule?.id === module.id;
-                return (
-                  <button
-                    key={module.id}
-                    type="button"
-                    onClick={() => selectModule(module.id)}
-                    className={cn(
-                      "rounded-[var(--radius-control)] px-3 py-2.5 text-left hover:bg-surface-muted",
-                      selected && "bg-action-primary-muted text-primary",
-                    )}
-                  >
-                    <span className="block truncate text-sm font-medium">{module.display_name || module.name}</span>
-                    <span className="mt-0.5 flex items-center gap-2 text-xs text-copy-muted">
-                      <span className="truncate">{module.key}</span>
-                      {module.deleted_at ? <span className="text-state-danger">Deleted</span> : null}
-                    </span>
-                  </button>
-                );
-              })}
-              {!filteredModules.length ? <p className="px-3 py-6 text-center text-sm text-copy-muted">No matching modules.</p> : null}
-            </div>
-          </CardBody>
-        </Card>
-
-        <div className="min-w-0">
+      <div className="min-w-0">
           {creating || !selectedModule ? (
             <CreateModulePanel
               sidebarTabs={sidebarTabs}
@@ -893,7 +879,6 @@ export default function ModuleBuilderPage() {
               }}
             />
           )}
-        </div>
       </div>
     </div>
   );

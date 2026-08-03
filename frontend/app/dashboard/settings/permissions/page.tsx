@@ -1,29 +1,31 @@
 "use client";
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { ShieldCheck } from "lucide-react";
+import { Plus, ShieldCheck, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogBackdrop,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import {
   Table,
   TableBody,
@@ -36,6 +38,7 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import { useRolePermissions, type ModulePermission } from "@/hooks/admin/useRolePermissions";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 
 type ActionKey = keyof ModulePermission["actions"];
@@ -73,13 +76,6 @@ const PRESETS: Array<{ value: PermissionPreset; label: string }> = [
 
 const CHECKBOX_CLASS = "h-4 w-4 rounded border border-line-strong bg-surface-raised text-primary";
 
-function roleAccent(level: number) {
-  if (level >= 100) return "border-l-state-danger";
-  if (level >= 90) return "border-l-state-warning";
-  if (level >= 10) return "border-l-primary";
-  return "border-l-line-strong";
-}
-
 function permissionSignature(permissions: ModulePermission[]) {
   return JSON.stringify(
     [...permissions]
@@ -114,6 +110,7 @@ function productAreaLabel(area: string) {
 
 export default function RolesPermissionsPage() {
   const router = useRouter();
+  const { confirm } = useConfirm();
   const searchParams = useSearchParams();
   const requestedAction = searchParams.get("action");
   const {
@@ -146,6 +143,8 @@ export default function RolesPermissionsPage() {
 
   const isDirty = permissionSignature(localPermissions) !== permissionSignature(permissions);
   const isCreateRoleAction = requestedAction === "create-role";
+  const createRoleOpen = dialogOpen || isCreateRoleAction;
+  const isCreateRoleDirty = Boolean(newRoleName.trim() || newRoleDescription.trim() || newRoleTemplate !== "user");
 
   useEffect(() => {
     if (loadedRoleId.current !== selectedRoleId || !isDirty) {
@@ -156,7 +155,7 @@ export default function RolesPermissionsPage() {
     }
   }, [isDirty, permissions, selectedRoleId]);
 
-  useUnsavedChangesGuard(isDirty, isSaving);
+  useUnsavedChangesGuard(isDirty || (createRoleOpen && isCreateRoleDirty), isSaving || isCreating);
 
   const selectedRole = roles.find((role) => role.id === selectedRoleId) ?? null;
   const filteredPermissions = useMemo(() => {
@@ -193,9 +192,17 @@ export default function RolesPermissionsPage() {
     setSaveError(null);
   }
 
-  function switchRole(roleId: number) {
+  async function switchRole(roleId: number) {
     if (roleId === selectedRoleId) return;
-    if (isDirty && !window.confirm("Switch roles and discard unsaved permission changes?")) return;
+    if (isDirty) {
+      const confirmed = await confirm({
+        title: "Discard permission changes?",
+        description: "Switching roles will discard the unsaved permission changes for the current role.",
+        confirmLabel: "Discard and switch",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
     setSearch("");
     setSelectedRoleId(roleId);
   }
@@ -208,20 +215,42 @@ export default function RolesPermissionsPage() {
         description: newRoleDescription.trim() || undefined,
         template_key: newRoleTemplate,
       });
-      closeCreateRoleDialog();
       setNewRoleName("");
       setNewRoleDescription("");
       setNewRoleTemplate("user");
+      setDialogOpen(false);
+      if (isCreateRoleAction) router.replace("/dashboard/settings/permissions", { scroll: false });
     } catch (error) {
       setCreateError(error instanceof Error ? error.message : "The role could not be created.");
     }
   }
 
-  function closeCreateRoleDialog() {
+  async function closeCreateRoleDialog() {
+    if (isCreateRoleDirty) {
+      const confirmed = await confirm({
+        title: "Discard role draft?",
+        description: "The role name, template, and description have not been saved.",
+        confirmLabel: "Discard draft",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
+    setNewRoleName("");
+    setNewRoleDescription("");
+    setNewRoleTemplate("user");
+    setCreateError(null);
     setDialogOpen(false);
     if (isCreateRoleAction) {
       router.replace("/dashboard/settings/permissions", { scroll: false });
     }
+  }
+
+  function handleCreateRoleOpenChange(open: boolean) {
+    if (open) {
+      setDialogOpen(true);
+      return;
+    }
+    if (!isCreating) void closeCreateRoleDialog();
   }
 
   async function handleSave() {
@@ -241,7 +270,7 @@ export default function RolesPermissionsPage() {
       <PageHeader
         title="Roles & Permissions"
         description="Control what each role can do inside the modules available to its workspace, departments, and teams."
-        actions={<Button onClick={() => setDialogOpen(true)}>Create Role</Button>}
+        actions={<Button onClick={() => setDialogOpen(true)}><Plus />Create Role</Button>}
       />
 
       {overviewError ? (
@@ -251,46 +280,9 @@ export default function RolesPermissionsPage() {
           <Button className="mt-4" variant="outline" onClick={() => void retryOverview()}>Try again</Button>
         </Card>
       ) : (
-        <div className="grid items-start gap-5 xl:grid-cols-[280px_minmax(0,1fr)]">
-          <Card className="p-4 xl:sticky xl:top-5">
-            <div className="flex items-center justify-between gap-3">
-              <h2 className="text-xs font-semibold uppercase tracking-wider text-copy-muted">Roles</h2>
-              <span className="text-xs text-copy-muted">{roles.length}</span>
-            </div>
-            {roles.length ? (
-              <div className="scrollbar-hide mt-4 flex gap-2 overflow-x-auto pb-1 xl:block xl:space-y-2 xl:overflow-visible xl:pb-0">
-                {roles.map((role) => (
-                  <button
-                    key={role.id}
-                    type="button"
-                    aria-pressed={selectedRoleId === role.id}
-                    className={`min-w-56 rounded-[var(--radius-control)] border border-l-4 px-3 py-3 text-left transition-colors xl:w-full ${roleAccent(role.level)} ${
-                      selectedRoleId === role.id
-                        ? "border-line-strong bg-action-primary-muted"
-                        : "border-line-default bg-surface hover:bg-surface-muted"
-                    }`}
-                    onClick={() => switchRole(role.id)}
-                  >
-                    <div className="text-sm font-semibold text-copy-primary">{role.name}</div>
-                    <div className="mt-1 text-xs text-copy-muted">Level {role.level}</div>
-                    {role.description ? <div className="mt-2 line-clamp-2 text-xs text-copy-secondary">{role.description}</div> : null}
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                className="px-0"
-                icon={ShieldCheck}
-                title="No roles yet"
-                description="Create a role from a secure platform template."
-                action={<Button onClick={() => setDialogOpen(true)}>Create Role</Button>}
-              />
-            )}
-          </Card>
-
-          <Card className="overflow-visible">
+        <Card className="overflow-visible">
             <div className="border-b border-line-subtle px-5 py-4">
-              <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-end">
+              <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
                 <div>
                   <h2 className="text-lg font-semibold text-copy-primary">
                     {selectedRole ? `${selectedRole.name} Permissions` : "Role Permissions"}
@@ -299,9 +291,23 @@ export default function RolesPermissionsPage() {
                     Changes apply only to this role. Module availability is managed separately by workspace, department, and team settings.
                   </p>
                 </div>
-                {selectedRole ? (
+                {roles.length ? (
+                  <div className="w-full lg:w-72">
+                    <label htmlFor="permission-role-selector" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-copy-muted">Role</label>
+                    <Select value={selectedRoleId == null ? "" : String(selectedRoleId)} onValueChange={(value) => void switchRole(Number(value))}>
+                      <SelectTrigger id="permission-role-selector" aria-label="Role"><SelectValue placeholder="Select a role" /></SelectTrigger>
+                      <SelectContent>
+                        {roles.map((role) => <SelectItem key={role.id} value={String(role.id)}>{role.name} · Level {role.level}</SelectItem>)}
+                      </SelectContent>
+                    </Select>
+                    {selectedRole?.description ? <p className="mt-1.5 text-xs text-copy-muted">{selectedRole.description}</p> : null}
+                  </div>
+                ) : null}
+              </div>
+              {selectedRole ? (
+                <div className="mt-4 flex flex-col gap-2 border-t border-line-subtle pt-4 sm:flex-row sm:items-center sm:justify-between">
+                  <SearchBar value={search} onChange={setSearch} placeholder="Search modules" className="sm:max-w-sm" />
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                    <SearchBar value={search} onChange={setSearch} placeholder="Search modules" className="md:w-64" />
                     <Select
                       value=""
                       onValueChange={(value) =>
@@ -319,8 +325,8 @@ export default function RolesPermissionsPage() {
                       </SelectContent>
                     </Select>
                   </div>
-                ) : null}
-              </div>
+                </div>
+              ) : null}
             </div>
 
             {isPermissionsLoading ? (
@@ -462,27 +468,31 @@ export default function RolesPermissionsPage() {
               <EmptyState className="py-16" icon={ShieldCheck} title="Select or create a role" description="A role is required before module permissions can be configured." />
             )}
           </Card>
-        </div>
       )}
 
-      <Dialog open={dialogOpen || isCreateRoleAction} onClose={() => { if (!isCreating) closeCreateRoleDialog(); }}>
-        <DialogBackdrop />
-        <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-          <DialogPanel size="xl">
-            <DialogHeader>
-              <DialogTitle>Create Role</DialogTitle>
-              <DialogIconClose />
-            </DialogHeader>
+      <Sheet open={createRoleOpen} onOpenChange={handleCreateRoleOpenChange}>
+        <SheetPortal>
+          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
+          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+            <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); void handleCreateRole(); }}>
+              <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+                <div>
+                  <SheetTitle className="text-lg font-semibold text-copy-primary">Create Role</SheetTitle>
+                  <SheetDescription className="mt-1 text-sm text-copy-muted">Start with a secure platform template, then refine module actions in the permission matrix.</SheetDescription>
+                </div>
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="Close role editor" onClick={() => void closeCreateRoleDialog()}><X /></Button>
+              </SheetHeader>
 
-            <FieldGroup className="mt-4 grid gap-4">
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                <FieldGroup className="grid gap-4">
               <Field>
-                <FieldLabel>Role Name</FieldLabel>
-                <Input value={newRoleName} onChange={(event) => setNewRoleName(event.target.value)} placeholder="Operations Manager" disabled={isCreating} />
+                <FieldLabel htmlFor="new-role-name">Role Name <RequiredMark /></FieldLabel>
+                <Input id="new-role-name" value={newRoleName} onChange={(event) => setNewRoleName(event.target.value)} placeholder="Operations Manager" disabled={isCreating} required />
               </Field>
               <Field>
                 <FieldLabel>Template</FieldLabel>
                 <Select value={newRoleTemplate} onValueChange={setNewRoleTemplate} disabled={isCreating}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger aria-label="Template"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {templates.map((template) => <SelectItem key={template.key} value={template.key}>{template.label}</SelectItem>)}
                   </SelectContent>
@@ -492,21 +502,24 @@ export default function RolesPermissionsPage() {
                 </FieldDescription>
               </Field>
               <Field>
-                <FieldLabel>Description</FieldLabel>
-                <Input value={newRoleDescription} onChange={(event) => setNewRoleDescription(event.target.value)} placeholder="Optional internal description" disabled={isCreating} />
+                <FieldLabel htmlFor="new-role-description">Description</FieldLabel>
+                <Input id="new-role-description" value={newRoleDescription} onChange={(event) => setNewRoleDescription(event.target.value)} placeholder="Optional internal description" disabled={isCreating} />
               </Field>
               {createError ? <p className="text-sm text-state-danger" role="alert">{createError}</p> : null}
-            </FieldGroup>
+                </FieldGroup>
+              </div>
 
-            <DialogFooter className="mt-5">
-              <Button variant="outline" onClick={closeCreateRoleDialog} disabled={isCreating}>Cancel</Button>
-              <Button onClick={() => void handleCreateRole()} disabled={!newRoleName.trim() || isCreating}>
-                {isCreating ? "Creating…" : "Create Role"}
-              </Button>
-            </DialogFooter>
-          </DialogPanel>
-        </div>
-      </Dialog>
+              <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <span className={`text-sm ${isCreateRoleDirty ? "text-state-warning" : "text-state-success"}`}>{isCreateRoleDirty ? "Unsaved role draft" : "Ready to create"}</span>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => void closeCreateRoleDialog()} disabled={isCreating}>Cancel</Button>
+                  <Button type="submit" disabled={!newRoleName.trim() || isCreating}>{isCreating ? "Creating…" : "Create Role"}</Button>
+                </div>
+              </SheetFooter>
+            </form>
+          </SheetContent>
+        </SheetPortal>
+      </Sheet>
     </div>
   );
 }

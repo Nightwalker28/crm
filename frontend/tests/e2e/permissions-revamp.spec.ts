@@ -121,20 +121,32 @@ test("warns before discarding changes when switching roles", async ({ page }) =>
   await page.goto("/dashboard/settings/permissions");
   await page.getByRole("checkbox", { name: "Delete Leads" }).click();
 
-  page.once("dialog", async (dialog) => {
-    expect(dialog.message()).toContain("discard unsaved permission changes");
-    await dialog.dismiss();
-  });
-  await page.getByRole("button", { name: /Manager/ }).click();
+  await page.getByRole("combobox", { name: "Role" }).click();
+  await page.getByRole("option", { name: /Manager/ }).click();
+  await expect(page.getByRole("heading", { name: "Discard permission changes?" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("heading", { name: "Sales Rep Permissions" })).toBeVisible();
 
-  page.once("dialog", async (dialog) => dialog.accept());
-  await page.getByRole("button", { name: /Manager/ }).click();
+  await page.getByRole("combobox", { name: "Role" }).click();
+  await page.getByRole("option", { name: /Manager/ }).click();
+  await page.getByRole("button", { name: "Discard and switch" }).click();
   await expect(page.getByRole("heading", { name: "Manager Permissions" })).toBeVisible();
 });
 
 test("opens Create Role from the palette action deep link", async ({ page }) => {
   await page.goto("/dashboard/settings/permissions?action=create-role");
 
-  await expect(page.getByRole("heading", { name: "Create Role" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Create Role" })).toBeVisible();
+});
+
+test("guards a dirty role draft before closing the drawer", async ({ page }) => {
+  await page.goto("/dashboard/settings/permissions");
+  await page.getByRole("button", { name: "Create Role" }).click();
+
+  const roleDrawer = page.getByRole("dialog", { name: "Create Role" });
+  await roleDrawer.getByLabel("Role Name").fill("Support Lead");
+  await roleDrawer.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("heading", { name: "Discard role draft?" })).toBeVisible();
+  await page.getByRole("button", { name: "Discard draft" }).click();
+  await expect(roleDrawer).toHaveCount(0);
 });

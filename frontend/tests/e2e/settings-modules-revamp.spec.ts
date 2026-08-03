@@ -74,15 +74,24 @@ test("aligns module controls and confirms tenant-wide disablement with safe fail
   await page.goto("/dashboard/settings/modules");
 
   const leadsRow = page.getByRole("row").filter({ hasText: "Leads" });
-  await expect(leadsRow.getByRole("cell").nth(3).getByRole("combobox", { name: "Leads duplicate handling" })).toHaveText(/Skip/i);
-  await expect(leadsRow.getByRole("cell").nth(4).getByRole("link", { name: "Open" })).toBeVisible();
+  await expect(leadsRow.getByText("Skip duplicates", { exact: true })).toBeVisible();
+  await expect(leadsRow.getByRole("link", { name: "Automation" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Disable Leads" }).click();
+  await page.getByRole("button", { name: "Edit Leads settings" }).click();
+  await expect(page.getByRole("dialog", { name: "Edit module settings" })).toBeVisible();
+  await page.getByRole("button", { name: "Disabled", exact: true }).click();
+  expect(updateRequests).toBe(0);
+  await page.getByRole("button", { name: "Close module settings" }).click();
+  await expect(page.getByRole("dialog", { name: "Discard module changes?" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByRole("dialog", { name: "Edit module settings" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByRole("heading", { name: "Disable Leads?" })).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
   expect(updateRequests).toBe(0);
 
-  await page.getByRole("button", { name: "Disable Leads" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
   await page.getByRole("button", { name: "Disable module" }).click();
   await expect.poll(() => updateRequests).toBe(1);
   await expect(page.getByText("The module setting could not be updated. Review the value and try again.")).toBeVisible();
@@ -114,11 +123,16 @@ test("keeps department and team access as an explicit guarded draft", async ({ p
 
   await page.goto(`/dashboard/settings/modules/${moduleId}`);
   await page.getByRole("checkbox", { name: "Allow Support department" }).click();
+  await page.getByRole("tab", { name: "Teams (2)" }).click();
   await page.getByRole("checkbox", { name: "Allow Enterprise team" }).click();
 
   expect(updateRequests).toBe(0);
-  await expect(page.getByText("You have unsaved module access changes.")).toBeVisible();
+  await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
   await expect(page.getByText("Department", { exact: true }).last()).toBeVisible();
+  await page.getByRole("button", { name: "Module Settings" }).click();
+  await expect(page.getByRole("dialog", { name: "Discard module access changes?" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page).toHaveURL(new RegExp(`/dashboard/settings/modules/${moduleId}$`));
 
   const saveRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith(`/admin/users/modules/${moduleId}/access`),
@@ -128,7 +142,7 @@ test("keeps department and team access as an explicit guarded draft", async ({ p
 
   expect(savedPayload).toEqual({ department_ids: [10, 11], team_ids: [22] });
   await expect.poll(() => updateRequests).toBe(1);
-  await expect(page.getByText("You have unsaved module access changes.")).toBeHidden();
+  await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
 });
 
 test("shows retryable module load failures without backend detail", async ({ page }) => {

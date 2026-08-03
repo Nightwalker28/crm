@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, CalendarClock, Download, Play, RotateCcw, Save, Trash2 } from "lucide-react";
+import { Archive, CalendarClock, Download, Play, RotateCcw, Save, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -15,7 +15,16 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SettingsSwitchRow } from "@/components/ui/SettingsSwitchRow";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useModulesAdmin } from "@/hooks/admin/useModulesAdmin";
@@ -257,6 +266,7 @@ export default function BackupSettingsPage() {
   const runsQuery = useQuery({ queryKey: ["tenant-backup-runs"], queryFn: fetchBackupRuns });
   const storageConnectionsQuery = useQuery({ queryKey: ["tenant-backup-destination-connections"], queryFn: fetchDestinationConnections });
   const { modules, isLoading: modulesLoading } = useModulesAdmin();
+  const [settingsEditorOpen, setSettingsEditorOpen] = useState(false);
   const [draftOverride, setDraftOverride] = useState<BackupSettingsDraft | null>(null);
   const [restoreRunId, setRestoreRunId] = useState<string>("");
   const [restoreModule, setRestoreModule] = useState<string>("");
@@ -324,6 +334,7 @@ export default function BackupSettingsPage() {
     onSuccess: async (settings) => {
       toast.success("Backup settings saved.");
       setDraftOverride(toDraft(settings));
+      setSettingsEditorOpen(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["tenant-backup-settings"] }),
         queryClient.invalidateQueries({ queryKey: ["activity-log"] }),
@@ -331,7 +342,7 @@ export default function BackupSettingsPage() {
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to save backup settings."),
   });
-  useUnsavedChangesGuard(isSettingsDirty, saveMutation.isPending);
+  useUnsavedChangesGuard(settingsEditorOpen && isSettingsDirty, saveMutation.isPending);
 
   const manualRunMutation = useMutation({
     mutationFn: async () => {
@@ -462,6 +473,28 @@ export default function BackupSettingsPage() {
     if (confirmed) deleteRunMutation.mutate(run.id);
   }
 
+  async function closeSettingsEditor() {
+    if (isSettingsDirty) {
+      const confirmed = await confirm({
+        title: "Discard backup setting changes?",
+        description: "Your unsaved schedule, scope, retention, and destination changes will be lost.",
+        confirmLabel: "Discard changes",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
+    setDraftOverride(null);
+    setSettingsEditorOpen(false);
+  }
+
+  function handleSettingsEditorOpenChange(open: boolean) {
+    if (open) {
+      setSettingsEditorOpen(true);
+      return;
+    }
+    void closeSettingsEditor();
+  }
+
   if (settingsQuery.isLoading) return <RouteLoadingState label="backup settings" />;
   if (settingsQuery.isError) {
     return (
@@ -477,188 +510,178 @@ export default function BackupSettingsPage() {
 
   return (
     <div className="flex flex-col gap-6 text-copy-primary">
-      <PageHeader title="Backups" description="Configure tenant-scoped backup exports, schedules, retention, and local download storage." />
-
-      <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="px-5 py-5">
-          <div className="mb-5">
-            <div>
-              <h2 className="text-lg font-semibold text-copy-primary">Tenant Backup Settings</h2>
-              <p className="mt-1 text-sm text-copy-muted">These settings apply only to this tenant.</p>
-            </div>
-          </div>
-
-          <SettingsSwitchRow
-            id="tenant-backups-enabled"
-            label="Scheduled backups"
-            description="Run tenant backups automatically using the frequency and retention settings below."
-            checked={draft.enabled}
-            onCheckedChange={(checked) => setDraft((current) => ({ ...current, enabled: checked }))}
-            className="mb-4"
-          />
-
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
-            <Field>
-              <FieldLabel>Frequency</FieldLabel>
-              <Select value={draft.frequency} onValueChange={(value) => setDraft((current) => ({ ...current, frequency: value as BackupSettingsDraft["frequency"] }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {frequencies.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </Field>
-
-            <Field>
-              <FieldLabel>Retention</FieldLabel>
-              <Select value={String(draft.retention_count)} onValueChange={(value) => setDraft((current) => ({ ...current, retention_count: Number(value) as BackupSettingsDraft["retention_count"] }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {retentionOptions.map((option) => <SelectItem key={option} value={String(option)}>Keep {option}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </Field>
-
-            <Field>
-              <FieldLabel>Scope</FieldLabel>
-              <Select
-                value={draft.scope}
-                onValueChange={(value) => setDraft((current) => ({ ...current, scope: value as BackupSettingsDraft["scope"] }))}
-              >
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="full_tenant">Full tenant</SelectItem>
-                  <SelectItem value="selected_modules">Selected modules</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-
-            <Field>
-              <FieldLabel>Destination</FieldLabel>
-              <Select value={draft.destination} onValueChange={(value) => setDraft((current) => ({ ...current, destination: value as BackupSettingsDraft["destination"] }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="local_download">Local download</SelectItem>
-                  <SelectItem value="google_drive" disabled={!googleDriveConnected}>Google Drive</SelectItem>
-                  <SelectItem value="onedrive" disabled={!oneDriveConnected}>Microsoft OneDrive</SelectItem>
-                </SelectContent>
-              </Select>
-              <FieldDescription>
-                Cloud options require a connected storage account for this admin.
-              </FieldDescription>
-            </Field>
-
-            <SettingsSwitchRow
-              id="backup-include-documents"
-              label="Include documents"
-              description="Include tenant documents in backup artifacts."
-              checked={draft.include_documents}
-              onCheckedChange={(checked) => setDraft((current) => ({ ...current, include_documents: checked }))}
-              className="md:col-span-2"
-            />
-          </FieldGroup>
-
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle pt-4">
-            <span className={`text-sm ${isSettingsDirty ? "text-state-warning" : "text-copy-muted"}`}>
-              {isSettingsDirty ? "You have unsaved changes." : "All backup settings are saved."}
-            </span>
-            <Button type="button" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !isSettingsDirty}>
-              <Save />{saveMutation.isPending ? "Saving..." : "Save Settings"}
-            </Button>
-          </div>
-        </Card>
-
-        <Card className="px-5 py-5">
-          <div className="mb-4 flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary">
-              <CalendarClock className="h-4 w-4" />
-            </span>
-            <div>
-              <h2 className="text-lg font-semibold text-copy-primary">Schedule State</h2>
-              <p className="mt-1 text-sm text-copy-muted">Current tenant backup schedule.</p>
-            </div>
-          </div>
-          <dl className="grid gap-3 text-sm">
-            <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-subtle px-3 py-2">
-              <dt className="text-copy-muted">Status</dt>
-              <dd>
-                <Pill
-                  bg={draft.enabled ? "bg-state-success-muted" : "bg-surface-muted"}
-                  text={draft.enabled ? "text-state-success" : "text-copy-muted"}
-                  border={draft.enabled ? "border-state-success/40" : "border-line-default"}
-                >
-                  {draft.enabled ? "Enabled" : "Disabled"}
-                </Pill>
-              </dd>
-            </div>
-            <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-subtle px-3 py-2">
-              <dt className="text-copy-muted">Last Run</dt>
-              <dd className="text-copy-secondary">{settings?.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-subtle px-3 py-2">
-              <dt className="text-copy-muted">Next Run</dt>
-              <dd className="text-copy-secondary">{settings?.next_run_at ? formatDateTime(settings.next_run_at) : "Manual"}</dd>
-            </div>
-            <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-subtle px-3 py-2">
-              <dt className="text-copy-muted">Updated</dt>
-              <dd className="text-copy-secondary">{settings?.updated_at ? formatDateTime(settings.updated_at) : "Not saved"}</dd>
-            </div>
-          </dl>
-          <div className="mt-5">
+      <PageHeader
+        title="Backups"
+        description="Configure tenant-scoped backup exports, schedules, retention, and local download storage."
+        actions={(
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={() => setSettingsEditorOpen(true)}><SlidersHorizontal />Configure</Button>
             <Button type="button" onClick={() => manualRunMutation.mutate()} disabled={manualRunMutation.isPending || settingsQuery.isLoading}>
               <Play />{manualRunMutation.isPending ? "Running..." : "Run Backup"}
             </Button>
           </div>
-        </Card>
-      </div>
+        )}
+      />
+
+      <Sheet open={settingsEditorOpen} onOpenChange={handleSettingsEditorOpenChange}>
+        <SheetPortal>
+          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
+          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[38rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+            <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); saveMutation.mutate(); }}>
+              <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+                <div>
+                  <SheetTitle className="text-lg font-semibold text-copy-primary">Configure backups</SheetTitle>
+                  <SheetDescription className="mt-1 text-sm text-copy-muted">Set the tenant schedule, retention, scope, and storage destination.</SheetDescription>
+                </div>
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="Close backup settings" onClick={() => void closeSettingsEditor()}><X /></Button>
+              </SheetHeader>
+
+              <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5">
+                <Field>
+                  <FieldLabel>Backup schedule</FieldLabel>
+                  <div className="grid grid-cols-2 gap-2" role="group" aria-label="Backup schedule">
+                    <Button
+                      type="button"
+                      variant={draft.enabled ? "secondary" : "outline"}
+                      aria-pressed={draft.enabled}
+                      onClick={() => setDraft((current) => ({ ...current, enabled: true }))}
+                    >
+                      Scheduled
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={!draft.enabled ? "secondary" : "outline"}
+                      aria-pressed={!draft.enabled}
+                      onClick={() => setDraft((current) => ({ ...current, enabled: false }))}
+                    >
+                      Manual only
+                    </Button>
+                  </div>
+                  <FieldDescription>Scheduled backups run automatically using the frequency and retention settings below.</FieldDescription>
+                </Field>
+
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel>Frequency</FieldLabel>
+                    <Select value={draft.frequency} onValueChange={(value) => setDraft((current) => ({ ...current, frequency: value as BackupSettingsDraft["frequency"] }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{frequencies.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Retention</FieldLabel>
+                    <Select value={String(draft.retention_count)} onValueChange={(value) => setDraft((current) => ({ ...current, retention_count: Number(value) as BackupSettingsDraft["retention_count"] }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>{retentionOptions.map((option) => <SelectItem key={option} value={String(option)}>Keep {option}</SelectItem>)}</SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Scope</FieldLabel>
+                    <Select value={draft.scope} onValueChange={(value) => setDraft((current) => ({ ...current, scope: value as BackupSettingsDraft["scope"] }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="full_tenant">Full tenant</SelectItem>
+                        <SelectItem value="selected_modules">Selected modules</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel>Destination</FieldLabel>
+                    <Select value={draft.destination} onValueChange={(value) => setDraft((current) => ({ ...current, destination: value as BackupSettingsDraft["destination"] }))}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="local_download">Local download</SelectItem>
+                        <SelectItem value="google_drive" disabled={!googleDriveConnected}>Google Drive</SelectItem>
+                        <SelectItem value="onedrive" disabled={!oneDriveConnected}>Microsoft OneDrive</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>Cloud options require a connected storage account for this admin.</FieldDescription>
+                  </Field>
+                </FieldGroup>
+
+                <Field>
+                  <FieldLabel>Document files</FieldLabel>
+                  <div className="grid grid-cols-2 gap-2" role="group" aria-label="Document files">
+                    <Button
+                      type="button"
+                      variant={draft.include_documents ? "secondary" : "outline"}
+                      aria-pressed={draft.include_documents}
+                      onClick={() => setDraft((current) => ({ ...current, include_documents: true }))}
+                    >
+                      Include
+                    </Button>
+                    <Button
+                      type="button"
+                      variant={!draft.include_documents ? "secondary" : "outline"}
+                      aria-pressed={!draft.include_documents}
+                      onClick={() => setDraft((current) => ({ ...current, include_documents: false }))}
+                    >
+                      Exclude
+                    </Button>
+                  </div>
+                  <FieldDescription>Choose whether tenant documents are included in backup artifacts.</FieldDescription>
+                </Field>
+
+                <div className="border-t border-line-subtle pt-5">
+                  <div className="mb-4 flex items-start gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary"><Archive className="h-4 w-4" /></span>
+                    <div>
+                      <h3 className="text-sm font-semibold text-copy-primary">Module selection</h3>
+                      <p className="mt-1 text-sm text-copy-muted">Used only when scope is set to selected modules.</p>
+                    </div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {modulesLoading ? (
+                      Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-12 rounded-[var(--radius-control)]" />)
+                    ) : moduleOptions.length ? (
+                      moduleOptions.map((module) => {
+                        const checked = draft.selected_modules.includes(module.value);
+                        const disabled = draft.scope !== "selected_modules";
+                        return (
+                          <label key={module.value} className={`flex items-center gap-3 rounded-[var(--radius-control)] border px-4 py-3 text-sm transition-colors ${checked ? "border-action-primary bg-action-primary-muted text-copy-primary" : "border-line-default bg-surface-muted text-copy-secondary hover:border-line-strong"} ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
+                            <Checkbox checked={checked} disabled={disabled} onCheckedChange={() => toggleModule(module.value)} className="flex size-4 shrink-0 items-center justify-center rounded border border-line-strong bg-surface-raised text-primary">
+                              <CheckboxIndicator className="size-3" />
+                            </Checkbox>
+                            {module.label}
+                          </label>
+                        );
+                      })
+                    ) : (
+                      <EmptyState icon={Archive} title="No enabled modules available" description="Enable a supported module before using selected-module backups." className="sm:col-span-2" />
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                <span className={`text-sm ${isSettingsDirty ? "text-state-warning" : "text-state-success"}`}>{isSettingsDirty ? "Unsaved changes" : "All changes saved"}</span>
+                <div className="flex justify-end gap-2">
+                  <Button type="button" variant="outline" onClick={() => void closeSettingsEditor()} disabled={saveMutation.isPending}>Cancel</Button>
+                  <Button type="submit" disabled={saveMutation.isPending || !isSettingsDirty}><Save />{saveMutation.isPending ? "Saving..." : "Save Settings"}</Button>
+                </div>
+              </SheetFooter>
+            </form>
+          </SheetContent>
+        </SheetPortal>
+      </Sheet>
 
       <Card className="px-5 py-5">
         <div className="mb-4 flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary">
-            <Archive className="h-4 w-4" />
-          </span>
+          <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary"><CalendarClock className="h-4 w-4" /></span>
           <div>
-            <h2 className="text-lg font-semibold text-copy-primary">Module Selection</h2>
-            <p className="mt-1 text-sm text-copy-muted">Choose modules when the backup scope is set to selected modules.</p>
+            <h2 className="text-lg font-semibold text-copy-primary">Backup status</h2>
+            <p className="mt-1 text-sm text-copy-muted">Current saved schedule and recent execution state.</p>
           </div>
         </div>
-
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {modulesLoading ? (
-            Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-12 rounded-[var(--radius-control)]" />)
-          ) : moduleOptions.length ? (
-            moduleOptions.map((module) => {
-              const checked = draft.selected_modules.includes(module.value);
-              const disabled = draft.scope !== "selected_modules";
-              return (
-                <label
-                  key={module.value}
-                  className={`flex items-center gap-3 rounded-[var(--radius-control)] border px-4 py-3 text-sm transition-colors ${
-                    checked
-                      ? "border-action-primary bg-action-primary-muted text-copy-primary"
-                      : "border-line-default bg-surface-muted text-copy-secondary hover:border-line-strong"
-                  } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
-                >
-                  <Checkbox
-                    checked={checked}
-                    disabled={disabled}
-                    onCheckedChange={() => toggleModule(module.value)}
-                    className="flex size-4 shrink-0 items-center justify-center rounded border border-line-strong bg-surface-raised text-primary"
-                  >
-                    <CheckboxIndicator className="size-3" />
-                  </Checkbox>
-                  {module.label}
-                </label>
-              );
-            })
-          ) : (
-            <EmptyState
-              icon={Archive}
-              title="No enabled modules available"
-              description="Enable a supported module before using selected-module backups."
-              className="sm:col-span-2 lg:col-span-3"
-            />
-          )}
-        </div>
+        <dl className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3">
+            <dt className="text-copy-muted">Schedule</dt>
+            <dd className="mt-2"><Pill bg={settings?.enabled ? "bg-state-success-muted" : "bg-surface-muted"} text={settings?.enabled ? "text-state-success" : "text-copy-muted"} border={settings?.enabled ? "border-state-success/40" : "border-line-default"}>{settings?.enabled ? "Enabled" : "Disabled"}</Pill></dd>
+          </div>
+          <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3"><dt className="text-copy-muted">Last run</dt><dd className="mt-2 text-copy-secondary">{settings?.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}</dd></div>
+          <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3"><dt className="text-copy-muted">Next run</dt><dd className="mt-2 text-copy-secondary">{settings?.next_run_at ? formatDateTime(settings.next_run_at) : "Manual"}</dd></div>
+          <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3"><dt className="text-copy-muted">Updated</dt><dd className="mt-2 text-copy-secondary">{settings?.updated_at ? formatDateTime(settings.updated_at) : "Not saved"}</dd></div>
+        </dl>
       </Card>
 
       <Card className="px-5 py-5">

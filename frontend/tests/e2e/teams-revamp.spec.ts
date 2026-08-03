@@ -36,6 +36,7 @@ test("Teams and Departments uses labeled workflows and guards dirty dismissal", 
   await page.goto("/dashboard/settings/teams");
 
   await expect(page.getByRole("heading", { name: "Teams & Departments" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Organization structure" })).toBeVisible();
   await expect(page.getByText("Revenue operations")).toBeVisible();
   await expect(page.getByText("Platform administrators")).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit Operations" })).toBeVisible();
@@ -43,6 +44,7 @@ test("Teams and Departments uses labeled workflows and guards dirty dismissal", 
 
   await page.getByRole("button", { name: "Create Department" }).click();
   const departmentDialog = page.getByRole("dialog").filter({ hasText: "Create Department" });
+  await expect(departmentDialog).toHaveAccessibleName("Create Department");
   await expect(departmentDialog.getByLabel("Name")).toBeVisible();
   await expect(departmentDialog.getByLabel("Description")).toBeVisible();
   await departmentDialog.getByLabel("Name").fill("Customer Success");
@@ -88,12 +90,23 @@ test("Teams and Departments confirms consequences and redacts mutation failures"
 
   await page.getByRole("button", { name: "Create Team" }).click();
   const teamDialog = page.getByRole("dialog").filter({ hasText: "Create Team" });
+  await expect(teamDialog).toHaveAccessibleName("Create Team");
   await teamDialog.getByLabel("Name").fill("Customer Success");
   await expect(teamDialog.getByLabel("Department")).toBeVisible();
-  await teamDialog.getByRole("button", { name: "Save" }).click();
+  await teamDialog.getByRole("button", { name: "Save Team" }).click();
 
   await expect(teamDialog.getByText("We could not save this team. Try again.")).toBeVisible();
   await expect(page.getByText("database_password=private-secret")).toHaveCount(0);
+});
+
+test("Teams create deep link initializes the department and opens the editor", async ({ page }) => {
+  await mockStructure(page);
+  await page.goto("/dashboard/settings/teams?action=create-team");
+
+  const teamDialog = page.getByRole("dialog", { name: "Create Team" });
+  await expect(teamDialog).toBeVisible();
+  await expect(teamDialog.getByLabel("Department")).toContainText("Operations");
+  await expect(teamDialog.getByRole("button", { name: "Save Team" })).toBeDisabled();
 });
 
 test("Teams and Departments exposes a fixed recoverable load error", async ({ page }) => {

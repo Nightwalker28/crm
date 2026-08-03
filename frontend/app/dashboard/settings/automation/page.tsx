@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -51,6 +50,7 @@ import {
 } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -398,6 +398,7 @@ function StepCard({
 }
 
 export default function AutomationSettingsPage() {
+  const { confirm } = useConfirm();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const selectedModuleKey = searchParams.get("module_key")?.trim() || null;
@@ -491,6 +492,13 @@ export default function AutomationSettingsPage() {
     if (!query) return rules;
     return rules.filter((rule) => [rule.name, rule.description, rule.trigger_event].some((value) => value?.toLowerCase().includes(query)));
   }, [ruleSearch, rulesQuery.data]);
+  const selectedRule = (rulesQuery.data ?? []).find((rule) => rule.id === draft.id) ?? null;
+  const selectableRules = useMemo(
+    () => selectedRule && !filteredRules.some((rule) => rule.id === selectedRule.id)
+      ? [selectedRule, ...filteredRules]
+      : filteredRules,
+    [filteredRules, selectedRule],
+  );
 
   function buildRulePayload() {
     return {
@@ -509,8 +517,14 @@ export default function AutomationSettingsPage() {
     };
   }
 
-  function confirmDiscard() {
-    return !isDirty || window.confirm("Discard unsaved automation changes?");
+  async function canLeaveRule() {
+    if (!isDirty) return true;
+    return confirm({
+      title: "Discard automation changes?",
+      description: "Switching rules or automation scope will discard the unsaved trigger, condition, and action changes in this workspace.",
+      confirmLabel: "Discard and switch",
+      variant: "destructive",
+    });
   }
 
   function inspect(nextSelection: InspectorSelection) {
@@ -518,22 +532,43 @@ export default function AutomationSettingsPage() {
     setInspectorOpen(true);
   }
 
-  function chooseRule(rule: AutomationRule) {
-    if (!confirmDiscard()) return;
+  async function chooseRule(rule: AutomationRule) {
+    if (rule.id === draft.id) return;
+    if (!(await canLeaveRule())) return;
     const next = ruleToDraft(rule);
     setDraft(next);
     setBaseline(draftSignature(next));
+    setRuleSearch("");
     inspect({ kind: "settings" });
     setMode("builder");
   }
 
-  function startNewRule() {
-    if (!confirmDiscard()) return;
+  async function startNewRule() {
+    if (!(await canLeaveRule())) return;
     const next = emptyDraft(firstVisibleTriggerKey);
     setDraft(next);
     setBaseline(draftSignature(next));
+    setRuleSearch("");
     inspect({ kind: "settings" });
     setMode("builder");
+  }
+
+  async function changeScope(value: string) {
+    if (!(await canLeaveRule())) return;
+    window.location.href = value === "global"
+      ? SETTINGS_ROUTES.automation
+      : `${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(value)}`;
+  }
+
+  async function deleteRule() {
+    if (!draft.id) return;
+    const confirmed = await confirm({
+      title: `Delete ${draft.name}?`,
+      description: "This automation will stop running immediately. Existing run history will remain available for audit purposes.",
+      confirmLabel: "Delete rule",
+      variant: "destructive",
+    });
+    if (confirmed) deleteMutation.mutate(draft.id);
   }
 
   function updateCondition(id: string, patch: Partial<AutomationCondition>) {
@@ -668,36 +703,23 @@ export default function AutomationSettingsPage() {
       <PageHeader
         title={selectedModuleLabel ? `${selectedModuleLabel} Automation` : "Automation Builder"}
         description={selectedModuleLabel ? "Build and inspect workflow rules for this module." : "Build tenant workflow rules from supported CRM events and platform-safe actions."}
-        actions={
-          selectedModuleKey ? (
-            <Button asChild variant="outline">
-              <Link href={SETTINGS_ROUTES.automation}><ArrowLeft />Global automation</Link>
-            </Button>
-          ) : undefined
-        }
+        actions={(
+          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+            {selectedModuleKey ? (
+              <Button type="button" variant="outline" onClick={() => void changeScope("global")}><ArrowLeft />Global automation</Button>
+            ) : null}
+            <Button type="button" onClick={() => void startNewRule()}><Plus />New rule</Button>
+          </div>
+        )}
       />
 
-      <div className="grid gap-4 lg:grid-cols-[270px_minmax(0,1fr)]">
-        <Card className="h-fit lg:sticky lg:top-4">
-          <CardHeader className="flex-col gap-3">
-            <div className="flex w-full items-center justify-between gap-2">
-              <div>
-                <h2 className="font-semibold text-copy-primary">Rules</h2>
-                <p className="text-sm text-copy-muted">{(rulesQuery.data ?? []).length} configured</p>
-              </div>
-              <Button type="button" size="icon-sm" aria-label="New automation rule" onClick={startNewRule}><Plus /></Button>
-            </div>
-            <Field>
+      <Card>
+        <CardBody className="flex flex-col gap-3 p-3 xl:flex-row xl:items-center">
+          <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row">
+            <SearchBar value={ruleSearch} onChange={setRuleSearch} placeholder="Search rules" className="sm:w-56" />
+            <Field className="sm:w-56">
               <FieldLabel className="sr-only">Automation scope</FieldLabel>
-              <Select
-                value={selectedModuleKey ?? "global"}
-                onValueChange={(value) => {
-                  if (!confirmDiscard()) return;
-                  window.location.href = value === "global"
-                    ? SETTINGS_ROUTES.automation
-                    : `${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(value)}`;
-                }}
-              >
+              <Select value={selectedModuleKey ?? "global"} onValueChange={(value) => void changeScope(value)}>
                 <SelectTrigger aria-label="Automation scope"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="global">All modules</SelectItem>
@@ -707,35 +729,35 @@ export default function AutomationSettingsPage() {
                 </SelectContent>
               </Select>
             </Field>
-            <SearchBar value={ruleSearch} onChange={setRuleSearch} placeholder="Search rules" className="md:w-full" />
-          </CardHeader>
-          <CardBody className="max-h-[58vh] overflow-y-auto px-3 pt-1">
-            <div className="grid gap-1">
-              {filteredRules.map((rule) => (
-                <button
-                  key={rule.id}
-                  type="button"
-                  onClick={() => chooseRule(rule)}
-                  className={cn(
-                    "rounded-[var(--radius-control)] px-3 py-2.5 text-left hover:bg-surface-muted",
-                    draft.id === rule.id && "bg-action-primary-muted text-primary",
-                  )}
-                >
-                  <span className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium">{rule.name}</span>
-                    <span className={cn("h-2 w-2 shrink-0 rounded-full", rule.enabled ? "bg-state-success" : "bg-copy-disabled")} aria-label={rule.enabled ? "Enabled" : "Disabled"} />
-                  </span>
-                  <span className="mt-1 block truncate text-xs text-copy-muted">{rule.trigger_event}</span>
-                </button>
-              ))}
-              {!filteredRules.length ? <p className="px-3 py-6 text-center text-sm text-copy-muted">No matching rules.</p> : null}
-            </div>
-          </CardBody>
-          <CardFooter className="grid grid-cols-2 gap-2">
-            <Button type="button" variant={mode === "builder" ? "secondary" : "ghost"} size="sm" onClick={() => setMode("builder")}><Workflow />Builder</Button>
-            <Button type="button" variant={mode === "runs" ? "secondary" : "ghost"} size="sm" onClick={() => { setMode("runs"); setInspectorOpen(false); }}><History />Runs</Button>
-          </CardFooter>
-        </Card>
+            <Field className="min-w-0 sm:flex-1">
+              <FieldLabel className="sr-only">Automation rule</FieldLabel>
+              <Select
+                value={draft.id ? String(draft.id) : undefined}
+                onValueChange={(value) => {
+                  const rule = (rulesQuery.data ?? []).find((candidate) => candidate.id === Number(value));
+                  if (rule) void chooseRule(rule);
+                }}
+              >
+                <SelectTrigger aria-label="Automation rule" className="w-full"><SelectValue placeholder={draft.name || "Select a rule"} /></SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>{selectableRules.length ? `${selectableRules.length} matching rule${selectableRules.length === 1 ? "" : "s"}` : "No matching rules"}</SelectLabel>
+                    {selectableRules.map((rule) => (
+                      <SelectItem key={rule.id} value={String(rule.id)}>{rule.name}{rule.enabled ? "" : " · Disabled"}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:flex xl:border-l xl:border-line-subtle xl:pl-3" role="tablist" aria-label="Automation workspace">
+            <Button type="button" role="tab" aria-selected={mode === "builder"} variant={mode === "builder" ? "secondary" : "ghost"} size="sm" onClick={() => setMode("builder")}><Workflow />Builder</Button>
+            <Button type="button" role="tab" aria-selected={mode === "runs"} variant={mode === "runs" ? "secondary" : "ghost"} size="sm" onClick={() => { setMode("runs"); setInspectorOpen(false); }}><History />Runs</Button>
+          </div>
+        </CardBody>
+      </Card>
+
+      <div className="min-w-0">
 
         {mode === "builder" ? (
           <div className="min-w-0">
@@ -864,9 +886,7 @@ export default function AutomationSettingsPage() {
                   <Button
                     type="button"
                     variant="dangerGhost"
-                    onClick={() => {
-                      if (window.confirm(`Delete ${draft.name}? This rule will stop running immediately.`)) deleteMutation.mutate(draft.id as number);
-                    }}
+                    onClick={() => void deleteRule()}
                     disabled={deleteMutation.isPending}
                   >
                     <Trash2 />Delete
@@ -920,8 +940,16 @@ export default function AutomationSettingsPage() {
                       <FieldLabel>Trigger event</FieldLabel>
                       <Select
                         value={effectiveTriggerEvent}
-                        onValueChange={(value) => {
-                          if ((draft.conditions.length || draft.actions.length) && !window.confirm("Changing the trigger clears its conditions and actions. Continue?")) return;
+                        onValueChange={async (value) => {
+                          if (draft.conditions.length || draft.actions.length) {
+                            const confirmed = await confirm({
+                              title: "Change automation trigger?",
+                              description: "Changing the trigger clears the current conditions and actions because their available fields depend on the trigger.",
+                              confirmLabel: "Change trigger",
+                              variant: "destructive",
+                            });
+                            if (!confirmed) return;
+                          }
                           setDraft((current) => ({ ...current, trigger_event: value, conditions: [], actions: [] }));
                         }}
                       >

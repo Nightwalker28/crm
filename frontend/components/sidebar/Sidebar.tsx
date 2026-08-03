@@ -194,11 +194,11 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
     <aside
       aria-label={mobile ? "Mobile navigation" : "Primary navigation"}
       className={
-        "relative z-10 h-full shrink-0 flex-col border-r border-line-subtle bg-sidebar transition-[width] duration-200 motion-reduce:transition-none " +
+        "relative z-10 h-full shrink-0 flex-col border-r border-line-subtle bg-sidebar/80 transition-[width] duration-200 motion-reduce:transition-none " +
         (mobile ? "flex w-72" : `hidden md:flex ${collapsed ? "w-[4.5rem]" : "w-60"}`)
       }
     >
-      <div className="flex h-full min-h-0 flex-col overflow-hidden px-2 py-3">
+      <div className="relative z-10 flex h-full min-h-0 flex-col overflow-hidden px-2 py-3">
         <div className={`mb-4 flex items-center gap-2 px-1 ${collapsed ? "flex-col justify-center" : "justify-between"}`}>
           <Link href={DASHBOARD_ROUTES.home} onClick={onNavigate} className="flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] focus:outline-none focus:ring-2 focus:ring-primary">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">

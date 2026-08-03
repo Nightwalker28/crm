@@ -1,23 +1,25 @@
 "use client";
 
-import { Building2, Pencil, Plus, Trash2, UsersRound, type LucideIcon } from "lucide-react";
+import { Building2, Pencil, Plus, Trash2, UsersRound, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PageHeader } from "@/components/ui/PageHeader";
-import {
-  Dialog,
-  DialogBackdrop,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState } from "@/components/ui/RouteStates";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Field,
@@ -34,47 +36,14 @@ import {
   useTeamsAndDepartments,
 } from "@/hooks/admin/useTeamsAndDepartments";
 import { useConfirm } from "@/hooks/useConfirm";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 
-function SectionHeader({
-  icon: Icon,
-  title,
-  description,
-  actionLabel,
-  onAction,
-  actionDisabled = false,
-}: {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-  actionLabel: string;
-  onAction: () => void;
-  actionDisabled?: boolean;
-}) {
-  return (
-    <div className="flex items-start justify-between gap-4 border-b border-line-default px-5 py-5">
-      <div className="flex items-start gap-3">
-        <div className="mt-0.5 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-2 text-copy-secondary">
-          <Icon size={16} aria-hidden="true" />
-        </div>
-        <div>
-          <h2 className="text-lg font-semibold text-copy-primary">{title}</h2>
-          <p className="mt-1 text-sm leading-6 text-copy-muted">{description}</p>
-        </div>
-      </div>
-
-      <Button onClick={onAction} disabled={actionDisabled}>
-        <Plus />
-        <span className="hidden sm:inline">{actionLabel}</span>
-      </Button>
-    </div>
-  );
-}
-
-function DepartmentDialog({
+function DepartmentEditorSheet({
   open,
   mode,
   form,
   error,
+  dirty,
   submitting,
   onClose,
   onChange,
@@ -84,28 +53,32 @@ function DepartmentDialog({
   mode: "create" | "edit";
   form: DepartmentForm;
   error: string | null;
+  dirty: boolean;
   submitting: boolean;
   onClose: () => void;
   onChange: (next: DepartmentForm) => void;
   onSubmit: () => void;
 }) {
   return (
-    <Dialog open={open} onClose={onClose}>
-      <DialogBackdrop />
-      <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel size="lg">
-          <DialogHeader>
-            <DialogTitle>{mode === "create" ? "Create Department" : "Edit Department"}</DialogTitle>
-            <DialogIconClose />
-          </DialogHeader>
-
-          <form onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
+    <Sheet open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+      <SheetPortal>
+        <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
+        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+          <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
+            <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+              <div>
+                <SheetTitle className="text-lg font-semibold text-copy-primary">{mode === "create" ? "Create Department" : "Edit Department"}</SheetTitle>
+                <SheetDescription className="mt-1 text-sm text-copy-secondary">Group related teams for assignment, reporting, and module availability.</SheetDescription>
+              </div>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="Close department editor" onClick={onClose}><X /></Button>
+            </SheetHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
             {error ? (
-              <div role="alert" className="mt-4 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+              <div role="alert" className="mb-4 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
                 {error}
               </div>
             ) : null}
-            <FieldGroup className="mt-4">
+            <FieldGroup>
             <Field>
               <FieldLabel htmlFor="department-name">Name <RequiredMark /></FieldLabel>
               <Input
@@ -127,26 +100,28 @@ function DepartmentDialog({
               <FieldDescription>Departments organize teams for assignment and can be selected for module access from Modules.</FieldDescription>
             </Field>
             </FieldGroup>
-
-            <DialogFooter className="mt-5">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button type="submit" disabled={submitting || !form.name.trim()}>
-              {submitting ? "Saving..." : "Save"}
-            </Button>
-            </DialogFooter>
+            </div>
+            <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <span className={`text-sm ${dirty ? "text-state-warning" : "text-state-success"}`}>{dirty ? "Unsaved changes" : "All changes saved"}</span>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+                <Button type="submit" disabled={submitting || !form.name.trim()}>{submitting ? "Saving..." : "Save Department"}</Button>
+              </div>
+            </SheetFooter>
           </form>
-        </DialogPanel>
-      </div>
-    </Dialog>
+        </SheetContent>
+      </SheetPortal>
+    </Sheet>
   );
 }
 
-function TeamDialog({
+function TeamEditorSheet({
   open,
   mode,
   form,
   departments,
   error,
+  dirty,
   submitting,
   onClose,
   onChange,
@@ -157,28 +132,32 @@ function TeamDialog({
   form: TeamForm;
   departments: Department[];
   error: string | null;
+  dirty: boolean;
   submitting: boolean;
   onClose: () => void;
   onChange: (next: TeamForm) => void;
   onSubmit: () => void;
 }) {
   return (
-    <Dialog open={open} onClose={onClose}>
-      <DialogBackdrop />
-      <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel size="lg">
-          <DialogHeader>
-            <DialogTitle>{mode === "create" ? "Create Team" : "Edit Team"}</DialogTitle>
-            <DialogIconClose />
-          </DialogHeader>
-
-          <form onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
+    <Sheet open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
+      <SheetPortal>
+        <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
+        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+          <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
+            <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+              <div>
+                <SheetTitle className="text-lg font-semibold text-copy-primary">{mode === "create" ? "Create Team" : "Edit Team"}</SheetTitle>
+                <SheetDescription className="mt-1 text-sm text-copy-secondary">Place this team inside the organization structure.</SheetDescription>
+              </div>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label="Close team editor" onClick={onClose}><X /></Button>
+            </SheetHeader>
+            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
             {error ? (
-              <div role="alert" className="mt-4 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+              <div role="alert" className="mb-4 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
                 {error}
               </div>
             ) : null}
-            <FieldGroup className="mt-4">
+            <FieldGroup>
             <Field>
               <FieldLabel htmlFor="team-name">Name <RequiredMark /></FieldLabel>
               <Input
@@ -216,68 +195,31 @@ function TeamDialog({
               <FieldDescription>Teams place users in the org structure and can be selected for module access from Modules.</FieldDescription>
             </Field>
             </FieldGroup>
-
-            <DialogFooter className="mt-5">
-            <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-            <Button
-              type="submit"
-              disabled={submitting || !form.name.trim() || !form.department_id}
-            >
-              {submitting ? "Saving..." : "Save"}
-            </Button>
-            </DialogFooter>
+            </div>
+            <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+              <span className={`text-sm ${dirty ? "text-state-warning" : "text-state-success"}`}>{dirty ? "Unsaved changes" : "All changes saved"}</span>
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+                <Button type="submit" disabled={submitting || !form.name.trim() || !form.department_id}>{submitting ? "Saving..." : "Save Team"}</Button>
+              </div>
+            </SheetFooter>
           </form>
-        </DialogPanel>
-      </div>
-    </Dialog>
-  );
-}
-
-function EntityCard({
-  title,
-  subtitle,
-  meta,
-  onEdit,
-  onDelete,
-}: {
-  title: string;
-  subtitle: string;
-  meta?: string | null;
-  onEdit: () => void;
-  onDelete: () => void;
-}) {
-  return (
-    <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="flex items-start justify-between gap-4">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-copy-primary">{title}</div>
-          <div className="mt-1 text-sm leading-6 text-copy-secondary">{subtitle}</div>
-          {meta ? <div className="mt-2 text-xs uppercase tracking-wide text-copy-muted">{meta}</div> : null}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button size="icon-sm" variant="outline" onClick={onEdit} aria-label={`Edit ${title}`}>
-            <Pencil size={14} aria-hidden="true" />
-          </Button>
-          <Button size="icon-sm" variant="destructive" onClick={onDelete} aria-label={`Delete ${title}`}>
-            <Trash2 size={14} aria-hidden="true" />
-          </Button>
-        </div>
-      </div>
-    </div>
+        </SheetContent>
+      </SheetPortal>
+    </Sheet>
   );
 }
 
 export default function TeamsAndDepartmentsPage() {
   const router = useRouter();
   const { confirm } = useConfirm();
+  const initializedActionRef = useRef<string | null>(null);
   const searchParams = useSearchParams();
   const requestedAction = searchParams.get("action");
   const isCreateTeamAction = requestedAction === "create-team";
   const isCreateDepartmentAction = requestedAction === "create-department";
   const {
     departments,
-    teams,
     groupedTeams,
     error,
     clearError,
@@ -308,6 +250,21 @@ export default function TeamsAndDepartmentsPage() {
     removeDepartment,
     removeTeam,
   } = useTeamsAndDepartments();
+
+  const departmentEditorOpen = departmentDialogOpen || isCreateDepartmentAction;
+  const teamEditorOpen = teamDialogOpen || isCreateTeamAction;
+
+  useEffect(() => {
+    if (loading || initializedActionRef.current === requestedAction) return;
+    if (isCreateDepartmentAction) openCreateDepartment();
+    if (isCreateTeamAction) openCreateTeam();
+    initializedActionRef.current = requestedAction;
+  }, [isCreateDepartmentAction, isCreateTeamAction, loading, openCreateDepartment, openCreateTeam, requestedAction]);
+
+  useUnsavedChangesGuard(
+    (departmentEditorOpen && departmentDirty) || (teamEditorOpen && teamDirty),
+    departmentSubmitting || teamSubmitting,
+  );
 
   async function closeTeamWorkflow() {
     if (teamDirty) {
@@ -382,107 +339,108 @@ export default function TeamsAndDepartmentsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-        <Card>
-          <SectionHeader
-            icon={Building2}
-            title="Departments"
-            description="Departments group teams and can be granted module availability from Modules."
-            actionLabel="Create Department"
-            onAction={openCreateDepartment}
-          />
-
-          <div className="px-5 py-5">
-            {loading ? (
-              <div className="space-y-3" aria-label="Loading departments" aria-busy="true">
-                {[0, 1, 2].map((item) => <Skeleton key={item} className="h-24 w-full rounded-[var(--radius-card)]" />)}
-              </div>
-            ) : departments.length === 0 ? (
-              <EmptyState
-                icon={Building2}
-                title="No departments yet"
-                description="Create the first department to organize teams and module availability."
-                action={<Button type="button" variant="outline" onClick={openCreateDepartment}><Plus />Create department</Button>}
-              />
-            ) : (
-              <div className="space-y-3">
-                {departments.map((department) => (
-                  <EntityCard
-                    key={department.id}
-                    title={department.name}
-                    subtitle={department.description || "No description"}
-                    onEdit={() => openEditDepartment(department)}
-                    onDelete={() => removeDepartment(department)}
-                  />
-                ))}
-              </div>
-            )}
+      <Card>
+        <div className="flex flex-col gap-4 border-b border-line-default px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="mt-0.5 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-2 text-copy-secondary">
+              <Building2 size={16} aria-hidden="true" />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold text-copy-primary">Organization structure</h2>
+              <p className="mt-1 text-sm leading-6 text-copy-muted">Departments contain teams. Manage the hierarchy from one workspace.</p>
+            </div>
           </div>
-        </Card>
-
-        <Card>
-          <SectionHeader
-            icon={UsersRound}
-            title="Teams"
-            description="Teams place users inside departments and can be granted module availability from Modules."
-            actionLabel="Create Team"
-            onAction={openCreateTeam}
-            actionDisabled={!departments.length}
-          />
-
-          <div className="px-5 py-5">
-            {loading ? (
-              <div className="space-y-3" aria-label="Loading teams" aria-busy="true">
-                {[0, 1, 2].map((item) => <Skeleton key={item} className="h-24 w-full rounded-[var(--radius-card)]" />)}
-              </div>
-            ) : teams.length === 0 ? (
-              <EmptyState
-                icon={UsersRound}
-                title="No teams yet"
-                description={departments.length
-                  ? "Create the first team and place it inside a department."
-                  : "Create a department before adding teams."}
-                action={departments.length
-                  ? <Button type="button" variant="outline" onClick={openCreateTeam}><Plus />Create team</Button>
-                  : undefined}
-              />
-            ) : (
-              <div className="space-y-3">
-                {groupedTeams.flatMap(({ department, teams: departmentTeams }) =>
-                  departmentTeams.map((team) => (
-                    <EntityCard
-                      key={team.id}
-                      title={team.name}
-                      subtitle={team.description || "No description"}
-                      meta={department.name}
-                      onEdit={() => openEditTeam(team)}
-                      onDelete={() => removeTeam(team)}
-                    />
-                  ))
-                )}
-              </div>
-            )}
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" onClick={openCreateDepartment}><Plus />Create Department</Button>
+            <Button type="button" onClick={openCreateTeam} disabled={!departments.length}><Plus />Create Team</Button>
           </div>
-        </Card>
-      </div>
+        </div>
 
-      <DepartmentDialog
-        open={departmentDialogOpen || isCreateDepartmentAction}
+        <div className="px-5 py-5">
+          {loading ? (
+            <div className="space-y-4" aria-label="Loading organization structure" aria-busy="true">
+              {[0, 1, 2].map((item) => <Skeleton key={item} className="h-36 w-full rounded-[var(--radius-card)]" />)}
+            </div>
+          ) : departments.length === 0 ? (
+            <EmptyState
+              icon={Building2}
+              title="No departments yet"
+              description="Create the first department, then add teams inside it."
+              action={<Button type="button" onClick={openCreateDepartment}><Plus />Create Department</Button>}
+            />
+          ) : (
+            <div className="space-y-4">
+              {groupedTeams.map(({ department, teams: departmentTeams }) => (
+                <section key={department.id} className="overflow-hidden rounded-[var(--radius-card)] border border-line-default bg-surface-muted" aria-labelledby={`department-${department.id}`}>
+                  <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-raised p-2 text-copy-secondary"><Building2 size={15} aria-hidden="true" /></div>
+                      <div className="min-w-0">
+                        <h3 id={`department-${department.id}`} className="text-sm font-semibold text-copy-primary">{department.name}</h3>
+                        <p className="mt-1 text-sm leading-6 text-copy-secondary">{department.description || "No description"}</p>
+                        <p className="mt-1 text-xs text-copy-muted">{departmentTeams.length} {departmentTeams.length === 1 ? "team" : "teams"}</p>
+                      </div>
+                    </div>
+                    {department.id !== -1 ? (
+                      <div className="flex items-center gap-2">
+                        <Button size="icon-sm" variant="outline" onClick={() => openEditDepartment(department)} aria-label={`Edit ${department.name}`}><Pencil size={14} aria-hidden="true" /></Button>
+                        <Button size="icon-sm" variant="destructive" onClick={() => removeDepartment(department)} aria-label={`Delete ${department.name}`}><Trash2 size={14} aria-hidden="true" /></Button>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="border-t border-line-default bg-surface-raised">
+                    {departmentTeams.length === 0 ? (
+                      <div className="flex flex-col gap-3 px-4 py-4 text-sm text-copy-muted sm:flex-row sm:items-center sm:justify-between">
+                        <span>No teams in this department.</span>
+                        <Button type="button" variant="ghost" size="sm" onClick={openCreateTeam}><Plus />Add team</Button>
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-line-subtle">
+                        {departmentTeams.map((team) => (
+                          <div key={team.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex min-w-0 items-start gap-3">
+                              <UsersRound className="mt-0.5 h-4 w-4 shrink-0 text-copy-muted" aria-hidden="true" />
+                              <div className="min-w-0">
+                                <div className="text-sm font-medium text-copy-primary">{team.name}</div>
+                                <div className="mt-0.5 text-sm text-copy-muted">{team.description || "No description"}</div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 self-end sm:self-auto">
+                              <Button size="icon-sm" variant="outline" onClick={() => openEditTeam(team)} aria-label={`Edit ${team.name}`}><Pencil size={14} aria-hidden="true" /></Button>
+                              <Button size="icon-sm" variant="destructive" onClick={() => removeTeam(team)} aria-label={`Delete ${team.name}`}><Trash2 size={14} aria-hidden="true" /></Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </section>
+              ))}
+            </div>
+          )}
+        </div>
+      </Card>
+
+      <DepartmentEditorSheet
+        open={departmentEditorOpen}
         mode={departmentMode}
         form={departmentForm}
         error={error}
+        dirty={departmentDirty}
         submitting={departmentSubmitting}
         onClose={() => void closeDepartmentWorkflow()}
         onChange={setDepartmentForm}
         onSubmit={() => void saveDepartmentWorkflow()}
       />
 
-      <TeamDialog
-        open={teamDialogOpen || isCreateTeamAction}
+      <TeamEditorSheet
+        open={teamEditorOpen}
         mode={teamMode}
         form={teamForm}
         departments={departments}
         error={error}
+        dirty={teamDirty}
         submitting={teamSubmitting}
         onClose={() => void closeTeamWorkflow()}
         onChange={setTeamForm}

@@ -2,20 +2,29 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { PlugZap, Send, Trash2 } from "lucide-react";
+import { Plus, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useConfirm } from "@/hooks/useConfirm";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 
 type NotificationChannel = {
@@ -53,6 +62,7 @@ export function IntegrationWebhookWorkspace() {
   const queryClient = useQueryClient();
   const { confirm } = useConfirm();
   const [draft, setDraft] = useState<ChannelDraft>(emptyDraft);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const channelsQuery = useQuery({
     queryKey: ["integrations", "notification-channels"],
@@ -61,6 +71,35 @@ export function IntegrationWebhookWorkspace() {
 
   const channels = channelsQuery.data ?? [];
   const loading = channelsQuery.isLoading || channelsQuery.isFetching;
+  const isDirty = JSON.stringify(draft) !== JSON.stringify(emptyDraft);
+  useUnsavedChangesGuard(editorOpen && isDirty, saving);
+
+  function openEditor() {
+    setDraft(emptyDraft);
+    setEditorOpen(true);
+  }
+
+  async function closeEditor() {
+    if (isDirty) {
+      const confirmed = await confirm({
+        title: "Discard webhook draft?",
+        description: "The unsaved provider, channel, URL, and availability settings will be cleared.",
+        confirmLabel: "Discard draft",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
+    setDraft(emptyDraft);
+    setEditorOpen(false);
+  }
+
+  function handleEditorOpenChange(open: boolean) {
+    if (open) {
+      setEditorOpen(true);
+      return;
+    }
+    void closeEditor();
+  }
 
   async function createChannel() {
     try {
@@ -77,6 +116,7 @@ export function IntegrationWebhookWorkspace() {
       });
       if (!res.ok) throw new Error("create-channel-failed");
       setDraft(emptyDraft);
+      setEditorOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["integrations", "notification-channels"] });
       toast.success("Notification channel added.");
     } catch {
@@ -140,58 +180,65 @@ export function IntegrationWebhookWorkspace() {
   }
 
   return (
-    <section id="webhooks" aria-labelledby="webhooks-heading" className="grid scroll-mt-5 gap-5 lg:grid-cols-[380px_1fr]">
-      <Card className="px-5 py-5">
-        <div className="flex items-start gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
-            <PlugZap size={17} className="text-copy-secondary" />
-          </div>
-          <div>
-            <h2 id="webhooks-heading" className="text-lg font-semibold text-copy-primary">Add Webhook</h2>
-            <p className="mt-1 text-sm text-copy-muted">Paste a Slack or Microsoft Teams incoming webhook URL. OAuth is not used in this phase.</p>
-          </div>
+    <section id="webhooks" aria-labelledby="webhooks-heading" className="flex scroll-mt-5 flex-col gap-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h2 id="webhooks-heading" className="text-lg font-semibold text-copy-primary">Notification Webhooks</h2>
+          <p className="mt-1 text-sm text-copy-muted">Manage Slack or Microsoft Teams incoming webhook destinations.</p>
         </div>
+        <Button type="button" size="sm" onClick={openEditor}><Plus />New webhook</Button>
+      </div>
 
-        <FieldGroup className="mt-5 grid gap-4">
-          <Field>
-            <FieldLabel htmlFor="webhook-provider">Provider</FieldLabel>
-            <Select value={draft.provider} onValueChange={(value) => setDraft((current) => ({ ...current, provider: value }))}>
-              <SelectTrigger id="webhook-provider">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="slack">Slack</SelectItem>
-                <SelectItem value="teams">Microsoft Teams</SelectItem>
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="webhook-channel-name">Channel Name</FieldLabel>
-            <Input id="webhook-channel-name" value={draft.channel_name} onChange={(event) => setDraft((current) => ({ ...current, channel_name: event.target.value }))} placeholder="#sales-alerts" />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="webhook-url">Webhook URL</FieldLabel>
-            <Input
-              id="webhook-url"
-              type="url"
-              value={draft.webhook_url}
-              onChange={(event) => setDraft((current) => ({ ...current, webhook_url: event.target.value }))}
-              placeholder="https://hooks.slack.com/services/..."
-            />
-          </Field>
-          <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
-            Active
-            <Checkbox
-              aria-label="Create webhook as active"
-              checked={draft.is_active}
-              onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_active: checked === true }))}
-            />
-          </label>
-          <Button type="button" disabled={saving || !draft.webhook_url.trim()} onClick={createChannel}>
-            Add Webhook
-          </Button>
-        </FieldGroup>
-      </Card>
+      <Sheet open={editorOpen} onOpenChange={handleEditorOpenChange}>
+        <SheetPortal>
+          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
+          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+            <div className="flex min-h-0 flex-1 flex-col">
+              <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+                <div>
+                  <SheetTitle className="text-lg font-semibold text-copy-primary">Create webhook</SheetTitle>
+                  <SheetDescription className="mt-1 text-sm text-copy-muted">Paste a Slack or Microsoft Teams incoming webhook URL.</SheetDescription>
+                </div>
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="Close webhook editor" onClick={() => void closeEditor()}><X /></Button>
+              </SheetHeader>
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="webhook-provider">Provider</FieldLabel>
+                    <Select value={draft.provider} onValueChange={(value) => setDraft((current) => ({ ...current, provider: value }))}>
+                      <SelectTrigger id="webhook-provider"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="slack">Slack</SelectItem>
+                        <SelectItem value="teams">Microsoft Teams</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="webhook-channel-name">Channel Name</FieldLabel>
+                    <Input id="webhook-channel-name" value={draft.channel_name} onChange={(event) => setDraft((current) => ({ ...current, channel_name: event.target.value }))} placeholder="#sales-alerts" />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="webhook-url">Webhook URL</FieldLabel>
+                    <Input id="webhook-url" type="url" value={draft.webhook_url} onChange={(event) => setDraft((current) => ({ ...current, webhook_url: event.target.value }))} placeholder="https://hooks.slack.com/services/..." />
+                  </Field>
+                  <Field>
+                    <FieldLabel>Webhook availability</FieldLabel>
+                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Webhook availability">
+                      <Button type="button" variant={draft.is_active ? "secondary" : "outline"} aria-pressed={draft.is_active} onClick={() => setDraft((current) => ({ ...current, is_active: true }))}>Active</Button>
+                      <Button type="button" variant={!draft.is_active ? "secondary" : "outline"} aria-pressed={!draft.is_active} onClick={() => setDraft((current) => ({ ...current, is_active: false }))}>Inactive</Button>
+                    </div>
+                    <FieldDescription>Active webhooks can receive CRM event notifications immediately.</FieldDescription>
+                  </Field>
+                </FieldGroup>
+              </div>
+              <SheetFooter className="flex justify-end gap-2 border-t border-line-subtle bg-surface px-5 py-4">
+                <Button type="button" variant="outline" disabled={saving} onClick={() => void closeEditor()}>Cancel</Button>
+                <Button type="button" disabled={saving || !draft.webhook_url.trim()} onClick={createChannel}>{saving ? "Adding..." : "Add Webhook"}</Button>
+              </SheetFooter>
+            </div>
+          </SheetContent>
+        </SheetPortal>
+      </Sheet>
 
       <ModuleTableShell>
         <Table className="min-w-[760px]">

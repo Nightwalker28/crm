@@ -76,7 +76,9 @@ test("validates percentage pricing and confirms a new tenant default on mobile",
   await page.getByLabel("Discount Type").click();
   await page.getByRole("option", { name: "Percent" }).click();
   await page.getByLabel("Discount Value").fill("125");
-  await page.getByLabel("Default group").click();
+  await expect(page.getByRole("button", { name: "Not default", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Default group", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Default group", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: "Create Group" }).click();
 
   await expect(page.getByText("Percent discounts cannot exceed 100.")).toBeVisible();
@@ -118,7 +120,9 @@ test("confirms deactivation and redacts customer-group update failures", async (
   const wholesaleRow = page.getByRole("row").filter({ hasText: "Wholesale" });
   await wholesaleRow.getByRole("button", { name: "Edit" }).click();
   await expect(page.getByRole("dialog", { name: "Edit customer group" })).toBeVisible();
-  await page.getByLabel("Active").click();
+  await expect(page.getByRole("button", { name: "Active", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Inactive", exact: true }).click();
+  await expect(page.getByRole("button", { name: "Inactive", exact: true })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByText("Unsaved changes")).toBeVisible();
 
   await page.getByRole("button", { name: "Save Group" }).click();

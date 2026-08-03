@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, KeyRound, Package, RefreshCw, ShoppingCart, Trash2 } from "lucide-react";
+import { Copy, ExternalLink, KeyRound, Package, Plus, RefreshCw, ShoppingCart, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
@@ -16,9 +16,20 @@ import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -139,6 +150,7 @@ export function IntegrationWebsiteWorkspace() {
   const { confirm } = useConfirm();
   const [apiKeyDraft, setApiKeyDraft] = useState<ApiKeyDraft>(emptyApiKeyDraft);
   const [latestApiKey, setLatestApiKey] = useState<string | null>(null);
+  const [apiKeyEditorOpen, setApiKeyEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const websiteQuery = useQuery({
     queryKey: ["integrations", "website"],
@@ -150,6 +162,44 @@ export function IntegrationWebsiteWorkspace() {
   const publishedCatalogTotal = websiteQuery.data?.publishedCatalogTotal ?? 0;
   const websiteOrders = websiteQuery.data?.websiteOrders ?? [];
   const loading = websiteQuery.isLoading || websiteQuery.isFetching;
+  const apiKeyDirty = JSON.stringify(apiKeyDraft) !== JSON.stringify(emptyApiKeyDraft);
+  useUnsavedChangesGuard(apiKeyEditorOpen && (apiKeyDirty || Boolean(latestApiKey)), saving);
+
+  function openApiKeyEditor() {
+    setApiKeyDraft(emptyApiKeyDraft);
+    setLatestApiKey(null);
+    setApiKeyEditorOpen(true);
+  }
+
+  async function closeApiKeyEditor() {
+    if (latestApiKey) {
+      const confirmed = await confirm({
+        title: "Close API key details?",
+        description: "This secret is shown only once. Confirm that it has been copied into the connected website before closing.",
+        confirmLabel: "Close details",
+      });
+      if (!confirmed) return;
+    } else if (apiKeyDirty) {
+      const confirmed = await confirm({
+        title: "Discard API key draft?",
+        description: "The unsaved key name, scopes, and allowed origins will be cleared.",
+        confirmLabel: "Discard draft",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
+    setApiKeyDraft(emptyApiKeyDraft);
+    setLatestApiKey(null);
+    setApiKeyEditorOpen(false);
+  }
+
+  function handleApiKeyEditorOpenChange(open: boolean) {
+    if (open) {
+      setApiKeyEditorOpen(true);
+      return;
+    }
+    void closeApiKeyEditor();
+  }
 
   async function copyApiKey() {
     if (!latestApiKey) return;
@@ -304,78 +354,70 @@ export function IntegrationWebsiteWorkspace() {
         />
       ) : null}
 
-      <div>
-        <h3 className="text-base font-semibold text-copy-primary">API Keys</h3>
-        <p className="mt-1 text-sm text-copy-muted">Create scoped credentials for catalog reads and website order writeback.</p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h3 className="text-base font-semibold text-copy-primary">API Keys</h3>
+          <p className="mt-1 text-sm text-copy-muted">Create scoped credentials for catalog reads and website order writeback.</p>
+        </div>
+        <Button type="button" size="sm" onClick={openApiKeyEditor}><Plus />New API key</Button>
       </div>
 
-      <div className="grid gap-5 xl:grid-cols-[380px_minmax(0,1fr)]">
-        <Card className="px-5 py-5">
-          <div className="mb-4 flex items-start gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
-              <KeyRound size={17} className="text-copy-secondary" />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-copy-primary">New API Key</h3>
-              <p className="mt-1 text-sm text-copy-muted">Keys are shown once. Store them in the website or plugin settings.</p>
-            </div>
-          </div>
-          <FieldGroup className="grid gap-4">
-            <Field>
-              <FieldLabel htmlFor="api-key-name">Key Name <RequiredMark /></FieldLabel>
-              <Input id="api-key-name" value={apiKeyDraft.name} onChange={(event) => setApiKeyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="WordPress production" />
-            </Field>
-            <div className="grid gap-2">
-              <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
-                Catalog read
-                <Checkbox
-                  aria-label="Allow catalog read access"
-                  checked={apiKeyDraft.allowCatalogRead}
-                  onCheckedChange={(checked) => setApiKeyDraft((current) => ({ ...current, allowCatalogRead: checked === true }))}
-                />
-              </label>
-              <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
-                Order writeback
-                <Checkbox
-                  aria-label="Allow order writeback access"
-                  checked={apiKeyDraft.allowOrdersWrite}
-                  onCheckedChange={(checked) => setApiKeyDraft((current) => ({ ...current, allowOrdersWrite: checked === true }))}
-                />
-              </label>
-            </div>
-            <Field>
-              <FieldLabel htmlFor="api-key-origins">Allowed Origins</FieldLabel>
-              <Textarea
-                id="api-key-origins"
-                value={apiKeyDraft.allowedOrigins}
-                onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowedOrigins: event.target.value }))}
-                placeholder="https://example.com, https://www.example.com"
-                className="min-h-20"
-              />
-              <p className="text-xs leading-5 text-copy-muted">Comma-separated browser origins. Leave empty only for server-to-server clients that do not send an Origin header.</p>
-            </Field>
-            <Button type="button" disabled={saving} onClick={createApiKey}>
-              <KeyRound size={14} />
-              Create API Key
-            </Button>
-          </FieldGroup>
+      <Sheet open={apiKeyEditorOpen} onOpenChange={handleApiKeyEditorOpenChange}>
+        <SheetPortal>
+          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
+          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+            <div className="flex min-h-0 flex-1 flex-col">
+              <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+                <div>
+                  <SheetTitle className="text-lg font-semibold text-copy-primary">Create API key</SheetTitle>
+                  <SheetDescription className="mt-1 text-sm text-copy-muted">Create scoped website credentials. The secret is shown only once.</SheetDescription>
+                </div>
+                <Button type="button" variant="ghost" size="icon-sm" aria-label="Close API key editor" onClick={() => void closeApiKeyEditor()}><X /></Button>
+              </SheetHeader>
+              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+                <FieldGroup>
+                  <Field>
+                    <FieldLabel htmlFor="api-key-name">Key Name <RequiredMark /></FieldLabel>
+                    <Input id="api-key-name" value={apiKeyDraft.name} onChange={(event) => setApiKeyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="WordPress production" />
+                  </Field>
+                  <div className="grid gap-2">
+                    <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
+                      Catalog read
+                      <Checkbox aria-label="Allow catalog read access" checked={apiKeyDraft.allowCatalogRead} onCheckedChange={(checked) => setApiKeyDraft((current) => ({ ...current, allowCatalogRead: checked === true }))} />
+                    </label>
+                    <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
+                      Order writeback
+                      <Checkbox aria-label="Allow order writeback access" checked={apiKeyDraft.allowOrdersWrite} onCheckedChange={(checked) => setApiKeyDraft((current) => ({ ...current, allowOrdersWrite: checked === true }))} />
+                    </label>
+                  </div>
+                  <Field>
+                    <FieldLabel htmlFor="api-key-origins">Allowed Origins</FieldLabel>
+                    <Textarea id="api-key-origins" value={apiKeyDraft.allowedOrigins} onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowedOrigins: event.target.value }))} placeholder="https://example.com, https://www.example.com" className="min-h-20" />
+                    <p className="text-xs leading-5 text-copy-muted">Comma-separated browser origins. Leave empty only for server-to-server clients that do not send an Origin header.</p>
+                  </Field>
+                </FieldGroup>
 
-          {latestApiKey ? (
-            <div role="status" className="mt-4 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted p-3">
-              <div className="mb-2 text-xs font-medium uppercase text-copy-muted">Copy this key now</div>
-              <div className="break-all font-mono text-xs text-copy-primary">{latestApiKey}</div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button type="button" variant="outline" size="sm" onClick={() => void copyApiKey()}>
-                  <Copy size={14} />
-                  Copy
-                </Button>
-                <Button type="button" variant="ghost" size="sm" onClick={() => setLatestApiKey(null)}>Dismiss</Button>
+                {latestApiKey ? (
+                  <div role="status" className="mt-5 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted p-3">
+                    <div className="mb-2 text-xs font-medium uppercase text-copy-muted">Copy this key now</div>
+                    <div className="break-all font-mono text-xs text-copy-primary">{latestApiKey}</div>
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button type="button" variant="outline" size="sm" onClick={() => void copyApiKey()}><Copy size={14} />Copy</Button>
+                      <Button type="button" variant="ghost" size="sm" onClick={() => { setLatestApiKey(null); setApiKeyEditorOpen(false); }}>Dismiss</Button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
+              <SheetFooter className="flex justify-end gap-2 border-t border-line-subtle bg-surface px-5 py-4">
+                <Button type="button" variant="outline" disabled={saving} onClick={() => void closeApiKeyEditor()}>Cancel</Button>
+                <Button type="button" disabled={saving || Boolean(latestApiKey)} onClick={createApiKey}><KeyRound size={14} />{saving ? "Creating..." : "Create API Key"}</Button>
+              </SheetFooter>
             </div>
-          ) : null}
-        </Card>
+          </SheetContent>
+        </SheetPortal>
+      </Sheet>
 
-        <ModuleTableShell>
+      <ModuleTableShell>
           <Table className="min-w-[940px]">
             <TableHeader>
               <TableHeaderRow>
@@ -431,8 +473,7 @@ export function IntegrationWebsiteWorkspace() {
               )}
             </TableBody>
           </Table>
-        </ModuleTableShell>
-      </div>
+      </ModuleTableShell>
 
       <div>
         <h3 className="text-base font-semibold text-copy-primary">Published Catalog</h3>

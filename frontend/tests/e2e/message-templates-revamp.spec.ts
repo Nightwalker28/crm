@@ -38,6 +38,12 @@ test("Message template creation uses a responsive routed form and preserves dott
   await page.goto("/dashboard/settings/message-templates/new");
 
   await page.getByLabel("Name").fill("Customer update");
+  await page.getByRole("button", { name: "Back to templates" }).click();
+  const discardDialog = page.getByRole("dialog", { name: "Discard template changes?" });
+  await expect(discardDialog).toBeVisible();
+  await discardDialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(page).toHaveURL(/\/dashboard\/settings\/message-templates\/new$/);
+
   await page.getByLabel("Channel").click();
   await page.getByRole("option", { name: "Mail" }).click();
   await page.getByLabel("Module").click();

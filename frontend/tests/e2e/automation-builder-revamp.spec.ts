@@ -33,6 +33,18 @@ test.beforeEach(async ({ page }) => {
     ],
     updated_at: "2099-07-23T10:00:00Z",
   };
+  const secondRule: AutomationRule = {
+    id: 42,
+    name: "Dormant lead reminder",
+    description: "Remind the owner when a lead needs attention.",
+    module_key: "sales_leads",
+    enabled: false,
+    trigger_event: "lead.updated",
+    condition_mode: "all",
+    conditions_json: [],
+    actions_json: [{ type: "create_task", title: "Review dormant lead", priority: "medium", due_in_days: 3, assignee_user_id: "actor" }],
+    updated_at: "2099-07-23T11:00:00Z",
+  };
 
   await page.route("**/admin/automation-rules/trigger-registry", (route) =>
     route.fulfill({
@@ -135,7 +147,7 @@ test.beforeEach(async ({ page }) => {
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ results: [rule] }),
+      body: JSON.stringify({ results: [rule, secondRule] }),
     }),
   );
 });
@@ -145,7 +157,8 @@ test("edits flow steps, reorders actions, and saves from mobile", async ({ page 
   await page.goto("/dashboard/settings/automation");
 
   await expect(page.getByRole("heading", { name: "Automation Builder" })).toBeVisible();
-  await page.getByRole("button", { name: /High priority lead follow-up/ }).click();
+  await page.getByLabel("Automation rule").click();
+  await page.getByRole("option", { name: "High priority lead follow-up" }).click();
   await expect(page.getByRole("dialog", { name: "Rule settings" })).toBeVisible();
   await page.getByLabel("Name", { exact: true }).fill("Urgent lead workflow");
   await page.getByRole("button", { name: "Done editing" }).click();
@@ -182,7 +195,8 @@ test("edits flow steps, reorders actions, and saves from mobile", async ({ page 
 
 test("keeps run history separate and reveals only sanitized debug data", async ({ page }) => {
   await page.goto("/dashboard/settings/automation");
-  await page.getByRole("button", { name: /High priority lead follow-up/ }).click();
+  await page.getByLabel("Automation rule").click();
+  await page.getByRole("option", { name: "High priority lead follow-up" }).click();
   await page.getByRole("button", { name: "Runs" }).click();
 
   await expect(page.getByRole("heading", { name: "Run history" })).toBeVisible();
@@ -191,4 +205,25 @@ test("keeps run history separate and reveals only sanitized debug data", async (
   await expect(page.getByRole("heading", { name: "Run #91" })).toBeVisible();
   await page.getByText("Sanitized input").click();
   await expect(page.getByText("[REDACTED]", { exact: false })).toBeVisible();
+});
+
+test("searches rules and guards switching away from unsaved work", async ({ page }) => {
+  await page.goto("/dashboard/settings/automation");
+  await page.getByLabel("Automation rule").click();
+  await page.getByRole("option", { name: "High priority lead follow-up" }).click();
+  await page.getByLabel("Name", { exact: true }).fill("Unsaved workflow name");
+  await page.getByRole("button", { name: "Done editing" }).click();
+
+  await page.getByPlaceholder("Search rules").fill("Dormant");
+  await page.getByLabel("Automation rule").click();
+  await page.getByRole("option", { name: "Dormant lead reminder · Disabled" }).click();
+  await expect(page.getByRole("dialog", { name: "Discard automation changes?" })).toBeVisible();
+  await page.getByRole("button", { name: "Cancel" }).click();
+  await expect(page.getByLabel("Automation rule")).toHaveText(/High priority lead follow-up/);
+
+  await page.getByLabel("Automation rule").click();
+  await page.getByRole("option", { name: "Dormant lead reminder · Disabled" }).click();
+  await page.getByRole("button", { name: "Discard and switch" }).click();
+  await expect(page.getByRole("dialog", { name: "Rule settings" })).toBeVisible();
+  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Dormant lead reminder");
 });
