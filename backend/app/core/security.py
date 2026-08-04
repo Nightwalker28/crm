@@ -4,7 +4,6 @@ from datetime import datetime, timezone
 
 from app.core.access_control import (
     ADMIN_MIN_ROLE_LEVEL,
-    SUPERUSER_MIN_ROLE_LEVEL,
     USER_MIN_ROLE_LEVEL,
     require_minimum_role_level,
 )
@@ -264,19 +263,6 @@ def require_admin(current_user: User = Depends(get_current_user), db: Session = 
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="Admin privileges required")
     return current_user
-
-def require_superuser(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    try:
-        require_minimum_role_level(
-            db,
-            user=current_user,
-            minimum_level=SUPERUSER_MIN_ROLE_LEVEL,
-        )
-    except PermissionError:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Superuser privileges required")
-    return current_user
-
 
 def require_user(current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     try:

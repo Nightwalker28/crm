@@ -8,7 +8,6 @@ import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 
 export type InsertionOrderSortState = PagedListSort;
-export type InsertionOrderStatus = "draft" | "issued" | "active" | "completed" | "cancelled" | "imported";
 
 export type InsertionOrder = {
   id: number;

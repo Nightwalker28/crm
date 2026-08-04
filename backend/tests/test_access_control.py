@@ -30,21 +30,29 @@ class FailingQueryDB:
 
 class FinanceScopeTests(unittest.TestCase):
     def test_finance_scope_full_access_for_finance_department(self):
-        user = SimpleNamespace(id=7, team_id=10)
-        db = FakeDB(access_control.FINANCE_FULL_ACCESS_DEPARTMENT_ID)
+        user = SimpleNamespace(id=7, tenant_id=11, department_id=27, team_id=10)
+        db = FakeDB(" Finance ")
 
         scope = access_control.get_finance_user_scope(db, user)
 
-        self.assertEqual(scope.department_id, access_control.FINANCE_FULL_ACCESS_DEPARTMENT_ID)
+        self.assertEqual(scope.department_id, 27)
         self.assertIsNone(scope.user_id_filter)
 
     def test_finance_scope_limits_non_finance_user_to_own_records(self):
-        user = SimpleNamespace(id=7, team_id=10)
-        db = FakeDB(3)
+        user = SimpleNamespace(id=7, tenant_id=11, department_id=27, team_id=10)
+        db = FakeDB("Sales")
 
         scope = access_control.get_finance_user_scope(db, user)
 
-        self.assertEqual(scope.department_id, 3)
+        self.assertEqual(scope.department_id, 27)
+        self.assertEqual(scope.user_id_filter, 7)
+
+    def test_finance_scope_fails_closed_without_tenant_context(self):
+        user = SimpleNamespace(id=7, department_id=27, team_id=10)
+
+        scope = access_control.get_finance_user_scope(FailingQueryDB(), user)
+
+        self.assertEqual(scope.department_id, 27)
         self.assertEqual(scope.user_id_filter, 7)
 
 

@@ -56,22 +56,6 @@ def tenant_domain_email_domains(db: Session, *, tenant_id: int) -> list[str]:
     return domains
 
 
-def is_verified_tenant_domain(db: Session, *, tenant_id: int, hostname: str | None) -> bool:
-    normalized = normalize_hostname(hostname)
-    if not normalized:
-        return False
-    return (
-        db.query(TenantDomain.id)
-        .filter(
-            TenantDomain.tenant_id == tenant_id,
-            TenantDomain.hostname == normalized,
-            TenantDomain.status == DOMAIN_STATUS_VERIFIED,
-        )
-        .first()
-        is not None
-    )
-
-
 def verified_tenant_for_hostname(db: Session, *, hostname: str | None) -> Tenant | None:
     normalized = normalize_hostname(hostname)
     if not normalized:

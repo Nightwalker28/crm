@@ -72,6 +72,29 @@ class FakeInsertionOrderQuery:
         return [SimpleNamespace(id=2, io_number="IO-002")]
 
 
+class ModuleLookupDB:
+    def __init__(self, module_id):
+        self.module_id = module_id
+
+    def query(self, *_args, **_kwargs):
+        return self
+
+    def filter(self, *_args, **_kwargs):
+        return self
+
+    def scalar(self):
+        return self.module_id
+
+
+class FinanceModuleLookupTests(unittest.TestCase):
+    def test_finance_module_lookup_returns_registered_id(self):
+        self.assertEqual(io_search_services.get_finance_module_id(ModuleLookupDB(41)), 41)
+
+    def test_finance_module_lookup_fails_without_registration(self):
+        with self.assertRaisesRegex(LookupError, "finance_io"):
+            io_search_services.get_finance_module_id(ModuleLookupDB(None))
+
+
 class FinanceDownloadTests(unittest.TestCase):
     def test_get_generic_insertion_order_scopes_lookup_by_tenant(self):
         db = FakeFinanceDB()

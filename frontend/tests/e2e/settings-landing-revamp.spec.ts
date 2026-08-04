@@ -39,10 +39,19 @@ test("shows every registered settings destination on mobile", async ({ page }) =
   }
 });
 
-test("settings cards support keyboard navigation", async ({ page }) => {
+test("settings rows use one scan column and support keyboard navigation", async ({ page }) => {
   await page.goto("/dashboard/settings");
 
   const generalLink = page.getByRole("link", { name: /^General/ });
+  const usersLink = page.getByRole("link", { name: /^User Management/ });
+  const generalBox = await generalLink.boundingBox();
+  const usersBox = await usersLink.boundingBox();
+
+  expect(generalBox).not.toBeNull();
+  expect(usersBox).not.toBeNull();
+  expect(Math.abs((generalBox?.x ?? 0) - (usersBox?.x ?? 0))).toBeLessThan(2);
+  expect((generalBox?.y ?? 0) + (generalBox?.height ?? 0)).toBeLessThanOrEqual(usersBox?.y ?? 0);
+
   await generalLink.focus();
   await expect(generalLink).toBeFocused();
   await page.keyboard.press("Enter");

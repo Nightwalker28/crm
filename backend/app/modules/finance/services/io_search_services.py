@@ -31,8 +31,6 @@ from app.modules.user_management.models import Module
 _upload_dir = os.getenv("IO_SEARCH_UPLOAD_DIR")
 IO_SEARCH_UPLOAD_DIR = Path(_upload_dir).resolve() if _upload_dir else None
 
-# IO module_id in the modules table
-DEFAULT_MODULE_ID = 2
 FINANCE_MODULE_KEY = "finance_io"
 DEFAULT_IO_STATUS = "draft"
 DEFAULT_IO_CURRENCY = "USD"
@@ -72,7 +70,9 @@ IO_NUMBER_REGEX = re.compile(rf"^{IO_NUMBER_PREFIX}(\d+)$")
 
 def get_finance_module_id(db: Session) -> int:
     module_id = db.query(Module.id).filter(Module.name == FINANCE_MODULE_KEY).scalar()
-    return int(module_id) if module_id is not None else DEFAULT_MODULE_ID
+    if module_id is None:
+        raise LookupError(f"Module '{FINANCE_MODULE_KEY}' is not registered.")
+    return int(module_id)
 
 
 def _get_next_io_sequence(db: Session) -> int:
@@ -515,59 +515,6 @@ def pdf_tables_to_dicts(pdf_source: IO[bytes] | str | Path) -> list[dict[str, An
                     tables_data.append(table_data)
 
     return tables_data
-
-
-def parse_docx_files(
-    files: list[tuple[str, bytes]],
-    save_dir: Path | None = None,
-) -> list[dict[str, Any]]:
-    """Process a collection of docx payloads and return flattened records."""
-    all_records: list[dict[str, Any]] = []
-    destination_dir = save_dir
-
-    for file_name, docx_bytes in files:
-        all_records.extend(_parse_docx_bytes(file_name, docx_bytes, destination_dir))
-
-    return all_records
-
-
-def parse_pdf_files(
-    files: list[tuple[str, bytes]],
-    save_dir: Path | None = None,
-) -> list[dict[str, Any]]:
-    """Process a collection of PDF payloads and return flattened records."""
-    all_records: list[dict[str, Any]] = []
-    destination_dir = save_dir
-
-    for file_name, pdf_bytes in files:
-        all_records.extend(_parse_pdf_bytes(file_name, pdf_bytes, destination_dir))
-
-    return all_records
-
-
-def parse_io_files(
-    files: list[tuple[str, bytes]],
-    save_dir: Path | None = None,
-) -> list[dict[str, Any]]:
-    """
-    Process a collection of docx or PDF payloads and return flattened records.
-    """
-    all_records: list[dict[str, Any]] = []
-    for file_name, payload in files:
-        suffix = Path(file_name).suffix.lower()
-        try:
-            if suffix == ".docx":
-                all_records.extend(_parse_docx_bytes(file_name, payload, save_dir))
-            elif suffix == ".pdf":
-                all_records.extend(_parse_pdf_bytes(file_name, payload, save_dir))
-            else:
-                raise ValueError(f"Unsupported file type for {file_name}")
-        except ValueError:
-            raise
-        except Exception as exc:
-            file_type = "DOCX" if suffix == ".docx" else "PDF" if suffix == ".pdf" else "unsupported"
-            raise ValueError(f"Failed to parse '{file_name}' as a {file_type} file") from exc
-    return all_records
 
 
 def parse_human_date(value: str) -> date | None:

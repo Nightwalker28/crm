@@ -299,12 +299,6 @@ export type ClientPagePayload = {
   status?: string;
 };
 
-export type CustomerOption = {
-  id: number;
-  label: string;
-  detail?: string | null;
-};
-
 function appendSortParams(params: URLSearchParams, sort: ClientPortalSortState | undefined) {
   if (!sort) return;
   params.set("sort_by", sort.key);
@@ -504,15 +498,6 @@ export function useCustomerOptions(type: "contact" | "organization", search: str
   });
 }
 
-export function useClientMe() {
-  return useQuery({
-    queryKey: ["client-auth", "me"],
-    queryFn: () => publicJson<ClientMe>("/client-auth/me", {}, "Sign in to open your portal."),
-    retry: false,
-    staleTime: 60_000,
-  });
-}
-
 export function useClientOverview() {
   return useQuery({
     queryKey: ["client-overview"],
@@ -678,10 +663,6 @@ export function useClientBooking(bookingId: string | number) {
     enabled: Boolean(bookingId),
     staleTime: 30_000,
   });
-}
-
-export function clientDocumentDownloadUrl(documentId: number) {
-  return apiUrl(`/client-documents/${documentId}/download`);
 }
 
 export async function downloadClientDocument(document: ClientDocument) {

@@ -131,6 +131,54 @@ test("adds editable AND and OR conditions and omits the redundant views breadcru
   await expect(page.getByText("2 saved conditions")).toBeVisible();
 });
 
+test("loads view management and filter controls for every extended built-in module", async ({ page }) => {
+  const modules = [
+    { key: "sales_orders", label: "Orders", fieldConfigKey: "sales_orders" },
+    { key: "contracts", label: "Contracts", fieldConfigKey: "contracts" },
+    { key: "support_cases", label: "Support Cases", fieldConfigKey: "support_cases" },
+    { key: "finance_pos", label: "Invoices", fieldConfigKey: "finance_pos" },
+    { key: "finance_payments", label: "Payments", fieldConfigKey: "finance_pos" },
+    { key: "catalog_products", label: "Products", fieldConfigKey: "catalog_products" },
+    { key: "catalog_services", label: "Services", fieldConfigKey: "catalog_services" },
+  ];
+
+  for (const moduleConfig of modules) {
+    await page.route(`**/module-fields/${moduleConfig.fieldConfigKey}`, (route) =>
+      route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+    );
+    await page.route(`**/users/saved-views/${moduleConfig.key}?**`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          views: [{
+            id: 100,
+            module_key: moduleConfig.key,
+            name: "Default View",
+            config: { visible_columns: [], filters: emptyFilters, sort: null },
+            is_default: true,
+            is_system: true,
+            updated_at: "2099-07-20T08:00:00Z",
+          }],
+        }),
+      }),
+    );
+
+    await page.goto(`/dashboard/views/${moduleConfig.key}`);
+
+    await expect(page.getByRole("heading", { name: `Manage ${moduleConfig.label} View` })).toBeVisible();
+    await expect(page.getByText("View manager could not be loaded")).toHaveCount(0);
+    await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
+
+    await page.getByRole("button", { name: "Add AND Condition" }).click();
+    await page.getByRole("button", { name: "Add OR Condition" }).click();
+    await expect(page.getByText("2 saved conditions")).toBeVisible();
+
+    await page.unroute(`**/module-fields/${moduleConfig.fieldConfigKey}`);
+    await page.unroute(`**/users/saved-views/${moduleConfig.key}?**`);
+  }
+});
+
 test("supports drag ordering, guards switching, and saves a new view from default", async ({ page }) => {
   await page.goto("/dashboard/views/sales_contacts?viewId=72");
   await page.getByTestId("selected-column-primary_email").dragTo(page.getByTestId("selected-column-first_name"));

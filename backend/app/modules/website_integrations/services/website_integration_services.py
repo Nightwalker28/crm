@@ -97,26 +97,6 @@ def _normalize_origins(value: list[str] | None) -> list[str]:
     return sorted({str(item).strip().rstrip("/") for item in value or [] if str(item).strip()})
 
 
-def _bool(value) -> bool:
-    return bool(value)
-
-
-def _item_state(item: WebsiteCatalogItem) -> dict:
-    return {
-        "id": item.id,
-        "slug": item.slug,
-        "sku": item.sku,
-        "name": item.name,
-        "item_type": item.item_type,
-        "currency": item.currency,
-        "public_unit_price": item.public_unit_price,
-        "stock_status": item.stock_status,
-        "stock_quantity": item.stock_quantity,
-        "is_public": bool(item.is_public),
-        "is_active": bool(item.is_active),
-    }
-
-
 def _order_state(order: WebsiteIntegrationOrder) -> dict:
     return {
         "id": order.id,

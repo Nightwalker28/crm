@@ -23,7 +23,7 @@ import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
 import type { Lead } from "@/hooks/sales/useLeads";
-import type { TableColumnOption } from "@/hooks/useTablePreferences";
+import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateTime } from "@/lib/datetime";
 import { getLeadScoreStyle, getLeadStatusStyle } from "@/lib/statusStyles";

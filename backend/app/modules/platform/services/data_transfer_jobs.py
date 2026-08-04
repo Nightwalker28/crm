@@ -7,7 +7,11 @@ from pathlib import Path
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.access_control import require_department_module_access, require_role_module_action_access
+from app.core.access_control import (
+    get_finance_user_scope,
+    require_department_module_access,
+    require_role_module_action_access,
+)
 from app.core.config import settings
 from app.core.database import SessionLocal
 from app.core.pagination import Pagination
@@ -107,10 +111,6 @@ def _notify_job_state(
             "status": job.status,
         },
     )
-
-
-def should_background_data_transfer(*, row_count: int | None = None) -> bool:
-    return should_background_data_transfer_with_size(row_count=row_count, file_size_bytes=None)
 
 
 def should_background_data_transfer_with_size(
@@ -689,8 +689,12 @@ def process_export_job(*, job_id: int) -> None:
             media_type = "text/csv"
         elif module_key == "finance_io":
             from app.modules.finance.models import FinanceIO
-            from app.modules.finance.services.io_search_api import export_generic_insertion_orders
-            from app.modules.finance.services.io_search_services import get_finance_module_id, get_finance_user_scope
+            from app.modules.finance.services.io_search_api import (
+                INSERTION_ORDER_EXPORT_HEADERS,
+                export_generic_insertion_orders,
+                serialize_insertion_order_export_row,
+            )
+            from app.modules.finance.services.io_search_services import get_finance_module_id
 
             if export_ids:
                 module_id = get_finance_module_id(db)
@@ -705,7 +709,6 @@ def process_export_job(*, job_id: int) -> None:
                 query = query.filter(FinanceIO.id.in_(export_ids))
                 records = query.order_by(FinanceIO.updated_at.desc()).all()
                 exported_rows = len(records)
-                from app.modules.finance.services.io_search_api import INSERTION_ORDER_EXPORT_HEADERS
                 from app.core.module_export import dict_rows_to_csv_bytes
                 field_keys = [
                     field for field in (payload.get("field_keys") or INSERTION_ORDER_EXPORT_HEADERS)
@@ -715,30 +718,7 @@ def process_export_job(*, job_id: int) -> None:
                 update_job_progress(db, job, progress_percent=70, progress_message="Serializing insertion orders export.")
                 content = dict_rows_to_csv_bytes(
                     headers=field_keys,
-                    rows=(
-                        {
-                            "id": record.id,
-                            "io_number": record.io_number or "",
-                            "customer_name": record.customer_name or "",
-                            "customer_contact_id": record.customer_contact_id or "",
-                            "customer_organization_id": record.customer_organization_id or "",
-                            "counterparty_reference": record.counterparty_reference or "",
-                            "external_reference": record.external_reference or "",
-                            "issue_date": record.issue_date.isoformat() if record.issue_date else "",
-                            "effective_date": record.effective_date.isoformat() if record.effective_date else "",
-                            "due_date": record.due_date.isoformat() if record.due_date else "",
-                            "start_date": record.start_date.isoformat() if record.start_date else "",
-                            "end_date": record.end_date.isoformat() if record.end_date else "",
-                            "status": record.status or "",
-                            "currency": record.currency or "",
-                            "subtotal_amount": record.subtotal_amount if record.subtotal_amount is not None else "",
-                            "tax_amount": record.tax_amount if record.tax_amount is not None else "",
-                            "total_amount": record.total_amount if record.total_amount is not None else "",
-                            "notes": record.notes or "",
-                            "updated_at": record.updated_at.isoformat() if record.updated_at else "",
-                        }
-                        for record in records
-                    ),
+                    rows=(serialize_insertion_order_export_row(record) for record in records),
                 )
             else:
                 update_job_progress(db, job, progress_percent=70, progress_message="Serializing insertion orders export.")

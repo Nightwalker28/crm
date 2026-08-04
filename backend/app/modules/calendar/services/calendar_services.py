@@ -414,49 +414,6 @@ def _calendar_connection_token(db: Session, connection: UserCalendarConnection, 
     )
 
 
-def upsert_google_calendar_connection(
-    db: Session,
-    *,
-    tenant_id: int,
-    user: User,
-    token_json: dict,
-    account_email: str | None,
-) -> UserCalendarConnection:
-    connection = _google_connection_for_user(
-        db,
-        tenant_id=tenant_id,
-        user_id=user.id,
-        include_non_connected=True,
-    )
-    if not connection:
-        connection = UserCalendarConnection(
-            tenant_id=tenant_id,
-            user_id=user.id,
-            provider=CalendarProvider.google.value,
-        )
-
-    scopes_raw = token_json.get("scope")
-    scopes = scopes_raw.split(" ") if isinstance(scopes_raw, str) and scopes_raw.strip() else [GOOGLE_CALENDAR_EVENTS_SCOPE]
-    expires_in = token_json.get("expires_in")
-    connection.status = "connected"
-    connection.account_email = account_email
-    connection.scopes = scopes
-    if token_json.get("access_token"):
-        _set_calendar_connection_token(connection, "access_token", token_json["access_token"])
-    if token_json.get("refresh_token"):
-        _set_calendar_connection_token(connection, "refresh_token", token_json["refresh_token"])
-    connection.token_expires_at = (
-        _utcnow() + timedelta(seconds=int(expires_in))
-        if expires_in is not None
-        else connection.token_expires_at
-    )
-    connection.last_error = None
-    db.add(connection)
-    db.commit()
-    db.refresh(connection)
-    return connection
-
-
 def upsert_microsoft_calendar_connection(
     db: Session,
     *,

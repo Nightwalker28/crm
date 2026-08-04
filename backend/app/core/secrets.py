@@ -104,9 +104,5 @@ def encrypt_sensitive_value(value: str) -> EncryptedSecret:
     return encrypt_application_secret(value)
 
 
-def decrypt_sensitive_value(value: str | None, *, key_version: str | None = None) -> str | None:
-    return decrypt_application_secret(value, key_version=key_version)
-
-
 def decrypt_sensitive_value_with_rotation(value: str | None, *, key_version: str | None = None) -> tuple[str | None, bool]:
     return decrypt_application_secret_with_rotation(value, key_version=key_version)

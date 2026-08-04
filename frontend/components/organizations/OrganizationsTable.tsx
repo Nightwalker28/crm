@@ -23,7 +23,7 @@ import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import type { Organization } from "@/hooks/sales/useOrganizations";
-import type { TableColumnOption } from "@/hooks/useTablePreferences";
+import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatWebsiteDisplay, normalizeWebsiteHref } from "@/lib/urlDisplay";
 import { formatDateTime } from "@/lib/datetime";

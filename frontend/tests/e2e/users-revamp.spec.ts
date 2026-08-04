@@ -160,6 +160,31 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test("User filters follow one vertical scan path and expose selected state", async ({ page }) => {
+  await page.goto("/dashboard/settings/users?tab=users");
+  await page.getByRole("button", { name: /^Filters/ }).click();
+
+  const teamsHeading = page.getByRole("heading", { name: "Teams", exact: true });
+  const rolesHeading = page.getByRole("heading", { name: "Roles", exact: true });
+  const statusHeading = page.getByRole("heading", { name: "Status", exact: true });
+  const [teamsBox, rolesBox, statusBox] = await Promise.all([
+    teamsHeading.boundingBox(),
+    rolesHeading.boundingBox(),
+    statusHeading.boundingBox(),
+  ]);
+
+  expect(teamsBox).not.toBeNull();
+  expect(rolesBox).not.toBeNull();
+  expect(statusBox).not.toBeNull();
+  expect(teamsBox?.y ?? 0).toBeLessThan(rolesBox?.y ?? 0);
+  expect(rolesBox?.y ?? 0).toBeLessThan(statusBox?.y ?? 0);
+
+  const managerFilter = page.getByRole("button", { name: "Manager", exact: true });
+  await managerFilter.click();
+  await expect(managerFilter).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("button", { name: "Clear filters" })).toBeVisible();
+});
+
 test("Users supports responsive bulk role and status updates", async ({
   page,
 }) => {

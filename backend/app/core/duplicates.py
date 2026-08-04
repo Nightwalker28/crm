@@ -3,10 +3,9 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
-from typing import AbstractSet, Generic, Hashable, Iterable, TypeVar
+from typing import Generic, Hashable, Iterable, TypeVar
 
 T = TypeVar("T", bound=Hashable)
-V = TypeVar("V")
 
 
 @dataclass(frozen=True)
@@ -108,12 +107,3 @@ def should_merge_value(current_value, incoming_value) -> bool:
     if isinstance(current_value, (list, dict)) and not current_value:
         return True
     return False
-
-
-def drop_existing_duplicates(
-    mapping: dict[T, V],
-    existing_duplicates: AbstractSet[T],
-) -> dict[T, V]:
-    if not existing_duplicates:
-        return mapping
-    return {key: value for key, value in mapping.items() if key not in existing_duplicates}

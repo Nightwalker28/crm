@@ -23,7 +23,7 @@ import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useCustomModuleSchema } from "@/hooks/useModuleBuilder";
 import { useSavedViews, type SavedViewConfig } from "@/hooks/useSavedViews";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
-import type { TableColumnOption } from "@/hooks/useTablePreferences";
+import type { TableColumnOption } from "@/types/table";
 import {
   buildCustomModuleViewDefinition,
   buildModuleViewDefinition,

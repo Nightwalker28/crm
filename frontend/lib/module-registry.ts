@@ -123,10 +123,6 @@ export function getRequiredModuleKeyForRoute(route: string): string | null {
   return definition ? definition.requiredModuleKey ?? definition.key : null;
 }
 
-export function isRegisteredModuleRoute(route: string): boolean {
-  return MODULES_BY_ROUTE.has(route);
-}
-
 export function isModuleVisibleInNavigation(moduleKey: string): boolean {
   const definition = getModuleDefinition(moduleKey);
   return definition?.enabled === true && definition.status !== "hidden" && !definition.adminOnly;

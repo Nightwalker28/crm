@@ -3,18 +3,17 @@ import logging
 from datetime import date, datetime, timezone
 from typing import Any
 
-from fastapi import HTTPException, Request, UploadFile, status
+from fastapi import HTTPException, Request, status
 from sqlalchemy import func, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.access_control import get_finance_user_scope
-from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, read_upload_bytes, require_csv_headers, rows_from_csv_bytes
+from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.module_export import dict_rows_to_csv_file
 from app.core.duplicates import (
     DuplicateMode,
     detect_duplicates,
-    ensure_single_duplicate_action,
     resolve_duplicate_mode,
     should_merge_value,
 )
@@ -75,7 +74,7 @@ INSERTION_ORDER_EXPORT_HEADERS = [
 INSERTION_ORDER_IMPORT_CHUNK_SIZE = 500
 
 
-def _serialize_insertion_order_export_row(record: FinanceIO) -> dict:
+def serialize_insertion_order_export_row(record: FinanceIO) -> dict:
     return {
         "id": record.id,
         "io_number": record.io_number or "",
@@ -660,38 +659,6 @@ def import_insertion_orders_csv_bytes(
     )
 
 
-async def import_insertion_orders_csv(
-    db: Session,
-    current_user,
-    file: UploadFile | None = None,
-    *,
-    file_bytes: bytes | None = None,
-    duplicate_mode: str | None = None,
-    default_duplicate_mode: str | None = None,
-    replace_duplicates: bool,
-    skip_duplicates: bool,
-    create_new_records: bool,
-):
-    if file_bytes is None:
-        if file is None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Import file is required.",
-            )
-        file_bytes = await read_upload_bytes(file, allowed_extensions={"csv"})
-
-    return import_insertion_orders_csv_bytes(
-        db,
-        current_user,
-        file_bytes=file_bytes,
-        duplicate_mode=duplicate_mode,
-        default_duplicate_mode=default_duplicate_mode,
-        replace_duplicates=replace_duplicates,
-        skip_duplicates=skip_duplicates,
-        create_new_records=create_new_records,
-    )
-
-
 def get_downloadable_insertion_order(db: Session, current_user, io_number: str) -> tuple[Path, str]:
     module_id = get_finance_module_id(db)
     user_scope = get_finance_user_scope(db, current_user)
@@ -824,7 +791,7 @@ def export_generic_insertion_orders(
     return (
         dict_rows_to_csv_file(
             headers=headers,
-            rows=(_serialize_insertion_order_export_row(record) for record in records),
+            rows=(serialize_insertion_order_export_row(record) for record in records),
         ),
         total_count,
     )

@@ -156,31 +156,32 @@ export default function SettingsPage() {
 
       <div className="grid gap-6">
         {SETTINGS_SECTIONS.map((section) => (
-          <section key={section.key} className="grid gap-3" aria-labelledby={`${section.key}-heading`}>
-            <h2
-              id={`${section.key}-heading`}
-              className={`text-sm font-semibold uppercase tracking-[0.16em] ${
-                section.danger ? "text-state-danger" : "text-copy-muted"
-              }`}
+          <section key={section.key} aria-labelledby={`${section.key}-heading`}>
+            <Card
+              className={section.danger ? "border-state-danger/30" : undefined}
             >
-              {section.title}
-            </h2>
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {section.items.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="group rounded-[var(--radius-card)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-app"
-                  >
-                    <Card
-                      variant="interactive"
-                      className={`flex h-full items-start justify-between gap-3 px-5 py-5 ${
-                        section.danger ? "border-state-danger/30 hover:border-state-danger/60" : ""
+              <div className="border-b border-line-subtle px-5 py-4">
+                <h2
+                  id={`${section.key}-heading`}
+                  className={`text-sm font-semibold ${
+                    section.danger ? "text-state-danger" : "text-copy-primary"
+                  }`}
+                >
+                  {section.title}
+                </h2>
+              </div>
+              <nav aria-label={`${section.title} settings`}>
+                {section.items.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`group flex items-center justify-between gap-4 border-b border-line-subtle px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-muted focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
+                        section.danger ? "hover:bg-state-danger-muted" : ""
                       }`}
                     >
-                      <div className="flex min-w-0 gap-3">
+                      <span className="flex min-w-0 items-start gap-3">
                         <span
                           className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] border ${
                             section.danger
@@ -194,16 +195,13 @@ export default function SettingsPage() {
                           <span className="block text-sm font-semibold text-copy-primary">{item.title}</span>
                           <span className="mt-1 block text-sm leading-6 text-copy-muted">{item.description}</span>
                         </span>
-                      </div>
-                      <span className="mt-1 flex shrink-0 items-center gap-1 text-xs font-medium text-copy-muted transition-colors group-hover:text-copy-primary">
-                        Open
-                        <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
                       </span>
-                    </Card>
-                  </Link>
-                );
-              })}
-            </div>
+                      <ArrowRight className="h-4 w-4 shrink-0 text-copy-muted transition-transform group-hover:translate-x-0.5 group-hover:text-copy-primary" />
+                    </Link>
+                  );
+                })}
+              </nav>
+            </Card>
           </section>
         ))}
       </div>

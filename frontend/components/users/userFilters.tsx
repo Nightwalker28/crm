@@ -1,10 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import SearchBar from "@/components/ui/SearchBar";
-import { Button } from "@/components/ui/button";
-import { Filter, SearchX } from "lucide-react";
+import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { Card } from "../ui/Card";
 import { Spinner } from "../ui/spinner";
 
@@ -18,6 +15,7 @@ function FilterChip({ label, active, onClick }: FilterChipProps) {
   return (
     <button
       type="button"
+      aria-pressed={active}
       onClick={onClick}
       className={`
         relative flex items-center justify-center rounded-[var(--radius-control)] border px-3 py-1.5 text-sm font-medium transition-colors motion-reduce:transition-none
@@ -51,7 +49,7 @@ export type UserFiltersOptions = {
 type Props = {
   value: UserFiltersValue;
   options: UserFiltersOptions;
-  isLoading?: boolean; // Added isLoading prop
+  isLoading?: boolean;
   onChange: (next: UserFiltersValue) => void;
   onClear: () => void;
 };
@@ -63,20 +61,6 @@ export default function UserFilters({
   onChange,
   onClear,
 }: Props) {
-  const hasActiveFilters = useMemo(() => {
-    return (
-      value.search.trim().length > 0 ||
-      value.selectedTeams.length > 0 ||
-      value.selectedRoles.length > 0 ||
-      value.selectedStatuses.length > 0
-    );
-  }, [
-    value.search,
-    value.selectedRoles,
-    value.selectedStatuses,
-    value.selectedTeams,
-  ]);
-
   const activeCount =
     value.selectedTeams.length +
     value.selectedRoles.length +
@@ -84,79 +68,31 @@ export default function UserFilters({
 
   return (
     <div className="flex flex-col gap-4 text-copy-primary">
-      {/* Main Control Bar */}
-      <Card className="px-4 py-1.5">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between">
-          {/* Search Input Area */}
-          <div className="flex flex-1 items-center gap-3">
-            <div className="w-fit">
-              <SearchBar
-                value={value.search}
-                onChange={(next) => onChange({ ...value, search: next })}
-                placeholder="Search users..."
-              />
-            </div>
-
-            {/* Loading Spinner or Total Count Text */}
-            <div className="hidden min-w-[140px] text-sm text-copy-muted md:block">
-              {isLoading ? (
-                <div className="flex animate-pulse items-center gap-2 motion-reduce:animate-none">
-                  <Spinner />
-                  <span className="text-copy-muted">Updating...</span>
-                </div>
-              ) : (
-                <span className="text-copy-muted">
-                  <span className="font-medium text-copy-primary">
-                    {options.totalCount}
-                  </span>{" "}
-                  users from{" "}
-                  <span className="font-medium text-copy-primary">
-                    {options.allTeams.length}
-                  </span>{" "}
-                  teams
-                </span>
-              )}
-            </div>
-          </div>
-
-          {/* Right Side Actions */}
-          <div className="flex items-center gap-2 px-1">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                onChange({ ...value, filtersOpen: !value.filtersOpen })
-              }
-              className={`
-                text-xs font-normal transition-colors
-                ${value.filtersOpen ? "bg-surface-raised text-copy-primary" : "text-copy-muted hover:text-copy-primary"}
-              `}
-            >
-              <Filter />
-              Filters
-              {activeCount > 0 && (
-                <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-action-primary-muted px-1 text-[9px] font-bold text-copy-primary">
-                  {activeCount}
-                </span>
-              )}
-            </Button>
-
-            {hasActiveFilters && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={onClear}
-                className="text-xs text-copy-muted hover:text-state-danger"
-              >
-                <SearchX />
-                Clear
-              </Button>
+      <ModuleListToolbar
+        searchValue={value.search}
+        onSearchChange={(search) => onChange({ ...value, search })}
+        searchPlaceholder="Search users..."
+        filtersOpen={value.filtersOpen}
+        activeFilterCount={activeCount}
+        onToggleFilters={() => onChange({ ...value, filtersOpen: !value.filtersOpen })}
+        onClearFilters={onClear}
+        actionControls={
+          <div className="min-w-[140px] text-sm text-copy-muted" aria-live="polite">
+            {isLoading ? (
+              <span className="flex items-center gap-2">
+                <Spinner />
+                Updating...
+              </span>
+            ) : (
+              <span>
+                <span className="font-medium text-copy-primary">{options.totalCount}</span>{" "}
+                users · <span className="font-medium text-copy-primary">{options.allTeams.length}</span>{" "}
+                teams
+              </span>
             )}
           </div>
-        </div>
-      </Card>
+        }
+      />
 
       {/* Expandable Filter Drawer */}
       <AnimatePresence initial={false}>
@@ -169,14 +105,11 @@ export default function UserFilters({
             transition={{ duration: 0.2 }}
             className="overflow-hidden"
           >
-            <Card className="px-4 py-3">
-              <div className="grid gap-6 md:grid-cols-3">
-                {/* Teams Section */}
-                <div className="space-y-2.5">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-copy-muted">
-                    Teams
-                  </div>
-                  <div className="flex flex-wrap gap-2">
+            <Card>
+              <div className="divide-y divide-line-subtle">
+                <section className="px-4 py-4" aria-labelledby="user-filter-teams">
+                  <h3 id="user-filter-teams" className="text-sm font-semibold text-copy-primary">Teams</h3>
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <FilterChip
                       label="All"
                       active={value.selectedTeams.length === 0}
@@ -196,14 +129,11 @@ export default function UserFilters({
                       />
                     ))}
                   </div>
-                </div>
+                </section>
 
-                {/* Roles Section */}
-                <div className="space-y-2.5">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-copy-muted">
-                    Roles
-                  </div>
-                  <div className="flex flex-wrap gap-2">
+                <section className="px-4 py-4" aria-labelledby="user-filter-roles">
+                  <h3 id="user-filter-roles" className="text-sm font-semibold text-copy-primary">Roles</h3>
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <FilterChip
                       label="All"
                       active={value.selectedRoles.length === 0}
@@ -223,14 +153,11 @@ export default function UserFilters({
                       />
                     ))}
                   </div>
-                </div>
+                </section>
 
-                {/* Status Section */}
-                <div className="space-y-2.5">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-copy-muted">
-                    Status
-                  </div>
-                  <div className="flex flex-wrap gap-2">
+                <section className="px-4 py-4" aria-labelledby="user-filter-status">
+                  <h3 id="user-filter-status" className="text-sm font-semibold text-copy-primary">Status</h3>
+                  <div className="mt-3 flex flex-wrap gap-2">
                     <FilterChip
                       label="All"
                       active={value.selectedStatuses.length === 0}
@@ -262,7 +189,7 @@ export default function UserFilters({
                       );
                     })}
                   </div>
-                </div>
+                </section>
               </div>
             </Card>
           </motion.div>

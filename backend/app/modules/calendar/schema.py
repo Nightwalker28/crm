@@ -185,16 +185,6 @@ class CalendarTaskEventResponse(BaseModel):
     task_id: int
 
 
-class CalendarSyncResponse(BaseModel):
-    provider: CalendarProvider
-    synced_event_count: int = 0
-    provider_calendar_id: str | None = None
-    provider_calendar_name: str | None = None
-    last_synced_at: datetime | None = None
-    status: CalendarConnectionStatus
-    last_error: str | None = None
-
-
 class MeetingBookingAvailabilityInput(BaseModel):
     weekday: int = Field(ge=0, le=6)
     start_time: time

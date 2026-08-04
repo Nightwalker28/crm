@@ -52,16 +52,3 @@ export function getFilenameFromDisposition(header: string | null, fallback: stri
   const basename = decoded.split(/[\\/]/).pop()?.replace(/[\u0000-\u001f\u007f]/g, "").trim();
   return basename || fallback;
 }
-
-export function getErrorMessage(body: unknown, fallback: string) {
-  if (body && typeof body === "object") {
-    const detail = "detail" in body ? body.detail : undefined;
-    const message = "message" in body ? body.message : undefined;
-    if (typeof detail === "string" && detail.trim()) return detail;
-    if (detail && typeof detail === "object" && "message" in detail && typeof detail.message === "string") {
-      return detail.message;
-    }
-    if (typeof message === "string" && message.trim()) return message;
-  }
-  return fallback;
-}

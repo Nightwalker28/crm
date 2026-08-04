@@ -1,11 +1,3 @@
-type ViewTransition = {
-  ready: Promise<void>;
-};
-
-type ViewTransitionDocument = Document & {
-  startViewTransition?: (callback: () => void) => ViewTransition;
-};
-
 function requireBrowserDownloadTarget() {
   if (
     typeof window === "undefined" ||
@@ -50,21 +42,5 @@ export function openBlobInNewTab(blob: Blob, fallbackFilename: string, revokeAft
   }
 
   window.setTimeout(() => urlApi.revokeObjectURL(url), revokeAfterMs);
-  return true;
-}
-
-export async function runViewTransition(callback: () => void) {
-  if (typeof document === "undefined") {
-    callback();
-    return false;
-  }
-
-  const transitionDocument = document as ViewTransitionDocument;
-  if (typeof transitionDocument.startViewTransition !== "function") {
-    callback();
-    return false;
-  }
-
-  await transitionDocument.startViewTransition(callback).ready;
   return true;
 }

@@ -6,14 +6,12 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
-from app.core.module_filters import apply_filter_conditions
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination
 from app.modules.sales.repositories import contacts_repository
 from app.modules.platform.services.custom_fields import (
-    build_custom_field_filter_map,
     hydrate_custom_field_record,
     hydrate_custom_field_records,
     load_custom_field_values_with_fallback,
@@ -68,55 +66,6 @@ def _apply_search_filter(query, search: str | None):
         document=SalesContact.search_doc,
         default_order_column=SalesContact.created_time,
     )
-
-
-def _build_contacts_query(
-    db: Session,
-    tenant_id: int,
-    search: str | None = None,
-    *,
-    all_filter_conditions: list[dict] | None = None,
-    any_filter_conditions: list[dict] | None = None,
-):
-    query = (
-        db.query(SalesContact)
-        .outerjoin(SalesOrganization)
-        .filter(
-            SalesContact.tenant_id == tenant_id,
-            SalesContact.deleted_at.is_(None),
-        )
-    )
-    filter_field_map = {
-        "first_name": {"expression": SalesContact.first_name, "type": "text"},
-        "last_name": {"expression": SalesContact.last_name, "type": "text"},
-        "primary_email": {"expression": SalesContact.primary_email, "type": "text"},
-        "contact_telephone": {"expression": SalesContact.contact_telephone, "type": "text"},
-        "current_title": {"expression": SalesContact.current_title, "type": "text"},
-        "region": {"expression": SalesContact.region, "type": "text"},
-        "country": {"expression": SalesContact.country, "type": "text"},
-        "linkedin_url": {"expression": SalesContact.linkedin_url, "type": "text"},
-        "organization_name": {"expression": SalesOrganization.org_name, "type": "text"},
-        "created_time": {"expression": SalesContact.created_time, "type": "date"},
-        **build_custom_field_filter_map(
-            db,
-            tenant_id=tenant_id,
-            module_key="sales_contacts",
-            record_id_expression=SalesContact.contact_id,
-        ),
-    }
-    query = apply_filter_conditions(
-        query,
-        conditions=all_filter_conditions,
-        logic="all",
-        field_map=filter_field_map,
-    )
-    query = apply_filter_conditions(
-        query,
-        conditions=any_filter_conditions,
-        logic="any",
-        field_map=filter_field_map,
-    )
-    return _apply_search_filter(query, search)
 
 
 def _ensure_assigned_user(db: Session, user_id: int, *, tenant_id: int):
@@ -786,22 +735,4 @@ def export_contacts_to_csv(contacts: Iterable[SalesContact], field_keys: list[st
     return dict_rows_to_csv_bytes(
         headers=headers,
         rows=rows,
-    )
-
-
-def get_all_contacts(db: Session, *, tenant_id: int, search: str | None = None) -> list[SalesContact]:
-    query = _apply_search_filter(
-        db.query(SalesContact).filter(
-            SalesContact.tenant_id == tenant_id,
-            SalesContact.deleted_at.is_(None),
-        ),
-        search,
-    )
-    contacts = query.order_by(SalesContact.created_time.desc()).all()
-    return hydrate_custom_field_records(
-        db,
-        tenant_id=tenant_id,
-        module_key="sales_contacts",
-        records=contacts,
-        record_id_attr="contact_id",
     )

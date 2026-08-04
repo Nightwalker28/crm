@@ -1,25 +1,4 @@
-import { getModuleDefinition, getModuleRegistryLabel, type ModuleGroupKey } from "@/lib/module-registry";
-
-export type ModuleCategory =
-  | "Workspace"
-  | "Sales"
-  | "Products & Services"
-  | "Finance"
-  | "Reports"
-  | "Support"
-  | "Platform"
-  | "Other";
-
-const GROUP_CATEGORIES: Record<ModuleGroupKey, ModuleCategory> = {
-  workspace: "Workspace",
-  sales: "Sales",
-  catalog: "Products & Services",
-  support: "Support",
-  finance: "Finance",
-  reports: "Reports",
-  settings: "Platform",
-  other: "Other",
-};
+import { getModuleRegistryLabel } from "@/lib/module-registry";
 
 export function formatSnakeCaseLabel(value: string): string {
   return value
@@ -42,13 +21,4 @@ export function getModuleDisplayName(moduleName: string, fallbackDescription?: s
   }
 
   return formatSnakeCaseLabel(moduleName);
-}
-
-export function getModuleCategory(moduleName: string): ModuleCategory {
-  if (moduleName.startsWith("custom_")) {
-    return "Other";
-  }
-
-  const definition = getModuleDefinition(moduleName);
-  return definition ? GROUP_CATEGORIES[definition.group] : "Other";
 }

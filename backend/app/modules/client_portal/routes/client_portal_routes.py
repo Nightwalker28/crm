@@ -139,13 +139,6 @@ client_overview_router = APIRouter(prefix="/client-overview", tags=["Client Over
 client_bearer = HTTPBearer(auto_error=False)
 
 
-def _tenant_from_request(request: Request):
-    tenant = getattr(request.state, "tenant", None)
-    if not tenant:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant context missing")
-    return tenant
-
-
 def _optional_tenant_from_request(request: Request):
     return getattr(request.state, "tenant", None)
 

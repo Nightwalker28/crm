@@ -29,15 +29,6 @@ function conditionKey(condition: Record<string, unknown>) {
   return JSON.stringify(comparableCondition(condition));
 }
 
-export function canonicalSavedViewConditionsKey(conditions: unknown[] = []) {
-  return JSON.stringify(
-    conditions
-      .filter((condition): condition is Record<string, unknown> => Boolean(condition) && typeof condition === "object")
-      .map(comparableCondition)
-      .sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right))),
-  );
-}
-
 export function canonicalSavedViewFiltersKey(filters: SavedViewFilters | undefined) {
   if (!filters) return "{}";
   const normalized = stableValue(filters) as Record<string, unknown>;

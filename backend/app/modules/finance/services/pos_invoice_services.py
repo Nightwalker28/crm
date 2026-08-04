@@ -1,19 +1,15 @@
 from __future__ import annotations
 
-import re
 from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_, text
+from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.access_control import get_finance_user_scope
-from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination, build_paged_response
-from app.core.postgres_search import searchable_text
 from app.modules.finance.models import FinancePosInvoice, FinancePosInvoiceLine
 from app.modules.finance.repositories import pos_invoice_repository
 from app.modules.finance.services.common import finance_date_to_iso
@@ -315,33 +311,6 @@ def serialize_invoice(invoice: FinancePosInvoice, *, current_user=None, include_
     if include_lines:
         data["lines"] = [_serialize_line(line) for line in invoice.lines]
     return data
-
-
-def _query_invoices(db: Session, current_user, *, search: str | None = None, status_filter: str | None = None):
-    scope = get_finance_user_scope(db, current_user)
-    query = db.query(FinancePosInvoice).filter(
-        FinancePosInvoice.tenant_id == current_user.tenant_id,
-        FinancePosInvoice.deleted_at.is_(None),
-    )
-    if scope.user_id_filter is not None:
-        query = query.filter(FinancePosInvoice.user_id == scope.user_id_filter)
-    if status_filter and status_filter != "all":
-        query = query.filter(func.lower(FinancePosInvoice.status) == status_filter.strip().lower())
-    query = apply_ranked_search(
-        query,
-        search=search,
-        document=searchable_text(
-            FinancePosInvoice.invoice_number,
-            FinancePosInvoice.customer_name,
-            FinancePosInvoice.customer_email,
-            FinancePosInvoice.status,
-            FinancePosInvoice.payment_status,
-            FinancePosInvoice.payment_method,
-            FinancePosInvoice.notes,
-        ),
-        default_order_column=FinancePosInvoice.updated_at,
-    )
-    return query
 
 
 def list_invoices(

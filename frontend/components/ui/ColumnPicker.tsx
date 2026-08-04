@@ -5,7 +5,7 @@ import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { TableColumnOption } from "@/hooks/useTablePreferences";
+import type { TableColumnOption } from "@/types/table";
 
 type Props = {
   title?: string;

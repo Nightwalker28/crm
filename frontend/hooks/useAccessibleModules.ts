@@ -7,6 +7,7 @@ import { apiFetch } from "@/lib/api";
 const LEGACY_MODULE_CACHE_KEY = "lynk_modules";
 const PREVIOUS_MODULE_CACHE_KEY = "lynk_modules:v2";
 const MODULE_CACHE_KEY = "lynk_modules:v3";
+const MODULE_CACHE_INVALIDATION_EVENT = "lynk:modules-invalidated";
 
 export type AccessibleModuleActions = {
   can_view: boolean;
@@ -53,6 +54,7 @@ export function invalidateModuleCache() {
   window.sessionStorage.removeItem(LEGACY_MODULE_CACHE_KEY);
   window.sessionStorage.removeItem(PREVIOUS_MODULE_CACHE_KEY);
   window.sessionStorage.removeItem(MODULE_CACHE_KEY);
+  window.dispatchEvent(new Event(MODULE_CACHE_INVALIDATION_EVENT));
 }
 
 function sameAccessibleModules(a: AccessibleModule[], b: AccessibleModule[]) {
@@ -80,37 +82,46 @@ export function useAccessibleModules() {
   });
 
   useEffect(() => {
-    const cachedModules = readCachedModules();
-    if (cachedModules !== null) {
-      setState({ modules: cachedModules, isLoading: false });
-      return;
-    }
-
     let cancelled = false;
-    (async () => {
+    let requestId = 0;
+
+    async function loadModules(allowCachedModules: boolean) {
+      const currentRequestId = ++requestId;
+      const cachedModules = allowCachedModules ? readCachedModules() : null;
+      if (cachedModules !== null) {
+        setState({ modules: cachedModules, isLoading: false });
+        return;
+      }
+
+      setState((current) => ({ ...current, isLoading: true }));
       let nextModules: AccessibleModule[] | null = null;
       try {
         const res = await apiFetch("/users/me/modules");
         if (!res.ok) throw new Error(`Status ${res.status}`);
         const body = await res.json();
-        if (cancelled) return;
+        if (cancelled || currentRequestId !== requestId) return;
         const next = Array.isArray(body) ? body : [];
         sessionStorage.setItem(MODULE_CACHE_KEY, JSON.stringify(next));
         nextModules = next;
       } catch {
-        if (cancelled) return;
+        if (cancelled || currentRequestId !== requestId) return;
       } finally {
-        if (!cancelled) {
+        if (!cancelled && currentRequestId === requestId) {
           setState((current) => ({
             modules: nextModules && !sameAccessibleModules(current.modules, nextModules) ? nextModules : current.modules,
             isLoading: false,
           }));
         }
       }
-    })();
+    }
+
+    const handleInvalidation = () => void loadModules(false);
+    window.addEventListener(MODULE_CACHE_INVALIDATION_EVENT, handleInvalidation);
+    void loadModules(true);
 
     return () => {
       cancelled = true;
+      window.removeEventListener(MODULE_CACHE_INVALIDATION_EVENT, handleInvalidation);
     };
   }, []);
 

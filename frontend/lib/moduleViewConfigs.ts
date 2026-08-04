@@ -3,7 +3,7 @@ import type {
   SavedViewConfig,
   SavedViewFilterOperator,
 } from "@/hooks/useSavedViews";
-import type { TableColumnOption } from "@/hooks/useTablePreferences";
+import type { TableColumnOption } from "@/types/table";
 import type { ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { isProtectedFieldKey } from "@/hooks/useModuleFieldConfigs";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";

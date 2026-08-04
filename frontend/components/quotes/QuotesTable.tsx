@@ -22,7 +22,7 @@ import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/button";
 import type { Quote } from "@/hooks/sales/useQuotes";
-import type { TableColumnOption } from "@/hooks/useTablePreferences";
+import type { TableColumnOption } from "@/types/table";
 import { formatDateOnly } from "@/lib/datetime";
 import {
   getReadableColumnLabel,

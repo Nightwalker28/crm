@@ -2,7 +2,6 @@
 
 import type { ReactNode } from "react";
 
-import { Switch, SwitchThumb } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 
 type SettingsSwitchProps = {
@@ -23,22 +22,53 @@ export function SettingsSwitch({
   "aria-label": ariaLabel,
 }: SettingsSwitchProps) {
   return (
-    <Switch
+    <div
       id={id}
+      role="group"
       aria-label={ariaLabel}
-      checked={checked}
-      disabled={disabled}
-      onCheckedChange={onCheckedChange}
       className={cn(
-        "relative inline-flex h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised p-0.5 shadow-inner transition-colors",
-        "data-[state=checked]:border-action-primary data-[state=checked]:bg-action-primary",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
-        "disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-grid shrink-0 grid-cols-2 rounded-[var(--radius-control)] border border-line-default bg-surface p-0.5",
+        disabled && "opacity-50",
         className,
       )}
     >
-      <SwitchThumb className="block h-5 w-5 translate-x-0 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
-    </Switch>
+      <button
+        type="button"
+        aria-pressed={!checked}
+        disabled={disabled}
+        onClick={() => {
+          if (checked) onCheckedChange(false);
+        }}
+        className={cn(
+          "min-w-12 rounded-[calc(var(--radius-control)-2px)] px-2.5 py-1.5 text-xs font-semibold transition-colors",
+          "focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+          "disabled:cursor-not-allowed",
+          !checked
+            ? "bg-surface-raised text-copy-primary shadow-sm"
+            : "text-copy-muted hover:text-copy-primary",
+        )}
+      >
+        Off
+      </button>
+      <button
+        type="button"
+        aria-pressed={checked}
+        disabled={disabled}
+        onClick={() => {
+          if (!checked) onCheckedChange(true);
+        }}
+        className={cn(
+          "min-w-12 rounded-[calc(var(--radius-control)-2px)] px-2.5 py-1.5 text-xs font-semibold transition-colors",
+          "focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+          "disabled:cursor-not-allowed",
+          checked
+            ? "bg-action-primary text-primary-foreground shadow-sm"
+            : "text-copy-muted hover:text-copy-primary",
+        )}
+      >
+        On
+      </button>
+    </div>
   );
 }
 
@@ -67,9 +97,7 @@ export function SettingsSwitchRow({
       )}
     >
       <div className="min-w-0">
-        <label htmlFor={id} className="block cursor-pointer text-sm font-medium text-copy-primary">
-          {label}
-        </label>
+        <div className="text-sm font-medium text-copy-primary">{label}</div>
         {description ? <p className="mt-0.5 text-xs leading-5 text-copy-muted">{description}</p> : null}
       </div>
       <SettingsSwitch

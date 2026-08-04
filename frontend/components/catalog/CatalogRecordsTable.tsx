@@ -21,7 +21,7 @@ import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { Pill } from "@/components/ui/Pill";
 import { Switch, SwitchThumb } from "@/components/ui/switch";
-import type { TableColumnOption } from "@/hooks/useTablePreferences";
+import type { TableColumnOption } from "@/types/table";
 import type { CatalogKind, CatalogRecord } from "@/hooks/catalog/useCatalogRecords";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
 import { resolveMediaUrl } from "@/lib/media";

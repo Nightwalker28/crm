@@ -147,11 +147,6 @@ class RolePermissionUpdateRequest(BaseModel):
         return value
 
 
-class ApproveUserRequest(BaseModel):
-    role_id: int
-    team_id: int
-
-
 class UpdateUserRequest(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
@@ -307,20 +302,6 @@ class ModuleAccessSchema(BaseModel):
 class ModuleAccessUpdateRequest(BaseModel):
     department_ids: list[int] = []
     team_ids: list[int] = []
-
-class AuthResponse(BaseModel):
-    status: str
-    message: str
-    access_token: Optional[str] = None
-    token_type: Optional[str] = None
-
-
-class ManualSignupRequest(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    email: EmailStr
-    password: str
-
 
 class ManualLoginRequest(BaseModel):
     email: EmailStr

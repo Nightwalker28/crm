@@ -177,11 +177,6 @@ class ClientCatalogRequestCreate(BaseModel):
         return _validate_finite_decimal(value, "Quantity")
 
 
-class ClientCatalogRequestResponse(BaseModel):
-    request_id: int
-    message: str
-
-
 class ClientPortalOrderLineResponse(BaseModel):
     id: int
     catalog_product_id: int | None = None

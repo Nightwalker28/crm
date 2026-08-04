@@ -20,7 +20,7 @@ import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/button";
 import type { Order } from "@/hooks/sales/useOrders";
-import type { TableColumnOption } from "@/hooks/useTablePreferences";
+import type { TableColumnOption } from "@/types/table";
 import { formatDateTime } from "@/lib/datetime";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
 import { getOrderStatusStyle } from "@/lib/statusStyles";

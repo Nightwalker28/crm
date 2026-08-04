@@ -43,16 +43,6 @@ def _apply_org_payload(organization: SalesOrganization, payload: SalesOrganizati
     organization.assigned_to = payload.assigned_to if payload.assigned_to is not None else current_user.id if current_user else None
 
 
-def _merge_org_payload(organization: SalesOrganization, payload: SalesOrganizationCreate, current_user) -> None:
-    for field, value in payload.model_dump().items():
-        if field == "custom_fields":
-            continue
-        if should_merge_value(getattr(organization, field, None), value):
-            setattr(organization, field, value)
-    if current_user and organization.assigned_to is None:
-        organization.assigned_to = current_user.id
-
-
 def create_organization(
     db: Session,
     payload: SalesOrganizationCreate,

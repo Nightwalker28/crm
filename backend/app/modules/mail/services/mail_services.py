@@ -1762,7 +1762,6 @@ def handle_google_mail_callback(
     )
     return {"status": "connected", "user": user, "sync": sync_result}
 
-
 def handle_microsoft_mail_callback(
     code: str,
     db: Session,
@@ -1809,24 +1808,3 @@ def handle_microsoft_mail_callback(
     )
     sync_result = sync_microsoft_inbox(db, current_user=user, max_results=10)
     return {"status": "connected", "user": user, "sync": sync_result}
-
-
-def ensure_disconnected_mail_connection(
-    db: Session,
-    *,
-    tenant_id: int,
-    user_id: int,
-    provider: MailProvider,
-) -> UserMailConnection:
-    connection = mail_repository.get_connection(db, tenant_id=tenant_id, user_id=user_id, provider=provider)
-    if connection:
-        return connection
-    connection = UserMailConnection(
-        tenant_id=tenant_id,
-        user_id=user_id,
-        provider=provider.value,
-        status="disconnected",
-    )
-    db.add(connection)
-    db.flush()
-    return connection

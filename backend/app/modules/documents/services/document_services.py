@@ -806,20 +806,6 @@ def serialize_client_document_share(share: DocumentClientShare) -> dict:
     }
 
 
-def _serialize_version(version: DocumentVersion) -> dict:
-    return {
-        "id": version.id,
-        "document_id": version.document_id,
-        "version_number": version.version_number,
-        "file_name": version.file_name,
-        "mime_type": version.mime_type,
-        "size_bytes": version.size_bytes,
-        "checksum": version.checksum,
-        "uploaded_by_id": version.uploaded_by_id,
-        "created_at": version.created_at.isoformat() if version.created_at else None,
-    }
-
-
 def _document_audit_ref(document: Document) -> dict:
     return {
         "document_id": document.id,

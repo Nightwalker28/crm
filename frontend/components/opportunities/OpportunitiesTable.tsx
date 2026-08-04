@@ -21,7 +21,7 @@ import {
   TableRow,
 } from "@/components/ui/Table";
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
-import type { TableColumnOption } from "@/hooks/useTablePreferences";
+import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { getOpportunityStageLabel, getOpportunityStageStyle } from "@/components/opportunities/opportunityStages";

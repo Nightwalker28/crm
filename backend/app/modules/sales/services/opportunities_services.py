@@ -1,20 +1,18 @@
 import json
 from pathlib import Path
-from datetime import date, datetime
+from datetime import date
 from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
+from app.core.duplicates import DuplicateMode, detect_duplicates, resolve_duplicate_mode, should_merge_value
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.pagination import Pagination
-from app.core.module_filters import apply_filter_conditions
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
 from app.modules.platform.services.custom_fields import (
-    build_custom_field_filter_map,
     hydrate_custom_field_record,
     hydrate_custom_field_records,
     load_custom_field_values_with_fallback,
@@ -26,7 +24,6 @@ from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_LABELS, OPPOR
 from app.modules.sales.repositories import opportunities_repository
 from app.modules.sales.services.time_utils import utc_now
 from app.modules.user_management.services.profile import get_company_operating_currencies
-from app.modules.user_management.models import User
 
 BACKEND_DIR = Path(__file__).resolve().parents[4]
 OPPORTUNITY_ATTACHMENTS_DIR = BACKEND_DIR / "uploads" / "opportunities-attachments"
@@ -86,11 +83,6 @@ def _ensure_user(db: Session, user_id: int, *, tenant_id: int):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assigned user not found")
 
 
-def _ensure_contact(db: Session, contact_id: int, *, tenant_id: int):
-    if not opportunities_repository.get_contact(db, contact_id=contact_id, tenant_id=tenant_id):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Contact not found")
-
-
 def _get_contact_or_404(db: Session, contact_id: int, *, tenant_id: int) -> SalesContact:
     contact = opportunities_repository.get_contact(db, contact_id=contact_id, tenant_id=tenant_id)
     if not contact:
@@ -119,50 +111,6 @@ def _apply_search_filter(query, search: str | None):
         document=document,
         default_order_column=SalesOpportunity.created_time,
     )
-
-
-def _build_opportunity_query(
-    db: Session,
-    tenant_id: int,
-    search: str | None = None,
-    *,
-    all_filter_conditions: list[dict] | None = None,
-    any_filter_conditions: list[dict] | None = None,
-):
-    query = db.query(SalesOpportunity).filter(
-        SalesOpportunity.tenant_id == tenant_id,
-        SalesOpportunity.deleted_at.is_(None),
-    )
-    filter_field_map = {
-        "opportunity_name": {"expression": SalesOpportunity.opportunity_name, "type": "text"},
-        "client": {"expression": SalesOpportunity.client, "type": "text"},
-        "sales_stage": {"expression": SalesOpportunity.sales_stage, "type": "text"},
-        "expected_close_date": {"expression": SalesOpportunity.expected_close_date, "type": "date"},
-        "probability_percent": {"expression": SalesOpportunity.probability_percent, "type": "number"},
-        "total_cost_of_project": {"expression": SalesOpportunity.total_cost_of_project, "type": "text"},
-        "currency_type": {"expression": SalesOpportunity.currency_type, "type": "text"},
-        "target_geography": {"expression": SalesOpportunity.target_geography, "type": "text"},
-        "created_time": {"expression": SalesOpportunity.created_time, "type": "date"},
-        **build_custom_field_filter_map(
-            db,
-            tenant_id=tenant_id,
-            module_key="sales_opportunities",
-            record_id_expression=SalesOpportunity.opportunity_id,
-        ),
-    }
-    query = apply_filter_conditions(
-        query,
-        conditions=all_filter_conditions,
-        logic="all",
-        field_map=filter_field_map,
-    )
-    query = apply_filter_conditions(
-        query,
-        conditions=any_filter_conditions,
-        logic="any",
-        field_map=filter_field_map,
-    )
-    return _apply_search_filter(query, search)
 
 
 def list_all_opportunities(

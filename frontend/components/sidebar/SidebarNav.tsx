@@ -57,53 +57,6 @@ function GlassItemWrapper({
   );
 }
 
-export function SidebarMenuItem({
-  href,
-  icon: Icon,
-  children,
-  collapsed = false,
-}: {
-  href: string;
-  icon?: React.ComponentType<{ className?: string }>;
-  children: React.ReactNode;
-  collapsed?: boolean;
-}) {
-  const isActiveFn = useIsActive();
-  const active = isActiveFn(href);
-
-  return (
-    <GlassItemWrapper>
-      <Link
-        href={href}
-        title={collapsed ? String(children) : undefined}
-        className={
-          "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control)] border px-2 py-1.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
-          (active
-            ? "border-primary/20 bg-action-primary-muted text-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary"
-            : "border-transparent bg-transparent text-copy-secondary hover:border-line-subtle hover:bg-surface-muted hover:text-copy-primary")
-        }
-      >
-        {Icon && (
-          <Icon
-            className={
-              "h-4 w-4 shrink-0 transition-colors " +
-              (active ? "text-primary" : "text-copy-muted")
-            }
-          />
-        )}
-        <span
-          className={
-            "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-sm transition-all duration-200 " +
-            (collapsed ? "sr-only" : "opacity-100")
-          }
-        >
-          {children}
-        </span>
-      </Link>
-    </GlassItemWrapper>
-  );
-}
-
 export function SidebarMenuItemCollapsible({
   icon: Icon,
   label,

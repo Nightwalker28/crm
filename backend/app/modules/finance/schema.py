@@ -1,18 +1,8 @@
 from decimal import Decimal
 from typing import Any, Optional
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.modules.finance.services.io_search_services import normalize_io_status
-
-
-class InsertionOrderImportResponse(BaseModel):
-    message: str
-    inserted: int = 0
-    updated: int = 0
-    skipped: int = 0
-    errors: list[str] = Field(default_factory=list)
-    duplicate_io_numbers: list[str] | None = None
-    requires_confirmation: bool = False
 
 
 class InsertionOrderBase(BaseModel):

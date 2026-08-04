@@ -27,7 +27,7 @@ class UserDepartmentScope:
     user_id_filter: int | None
 
 
-FINANCE_FULL_ACCESS_DEPARTMENT_ID = 2
+FINANCE_FULL_ACCESS_DEPARTMENT_NAME = "finance"
 USER_MIN_ROLE_LEVEL = 10
 SUPERUSER_MIN_ROLE_LEVEL = 90
 ADMIN_MIN_ROLE_LEVEL = 100
@@ -239,7 +239,22 @@ def get_finance_user_scope(db: Session, user: User | None) -> UserDepartmentScop
         return UserDepartmentScope(department_id=get_user_department_id(db, user), user_id_filter=None)
 
     department_id = get_user_department_id(db, user)
-    if department_id == FINANCE_FULL_ACCESS_DEPARTMENT_ID:
+    tenant_id = getattr(user, "tenant_id", None)
+    department_name = None
+    if department_id is not None and tenant_id is not None:
+        department_name = (
+            db.query(Department.name)
+            .filter(
+                Department.id == department_id,
+                Department.tenant_id == tenant_id,
+            )
+            .scalar()
+        )
+    is_finance_department = (
+        isinstance(department_name, str)
+        and department_name.strip().casefold() == FINANCE_FULL_ACCESS_DEPARTMENT_NAME
+    )
+    if is_finance_department:
         return UserDepartmentScope(department_id=department_id, user_id_filter=None)
 
     return UserDepartmentScope(

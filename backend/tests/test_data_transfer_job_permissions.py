@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
-from app.modules.platform.models import DataTransferJob
+from app.modules.platform.models import CustomModuleDefinition, DataTransferJob
 from app.modules.platform.services.data_transfer_jobs import (
     data_transfer_download_action,
     require_data_transfer_job_access,
@@ -13,6 +13,7 @@ from app.modules.platform.services.data_transfer_jobs import (
 )
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import (
+    Department,
     Module,
     Role,
     RoleModulePermission,
@@ -28,7 +29,22 @@ from app.modules.user_management.models import (
 class DataTransferJobPermissionTests(unittest.TestCase):
     def setUp(self):
         engine = create_engine("sqlite:///:memory:")
-        Base.metadata.create_all(engine)
+        Base.metadata.create_all(
+            engine,
+            tables=[
+                Tenant.__table__,
+                Module.__table__,
+                Department.__table__,
+                Role.__table__,
+                Team.__table__,
+                TenantModuleConfig.__table__,
+                RoleModulePermission.__table__,
+                TeamModulePermission.__table__,
+                User.__table__,
+                CustomModuleDefinition.__table__,
+                DataTransferJob.__table__,
+            ],
+        )
         self.SessionLocal = sessionmaker(bind=engine)
         self.db = self.SessionLocal()
         self.user = User(

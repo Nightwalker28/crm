@@ -56,31 +56,6 @@ export type PosInvoice = {
   lines?: PosInvoiceLine[];
 };
 
-export type PosInvoicePayload = {
-  customer_name: string;
-  customer_contact_id?: number;
-  customer_organization_id?: number;
-  create_customer_if_missing?: boolean;
-  customer_email?: string;
-  customer_address?: string;
-  invoice_number?: string;
-  issue_date?: string;
-  due_date?: string;
-  status: PosInvoiceStatus;
-  payment_status: PosPaymentStatus;
-  payment_method?: string;
-  template_id: PosTemplateId;
-  accent_color: string;
-  currency: string;
-  discount_amount: number;
-  tax_rate: number;
-  amount_paid: number;
-  payment_terms?: string;
-  notes?: string;
-  lines: PosInvoiceLine[];
-};
-
-export type PosInvoiceUpdatePayload = Partial<PosInvoicePayload>;
 export type RecordPaymentPayload = { amount: number; payment_method?: string | null };
 
 type PosInvoicesResponse = {
@@ -133,28 +108,6 @@ export function usePosInvoice(id: number | null) {
   });
 }
 
-async function createInvoice(payload: PosInvoicePayload): Promise<PosInvoice> {
-  const res = await apiFetch("/finance/pos-invoices", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error("The invoice could not be created.");
-  return body as PosInvoice;
-}
-
-async function updateInvoice(id: number, payload: PosInvoiceUpdatePayload): Promise<PosInvoice> {
-  const res = await apiFetch(`/finance/pos-invoices/${id}`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error("The invoice could not be updated.");
-  return body as PosInvoice;
-}
-
 async function recordInvoicePayment(id: number, payload: RecordPaymentPayload): Promise<PosInvoice> {
   const res = await apiFetch(`/finance/pos-invoices/${id}/payments`, {
     method: "POST",
@@ -164,60 +117,6 @@ async function recordInvoicePayment(id: number, payload: RecordPaymentPayload): 
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error("We could not record this payment.");
   return body as PosInvoice;
-}
-
-async function deleteInvoice(id: number): Promise<void> {
-  const res = await apiFetch(`/finance/pos-invoices/${id}`, { method: "DELETE" });
-  if (!res.ok) throw new Error("The invoice could not be deleted.");
-}
-
-export function usePosInvoices(
-  page: number,
-  pageSize: number,
-  search: string,
-  status: string,
-  sort: PosInvoiceSortState = null,
-) {
-  const queryClient = useQueryClient();
-  const query = useQuery({
-    queryKey: ["pos-invoices", page, pageSize, search, status, sort],
-    queryFn: () => fetchInvoices(page, pageSize, search, status, sort),
-    placeholderData: (previous) => previous,
-  });
-  const createMutation = useMutation({
-    mutationFn: createInvoice,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pos-invoices"] }),
-  });
-  const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: PosInvoiceUpdatePayload }) => updateInvoice(id, payload),
-    onSuccess: async (_, variables) => {
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["pos-invoices"] }),
-        queryClient.invalidateQueries({ queryKey: ["pos-invoice", variables.id] }),
-      ]);
-    },
-  });
-  const deleteMutation = useMutation({
-    mutationFn: deleteInvoice,
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["pos-invoices"] }),
-  });
-
-  return {
-    invoices: query.data?.results ?? [],
-    rangeStart: query.data?.range_start ?? 0,
-    rangeEnd: query.data?.range_end ?? 0,
-    totalCount: query.data?.total_count ?? 0,
-    totalPages: query.data?.total_pages ?? 1,
-    isLoading: query.isLoading,
-    isFetching: query.isFetching,
-    error: query.error ? "We could not load invoices." : null,
-    refresh: query.refetch,
-    createInvoice: createMutation.mutateAsync,
-    updateInvoice: (id: number, payload: PosInvoiceUpdatePayload) => updateMutation.mutateAsync({ id, payload }),
-    deleteInvoice: deleteMutation.mutateAsync,
-    isSaving: createMutation.isPending || updateMutation.isPending,
-    isDeleting: deleteMutation.isPending,
-  };
 }
 
 export function usePaymentInvoices(filters: SavedViewFilters, sort: PosInvoiceSortState = null) {

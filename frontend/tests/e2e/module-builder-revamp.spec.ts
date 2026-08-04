@@ -138,8 +138,12 @@ test("edits and reorders fields from one module-level save on mobile", async ({ 
   await expect(page.getByRole("tab", { name: "Fields" })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("button", { name: "Edit Priority" }).click();
   await expect(page.getByRole("dialog", { name: "Edit field" })).toBeVisible();
-  await expect(page.getByRole("switch", { name: "Required" })).toBeVisible();
-  await expect(page.getByRole("switch", { name: "Show in list" })).toBeChecked();
+  const requiredSetting = page.getByRole("group", { name: "Required" });
+  const listSetting = page.getByRole("group", { name: "Show in list" });
+  await expect(requiredSetting.getByRole("button", { name: "Off" })).toHaveAttribute("aria-pressed", "true");
+  await expect(listSetting.getByRole("button", { name: "On" })).toHaveAttribute("aria-pressed", "true");
+  await requiredSetting.getByRole("button", { name: "On" }).click();
+  await expect(requiredSetting.getByRole("button", { name: "On" })).toHaveAttribute("aria-pressed", "true");
   await page.getByLabel("Label", { exact: true }).fill("Request Priority");
   await page.getByRole("button", { name: "Done editing field" }).click();
   await page.getByRole("button", { name: "Move Request Priority up" }).click();
@@ -152,7 +156,7 @@ test("edits and reorders fields from one module-level save on mobile", async ({ 
   await page.getByRole("button", { name: "Save changes" }).click();
   const request = await fieldUpdate;
 
-  expect(request.postDataJSON()).toMatchObject({ label: "Request Priority", sort_order: 0 });
+  expect(request.postDataJSON()).toMatchObject({ label: "Request Priority", is_required: true, sort_order: 0 });
   await expect(page.getByText("All changes saved")).toBeVisible();
 });
 

@@ -91,6 +91,47 @@ test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
 });
 
+test("refreshes mounted module guards after custom-module access changes", async ({ page }) => {
+  let accessibleModules: Array<typeof moduleFixture> = [];
+  await page.unroute("**/users/me/modules");
+  await page.route("**/users/me/modules", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(accessibleModules),
+    }),
+  );
+  await page.route("**/custom-modules/custom_projects/records?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: [], total_count: 0, total_pages: 0, page: 1, page_size: 25 }),
+    }),
+  );
+
+  const emptyRefresh = page.waitForResponse((response) => response.url().includes("/users/me/modules"));
+  await page.evaluate(() => {
+    window.sessionStorage.removeItem("lynk_modules:v3");
+    window.dispatchEvent(new Event("lynk:modules-invalidated"));
+  });
+  await emptyRefresh;
+
+  accessibleModules = [moduleFixture];
+  const accessRefresh = page.waitForResponse((response) => response.url().includes("/users/me/modules"));
+  await page.evaluate(() => {
+    window.sessionStorage.removeItem("lynk_modules:v3");
+    window.dispatchEvent(new Event("lynk:modules-invalidated"));
+  });
+  await accessRefresh;
+
+  const customModuleLink = page.getByRole("link", { name: "Projects", exact: true });
+  await expect(customModuleLink).toBeVisible();
+  await customModuleLink.click();
+  await expect(page).toHaveURL(/\/dashboard\/custom\/custom_projects$/);
+  await expect(page.getByRole("heading", { name: "Projects" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "You do not have permission to view this page" })).toHaveCount(0);
+});
+
 async function cachePermissions(
   page: Parameters<typeof loginAsAdmin>[0],
   overrides: Partial<typeof fullActions>,

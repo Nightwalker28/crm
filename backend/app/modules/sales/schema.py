@@ -769,12 +769,6 @@ class ContactCompactSummary(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class SalesContactImportSummary(BaseModel):
-    inserted: int
-    updated: int
-    skipped: int
-    errors: list[str] = Field(default_factory=list)
-
 # opportunities schemas
 
 class SalesOpportunityBase(BaseModel):
