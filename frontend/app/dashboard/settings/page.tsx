@@ -24,8 +24,8 @@ import { SETTINGS_ROUTES } from "@/lib/routes";
 
 const SETTINGS_SECTIONS = [
   {
-    key: "organization",
-    title: "Organization",
+    key: "workspace",
+    title: "Workspace",
     items: [
       {
         title: "General",
@@ -33,29 +33,21 @@ const SETTINGS_SECTIONS = [
         href: SETTINGS_ROUTES.general,
         icon: Building2,
       },
-      {
-        title: "User Management",
-        description: "Invite users, manage accounts, and keep access current.",
-        href: SETTINGS_ROUTES.users,
-        icon: UsersRound,
-      },
-      {
-        title: "Teams",
-        description: "Organize departments and team membership.",
-        href: SETTINGS_ROUTES.teams,
-        icon: Blocks,
-      },
-      {
-        title: "Customer Groups",
-        description: "Review customer segmentation used by contacts, accounts, and client portal context.",
-        href: SETTINGS_ROUTES.customerGroups,
-        icon: BadgePercent,
-      },
+      { title: "Booking Links", description: "Manage public scheduling links and booking availability.", href: SETTINGS_ROUTES.calendarBooking, icon: CalendarDays },
     ],
   },
   {
-    key: "access-control",
-    title: "Access Control",
+    key: "users-organization",
+    title: "Users and organization",
+    items: [
+      { title: "User Management", description: "Invite users, manage accounts, and keep access current.", href: SETTINGS_ROUTES.users, icon: UsersRound },
+      { title: "Teams", description: "Organize departments and team membership.", href: SETTINGS_ROUTES.teams, icon: Blocks },
+      { title: "Customer Groups", description: "Review customer segmentation used by contacts, accounts, and client portal context.", href: SETTINGS_ROUTES.customerGroups, icon: BadgePercent },
+    ],
+  },
+  {
+    key: "security-access",
+    title: "Security and access",
     items: [
       {
         title: "Permissions",
@@ -69,6 +61,7 @@ const SETTINGS_SECTIONS = [
         href: SETTINGS_ROUTES.modules,
         icon: KeyRound,
       },
+      { title: "Domains & SSO", description: "Verify workspace domains and configure tenant sign-in.", href: `${SETTINGS_ROUTES.users}?tab=domains`, icon: ShieldCheck },
     ],
   },
   {
@@ -99,23 +92,11 @@ const SETTINGS_SECTIONS = [
         href: SETTINGS_ROUTES.automation,
         icon: Repeat2,
       },
-      {
-        title: "Booking Links",
-        description: "Manage public scheduling links and booking availability.",
-        href: SETTINGS_ROUTES.calendarBooking,
-        icon: CalendarDays,
-      },
-      {
-        title: "Backups",
-        description: "Configure tenant-scoped backup exports and retention.",
-        href: SETTINGS_ROUTES.backups,
-        icon: Database,
-      },
     ],
   },
   {
-    key: "system",
-    title: "System",
+    key: "integrations",
+    title: "Integrations",
     items: [
       {
         title: "Integrations",
@@ -123,19 +104,14 @@ const SETTINGS_SECTIONS = [
         href: SETTINGS_ROUTES.integrations,
         icon: Plug,
       },
-      {
-        title: "Activity Log",
-        description: "Review audited writes, restores, and configuration events.",
-        href: SETTINGS_ROUTES.activityLog,
-        icon: Activity,
-      },
     ],
   },
   {
-    key: "danger-zone",
-    title: "Danger Zone",
-    danger: true,
+    key: "data-maintenance",
+    title: "Data and maintenance",
     items: [
+      { title: "Backups", description: "Configure tenant-scoped backup exports and retention.", href: SETTINGS_ROUTES.backups, icon: Database },
+      { title: "Activity Log", description: "Review audited writes, restores, and configuration events.", href: SETTINGS_ROUTES.activityLog, icon: Activity },
       {
         title: "Recycle Bin",
         description: "Restore recoverable records from one place.",
@@ -157,15 +133,11 @@ export default function SettingsPage() {
       <div className="grid gap-6">
         {SETTINGS_SECTIONS.map((section) => (
           <section key={section.key} aria-labelledby={`${section.key}-heading`}>
-            <Card
-              className={section.danger ? "border-state-danger/30" : undefined}
-            >
+            <Card>
               <div className="border-b border-line-subtle px-5 py-4">
                 <h2
                   id={`${section.key}-heading`}
-                  className={`text-sm font-semibold ${
-                    section.danger ? "text-state-danger" : "text-copy-primary"
-                  }`}
+                  className="text-sm font-semibold text-copy-primary"
                 >
                   {section.title}
                 </h2>
@@ -177,17 +149,11 @@ export default function SettingsPage() {
                     <Link
                       key={item.href}
                       href={item.href}
-                      className={`group flex items-center justify-between gap-4 border-b border-line-subtle px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-muted focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary ${
-                        section.danger ? "hover:bg-state-danger-muted" : ""
-                      }`}
+                      className="group flex items-center justify-between gap-4 border-b border-line-subtle px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-muted focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
                     >
                       <span className="flex min-w-0 items-start gap-3">
                         <span
-                          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] border ${
-                            section.danger
-                              ? "border-state-danger/40 bg-state-danger-muted text-state-danger"
-                              : "border-line-default bg-surface-muted text-copy-secondary"
-                          }`}
+                          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary"
                         >
                           <Icon className="h-4 w-4" />
                         </span>

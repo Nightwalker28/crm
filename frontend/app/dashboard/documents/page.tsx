@@ -7,7 +7,6 @@ import { FileText, HardDrive, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import DocumentList from "@/components/documents/DocumentList";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -73,20 +72,7 @@ export default function DocumentsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
-      <PageHeader
-        title="Documents"
-        description="Upload, view, and link controlled professional documents across CRM records."
-        actions={
-          <Button asChild>
-            <Link href="/dashboard/documents/upload">
-              <Upload className="h-4 w-4" />
-              Upload
-            </Link>
-          </Button>
-        }
-      />
-
+    <div className="flex flex-col gap-4 text-copy-primary">
       <div className="grid gap-3 md:grid-cols-3">
         <Card variant="status" className="px-4 py-3">
           <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-copy-muted"><HardDrive className="size-3.5" />Used</div>
@@ -116,7 +102,7 @@ export default function DocumentsPage() {
             <h2 className="text-lg font-semibold text-copy-primary">Document Library</h2>
             <FieldDescription className="mt-1">Standalone uploads and documents linked from CRM records.</FieldDescription>
           </div>
-          <div className="grid gap-2 md:grid-cols-[180px_288px]">
+          <div className="grid gap-2 md:grid-cols-[180px_288px_auto]">
             <Select value={documentFilter} onValueChange={(value) => setDocumentFilter(value as "all" | "templates" | "files")}>
               <SelectTrigger className="w-full" aria-label="Document type">
                 <SelectValue />
@@ -128,6 +114,7 @@ export default function DocumentsPage() {
               </SelectContent>
             </Select>
             <SearchBar value={search} onChange={setSearch} placeholder="Search documents" className="md:w-full" />
+            <Button asChild><Link href="/dashboard/documents/upload"><Upload className="h-4 w-4" />Upload</Link></Button>
           </div>
         </div>
         <div className="mt-4">

@@ -181,3 +181,40 @@ export function SidebarMenuItemChild({
     </GlassItemWrapper>
   );
 }
+
+export function SidebarMenuItemLink({
+  href,
+  label,
+  icon: Icon,
+  collapsed = false,
+  onNavigate,
+}: {
+  href: string;
+  label: string;
+  icon: React.ComponentType<{ className?: string }>;
+  collapsed?: boolean;
+  onNavigate?: () => void;
+}) {
+  const isActiveFn = useIsActive();
+  const active = isActiveFn(href);
+
+  return (
+    <GlassItemWrapper>
+      <Link
+        href={href}
+        onClick={onNavigate}
+        title={collapsed ? label : undefined}
+        aria-current={active ? "page" : undefined}
+        className={
+          "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control)] border px-2 py-1.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
+          (active
+            ? "border-primary/20 bg-action-primary-muted text-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary"
+            : "border-transparent bg-transparent text-copy-secondary hover:border-line-subtle hover:bg-surface-muted hover:text-copy-primary")
+        }
+      >
+        <Icon className={`h-4 w-4 shrink-0 ${active ? "text-primary" : "text-copy-muted"}`} />
+        <span className={collapsed ? "sr-only" : "min-w-0 truncate"}>{label}</span>
+      </Link>
+    </GlassItemWrapper>
+  );
+}

@@ -16,6 +16,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { resolveMediaUrl } from "@/lib/media";
 import TimezonePicker from "@/components/ui/TimezonePicker";
 import { useConfirm } from "@/hooks/useConfirm";
+import { cacheSidebarUser } from "@/hooks/useSidebarUser";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 
 type ProfileResponse = {
@@ -165,7 +166,7 @@ export default function ProfilePage() {
 
       setForm(normalizedForm);
       setSavedForm(normalizedForm);
-      sessionStorage.setItem("lynk_user", JSON.stringify(body));
+      cacheSidebarUser(body);
       toast.success("Profile updated.");
     } catch {
       setError("We could not save your profile. Review the information and try again.");
@@ -207,7 +208,7 @@ export default function ProfilePage() {
       setForm((current) => ({ ...current, photo_url: nextPhotoUrl }));
       setSavedForm((current) => ({ ...current, photo_url: nextPhotoUrl }));
       if (body?.user) {
-        sessionStorage.setItem("lynk_user", JSON.stringify(body.user));
+        cacheSidebarUser(body.user);
       }
       toast.success("Profile image uploaded.");
     } catch {

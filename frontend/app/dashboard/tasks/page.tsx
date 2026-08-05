@@ -13,7 +13,6 @@ import TasksTable from "@/components/tasks/TasksTable";
 import Pagination from "@/components/ui/Pagination";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { Button } from "@/components/ui/button";
@@ -183,19 +182,6 @@ export default function TasksPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        variant="module"
-        title="Tasks"
-        description="Coordinate team work, assign follow-ups, and turn notifications into actionable next steps."
-        eyebrow={totalCount ? `${totalCount} task${totalCount === 1 ? "" : "s"} in this view` : undefined}
-        actions={
-          <Button aria-label="Add Task" onClick={openCreateDialog}>
-            <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">Add Task</span>
-          </Button>
-        }
-      />
-
       <ModuleListToolbar
         searchValue={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -214,6 +200,7 @@ export default function TasksPage() {
             </div>
           </>
         }
+        primaryAction={<Button aria-label="Add Task" onClick={openCreateDialog}><Plus className="h-4 w-4" /><span className="hidden sm:inline">Add Task</span></Button>}
       />
 
       <div className="rounded-xl border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">

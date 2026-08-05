@@ -44,8 +44,8 @@ test("failed required MFA setup returns login form to a usable state", async ({ 
 test("admin manual login and dashboard navigation works", async ({ page }) => {
   await loginAsAdmin(page);
 
-  await page.getByRole("button", { name: "Settings" }).click();
-  await page.getByRole("link", { name: "Teams" }).click();
+  await page.getByRole("link", { name: "Settings", exact: true }).click();
+  await page.getByRole("link", { name: /^Teams/ }).click();
   await page.waitForURL("**/dashboard/settings/teams");
   await expect(page.getByRole("heading", { name: "Teams & Departments" })).toBeVisible();
 

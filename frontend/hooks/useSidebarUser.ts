@@ -8,6 +8,7 @@ import { apiFetch } from "@/lib/api";
 
 const USER_CACHE_KEY = "lynk_user";
 const USER_VERIFIED_AT_KEY = "lynk_user_verified_at";
+const USER_CACHE_EVENT = "lynk:user-cache-change";
 const USER_VERIFICATION_TTL_MS = 5 * 60_000;
 const ADMIN_MIN_ROLE_LEVEL = 100;
 
@@ -22,6 +23,12 @@ type UserProfile = {
   role_level?: number | null;
   is_admin?: boolean;
 };
+
+export function cacheSidebarUser(user: UserProfile) {
+  if (typeof window === "undefined") return;
+  sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+  window.dispatchEvent(new Event(USER_CACHE_EVENT));
+}
 
 function safeReadCachedUser(): UserProfile | null {
   if (typeof window === "undefined") return null;
@@ -70,6 +77,12 @@ export function useSidebarUser() {
   }, []);
 
   useEffect(() => {
+    const refreshCachedUser = () => setUser(safeReadCachedUser());
+    window.addEventListener(USER_CACHE_EVENT, refreshCachedUser);
+    return () => window.removeEventListener(USER_CACHE_EVENT, refreshCachedUser);
+  }, []);
+
+  useEffect(() => {
     if (!needsFreshUser) return;
 
     let cancelled = false;
@@ -82,7 +95,7 @@ export function useSidebarUser() {
         const me = (await res.json()) as UserProfile;
         if (cancelled) return;
 
-        sessionStorage.setItem(USER_CACHE_KEY, JSON.stringify(me));
+        cacheSidebarUser(me);
         sessionStorage.setItem(USER_VERIFIED_AT_KEY, String(Date.now()));
         setUser(me);
         setVerified(true);

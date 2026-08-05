@@ -61,7 +61,7 @@ function canUseQuickAction(
   return actions.can_create;
 }
 
-export default function GlobalCommandPalette() {
+export default function GlobalCommandPalette({ responsive = false }: { responsive?: boolean }) {
   const router = useRouter();
   const pathname = usePathname();
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
@@ -232,17 +232,20 @@ export default function GlobalCommandPalette() {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+        className={responsive
+          ? "flex h-8 w-8 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-action-primary-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary xl:h-auto xl:w-full xl:justify-between xl:gap-3 xl:rounded-[var(--radius-control)] xl:border xl:border-line-default xl:bg-surface-muted xl:px-3 xl:py-2 xl:text-left xl:hover:border-line-strong xl:hover:bg-surface-raised"
+          : "flex w-full items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"}
         aria-label="Open command palette"
       >
-        <div className="flex items-center gap-3">
+        {responsive ? <Search className="h-4 w-4 xl:hidden" /> : null}
+        <div className={responsive ? "hidden items-center gap-3 xl:flex" : "flex items-center gap-3"}>
           <Search className="h-4 w-4 text-copy-muted" />
             <div>
               <div className="text-sm font-medium text-copy-primary">Search records</div>
               <div className="text-xs text-copy-muted">Jump across modules and workspace records.</div>
             </div>
         </div>
-        <div className="hidden items-center gap-1 rounded-[var(--radius-control-sm)] border border-line-default bg-app px-2 py-1 text-[11px] text-copy-muted sm:flex">
+        <div className={responsive ? "hidden items-center gap-1 rounded-[var(--radius-control-sm)] border border-line-default bg-app px-2 py-1 text-[11px] text-copy-muted xl:flex" : "hidden items-center gap-1 rounded-[var(--radius-control-sm)] border border-line-default bg-app px-2 py-1 text-[11px] text-copy-muted sm:flex"}>
           <CommandIcon className="h-3 w-3" />
           <span>K</span>
         </div>

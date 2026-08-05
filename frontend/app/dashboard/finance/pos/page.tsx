@@ -7,7 +7,6 @@ import { Plus } from "lucide-react";
 import InvoicesTable from "@/components/finance/pos/InvoicesTable";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
-import { PageHeader } from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
@@ -43,13 +42,6 @@ export default function PosInvoicesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        variant="module"
-        title="Invoices"
-        description="Create itemized customer invoices, track payment status, and choose the print template per invoice."
-        eyebrow={totalCount ? `${totalCount} invoice${totalCount === 1 ? "" : "s"} in this view` : undefined}
-        actions={canCreateInvoice ? <Button asChild><Link href="/dashboard/finance/pos/new"><Plus />Create invoice</Link></Button> : undefined}
-      />
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -62,6 +54,7 @@ export default function PosInvoicesPage() {
         selectionNoun="invoice"
         onClearSelection={() => setSelectedIds([])}
         viewControls={<><SavedViewSelector moduleKey="finance_pos" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} /><Select value={invoiceStatus} onValueChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, status: value } }))}><SelectTrigger className="w-40" aria-label="Invoice status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="draft">Draft</SelectItem><SelectItem value="issued">Issued</SelectItem><SelectItem value="paid">Paid</SelectItem><SelectItem value="void">Void</SelectItem></SelectContent></Select></>}
+        primaryAction={canCreateInvoice ? <Button asChild><Link href="/dashboard/finance/pos/new"><Plus />Create invoice</Link></Button> : undefined}
       />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(filters) => setDraftConfig((current) => ({ ...current, filters }))} hideHeader />
       {error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"><span>We could not load invoices. Check your connection and try again.</span><Button type="button" variant="outline" size="sm" onClick={() => void refresh()}>Try again</Button></div> : null}

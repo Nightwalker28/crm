@@ -11,7 +11,6 @@ import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { Button } from "@/components/ui/button";
 import Pagination from "@/components/ui/Pagination";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import type { CatalogKind, CatalogRecord, CatalogSortState } from "@/hooks/catalog/useCatalogRecords";
@@ -28,8 +27,7 @@ type Props = {
 export default function CatalogRecordsPage({ kind }: Props) {
   const router = useRouter();
   const isProduct = kind === "products";
-  const title = isProduct ? "Products" : "Services";
-  const lowerTitle = title.toLowerCase();
+  const lowerTitle = isProduct ? "products" : "services";
   const moduleKey = isProduct ? "catalog_products" : "catalog_services";
   const { modules } = useAccessibleModules();
   const moduleActions = modules.find((module) => module.name === moduleKey)?.actions;
@@ -111,15 +109,6 @@ export default function CatalogRecordsPage({ kind }: Props) {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        variant="module"
-        title={title}
-        description={`Manage first-class catalog ${lowerTitle}.`}
-        actions={
-          canCreate ? <Button asChild><Link href={`/dashboard/catalog/${kind}/new`}><Plus />New {isProduct ? "Product" : "Service"}</Link></Button> : undefined
-        }
-      />
-
       <ModuleListToolbar
         searchValue={searchValue}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -129,6 +118,7 @@ export default function CatalogRecordsPage({ kind }: Props) {
         onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))}
         onClearFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }))}
         viewControls={<SavedViewSelector moduleKey={moduleKey} views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
+        primaryAction={canCreate ? <Button asChild><Link href={`/dashboard/catalog/${kind}/new`}><Plus />New {isProduct ? "Product" : "Service"}</Link></Button> : undefined}
       />
       <InlineSavedViewFilters
         filterFields={definition?.filterFields ?? []}

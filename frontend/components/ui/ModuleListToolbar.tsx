@@ -20,6 +20,7 @@ type Props = {
   onClearSelection?: () => void;
   viewControls?: ReactNode;
   actionControls?: ReactNode;
+  primaryAction?: ReactNode;
 };
 
 export function ModuleListToolbar({
@@ -35,6 +36,7 @@ export function ModuleListToolbar({
   onClearSelection,
   viewControls,
   actionControls,
+  primaryAction,
 }: Props) {
   return (
     <div className="overflow-hidden rounded-[var(--radius-card)] border border-line-default bg-surface">
@@ -52,7 +54,7 @@ export function ModuleListToolbar({
           </Button>
           {activeFilterCount ? <Button type="button" variant="ghost" size="sm" onClick={onClearFilters}><SearchX />Clear filters</Button> : null}
           <TableDensityToggle />
-          <div className="ml-auto flex items-center gap-2">{actionControls}</div>
+          <div className="ml-auto flex flex-wrap items-center justify-end gap-2">{actionControls}{primaryAction}</div>
         </div>
       </div>
 

@@ -30,6 +30,7 @@ from app.modules.sales.schema import (
 )
 from app.modules.user_management.models import Module, TenantModuleConfig, UserAuthMode, UserStatus
 from app.modules.user_management.routes import admin as admin_routes
+from app.modules.user_management.routes import profile as profile_routes
 from app.modules.user_management.routes import signin as signin_routes
 from app.modules.user_management.schema import UserProfile
 from app.modules.user_management.services.auth import (
@@ -749,6 +750,34 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["email"], "ada@example.com")
         update_mock.assert_called_once()
+
+    def test_profile_update_response_preserves_current_admin_metadata(self):
+        app.dependency_overrides[require_user] = self._admin_user
+        app.dependency_overrides[get_db] = self._override_db
+        serialized_user = UserProfile(
+            id=1,
+            first_name="Admin",
+            last_name="User",
+            email="admin@example.com",
+            team_id=1,
+            role_id=1,
+            role_level=None,
+            is_admin=False,
+            photo_url="/media/profile-assets/user-1/photo.png",
+            auth_mode="manual_only",
+            is_active="active",
+        )
+
+        with (
+            patch.object(profile_routes, "update_user_profile", return_value=self._admin_user()),
+            patch.object(profile_routes, "serialize_user_profile", return_value=serialized_user),
+            patch.object(profile_routes, "get_user_role_level", return_value=100),
+        ):
+            response = self.client.put("/api/v1/users/me", json={"first_name": "Admin"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["role_level"], 100)
+        self.assertTrue(response.json()["is_admin"])
 
     def test_admin_bulk_update_users_route_is_tenant_scoped_and_audited(self):
         app.dependency_overrides[require_admin] = self._admin_user

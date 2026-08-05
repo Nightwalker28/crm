@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 
-import LeadsHeader from "@/components/leads/LeadsHeader";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import LeadsTable from "@/components/leads/LeadsTable";
 import Pagination from "@/components/ui/Pagination";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
@@ -10,6 +11,7 @@ import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportCo
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
+import { Button } from "@/components/ui/button";
 import { useLeads, type LeadSortState } from "@/hooks/sales/useLeads";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
@@ -75,7 +77,6 @@ export default function LeadsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <LeadsHeader eyebrow={totalCount ? `${totalCount} lead${totalCount === 1 ? "" : "s"} in this view` : undefined} />
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: value } }))}
@@ -99,6 +100,7 @@ export default function LeadsPage() {
             currentPageIds={currentPageIds}
           />
         )}
+        primaryAction={<Button asChild><Link href="/dashboard/sales/leads/new"><Plus />Create lead</Link></Button>}
       />
       <InlineSavedViewFilters
         filterFields={definition?.filterFields ?? []}

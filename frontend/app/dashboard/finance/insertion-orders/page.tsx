@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 
 import InsertionOrdersList from "@/components/finance/insertionOrderList";
 import { useInsertionOrders } from "@/hooks/finance/useInsertionOrders";
-import InsertionOrdersHeader from "../../../../components/finance/InsertionOrdersHeader";
 import Pagination from "@/components/ui/Pagination";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
@@ -143,8 +144,6 @@ export default function InsertionOrdersPage() {
 
   return (
     <div className="flex flex-col gap-4">
-        <InsertionOrdersHeader canCreate={canCreate} />
-
         <ModuleListToolbar
           searchValue={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
           onSearchChange={(value) =>
@@ -205,6 +204,7 @@ export default function InsertionOrdersPage() {
               />
             </>
           }
+          primaryAction={canCreate ? <Button asChild><Link href="/dashboard/finance/insertion-orders/new"><Plus />New order</Link></Button> : undefined}
         />
 
         <InlineSavedViewFilters

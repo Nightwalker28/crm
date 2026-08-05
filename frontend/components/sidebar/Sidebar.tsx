@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState, useSyncExternalStore, type ComponentType } from "react";
-import Image from "next/image";
 import Link from "next/link";
 import {
   BriefcaseBusiness,
@@ -18,19 +17,18 @@ import {
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 
-import NotificationCenter from "@/components/notifications/NotificationCenter";
 import { useAccessibleModules, type AccessibleModule } from "@/hooks/useAccessibleModules";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { getModuleDisplayName } from "@/lib/module-display";
-import { getDependentModuleDefinitions, getModuleDefinition, getModuleRoute, isModuleVisibleInNavigation, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
+import { getDependentModuleDefinitions, getModuleDefinition, getModuleRoute, isModuleVisibleInNavigation } from "@/lib/module-registry";
 import { DASHBOARD_ROUTES, SETTINGS_ROUTES } from "@/lib/routes";
-import { resolveMediaUrl } from "@/lib/media";
 
 import {
   SidebarGroup,
   SidebarMenu,
   SidebarMenuItemChild,
   SidebarMenuItemCollapsible,
+  SidebarMenuItemLink,
   SidebarNav,
 } from "./SidebarNav";
 
@@ -142,13 +140,6 @@ function buildOperationalGroups(modules: AccessibleModule[]) {
     .sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
 }
 
-function settingsGroup(): SidebarGroupConfig {
-  return {
-    ...SYSTEM_GROUPS.settings,
-    items: SETTINGS_NAV_ITEMS.map((item) => ({ href: item.href, label: item.label })),
-  };
-}
-
 function activeGroupKey(pathname: string, groups: SidebarGroupConfig[]) {
   const active = groups.find((group) =>
     group.items.some((item) => pathname === item.href || pathname.startsWith(item.href + "/")),
@@ -158,7 +149,7 @@ function activeGroupKey(pathname: string, groups: SidebarGroupConfig[]) {
 
 export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
-  const { user, isAdmin, logout } = useSidebarUser();
+  const { isAdmin, logout } = useSidebarUser();
   const { modules } = useAccessibleModules();
   const storedCollapsed = useSyncExternalStore(
     subscribeToSidebarCollapse,
@@ -168,10 +159,8 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
   const collapsed = mobile ? false : storedCollapsed;
 
   const groups = useMemo(() => {
-    const next = buildOperationalGroups(modules);
-    if (isAdmin) next.push(settingsGroup());
-    return next;
-  }, [isAdmin, modules]);
+    return buildOperationalGroups(modules);
+  }, [modules]);
   const activeGroup = useMemo(() => activeGroupKey(pathname, groups), [groups, pathname]);
   const [manualOpenGroup, setManualOpenGroup] = useState<{ pathname: string; key: string } | null>(null);
   const openGroup = manualOpenGroup?.pathname === pathname ? manualOpenGroup.key : activeGroup;
@@ -182,20 +171,12 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
     window.dispatchEvent(new Event(SIDEBAR_COLLAPSE_EVENT));
   }
 
-  const displayName =
-    `${user?.first_name ?? ""} ${user?.last_name ?? ""}`.trim() ||
-    user?.email?.split("@")[0] ||
-    "User";
-
-  const initials =
-    ((user?.first_name?.[0] ?? "") + (user?.last_name?.[0] ?? "")) || "US";
-
   return (
     <aside
       aria-label={mobile ? "Mobile navigation" : "Primary navigation"}
       className={
         "relative z-10 h-full shrink-0 flex-col bg-transparent transition-[width] duration-200 motion-reduce:transition-none " +
-        (mobile ? "flex w-72" : `hidden md:flex ${collapsed ? "w-[4.5rem]" : "w-60"}`)
+        (mobile ? "flex w-72" : `hidden border-r md:flex ${collapsed ? "w-[4.5rem] border-line-subtle" : "w-60 border-line-default"}`)
       }
     >
       <div className="relative z-10 flex h-full min-h-0 flex-col overflow-hidden px-2 py-3">
@@ -235,67 +216,30 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
                   ))}
                 </SidebarMenuItemCollapsible>
               ))}
+              {isAdmin ? (
+                <SidebarMenuItemLink
+                  href={SETTINGS_ROUTES.root}
+                  label="Settings"
+                  icon={Settings2}
+                  collapsed={collapsed}
+                  onNavigate={onNavigate}
+                />
+              ) : null}
             </SidebarMenu>
           </SidebarGroup>
         </SidebarNav>
 
         <div className="shrink-0 pt-4">
-          <div className="relative overflow-hidden rounded-[var(--radius-card)] border border-line-subtle bg-surface">
-            <div className="relative z-10 flex flex-col">
-              <div className={`flex items-center border-b border-line-subtle px-2 py-1.5 ${collapsed ? "justify-center" : "justify-between"}`}>
-                {!collapsed ? (
-                  <span className="text-[11px] font-semibold uppercase tracking-wider text-copy-muted">
-                    Notifications
-                  </span>
-                ) : null}
-                <NotificationCenter />
-              </div>
-
-              <div className={`flex items-center p-1.5 ${collapsed ? "justify-center" : "gap-1"}`}>
-                <Link
-                  href="/dashboard/profile"
-                  onClick={onNavigate}
-                  className={`flex min-w-0 items-center gap-2 rounded-[var(--radius-control-sm)] px-1 py-1 transition-colors hover:bg-action-primary-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
-                    collapsed ? "justify-center" : "flex-1"
-                  }`}
-                  title={collapsed ? displayName : undefined}
-                >
-                  {user?.photo_url ? (
-                    <Image
-                      src={resolveMediaUrl(user.photo_url)}
-                      alt="profile"
-                      width={30}
-                      height={30}
-                      unoptimized
-                      className="h-8 w-8 shrink-0 rounded-md object-cover shadow-sm"
-                    />
-                  ) : (
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-copy-primary text-[10px] font-bold text-app shadow-sm">
-                      {initials}
-                    </div>
-                  )}
-
-                  {!collapsed ? (
-                    <span className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap text-xs font-semibold text-copy-primary">
-                      {displayName}
-                    </span>
-                  ) : null}
-                </Link>
-
-                {!collapsed ? (
-                  <button
-                    onClick={logout}
-                    type="button"
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-state-danger-muted hover:text-state-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-state-danger"
-                    aria-label="Log out"
-                    title="Logout"
-                  >
-                    <LogOut size={14} />
-                  </button>
-                ) : null}
-              </div>
-            </div>
-          </div>
+          <button
+            onClick={logout}
+            type="button"
+            className={`flex w-full items-center gap-2 rounded-[var(--radius-control)] border border-transparent px-2 py-1.5 text-sm font-medium text-copy-secondary transition-colors hover:border-state-danger/30 hover:bg-state-danger-muted hover:text-state-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-state-danger ${collapsed ? "justify-center" : ""}`}
+            aria-label="Log out"
+            title={collapsed ? "Log out" : undefined}
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            {collapsed ? null : <span>Log out</span>}
+          </button>
         </div>
       </div>
     </aside>

@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import ContractsHeader from "@/components/contracts/ContractsHeader";
 import ContractsTable from "@/components/contracts/ContractsTable";
 import { Button } from "@/components/ui/button";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
@@ -61,9 +60,6 @@ export default function ContractsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <ContractsHeader
-        primaryAction={canCreate ? <Button asChild><Link href="/dashboard/contracts/new"><Plus />New Contract</Link></Button> : undefined}
-      />
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -73,6 +69,7 @@ export default function ContractsPage() {
         onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))}
         onClearFilters={clearFilters}
         viewControls={<SavedViewSelector moduleKey="contracts" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
+        primaryAction={canCreate ? <Button asChild><Link href="/dashboard/contracts/new"><Plus />New Contract</Link></Button> : undefined}
       />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />
       {error ? (

@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 
-import ContactsHeader from "@/components/contacts/contactHeader";
+import Link from "next/link";
+import { Plus } from "lucide-react";
 import ContactList from "@/components/contacts/contactList";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
@@ -10,6 +11,7 @@ import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import Pagination from "@/components/ui/Pagination";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
+import { Button } from "@/components/ui/button";
 import { useContacts, type ContactSortState } from "@/hooks/sales/useContacts";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
@@ -57,7 +59,6 @@ export default function ContactsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <ContactsHeader eyebrow={totalCount ? `${totalCount} contact${totalCount === 1 ? "" : "s"} in this view` : undefined} />
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: value } }))}
@@ -71,6 +72,7 @@ export default function ContactsPage() {
         onClearSelection={() => setSelectedIds([])}
         viewControls={<SavedViewSelector moduleKey="sales_contacts" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
         actionControls={<ModuleImportExportControls importEndpoint="/sales/contacts/import" exportEndpoint="/sales/contacts/export" exportMethod="POST" exportBody={buildSavedViewExportPayload(activeFilters)} onImportSuccess={refresh} selectedIds={selectedIds} currentPageIds={currentPageIds} />}
+        primaryAction={<Button asChild><Link href="/dashboard/sales/contacts/new"><Plus />Create contact</Link></Button>}
       />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />
       {error ? <div className="flex justify-between rounded-lg border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-state-danger"><span>We could not load contacts.</span><button onClick={refresh} className="underline underline-offset-2">Retry</button></div> : null}

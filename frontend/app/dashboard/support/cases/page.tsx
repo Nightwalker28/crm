@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { Plus } from "lucide-react";
 
-import SupportCasesHeader from "@/components/support/SupportCasesHeader";
 import SupportCasesTable from "@/components/support/SupportCasesTable";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
@@ -58,11 +57,6 @@ export default function SupportCasesPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <SupportCasesHeader
-        eyebrow={totalCount ? `${totalCount} case${totalCount === 1 ? "" : "s"} in this view` : undefined}
-        primaryAction={<Button asChild><Link href="/dashboard/support/cases/new"><Plus />New case</Link></Button>}
-      />
-
       <ModuleListToolbar
         searchValue={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -72,6 +66,7 @@ export default function SupportCasesPage() {
         onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))}
         onClearFilters={clearFilters}
         viewControls={<SavedViewSelector moduleKey="support_cases" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
+        primaryAction={<Button asChild><Link href="/dashboard/support/cases/new"><Plus />New case</Link></Button>}
       />
 
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />

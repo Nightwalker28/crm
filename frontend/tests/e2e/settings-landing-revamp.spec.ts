@@ -18,6 +18,7 @@ const SETTINGS_DESTINATIONS = [
   { name: "Integrations", href: "/dashboard/settings/integrations" },
   { name: "Activity Log", href: "/dashboard/settings/activity-log" },
   { name: "Recycle Bin", href: "/dashboard/settings/recycle-bin" },
+  { name: "Domains & SSO", href: "/dashboard/settings/users?tab=domains" },
 ] as const;
 
 test.beforeEach(async ({ page }) => {
@@ -29,7 +30,9 @@ test("shows every registered settings destination on mobile", async ({ page }) =
   await page.goto("/dashboard/settings");
 
   await expect(page.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Danger Zone" })).toBeVisible();
+  for (const group of ["Workspace", "Users and organization", "Security and access", "Customization", "Integrations", "Data and maintenance"]) {
+    await expect(page.getByRole("heading", { name: group, exact: true })).toBeVisible();
+  }
 
   for (const destination of SETTINGS_DESTINATIONS) {
     await expect(page.getByRole("link", { name: new RegExp(`^${destination.name}`) })).toHaveAttribute(

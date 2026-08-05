@@ -14,7 +14,6 @@ import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportCo
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageHeader } from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
@@ -189,23 +188,6 @@ export default function CustomModulePage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader
-        variant="module"
-        title={schema.data.name}
-        description={schema.data.description ?? "Tenant custom module records."}
-        eyebrow={records.totalCount ? `${records.totalCount} record${records.totalCount === 1 ? "" : "s"}` : undefined}
-        actions={
-          canCreate ? (
-            <Button asChild>
-              <Link href={`/dashboard/custom/${moduleKey}/new`}>
-                <Plus />
-                New record
-              </Link>
-            </Button>
-          ) : null
-        }
-      />
-
       <ModuleListToolbar
         searchValue={search}
         onSearchChange={(value) => {
@@ -236,6 +218,7 @@ export default function CustomModulePage() {
             }}
           />
         ) : undefined}
+        primaryAction={canCreate ? <Button asChild><Link href={`/dashboard/custom/${moduleKey}/new`}><Plus />New record</Link></Button> : undefined}
         actionControls={
           <>
             {viewDefinition ? (

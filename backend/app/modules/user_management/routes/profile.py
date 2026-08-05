@@ -42,16 +42,20 @@ from app.modules.user_management.services.profile import (
 
 router = APIRouter(tags=["Users"])
 
+
+def _serialize_current_user_profile(db: Session, user) -> UserProfile:
+    role_level = get_user_role_level(db, user)
+    return serialize_user_profile(user).model_copy(update={
+        "role_level": role_level,
+        "is_admin": bool(role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL),
+    })
+
 @router.get("/me", response_model=UserProfile)
 def get_me(
     current_user = Depends(require_user),
     db: Session = Depends(get_db),
 ):
-    role_level = get_user_role_level(db, current_user)
-    profile = serialize_user_profile(current_user).model_dump()
-    profile["role_level"] = role_level
-    profile["is_admin"] = bool(role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL)
-    return profile
+    return _serialize_current_user_profile(db, current_user)
 
 
 @router.put("/me", response_model=UserProfile)
@@ -60,7 +64,8 @@ def update_me(
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
 ):
-    return serialize_user_profile(update_user_profile(db, current_user, payload.model_dump(exclude_unset=True)))
+    user = update_user_profile(db, current_user, payload.model_dump(exclude_unset=True))
+    return _serialize_current_user_profile(db, user)
 
 
 @router.post("/me/photo", response_model=UserImageUploadResponse)
@@ -70,7 +75,7 @@ async def upload_me_photo(
     current_user=Depends(require_user),
 ):
     user = await upload_user_photo(db, current_user, file)
-    return UserImageUploadResponse(photo_url=user.photo_url or "", user=serialize_user_profile(user))
+    return UserImageUploadResponse(photo_url=user.photo_url or "", user=_serialize_current_user_profile(db, user))
 
 
 @router.get("/me/modules", response_model=list[AccessibleModuleSchema])

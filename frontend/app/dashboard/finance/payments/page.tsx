@@ -9,7 +9,6 @@ import RecordPaymentDialog from "@/components/finance/payments/RecordPaymentDial
 import PaymentsTable from "@/components/finance/payments/PaymentsTable";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
-import { PageHeader } from "@/components/ui/PageHeader";
 import Pagination from "@/components/ui/Pagination";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
@@ -56,7 +55,6 @@ export default function PaymentsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <PageHeader variant="module" title="Payments" description="Track invoice balances and record customer payments without leaving the receivables workflow." eyebrow={totalCount ? `${totalCount} invoice${totalCount === 1 ? "" : "s"} in this view` : undefined} actions={<><Button asChild variant="outline"><Link href="/dashboard/finance/pos"><ReceiptText />Open invoices</Link></Button>{canRecordPayment ? <Button asChild><Link href="/dashboard/finance/payments/record">Record payment</Link></Button> : null}</>} />
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -69,7 +67,8 @@ export default function PaymentsPage() {
         selectionNoun="invoice"
         onClearSelection={() => setSelectedIds([])}
         viewControls={<><SavedViewSelector moduleKey="finance_payments" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} /><Select value={paymentStatus} onValueChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, payment_status: value } }))}><SelectTrigger className="w-40" aria-label="Payment status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All payments</SelectItem><SelectItem value="unpaid">Unpaid</SelectItem><SelectItem value="partial">Partially paid</SelectItem><SelectItem value="paid">Paid</SelectItem><SelectItem value="refunded">Refunded</SelectItem></SelectContent></Select></>}
-        actionControls={canRecordPayment ? selectedInvoice ? <Button type="button" size="sm" disabled={selectedInvoice.balance_due <= 0 || selectedInvoice.status === "void" || selectedInvoice.payment_status === "refunded"} onClick={() => setPaymentInvoice(selectedInvoice)}>Record selected payment</Button> : selectedIds.length > 1 ? <span className="text-xs text-copy-muted">Select one invoice to record a payment</span> : null : null}
+        actionControls={<><Button asChild variant="outline" size="sm"><Link href="/dashboard/finance/pos"><ReceiptText />Open invoices</Link></Button>{canRecordPayment ? selectedInvoice ? <Button type="button" size="sm" disabled={selectedInvoice.balance_due <= 0 || selectedInvoice.status === "void" || selectedInvoice.payment_status === "refunded"} onClick={() => setPaymentInvoice(selectedInvoice)}>Record selected payment</Button> : selectedIds.length > 1 ? <span className="text-xs text-copy-muted">Select one invoice to record a payment</span> : null : null}</>}
+        primaryAction={canRecordPayment ? <Button asChild><Link href="/dashboard/finance/payments/record">Record payment</Link></Button> : undefined}
       />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(filters) => setDraftConfig((current) => ({ ...current, filters }))} hideHeader />
       {error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"><span>We could not load payments. Check your connection and try again.</span><Button type="button" variant="outline" size="sm" onClick={() => void refresh()}>Try again</Button></div> : null}
