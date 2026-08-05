@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Pill } from "@/components/ui/Pill";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -381,10 +381,7 @@ export default function MailPage() {
 
   return (
     <div className="flex flex-col gap-6 text-copy-primary">
-      <PageHeader
-        title="Mail"
-        description="Centralize user mailbox integration and CRM communication history without mixing provider scopes into normal sign-in."
-        actions={
+      <PageToolbar>
           <>
             <Button type="button" variant="outline" asChild>
               <Link href="/dashboard/settings/integrations">Manage Integrations</Link>
@@ -412,8 +409,7 @@ export default function MailPage() {
               <Button type="button" disabled>New Mail</Button>
             )}
           </>
-        }
-      />
+      </PageToolbar>
 
       <Card>
         <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-5 py-4">

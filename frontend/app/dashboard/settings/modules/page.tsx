@@ -13,7 +13,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -156,11 +155,6 @@ export default function ModulesPage() {
 
   return (
     <div className="flex flex-col gap-6 text-copy-primary">
-      <PageHeader
-        title="Module Settings"
-        description="Manage module navigation, import behavior, availability, and access from one workspace."
-      />
-
       <Card variant="status" className="px-4 py-3 text-sm text-copy-secondary">
         Module availability applies tenant-wide. Department and team access is managed separately, while action access remains in{" "}
         <Link href={SETTINGS_ROUTES.permissions} className="font-medium text-copy-primary underline-offset-4 hover:underline">Roles & Permissions</Link>.

@@ -156,7 +156,7 @@ test("edits flow steps, reorders actions, and saves from mobile", async ({ page 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/settings/automation");
 
-  await expect(page.getByRole("heading", { name: "Automation Builder" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Automation", exact: true })).toBeVisible();
   await page.getByLabel("Automation rule").click();
   await page.getByRole("option", { name: "High priority lead follow-up" }).click();
   await expect(page.getByRole("dialog", { name: "Rule settings" })).toBeVisible();

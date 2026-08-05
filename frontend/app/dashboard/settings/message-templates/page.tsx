@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
@@ -97,11 +97,7 @@ export default function MessageTemplatesPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        title="Templates"
-        description="Manage tenant-scoped message templates for WhatsApp and email workflows."
-        actions={canCreate ? <Button asChild><Link href="/dashboard/settings/message-templates/new"><Plus />Create template</Link></Button> : undefined}
-      />
+      <PageToolbar>{canCreate ? <Button asChild><Link href="/dashboard/settings/message-templates/new"><Plus />Create template</Link></Button> : null}</PageToolbar>
       <div className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line-default bg-surface px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
         <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search templates" className="lg:max-w-sm" />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

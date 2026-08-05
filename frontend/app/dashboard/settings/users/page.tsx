@@ -27,7 +27,7 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
@@ -335,11 +335,8 @@ export default function UserManagementPage() {
   };
   return (
     <div className="flex flex-col gap-6 text-copy-primary">
-      <PageHeader
-        title="User Management"
-        description="Manage provisioned users, roles, access, and team membership."
-        actions={
-          activeTab === "users" ? (
+      <PageToolbar>
+          {activeTab === "users" ? (
             <>
               <SavedViewSelector
                 moduleKey="admin_users"
@@ -352,9 +349,8 @@ export default function UserManagementPage() {
                 Add User
               </Button>
             </>
-          ) : undefined
-        }
-      />
+          ) : null}
+      </PageToolbar>
 
       <RecordTabs
         urlParam="tab"

@@ -57,3 +57,23 @@ test("shows the module title in the header and a cached profile photo in the pro
   });
   await expect(page.getByRole("button", { name: "Open profile menu" }).locator("img")).toBeVisible();
 });
+
+test("uses the global header as the only page title across workspace and settings routes", async ({ page }) => {
+  const routes = [
+    "/dashboard",
+    "/dashboard/calendar",
+    "/dashboard/mail",
+    "/dashboard/reports",
+    "/dashboard/client-portal",
+    "/dashboard/settings",
+    "/dashboard/settings/general",
+    "/dashboard/settings/permissions",
+    "/dashboard/settings/integrations",
+  ];
+
+  for (const route of routes) {
+    await page.goto(route);
+    await expect(page.locator("main header").getByRole("heading")).toHaveCount(1);
+    await expect(page.locator("main header + div h1")).toHaveCount(0);
+  }
+});

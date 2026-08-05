@@ -11,7 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
@@ -267,11 +267,7 @@ export default function RolesPermissionsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        title="Roles & Permissions"
-        description="Control what each role can do inside the modules available to its workspace, departments, and teams."
-        actions={<Button onClick={() => setDialogOpen(true)}><Plus />Create Role</Button>}
-      />
+      <PageToolbar><Button onClick={() => setDialogOpen(true)}><Plus />Create Role</Button></PageToolbar>
 
       {overviewError ? (
         <Card className="p-6" role="alert">

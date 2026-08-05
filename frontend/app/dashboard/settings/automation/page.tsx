@@ -30,7 +30,7 @@ import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Pill } from "@/components/ui/Pill";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
@@ -700,18 +700,14 @@ export default function AutomationSettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title={selectedModuleLabel ? `${selectedModuleLabel} Automation` : "Automation Builder"}
-        description={selectedModuleLabel ? "Build and inspect workflow rules for this module." : "Build tenant workflow rules from supported CRM events and platform-safe actions."}
-        actions={(
+      <PageToolbar context={selectedModuleLabel ? `${selectedModuleLabel} automation` : undefined}>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
             {selectedModuleKey ? (
               <Button type="button" variant="outline" onClick={() => void changeScope("global")}><ArrowLeft />Global automation</Button>
             ) : null}
             <Button type="button" onClick={() => void startNewRule()}><Plus />New rule</Button>
           </div>
-        )}
-      />
+      </PageToolbar>
 
       <Card>
         <CardBody className="flex flex-col gap-3 p-3 xl:flex-row xl:items-center">

@@ -93,7 +93,7 @@ test("filters grouped modules, applies bulk permissions, and saves from mobile",
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/settings/permissions");
 
-  await expect(page.getByRole("heading", { name: "Roles & Permissions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Permissions", exact: true })).toBeVisible();
   await expect(page.getByText("Sales", { exact: true })).toBeVisible();
   await expect(page.getByText("Finance", { exact: true })).toBeVisible();
 

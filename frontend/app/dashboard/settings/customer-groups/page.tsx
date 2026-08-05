@@ -4,7 +4,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { BadgePercent, Plus, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -264,11 +264,7 @@ export default function CustomerGroupsSettingsPage() {
 
   return (
     <div className="flex flex-col gap-6 text-copy-primary">
-      <PageHeader
-        title="Customer Groups"
-        description="Manage customer segments used by contacts, accounts, and client portal pricing context."
-        actions={<Button type="button" onClick={() => void startNewGroup()}><Plus />New customer group</Button>}
-      />
+      <PageToolbar><Button type="button" onClick={() => void startNewGroup()}><Plus />New customer group</Button></PageToolbar>
 
       <Sheet open={editorOpen} onOpenChange={handleEditorOpenChange}>
         <SheetPortal>

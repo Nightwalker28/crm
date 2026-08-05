@@ -19,7 +19,6 @@ import {
 } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
 const SETTINGS_SECTIONS = [
@@ -125,11 +124,6 @@ const SETTINGS_SECTIONS = [
 export default function SettingsPage() {
   return (
     <div className="flex flex-col gap-6 text-copy-secondary">
-      <PageHeader
-        title="Settings"
-        description="Manage company setup, users, access control, modules, integrations, templates, and platform configuration."
-      />
-
       <div className="grid gap-6">
         {SETTINGS_SECTIONS.map((section) => (
           <section key={section.key} aria-labelledby={`${section.key}-heading`}>

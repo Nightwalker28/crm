@@ -35,7 +35,7 @@ test("Teams and Departments uses labeled workflows and guards dirty dismissal", 
   await mockStructure(page);
   await page.goto("/dashboard/settings/teams");
 
-  await expect(page.getByRole("heading", { name: "Teams & Departments" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Teams", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Organization structure" })).toBeVisible();
   await expect(page.getByText("Revenue operations")).toBeVisible();
   await expect(page.getByText("Platform administrators")).toBeVisible();

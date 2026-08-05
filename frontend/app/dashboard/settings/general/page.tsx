@@ -8,7 +8,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState } from "@/components/ui/RouteStates";
 import { Textarea } from "@/components/ui/textarea";
@@ -204,12 +203,6 @@ export default function CompanyPage() {
 
   return (
     <div className="flex flex-col gap-6 text-copy-secondary">
-      <PageHeader
-        title="General settings"
-        description="Manage the company identity, operating currencies, billing address, and branding used across Lynk."
-        eyebrow={isDirty ? "Unsaved company changes" : undefined}
-      />
-
       {loadFailed ? (
         <RouteErrorState
           title="Company profile could not be loaded"

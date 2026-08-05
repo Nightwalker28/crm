@@ -11,7 +11,7 @@ import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Pill } from "@/components/ui/Pill";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -510,18 +510,14 @@ export default function BackupSettingsPage() {
 
   return (
     <div className="flex flex-col gap-6 text-copy-primary">
-      <PageHeader
-        title="Backups"
-        description="Configure tenant-scoped backup exports, schedules, retention, and local download storage."
-        actions={(
+      <PageToolbar>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" onClick={() => setSettingsEditorOpen(true)}><SlidersHorizontal />Configure</Button>
             <Button type="button" onClick={() => manualRunMutation.mutate()} disabled={manualRunMutation.isPending || settingsQuery.isLoading}>
               <Play />{manualRunMutation.isPending ? "Running..." : "Run Backup"}
             </Button>
           </div>
-        )}
-      />
+      </PageToolbar>
 
       <Sheet open={settingsEditorOpen} onOpenChange={handleSettingsEditorOpenChange}>
         <SheetPortal>

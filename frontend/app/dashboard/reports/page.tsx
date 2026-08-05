@@ -16,7 +16,7 @@ import { Dialog, DialogBackdrop, DialogFooter, DialogHeader, DialogPanel, Dialog
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -538,11 +538,7 @@ export default function ReportsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Reports"
-        description="Explore tenant-authorized CRM, finance, task, and custom-module data without changing the underlying records."
-        eyebrow={selectedModule ? `Viewing ${selectedModule.label}` : undefined}
-        actions={
+      <PageToolbar context={selectedModule ? `Viewing ${selectedModule.label}` : undefined}>
           <>
             {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={() => void exportCsv()} disabled={!chartData.length || Boolean(exporting)}>
               <FileDown />{exporting === "csv" ? "Preparing…" : "Export CSV"}
@@ -557,8 +553,7 @@ export default function ReportsPage() {
               <Save />{updateMutation.isPending ? "Saving…" : "Save changes"}
             </Button> : null}
           </>
-        }
-      />
+      </PageToolbar>
 
       {!modules.length ? (
         <Card>

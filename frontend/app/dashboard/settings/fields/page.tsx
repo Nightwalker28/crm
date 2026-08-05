@@ -11,7 +11,7 @@ import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Pill } from "@/components/ui/Pill";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RequiredMark } from "@/components/ui/RequiredMark";
@@ -524,10 +524,7 @@ export default function FieldsPage() {
 
   return (
     <div className="flex flex-col gap-5">
-      <PageHeader
-        title="Field Configuration"
-        description="Control field visibility and custom metadata without disabling the identifiers each module needs to operate safely."
-        actions={
+      <PageToolbar>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Select value={moduleKey} onValueChange={(value) => void handleModuleChange(value)}>
               <SelectTrigger className="w-full sm:w-72" aria-label="Select module">
@@ -541,8 +538,7 @@ export default function FieldsPage() {
               <Plus />New Field
             </Button>
           </div>
-        }
-      />
+      </PageToolbar>
 
       {hasLoadError ? (
         <Card className="p-6" role="alert">

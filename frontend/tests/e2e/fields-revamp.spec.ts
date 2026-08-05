@@ -125,7 +125,7 @@ test("filters fields, explains protected controls, and saves inspector changes o
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/settings/fields");
 
-  await expect(page.getByRole("heading", { name: "Field Configuration" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Field Config", exact: true })).toBeVisible();
   await page.getByRole("button", { name: "disabled", exact: true }).click();
   await expect(page.getByText("LinkedIn", { exact: true })).toBeVisible();
   await expect(page.getByText("Contract Term", { exact: true })).toBeHidden();

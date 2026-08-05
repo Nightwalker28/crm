@@ -95,7 +95,7 @@ function BreadcrumbBar({ pathname, settingsLeafLabel }: { pathname: string; sett
         {items.map((item, index) => (
           <div key={item.href} className="flex min-w-0 items-center gap-1">
             {index > 0 ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-copy-disabled" /> : null}
-            {item.current ? <span className="truncate font-medium text-copy-primary" aria-current="page">{item.label}</span> : <Link href={item.href} className="truncate rounded-sm transition-colors hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{item.label}</Link>}
+            {item.current ? <h1 className="truncate text-sm font-semibold text-copy-primary" aria-current="page">{item.label}</h1> : <Link href={item.href} className="truncate rounded-sm transition-colors hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{item.label}</Link>}
           </div>
         ))}
       </nav>

@@ -51,7 +51,7 @@ import {
   type DashboardWidgetCatalogItem,
   type DashboardWidgetSize,
 } from "@/components/dashboard/DashboardLayoutEditor";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -381,11 +381,8 @@ export default function DashboardHomePage() {
 
   return (
     <div className="flex flex-col gap-6 text-copy-secondary">
-      <PageHeader
-        title="Dashboard"
-        description="Your configurable workspace for module summaries, quick views, and operational shortcuts."
-        actions={
-          isEditing ? undefined : (
+      <PageToolbar>
+          {isEditing ? null : (
             <>
               <Select value={String(periodDays)} onValueChange={(value) => setPeriodDays(Number(value))}>
                 <SelectTrigger aria-label="Dashboard date range" className="w-36"><SelectValue /></SelectTrigger>
@@ -421,9 +418,8 @@ export default function DashboardHomePage() {
               {accessibleRoutes.has(DASHBOARD_ROUTES.mail) ? <HeaderLink href={DASHBOARD_ROUTES.mail} icon={<Mail />} label="Mail" /> : null}
               {accessibleRoutes.has(DASHBOARD_ROUTES.documents) ? <HeaderLink href={DASHBOARD_ROUTES.documents} icon={<FileText />} label="Documents" /> : null}
             </>
-          )
-        }
-      />
+          )}
+      </PageToolbar>
 
       {layoutQuery.error ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/30 bg-state-danger-muted px-4 py-3 text-sm text-copy-secondary">

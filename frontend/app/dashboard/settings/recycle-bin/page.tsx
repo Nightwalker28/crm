@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import Pagination from "@/components/ui/Pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
@@ -141,10 +141,7 @@ export default function RecycleBinPage() {
 
   return (
     <div className="flex flex-col gap-5 text-copy-primary">
-      <PageHeader
-        title="Recycle Bin"
-        description="One recovery area for the platform, with module-specific tables inside it."
-        actions={
+      <PageToolbar>
           <Select
             value={moduleKey}
             onValueChange={(value) => {
@@ -164,8 +161,7 @@ export default function RecycleBinPage() {
               ))}
             </SelectContent>
           </Select>
-        }
-      />
+      </PageToolbar>
 
       {customModulesError ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted px-4 py-3 text-sm text-copy-secondary">

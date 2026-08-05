@@ -8,7 +8,6 @@ import { IntegrationEventHistory } from "@/components/integrations/IntegrationEv
 import { IntegrationProviderRegistry, type IntegrationRegistryHealth } from "@/components/integrations/IntegrationProviderRegistry";
 import { IntegrationWebhookWorkspace } from "@/components/integrations/IntegrationWebhookWorkspace";
 import { IntegrationWebsiteWorkspace } from "@/components/integrations/IntegrationWebsiteWorkspace";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { connectGoogleDriveStorage, connectMicrosoftOneDriveStorage } from "@/hooks/useDocuments";
 import { apiFetch } from "@/lib/api";
 
@@ -43,11 +42,6 @@ export default function IntegrationsPage() {
 
   return (
     <div className="flex flex-col gap-5 text-copy-secondary">
-      <PageHeader
-        title="Integrations"
-        description="Review provider health, manage website API access, and configure external alert webhooks."
-      />
-
       <IntegrationProviderRegistry
         items={registryHealth}
         isLoading={registryQuery.isLoading}

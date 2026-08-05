@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import CalendarEventDialog from "@/components/calendar/CalendarEventDialog";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -243,10 +243,7 @@ export default function CalendarPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Calendar"
-        description="Keep one internal collaboration calendar per user, share events with colleagues and teams, and let synced providers follow the current sign-in path where available."
-        actions={
+      <PageToolbar>
           <>
             <div className="hidden items-center gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-xs text-copy-muted xl:flex">
               <Clock3 className="h-4 w-4 text-copy-disabled" />
@@ -263,8 +260,7 @@ export default function CalendarPage() {
               <span className="hidden sm:inline">New event</span>
             </Button>
           </>
-        }
-      />
+      </PageToolbar>
 
       {contextQuery.isError ? (
         <div role="alert" className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-secondary sm:flex-row sm:items-center sm:justify-between">

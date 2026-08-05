@@ -9,7 +9,7 @@ import { Card, CardFooter } from "@/components/ui/Card";
 import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Pill } from "@/components/ui/Pill";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
@@ -199,16 +199,12 @@ function ModuleAccessEditor({
 
   return (
     <div className="flex flex-col gap-6 text-copy-primary">
-      <PageHeader
-        title={`${moduleDisplayName} Access Settings`}
-        description="Choose which departments and teams can open this module. Roles & Permissions still control actions inside it."
-        actions={(
+      <PageToolbar context={`${moduleDisplayName} access`}>
           <>
             <Button type="button" variant="outline" onClick={() => void navigateAway(SETTINGS_ROUTES.modules)}><ArrowLeft />Module Settings</Button>
             <Button type="button" variant="outline" onClick={() => void navigateAway(`${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(access.module.name)}`)}><Repeat2 />Automation</Button>
           </>
-        )}
-      />
+      </PageToolbar>
 
       {!access.module.is_enabled ? (
         <div className="rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted px-4 py-3 text-sm text-copy-secondary">

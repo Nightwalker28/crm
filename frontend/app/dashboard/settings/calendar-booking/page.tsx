@@ -13,7 +13,7 @@ import { RequiredMark } from "@/components/ui/RequiredMark";
 import TimezonePicker from "@/components/ui/TimezonePicker";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Sheet,
@@ -263,17 +263,12 @@ export default function CalendarBookingSettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Booking Links"
-        description="Create public meeting links that offer available calendar slots and write confirmed bookings back to the CRM calendar."
-        eyebrow={isDirty ? "Unsaved booking-link changes" : undefined}
-        actions={
+      <PageToolbar context={isDirty ? "Unsaved booking-link changes" : undefined}>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Button asChild variant="outline"><Link href={SETTINGS_ROUTES.integrations}>Integrations</Link></Button>
             <Button type="button" onClick={() => void startNewBookingLink()}><Plus />New booking link</Button>
           </div>
-        }
-      />
+      </PageToolbar>
 
       {bookingTypesQuery.isError ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">

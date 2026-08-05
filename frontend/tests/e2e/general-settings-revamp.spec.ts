@@ -39,7 +39,7 @@ test("saves responsive company settings with normalized currencies", async ({ pa
   await mockCompany(page);
   await page.goto("/dashboard/settings/general");
 
-  await expect(page.getByRole("heading", { name: "General settings" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "General", exact: true })).toBeVisible();
   const workspace = page.locator('[aria-label="Company settings workspace"]');
   await expect(workspace.getByRole("heading", { name: "Company profile" })).toBeVisible();
   await expect(workspace.getByRole("heading", { name: "Commercial defaults" })).toBeVisible();

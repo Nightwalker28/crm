@@ -7,7 +7,6 @@ import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PageHeader } from "@/components/ui/PageHeader";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState } from "@/components/ui/RouteStates";
 import {
@@ -326,12 +325,6 @@ export default function TeamsAndDepartmentsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Teams & Departments"
-        description="Manage the org structure used for user assignment, ownership, reporting, and module access targeting."
-        eyebrow={refreshing && !loading ? "Refreshing" : undefined}
-      />
-
       {error && !departmentDialogOpen && !teamDialogOpen && !isCreateDepartmentAction && !isCreateTeamAction ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           {error}

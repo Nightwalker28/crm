@@ -24,7 +24,7 @@ import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Pill } from "@/components/ui/Pill";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
@@ -797,10 +797,7 @@ export default function ModuleBuilderPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Module Builder"
-        description="Configure the existing tenant module runtime, fields, navigation, permissions, and automation entry points."
-        actions={(
+      <PageToolbar>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
             <SearchBar value={search} onChange={setSearch} placeholder="Search modules" className="sm:w-56" />
             {modules.length ? (
@@ -817,8 +814,7 @@ export default function ModuleBuilderPage() {
             ) : null}
             <Button type="button" onClick={() => void startCreating()}><Plus />New module</Button>
           </div>
-        )}
-      />
+      </PageToolbar>
 
       <div className="min-w-0">
           {creating || !selectedModule ? (

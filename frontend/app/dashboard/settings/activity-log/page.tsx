@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import Pagination from "@/components/ui/Pagination";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
@@ -95,10 +95,7 @@ export default function ActivityLogPage() {
 
   return (
     <div className="flex flex-col gap-5 text-copy-primary">
-      <PageHeader
-        title="Activity Log"
-        description="Audit trail of platform writes, restores, and configuration actions."
-        actions={
+      <PageToolbar>
           <>
             <Select
               value={actionFilter}
@@ -121,8 +118,7 @@ export default function ActivityLogPage() {
               Refresh
             </Button>
           </>
-        }
-      />
+      </PageToolbar>
 
       <ModuleTableShell isRefreshing={query.isFetching && !query.isLoading}>
         <Table className="min-w-[1080px]">
