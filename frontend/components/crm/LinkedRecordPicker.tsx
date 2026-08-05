@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { apiFetch } from "@/lib/api";
 
-export type LinkedRecordType = "contact" | "organization" | "opportunity" | "quote" | "order" | "document" | "user" | "team";
+export type LinkedRecordType = "contact" | "organization" | "opportunity" | "quote" | "order" | "document" | "user" | "team" | "global";
 
 export type LinkedRecordFilters = {
   contactId?: number | null;
@@ -27,8 +27,19 @@ export type LinkedRecordOption = {
   organization_name?: string | null;
   opportunity_id?: number | null;
   quote_id?: number | null;
+  module_key?: string;
+  module_label?: string;
+  entity_id?: string;
+  href?: string;
   raw?: unknown;
 };
+
+function optionIdentity(recordType: LinkedRecordType, option: LinkedRecordOption) {
+  if (recordType === "global") {
+    return `${option.module_key ?? "unknown"}-${option.entity_id ?? option.id}`;
+  }
+  return String(option.id);
+}
 
 type Props = {
   inputId?: string;
@@ -49,6 +60,7 @@ type Props = {
   sourceModuleKey?: string;
   sourceAction?: "create" | "edit" | "view";
   allowClear?: boolean;
+  allowedModuleKeys?: string[];
 };
 
 function appendRelationshipFilters(params: URLSearchParams, filters?: LinkedRecordFilters) {
@@ -69,12 +81,15 @@ async function searchLinkedRecords(
   linkedEntityId?: string | number | null,
   sourceModuleKey?: string,
   sourceAction: "create" | "edit" | "view" = "create",
+  allowedModuleKeys?: string[],
 ): Promise<LinkedRecordOption[]> {
   const params = new URLSearchParams({ page: "1", page_size: "10", query: search });
   appendRelationshipFilters(params, filters);
   let endpoint = "";
 
-  if (recordType === "contact") {
+  if (recordType === "global") {
+    endpoint = `/global-search?query=${encodeURIComponent(search)}&limit_per_module=5`;
+  } else if (recordType === "contact") {
     endpoint = `/sales/contacts/search?${params.toString()}`;
   } else if (recordType === "organization") {
     endpoint = `/sales/organizations/search/${encodeURIComponent(search)}?page=1&page_size=10`;
@@ -106,7 +121,22 @@ async function searchLinkedRecords(
   }
 
   const results = Array.isArray(body?.results) ? body.results : [];
-  return results.map((record: Record<string, unknown>) => {
+  return results.filter((record: Record<string, unknown>) => (
+    recordType !== "global" || !allowedModuleKeys?.length || allowedModuleKeys.includes(String(record.module_key || ""))
+  )).map((record: Record<string, unknown>) => {
+    if (recordType === "global") {
+      const entityId = String(record.record_id ?? "");
+      return {
+        id: Number(entityId),
+        entity_id: entityId,
+        label: typeof record.title === "string" ? record.title : "Unnamed record",
+        description: [record.module_label, record.subtitle].filter((value) => typeof value === "string" && value).join(" · ") || null,
+        module_key: typeof record.module_key === "string" ? record.module_key : undefined,
+        module_label: typeof record.module_label === "string" ? record.module_label : undefined,
+        href: typeof record.href === "string" ? record.href : undefined,
+        raw: record,
+      };
+    }
     if (recordType === "contact") {
       const firstName = typeof record.first_name === "string" ? record.first_name : "";
       const lastName = typeof record.last_name === "string" ? record.last_name : "";
@@ -223,6 +253,7 @@ export default function LinkedRecordPicker({
   sourceModuleKey,
   sourceAction = "create",
   allowClear = true,
+  allowedModuleKeys,
 }: Props) {
   const generatedListboxId = useId();
   const listboxId = `${generatedListboxId}-options`;
@@ -230,8 +261,8 @@ export default function LinkedRecordPicker({
   const [activeIndex, setActiveIndex] = useState(-1);
   const debouncedSearch = useDebouncedValue(displayValue.trim(), 250);
   const query = useQuery({
-    queryKey: [queryKeyPrefix, recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey, sourceAction],
-    queryFn: () => searchLinkedRecords(recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey, sourceAction),
+    queryKey: [queryKeyPrefix, recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey, sourceAction, allowedModuleKeys],
+    queryFn: () => searchLinkedRecords(recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey, sourceAction, allowedModuleKeys),
     enabled: !disabled && isOpen && debouncedSearch.length > 0,
     staleTime: 30_000,
   });
@@ -288,7 +319,7 @@ export default function LinkedRecordPicker({
           aria-controls={listboxId}
           aria-activedescendant={
             activeIndex >= 0 && options[activeIndex]
-              ? `${listboxId}-${recordType}-${options[activeIndex].id}`
+              ? `${listboxId}-${recordType}-${optionIdentity(recordType, options[activeIndex])}`
               : undefined
           }
           autoComplete="off"
@@ -325,8 +356,8 @@ export default function LinkedRecordPicker({
             <div className="max-h-56 overflow-y-auto py-1">
               {options.map((option, optionIndex) => (
                 <button
-                  key={`${recordType}-${option.id}`}
-                  id={`${listboxId}-${recordType}-${option.id}`}
+                  key={`${recordType}-${optionIdentity(recordType, option)}`}
+                  id={`${listboxId}-${recordType}-${optionIdentity(recordType, option)}`}
                   type="button"
                   role="option"
                   aria-selected={optionIndex === activeIndex}

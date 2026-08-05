@@ -69,13 +69,6 @@ class AdminStructureTests(unittest.TestCase):
         self.assertEqual(user.department_id, 1)
 
     def test_sync_team_module_permissions_raises_on_duplicate_rows(self):
-        class FakeDepartmentPermissionQuery:
-            def filter(self, *_args):
-                return self
-
-            def all(self):
-                return [(7,)]
-
         class FakeTeamPermissionQuery:
             def filter(self, *_args):
                 return self
@@ -88,8 +81,6 @@ class AdminStructureTests(unittest.TestCase):
 
         class FakeDB:
             def query(self, target):
-                if target is admin_structure.DepartmentModulePermission.module_id:
-                    return FakeDepartmentPermissionQuery()
                 if target is admin_structure.TeamModulePermission:
                     return FakeTeamPermissionQuery()
                 self.fail(f"Unexpected query target: {target}")

@@ -13,13 +13,19 @@ from sqlalchemy.orm import sessionmaker
 from starlette.datastructures import Headers
 
 from app.core.database import Base
-from app.modules.documents.models import Document, DocumentClientShare, DocumentLink, DocumentVersion
+from app.modules.documents.models import Document, DocumentClientShare, DocumentLink, DocumentStorageConnection, DocumentUploadOperation, DocumentVersion
 from app.modules.documents.repositories import documents_repository
 from app.modules.documents.services import storage_backends
-from app.modules.documents.services.storage_backends import LocalDocumentStorage, MicrosoftOneDriveDocumentStorage
+from app.modules.documents.services.storage_backends import (
+    GoogleDriveDocumentStorage,
+    LocalDocumentStorage,
+    MicrosoftOneDriveDocumentStorage,
+    _safe_provider_filename,
+)
 from app.modules.documents.services import document_services
 from app.modules.documents.services.document_services import (
     create_document,
+    _document_provider_filename,
     _create_drive_oauth_state,
     _refresh_google_drive_access_token,
     get_client_document_share_or_404,
@@ -33,6 +39,7 @@ from app.modules.documents.services.document_services import (
     read_document_upload,
     revoke_document_client_share,
     resolve_document_storage_path,
+    resolve_document_view,
     share_document_with_client,
     serialize_client_document_share,
     update_document_template_status,
@@ -41,10 +48,30 @@ from app.modules.documents.services.document_services import (
 from app.modules.platform.models import ActivityLog
 from app.modules.sales.models import SalesContact
 from app.modules.user_management import models as user_management_models  # noqa: F401
-from app.modules.user_management.models import Role, Tenant, User, UserStatus
+from app.modules.user_management.models import Module, Role, Tenant, User, UserStatus
 
 
 class DocumentUploadValidationTests(unittest.IsolatedAsyncioTestCase):
+    def test_provider_filename_prefers_display_name_and_preserves_validated_extension(self):
+        requested = _document_provider_filename(
+            display_name="Customer Proposal",
+            legacy_title=None,
+            original_filename="proposal.pdf",
+        )
+
+        self.assertEqual(_safe_provider_filename(requested, "pdf"), "Customer Proposal.pdf")
+
+    def test_provider_filename_defaults_to_original_and_sanitizes_path_characters(self):
+        requested = _document_provider_filename(
+            display_name=None,
+            legacy_title=None,
+            original_filename="Quarterly Report.pdf",
+        )
+
+        self.assertEqual(_safe_provider_filename(requested, "pdf"), "Quarterly Report.pdf")
+        self.assertEqual(_safe_provider_filename("../CON:Q4", "pdf"), "_CON_Q4.pdf")
+        self.assertEqual(_safe_provider_filename("CON", "pdf"), "_CON.pdf")
+
     async def test_read_document_upload_accepts_pdf_with_valid_signature(self):
         upload = UploadFile(
             file=io.BytesIO(b"%PDF-1.7\ncontent\n%%EOF"),
@@ -114,6 +141,19 @@ class DocumentUploadValidationTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "Document exceeds the 5 byte upload limit.")
+
+    async def test_read_document_upload_rejects_empty_file(self):
+        upload = UploadFile(
+            file=io.BytesIO(b""),
+            filename="empty.txt",
+            headers=Headers({"content-type": "text/plain"}),
+        )
+
+        with self.assertRaises(HTTPException) as exc:
+            await read_document_upload(upload)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Uploaded document is empty.")
 
     async def test_read_document_upload_rejects_content_type_mismatch(self):
         upload = UploadFile(
@@ -568,6 +608,277 @@ class DocumentServiceTests(unittest.TestCase):
 
         self.assertEqual([path for path in remaining_files if path.is_file()], [])
 
+    def test_idempotent_upload_reuses_completed_document_and_supports_multiple_associations(self):
+        self.db.add_all([
+            Module(id=100, name="sales_contacts", base_route="/dashboard/sales/contacts", is_enabled=1),
+            SalesContact(contact_id=8, tenant_id=10, primary_email="second@example.com", assigned_to=1),
+        ])
+        self.db.commit()
+        user = self.db.get(User, 1)
+
+        def upload():
+            return UploadFile(
+                file=io.BytesIO(b"%PDF-1.7\ncontent\n%%EOF"),
+                filename="proposal.pdf",
+                headers=Headers({"content-type": "application/pdf"}),
+            )
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             patch.object(storage_backends, "UPLOADS_DIR", Path(tmpdir)), \
+             patch.object(storage_backends, "DOCUMENT_STORAGE_DIR", Path(tmpdir) / "documents"):
+            first = create_document(
+                self.db,
+                tenant_id=10,
+                user_id=1,
+                file=upload(),
+                current_user=None,
+                idempotency_key="upload-key-1234",
+                associations=[
+                    {"module_key": "sales_contacts", "entity_id": "7"},
+                    {"module_key": "sales_contacts", "entity_id": "8"},
+                ],
+            )
+            second = create_document(
+                self.db,
+                tenant_id=10,
+                user_id=1,
+                file=upload(),
+                current_user=user,
+                idempotency_key="upload-key-1234",
+            )
+            stored_files = [path for path in (Path(tmpdir) / "documents").rglob("*") if path.is_file()]
+
+        self.assertEqual(first.id, second.id)
+        self.assertEqual({link.entity_id for link in first.links}, {"7", "8"})
+        self.assertEqual(len(stored_files), 1)
+        operation = self.db.query(DocumentUploadOperation).filter_by(idempotency_key="upload-key-1234").one()
+        self.assertEqual(operation.status, "completed")
+
+    def test_batch_metadata_is_persisted_and_serializable(self):
+        upload = UploadFile(
+            file=io.BytesIO(b"customer notes"),
+            filename="notes.txt",
+            headers=Headers({"content-type": "text/plain"}),
+        )
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             patch.object(storage_backends, "UPLOADS_DIR", Path(tmpdir)), \
+             patch.object(storage_backends, "DOCUMENT_STORAGE_DIR", Path(tmpdir) / "documents"):
+            document = create_document(
+                self.db,
+                tenant_id=10,
+                user_id=1,
+                file=upload,
+                display_name="Customer notes",
+                description="Shared batch description",
+                category="Brief",
+                tags=["customer", "priority", "customer"],
+                current_user=None,
+            )
+
+        self.assertEqual(document.display_name, "Customer notes")
+        self.assertEqual(document.description, "Shared batch description")
+        self.assertEqual(document.category, "Brief")
+        self.assertEqual(document.tags, ["customer", "priority"])
+
+    def test_upload_rejects_tenant_quota_exhaustion_before_storage_write(self):
+        upload = UploadFile(
+            file=io.BytesIO(b"quota test"),
+            filename="quota.txt",
+            headers=Headers({"content-type": "text/plain"}),
+        )
+        with patch.object(document_services.settings, "DOCUMENT_TENANT_STORAGE_LIMIT_BYTES", 1), \
+             patch.object(document_services, "_store_document_content") as store_mock, \
+             self.assertRaises(HTTPException) as exc:
+            create_document(self.db, tenant_id=10, user_id=1, file=upload, current_user=None)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Tenant document storage limit exceeded.")
+        store_mock.assert_not_called()
+
+    def test_upload_completes_with_safe_warning_when_one_association_cannot_be_created(self):
+        self.db.add(Module(id=100, name="sales_contacts", base_route="/dashboard/sales/contacts", is_enabled=1))
+        self.db.commit()
+        upload = UploadFile(
+            file=io.BytesIO(b"%PDF-1.7\ncontent\n%%EOF"),
+            filename="proposal.pdf",
+            headers=Headers({"content-type": "application/pdf"}),
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             patch.object(storage_backends, "UPLOADS_DIR", Path(tmpdir)), \
+             patch.object(storage_backends, "DOCUMENT_STORAGE_DIR", Path(tmpdir) / "documents"):
+            document = create_document(
+                self.db,
+                tenant_id=10,
+                user_id=1,
+                file=upload,
+                current_user=None,
+                idempotency_key="partial-link-1234",
+                associations=[
+                    {"module_key": "sales_contacts", "entity_id": "7"},
+                    {"module_key": "sales_contacts", "entity_id": "999"},
+                ],
+            )
+
+        self.assertEqual({link.entity_id for link in document.links}, {"7"})
+        self.assertEqual(document.association_failures, [{
+            "module_key": "sales_contacts",
+            "entity_id": "999",
+            "message": "Record could not be linked.",
+        }])
+        operation = self.db.query(DocumentUploadOperation).filter_by(idempotency_key="partial-link-1234").one()
+        self.assertEqual(operation.status, "completed")
+        self.assertEqual(operation.association_failures, document.association_failures)
+
+    def test_cloud_version_retains_its_own_provider_reference(self):
+        connection = DocumentStorageConnection(
+            id=51,
+            tenant_id=10,
+            user_id=1,
+            provider="google_drive",
+            status="connected",
+        )
+        document = Document(
+            id=51,
+            tenant_id=10,
+            uploaded_by_user_id=1,
+            title="Cloud contract",
+            original_filename="contract-v1.pdf",
+            content_type="application/pdf",
+            extension="pdf",
+            file_size_bytes=19,
+            storage_provider="google_drive",
+            storage_path="google-v1",
+            provider_file_id="google-v1",
+            provider_account_id=51,
+        )
+        self.db.add_all([connection, document])
+        self.db.commit()
+        stored = document_services.StoredDocument(
+            provider="google_drive",
+            storage_path="google-v2",
+            provider_file_id="google-v2",
+            provider_parent_id="folder-id",
+            provider_path="Cloud contract.pdf",
+            external_web_url="https://drive.google.com/file/d/google-v2/view",
+            provider_created_at=datetime(2026, 8, 5, 10, 15, tzinfo=timezone.utc),
+        )
+        upload = UploadFile(
+            file=io.BytesIO(b"%PDF-1.7\nupdated\n%%EOF"),
+            filename="contract-v2.pdf",
+            headers=Headers({"content-type": "application/pdf"}),
+        )
+
+        with patch.object(document_services, "_store_document_content", return_value=(stored, connection.id)):
+            updated = upload_document_version(
+                self.db,
+                tenant_id=10,
+                document_id=document.id,
+                file=upload,
+                current_user=SimpleNamespace(id=1, tenant_id=10),
+            )
+
+        version = list_document_versions(self.db, document=updated)[0]
+        self.assertEqual(version.storage_provider, "google_drive")
+        self.assertEqual(version.provider_file_id, "google-v2")
+        self.assertEqual(version.provider_account_id, connection.id)
+        self.assertEqual(version.external_web_url, "https://drive.google.com/file/d/google-v2/view")
+
+    def test_cloud_view_uses_trusted_provider_url_and_marks_lost_connection(self):
+        connection = DocumentStorageConnection(id=50, tenant_id=10, user_id=1, provider="google_drive", status="connected")
+        document = Document(
+            id=50,
+            tenant_id=10,
+            uploaded_by_user_id=1,
+            title="Cloud proposal",
+            display_name="Cloud proposal",
+            original_filename="proposal.pdf",
+            content_type="application/pdf",
+            extension="pdf",
+            file_size_bytes=20,
+            storage_provider="google_drive",
+            storage_path="google-file-id",
+            provider_file_id="google-file-id",
+            provider_status="available",
+            external_web_url=None,
+        )
+        self.db.add_all([connection, document])
+        self.db.commit()
+
+        backend = Mock()
+        backend.get_reference.return_value = {
+            "status": "available",
+            "provider_file_id": "google-file-id",
+            "provider_parent_id": "folder-id",
+            "provider_path": "remote.pdf",
+            "external_web_url": "https://drive.google.com/file/d/google-file-id/view",
+            "provider_created_at": datetime(2026, 8, 5, 10, 15, tzinfo=timezone.utc),
+        }
+        with patch.object(document_services, "_google_drive_backend_for_user", return_value=backend):
+            view = resolve_document_view(self.db, document=document, current_user=SimpleNamespace(id=1, tenant_id=10))
+        self.assertEqual(view["kind"], "external")
+        self.assertEqual(view["url"], "https://drive.google.com/file/d/google-file-id/view")
+        self.assertEqual(document.provider_account_id, connection.id)
+        self.assertEqual(document.provider_parent_id, "folder-id")
+
+        connection.status = "disconnected"
+        self.db.add(connection)
+        self.db.commit()
+        with self.assertRaises(HTTPException) as exc:
+            resolve_document_view(self.db, document=document, current_user=SimpleNamespace(id=1, tenant_id=10))
+        self.assertEqual(exc.exception.status_code, 409)
+        self.assertEqual(document.provider_status, "permission_lost")
+
+    def test_retry_reconciles_provider_upload_after_crm_persistence_failure(self):
+        user = SimpleNamespace(id=1, tenant_id=10)
+
+        def upload():
+            return UploadFile(
+                file=io.BytesIO(b"%PDF-1.7\nretry-content\n%%EOF"),
+                filename="retry.pdf",
+                headers=Headers({"content-type": "application/pdf"}),
+            )
+
+        original_commit = self.db.commit
+        commit_count = 0
+
+        def fail_document_commit_once():
+            nonlocal commit_count
+            commit_count += 1
+            if commit_count == 3:
+                raise RuntimeError("database unavailable")
+            return original_commit()
+
+        with tempfile.TemporaryDirectory() as tmpdir, \
+             patch.object(storage_backends, "UPLOADS_DIR", Path(tmpdir)), \
+             patch.object(storage_backends, "DOCUMENT_STORAGE_DIR", Path(tmpdir) / "documents"), \
+             patch.object(self.db, "commit", side_effect=fail_document_commit_once):
+            with self.assertRaisesRegex(RuntimeError, "database unavailable"):
+                create_document(
+                    self.db,
+                    tenant_id=10,
+                    user_id=1,
+                    file=upload(),
+                    current_user=user,
+                    idempotency_key="retry-key-1234",
+                )
+            operation = self.db.query(DocumentUploadOperation).filter_by(idempotency_key="retry-key-1234").one()
+            self.assertEqual(operation.status, "orphaned")
+
+            document = create_document(
+                self.db,
+                tenant_id=10,
+                user_id=1,
+                file=upload(),
+                current_user=user,
+                idempotency_key="retry-key-1234",
+            )
+            stored_files = [path for path in (Path(tmpdir) / "documents").rglob("*") if path.is_file()]
+
+        self.assertEqual(document.original_filename, "retry.pdf")
+        self.assertEqual(len(stored_files), 1)
+        self.assertEqual(operation.status, "completed")
+
     def test_upload_document_version_deletes_new_storage_when_database_write_fails(self):
         unlinked = Document(
             id=3,
@@ -701,9 +1012,39 @@ class DocumentServiceTests(unittest.TestCase):
 
 
 class MicrosoftOneDriveStorageTests(unittest.TestCase):
+    def test_reference_lookup_uses_graph_drive_items_endpoint(self):
+        backend = MicrosoftOneDriveDocumentStorage(access_token="token")
+        response = SimpleNamespace(
+            ok=True,
+            status_code=200,
+            json=lambda: {
+                "id": "drive-item-id",
+                "name": "remote.pdf",
+                "webUrl": "https://tenant.sharepoint.com/personal/user/Documents/remote.pdf",
+                "parentReference": {"id": "parent-id", "path": "/drive/root:/Apps/Lynk"},
+                "createdDateTime": "2026-08-05T10:15:00Z",
+            },
+        )
+
+        with patch.object(storage_backends.requests, "get", return_value=response) as get_mock:
+            reference = backend.get_reference("drive item/id")
+
+        self.assertEqual(
+            get_mock.call_args.args[0],
+            f"{document_services.MICROSOFT_GRAPH_BASE}/me/drive/items/drive%20item%2Fid",
+        )
+        self.assertEqual(reference["status"], "available")
+        self.assertEqual(reference["provider_parent_id"], "parent-id")
+        self.assertEqual(reference["external_web_url"], "https://tenant.sharepoint.com/personal/user/Documents/remote.pdf")
+
     def test_upload_uses_graph_drive_content_endpoint(self):
         backend = MicrosoftOneDriveDocumentStorage(access_token="token")
-        response = SimpleNamespace(ok=True, content=b"{}", json=lambda: {"id": "drive-item-id"})
+        response = SimpleNamespace(ok=True, content=b"{}", json=lambda: {
+            "id": "drive-item-id",
+            "webUrl": "https://tenant.sharepoint.com/personal/user/Documents/file.pdf",
+            "parentReference": {"id": "parent-id", "path": "/drive/root:/Apps/Lynk"},
+            "createdDateTime": "2026-08-05T10:15:00Z",
+        })
 
         with patch.object(storage_backends.requests, "put", return_value=response) as put_mock:
             stored = backend.save(
@@ -716,8 +1057,80 @@ class MicrosoftOneDriveStorageTests(unittest.TestCase):
 
         self.assertEqual(stored.provider, "microsoft_onedrive")
         self.assertEqual(stored.storage_path, "drive-item-id")
+        self.assertEqual(stored.external_web_url, "https://tenant.sharepoint.com/personal/user/Documents/file.pdf")
+        self.assertEqual(stored.provider_parent_id, "parent-id")
+        self.assertEqual(stored.provider_created_at, datetime(2026, 8, 5, 10, 15, tzinfo=timezone.utc))
         self.assertIn("/me/drive/special/approot:/", put_mock.call_args.args[0])
+        self.assertIn("proposal.pdf", put_mock.call_args.args[0])
         self.assertTrue(put_mock.call_args.args[0].endswith(":/content"))
+        self.assertEqual(put_mock.call_args.kwargs["params"], {"@microsoft.graph.conflictBehavior": "rename"})
+
+
+class GoogleDriveStorageTests(unittest.TestCase):
+    def test_reference_lookup_uses_drive_files_endpoint(self):
+        backend = GoogleDriveDocumentStorage(access_token="token")
+        response = SimpleNamespace(
+            ok=True,
+            status_code=200,
+            json=lambda: {
+                "id": "google-file-id",
+                "name": "remote.pdf",
+                "webViewLink": "https://drive.google.com/file/d/google-file-id/view",
+                "parents": ["folder-id"],
+                "createdTime": "2026-08-05T10:15:00Z",
+                "trashed": False,
+            },
+        )
+
+        with patch.object(storage_backends.requests, "get", return_value=response) as get_mock:
+            reference = backend.get_reference("google-file-id")
+
+        self.assertEqual(get_mock.call_args.args[0], "https://www.googleapis.com/drive/v3/files/google-file-id")
+        self.assertEqual(reference["status"], "available")
+        self.assertEqual(reference["external_web_url"], "https://drive.google.com/file/d/google-file-id/view")
+
+    def test_upload_persists_stable_google_view_metadata(self):
+        backend = GoogleDriveDocumentStorage(access_token="token")
+        response = SimpleNamespace(ok=True, content=b"{}", json=lambda: {
+            "id": "google-file-id",
+            "name": "remote.pdf",
+            "webViewLink": "https://drive.google.com/file/d/google-file-id/view",
+            "parents": ["folder-id"],
+            "createdTime": "2026-08-05T10:15:00Z",
+        })
+
+        with patch.object(storage_backends.requests, "post", return_value=response) as post_mock:
+            stored = backend.save(
+                tenant_id=10,
+                extension="pdf",
+                content=b"%PDF-1.7\n%%EOF",
+                filename="proposal.pdf",
+                content_type="application/pdf",
+            )
+
+        self.assertEqual(stored.provider_file_id, "google-file-id")
+        self.assertEqual(stored.provider_parent_id, "folder-id")
+        self.assertEqual(stored.external_web_url, "https://drive.google.com/file/d/google-file-id/view")
+        metadata_part = post_mock.call_args.kwargs["files"]["metadata"]
+        self.assertIn('"name": "proposal.pdf"', metadata_part[1])
+
+    def test_upload_rejects_untrusted_provider_view_url(self):
+        backend = GoogleDriveDocumentStorage(access_token="token")
+        response = SimpleNamespace(ok=True, content=b"{}", json=lambda: {
+            "id": "google-file-id",
+            "webViewLink": "https://attacker.example/doc",
+        })
+
+        with patch.object(storage_backends.requests, "post", return_value=response), self.assertRaises(HTTPException) as exc:
+            backend.save(
+                tenant_id=10,
+                extension="pdf",
+                content=b"%PDF-1.7\n%%EOF",
+                filename="proposal.pdf",
+                content_type="application/pdf",
+            )
+
+        self.assertEqual(exc.exception.status_code, 502)
 
 
 if __name__ == "__main__":

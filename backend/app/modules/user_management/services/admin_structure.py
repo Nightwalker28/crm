@@ -1,7 +1,7 @@
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
-from app.modules.user_management.models import Department, DepartmentModulePermission, Team, TeamModulePermission, User
+from app.modules.user_management.models import Department, Team, TeamModulePermission, User
 from app.modules.user_management.schema import (
     DepartmentCreateRequest,
     DepartmentUpdateRequest,
@@ -11,17 +11,6 @@ from app.modules.user_management.schema import (
 
 
 def _sync_team_module_permissions_from_department(db: Session, team: Team) -> None:
-    desired_module_ids: set[int] = set()
-    if team.department_id:
-        desired_module_ids = {
-            module_id
-            for (module_id,) in (
-                db.query(DepartmentModulePermission.module_id)
-                .filter(DepartmentModulePermission.department_id == team.department_id)
-                .all()
-            )
-        }
-
     existing_permissions = (
         db.query(TeamModulePermission)
         .filter(TeamModulePermission.team_id == team.id)
@@ -36,9 +25,7 @@ def _sync_team_module_permissions_from_department(db: Session, team: Team) -> No
             )
         existing_by_module_id[permission.module_id] = permission
 
-    for module_id, permission in existing_by_module_id.items():
-        if module_id not in desired_module_ids:
-            permission_ids_to_delete.append(permission.id)
+    permission_ids_to_delete.extend(permission.id for permission in existing_by_module_id.values())
 
     if permission_ids_to_delete:
         (
@@ -47,9 +34,6 @@ def _sync_team_module_permissions_from_department(db: Session, team: Team) -> No
             .delete(synchronize_session=False)
         )
 
-    existing_module_ids = set(existing_by_module_id)
-    for module_id in desired_module_ids - existing_module_ids:
-        db.add(TeamModulePermission(team_id=team.id, module_id=module_id))
 
 
 def create_department(db: Session, payload: DepartmentCreateRequest, *, tenant_id: int) -> Department:

@@ -148,6 +148,8 @@ export type ClientDocument = {
   content_type: string;
   extension: string;
   file_size_bytes: number;
+  storage_provider: string;
+  provider_status: "available" | "missing" | "permission_lost" | "deleted";
   created_at: string;
   updated_at: string;
   share_id: number;
@@ -672,6 +674,15 @@ export async function downloadClientDocument(document: ClientDocument) {
     "Failed to download document.",
   );
   downloadBlob(blob, document.original_filename || document.title);
+}
+
+export async function resolveClientDocumentView(document: ClientDocument) {
+  const blob = await publicBlob(
+    `/client-documents/${document.id}/download`,
+    {},
+    "This shared document cannot be opened.",
+  );
+  return { url: URL.createObjectURL(blob) };
 }
 
 export async function downloadClientQuoteProposal(quote: ClientQuote) {

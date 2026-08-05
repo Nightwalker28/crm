@@ -7,13 +7,18 @@ const documentId = 8801;
 function documentFixture() {
   return {
     id: documentId,
+    tenant_id: 1,
     title: "Renewal agreement",
+    display_name: "Renewal agreement",
     description: "Signed customer renewal agreement.",
     original_filename: "renewal-agreement.txt",
     content_type: "text/plain",
     extension: "txt",
     file_size_bytes: 24,
     storage_provider: "local",
+    provider_status: "available",
+    uploaded_at: "2099-07-24T08:00:00Z",
+    tags: [],
     is_template: false,
     template_category: null,
     current_version_id: 1,
@@ -42,19 +47,80 @@ test.beforeEach(async ({ page }) => {
       }),
     }),
   );
+  await page.route("**/documents/limits", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ allowed_extensions: ["pdf", "doc", "docx", "txt", "rtf", "odt"], max_upload_bytes: 1048576, tenant_storage_limit_bytes: 1048576 }),
+    }),
+  );
 });
 
-test("Document upload is responsive and focuses the required file control", async ({ page }) => {
+test("Document upload is responsive and shows file validation beside the affected row", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/documents/upload");
 
-  await expect(page.getByRole("heading", { name: "Upload document" })).toBeVisible();
-  await page.getByRole("button", { name: "Upload document" }).click();
-  await expect(page.getByText("Choose a document to upload.")).toBeVisible();
-  await expect(page.getByLabel("File")).toBeFocused();
+  await expect(page.getByRole("heading", { name: "Upload documents" })).toBeVisible();
+  await page.locator('input[type="file"]').setInputFiles({ name: "malware.exe", mimeType: "application/octet-stream", buffer: Buffer.from("unsafe") });
+  await expect(page.getByText("malware.exe", { exact: true })).toBeVisible();
+  await expect(page.getByText("This file type is not supported.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Remove" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Upload files" })).toBeHidden();
 });
 
-test("Document upload returns to and highlights the saved library record", async ({ page }) => {
+test("Choose files and drop both create compact multi-file queue rows", async ({ page }) => {
+  await page.goto("/dashboard/documents/upload");
+  await page.locator('input[type="file"]').setInputFiles([
+    { name: "first.txt", mimeType: "text/plain", buffer: Buffer.from("first") },
+    { name: "second.txt", mimeType: "text/plain", buffer: Buffer.from("second") },
+  ]);
+  const dataTransfer = await page.evaluateHandle(() => {
+    const transfer = new DataTransfer();
+    transfer.items.add(new File(["third"], "third.txt", { type: "text/plain" }));
+    return transfer;
+  });
+  await page.getByRole("button", { name: "Add more document files" }).dispatchEvent("drop", { dataTransfer });
+
+  await expect(page.getByText("first.txt", { exact: true })).toBeVisible();
+  await expect(page.getByText("second.txt", { exact: true })).toBeVisible();
+  await expect(page.getByText("third.txt", { exact: true })).toBeVisible();
+  await expect(page.getByText(/3 files ready/)).toBeVisible();
+});
+
+test("CRM association search keeps records with the same numeric ID distinct across modules", async ({ page }) => {
+  await page.route("**/global-search?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        query: "acme",
+        results: [
+          { module_key: "sales_contacts", module_label: "Contacts", record_id: "1", title: "Acme contact", subtitle: "person@example.com", href: "/dashboard/sales/contacts/1" },
+          { module_key: "sales_organizations", module_label: "Accounts", record_id: "1", title: "Acme account", subtitle: "Customer", href: "/dashboard/sales/organizations/1" },
+        ],
+      }),
+    }),
+  );
+  const consoleErrors: string[] = [];
+  page.on("console", (message) => {
+    if (message.type() === "error") consoleErrors.push(message.text());
+  });
+
+  await page.goto("/dashboard/documents/upload");
+  await page.getByText("Details and CRM links").click();
+  await page.getByPlaceholder("Search records by module or name").fill("acme");
+
+  await expect(page.getByRole("option", { name: /Acme contact/ })).toBeVisible();
+  await expect(page.getByRole("option", { name: /Acme account/ })).toBeVisible();
+  await page.getByRole("option", { name: /Acme contact/ }).click();
+  await expect(page.getByText("Contacts · Acme contact")).toBeVisible();
+  await page.getByPlaceholder("Search records by module or name").fill("acme");
+  await page.getByRole("option", { name: /Acme account/ }).click();
+  await expect(page.getByText("Accounts · Acme account")).toBeVisible();
+  expect(consoleErrors.some((message) => message.includes("same key"))).toBeFalsy();
+});
+
+test("Document upload keeps per-file completion actions on the full page", async ({ page }) => {
   const document = documentFixture();
   await page.route("**/documents", async (route) => {
     if (route.request().method() !== "POST") {
@@ -76,16 +142,122 @@ test("Document upload returns to and highlights the saved library record", async
   );
 
   await page.goto("/dashboard/documents/upload");
-  await page.getByLabel("Title").fill("Renewal agreement");
-  await page.getByLabel("File").setInputFiles({
+  await page.locator('input[type="file"]').setInputFiles({
     name: "renewal-agreement.txt",
     mimeType: "text/plain",
     buffer: Buffer.from("signed renewal agreement"),
   });
-  await page.getByRole("button", { name: "Upload document" }).click();
+  await page.getByText("Add file overrides").click();
+  await page.getByRole("button", { name: "Customize this file" }).click();
+  await page.getByLabel("Display title").fill("Renewal agreement");
+  await page.getByLabel("Category").last().fill("Contract");
+  await page.getByLabel("Tags").last().fill("renewal");
+  await page.getByLabel("Tags").last().press("Enter");
+  await page.getByRole("button", { name: "Upload files" }).click();
 
-  await expect(page).toHaveURL(new RegExp(`/dashboard/documents\\?documentId=${documentId}$`));
-  await expect(page.getByText("Renewal agreement", { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/\/dashboard\/documents\/upload$/);
+  await expect(page.getByText("Complete", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "View" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Copy link" })).toBeVisible();
+  await expect(page.getByText("1 file complete")).toBeVisible();
+});
+
+test("Connection lookup failure leaves local upload available", async ({ page }) => {
+  await page.route("**/documents/storage/connections", (route) =>
+    route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ detail: "provider unavailable" }) }),
+  );
+  await page.goto("/dashboard/documents/upload");
+
+  await expect(page.getByText("Cloud connections could not be checked. Local storage remains available.")).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Storage destination" })).toContainText("MAAD-CRM storage");
+  await expect(page.getByRole("button", { name: "Choose document files or drag and drop them here" })).toBeEnabled();
+});
+
+test("Connected Google Drive destination uploads and keeps stable provider actions", async ({ page }) => {
+  const cloudDocument = {
+    ...documentFixture(),
+    storage_provider: "google_drive",
+    provider_file_id: "google-file-id",
+    external_web_url: "https://drive.google.com/file/d/google-file-id/view",
+  };
+  await page.route("**/documents/storage/connections", (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify([{ provider: "google_drive", status: "connected", account_email: "files@example.com", provider_root_name: "Lynk", updated_at: "2099-07-24T08:00:00Z" }]),
+  }));
+  await page.route("**/documents", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    expect((await route.request().postDataBuffer())?.toString("utf8")).toContain("google_drive");
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(cloudDocument) });
+  });
+  await page.goto("/dashboard/documents/upload");
+  await page.getByRole("combobox", { name: "Storage destination" }).click();
+  await page.getByRole("option", { name: "Google Drive" }).click();
+  await expect(page.getByText(/files@example.com/)).toBeVisible();
+  await page.locator('input[type="file"]').setInputFiles({ name: "cloud.txt", mimeType: "text/plain", buffer: Buffer.from("cloud") });
+  await page.getByRole("button", { name: "Upload files" }).click();
+  await expect(page.getByText("Complete", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "View" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Copy link" })).toBeEnabled();
+});
+
+test("Failed rows retry with the same upload key and completed rows are not uploaded twice", async ({ page }) => {
+  const document = documentFixture();
+  const uploadKeys: string[] = [];
+  let attempts = 0;
+  await page.route("**/documents", async (route) => {
+    if (route.request().method() !== "POST") return route.continue();
+    attempts += 1;
+    const body = await route.request().postDataBuffer();
+    uploadKeys.push(body?.toString("utf8").match(/idempotency_key\r\n\r\n([^\r]+)/)?.[1] ?? "");
+    if (attempts === 1) return route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
+    return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(document) });
+  });
+  await page.goto("/dashboard/documents/upload");
+  await page.locator('input[type="file"]').setInputFiles({ name: "retry.txt", mimeType: "text/plain", buffer: Buffer.from("retry") });
+  await page.getByRole("button", { name: "Upload files" }).click();
+  await expect(page.getByText("Failed", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Retry", exact: true }).click();
+  await expect(page.getByText("Complete", { exact: true })).toBeVisible();
+
+  expect(attempts).toBe(2);
+  expect(uploadKeys[0]).toBeTruthy();
+  expect(uploadKeys[1]).toBe(uploadKeys[0]);
+});
+
+test("Pending queue warns before navigation and keyboard users can remove the file", async ({ page }) => {
+  await page.goto("/dashboard/documents/upload");
+  const chooserPromise = page.waitForEvent("filechooser");
+  await page.getByRole("button", { name: "Choose document files or drag and drop them here" }).press("Enter");
+  const chooser = await chooserPromise;
+  await chooser.setFiles({ name: "draft.txt", mimeType: "text/plain", buffer: Buffer.from("draft") });
+  page.once("dialog", async (dialog) => {
+    expect(dialog.message()).toContain("unsaved changes");
+    await dialog.dismiss();
+  });
+  await page.getByRole("link", { name: "Back to documents" }).first().click();
+  await expect(page).toHaveURL(/\/dashboard\/documents\/upload$/);
+
+  await page.getByRole("button", { name: "Remove" }).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("draft.txt", { exact: true })).toBeHidden();
+});
+
+test("Lost cloud access disables the shared document view action", async ({ page }) => {
+  const cloudDocument = {
+    ...documentFixture(),
+    storage_provider: "google_drive",
+    provider_status: "permission_lost",
+    external_web_url: "https://drive.google.com/file/d/provider-id/view",
+  };
+  await page.route("**/documents?**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [cloudDocument], total: 1 }) }),
+  );
+
+  await page.goto("/dashboard/documents");
+
+  await expect(page.getByRole("button", { name: "View" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "View" })).toHaveAttribute("title", /Reconnect the provider account/);
 });
 
 test("Document removal requires confirmation and redacts backend failures", async ({ page }) => {

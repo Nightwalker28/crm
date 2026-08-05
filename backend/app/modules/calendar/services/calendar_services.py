@@ -635,7 +635,10 @@ def _sync_google_participant_event(
     payload = _build_google_event_payload(event)
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
 
-    if participant.external_provider == CalendarProvider.google.value and participant.external_event_id:
+    updating_existing_event = bool(
+        participant.external_provider == CalendarProvider.google.value and participant.external_event_id
+    )
+    if updating_existing_event:
         response = requests.patch(
             f"{_google_calendar_events_url(calendar_id)}/{participant.external_event_id}",
             json=payload,
@@ -650,10 +653,12 @@ def _sync_google_participant_event(
             timeout=20,
         )
 
-    if response.ok:
-        body = response.json()
+    body = response.json() if response.ok and response.content else {}
+    provider_event_id = body.get("id") if isinstance(body, dict) else None
+    provider_event_id = provider_event_id or (participant.external_event_id if updating_existing_event else None)
+    if response.ok and provider_event_id:
         participant.external_provider = CalendarProvider.google.value
-        participant.external_event_id = body.get("id") or participant.external_event_id
+        participant.external_event_id = provider_event_id
         participant.external_synced_at = _utcnow()
         participant.last_sync_error = None
         connection.last_synced_at = participant.external_synced_at
@@ -743,15 +748,20 @@ def _sync_microsoft_participant_event(db: Session, *, event: CalendarEvent, part
         return
     events_url = f"{MICROSOFT_GRAPH_BASE}/me/calendars/{quote(calendar_id, safe='')}/events"
     headers = {"Authorization": f"Bearer {access_token}", "Content-Type": "application/json"}
+    updating_existing_event = bool(
+        participant.external_provider == CalendarProvider.microsoft.value and participant.external_event_id
+    )
     response = (
         requests.patch(f"{events_url}/{quote(participant.external_event_id, safe='')}", json=_microsoft_event_payload(event), headers=headers, timeout=20)
-        if participant.external_provider == CalendarProvider.microsoft.value and participant.external_event_id
+        if updating_existing_event
         else requests.post(events_url, json=_microsoft_event_payload(event), headers=headers, timeout=20)
     )
-    if response.ok:
-        body = response.json() if response.content else {}
+    body = response.json() if response.ok and response.content else {}
+    provider_event_id = body.get("id") if isinstance(body, dict) else None
+    provider_event_id = provider_event_id or (participant.external_event_id if updating_existing_event else None)
+    if response.ok and provider_event_id:
         participant.external_provider = CalendarProvider.microsoft.value
-        participant.external_event_id = body.get("id") or participant.external_event_id
+        participant.external_event_id = provider_event_id
         participant.external_synced_at = _utcnow()
         participant.last_sync_error = None
         connection.last_synced_at = participant.external_synced_at
@@ -1288,6 +1298,7 @@ def sync_current_user_calendar(
 
 def process_calendar_sync_job(*, job_id: int) -> None:
     from app.modules.platform.services.data_transfer_jobs import (
+        TERMINAL_JOB_STATUSES,
         get_data_transfer_job_or_404,
         mark_job_completed,
         mark_job_running,
@@ -1296,6 +1307,8 @@ def process_calendar_sync_job(*, job_id: int) -> None:
 
     with SessionLocal() as db:
         job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
+        if job.status in TERMINAL_JOB_STATUSES:
+            return
         mark_job_running(db, job)
         update_job_progress(db, job, progress_percent=10, progress_message="Preparing calendar sync.")
 

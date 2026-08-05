@@ -5,6 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import DuplicateMode
+from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.user_management.models import (
     Department,
     DepartmentModulePermission,
@@ -330,7 +331,22 @@ def get_module_access(db: Session, module_id: int, *, tenant_id: int) -> ModuleA
                 description=team.description,
                 department_id=team.department_id,
                 department_name=department_name_by_id.get(team.department_id),
-                has_access=team.id in team_ids,
+                has_access=(
+                    team.department_id in department_ids
+                    if team.department_id is not None
+                    else team.id in team_ids
+                ),
+                has_direct_access=team.department_id is None and team.id in team_ids,
+                direct_grant_allowed=team.department_id is None,
+                access_state=(
+                    "department_access"
+                    if team.department_id is not None and team.department_id in department_ids
+                    else "blocked_by_department"
+                    if team.department_id is not None
+                    else "direct_team_access"
+                    if team.id in team_ids
+                    else "blocked"
+                ),
             )
             for team in teams
         ],
@@ -343,55 +359,111 @@ def update_module_access(
     payload: ModuleAccessUpdateRequest,
     *,
     tenant_id: int,
+    actor_user_id: int,
 ) -> ModuleAccessSchema:
-    module = db.query(Module).filter(Module.id == module_id).first()
+    module = db.query(Module).filter(Module.id == module_id).with_for_update().first()
     if not module or not _module_belongs_to_tenant_or_global(db, module=module, tenant_id=tenant_id):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
 
     requested_department_ids = set(payload.department_ids)
     requested_team_ids = set(payload.team_ids)
 
-    valid_department_ids = {
-        department_id
-        for (department_id,) in (
-            db.query(Department.id)
-            .filter(Department.tenant_id == tenant_id, Department.id.in_(requested_department_ids))
-            .all()
-        )
-    } if requested_department_ids else set()
-    valid_team_ids = {
-        team_id
-        for (team_id,) in (
-            db.query(Team.id)
-            .filter(Team.tenant_id == tenant_id, Team.id.in_(requested_team_ids))
-            .all()
-        )
-    } if requested_team_ids else set()
+    departments = (
+        db.query(Department)
+        .filter(Department.tenant_id == tenant_id, Department.id.in_(requested_department_ids))
+        .with_for_update()
+        .all()
+        if requested_department_ids
+        else []
+    )
+    teams = (
+        db.query(Team)
+        .filter(Team.tenant_id == tenant_id, Team.id.in_(requested_team_ids))
+        .with_for_update()
+        .all()
+        if requested_team_ids
+        else []
+    )
+    valid_department_ids = {department.id for department in departments}
+    valid_team_ids = {team.id for team in teams}
 
     invalid_department_ids = requested_department_ids - valid_department_ids
     invalid_team_ids = requested_team_ids - valid_team_ids
     if invalid_department_ids or invalid_team_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid department or team selection")
 
-    db.query(DepartmentModulePermission).filter(
-        DepartmentModulePermission.module_id == module.id,
-        DepartmentModulePermission.department_id.in_(
-            db.query(Department.id).filter(Department.tenant_id == tenant_id)
-        ),
-    ).delete(synchronize_session=False)
-    db.query(TeamModulePermission).filter(
-        TeamModulePermission.module_id == module.id,
-        TeamModulePermission.team_id.in_(
-            db.query(Team.id).filter(Team.tenant_id == tenant_id)
-        ),
-    ).delete(synchronize_session=False)
+    assigned_team_ids = sorted(team.id for team in teams if team.department_id is not None)
+    if assigned_team_ids:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "team_department_conflict",
+                "message": "Direct team grants are only allowed for teams without a department.",
+                "team_ids": assigned_team_ids,
+            },
+        )
 
-    for department_id in sorted(valid_department_ids):
+    before_department_ids = sorted(
+        department_id
+        for (department_id,) in (
+            db.query(DepartmentModulePermission.department_id)
+            .join(Department, Department.id == DepartmentModulePermission.department_id)
+            .filter(Department.tenant_id == tenant_id, DepartmentModulePermission.module_id == module.id)
+            .all()
+        )
+    )
+    before_team_ids = sorted(
+        team_id
+        for (team_id,) in (
+            db.query(TeamModulePermission.team_id)
+            .join(Team, Team.id == TeamModulePermission.team_id)
+            .filter(Team.tenant_id == tenant_id, TeamModulePermission.module_id == module.id)
+            .all()
+        )
+    )
+
+    current_department_ids = set(before_department_ids)
+    current_team_ids = set(before_team_ids)
+    removed_department_ids = current_department_ids - valid_department_ids
+    removed_team_ids = current_team_ids - valid_team_ids
+
+    if removed_department_ids:
+        db.query(DepartmentModulePermission).filter(
+            DepartmentModulePermission.module_id == module.id,
+            DepartmentModulePermission.department_id.in_(removed_department_ids),
+        ).delete(synchronize_session=False)
+    if removed_team_ids:
+        db.query(TeamModulePermission).filter(
+            TeamModulePermission.module_id == module.id,
+            TeamModulePermission.team_id.in_(removed_team_ids),
+        ).delete(synchronize_session=False)
+
+    for department_id in sorted(valid_department_ids - current_department_ids):
         db.add(DepartmentModulePermission(department_id=department_id, module_id=module.id))
-    for team_id in sorted(valid_team_ids):
+    for team_id in sorted(valid_team_ids - current_team_ids):
         db.add(TeamModulePermission(team_id=team_id, module_id=module.id))
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    safe_log_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        module_key="security",
+        entity_type="module",
+        entity_id=module.id,
+        action="module.access.updated",
+        description="Module access hierarchy updated",
+        before_state={"department_ids": before_department_ids, "team_ids": before_team_ids},
+        after_state={
+            "department_ids": sorted(valid_department_ids),
+            "team_ids": sorted(valid_team_ids),
+            "direct_team_rule": "unassigned_teams_only",
+        },
+    )
     return get_module_access(db, module_id, tenant_id=tenant_id)
 
 

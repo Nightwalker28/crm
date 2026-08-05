@@ -35,6 +35,11 @@ export type ModulePermission = {
   };
 };
 
+export type SavedRolePermissions = {
+  permissions: ModulePermission[];
+  queryVersion: number;
+};
+
 type OverviewResponse = {
   roles: RoleSummary[];
   templates: RoleTemplate[];
@@ -106,7 +111,7 @@ export function useRolePermissions() {
     }
   }
 
-  async function updatePermissions(roleId: number, permissions: ModulePermission[]) {
+  async function updatePermissions(roleId: number, permissions: ModulePermission[]): Promise<SavedRolePermissions> {
     try {
       setIsSaving(true);
       const res = await apiFetch(`/admin/users/roles/${roleId}/permissions`, {
@@ -123,8 +128,12 @@ export function useRolePermissions() {
         throw new Error("Permissions could not be saved. Please try again.");
       }
       const body = (await res.json()) as ModulePermission[];
-      queryClient.setQueryData(["role-permissions", roleId], body);
+      const queryKey = ["role-permissions", roleId] as const;
+      const previousVersion = queryClient.getQueryState(queryKey)?.dataUpdatedAt ?? 0;
+      const updatedAt = Math.max(Date.now(), previousVersion + 1);
+      queryClient.setQueryData(queryKey, body, { updatedAt });
       toast.success("Permissions updated.");
+      return { permissions: body, queryVersion: updatedAt };
     } finally {
       setIsSaving(false);
     }
@@ -136,8 +145,11 @@ export function useRolePermissions() {
     selectedRoleId,
     setSelectedRoleId,
     permissions,
+    permissionsQueryVersion: permissionsQuery.dataUpdatedAt,
+    isPermissionsSuccess: permissionsQuery.isSuccess,
     isOverviewLoading: overviewQuery.isLoading,
-    isPermissionsLoading: permissionsQuery.isLoading,
+    isPermissionsLoading: selectedRoleId != null && permissionsQuery.isPending,
+    isPermissionsFetching: permissionsQuery.isFetching,
     overviewError: overviewQuery.isError,
     permissionsError: permissionsQuery.isError,
     retryOverview: overviewQuery.refetch,

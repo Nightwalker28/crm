@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.core.json_serialization import to_json_safe
 from app.modules.calendar.models import UserCalendarConnection
 from app.modules.documents.models import DocumentStorageConnection
 from app.modules.mail.models import UserMailConnection
@@ -619,7 +620,7 @@ def upsert_integration_connection(db: Session, *, tenant_id: int, provider_key: 
     connection.connected_by_id = connected_by_id
     connection.connected_at = connection.connected_at or (datetime.now(timezone.utc) if status == "connected" else None)
     connection.last_sync_at = last_sync_at
-    connection.settings_json = settings_json or {}
+    connection.settings_json = to_json_safe(settings_json) if settings_json is not None else {}
     db.commit()
     db.refresh(connection)
     return connection
@@ -630,7 +631,7 @@ def record_sync_run(db: Session, *, connection: IntegrationConnection, status: s
         tenant_id=connection.tenant_id,
         connection_id=connection.id,
         status=status,
-        result_json=result_json or {},
+        result_json=to_json_safe(result_json) if result_json is not None else {},
         error_message=error_message,
         finished_at=finished_at,
     )

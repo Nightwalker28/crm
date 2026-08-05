@@ -23,9 +23,21 @@ from app.core.microsoft_oauth import MICROSOFT_DRIVE_SCOPE, MICROSOFT_GRAPH_BASE
 from app.core.access_control import require_role_module_action_access
 from app.core.tenancy import get_frontend_origin_for_request, get_google_redirect_uri_for_request, get_microsoft_redirect_uri_for_request
 from app.core.uploads import UPLOAD_READ_CHUNK_BYTES, read_upload_limited
-from app.modules.documents.models import Document, DocumentClientShare, DocumentLink, DocumentStorageConnection, DocumentVersion
+from app.modules.documents.models import (
+    Document,
+    DocumentClientShare,
+    DocumentLink,
+    DocumentStorageConnection,
+    DocumentUploadOperation,
+    DocumentVersion,
+)
 from app.modules.documents.repositories import documents_repository
-from app.modules.documents.services.storage_backends import get_document_storage_backend, supported_storage_providers
+from app.modules.documents.services.storage_backends import (
+    StoredDocument,
+    _trusted_provider_web_url,
+    get_document_storage_backend,
+    supported_storage_providers,
+)
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.record_comments import get_record_comment_module_config, get_record_reference
 from app.modules.sales.models import SalesContact, SalesOrganization
@@ -430,6 +442,11 @@ def disconnect_document_storage_connection(
     connection.token_expires_at = None
     connection.last_error = None
     db.add(connection)
+    db.query(Document).filter(
+        Document.tenant_id == tenant_id,
+        Document.provider_account_id == connection.id,
+        Document.deleted_at.is_(None),
+    ).update({Document.provider_status: "permission_lost"}, synchronize_session=False)
     db.commit()
     db.refresh(connection)
     return connection
@@ -799,6 +816,8 @@ def serialize_client_document_share(share: DocumentClientShare) -> dict:
         "content_type": document.content_type,
         "extension": document.extension,
         "file_size_bytes": document.file_size_bytes,
+        "storage_provider": document.storage_provider,
+        "provider_status": document.provider_status,
         "created_at": document.created_at,
         "updated_at": document.updated_at,
         "share_id": share.id,
@@ -841,8 +860,101 @@ def resolve_document_download(db: Session, *, document: Document, current_user) 
     return _resolve_document_storage_key(db, document=document, storage_key=document.storage_path, current_user=current_user)
 
 
+def resolve_document_view(db: Session, *, document: Document, current_user) -> dict:
+    if document.storage_provider == DOCUMENT_PROVIDER_LOCAL:
+        return {"kind": "local", "url": f"/documents/{document.id}/download", "provider_status": "available"}
+    if document.storage_provider not in {DOCUMENT_PROVIDER_GOOGLE_DRIVE, DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE}:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Document storage provider is not configured.")
+    connection = None
+    if document.provider_account_id:
+        connection = (
+            db.query(DocumentStorageConnection)
+            .filter(
+                DocumentStorageConnection.id == document.provider_account_id,
+                DocumentStorageConnection.tenant_id == document.tenant_id,
+            )
+            .first()
+        )
+    if not connection and document.uploaded_by_user_id:
+        connection = (
+            db.query(DocumentStorageConnection)
+            .filter(
+                DocumentStorageConnection.tenant_id == document.tenant_id,
+                DocumentStorageConnection.user_id == document.uploaded_by_user_id,
+                DocumentStorageConnection.provider == document.storage_provider,
+            )
+            .first()
+        )
+    if not connection or connection.status != "connected":
+        document.provider_status = "permission_lost"
+        db.add(document)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Access to this cloud document has been lost. Reconnect the provider account.",
+        )
+    backend = (
+        _google_drive_backend_for_user(db, tenant_id=document.tenant_id, user_id=connection.user_id)
+        if document.storage_provider == DOCUMENT_PROVIDER_GOOGLE_DRIVE
+        else _microsoft_onedrive_backend_for_user(db, tenant_id=document.tenant_id, user_id=connection.user_id)
+    )
+    reference = backend.get_reference(document.provider_file_id or document.storage_path)
+    provider_status = str(reference["status"])
+    if provider_status != "available":
+        document.provider_status = provider_status
+        db.add(document)
+        db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This cloud document is no longer available from the connected provider.",
+        )
+    trusted_url = _trusted_provider_web_url(
+        document.storage_provider,
+        reference.get("external_web_url") or document.external_web_url,
+    )
+    if not trusted_url:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This cloud document does not have a trusted view link.")
+    document.provider_account_id = connection.id
+    document.provider_file_id = str(reference.get("provider_file_id") or document.provider_file_id or document.storage_path)
+    document.provider_parent_id = reference.get("provider_parent_id") or document.provider_parent_id
+    document.provider_path = reference.get("provider_path") or document.provider_path
+    document.external_web_url = trusted_url
+    document.provider_created_at = reference.get("provider_created_at") or document.provider_created_at
+    document.provider_status = "available"
+    db.add(document)
+    db.commit()
+    return {"kind": "external", "url": trusted_url, "provider_status": document.provider_status}
+
+
 def resolve_document_version_download(db: Session, *, document: Document, version: DocumentVersion, current_user) -> dict:
-    return _resolve_document_storage_key(db, document=document, storage_key=version.storage_key, current_user=current_user)
+    storage_provider = version.storage_provider or document.storage_provider
+    if storage_provider == DOCUMENT_PROVIDER_LOCAL:
+        return {"kind": "path", "path": get_document_storage_backend(DOCUMENT_PROVIDER_LOCAL).resolve_path(version.storage_key)}
+    if storage_provider not in {DOCUMENT_PROVIDER_GOOGLE_DRIVE, DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE}:
+        raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail="Document storage provider is not configured.")
+    connection = None
+    if version.provider_account_id:
+        connection = db.query(DocumentStorageConnection).filter(
+            DocumentStorageConnection.id == version.provider_account_id,
+            DocumentStorageConnection.tenant_id == document.tenant_id,
+        ).first()
+    storage_user_id = connection.user_id if connection else (version.uploaded_by_id or document.uploaded_by_user_id or current_user.id)
+    backend = (
+        _google_drive_backend_for_user(db, tenant_id=document.tenant_id, user_id=storage_user_id)
+        if storage_provider == DOCUMENT_PROVIDER_GOOGLE_DRIVE
+        else _microsoft_onedrive_backend_for_user(db, tenant_id=document.tenant_id, user_id=storage_user_id)
+    )
+    return {"kind": "bytes", "content": backend.download(version.provider_file_id or version.storage_key)}
+
+
+def _document_provider_filename(
+    *,
+    display_name: str | None,
+    legacy_title: str | None,
+    original_filename: str,
+) -> str:
+    requested_name = (display_name or legacy_title or "").strip()
+    return requested_name or original_filename
 
 
 def _store_document_content(
@@ -858,10 +970,16 @@ def _store_document_content(
 ):
     normalized_provider = (storage_provider or DOCUMENT_PROVIDER_LOCAL).strip().lower()
     if normalized_provider == DOCUMENT_PROVIDER_LOCAL:
-        return get_document_storage_backend(DOCUMENT_PROVIDER_LOCAL).save(tenant_id=tenant_id, extension=extension, content=content)
+        return (
+            get_document_storage_backend(DOCUMENT_PROVIDER_LOCAL).save(tenant_id=tenant_id, extension=extension, content=content),
+            None,
+        )
     if normalized_provider == DOCUMENT_PROVIDER_GOOGLE_DRIVE:
         if current_user is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Google Drive uploads require a connected user.")
+        connection = require_connected_document_storage(
+            db, tenant_id=tenant_id, user_id=current_user.id, provider=DOCUMENT_PROVIDER_GOOGLE_DRIVE
+        )
         backend = _google_drive_backend_for_user(db, tenant_id=tenant_id, user_id=current_user.id)
         return backend.save(
             tenant_id=tenant_id,
@@ -869,12 +987,24 @@ def _store_document_content(
             content=content,
             filename=original_filename,
             content_type=content_type,
-        )
+        ), connection.id
     if normalized_provider == DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE:
         if current_user is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Microsoft OneDrive uploads require a connected user.")
+        connection = require_connected_document_storage(
+            db, tenant_id=tenant_id, user_id=current_user.id, provider=DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE
+        )
         backend = _microsoft_onedrive_backend_for_user(db, tenant_id=tenant_id, user_id=current_user.id)
-        return backend.save(tenant_id=tenant_id, extension=extension, content=content, filename=original_filename, content_type=content_type)
+        return (
+            backend.save(
+                tenant_id=tenant_id,
+                extension=extension,
+                content=content,
+                filename=original_filename,
+                content_type=content_type,
+            ),
+            connection.id,
+        )
     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported document storage provider.")
 
 
@@ -912,6 +1042,20 @@ def _delete_document_storage_key(
 
 def _document_write_conflict() -> HTTPException:
     return HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Document write conflict.")
+
+
+def _mark_upload_operation_after_failure(db: Session, *, operation_id: int, status_value: str, message: str) -> None:
+    try:
+        db.rollback()
+        operation = db.query(DocumentUploadOperation).filter(DocumentUploadOperation.id == operation_id).first()
+        if operation:
+            operation.status = status_value
+            operation.last_error = message[:255]
+            db.add(operation)
+            db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception("Failed to persist document upload reconciliation state", extra={"operation_id": operation_id})
 
 
 def list_documents(
@@ -1206,7 +1350,7 @@ def upload_document_version(
     content, extension, content_type, original_filename = read_document_upload_sync(file)
     if _tenant_storage_used(db, tenant_id=tenant_id) + len(content) > settings.DOCUMENT_TENANT_STORAGE_LIMIT_BYTES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant document storage limit exceeded.")
-    stored = _store_document_content(
+    stored, provider_account_id = _store_document_content(
         db,
         tenant_id=tenant_id,
         extension=extension,
@@ -1232,6 +1376,14 @@ def upload_document_version(
             mime_type=content_type,
             size_bytes=len(content),
             checksum=hashlib.sha256(content).hexdigest(),
+            storage_provider=stored.provider,
+            provider_file_id=stored.provider_file_id,
+            provider_parent_id=stored.provider_parent_id,
+            provider_account_id=provider_account_id,
+            provider_path=stored.provider_path,
+            external_web_url=stored.external_web_url,
+            provider_created_at=stored.provider_created_at,
+            provider_status="available",
             uploaded_by_id=getattr(current_user, "id", None),
         )
         db.add(version)
@@ -1241,6 +1393,14 @@ def upload_document_version(
         document.extension = extension
         document.file_size_bytes = len(content)
         document.storage_path = stored.storage_path
+        document.provider_file_id = stored.provider_file_id
+        document.provider_parent_id = stored.provider_parent_id
+        document.provider_account_id = provider_account_id
+        document.provider_path = stored.provider_path
+        document.external_web_url = stored.external_web_url
+        document.provider_created_at = stored.provider_created_at
+        document.provider_status = "available"
+        document.checksum = version.checksum
         document.current_version_id = version.id
         db.add(document)
         db.commit()
@@ -1322,54 +1482,209 @@ def create_document(
     user_id: int | None,
     file: UploadFile,
     title: str | None = None,
+    display_name: str | None = None,
     description: str | None = None,
+    category: str | None = None,
+    tags: list[str] | None = None,
+    associations: list[dict] | None = None,
+    idempotency_key: str | None = None,
     linked_module_key: str | None = None,
     linked_entity_id: str | int | None = None,
     storage_provider: str = DOCUMENT_PROVIDER_LOCAL,
     current_user=None,
 ) -> Document:
     content, extension, content_type, original_filename = read_document_upload_sync(file)
+    normalized_title = (display_name or title or original_filename).strip()
+    if not normalized_title:
+        normalized_title = f"Untitled.{extension}"
+    provider_filename = _document_provider_filename(
+        display_name=display_name,
+        legacy_title=title,
+        original_filename=original_filename,
+    )
+    checksum = hashlib.sha256(content).hexdigest()
+    normalized_provider = (storage_provider or DOCUMENT_PROVIDER_LOCAL).strip().lower()
+    if normalized_provider not in {item["provider"] for item in supported_storage_providers()}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported document storage provider.")
     if _tenant_storage_used(db, tenant_id=tenant_id) + len(content) > settings.DOCUMENT_TENANT_STORAGE_LIMIT_BYTES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tenant document storage limit exceeded.")
 
+    requested_links = list(associations or [])
     if linked_module_key and linked_entity_id is not None:
-        if current_user is not None:
-            _require_linked_record_access(
-                db,
-                user=current_user,
-                module_key=linked_module_key,
-                entity_id=linked_entity_id,
-                action="edit",
-            )
-        else:
-            get_record_reference(db, tenant_id=tenant_id, module_key=linked_module_key, entity_id=linked_entity_id)
+        requested_links.append({"module_key": linked_module_key, "entity_id": str(linked_entity_id)})
     elif linked_module_key or linked_entity_id is not None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Both linked module and linked record are required.")
 
-    stored = _store_document_content(
-        db,
-        tenant_id=tenant_id,
-        extension=extension,
-        content=content,
-        original_filename=original_filename,
-        content_type=content_type,
-        storage_provider=storage_provider,
-        current_user=current_user,
-    )
-    normalized_title = (title or original_filename).strip()
-    if not normalized_title:
-        normalized_title = f"Untitled.{extension}"
+    normalized_links: list[tuple[str, str]] = []
+    association_failures: list[dict[str, str]] = []
+    seen_links: set[tuple[str, str]] = set()
+    for requested_link in requested_links:
+        if not isinstance(requested_link, dict):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid document association.")
+        module_key = str(requested_link.get("module_key") or "").strip()
+        entity_id = str(requested_link.get("entity_id") or "").strip()
+        if not module_key or not entity_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Each document association requires a module and record ID.")
+        pair = (module_key, entity_id)
+        if pair in seen_links:
+            continue
+        try:
+            if current_user is not None:
+                _require_linked_record_access(
+                    db,
+                    user=current_user,
+                    module_key=module_key,
+                    entity_id=entity_id,
+                    action="edit",
+                )
+            else:
+                get_record_reference(db, tenant_id=tenant_id, module_key=module_key, entity_id=entity_id)
+        except HTTPException:
+            association_failures.append({
+                "module_key": module_key,
+                "entity_id": entity_id,
+                "message": "Record could not be linked.",
+            })
+            seen_links.add(pair)
+            continue
+        seen_links.add(pair)
+        normalized_links.append(pair)
+
+    operation: DocumentUploadOperation | None = None
+    normalized_key = (idempotency_key or "").strip()
+    if normalized_key:
+        if user_id is None or len(normalized_key) < 8 or len(normalized_key) > 64 or not normalized_key.replace("-", "").replace("_", "").isalnum():
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid upload idempotency key.")
+        operation = (
+            db.query(DocumentUploadOperation)
+            .filter(
+                DocumentUploadOperation.tenant_id == tenant_id,
+                DocumentUploadOperation.user_id == user_id,
+                DocumentUploadOperation.idempotency_key == normalized_key,
+            )
+            .first()
+        )
+        if operation:
+            if (
+                operation.storage_provider != normalized_provider
+                or operation.original_filename != original_filename[:255]
+                or operation.checksum != checksum
+            ):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Upload key was already used for a different file.")
+            if operation.status == "completed" and operation.document_id:
+                existing_document = (
+                    db.query(Document)
+                    .filter(
+                        Document.tenant_id == tenant_id,
+                        Document.id == operation.document_id,
+                        Document.deleted_at.is_(None),
+                    )
+                    .first()
+                )
+                if existing_document:
+                    if current_user is not None:
+                        require_document_link_access(db, user=current_user, document=existing_document, action="view")
+                    existing_document.association_failures = list(operation.association_failures or [])
+                    return existing_document
+            if operation.status == "pending":
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This upload is already in progress.")
+        else:
+            operation = DocumentUploadOperation(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                idempotency_key=normalized_key,
+                storage_provider=normalized_provider,
+                status="pending",
+                original_filename=original_filename[:255],
+                content_type=content_type,
+                size_bytes=len(content),
+                checksum=checksum,
+            )
+            db.add(operation)
+            try:
+                db.commit()
+                db.refresh(operation)
+            except IntegrityError as exc:
+                db.rollback()
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This upload is already in progress.") from exc
+
+    reusable_storage_key = None
+    if operation and operation.status in {"uploaded", "orphaned"}:
+        reusable_storage_key = operation.provider_file_id or operation.provider_path
+    if reusable_storage_key:
+        stored = StoredDocument(
+            provider=operation.storage_provider,
+            storage_path=reusable_storage_key,
+            provider_file_id=operation.provider_file_id,
+            provider_parent_id=operation.provider_parent_id,
+            provider_path=operation.provider_path,
+            external_web_url=operation.external_web_url,
+            provider_created_at=operation.provider_created_at,
+        )
+        provider_account_id = operation.provider_account_id
+    else:
+        try:
+            stored, provider_account_id = _store_document_content(
+                db,
+                tenant_id=tenant_id,
+                extension=extension,
+                content=content,
+                original_filename=provider_filename,
+                content_type=content_type,
+                storage_provider=normalized_provider,
+                current_user=current_user,
+            )
+        except Exception:
+            if operation:
+                _mark_upload_operation_after_failure(
+                    db,
+                    operation_id=operation.id,
+                    status_value="failed",
+                    message="The storage provider did not complete the upload.",
+                )
+            raise
+        if operation:
+            operation.status = "uploaded"
+            operation.provider_account_id = provider_account_id
+            operation.provider_file_id = stored.provider_file_id
+            operation.provider_parent_id = stored.provider_parent_id
+            operation.provider_path = stored.provider_path or stored.storage_path
+            operation.external_web_url = stored.external_web_url
+            operation.provider_created_at = stored.provider_created_at
+            operation.last_error = None
+            db.add(operation)
+            db.commit()
+            db.refresh(operation)
+
+    normalized_tags = []
+    for value in tags or []:
+        normalized_tag = str(value).strip()
+        if normalized_tag and normalized_tag[:60] not in normalized_tags:
+            normalized_tags.append(normalized_tag[:60])
+        if len(normalized_tags) >= 20:
+            break
     document = Document(
         tenant_id=tenant_id,
         uploaded_by_user_id=user_id,
         title=normalized_title[:255],
+        display_name=normalized_title[:255],
         description=(description or "").strip() or None,
+        category=(category or "").strip()[:120] or None,
+        tags=normalized_tags,
         original_filename=original_filename[:255],
         content_type=content_type,
         extension=extension,
         file_size_bytes=len(content),
         storage_provider=stored.provider,
         storage_path=stored.storage_path,
+        provider_file_id=stored.provider_file_id,
+        provider_parent_id=stored.provider_parent_id,
+        provider_account_id=provider_account_id,
+        checksum=checksum,
+        provider_path=stored.provider_path,
+        external_web_url=stored.external_web_url,
+        provider_created_at=stored.provider_created_at,
+        provider_status="available",
     )
     try:
         db.add(document)
@@ -1382,7 +1697,15 @@ def create_document(
             file_name=original_filename[:255],
             mime_type=content_type,
             size_bytes=len(content),
-            checksum=hashlib.sha256(content).hexdigest(),
+            checksum=checksum,
+            storage_provider=stored.provider,
+            provider_file_id=stored.provider_file_id,
+            provider_parent_id=stored.provider_parent_id,
+            provider_account_id=provider_account_id,
+            provider_path=stored.provider_path,
+            external_web_url=stored.external_web_url,
+            provider_created_at=stored.provider_created_at,
+            provider_status="available",
             uploaded_by_id=user_id,
         )
         db.add(version)
@@ -1390,39 +1713,54 @@ def create_document(
         document.current_version_id = version.id
         db.add(document)
 
-        if linked_module_key and linked_entity_id is not None:
+        for module_key, entity_id in normalized_links:
             db.add(
                 DocumentLink(
                     tenant_id=tenant_id,
                     document_id=document.id,
-                    module_key=linked_module_key,
-                    entity_id=str(linked_entity_id),
+                    module_key=module_key,
+                    entity_id=entity_id,
                     created_by_user_id=user_id,
                 )
             )
+        if operation:
+            operation.status = "completed"
+            operation.document_id = document.id
+            operation.association_failures = association_failures
+            operation.last_error = None
+            db.add(operation)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        _delete_document_storage_key(
-            db,
-            tenant_id=tenant_id,
-            storage_provider=stored.provider,
-            storage_key=stored.storage_path,
-            current_user=current_user,
-        )
+        if operation:
+            _mark_upload_operation_after_failure(
+                db,
+                operation_id=operation.id,
+                status_value="orphaned",
+                message="CRM document persistence failed; retry can reconcile the uploaded file.",
+            )
+        else:
+            _delete_document_storage_key(
+                db, tenant_id=tenant_id, storage_provider=stored.provider, storage_key=stored.storage_path, current_user=current_user
+            )
         raise _document_write_conflict() from exc
     except Exception:
         db.rollback()
-        _delete_document_storage_key(
-            db,
-            tenant_id=tenant_id,
-            storage_provider=stored.provider,
-            storage_key=stored.storage_path,
-            current_user=current_user,
-        )
+        if operation:
+            _mark_upload_operation_after_failure(
+                db,
+                operation_id=operation.id,
+                status_value="orphaned",
+                message="CRM document persistence failed; retry can reconcile the uploaded file.",
+            )
+        else:
+            _delete_document_storage_key(
+                db, tenant_id=tenant_id, storage_provider=stored.provider, storage_key=stored.storage_path, current_user=current_user
+            )
         raise
     db.refresh(document)
     document = get_document_or_404(db, tenant_id=tenant_id, document_id=document.id)
+    document.association_failures = association_failures
     serialized = _serialize_document(document)
     log_activity(
         db,
@@ -1435,15 +1773,15 @@ def create_document(
         description=f"Uploaded document {document.title}",
         after_state=serialized,
     )
-    if linked_module_key and linked_entity_id is not None:
-        config = get_record_comment_module_config(linked_module_key)
+    for module_key, entity_id in normalized_links:
+        config = get_record_comment_module_config(module_key)
         log_activity(
             db,
             tenant_id=tenant_id,
             actor_user_id=user_id,
-            module_key=linked_module_key,
+            module_key=module_key,
             entity_type=config["entity_type"],
-            entity_id=str(linked_entity_id),
+            entity_id=entity_id,
             action="document.attach",
             description=f"Attached document {document.title}",
             after_state=serialized,

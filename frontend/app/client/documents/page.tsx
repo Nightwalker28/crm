@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Download, FileText } from "lucide-react";
-import { toast } from "sonner";
+import { FileText } from "lucide-react";
 
+import { DocumentReferenceActions } from "@/components/documents/DocumentReferenceActions";
 import { Button } from "@/components/ui/button";
-import { downloadClientDocument, useClientDocuments, type ClientDocument } from "@/hooks/useClientPortal";
+import { resolveClientDocumentView, useClientDocuments } from "@/hooks/useClientPortal";
 import { formatDateTime } from "@/lib/datetime";
 
 function formatBytes(value: number) {
@@ -17,14 +17,6 @@ function formatBytes(value: number) {
 export default function ClientDocumentsPage() {
   const documentsQuery = useClientDocuments();
   const documents = documentsQuery.data?.results ?? [];
-
-  async function handleDownload(document: ClientDocument) {
-    try {
-      await downloadClientDocument(document);
-    } catch {
-      toast.error("Failed to download document.");
-    }
-  }
 
   return (
     <main className="min-h-screen bg-app text-copy-primary">
@@ -66,10 +58,10 @@ export default function ClientDocumentsPage() {
                     {document.description ? <p className="mt-2 line-clamp-2 text-sm text-copy-secondary">{document.description}</p> : null}
                     {document.expires_at ? <p className="mt-2 text-xs text-state-warning">Access expires {formatDateTime(document.expires_at)}</p> : null}
                   </div>
-                  <Button type="button" variant="outline" onClick={() => void handleDownload(document)}>
-                    <Download className="h-4 w-4" />
-                    Download
-                  </Button>
+                  <DocumentReferenceActions
+                    document={document}
+                    resolveView={() => resolveClientDocumentView(document)}
+                  />
                 </div>
               </div>
             ))}

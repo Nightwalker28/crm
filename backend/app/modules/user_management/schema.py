@@ -1,4 +1,4 @@
-from typing import Optional, List, Any
+from typing import Any, List, Literal, Optional
 from datetime import datetime
 from enum import Enum
 
@@ -291,6 +291,9 @@ class ModuleAccessTeamOption(BaseModel):
     department_id: Optional[int] = None
     department_name: Optional[str] = None
     has_access: bool = False
+    has_direct_access: bool = False
+    direct_grant_allowed: bool = False
+    access_state: Literal["department_access", "direct_team_access", "blocked_by_department", "blocked"] = "blocked"
 
 
 class ModuleAccessSchema(BaseModel):

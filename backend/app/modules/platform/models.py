@@ -2,6 +2,7 @@ from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateT
 from sqlalchemy.orm import relationship, validates
 
 from app.core.database import Base
+from app.core.json_serialization import to_json_safe
 
 
 class ActivityLog(Base):
@@ -239,6 +240,10 @@ class DataTransferJob(Base):
 
     actor = relationship("User")
 
+    @validates("payload", "summary")
+    def _serialize_json_fields(self, _key, value):
+        return to_json_safe(value) if value is not None else None
+
 
 class TenantBackupSettings(Base):
     __tablename__ = "tenant_backup_settings"
@@ -360,6 +365,10 @@ class UserNotification(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     user = relationship("User")
+
+    @validates("payload")
+    def _serialize_metadata(self, _key, value):
+        return to_json_safe(value) if value is not None else None
 
 
 class CrmEvent(Base):

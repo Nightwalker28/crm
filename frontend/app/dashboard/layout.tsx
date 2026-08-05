@@ -2,9 +2,8 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ChevronRight, Menu } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { Menu } from "lucide-react";
 import CalendarSyncBridge from "@/components/calendar/CalendarSyncBridge";
 import Sidebar from "@/components/sidebar/Sidebar";
 import BrowserNotificationsBridge from "@/components/notifications/BrowserNotificationsBridge";
@@ -18,8 +17,8 @@ import { Sheet, SheetContent, SheetOverlay, SheetPortal, SheetTitle } from "@/co
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { getModuleDisplayName } from "@/lib/module-display";
-import { getGuardedModuleRoutePrefixes, getRequiredModuleKeyForRoute, MODULE_REGISTRY, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
-import { DASHBOARD_ROUTES, SETTINGS_ROUTES, canonicalizeDashboardHref, getFriendlyRouteLabel } from "@/lib/routes";
+import { getGuardedModuleRoutePrefixes, getModuleRegistryLabel, getRequiredModuleKeyForRoute, MODULE_REGISTRY, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
+import { DASHBOARD_ROUTES, SETTINGS_ROUTES, canonicalizeDashboardHref } from "@/lib/routes";
 
 const ADMIN_ONLY_PREFIXES = [
   SETTINGS_ROUTES.root,
@@ -37,113 +36,15 @@ function matchedModuleRoute(pathname: string) {
   return MODULE_ROUTE_PREFIXES.find((prefix) => pathname === prefix || pathname.startsWith(prefix + "/")) ?? null;
 }
 
-function getBreadcrumbItems(pathname: string) {
-  const segments = pathname.split("?")[0]?.split("/").filter(Boolean) ?? [];
-
-  const items = segments.map((segment, index) => {
-    const rawHref = `/${segments.slice(0, index + 1).join("/")}`;
-    const href =
-      rawHref === "/dashboard/sales"
-        ? DASHBOARD_ROUTES.accounts
-        : rawHref === "/dashboard/finance"
-          ? DASHBOARD_ROUTES.financePos
-          : rawHref === "/dashboard/catalog"
-            ? DASHBOARD_ROUTES.products
-            : rawHref;
-    const previousSegment = segments[index - 1];
-    const label =
-      segment === "dashboard"
-        ? "Dashboard"
-        : previousSegment === "modules" && /^\d+$/.test(segment)
-          ? "Access Settings"
-          : getFriendlyRouteLabel(segment);
-
-    return {
-      href,
-      label,
-      current: index === segments.length - 1,
-    };
-  });
-
-  return items.filter((item, index) => item.href !== items[index + 1]?.href);
-}
-
-function getSettingsBreadcrumbItems(pathname: string) {
-  const settingsSegments = pathname.slice(SETTINGS_ROUTES.root.length).split("/").filter(Boolean);
-  const items: Array<{ href: string; label: string; current: boolean }> = [
-    { href: SETTINGS_ROUTES.root, label: "Settings", current: settingsSegments.length === 0 },
-  ];
-  settingsSegments.forEach((segment, index) => {
-    const href = `${SETTINGS_ROUTES.root}/${settingsSegments.slice(0, index + 1).join("/")}`;
-    items.push({
-      href,
-      label: index > 0 && settingsSegments[index - 1] === "modules" && /^\d+$/.test(segment)
-        ? "Access Settings"
-        : getFriendlyRouteLabel(segment),
-      current: index === settingsSegments.length - 1,
-    });
-  });
-  return items;
-}
-
-function BreadcrumbBar({ pathname, settingsLeafLabel }: { pathname: string; settingsLeafLabel?: string }) {
-  if (pathname === SETTINGS_ROUTES.root || pathname.startsWith(`${SETTINGS_ROUTES.root}/`)) {
-    const items = getSettingsBreadcrumbItems(pathname);
-    if (settingsLeafLabel && items.length > 1) items[items.length - 1].label = settingsLeafLabel;
-    return (
-      <nav className="flex min-w-0 items-center gap-1 text-sm text-copy-muted" aria-label="Breadcrumb">
-        {items.map((item, index) => (
-          <div key={item.href} className="flex min-w-0 items-center gap-1">
-            {index > 0 ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-copy-disabled" /> : null}
-            {item.current ? <h1 className="truncate text-sm font-semibold text-copy-primary" aria-current="page">{item.label}</h1> : <Link href={item.href} className="truncate rounded-sm transition-colors hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{item.label}</Link>}
-          </div>
-        ))}
-      </nav>
-    );
-  }
-  const isTopLevelCustomModule = /^\/dashboard\/custom\/[^/]+$/.test(pathname);
-  if (
-    pathname === "/dashboard" ||
-    MODULE_ROUTE_PREFIXES.includes(pathname) ||
-    isTopLevelCustomModule ||
-    pathname === "/dashboard/views" ||
-    pathname.startsWith("/dashboard/views/")
-  ) {
-    return null;
-  }
-  const items = getBreadcrumbItems(pathname);
-
-  return (
-    <nav className="flex min-w-0 items-center gap-1 text-sm text-copy-muted" aria-label="Breadcrumb">
-      {items.map((item, index) => (
-        <div key={item.href} className="flex min-w-0 items-center gap-1">
-          {index > 0 ? <ChevronRight className="h-3.5 w-3.5 shrink-0 text-copy-disabled" /> : null}
-          {item.current ? (
-            <span className="truncate font-medium text-copy-primary" aria-current="page">{item.label}</span>
-          ) : (
-            <Link href={item.href} className="truncate rounded-sm transition-colors hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-              {item.label}
-            </Link>
-          )}
-        </div>
-      ))}
-    </nav>
-  );
-}
-
-function HeaderLocation({ pathname, customModuleLabel, settingsLeafLabel }: { pathname: string; customModuleLabel?: string; settingsLeafLabel?: string }) {
-  if (pathname === SETTINGS_ROUTES.root || pathname.startsWith(`${SETTINGS_ROUTES.root}/`)) {
-    return <BreadcrumbBar pathname={pathname} settingsLeafLabel={settingsLeafLabel} />;
-  }
-  const moduleTitle = MODULE_REGISTRY.find((module) => module.route === pathname)?.label ?? customModuleLabel;
-  if (pathname === DASHBOARD_ROUTES.home) return <h1 className="truncate text-sm font-semibold text-copy-primary">Dashboard</h1>;
-  if (moduleTitle) return <h1 className="truncate text-sm font-semibold text-copy-primary">{moduleTitle}</h1>;
-  return <BreadcrumbBar pathname={pathname} settingsLeafLabel={settingsLeafLabel} />;
+function registryModuleTitle(pathname: string) {
+  return [...MODULE_REGISTRY]
+    .sort((left, right) => right.route.length - left.route.length)
+    .find((module) => pathname === module.route || pathname.startsWith(`${module.route}/`))
+    ?.label;
 }
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const { isAdmin, isLoading } = useSidebarUser();
@@ -155,11 +56,19 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     .map((module) => module.base_route)
     .filter((route): route is string => Boolean(route?.startsWith("/dashboard/custom/")))
     .find((route) => pathname === route || pathname.startsWith(route + "/"));
-  const customModule = modules.find((module) => module.base_route === pathname);
-  const customModuleLabel = customModule
-    ? customModule.display_name?.trim() || getModuleDisplayName(customModule.name, customModule.description ?? undefined)
-    : undefined;
-  const settingsLeafLabel = pathname === SETTINGS_ROUTES.users && searchParams.get("tab") === "domains" ? "Domains & SSO" : undefined;
+  const customModule = customModuleRoute ? modules.find((module) => module.base_route === customModuleRoute) : undefined;
+  const viewModuleKey = pathname.startsWith("/dashboard/views/") ? pathname.split("/")[3] : null;
+  const moduleTitle = pathname === DASHBOARD_ROUTES.home
+    ? "Dashboard"
+    : pathname === SETTINGS_ROUTES.root || pathname.startsWith(`${SETTINGS_ROUTES.root}/`)
+      ? "Settings"
+      : pathname === "/dashboard/profile"
+        ? "Profile"
+        : viewModuleKey
+          ? getModuleRegistryLabel(viewModuleKey) ?? "View Manager"
+          : registryModuleTitle(pathname) ?? (customModule
+            ? customModule.display_name?.trim() || getModuleDisplayName(customModule.name, customModule.description ?? undefined)
+            : null);
   const isCheckingAdminAccess = requiresAdmin && isLoading;
   const isCustomModulePath = pathname === "/dashboard/custom" || pathname.startsWith("/dashboard/custom/");
   const isCheckingModuleAccess = Boolean((moduleRoute || isCustomModulePath) && modulesLoading);
@@ -211,7 +120,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           <header className="relative z-10 grid min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line-subtle px-4 py-3 sm:px-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,34rem)_minmax(0,1fr)] xl:py-0">
             <div className="flex min-w-0 items-center gap-2">
               <Button type="button" variant="ghost" size="icon-sm" className="md:hidden" aria-label="Open navigation" aria-expanded={mobileNavigationOpen} onClick={() => setMobileNavigationOpen(true)}><Menu /></Button>
-              <HeaderLocation pathname={pathname} customModuleLabel={customModuleLabel} settingsLeafLabel={settingsLeafLabel} />
+              {moduleTitle ? <h1 className="truncate text-sm font-semibold text-copy-primary">{moduleTitle}</h1> : null}
             </div>
             <div className="min-w-0">
               <GlobalCommandPalette responsive />

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
+from app.core.json_serialization import to_json_safe
 from app.core.pagination import Pagination
 from app.modules.platform.models import UserNotification
 
@@ -25,7 +26,7 @@ def create_notification(
         title=title,
         message=message,
         link_url=link_url,
-        payload=metadata or None,
+        payload=to_json_safe(metadata) if metadata is not None else None,
         status="unread",
     )
     db.add(notification)

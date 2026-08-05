@@ -267,7 +267,13 @@ def update_module_access(
     db: Session = Depends(get_db),
     admin = Depends(require_admin),
 ):
-    return admin_modules.update_module_access(db, module_id, payload, tenant_id=admin.tenant_id)
+    return admin_modules.update_module_access(
+        db,
+        module_id,
+        payload,
+        tenant_id=admin.tenant_id,
+        actor_user_id=admin.id,
+    )
 
 
 @router.get("/roles/permissions", response_model=RolePermissionOverviewResponse)

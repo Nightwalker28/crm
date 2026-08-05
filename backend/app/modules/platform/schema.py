@@ -2,7 +2,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from app.core.job_errors import safe_data_transfer_error
 
 
 class ActivityLogResponse(BaseModel):
@@ -111,6 +113,15 @@ class DataTransferJobResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+    @model_validator(mode="after")
+    def hide_internal_failure_details(self):
+        if self.status == "failed":
+            self.error_message = safe_data_transfer_error(
+                module_key=self.module_key,
+                operation_type=self.operation_type,
+            )
+        return self
 
 
 class DataTransferJobListResponse(BaseModel):
@@ -400,6 +411,18 @@ class UserNotificationResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    @model_validator(mode="after")
+    def hide_internal_job_failure_details(self):
+        if self.category == "data_transfer" and (
+            self.title.lower().endswith(" failed") or (self.metadata or {}).get("status") == "failed"
+        ):
+            metadata = self.metadata or {}
+            self.message = safe_data_transfer_error(
+                module_key=str(metadata.get("module_key") or ""),
+                operation_type=str(metadata.get("operation_type") or "background job"),
+            )
+        return self
 
 
 class UserNotificationListResponse(BaseModel):

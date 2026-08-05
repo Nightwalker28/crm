@@ -40,8 +40,39 @@ function accessFixture() {
       { id: 11, name: "Support", description: "Customer support", has_access: false },
     ],
     teams: [
-      { id: 21, name: "SMB", description: "Small business", department_id: 10, department_name: "Sales", has_access: false },
-      { id: 22, name: "Enterprise", description: "Key accounts", department_id: 11, department_name: "Support", has_access: false },
+      {
+        id: 21,
+        name: "SMB",
+        description: "Small business",
+        department_id: 10,
+        department_name: "Sales",
+        has_access: true,
+        has_direct_access: false,
+        direct_grant_allowed: false,
+        access_state: "department_access",
+      },
+      {
+        id: 22,
+        name: "Enterprise",
+        description: "Key accounts",
+        department_id: 11,
+        department_name: "Support",
+        has_access: false,
+        has_direct_access: false,
+        direct_grant_allowed: false,
+        access_state: "blocked_by_department",
+      },
+      {
+        id: 23,
+        name: "Field Ops",
+        description: "Unassigned specialists",
+        department_id: null,
+        department_name: null,
+        has_access: false,
+        has_direct_access: false,
+        direct_grant_allowed: true,
+        access_state: "blocked",
+      },
     ],
   };
 }
@@ -101,7 +132,12 @@ test("aligns module controls and confirms tenant-wide disablement with safe fail
 test("keeps department and team access as an explicit guarded draft", async ({ page }) => {
   let currentAccess = accessFixture();
   let updateRequests = 0;
+  let accessibleModuleRequests = 0;
   let savedPayload: { department_ids: number[]; team_ids: number[] } | null = null;
+  await page.route("**/users/me/modules", async (route) => {
+    accessibleModuleRequests += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(modules) });
+  });
   await page.route(`**/admin/users/modules/${moduleId}/access`, async (route) => {
     if (route.request().method() === "PUT") {
       updateRequests += 1;
@@ -114,7 +150,14 @@ test("keeps department and team access as an explicit guarded draft", async ({ p
         })),
         teams: currentAccess.teams.map((team) => ({
           ...team,
-          has_access: savedPayload?.team_ids.includes(team.id) ?? false,
+          has_access: team.department_id == null
+            ? (savedPayload?.team_ids.includes(team.id) ?? false)
+            : (savedPayload?.department_ids.includes(team.department_id) ?? false),
+          has_direct_access: team.department_id == null && (savedPayload?.team_ids.includes(team.id) ?? false),
+          direct_grant_allowed: team.department_id == null,
+          access_state: team.department_id == null
+            ? (savedPayload?.team_ids.includes(team.id) ? "direct_team_access" : "blocked")
+            : (savedPayload?.department_ids.includes(team.department_id) ? "department_access" : "blocked_by_department"),
         })),
       };
     }
@@ -122,9 +165,14 @@ test("keeps department and team access as an explicit guarded draft", async ({ p
   });
 
   await page.goto(`/dashboard/settings/modules/${moduleId}`);
+  await expect.poll(() => accessibleModuleRequests).toBeGreaterThan(0);
+  const accessibleRequestsBeforeSave = accessibleModuleRequests;
   await page.getByRole("checkbox", { name: "Allow Support department" }).click();
-  await page.getByRole("tab", { name: "Teams (2)" }).click();
-  await page.getByRole("checkbox", { name: "Allow Enterprise team" }).click();
+  await page.getByRole("tab", { name: "Teams (3)" }).click();
+  await expect(page.getByText("Department access.", { exact: true })).toHaveCount(2);
+  await expect(page.getByRole("checkbox", { name: "Allow SMB team" })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: "Allow Enterprise team" })).toBeDisabled();
+  await page.getByRole("checkbox", { name: "Allow Field Ops team" }).click();
 
   expect(updateRequests).toBe(0);
   await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
@@ -140,9 +188,43 @@ test("keeps department and team access as an explicit guarded draft", async ({ p
   await page.getByRole("button", { name: "Save Access" }).click();
   await saveRequest;
 
-  expect(savedPayload).toEqual({ department_ids: [10, 11], team_ids: [22] });
+  expect(savedPayload).toEqual({ department_ids: [10, 11], team_ids: [23] });
   await expect.poll(() => updateRequests).toBe(1);
+  await expect.poll(() => accessibleModuleRequests).toBeGreaterThan(accessibleRequestsBeforeSave);
   await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+});
+
+test("shows blocked teams and preserves the draft when a concurrent department change rejects save", async ({ page }) => {
+  const currentAccess = accessFixture();
+  await page.route(`**/admin/users/modules/${moduleId}/access`, async (route) => {
+    if (route.request().method() === "PUT") {
+      await route.fulfill({
+        status: 409,
+        contentType: "application/json",
+        body: JSON.stringify({
+          detail: {
+            code: "team_department_conflict",
+            message: "Direct team grants are only allowed for teams without a department.",
+            team_ids: [23],
+          },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentAccess) });
+  });
+
+  await page.goto(`/dashboard/settings/modules/${moduleId}`);
+  await page.getByRole("tab", { name: "Teams (3)" }).click();
+  await expect(page.getByText("Blocked by department.", { exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Allow Enterprise team" })).toBeDisabled();
+  await page.getByRole("checkbox", { name: "Allow Field Ops team" }).click();
+  await page.getByRole("button", { name: "Save Access" }).click();
+
+  await expect(page.getByRole("alert")).toContainText("A team’s department changed while you were editing.");
+  await expect(page.getByRole("button", { name: "Reload access rules" })).toBeVisible();
+  await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Allow Field Ops team" })).toBeChecked();
 });
 
 test("shows retryable module load failures without backend detail", async ({ page }) => {

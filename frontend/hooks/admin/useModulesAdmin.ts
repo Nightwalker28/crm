@@ -39,6 +39,9 @@ export type ModuleAccessTeam = {
   department_id?: number | null;
   department_name?: string | null;
   has_access: boolean;
+  has_direct_access: boolean;
+  direct_grant_allowed: boolean;
+  access_state: "department_access" | "direct_team_access" | "blocked_by_department" | "blocked";
 };
 
 export type ModuleAccess = {
@@ -144,8 +147,21 @@ async function updateModuleAccess(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("Module access could not be updated.");
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    if (res.status === 409 && body?.detail?.code === "team_department_conflict") {
+      throw new ModuleAccessConflictError();
+    }
+    throw new Error("Module access could not be updated.");
+  }
   return res.json();
+}
+
+export class ModuleAccessConflictError extends Error {
+  constructor() {
+    super("Module access changed while you were editing.");
+    this.name = "ModuleAccessConflictError";
+  }
 }
 
 export function useModulesAdmin() {

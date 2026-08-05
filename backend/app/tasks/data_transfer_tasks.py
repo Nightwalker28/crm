@@ -1,3 +1,5 @@
+import logging
+
 from celery.exceptions import SoftTimeLimitExceeded
 
 from app.core.celery_app import celery_app
@@ -11,6 +13,7 @@ from app.modules.platform.services.data_transfer_jobs import (
 
 DATA_TRANSFER_SOFT_TIME_LIMIT_SECONDS = 1500
 DATA_TRANSFER_TIME_LIMIT_SECONDS = 1800
+logger = logging.getLogger(__name__)
 
 
 @celery_app.task(
@@ -26,17 +29,17 @@ def process_import_job_task(self, job_id: int) -> None:
     try:
         process_import_job(job_id=job_id)
     except SoftTimeLimitExceeded:
-        mark_data_transfer_job_failed_by_id(
-            job_id=job_id,
-            error_message="Import exceeded the 25 minute soft time limit.",
-        )
+        logger.warning("Import job exceeded its soft time limit", extra={"job_id": job_id}, exc_info=True)
+        mark_data_transfer_job_failed_by_id(job_id=job_id, error_message="SoftTimeLimitExceeded: Import exceeded its soft time limit.")
     except TRANSIENT_JOB_ERRORS as exc:
         if self.request.retries >= self.max_retries:
-            mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=str(exc))
+            logger.warning("Import job exhausted retries", extra={"job_id": job_id}, exc_info=True)
+            mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=f"{type(exc).__name__}: {exc}")
             raise
         raise self.retry(exc=exc)
     except Exception as exc:
-        mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=str(exc))
+        logger.exception("Import job failed", extra={"job_id": job_id})
+        mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=f"{type(exc).__name__}: {exc}")
 
 
 @celery_app.task(
@@ -52,17 +55,17 @@ def process_export_job_task(self, job_id: int) -> None:
     try:
         process_export_job(job_id=job_id)
     except SoftTimeLimitExceeded:
-        mark_data_transfer_job_failed_by_id(
-            job_id=job_id,
-            error_message="Export exceeded the 25 minute soft time limit.",
-        )
+        logger.warning("Export job exceeded its soft time limit", extra={"job_id": job_id}, exc_info=True)
+        mark_data_transfer_job_failed_by_id(job_id=job_id, error_message="SoftTimeLimitExceeded: Export exceeded its soft time limit.")
     except TRANSIENT_JOB_ERRORS as exc:
         if self.request.retries >= self.max_retries:
-            mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=str(exc))
+            logger.warning("Export job exhausted retries", extra={"job_id": job_id}, exc_info=True)
+            mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=f"{type(exc).__name__}: {exc}")
             raise
         raise self.retry(exc=exc)
     except Exception as exc:
-        mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=str(exc))
+        logger.exception("Export job failed", extra={"job_id": job_id})
+        mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=f"{type(exc).__name__}: {exc}")
 
 
 @celery_app.task(

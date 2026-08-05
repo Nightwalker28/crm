@@ -37,6 +37,78 @@ class FakeDB:
 
 
 class CalendarGoogleSyncTests(unittest.TestCase):
+    def test_google_sync_completion_reuses_provider_event_id_on_retry(self):
+        db = FakeDB()
+        connection = SimpleNamespace(last_synced_at=None, last_error=None)
+        participant = SimpleNamespace(
+            user_id=1,
+            user=SimpleNamespace(last_login_provider="google"),
+            external_provider=None,
+            external_event_id=None,
+            external_synced_at=None,
+            last_sync_error=None,
+        )
+        event = SimpleNamespace(
+            tenant_id=10,
+            title="Planning",
+            description=None,
+            meeting_url=None,
+            location=None,
+            is_all_day=False,
+            start_at=calendar_services._utcnow(),
+            end_at=calendar_services._utcnow() + timedelta(hours=1),
+        )
+        response = SimpleNamespace(ok=True, content=b"{}", json=lambda: {"id": "google-event-1"})
+
+        with patch.object(calendar_services, "_google_connection_for_user", return_value=connection), \
+             patch.object(calendar_services, "_ensure_google_app_calendar", return_value="crm@example.com"), \
+             patch.object(calendar_services, "_ensure_google_access_token", return_value="token"), \
+             patch.object(calendar_services.requests, "post", return_value=response) as post_mock, \
+             patch.object(calendar_services.requests, "patch", return_value=response) as patch_mock:
+            calendar_services._sync_google_participant_event(db, event=event, participant=participant)
+            calendar_services._sync_google_participant_event(db, event=event, participant=participant)
+
+        self.assertEqual(participant.external_event_id, "google-event-1")
+        self.assertIsNotNone(connection.last_synced_at)
+        self.assertEqual(post_mock.call_count, 1)
+        self.assertEqual(patch_mock.call_count, 1)
+
+    def test_microsoft_sync_completion_reuses_provider_event_id_on_retry(self):
+        db = FakeDB()
+        connection = SimpleNamespace(last_synced_at=None, last_error=None)
+        participant = SimpleNamespace(
+            user_id=1,
+            user=SimpleNamespace(last_login_provider="microsoft"),
+            external_provider=None,
+            external_event_id=None,
+            external_synced_at=None,
+            last_sync_error=None,
+        )
+        event = SimpleNamespace(
+            tenant_id=10,
+            title="Planning",
+            description=None,
+            meeting_url=None,
+            location=None,
+            is_all_day=False,
+            start_at=calendar_services._utcnow(),
+            end_at=calendar_services._utcnow() + timedelta(hours=1),
+        )
+        response = SimpleNamespace(ok=True, content=b"{}", json=lambda: {"id": "microsoft-event-1"})
+
+        with patch.object(calendar_services, "_microsoft_connection_for_user", return_value=connection), \
+             patch.object(calendar_services, "_ensure_microsoft_default_calendar", return_value="calendar-1"), \
+             patch.object(calendar_services, "_ensure_microsoft_access_token", return_value="token"), \
+             patch.object(calendar_services.requests, "post", return_value=response) as post_mock, \
+             patch.object(calendar_services.requests, "patch", return_value=response) as patch_mock:
+            calendar_services._sync_microsoft_participant_event(db, event=event, participant=participant)
+            calendar_services._sync_microsoft_participant_event(db, event=event, participant=participant)
+
+        self.assertEqual(participant.external_event_id, "microsoft-event-1")
+        self.assertIsNotNone(connection.last_synced_at)
+        self.assertEqual(post_mock.call_count, 1)
+        self.assertEqual(patch_mock.call_count, 1)
+
     def test_google_app_calendar_rejects_invalid_provider_calendar_id(self):
         connection = SimpleNamespace(
             scopes=["https://www.googleapis.com/auth/calendar"],

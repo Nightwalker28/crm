@@ -122,9 +122,12 @@ def user_has_module_assignment(
     user: User,
     module: Module,
 ) -> bool:
+    if not is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module):
+        return False
+
     role_level = get_user_role_level(db, user)
     if role_level is not None and role_level >= ADMIN_MIN_ROLE_LEVEL:
-        return is_module_enabled_for_tenant(db, tenant_id=user.tenant_id, module=module)
+        return True
 
     role_id = getattr(user, "role_id", None)
     if not role_id:
@@ -144,26 +147,43 @@ def user_has_module_assignment(
         return False
 
     team_id = get_user_team_id(user)
-    department_id = get_user_department_id(db, user)
-    if not team_id and not department_id:
-        return False
-
     if team_id:
-        team_permission = (
-            db.query(TeamModulePermission)
-            .join(Team, Team.id == TeamModulePermission.team_id)
+        team = (
+            db.query(Team)
             .filter(
                 Team.tenant_id == user.tenant_id,
-                TeamModulePermission.team_id == team_id,
-                TeamModulePermission.module_id == module.id,
+                Team.id == team_id,
             )
             .first()
         )
-        if team_permission:
-            return True
+        if not team:
+            return False
+        if team.department_id is None:
+            return (
+                db.query(TeamModulePermission)
+                .filter(
+                    TeamModulePermission.team_id == team.id,
+                    TeamModulePermission.module_id == module.id,
+                )
+                .first()
+                is not None
+            )
 
+        return (
+            db.query(DepartmentModulePermission)
+            .join(Department, Department.id == DepartmentModulePermission.department_id)
+            .filter(
+                Department.tenant_id == user.tenant_id,
+                DepartmentModulePermission.department_id == team.department_id,
+                DepartmentModulePermission.module_id == module.id,
+            )
+            .first()
+            is not None
+        )
+
+    department_id = get_user_department_id(db, user)
     if department_id:
-        department_permission = (
+        return (
             db.query(DepartmentModulePermission)
             .join(Department, Department.id == DepartmentModulePermission.department_id)
             .filter(
@@ -172,9 +192,8 @@ def user_has_module_assignment(
                 DepartmentModulePermission.module_id == module.id,
             )
             .first()
+            is not None
         )
-        if department_permission:
-            return True
 
     return False
 

@@ -1,3 +1,5 @@
+import logging
+
 from app.core.celery_app import celery_app
 from app.core.database import SessionLocal
 from app.modules.calendar.services.calendar_services import (
@@ -9,6 +11,7 @@ from app.modules.platform.services.data_transfer_jobs import TRANSIENT_JOB_ERROR
 from requests import RequestException
 
 CALENDAR_TRANSIENT_ERRORS = (*TRANSIENT_JOB_ERRORS, RequestException)
+logger = logging.getLogger(__name__)
 
 
 @celery_app.task(
@@ -54,18 +57,23 @@ def delete_external_calendar_event_task(
 
 
 @celery_app.task(
+    bind=True,
     name="app.tasks.calendar.process_full_sync_job",
-    autoretry_for=TRANSIENT_JOB_ERRORS,
     retry_backoff=True,
     retry_jitter=True,
-    retry_kwargs={"max_retries": 3},
+    max_retries=3,
     soft_time_limit=1500,
     time_limit=1800,
 )
-def process_calendar_full_sync_job_task(job_id: int) -> None:
+def process_calendar_full_sync_job_task(self, job_id: int) -> None:
     try:
         process_calendar_sync_job(job_id=job_id)
-    except TRANSIENT_JOB_ERRORS:
-        raise
+    except CALENDAR_TRANSIENT_ERRORS as exc:
+        logger.warning("Calendar sync job hit a transient provider error", extra={"job_id": job_id}, exc_info=True)
+        if self.request.retries >= self.max_retries:
+            mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=f"{type(exc).__name__}: {exc}")
+            raise
+        raise self.retry(exc=exc)
     except Exception as exc:
-        mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=str(exc))
+        logger.exception("Calendar sync job failed", extra={"job_id": job_id})
+        mark_data_transfer_job_failed_by_id(job_id=job_id, error_message=f"{type(exc).__name__}: {exc}")

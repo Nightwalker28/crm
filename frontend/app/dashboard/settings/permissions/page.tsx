@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { Plus, ShieldCheck, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -43,6 +43,12 @@ import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 
 type ActionKey = keyof ModulePermission["actions"];
 type PermissionPreset = "none" | "viewer" | "contributor" | "manager" | "full";
+type PermissionDraft = {
+  roleId: number;
+  queryVersion: number;
+  permissions: ModulePermission[];
+  locallyEdited: boolean;
+};
 
 const ACTION_COLUMNS: Array<{ key: ActionKey; label: string; title: string }> = [
   { key: "can_view", label: "View", title: "Can view and list records" },
@@ -75,6 +81,7 @@ const PRESETS: Array<{ value: PermissionPreset; label: string }> = [
 ];
 
 const CHECKBOX_CLASS = "h-4 w-4 rounded border border-line-strong bg-surface-raised text-primary";
+const EMPTY_PERMISSIONS: ModulePermission[] = [];
 
 function permissionSignature(permissions: ModulePermission[]) {
   return JSON.stringify(
@@ -119,8 +126,11 @@ export default function RolesPermissionsPage() {
     selectedRoleId,
     setSelectedRoleId,
     permissions,
+    permissionsQueryVersion,
+    isPermissionsSuccess,
     isOverviewLoading,
     isPermissionsLoading,
+    isPermissionsFetching,
     overviewError,
     permissionsError,
     retryOverview,
@@ -131,7 +141,7 @@ export default function RolesPermissionsPage() {
     updatePermissions,
   } = useRolePermissions();
 
-  const [localPermissions, setLocalPermissions] = useState<ModulePermission[]>([]);
+  const [permissionDraft, setPermissionDraft] = useState<PermissionDraft | null>(null);
   const [search, setSearch] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [newRoleName, setNewRoleName] = useState("");
@@ -139,21 +149,35 @@ export default function RolesPermissionsPage() {
   const [newRoleTemplate, setNewRoleTemplate] = useState("user");
   const [createError, setCreateError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const loadedRoleId = useRef<number | null>(null);
-
-  const isDirty = permissionSignature(localPermissions) !== permissionSignature(permissions);
+  const selectedDraft = permissionDraft?.roleId === selectedRoleId ? permissionDraft : null;
+  const localPermissions = selectedDraft?.permissions ?? EMPTY_PERMISSIONS;
+  const baselineLoaded = selectedRoleId != null && isPermissionsSuccess && selectedDraft != null;
+  const isDirty = baselineLoaded && Boolean(selectedDraft?.locallyEdited);
+  const isAwaitingHydration = selectedRoleId != null
+    && isPermissionsSuccess
+    && (
+      selectedDraft == null
+      || (!selectedDraft.locallyEdited && selectedDraft.queryVersion !== permissionsQueryVersion)
+    );
   const isCreateRoleAction = requestedAction === "create-role";
   const createRoleOpen = dialogOpen || isCreateRoleAction;
   const isCreateRoleDirty = Boolean(newRoleName.trim() || newRoleDescription.trim() || newRoleTemplate !== "user");
 
-  useEffect(() => {
-    if (loadedRoleId.current !== selectedRoleId || !isDirty) {
-      loadedRoleId.current = selectedRoleId;
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setLocalPermissions(permissions);
-      setSaveError(null);
-    }
-  }, [isDirty, permissions, selectedRoleId]);
+  if (
+    selectedRoleId != null
+    && isPermissionsSuccess
+    && (
+      selectedDraft == null
+      || (!selectedDraft.locallyEdited && selectedDraft.queryVersion !== permissionsQueryVersion)
+    )
+  ) {
+    setPermissionDraft({
+      roleId: selectedRoleId,
+      queryVersion: permissionsQueryVersion,
+      permissions,
+      locallyEdited: false,
+    });
+  }
 
   useUnsavedChangesGuard(isDirty || (createRoleOpen && isCreateRoleDirty), isSaving || isCreating);
 
@@ -184,11 +208,32 @@ export default function RolesPermissionsPage() {
   function updateVisiblePermissions(
     update: (permission: ModulePermission) => ModulePermission,
   ) {
-    setLocalPermissions((current) =>
-      current.map((permission) =>
-        visibleModuleIds.has(permission.module_id) ? update(permission) : permission,
-      ),
-    );
+    updateDraftPermissions((current) => current.map((permission) =>
+      visibleModuleIds.has(permission.module_id) ? update(permission) : permission,
+    ));
+    setSaveError(null);
+  }
+
+  function updateDraftPermissions(update: (permissions: ModulePermission[]) => ModulePermission[]) {
+    setPermissionDraft((current) => {
+      if (!current || current.roleId !== selectedRoleId) return current;
+      const nextPermissions = update(current.permissions);
+      return {
+        ...current,
+        permissions: nextPermissions,
+        locallyEdited: permissionSignature(nextPermissions) !== permissionSignature(permissions),
+      };
+    });
+  }
+
+  function discardPermissionChanges() {
+    if (selectedRoleId == null || !isPermissionsSuccess) return;
+    setPermissionDraft({
+      roleId: selectedRoleId,
+      queryVersion: permissionsQueryVersion,
+      permissions,
+      locallyEdited: false,
+    });
     setSaveError(null);
   }
 
@@ -255,9 +300,20 @@ export default function RolesPermissionsPage() {
 
   async function handleSave() {
     if (selectedRoleId == null || !isDirty) return;
+    const savedRoleId = selectedRoleId;
     setSaveError(null);
     try {
-      await updatePermissions(selectedRoleId, localPermissions);
+      const saved = await updatePermissions(savedRoleId, localPermissions);
+      setPermissionDraft((current) => (
+        current?.roleId === savedRoleId
+          ? {
+              roleId: savedRoleId,
+              queryVersion: saved.queryVersion,
+              permissions: saved.permissions,
+              locallyEdited: false,
+            }
+          : current
+      ));
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Permissions could not be saved.");
     }
@@ -290,7 +346,11 @@ export default function RolesPermissionsPage() {
                 {roles.length ? (
                   <div className="w-full lg:w-72">
                     <label htmlFor="permission-role-selector" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-copy-muted">Role</label>
-                    <Select value={selectedRoleId == null ? "" : String(selectedRoleId)} onValueChange={(value) => void switchRole(Number(value))}>
+                    <Select
+                      value={selectedRoleId == null ? "" : String(selectedRoleId)}
+                      onValueChange={(value) => void switchRole(Number(value))}
+                      disabled={isSaving}
+                    >
                       <SelectTrigger id="permission-role-selector" aria-label="Role"><SelectValue placeholder="Select a role" /></SelectTrigger>
                       <SelectContent>
                         {roles.map((role) => <SelectItem key={role.id} value={String(role.id)}>{role.name} · Level {role.level}</SelectItem>)}
@@ -300,12 +360,13 @@ export default function RolesPermissionsPage() {
                   </div>
                 ) : null}
               </div>
-              {selectedRole ? (
+              {selectedRole && baselineLoaded && localPermissions.length ? (
                 <div className="mt-4 flex flex-col gap-2 border-t border-line-subtle pt-4 sm:flex-row sm:items-center sm:justify-between">
                   <SearchBar value={search} onChange={setSearch} placeholder="Search modules" className="sm:max-w-sm" />
                   <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
                     <Select
                       value=""
+                      disabled={isSaving}
                       onValueChange={(value) =>
                         updateVisiblePermissions((permission) => ({
                           ...permission,
@@ -325,7 +386,7 @@ export default function RolesPermissionsPage() {
               ) : null}
             </div>
 
-            {isPermissionsLoading ? (
+            {isPermissionsLoading || isAwaitingHydration ? (
               <div className="p-5"><RouteLoadingState label="role permissions" /></div>
             ) : permissionsError ? (
               <div className="p-6" role="alert">
@@ -333,10 +394,10 @@ export default function RolesPermissionsPage() {
                 <p className="mt-1 text-sm text-copy-secondary">Try again before editing this role.</p>
                 <Button className="mt-4" variant="outline" onClick={() => void retryPermissions()}>Try again</Button>
               </div>
-            ) : selectedRole ? (
+            ) : selectedRole && baselineLoaded ? (
               <>
                 <div className="p-4">
-                  <ModuleTableShell className="max-h-[62vh]" isRefreshing={isSaving}>
+                  <ModuleTableShell className="max-h-[62vh]" isRefreshing={isSaving || isPermissionsFetching}>
                     <Table className="min-w-[920px]">
                       <TableHeader>
                         <TableHeaderRow>
@@ -353,7 +414,7 @@ export default function RolesPermissionsPage() {
                                     className={CHECKBOX_CLASS}
                                     aria-label={`Set ${column.label.toLocaleLowerCase()} for all visible modules`}
                                     checked={state}
-                                    disabled={!filteredPermissions.length}
+                                    disabled={!filteredPermissions.length || isSaving}
                                     onCheckedChange={(checked) =>
                                       updateVisiblePermissions((permission) => ({
                                         ...permission,
@@ -387,8 +448,9 @@ export default function RolesPermissionsPage() {
                                         className={`${CHECKBOX_CLASS} mt-0.5 shrink-0`}
                                         aria-label={`Set all permissions for ${permission.module_name}`}
                                         checked={rowState}
+                                        disabled={isSaving}
                                         onCheckedChange={(checked) =>
-                                          setLocalPermissions((current) => current.map((item) =>
+                                          updateDraftPermissions((current) => current.map((item) =>
                                             item.module_id === permission.module_id
                                               ? { ...item, actions: Object.fromEntries(ACTION_COLUMNS.map((column) => [column.key, checked === true])) as ModulePermission["actions"] }
                                               : item,
@@ -408,9 +470,10 @@ export default function RolesPermissionsPage() {
                                       <Checkbox
                                         checked={permission.actions[column.key]}
                                         aria-label={`${column.label} ${permission.module_name}`}
+                                        disabled={isSaving}
                                         onCheckedChange={(checked) => {
                                           setSaveError(null);
-                                          setLocalPermissions((current) => current.map((item) =>
+                                          updateDraftPermissions((current) => current.map((item) =>
                                             item.module_id === permission.module_id
                                               ? { ...item, actions: { ...item.actions, [column.key]: checked === true } }
                                               : item,
@@ -426,7 +489,17 @@ export default function RolesPermissionsPage() {
                               );
                             })}
                           </Fragment>
-                        )) : (
+                        )) : localPermissions.length === 0 ? (
+                          <TableRow>
+                            <TableCell colSpan={ACTION_COLUMNS.length + 1} className="py-14">
+                              <EmptyState
+                                icon={ShieldCheck}
+                                title="No modules available for this role"
+                                description="No workspace modules are currently available to configure for this role."
+                              />
+                            </TableCell>
+                          </TableRow>
+                        ) : search.trim() ? (
                           <TableRow>
                             <TableCell colSpan={ACTION_COLUMNS.length + 1} className="py-14">
                               <EmptyState
@@ -437,7 +510,7 @@ export default function RolesPermissionsPage() {
                               />
                             </TableCell>
                           </TableRow>
-                        )}
+                        ) : null}
                       </TableBody>
                     </Table>
                   </ModuleTableShell>
@@ -451,7 +524,7 @@ export default function RolesPermissionsPage() {
                     {saveError ? <p className="mt-1 text-sm text-state-danger" role="alert">{saveError}</p> : null}
                   </div>
                   <div className="flex gap-2">
-                    <Button type="button" variant="outline" disabled={!isDirty || isSaving} onClick={() => { setLocalPermissions(permissions); setSaveError(null); }}>
+                    <Button type="button" variant="outline" disabled={!isDirty || isSaving} onClick={discardPermissionChanges}>
                       Discard
                     </Button>
                     <Button type="button" disabled={!isDirty || isSaving} onClick={() => void handleSave()}>

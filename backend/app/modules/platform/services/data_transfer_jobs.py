@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import logging
 import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.access_control import (
@@ -14,6 +16,8 @@ from app.core.access_control import (
 )
 from app.core.config import settings
 from app.core.database import SessionLocal
+from app.core.job_errors import safe_data_transfer_error, technical_job_error
+from app.core.json_serialization import to_json_safe
 from app.core.pagination import Pagination
 from app.modules.platform.models import DataTransferJob
 from app.modules.user_management.models import User
@@ -32,7 +36,9 @@ MODULE_DISPLAY_NAMES = {
     "sales_quotes": "Quotes",
     "finance_io": "Insertion Orders",
 }
-TRANSIENT_JOB_ERRORS = (OSError, ConnectionError, TimeoutError)
+TRANSIENT_JOB_ERRORS = (OSError, ConnectionError, TimeoutError, OperationalError)
+TERMINAL_JOB_STATUSES = {"completed", "failed"}
+logger = logging.getLogger(__name__)
 
 
 MODULE_LINKS = {
@@ -113,6 +119,38 @@ def _notify_job_state(
     )
 
 
+def _notify_job_state_safely(
+    db: Session,
+    *,
+    job: DataTransferJob,
+    title: str,
+    message: str,
+) -> None:
+    try:
+        _notify_job_state(db, job=job, title=title, message=message)
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Background job notification creation failed",
+            extra={"job_id": job.id, "tenant_id": job.tenant_id, "status": job.status},
+        )
+
+
+def _commit_job_state(db: Session, *, job: DataTransferJob, state: str) -> None:
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    try:
+        db.refresh(job)
+    except Exception:
+        logger.exception(
+            "Background job could not be refreshed after commit",
+            extra={"job_id": job.id, "tenant_id": job.tenant_id, "status": state},
+        )
+
+
 def should_background_data_transfer_with_size(
     *,
     row_count: int | None = None,
@@ -142,13 +180,12 @@ def create_data_transfer_job(
         operation_type=operation_type,
         status="queued",
         mode=mode,
-        payload=payload or None,
+        payload=to_json_safe(payload) if payload is not None else None,
     )
     db.add(job)
-    db.commit()
-    db.refresh(job)
+    _commit_job_state(db, job=job, state="queued")
     module_name = MODULE_DISPLAY_NAMES.get(module_key, module_key)
-    _notify_job_state(
+    _notify_job_state_safely(
         db,
         job=job,
         title=f"{operation_type.title()} queued",
@@ -185,13 +222,14 @@ def enqueue_export_job(job_id: int) -> None:
 def mark_job_running(db: Session, job: DataTransferJob) -> DataTransferJob:
     from sqlalchemy import func
 
+    if job.status in TERMINAL_JOB_STATUSES:
+        return job
     job.status = "running"
     job.started_at = func.now()
     job.progress_percent = max(job.progress_percent or 0, 5)
     job.progress_message = "Job started."
     db.add(job)
-    db.commit()
-    db.refresh(job)
+    _commit_job_state(db, job=job, state="running")
     return job
 
 
@@ -202,11 +240,12 @@ def update_job_progress(
     progress_percent: int,
     progress_message: str,
 ) -> DataTransferJob:
+    if job.status in TERMINAL_JOB_STATUSES:
+        return job
     job.progress_percent = max(0, min(int(progress_percent), 100))
     job.progress_message = progress_message[:255]
     db.add(job)
-    db.commit()
-    db.refresh(job)
+    _commit_job_state(db, job=job, state="running")
     return job
 
 
@@ -221,8 +260,11 @@ def mark_job_completed(
 ) -> DataTransferJob:
     from sqlalchemy import func
 
+    if job.status in TERMINAL_JOB_STATUSES:
+        return job
+    normalized_summary = to_json_safe(summary) if summary is not None else None
     job.status = "completed"
-    job.summary = summary or None
+    job.summary = normalized_summary
     job.result_file_path = result_file_path
     job.result_file_name = result_file_name
     job.result_media_type = result_media_type
@@ -231,10 +273,9 @@ def mark_job_completed(
     job.progress_percent = 100
     job.progress_message = "Completed."
     db.add(job)
-    db.commit()
-    db.refresh(job)
+    _commit_job_state(db, job=job, state="completed")
     module_name = MODULE_DISPLAY_NAMES.get(job.module_key, job.module_key)
-    _notify_job_state(
+    _notify_job_state_safely(
         db,
         job=job,
         title=f"{job.operation_type.title()} completed",
@@ -246,29 +287,34 @@ def mark_job_completed(
 def mark_job_failed(db: Session, job: DataTransferJob, *, error_message: str, summary: dict | None = None) -> DataTransferJob:
     from sqlalchemy import func
 
+    if job.status in TERMINAL_JOB_STATUSES:
+        return job
+    normalized_summary = to_json_safe(summary) if summary is not None else None
     job.status = "failed"
-    job.error_message = error_message
-    job.summary = summary or None
+    job.error_message = technical_job_error(error_message)
+    job.summary = normalized_summary
     job.completed_at = func.now()
     job.progress_percent = min(max(job.progress_percent or 0, 0), 99)
     job.progress_message = "Failed."
     db.add(job)
-    db.commit()
-    db.refresh(job)
-    module_name = MODULE_DISPLAY_NAMES.get(job.module_key, job.module_key)
-    _notify_job_state(
+    _commit_job_state(db, job=job, state="failed")
+    _notify_job_state_safely(
         db,
         job=job,
         title=f"{job.operation_type.title()} failed",
-        message=f"{job.operation_type.title()} for {module_name} failed: {error_message}",
+        message=safe_data_transfer_error(module_key=job.module_key, operation_type=job.operation_type),
     )
     return job
 
 
-def mark_data_transfer_job_failed_by_id(*, job_id: int, error_message: str) -> None:
+def mark_data_transfer_job_failed_by_id(*, job_id: int, error_message: str | None = None) -> None:
     with SessionLocal() as db:
         job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
-        mark_job_failed(db, job, error_message=error_message)
+        mark_job_failed(
+            db,
+            job,
+            error_message=technical_job_error(error_message),
+        )
 
 
 def list_data_transfer_jobs(
@@ -430,6 +476,8 @@ def process_import_job(*, job_id: int) -> None:
     try:
         with SessionLocal() as db:
             job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
+            if job.status in TERMINAL_JOB_STATUSES:
+                return
             mark_job_running(db, job)
             update_job_progress(db, job, progress_percent=10, progress_message="Preparing import payload.")
 
@@ -544,6 +592,8 @@ def process_import_job(*, job_id: int) -> None:
 def process_export_job(*, job_id: int) -> None:
     with SessionLocal() as db:
         job = get_data_transfer_job_or_404(db, job_id=job_id, actor_user_id=None, is_admin=True)
+        if job.status in TERMINAL_JOB_STATUSES:
+            return
         mark_job_running(db, job)
         update_job_progress(db, job, progress_percent=10, progress_message="Preparing export job.")
 

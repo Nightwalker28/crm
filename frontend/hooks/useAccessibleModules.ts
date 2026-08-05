@@ -6,7 +6,8 @@ import { apiFetch } from "@/lib/api";
 
 const LEGACY_MODULE_CACHE_KEY = "lynk_modules";
 const PREVIOUS_MODULE_CACHE_KEY = "lynk_modules:v2";
-const MODULE_CACHE_KEY = "lynk_modules:v3";
+const PREVIOUS_HIERARCHY_CACHE_KEY = "lynk_modules:v3";
+const MODULE_CACHE_KEY = "lynk_modules:v4";
 const MODULE_CACHE_INVALIDATION_EVENT = "lynk:modules-invalidated";
 
 export type AccessibleModuleActions = {
@@ -53,6 +54,7 @@ export function invalidateModuleCache() {
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(LEGACY_MODULE_CACHE_KEY);
   window.sessionStorage.removeItem(PREVIOUS_MODULE_CACHE_KEY);
+  window.sessionStorage.removeItem(PREVIOUS_HIERARCHY_CACHE_KEY);
   window.sessionStorage.removeItem(MODULE_CACHE_KEY);
   window.dispatchEvent(new Event(MODULE_CACHE_INVALIDATION_EVENT));
 }
@@ -90,10 +92,9 @@ export function useAccessibleModules() {
       const cachedModules = allowCachedModules ? readCachedModules() : null;
       if (cachedModules !== null) {
         setState({ modules: cachedModules, isLoading: false });
-        return;
+      } else {
+        setState((current) => ({ ...current, isLoading: true }));
       }
-
-      setState((current) => ({ ...current, isLoading: true }));
       let nextModules: AccessibleModule[] | null = null;
       try {
         const res = await apiFetch("/users/me/modules");

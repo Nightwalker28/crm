@@ -27,13 +27,26 @@ export type DocumentClientShare = {
 
 export type DocumentItem = {
   id: number;
+  tenant_id?: number | null;
   title: string;
+  display_name?: string | null;
   description?: string | null;
   original_filename: string;
   content_type: string;
   extension: string;
   file_size_bytes: number;
   storage_provider: string;
+  provider_file_id?: string | null;
+  provider_parent_id?: string | null;
+  provider_account_id?: number | null;
+  checksum?: string | null;
+  provider_path?: string | null;
+  external_web_url?: string | null;
+  provider_created_at?: string | null;
+  uploaded_at?: string | null;
+  provider_status: "available" | "missing" | "permission_lost" | "deleted";
+  category?: string | null;
+  tags: string[];
   is_template: boolean;
   template_category?: string | null;
   current_version_id?: number | null;
@@ -42,6 +55,7 @@ export type DocumentItem = {
   updated_at: string;
   links: DocumentLink[];
   client_shares: DocumentClientShare[];
+  association_failures?: Array<{ module_key: string; entity_id: string; message: string }>;
 };
 
 export type DocumentVersion = {
@@ -52,6 +66,14 @@ export type DocumentVersion = {
   mime_type: string;
   size_bytes: number;
   checksum?: string | null;
+  storage_provider: string;
+  provider_file_id?: string | null;
+  provider_parent_id?: string | null;
+  provider_account_id?: number | null;
+  provider_path?: string | null;
+  external_web_url?: string | null;
+  provider_created_at?: string | null;
+  provider_status: "available" | "missing" | "permission_lost" | "deleted";
   uploaded_by_id?: number | null;
   created_at: string;
 };
@@ -81,11 +103,24 @@ export type DocumentStorageConnection = {
 export type DocumentUploadPayload = {
   file: File;
   title?: string;
+  display_name?: string;
   description?: string;
+  category?: string;
+  tags?: string[];
+  associations?: Array<{ module_key: string; entity_id: string | number }>;
+  idempotency_key?: string;
   linked_module_key?: string;
   linked_entity_id?: string | number;
   storage_provider?: string;
 };
+
+export type DocumentUploadLimits = {
+  allowed_extensions: string[];
+  max_upload_bytes: number;
+  tenant_storage_limit_bytes: number;
+};
+
+export type DocumentView = { kind: "local" | "external"; url: string; provider_status: string };
 
 async function readJsonSafely(res: Response) {
   try {
@@ -101,6 +136,21 @@ export function documentDownloadUrl(documentId: number) {
 
 export function documentVersionDownloadUrl(documentId: number, versionId: number) {
   return apiUrl(`/documents/${documentId}/versions/${versionId}/download`);
+}
+
+export async function resolveDocumentView(documentId: number): Promise<DocumentView> {
+  const res = await apiFetch(`/documents/${documentId}/view`);
+  const body = await readJsonSafely(res);
+  if (!res.ok) throw new Error(typeof body?.detail === "string" ? body.detail : "This document cannot be opened.");
+  const view = body as DocumentView;
+  return { ...view, url: view.kind === "local" ? apiUrl(view.url) : view.url };
+}
+
+export async function fetchDocumentUploadLimits(): Promise<DocumentUploadLimits> {
+  const res = await apiFetch("/documents/limits");
+  const body = await readJsonSafely(res);
+  if (!res.ok) throw new Error("Document upload limits could not be loaded.");
+  return body as DocumentUploadLimits;
 }
 
 export async function fetchDocuments(params: {
@@ -195,7 +245,12 @@ export async function uploadDocument(payload: DocumentUploadPayload): Promise<Do
   const form = new FormData();
   form.append("file", payload.file);
   if (payload.title?.trim()) form.append("title", payload.title.trim());
+  if (payload.display_name?.trim()) form.append("display_name", payload.display_name.trim());
   if (payload.description?.trim()) form.append("description", payload.description.trim());
+  if (payload.category?.trim()) form.append("category", payload.category.trim());
+  if (payload.tags) form.append("tags_json", JSON.stringify(payload.tags));
+  if (payload.associations) form.append("associations_json", JSON.stringify(payload.associations));
+  if (payload.idempotency_key) form.append("idempotency_key", payload.idempotency_key);
   if (payload.linked_module_key) form.append("linked_module_key", payload.linked_module_key);
   if (payload.linked_entity_id !== undefined && payload.linked_entity_id !== null) {
     form.append("linked_entity_id", String(payload.linked_entity_id));
@@ -310,6 +365,14 @@ export function useDocumentStorageConnections() {
     queryKey: ["documents", "storage-connections"],
     queryFn: fetchDocumentStorageConnections,
     staleTime: 30_000,
+  });
+}
+
+export function useDocumentUploadLimits() {
+  return useQuery({
+    queryKey: ["documents", "upload-limits"],
+    queryFn: fetchDocumentUploadLimits,
+    staleTime: 5 * 60_000,
   });
 }
 

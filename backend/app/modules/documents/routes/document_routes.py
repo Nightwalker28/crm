@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.orm import Session
@@ -19,6 +21,7 @@ from app.modules.documents.schema import (
     DocumentUploadLimitsResponse,
     DocumentVersionListResponse,
     DocumentVersionResponse,
+    DocumentViewResponse,
 )
 from app.modules.documents.services.document_services import (
     create_document,
@@ -40,6 +43,7 @@ from app.modules.documents.services.document_services import (
     revoke_document_client_share,
     require_document_link_access,
     resolve_document_download,
+    resolve_document_view,
     resolve_document_version_download,
     soft_delete_document,
     share_document_with_client,
@@ -236,7 +240,12 @@ def get_document_templates(
 def upload_document(
     file: UploadFile = File(...),
     title: str | None = Form(default=None, max_length=255),
+    display_name: str | None = Form(default=None, max_length=255),
     description: str | None = Form(default=None, max_length=1000),
+    category: str | None = Form(default=None, max_length=120),
+    tags_json: str | None = Form(default=None, max_length=4000),
+    associations_json: str | None = Form(default=None, max_length=8000),
+    idempotency_key: str | None = Form(default=None, max_length=64),
     linked_module_key: str | None = Form(default=None, max_length=100),
     linked_entity_id: str | None = Form(default=None, max_length=100),
     storage_provider: str = Form(default="local", max_length=40),
@@ -245,19 +254,46 @@ def upload_document(
     require_module=Depends(require_module_access("documents")),
     require_permission=Depends(require_action_access("documents", "create")),
 ):
+    try:
+        tags = json.loads(tags_json) if tags_json else []
+        associations = json.loads(associations_json) if associations_json else []
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid document metadata.") from exc
+    if not isinstance(tags, list) or not all(isinstance(tag, str) for tag in tags):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document tags must be a list of text values.")
+    if not isinstance(associations, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Document associations must be a list.")
     document = create_document(
         db,
         tenant_id=current_user.tenant_id,
         user_id=current_user.id,
         file=file,
         title=title,
+        display_name=display_name,
         description=description,
+        category=category,
+        tags=tags,
+        associations=associations,
+        idempotency_key=idempotency_key,
         linked_module_key=linked_module_key,
         linked_entity_id=linked_entity_id,
         storage_provider=storage_provider,
         current_user=current_user,
     )
     return DocumentResponse.model_validate(document)
+
+
+@router.get("/{document_id}/view", response_model=DocumentViewResponse)
+def view_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("documents")),
+    require_permission=Depends(require_action_access("documents", "view")),
+):
+    document = get_document_or_404(db, tenant_id=current_user.tenant_id, document_id=document_id)
+    require_document_link_access(db, user=current_user, document=document, action="view")
+    return resolve_document_view(db, document=document, current_user=current_user)
 
 
 @router.get("/{document_id}/versions", response_model=DocumentVersionListResponse)

@@ -11,7 +11,7 @@ class Document(Base):
         UniqueConstraint("tenant_id", "storage_provider", "storage_path", name="uq_documents_tenant_provider_storage_path"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     uploaded_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     current_version_id = Column(BigInteger, ForeignKey("document_versions.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -25,11 +25,24 @@ class Document(Base):
     template_category = Column(String(120), nullable=True, index=True)
     storage_provider = Column(String(40), nullable=False, default="local", server_default="local", index=True)
     storage_path = Column(Text, nullable=False)
+    provider_file_id = Column(String(512), nullable=True, index=True)
+    provider_parent_id = Column(String(512), nullable=True)
+    provider_account_id = Column(BigInteger, ForeignKey("document_storage_connections.id", ondelete="SET NULL"), nullable=True, index=True)
+    display_name = Column(String(255), nullable=True)
+    checksum = Column(String(128), nullable=True)
+    provider_path = Column(Text, nullable=True)
+    external_web_url = Column(Text, nullable=True)
+    provider_created_at = Column(DateTime(timezone=True), nullable=True)
+    uploaded_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    provider_status = Column(String(30), nullable=False, server_default="available", index=True)
+    category = Column(String(120), nullable=True, index=True)
+    tags = Column(JSON, nullable=False, server_default="[]")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     uploaded_by = relationship("User")
+    provider_account = relationship("DocumentStorageConnection", foreign_keys=[provider_account_id])
     links = relationship("DocumentLink", back_populates="document", cascade="all, delete-orphan")
     client_shares = relationship("DocumentClientShare", back_populates="document", cascade="all, delete-orphan")
     versions = relationship(
@@ -59,11 +72,20 @@ class DocumentVersion(Base):
     mime_type = Column(String(120), nullable=False)
     size_bytes = Column(BigInteger, nullable=False)
     checksum = Column(String(128), nullable=True)
+    storage_provider = Column(String(40), nullable=False, default="local", server_default="local", index=True)
+    provider_file_id = Column(String(512), nullable=True, index=True)
+    provider_parent_id = Column(String(512), nullable=True)
+    provider_account_id = Column(BigInteger, ForeignKey("document_storage_connections.id", ondelete="SET NULL"), nullable=True, index=True)
+    provider_path = Column(Text, nullable=True)
+    external_web_url = Column(Text, nullable=True)
+    provider_created_at = Column(DateTime(timezone=True), nullable=True)
+    provider_status = Column(String(30), nullable=False, server_default="available", index=True)
     uploaded_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
     document = relationship("Document", back_populates="versions", foreign_keys=[document_id])
     uploaded_by = relationship("User")
+    provider_account = relationship("DocumentStorageConnection", foreign_keys=[provider_account_id])
 
 
 class DocumentStorageConnection(Base):
@@ -72,7 +94,7 @@ class DocumentStorageConnection(Base):
         UniqueConstraint("tenant_id", "user_id", "provider", name="uq_document_storage_connections_user_provider"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     provider = Column(String(40), nullable=False, index=True)
@@ -93,6 +115,39 @@ class DocumentStorageConnection(Base):
     user = relationship("User")
 
 
+class DocumentUploadOperation(Base):
+    __tablename__ = "document_upload_operations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "idempotency_key", name="uq_document_upload_operation_key"),
+        Index("ix_document_upload_operations_tenant_status", "tenant_id", "status"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True)
+    provider_account_id = Column(BigInteger, ForeignKey("document_storage_connections.id", ondelete="SET NULL"), nullable=True, index=True)
+    idempotency_key = Column(String(64), nullable=False)
+    storage_provider = Column(String(40), nullable=False)
+    status = Column(String(30), nullable=False, server_default="pending", index=True)
+    original_filename = Column(String(255), nullable=False)
+    content_type = Column(String(120), nullable=False)
+    size_bytes = Column(BigInteger, nullable=False)
+    checksum = Column(String(128), nullable=False)
+    provider_file_id = Column(String(512), nullable=True)
+    provider_parent_id = Column(String(512), nullable=True)
+    provider_path = Column(Text, nullable=True)
+    external_web_url = Column(Text, nullable=True)
+    provider_created_at = Column(DateTime(timezone=True), nullable=True)
+    association_failures = Column(JSON, nullable=False, server_default="[]")
+    last_error = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    document = relationship("Document", foreign_keys=[document_id])
+    provider_account = relationship("DocumentStorageConnection", foreign_keys=[provider_account_id])
+
+
 class DocumentLink(Base):
     __tablename__ = "document_links"
     __table_args__ = (
@@ -100,7 +155,7 @@ class DocumentLink(Base):
         Index("ix_document_links_module_entity", "module_key", "entity_id"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     document_id = Column(BigInteger, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
     module_key = Column(String(100), nullable=False, index=True)

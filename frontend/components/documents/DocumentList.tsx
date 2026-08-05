@@ -1,10 +1,11 @@
 "use client";
 
 import { Fragment, useEffect, useRef, useState } from "react";
-import { ChevronDown, Download, ExternalLink, FileText, History, Share2, Tag, Trash2, Upload, XCircle } from "lucide-react";
+import { ChevronDown, Download, FileText, History, Share2, Tag, Trash2, Upload, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
+import { DocumentReferenceActions } from "@/components/documents/DocumentReferenceActions";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldLabel } from "@/components/ui/field";
@@ -15,7 +16,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useConfirm } from "@/hooks/useConfirm";
 import {
-  documentDownloadUrl,
   documentVersionDownloadUrl,
   DocumentItem,
   type DocumentSortState,
@@ -188,6 +188,13 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
               <div className="mt-1 text-xs text-copy-muted">
                 {document.original_filename} / {document.extension.toUpperCase()} / {formatBytes(document.file_size_bytes)} / {providerLabel(document.storage_provider)}
               </div>
+              {document.category || document.tags.length ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {document.category ? <Pill>{document.category}</Pill> : null}
+                  {document.tags.slice(0, 3).map((tag) => <Pill key={tag.toLocaleLowerCase()}>{tag}</Pill>)}
+                  {document.tags.length > 3 ? <span className="self-center text-xs text-copy-muted">+{document.tags.length - 3}</span> : null}
+                </div>
+              ) : null}
               {document.description ? <div className="mt-2 line-clamp-2 text-sm text-copy-secondary">{document.description}</div> : null}
             </div>
           </div>
@@ -203,10 +210,7 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
               <ChevronDown className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} />
               Versions
             </Button>
-            <Button type="button" variant="outline" onClick={() => window.open(documentDownloadUrl(document.id), "_blank", "noopener,noreferrer")}>
-              <ExternalLink className="h-4 w-4" />
-              View
-            </Button>
+            <DocumentReferenceActions document={document} />
             {onDelete ? (
               <Button type="button" variant="dangerGhost" onClick={() => onDelete(document)} disabled={isDeleting}>
                 <Trash2 className="h-4 w-4" />

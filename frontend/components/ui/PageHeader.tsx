@@ -19,28 +19,21 @@ export function PageHeader({
   eyebrow,
   className,
   sticky = false,
-  variant = "default",
 }: PageHeaderProps) {
+  const accessibleDescription = typeof description === "string" ? description : undefined;
   return (
     <div
       className={cn(
-        variant === "module"
-          ? "bg-transparent py-1"
-          : "-mx-4 border-b border-line-subtle bg-surface/95 px-4 py-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8",
-        sticky && "sticky top-0 z-20 backdrop-blur-sm",
+        "flex min-w-0 justify-end",
+        sticky && "sticky top-0 z-20 bg-app/95 py-2 backdrop-blur-sm",
         className,
       )}
+      aria-label={`${title} actions`}
     >
-      <div className={cn("flex flex-col items-start justify-between gap-4 sm:flex-row", variant === "default" && "min-h-14")}>
-        <div className="min-w-0">
-          {eyebrow ? <div className="mb-1 text-xs font-medium uppercase tracking-[0.14em] text-copy-muted">{eyebrow}</div> : null}
-          <h1 className="text-[22px] font-semibold leading-[30px] text-copy-primary">{title}</h1>
-          {description ? (
-            <p className="mt-1 max-w-3xl text-sm leading-[21px] text-copy-secondary">{description}</p>
-          ) : null}
-        </div>
-        {actions ? <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:shrink-0 sm:justify-end">{actions}</div> : null}
-      </div>
+      <h1 className="sr-only">{title}</h1>
+      {eyebrow ? <div className="sr-only">{eyebrow}</div> : null}
+      {accessibleDescription ? <p className="sr-only">{accessibleDescription}</p> : null}
+      {actions ? <div className="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:shrink-0">{actions}</div> : null}
     </div>
   );
 }
