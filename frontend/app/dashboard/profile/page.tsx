@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ShieldCheck, Upload } from "lucide-react";
+import { ShieldCheck, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
@@ -9,11 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { ImageAssetField, validateImageAssetFile } from "@/components/ui/ImageAssetField";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Pill } from "@/components/ui/Pill";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Textarea } from "@/components/ui/textarea";
-import { resolveMediaUrl } from "@/lib/media";
 import TimezonePicker from "@/components/ui/TimezonePicker";
 import { useConfirm } from "@/hooks/useConfirm";
 import { cacheSidebarUser } from "@/hooks/useSidebarUser";
@@ -37,7 +37,6 @@ type ProfileResponse = {
 type ProfileForm = {
   first_name: string;
   last_name: string;
-  photo_url: string;
   phone_number: string;
   job_title: string;
   timezone: string;
@@ -47,15 +46,11 @@ type ProfileForm = {
 const emptyForm: ProfileForm = {
   first_name: "",
   last_name: "",
-  photo_url: "",
   phone_number: "",
   job_title: "",
   timezone: "",
   bio: "",
 };
-
-const PROFILE_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
-const PROFILE_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export default function ProfilePage() {
   const { confirm } = useConfirm();
@@ -64,6 +59,7 @@ export default function ProfilePage() {
   const [email, setEmail] = useState("");
   const [teamName, setTeamName] = useState<string | null>(null);
   const [roleName, setRoleName] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState("");
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaSecret, setMfaSecret] = useState("");
@@ -77,7 +73,8 @@ export default function ProfilePage() {
   const [loadFailed, setLoadFailed] = useState(false);
   const [loadVersion, setLoadVersion] = useState(0);
   const [saving, setSaving] = useState(false);
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [photoBusyAction, setPhotoBusyAction] = useState<"uploading" | "removing" | null>(null);
+  const [photoError, setPhotoError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const dirty = JSON.stringify(form) !== JSON.stringify(savedForm);
 
@@ -102,7 +99,6 @@ export default function ProfilePage() {
         const nextForm = {
           first_name: data.first_name ?? "",
           last_name: data.last_name ?? "",
-          photo_url: data.photo_url ?? "",
           phone_number: data.phone_number ?? "",
           job_title: data.job_title ?? "",
           timezone: data.timezone ?? "",
@@ -110,6 +106,7 @@ export default function ProfilePage() {
         };
         setForm(nextForm);
         setSavedForm(nextForm);
+        setPhotoUrl(data.photo_url ?? "");
         setEmail(data.email ?? "");
         setTeamName(data.team_name ?? null);
         setRoleName(data.role_name ?? null);
@@ -138,7 +135,6 @@ export default function ProfilePage() {
       const normalizedForm: ProfileForm = {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
-        photo_url: form.photo_url.trim(),
         phone_number: form.phone_number.trim(),
         job_title: form.job_title.trim(),
         timezone: form.timezone.trim(),
@@ -147,7 +143,6 @@ export default function ProfilePage() {
       const payload = {
         first_name: normalizedForm.first_name || null,
         last_name: normalizedForm.last_name || null,
-        photo_url: normalizedForm.photo_url || null,
         phone_number: normalizedForm.phone_number || null,
         job_title: normalizedForm.job_title || null,
         timezone: normalizedForm.timezone || null,
@@ -176,21 +171,14 @@ export default function ProfilePage() {
   }
 
   async function handlePhotoUpload(file: File) {
-    if (!PROFILE_IMAGE_TYPES.has(file.type)) {
-      setError("Choose a JPG, PNG, or WebP image.");
-      return;
-    }
-    if (file.size === 0) {
-      setError("Choose a non-empty image.");
-      return;
-    }
-    if (file.size > PROFILE_IMAGE_MAX_BYTES) {
-      setError("Choose an image no larger than 5 MB.");
+    const validationError = validateImageAssetFile(file);
+    if (validationError) {
+      setPhotoError(validationError);
       return;
     }
     try {
-      setUploadingPhoto(true);
-      setError(null);
+      setPhotoBusyAction("uploading");
+      setPhotoError(null);
 
       const formData = new FormData();
       formData.append("file", file);
@@ -205,16 +193,40 @@ export default function ProfilePage() {
       }
 
       const nextPhotoUrl = typeof body?.photo_url === "string" ? body.photo_url : "";
-      setForm((current) => ({ ...current, photo_url: nextPhotoUrl }));
-      setSavedForm((current) => ({ ...current, photo_url: nextPhotoUrl }));
+      setPhotoUrl(nextPhotoUrl);
       if (body?.user) {
         cacheSidebarUser(body.user);
       }
       toast.success("Profile image uploaded.");
     } catch {
-      setError("We could not upload this profile image. Choose a supported image and try again.");
+      setPhotoError("We could not upload this profile image. Choose a supported image and try again.");
     } finally {
-      setUploadingPhoto(false);
+      setPhotoBusyAction(null);
+    }
+  }
+
+  async function handlePhotoRemove() {
+    const confirmed = await confirm({
+      title: "Remove profile image?",
+      description: "Your profile menu will use your initials or the default user icon.",
+      confirmLabel: "Remove image",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+
+    try {
+      setPhotoBusyAction("removing");
+      setPhotoError(null);
+      const response = await apiFetch("/users/me/photo", { method: "DELETE" });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) throw new Error("profile_photo_remove_failed");
+      setPhotoUrl("");
+      if (body?.user) cacheSidebarUser(body.user);
+      toast.success("Profile image removed.");
+    } catch {
+      setPhotoError("We could not remove your profile image. Try again.");
+    } finally {
+      setPhotoBusyAction(null);
     }
   }
 
@@ -370,40 +382,18 @@ export default function ProfilePage() {
               />
               <FieldDescription>Used to convert dates and times throughout the workspace.</FieldDescription>
             </Field>
-            <Field>
-              <FieldLabel htmlFor="profile-photo-url">Photo URL</FieldLabel>
-              <Input id="profile-photo-url" value={form.photo_url} onChange={(event) => setForm((current) => ({ ...current, photo_url: event.target.value }))} placeholder="https://..." />
-              <div className="mt-3 flex flex-wrap items-center gap-3">
-                {form.photo_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={resolveMediaUrl(form.photo_url)}
-                    alt="Profile image preview"
-                    className="h-12 w-12 rounded-[var(--radius-control)] border border-line-default object-cover"
-                  />
-                ) : null}
-                <Button asChild type="button" variant="outline">
-                  <label htmlFor="profile-photo-upload" className={uploadingPhoto ? "pointer-events-none opacity-60" : "cursor-pointer"}>
-                    <Upload />
-                    {uploadingPhoto ? "Uploading…" : "Upload photo"}
-                  </label>
-                </Button>
-                <Input
-                  id="profile-photo-upload"
-                  aria-label="Upload profile photo"
-                  type="file"
-                  disabled={uploadingPhoto}
-                  accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                  className="sr-only"
-                  onChange={(event) => {
-                    const file = event.target.files?.[0];
-                    if (file) void handlePhotoUpload(file);
-                    event.currentTarget.value = "";
-                  }}
-                />
-              </div>
-              <FieldDescription>JPG, PNG, or WebP up to 5 MB. Uploading saves the image immediately.</FieldDescription>
-            </Field>
+            <ImageAssetField
+              id="profile-photo-upload"
+              label="Profile image"
+              imageUrl={photoUrl}
+              previewAlt="Profile image preview"
+              uploadAriaLabel="Upload profile photo"
+              busyAction={photoBusyAction}
+              error={photoError}
+              fallback={<UserRound aria-hidden="true" />}
+              onFileSelected={(file) => void handlePhotoUpload(file)}
+              onRemove={() => void handlePhotoRemove()}
+            />
             <Field className="md:col-span-2">
               <FieldLabel htmlFor="profile-bio">Bio</FieldLabel>
               <Textarea id="profile-bio" value={form.bio} onChange={(event) => setForm((current) => ({ ...current, bio: event.target.value }))} rows={4} />

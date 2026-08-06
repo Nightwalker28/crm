@@ -456,11 +456,12 @@ class AdminCreateUserResponse(BaseModel):
 class UserProfileUpdateRequest(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    photo_url: Optional[str] = None
     phone_number: Optional[str] = None
     job_title: Optional[str] = None
     timezone: Optional[str] = None
     bio: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class UserImageUploadResponse(BaseModel):
@@ -495,7 +496,8 @@ class CompanyProfileUpdateRequest(BaseModel):
     country: Optional[str] = None
     operating_currencies: list[str] | None = None
     billing_address: Optional[str] = None
-    logo_url: Optional[str] = None
+
+    model_config = ConfigDict(extra="forbid")
 
 
 class CompanyLogoUploadResponse(BaseModel):

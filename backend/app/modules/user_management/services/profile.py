@@ -5,7 +5,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.cache import cache_delete, cache_get_json, cache_set_json
-from app.core.uploads import build_media_url, delete_local_media_file, persist_media_file, read_image_upload
+from app.core.uploads import build_media_url, delete_managed_media_file, persist_media_file, read_image_upload
 from app.modules.platform.models import CustomModuleDefinition
 from app.modules.user_management.models import CompanyProfile, User, UserDashboardLayout, UserSavedView, UserTablePreference
 
@@ -93,7 +93,7 @@ def invalidate_company_operating_currencies_cache(tenant_id: int) -> None:
 
 
 def update_user_profile(db: Session, user: User, payload: dict) -> User:
-    for field in {"first_name", "last_name", "photo_url", "phone_number", "job_title", "timezone", "bio"}:
+    for field in {"first_name", "last_name", "phone_number", "job_title", "timezone", "bio"}:
         if field in payload:
             setattr(user, field, _clean(payload[field]))
 
@@ -103,21 +103,81 @@ def update_user_profile(db: Session, user: User, payload: dict) -> User:
     return user
 
 
+def _replace_managed_image(
+    db: Session,
+    *,
+    record,
+    attribute: str,
+    category: str,
+    owner_key: str,
+    extension: str,
+    content: bytes,
+):
+    relative_media_path = persist_media_file(
+        category=category,
+        owner_key=owner_key,
+        extension=extension,
+        content=content,
+    )
+    next_url = build_media_url(relative_media_path)
+    previous_url = getattr(record, attribute, None)
+    setattr(record, attribute, next_url)
+    db.add(record)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        setattr(record, attribute, previous_url)
+        delete_managed_media_file(next_url, category=category, owner_key=owner_key)
+        raise
+    db.refresh(record)
+    delete_managed_media_file(previous_url, category=category, owner_key=owner_key)
+    return record
+
+
+def _remove_managed_image(
+    db: Session,
+    *,
+    record,
+    attribute: str,
+    category: str,
+    owner_key: str,
+):
+    previous_url = getattr(record, attribute, None)
+    setattr(record, attribute, None)
+    db.add(record)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        setattr(record, attribute, previous_url)
+        raise
+    db.refresh(record)
+    delete_managed_media_file(previous_url, category=category, owner_key=owner_key)
+    return record
+
+
 async def upload_user_photo(db: Session, user: User, file: UploadFile) -> User:
     file_bytes, extension = await read_image_upload(file)
-    relative_media_path = persist_media_file(
+    return _replace_managed_image(
+        db,
+        record=user,
+        attribute="photo_url",
         category="profile-assets",
         owner_key=f"user-{user.id}",
         extension=extension,
         content=file_bytes,
     )
-    previous = user.photo_url
-    user.photo_url = build_media_url(relative_media_path)
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    delete_local_media_file(previous)
-    return user
+
+
+def remove_user_photo(db: Session, user: User) -> User:
+    return _remove_managed_image(
+        db,
+        record=user,
+        attribute="photo_url",
+        category="profile-assets",
+        owner_key=f"user-{user.id}",
+    )
 
 
 def get_or_create_company_profile(db: Session, current_user: User) -> CompanyProfile:
@@ -150,7 +210,7 @@ def update_company_profile(db: Session, current_user: User, payload: dict) -> Co
     profile = get_or_create_company_profile(db, current_user)
     should_invalidate_currencies = "operating_currencies" in payload
 
-    for field in {"name", "primary_email", "website", "primary_phone", "industry", "country", "billing_address", "logo_url"}:
+    for field in {"name", "primary_email", "website", "primary_phone", "industry", "country", "billing_address"}:
         if field in payload:
             setattr(profile, field, _clean(payload[field]))
     if "operating_currencies" in payload:
@@ -171,20 +231,30 @@ async def upload_company_logo(db: Session, current_user: User, file: UploadFile)
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company profile is not available.")
 
     file_bytes, extension = await read_image_upload(file)
-    relative_media_path = persist_media_file(
+    profile.updated_by = current_user.id
+    return _replace_managed_image(
+        db,
+        record=profile,
+        attribute="logo_url",
         category="company-assets",
         owner_key=f"company-{profile.id}",
         extension=extension,
         content=file_bytes,
     )
-    previous = profile.logo_url
-    profile.logo_url = build_media_url(relative_media_path)
-    profile.updated_by = current_user.id if current_user else None
-    db.add(profile)
-    db.commit()
-    db.refresh(profile)
-    delete_local_media_file(previous)
-    return profile
+
+
+def remove_company_logo(db: Session, current_user: User) -> CompanyProfile:
+    profile = get_or_create_company_profile(db, current_user)
+    if not profile.id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Company profile is not available.")
+    profile.updated_by = current_user.id
+    return _remove_managed_image(
+        db,
+        record=profile,
+        attribute="logo_url",
+        category="company-assets",
+        owner_key=f"company-{profile.id}",
+    )
 
 
 def get_company_operating_currencies(db: Session, current_user: User) -> list[str]:

@@ -60,6 +60,8 @@ test("saves responsive company settings with normalized currencies", async ({ pa
     name: "Lynk International",
     operating_currencies: ["USD", "LKR"],
   });
+  expect(request.postDataJSON()).not.toHaveProperty("logo_url");
+  await expect(page.getByLabel("Logo URL")).toHaveCount(0);
   await expect(page.getByText("All company settings are saved.")).toBeVisible();
 });
 
@@ -74,13 +76,43 @@ test("uploads a bounded logo without marking persisted branding as unsaved", asy
   );
   await page.goto("/dashboard/settings/general");
 
-  await page.getByLabel("Upload logo").setInputFiles({
+  await page.getByLabel("Upload company logo").setInputFiles({
     name: "logo.png",
     mimeType: "image/png",
     buffer: Buffer.from("\u0089PNG\r\n\u001a\nlogo"),
   });
 
   await expect(page.getByAltText("Company logo preview")).toBeVisible();
+  await expect(page.getByText("All company settings are saved.")).toBeVisible();
+});
+
+test("removes a legacy external company logo through the dedicated operation", async ({ page }) => {
+  await page.route("**/users/company", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ ...company, logo_url: "https://cdn.example.test/legacy-logo.png" }),
+    }),
+  );
+  let removeRequests = 0;
+  await page.route("**/users/company/logo", async (route) => {
+    if (route.request().method() === "DELETE") removeRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ logo_url: "", company: { ...company, logo_url: null } }),
+    });
+  });
+
+  await page.goto("/dashboard/settings/general");
+  await expect(page.getByRole("button", { name: "Replace image" })).toBeVisible();
+  await page.getByRole("button", { name: "Remove image" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Remove company logo?");
+  expect(removeRequests).toBe(0);
+  await page.getByRole("dialog").getByRole("button", { name: "Remove image" }).click();
+
+  await expect.poll(() => removeRequests).toBe(1);
+  await expect(page.getByAltText("Company logo preview")).toHaveCount(0);
   await expect(page.getByText("All company settings are saved.")).toBeVisible();
 });
 

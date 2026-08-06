@@ -429,6 +429,51 @@ class UploadCleanupTests(unittest.TestCase):
 
             self.assertTrue(target.exists())
 
+    def test_delete_managed_media_file_only_removes_expected_owner_asset(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            media_root = Path(tmpdir) / "media"
+            owned = media_root / "profile-assets" / "user-1" / "owned.jpg"
+            other = media_root / "profile-assets" / "user-2" / "other.jpg"
+            owned.parent.mkdir(parents=True)
+            other.parent.mkdir(parents=True)
+            owned.write_text("owned")
+            other.write_text("other")
+
+            with patch.object(uploads, "MEDIA_ROOT_DIR", media_root):
+                uploads.delete_managed_media_file(
+                    "/media/profile-assets/user-2/other.jpg",
+                    category="profile-assets",
+                    owner_key="user-1",
+                )
+                uploads.delete_managed_media_file(
+                    "/media/profile-assets/user-1/owned.jpg",
+                    category="profile-assets",
+                    owner_key="user-1",
+                )
+
+            self.assertFalse(owned.exists())
+            self.assertTrue(other.exists())
+
+    def test_delete_managed_media_file_ignores_external_legacy_url(self):
+        with patch.object(uploads, "delete_local_media_file") as delete_mock:
+            uploads.delete_managed_media_file(
+                "https://cdn.example.com/legacy-logo.png",
+                category="company-assets",
+                owner_key="company-1",
+            )
+
+        delete_mock.assert_not_called()
+
+    def test_persist_media_file_rejects_path_traversal(self):
+        with tempfile.TemporaryDirectory() as tmpdir, patch.object(uploads, "MEDIA_ROOT_DIR", Path(tmpdir) / "media"):
+            with self.assertRaisesRegex(ValueError, "inside the media root"):
+                uploads.persist_media_file(
+                    category="profile-assets",
+                    owner_key="../../outside",
+                    extension="png",
+                    content=b"image",
+                )
+
     def test_delete_local_media_file_warns_for_unexpected_local_path(self):
         with self.assertLogs("app.core.uploads", level="WARNING") as logs:
             uploads.delete_local_media_file("profile-assets/user-1/photo.jpg")
@@ -460,6 +505,58 @@ class ImageUploadTests(unittest.IsolatedAsyncioTestCase):
             await uploads.read_image_upload(upload)
 
         self.assertEqual(exc.exception.status_code, 400)
+
+    async def test_read_image_upload_rejects_mime_signature_mismatch(self):
+        upload = UploadFile(
+            file=io.BytesIO(b"\x89PNG\r\n\x1a\npayload"),
+            filename="logo.png",
+            headers=Headers({"content-type": "image/jpeg"}),
+        )
+
+        with self.assertRaises(HTTPException) as exc:
+            await uploads.read_image_upload(upload)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertIn("declared type", exc.exception.detail)
+
+    async def test_read_image_upload_rejects_invalid_extension(self):
+        upload = UploadFile(
+            file=io.BytesIO(b"\x89PNG\r\n\x1a\npayload"),
+            filename="logo.svg",
+            headers=Headers({"content-type": "image/png"}),
+        )
+
+        with self.assertRaises(HTTPException) as exc:
+            await uploads.read_image_upload(upload)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertIn("extension", exc.exception.detail)
+
+    async def test_read_image_upload_rejects_extension_signature_mismatch(self):
+        upload = UploadFile(
+            file=io.BytesIO(b"\x89PNG\r\n\x1a\npayload"),
+            filename="logo.jpg",
+            headers=Headers({"content-type": "image/png"}),
+        )
+
+        with self.assertRaises(HTTPException) as exc:
+            await uploads.read_image_upload(upload)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertIn("file extension", exc.exception.detail)
+
+    async def test_read_image_upload_rejects_empty_file(self):
+        upload = UploadFile(
+            file=io.BytesIO(b""),
+            filename="logo.png",
+            headers=Headers({"content-type": "image/png"}),
+        )
+
+        with self.assertRaises(HTTPException) as exc:
+            await uploads.read_image_upload(upload)
+
+        self.assertEqual(exc.exception.status_code, 400)
+        self.assertEqual(exc.exception.detail, "Uploaded image is empty.")
 
     async def test_read_image_upload_rejects_oversized_image(self):
         upload = UploadFile(

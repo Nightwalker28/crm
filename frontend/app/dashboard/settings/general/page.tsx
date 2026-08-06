@@ -1,20 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ImageIcon, RotateCcw, Save } from "lucide-react";
+import { RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { ImageAssetField, validateImageAssetFile } from "@/components/ui/ImageAssetField";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState } from "@/components/ui/RouteStates";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
-import { resolveMediaUrl } from "@/lib/media";
 
 type CompanyResponse = {
   id: number;
@@ -38,11 +38,7 @@ type CompanyForm = {
   country: string;
   operating_currencies: string;
   billing_address: string;
-  logo_url: string;
 };
-
-const MAX_LOGO_BYTES = 5 * 1024 * 1024;
-const ACCEPTED_LOGO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const emptyForm: CompanyForm = {
   name: "",
@@ -53,7 +49,6 @@ const emptyForm: CompanyForm = {
   country: "",
   operating_currencies: "USD",
   billing_address: "",
-  logo_url: "",
 };
 
 function companyToForm(data: CompanyResponse): CompanyForm {
@@ -69,7 +64,6 @@ function companyToForm(data: CompanyResponse): CompanyForm {
         ? data.operating_currencies.join(", ")
         : "USD",
     billing_address: data.billing_address ?? "",
-    logo_url: data.logo_url ?? "",
   };
 }
 
@@ -90,7 +84,6 @@ function companyPayload(form: CompanyForm) {
       ),
     ),
     billing_address: form.billing_address.trim() || null,
-    logo_url: form.logo_url.trim() || null,
   };
 }
 
@@ -102,9 +95,11 @@ export default function CompanyPage() {
   const { confirm } = useConfirm();
   const [form, setForm] = useState<CompanyForm>(emptyForm);
   const [initialForm, setInitialForm] = useState<CompanyForm>(emptyForm);
+  const [logoUrl, setLogoUrl] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [uploadingLogo, setUploadingLogo] = useState(false);
+  const [logoBusyAction, setLogoBusyAction] = useState<"uploading" | "removing" | null>(null);
+  const [logoError, setLogoError] = useState<string | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(initialForm), [form, initialForm]);
@@ -120,6 +115,7 @@ export default function CompanyPage() {
       const nextForm = companyToForm(body as CompanyResponse);
       setForm(nextForm);
       setInitialForm(nextForm);
+      setLogoUrl((body as CompanyResponse).logo_url ?? "");
     } catch (error) {
       if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
       setLoadFailed(true);
@@ -172,14 +168,15 @@ export default function CompanyPage() {
   }
 
   async function handleLogoUpload(file: File) {
-    if (!ACCEPTED_LOGO_TYPES.has(file.type) || file.size > MAX_LOGO_BYTES) {
-      setActionError("Choose a JPG, PNG, or WebP image up to 5 MB.");
+    const validationError = validateImageAssetFile(file);
+    if (validationError) {
+      setLogoError(validationError);
       return;
     }
 
     try {
-      setUploadingLogo(true);
-      setActionError(null);
+      setLogoBusyAction("uploading");
+      setLogoError(null);
       const formData = new FormData();
       formData.append("file", file);
 
@@ -191,13 +188,35 @@ export default function CompanyPage() {
       if (!response.ok) throw new Error("Company logo could not be uploaded.");
 
       const logoUrl = typeof body?.logo_url === "string" ? body.logo_url : "";
-      setForm((current) => ({ ...current, logo_url: logoUrl }));
-      setInitialForm((current) => ({ ...current, logo_url: logoUrl }));
+      setLogoUrl(logoUrl);
       toast.success("Company logo uploaded.");
     } catch {
-      setActionError("Company logo could not be uploaded. Choose a JPG, PNG, or WebP image up to 5 MB.");
+      setLogoError("Company logo could not be uploaded. Choose a JPG, PNG, or WebP image up to 5 MB.");
     } finally {
-      setUploadingLogo(false);
+      setLogoBusyAction(null);
+    }
+  }
+
+  async function handleLogoRemove() {
+    const confirmed = await confirm({
+      title: "Remove company logo?",
+      description: "The workspace will use its default company branding until another logo is uploaded.",
+      confirmLabel: "Remove image",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+
+    try {
+      setLogoBusyAction("removing");
+      setLogoError(null);
+      const response = await apiFetch("/users/company/logo", { method: "DELETE" });
+      if (!response.ok) throw new Error("Company logo could not be removed.");
+      setLogoUrl("");
+      toast.success("Company logo removed.");
+    } catch {
+      setLogoError("Company logo could not be removed. Try again.");
+    } finally {
+      setLogoBusyAction(null);
     }
   }
 
@@ -299,43 +318,21 @@ export default function CompanyPage() {
             <CardHeader>
               <div>
                 <h2 className="text-base font-semibold text-copy-primary">Branding</h2>
-                <p className="mt-1 text-sm leading-6 text-copy-muted">Use a hosted logo URL or upload a tenant company logo.</p>
+                <p className="mt-1 text-sm leading-6 text-copy-muted">Manage the tenant company logo used across CRM documents and workspace surfaces.</p>
               </div>
             </CardHeader>
-            <CardBody className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto]">
-              <Field>
-                <FieldLabel htmlFor="company-logo-url">Logo URL</FieldLabel>
-                <Input id="company-logo-url" maxLength={500} value={form.logo_url} onChange={(event) => setForm((current) => ({ ...current, logo_url: event.target.value }))} placeholder="https://..." />
-                <FieldDescription>Changing this URL is saved with the rest of the form.</FieldDescription>
-              </Field>
-              <div className="flex items-center gap-4">
-                <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-muted">
-                  {form.logo_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={resolveMediaUrl(form.logo_url)} alt="Company logo preview" className="h-full w-full object-cover" />
-                  ) : (
-                    <ImageIcon aria-hidden="true" />
-                  )}
-                </div>
-                <Field>
-                  <FieldLabel htmlFor="company-logo-upload">Upload logo</FieldLabel>
-                  <Input
-                    id="company-logo-upload"
-                    type="file"
-                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                    disabled={uploadingLogo}
-                    aria-describedby="company-logo-upload-description"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (file) void handleLogoUpload(file);
-                      event.currentTarget.value = "";
-                    }}
-                  />
-                  <FieldDescription id="company-logo-upload-description">
-                    JPG, PNG, or WebP up to 5 MB. Uploading saves the logo immediately.
-                  </FieldDescription>
-                </Field>
-              </div>
+            <CardBody>
+              <ImageAssetField
+                id="company-logo-upload"
+                label="Company logo"
+                imageUrl={logoUrl}
+                previewAlt="Company logo preview"
+                uploadAriaLabel="Upload company logo"
+                busyAction={logoBusyAction}
+                error={logoError}
+                onFileSelected={(file) => void handleLogoUpload(file)}
+                onRemove={() => void handleLogoRemove()}
+              />
             </CardBody>
             </section>
 
@@ -344,11 +341,11 @@ export default function CompanyPage() {
                 {isDirty ? "You have unsaved company changes." : "All company settings are saved."}
               </span>
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="outline" disabled={!isDirty || saving || uploadingLogo} onClick={() => void handleDiscard()}>
+                <Button type="button" variant="outline" disabled={!isDirty || saving || logoBusyAction !== null} onClick={() => void handleDiscard()}>
                   <RotateCcw />
                   Discard
                 </Button>
-                <Button type="submit" disabled={saving || uploadingLogo || !isDirty || !form.name.trim()}>
+                <Button type="submit" disabled={saving || logoBusyAction !== null || !isDirty || !form.name.trim()}>
                   <Save />
                   {saving ? "Saving..." : "Save company"}
                 </Button>

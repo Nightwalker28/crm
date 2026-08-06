@@ -466,7 +466,6 @@ def handle_google_callback(
                 detail="Failed to authenticate with Google",
             )
     email = profile.get("email")
-    picture = profile.get("picture")
 
     if not email:
         raise HTTPException(status_code=400, detail="Google account has no email")
@@ -478,9 +477,6 @@ def handle_google_callback(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Email domain not allowed",
         )
-
-    first_name = profile.get("given_name")
-    last_name = profile.get("family_name")
 
     # 4) Find or create user
     user = _find_google_login_user(db, tenant=tenant, email=email)
@@ -501,8 +497,6 @@ def handle_google_callback(
         )
 
     # 5) Active user
-    if picture and user.photo_url != picture:
-        user.photo_url = picture
     user.last_login_provider = "google"
     db.add(user)
     db.commit()

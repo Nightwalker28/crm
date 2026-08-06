@@ -32,7 +32,7 @@ from app.modules.user_management.models import Module, TenantModuleConfig, UserA
 from app.modules.user_management.routes import admin as admin_routes
 from app.modules.user_management.routes import profile as profile_routes
 from app.modules.user_management.routes import signin as signin_routes
-from app.modules.user_management.schema import UserProfile
+from app.modules.user_management.schema import CompanyProfileResponse, UserProfile
 from app.modules.user_management.services.auth import (
     _profile_from_google_id_token,
     decode_oauth_state,
@@ -574,7 +574,7 @@ class APIRouteTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "active")
         self.assertIs(result["user"], user)
-        self.assertEqual(user.photo_url, "https://lh3.googleusercontent.com/photo.png")
+        self.assertIsNone(user.photo_url)
         self.assertEqual(user.last_login_provider, "google")
 
     def test_google_id_token_profile_claims_are_used_for_login_profile(self):
@@ -778,6 +778,61 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()["role_level"], 100)
         self.assertTrue(response.json()["is_admin"])
+
+    def test_ordinary_profile_and_company_routes_reject_asset_url_mutation(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[require_admin] = self._admin_user
+        app.dependency_overrides[get_db] = self._override_db
+
+        profile_response = self.client.put(
+            "/api/v1/users/me",
+            json={"photo_url": "https://evil.test/photo.png"},
+        )
+        company_response = self.client.put(
+            "/api/v1/users/company",
+            json={"logo_url": "https://evil.test/logo.png"},
+        )
+
+        self.assertEqual(profile_response.status_code, 422)
+        self.assertEqual(company_response.status_code, 422)
+
+    def test_profile_photo_remove_route_returns_refreshed_profile(self):
+        app.dependency_overrides[require_user] = self._active_user
+        app.dependency_overrides[get_db] = self._override_db
+        user = self._active_user()
+        serialized = UserProfile(
+            id=7,
+            first_name="Test",
+            last_name="User",
+            email="user@example.com",
+            team_id=1,
+            role_id=1,
+            photo_url=None,
+            auth_mode="manual_or_google",
+            is_active="active",
+        )
+
+        with patch.object(profile_routes, "remove_user_photo", return_value=user) as remove_mock, \
+             patch.object(profile_routes, "_serialize_current_user_profile", return_value=serialized):
+            response = self.client.delete("/api/v1/users/me/photo")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["photo_url"], "")
+        self.assertIsNone(response.json()["user"]["photo_url"])
+        remove_mock.assert_called_once()
+
+    def test_company_logo_remove_route_requires_admin_and_returns_company(self):
+        app.dependency_overrides[require_admin] = self._admin_user
+        app.dependency_overrides[get_db] = self._override_db
+        company = CompanyProfileResponse(id=12, name="Lynk", logo_url=None)
+
+        with patch.object(profile_routes, "remove_company_logo", return_value=company) as remove_mock:
+            response = self.client.delete("/api/v1/users/company/logo")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["logo_url"], "")
+        self.assertIsNone(response.json()["company"]["logo_url"])
+        remove_mock.assert_called_once()
 
     def test_admin_bulk_update_users_route_is_tenant_scoped_and_audited(self):
         app.dependency_overrides[require_admin] = self._admin_user

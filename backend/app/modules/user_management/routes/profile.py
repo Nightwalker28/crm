@@ -32,6 +32,8 @@ from app.modules.user_management.services.profile import (
     delete_saved_view,
     get_user_dashboard_layout,
     get_user_table_preference,
+    remove_company_logo,
+    remove_user_photo,
     save_user_dashboard_layout,
     save_user_table_preference,
     upload_company_logo,
@@ -76,6 +78,15 @@ async def upload_me_photo(
 ):
     user = await upload_user_photo(db, current_user, file)
     return UserImageUploadResponse(photo_url=user.photo_url or "", user=_serialize_current_user_profile(db, user))
+
+
+@router.delete("/me/photo", response_model=UserImageUploadResponse)
+def delete_me_photo(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+):
+    user = remove_user_photo(db, current_user)
+    return UserImageUploadResponse(photo_url="", user=_serialize_current_user_profile(db, user))
 
 
 @router.get("/me/modules", response_model=list[AccessibleModuleSchema])
@@ -131,6 +142,15 @@ async def upload_company_logo_route(
 ):
     company = await upload_company_logo(db, current_user, file)
     return CompanyLogoUploadResponse(logo_url=company.logo_url or "", company=company)
+
+
+@router.delete("/company/logo", response_model=CompanyLogoUploadResponse)
+def delete_company_logo_route(
+    db: Session = Depends(get_db),
+    current_user=Depends(require_admin),
+):
+    company = remove_company_logo(db, current_user)
+    return CompanyLogoUploadResponse(logo_url="", company=company)
 
 
 @router.get("/table-preferences/{module_key}", response_model=TablePreferenceResponse)

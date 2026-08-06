@@ -17,7 +17,7 @@ type UserProfile = {
   email?: string;
   first_name?: string;
   last_name?: string;
-  photo_url?: string;
+  photo_url?: string | null;
   role_id?: number | null;
   role_name?: string | null;
   role_level?: number | null;

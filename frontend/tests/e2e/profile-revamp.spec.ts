@@ -55,6 +55,8 @@ test("Profile is responsive, tracks dirty fields, and redacts save failures", as
     last_name: "Morgan",
     timezone: "America/New_York",
   });
+  expect(submitted).not.toHaveProperty("photo_url");
+  await expect(page.getByLabel("Photo URL")).toHaveCount(0);
   await expect(page.getByText("We could not save your profile. Review the information and try again.")).toBeVisible();
   await expect(page.getByText("database_password=profile-secret")).toBeHidden();
 });
@@ -78,6 +80,48 @@ test("Profile rejects oversized images before upload", async ({ page }) => {
 
   await expect(page.getByText("Choose an image no larger than 5 MB.")).toBeVisible();
   expect(uploadRequests).toBe(0);
+});
+
+test("Profile replaces and removes its image while refreshing the profile menu", async ({ page }) => {
+  const uploadedProfile = profileFixture({ photo_url: "/media/profile-assets/user-1/new-profile.png" });
+  const removedProfile = profileFixture({ photo_url: null });
+  await page.route("**/users/me", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(profileFixture({ photo_url: "https://cdn.example.test/legacy.png" })) }),
+  );
+  await page.route("**/users/me/photo", async (route) => {
+    if (route.request().method() === "DELETE") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ photo_url: "", user: removedProfile }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ photo_url: uploadedProfile.photo_url, user: uploadedProfile }),
+    });
+  });
+
+  await page.goto("/dashboard/profile");
+  await expect(page.getByRole("button", { name: "Replace image" })).toBeVisible();
+  await page.getByLabel("Upload profile photo").setInputFiles({
+    name: "profile.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("\u0089PNG\r\n\u001a\npayload"),
+  });
+
+  await expect(page.getByAltText("Profile image preview")).toHaveAttribute("src", /new-profile\.png/);
+  await expect(page.getByRole("button", { name: "Open profile menu" }).locator("img")).toHaveAttribute("src", /new-profile\.png/);
+
+  await page.getByRole("button", { name: "Remove image" }).click();
+  await expect(page.getByRole("dialog")).toContainText("Remove profile image?");
+  await page.getByRole("dialog").getByRole("button", { name: "Remove image" }).click();
+
+  await expect(page.getByAltText("Profile image preview")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Open profile menu" }).locator("img")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Save profile" })).toBeDisabled();
 });
 
 test("Profile MFA setup redacts backend configuration details", async ({ page }) => {
