@@ -39,7 +39,7 @@ const SETTINGS_SECTIONS = [
     key: "users-organization",
     title: "Users and organization",
     items: [
-      { title: "User Management", description: "Invite users, manage accounts, and keep access current.", href: SETTINGS_ROUTES.users, icon: UsersRound },
+      { title: "Users", description: "Invite users, manage accounts, and keep access current.", href: SETTINGS_ROUTES.users, icon: UsersRound },
       { title: "Teams", description: "Organize departments and team membership.", href: SETTINGS_ROUTES.teams, icon: Blocks },
       { title: "Customer Groups", description: "Review customer segmentation used by contacts, accounts, and client portal context.", href: SETTINGS_ROUTES.customerGroups, icon: BadgePercent },
     ],
@@ -60,7 +60,9 @@ const SETTINGS_SECTIONS = [
         href: SETTINGS_ROUTES.modules,
         icon: KeyRound,
       },
-      { title: "Domains & SSO", description: "Verify workspace domains and configure tenant sign-in.", href: `${SETTINGS_ROUTES.users}?tab=domains`, icon: ShieldCheck },
+      { title: "Authentication", description: "Configure MFA, password policy, and tenant SSO.", href: SETTINGS_ROUTES.authentication, icon: ShieldCheck },
+      { title: "Domains", description: "Verify workspace domains for tenant sign-in.", href: SETTINGS_ROUTES.domains, icon: ShieldCheck },
+      { title: "Provisioning", description: "Map verified identities to roles and teams.", href: SETTINGS_ROUTES.provisioning, icon: UsersRound },
     ],
   },
   {

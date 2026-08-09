@@ -325,6 +325,7 @@ def serialize_user_profile(user: User) -> UserProfile:
         "first_name": user.first_name,
         "last_name": user.last_name,
         "email": user.email,
+        "booking_handle": user.booking_handle,
         "team_id": user.team_id,
         "role_id": user.role_id,
         "team_name": (

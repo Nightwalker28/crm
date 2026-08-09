@@ -749,6 +749,9 @@ def update_saved_view(
     view = get_saved_view_or_404(db, user, module_key, view_id)
     is_system_view = _is_system_saved_view(view)
 
+    if is_system_view and ("name" in payload or "config" in payload):
+        raise ValueError("System saved views are read-only")
+
     if "name" in payload:
         cleaned_name = _clean(payload["name"])
         if not cleaned_name:
@@ -784,5 +787,7 @@ def delete_saved_view(
     view_id: int,
 ) -> None:
     view = get_saved_view_or_404(db, user, module_key, view_id)
+    if _is_system_saved_view(view):
+        raise ValueError("System saved views cannot be deleted")
     db.delete(view)
     db.commit()

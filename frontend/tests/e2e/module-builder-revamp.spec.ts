@@ -139,7 +139,7 @@ test("edits and reorders fields from one module-level save on mobile", async ({ 
   await page.getByRole("button", { name: "Edit Priority" }).click();
   await expect(page.getByRole("dialog", { name: "Edit field" })).toBeVisible();
   const requiredSetting = page.getByRole("group", { name: "Required" });
-  const listSetting = page.getByRole("group", { name: "Show in list" });
+  const listSetting = page.getByRole("group", { name: "Include in initial system default view" });
   await expect(requiredSetting.getByRole("button", { name: "Off" })).toHaveAttribute("aria-pressed", "true");
   await expect(listSetting.getByRole("button", { name: "On" })).toHaveAttribute("aria-pressed", "true");
   await requiredSetting.getByRole("button", { name: "On" }).click();
@@ -200,8 +200,9 @@ test("adds a field in the inspector and exposes shared builder destinations", as
     validation_json: { options: ["New", "Resolved"] },
   });
 
-  await page.getByRole("tab", { name: "Permissions" }).click();
-  await expect(page.getByRole("link", { name: "Open permissions" })).toHaveAttribute("href", "/dashboard/settings/permissions");
-  await page.getByRole("tab", { name: "Automation" }).click();
-  await expect(page.getByRole("link", { name: "Open automation builder" })).toHaveAttribute("href", "/dashboard/settings/automation");
+  await expect(page.getByRole("tab", { name: "Permissions" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Automation" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Saved views" })).toHaveAttribute("href", "/dashboard/views/service_requests");
+  await expect(page.getByRole("link", { name: "Permissions" })).toHaveAttribute("href", "/dashboard/settings/permissions");
+  await expect(page.getByRole("link", { name: "Automation" })).toHaveAttribute("href", "/dashboard/settings/automation");
 });

@@ -86,6 +86,7 @@ export type CalendarAssignmentUserOption = {
   email?: string | null;
   team_id?: number | null;
   team_name?: string | null;
+  booking_handle: string;
 };
 
 export type CalendarAssignmentTeamOption = {

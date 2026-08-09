@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -72,6 +74,21 @@ MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _safe_workspace_slug(workspace_name: str | None) -> str:
+    normalized = unicodedata.normalize("NFKD", workspace_name or "")
+    ascii_name = normalized.encode("ascii", "ignore").decode("ascii").lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", ascii_name).strip("-")
+    return (slug or "workspace")[:48].rstrip("-") or "workspace"
+
+
+def build_tenant_backup_filename(*, workspace_name: str | None, completed_at: datetime | None) -> str:
+    timestamp = completed_at or _utc_now()
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=timezone.utc)
+    timestamp = timestamp.astimezone(timezone.utc)
+    return f"lynk-{_safe_workspace_slug(workspace_name)}-backup-{timestamp.strftime('%Y-%m-%dT%H%M%SZ')}.zip"
 
 
 def _enabled_tenant_modules(db: Session, *, tenant_id: int) -> list[str]:
@@ -211,6 +228,7 @@ def _upload_destination_artifact(
     actor_user_id: int,
     destination: str,
     artifact_path: Path,
+    display_filename: str,
 ) -> dict[str, str] | None:
     provider = DESTINATION_PROVIDERS.get(destination)
     if not provider:
@@ -220,7 +238,7 @@ def _upload_destination_artifact(
         tenant_id=tenant_id,
         user_id=actor_user_id,
         provider=provider,
-        filename=artifact_path.name,
+        filename=display_filename,
         content=artifact_path.read_bytes(),
     )
 
@@ -291,6 +309,14 @@ def get_tenant_backup_artifact_path(run: TenantBackupRun) -> Path:
     if not path.exists() or not path.is_file():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Tenant backup artifact no longer exists.")
     return path
+
+
+def get_tenant_backup_download_filename(db: Session, *, run: TenantBackupRun) -> str:
+    tenant = db.query(Tenant).filter(Tenant.id == run.tenant_id).first()
+    return build_tenant_backup_filename(
+        workspace_name=tenant.name if tenant else None,
+        completed_at=run.completed_at or run.created_at,
+    )
 
 
 def delete_tenant_backup_artifact(db: Session, *, tenant_id: int, actor_user_id: int, run_id: int) -> TenantBackupRun:
@@ -422,6 +448,10 @@ def _execute_tenant_backup_run(db: Session, *, run: TenantBackupRun, skip_retent
             _write_json(zipf, "metadata.json", metadata)
 
         completed_at = _utc_now()
+        display_filename = build_tenant_backup_filename(
+            workspace_name=tenant.name if tenant else None,
+            completed_at=completed_at,
+        )
         run.status = "completed"
         run.completed_at = completed_at
         run.file_path = str(artifact_path)
@@ -436,6 +466,7 @@ def _execute_tenant_backup_run(db: Session, *, run: TenantBackupRun, skip_retent
                     actor_user_id=actor_user_id,
                     destination=destination,
                     artifact_path=artifact_path,
+                    display_filename=display_filename,
                 )
                 run.destination_upload_status = "uploaded"
                 run.storage_ref = (
@@ -445,6 +476,7 @@ def _execute_tenant_backup_run(db: Session, *, run: TenantBackupRun, skip_retent
                 )
                 run.metadata_json = {
                     **metadata,
+                    "display_filename": display_filename,
                     "destination": destination,
                     "destination_upload_status": "uploaded",
                     "destination_storage_ref": run.storage_ref,
@@ -454,9 +486,12 @@ def _execute_tenant_backup_run(db: Session, *, run: TenantBackupRun, skip_retent
                 run.error_message = f"Backup artifact created locally, but upload failed: {str(upload_exc)[:900]}"
                 run.metadata_json = {
                     **metadata,
+                    "display_filename": display_filename,
                     "destination": destination,
                     "destination_upload_status": "failed",
                 }
+        if destination == "local_download":
+            run.metadata_json = {**metadata, "display_filename": display_filename}
         settings.last_run_at = completed_at
         settings.next_run_at = _next_run_at(enabled=bool(settings.enabled), frequency=settings.frequency)
         db.commit()

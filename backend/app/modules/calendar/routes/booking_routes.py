@@ -13,6 +13,8 @@ from app.modules.calendar.schema import (
     MeetingBookingTypeListResponse,
     MeetingBookingTypeResponse,
     MeetingBookingTypeUpdateRequest,
+    BookingHandleResponse,
+    BookingHandleUpdateRequest,
     PublicMeetingBookingConfirmationResponse,
     PublicMeetingBookingSubmitRequest,
     PublicMeetingBookingTypeResponse,
@@ -24,6 +26,40 @@ from app.modules.platform.services.activity_logs import log_activity
 
 router = APIRouter(prefix="/calendar/booking-types", tags=["Calendar Booking"])
 public_router = APIRouter(prefix="/booking-links", tags=["Public Booking Links"])
+
+
+@router.get("/handle/current", response_model=BookingHandleResponse)
+def get_current_booking_handle(
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("calendar")),
+    require_permission=Depends(require_action_access("calendar", "view")),
+):
+    return booking_services.get_booking_handle(current_user)
+
+
+@router.put("/handle/current", response_model=BookingHandleResponse)
+def update_current_booking_handle(
+    payload: BookingHandleUpdateRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("calendar")),
+    require_permission=Depends(require_action_access("calendar", "edit")),
+):
+    before_handle = current_user.booking_handle
+    result = booking_services.update_booking_handle(db, current_user, booking_handle=payload.booking_handle)
+    log_activity(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        module_key="calendar",
+        entity_type="booking_handle",
+        entity_id=str(current_user.id),
+        action="update",
+        description="Updated public booking handle",
+        before_state={"booking_handle": before_handle},
+        after_state={"booking_handle": result["booking_handle"]},
+    )
+    return result
 
 
 @router.get("", response_model=MeetingBookingTypeListResponse)
@@ -118,6 +154,71 @@ def disable_booking_type(
 def get_public_booking_type(slug: str, response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "private, no-store"
     return booking_services.get_public_booking_type(db, slug=slug)
+
+
+@public_router.get("/owners/{owner_handle}/{slug}", response_model=PublicMeetingBookingTypeResponse)
+def get_owner_public_booking_type(owner_handle: str, slug: str, response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "private, no-store"
+    return booking_services.get_public_booking_type(db, owner_handle=owner_handle, slug=slug)
+
+
+@public_router.get("/owners/{owner_handle}/{slug}/slots", response_model=PublicMeetingSlotListResponse)
+def get_owner_public_booking_slots(
+    owner_handle: str,
+    slug: str,
+    response: Response,
+    start_date: str = Query(...),
+    end_date: str = Query(...),
+    db: Session = Depends(get_db),
+):
+    response.headers["Cache-Control"] = "private, no-store"
+    try:
+        parsed_start = date.fromisoformat(start_date)
+        parsed_end = date.fromisoformat(end_date)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="Slot dates must use YYYY-MM-DD") from exc
+    return {
+        "results": booking_services.available_slots(
+            db,
+            owner_handle=owner_handle,
+            slug=slug,
+            start_date=parsed_start,
+            end_date=parsed_end,
+        )
+    }
+
+
+@public_router.post(
+    "/owners/{owner_handle}/{slug}/book",
+    response_model=PublicMeetingBookingConfirmationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def submit_owner_public_booking(
+    owner_handle: str,
+    slug: str,
+    payload: PublicMeetingBookingSubmitRequest,
+    request: Request,
+    response: Response,
+    db: Session = Depends(get_db),
+):
+    response.headers["Cache-Control"] = "private, no-store"
+    client_host = request.client.host if request.client else None
+    booking_services.check_public_booking_rate_limit(
+        owner_handle=owner_handle,
+        slug=slug,
+        client_host=client_host,
+    )
+    booking_services.record_public_booking_attempt(
+        owner_handle=owner_handle,
+        slug=slug,
+        client_host=client_host,
+    )
+    return booking_services.submit_public_booking(
+        db,
+        owner_handle=owner_handle,
+        slug=slug,
+        payload=payload.model_dump(),
+    )
 
 
 @public_router.get("/{slug}/slots", response_model=PublicMeetingSlotListResponse)

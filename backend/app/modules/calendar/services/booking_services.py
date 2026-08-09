@@ -29,6 +29,11 @@ from app.modules.user_management.models import User
 logger = logging.getLogger(__name__)
 PUBLIC_BOOKING_RATE_LIMIT_PREFIX = "calendar_booking:public_submit"
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+BOOKING_HANDLE_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{1,58}[a-z0-9])?$")
+RESERVED_BOOKING_HANDLES = {
+    "admin", "api", "app", "book", "booking", "dashboard", "help", "login",
+    "logout", "null", "settings", "signup", "support", "www",
+}
 CRM_SOURCE_ENTITY_TYPES = {
     "sales_contacts": "contact",
     "sales_leads": "lead",
@@ -53,6 +58,43 @@ def _display_user_name(user: User | None) -> str | None:
     return full_name or user.email or None
 
 
+def normalize_booking_handle(value: str | None) -> str:
+    handle = (value or "").strip().lower()
+    if not BOOKING_HANDLE_RE.fullmatch(handle):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Booking handle must be 3 to 60 lowercase letters, numbers, or hyphens.",
+        )
+    if handle in RESERVED_BOOKING_HANDLES:
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="This booking handle is reserved.")
+    return handle
+
+
+def get_booking_handle(current_user: User) -> dict[str, str]:
+    handle = normalize_booking_handle(current_user.booking_handle)
+    return {"booking_handle": handle, "canonical_prefix": f"/book/{handle}"}
+
+
+def update_booking_handle(db: Session, current_user: User, *, booking_handle: str) -> dict[str, str]:
+    handle = normalize_booking_handle(booking_handle)
+    current_user.booking_handle = handle
+    db.add(current_user)
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This booking handle is already in use.") from exc
+    db.refresh(current_user)
+    return get_booking_handle(current_user)
+
+
+def _public_booking_handle_or_404(value: str) -> str:
+    try:
+        return normalize_booking_handle(value)
+    except HTTPException:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking link not found") from None
+
+
 def _zoneinfo(name: str) -> ZoneInfo:
     try:
         return ZoneInfo(name)
@@ -73,6 +115,7 @@ def _serialize_booking_type(booking_type: MeetingBookingType) -> dict:
         "id": booking_type.id,
         "owner_id": booking_type.owner_id,
         "owner_name": _display_user_name(booking_type.owner),
+        "owner_handle": booking_type.owner.booking_handle,
         "name": booking_type.name,
         "slug": booking_type.slug,
         "duration_minutes": booking_type.duration_minutes,
@@ -106,12 +149,15 @@ def _serialize_booking_type(booking_type: MeetingBookingType) -> dict:
 
 
 def _public_booking_type_payload(booking_type: MeetingBookingType) -> dict:
+    owner_handle = booking_type.owner.booking_handle
     return {
         "name": booking_type.name,
         "slug": booking_type.slug,
         "duration_minutes": booking_type.duration_minutes,
         "timezone": booking_type.timezone,
         "owner_name": _display_user_name(booking_type.owner),
+        "owner_handle": owner_handle,
+        "canonical_path": f"/book/{owner_handle}/{booking_type.slug}",
         "questions": _serialize_booking_type(booking_type)["questions"],
     }
 
@@ -135,25 +181,44 @@ def _get_booking_type_or_404(db: Session, *, tenant_id: int, booking_type_id: in
     return booking_type
 
 
-def _get_public_booking_type_or_404(db: Session, *, slug: str) -> MeetingBookingType:
-    booking_type = (
+def _get_public_booking_type_or_404(
+    db: Session,
+    *,
+    slug: str,
+    owner_handle: str | None = None,
+) -> MeetingBookingType:
+    query = (
         db.query(MeetingBookingType)
         .options(*_booking_type_options())
+        .join(User, User.id == MeetingBookingType.owner_id)
         .filter(MeetingBookingType.slug == slug, MeetingBookingType.enabled.is_(True))
-        .first()
     )
+    if owner_handle is not None:
+        query = query.filter(User.booking_handle == _public_booking_handle_or_404(owner_handle))
+        booking_type = query.first()
+    else:
+        matches = query.limit(2).all()
+        booking_type = matches[0] if len(matches) == 1 else None
     if not booking_type:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking link not found")
     return booking_type
 
 
-def _get_public_booking_type_for_submit_or_404(db: Session, *, slug: str) -> MeetingBookingType:
-    booking_type_ref = (
+def _get_public_booking_type_for_submit_or_404(
+    db: Session,
+    *,
+    slug: str,
+    owner_handle: str | None = None,
+) -> MeetingBookingType:
+    query = (
         db.query(MeetingBookingType.id, MeetingBookingType.tenant_id)
+        .join(User, User.id == MeetingBookingType.owner_id)
         .filter(MeetingBookingType.slug == slug, MeetingBookingType.enabled.is_(True))
-        .with_for_update()
-        .first()
     )
+    if owner_handle is not None:
+        query = query.filter(User.booking_handle == _public_booking_handle_or_404(owner_handle))
+    matches = query.with_for_update().limit(2).all()
+    booking_type_ref = matches[0] if len(matches) == 1 else None
     if not booking_type_ref:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Booking link not found")
     booking_type_id, tenant_id = booking_type_ref
@@ -286,14 +351,15 @@ def _validate_guest_email(email: str | None) -> str:
     return normalized
 
 
-def _public_booking_rate_limit_key(*, slug: str, client_host: str | None) -> str:
-    slug_hash = hashlib.sha256(slug.strip().lower().encode("utf-8")).hexdigest()
+def _public_booking_rate_limit_key(*, slug: str, client_host: str | None, owner_handle: str | None = None) -> str:
+    route_identity = f"{(owner_handle or 'legacy').strip().lower()}:{slug.strip().lower()}"
+    slug_hash = hashlib.sha256(route_identity.encode("utf-8")).hexdigest()
     host_hash = hashlib.sha256((client_host or "unknown").strip().lower().encode("utf-8")).hexdigest()
     return f"{PUBLIC_BOOKING_RATE_LIMIT_PREFIX}:slug:{slug_hash}:ip:{host_hash}"
 
 
-def check_public_booking_rate_limit(*, slug: str, client_host: str | None = None) -> None:
-    cache_key = _public_booking_rate_limit_key(slug=slug, client_host=client_host)
+def check_public_booking_rate_limit(*, slug: str, client_host: str | None = None, owner_handle: str | None = None) -> None:
+    cache_key = _public_booking_rate_limit_key(slug=slug, client_host=client_host, owner_handle=owner_handle)
     payload = cache_get_json(cache_key) or {}
     if int(payload.get("count") or 0) >= settings.PUBLIC_BOOKING_SUBMIT_LIMIT:
         raise HTTPException(
@@ -302,8 +368,8 @@ def check_public_booking_rate_limit(*, slug: str, client_host: str | None = None
         )
 
 
-def record_public_booking_attempt(*, slug: str, client_host: str | None = None) -> None:
-    cache_key = _public_booking_rate_limit_key(slug=slug, client_host=client_host)
+def record_public_booking_attempt(*, slug: str, client_host: str | None = None, owner_handle: str | None = None) -> None:
+    cache_key = _public_booking_rate_limit_key(slug=slug, client_host=client_host, owner_handle=owner_handle)
     payload = cache_get_json(cache_key) or {}
     count = int(payload.get("count") or 0) + 1
     cache_set_json(
@@ -378,8 +444,8 @@ def get_client_booking_or_404(db: Session, *, tenant_id: int, email: str, bookin
     return booking
 
 
-def get_public_booking_type(db: Session, *, slug: str) -> dict:
-    return _public_booking_type_payload(_get_public_booking_type_or_404(db, slug=slug))
+def get_public_booking_type(db: Session, *, slug: str, owner_handle: str | None = None) -> dict:
+    return _public_booking_type_payload(_get_public_booking_type_or_404(db, slug=slug, owner_handle=owner_handle))
 
 
 def _event_overlap_exists(db: Session, *, booking_type: MeetingBookingType, start_at: datetime, end_at: datetime) -> bool:
@@ -437,12 +503,19 @@ def _slot_overlaps_ranges(
     return any(busy_start < buffered_end and busy_end > buffered_start for busy_start, busy_end in busy_ranges)
 
 
-def available_slots(db: Session, *, slug: str, start_date: date, end_date: date) -> list[dict]:
+def available_slots(
+    db: Session,
+    *,
+    slug: str,
+    start_date: date,
+    end_date: date,
+    owner_handle: str | None = None,
+) -> list[dict]:
     if end_date < start_date:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="end_date must be on or after start_date")
     if (end_date - start_date).days > 31:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slot range cannot exceed 31 days")
-    booking_type = _get_public_booking_type_or_404(db, slug=slug)
+    booking_type = _get_public_booking_type_or_404(db, slug=slug, owner_handle=owner_handle)
     tz = _zoneinfo(booking_type.timezone)
     now = _utcnow()
     slots: list[dict] = []
@@ -616,8 +689,14 @@ def _record_booking_side_effects(db: Session, *, booking: MeetingBooking, event:
         logger.exception("Booking notification failed", extra={"tenant_id": booking.tenant_id, "booking_id": booking.id})
 
 
-def submit_public_booking(db: Session, *, slug: str, payload: dict) -> MeetingBooking:
-    booking_type = _get_public_booking_type_for_submit_or_404(db, slug=slug)
+def submit_public_booking(
+    db: Session,
+    *,
+    slug: str,
+    payload: dict,
+    owner_handle: str | None = None,
+) -> MeetingBooking:
+    booking_type = _get_public_booking_type_for_submit_or_404(db, slug=slug, owner_handle=owner_handle)
     guest_name = payload["guest_name"].strip()
     guest_email = _validate_guest_email(payload["guest_email"])
     guest_note = (payload.get("guest_note") or "").strip() or None
@@ -627,7 +706,13 @@ def submit_public_booking(db: Session, *, slug: str, payload: dict) -> MeetingBo
     start_at = start_at.astimezone(timezone.utc)
     end_at = start_at + timedelta(minutes=booking_type.duration_minutes)
     slot_date = start_at.astimezone(_zoneinfo(booking_type.timezone)).date()
-    valid_slots = available_slots(db, slug=slug, start_date=slot_date, end_date=slot_date)
+    valid_slots = available_slots(
+        db,
+        slug=slug,
+        start_date=slot_date,
+        end_date=slot_date,
+        owner_handle=owner_handle,
+    )
     if not any(slot["start_at"] == start_at for slot in valid_slots):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Selected slot is no longer available")
     answers = _validate_answers(booking_type, payload.get("answers") or {})

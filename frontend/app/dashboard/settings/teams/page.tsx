@@ -137,6 +137,9 @@ function TeamEditorSheet({
   onChange: (next: TeamForm) => void;
   onSubmit: () => void;
 }) {
+  const selectedDepartment = departments.find(
+    (department) => String(department.id) === form.department_id,
+  );
   return (
     <Sheet open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
       <SheetPortal>
@@ -146,7 +149,11 @@ function TeamEditorSheet({
             <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
               <div>
                 <SheetTitle className="text-lg font-semibold text-copy-primary">{mode === "create" ? "Create Team" : "Edit Team"}</SheetTitle>
-                <SheetDescription className="mt-1 text-sm text-copy-secondary">Place this team inside the organization structure.</SheetDescription>
+                <SheetDescription className="mt-1 text-sm text-copy-secondary">
+                  {selectedDepartment
+                    ? `Selected department: ${selectedDepartment.name}`
+                    : "Select where this team belongs in the organization structure."}
+                </SheetDescription>
               </div>
               <Button type="button" variant="ghost" size="icon-sm" aria-label="Close team editor" onClick={onClose}><X /></Button>
             </SheetHeader>
@@ -199,7 +206,7 @@ function TeamEditorSheet({
               <span className={`text-sm ${dirty ? "text-state-warning" : "text-state-success"}`}>{dirty ? "Unsaved changes" : "All changes saved"}</span>
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
-                <Button type="submit" disabled={submitting || !form.name.trim() || !form.department_id}>{submitting ? "Saving..." : "Save Team"}</Button>
+                <Button type="submit" disabled={submitting || !dirty || !form.name.trim() || !form.department_id}>{submitting ? "Saving..." : "Save Team"}</Button>
               </div>
             </SheetFooter>
           </form>
@@ -223,7 +230,6 @@ export default function TeamsAndDepartmentsPage() {
     error,
     clearError,
     loading,
-    refreshing,
     loadError,
     retryLoad,
     departmentDirty,
@@ -345,7 +351,14 @@ export default function TeamsAndDepartmentsPage() {
           </div>
           <div className="flex flex-wrap gap-2">
             <Button type="button" variant="outline" onClick={openCreateDepartment}><Plus />Create Department</Button>
-            <Button type="button" onClick={openCreateTeam} disabled={!departments.length}><Plus />Create Team</Button>
+            <Button
+              type="button"
+              onClick={() => openCreateTeam()}
+              disabled={!departments.length}
+              title={!departments.length ? "Create a department before creating a team" : undefined}
+            >
+              <Plus />Create Team
+            </Button>
           </div>
         </div>
 
@@ -376,6 +389,11 @@ export default function TeamsAndDepartmentsPage() {
                     </div>
                     {department.id !== -1 ? (
                       <div className="flex items-center gap-2">
+                        {departmentTeams.length > 0 ? (
+                          <Button size="sm" variant="ghost" onClick={() => openCreateTeam(department.id)}>
+                            <Plus size={14} aria-hidden="true" />Add Team
+                          </Button>
+                        ) : null}
                         <Button size="icon-sm" variant="outline" onClick={() => openEditDepartment(department)} aria-label={`Edit ${department.name}`}><Pencil size={14} aria-hidden="true" /></Button>
                         <Button size="icon-sm" variant="destructive" onClick={() => removeDepartment(department)} aria-label={`Delete ${department.name}`}><Trash2 size={14} aria-hidden="true" /></Button>
                       </div>
@@ -386,7 +404,7 @@ export default function TeamsAndDepartmentsPage() {
                     {departmentTeams.length === 0 ? (
                       <div className="flex flex-col gap-3 px-4 py-4 text-sm text-copy-muted sm:flex-row sm:items-center sm:justify-between">
                         <span>No teams in this department.</span>
-                        <Button type="button" variant="ghost" size="sm" onClick={openCreateTeam}><Plus />Add team</Button>
+                        <Button type="button" variant="ghost" size="sm" onClick={() => openCreateTeam(department.id)}><Plus />Add Team</Button>
                       </div>
                     ) : (
                       <div className="divide-y divide-line-subtle">

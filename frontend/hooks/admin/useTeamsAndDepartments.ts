@@ -149,13 +149,18 @@ export function useTeamsAndDepartments() {
     setDepartmentDialogOpen(true);
   }
 
-  function openCreateTeam() {
+  function openCreateTeam(departmentId?: number) {
     setError(null);
     setTeamMode("create");
     setEditingTeamId(null);
     const nextForm = {
       ...emptyTeamForm,
-      department_id: departments[0] ? String(departments[0].id) : "",
+      department_id:
+        departmentId !== undefined
+          ? String(departmentId)
+          : departments[0]
+            ? String(departments[0].id)
+            : "",
     };
     setTeamForm(nextForm);
     setInitialTeamForm(nextForm);

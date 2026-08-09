@@ -9,6 +9,7 @@ test.beforeEach(async ({ page }) => {
     id: 17,
     owner_id: 1,
     owner_name: "Admin User",
+    owner_handle: "admin-user",
     name: "Discovery call",
     slug: "discovery-call",
     duration_minutes: 30,
@@ -25,7 +26,7 @@ test.beforeEach(async ({ page }) => {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        users: [{ id: 1, name: "Admin User", email: "admin@example.com" }],
+        users: [{ id: 1, name: "Admin User", email: "admin@example.com", booking_handle: "admin-user" }],
         teams: [],
         connections: [],
         recent_sync_jobs: [],
@@ -33,6 +34,22 @@ test.beforeEach(async ({ page }) => {
       }),
     }),
   );
+  await page.route("**/calendar/booking-types/handle/current", async (route) => {
+    if (route.request().method() === "PUT") {
+      const body = route.request().postDataJSON() as { booking_handle: string };
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ booking_handle: body.booking_handle, canonical_prefix: `/book/${body.booking_handle}` }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ booking_handle: "admin-user", canonical_prefix: "/book/admin-user" }),
+    });
+  });
   await page.route(/\/calendar\/booking-types(?:\/17)?$/, async (route) => {
     if (route.request().method() === "PUT") {
       bookingLink = { ...bookingLink, ...route.request().postDataJSON() };
@@ -93,4 +110,20 @@ test("protects an unsaved new booking link when the drawer closes", async ({ pag
   await page.getByRole("button", { name: "Close booking link editor" }).click();
   await page.getByRole("button", { name: "Discard changes" }).click();
   await expect(page.getByRole("dialog", { name: "Create booking link" })).toHaveCount(0);
+});
+
+test("shows and updates the stable handle and owner-scoped preview", async ({ page }) => {
+  await page.goto("/dashboard/settings/calendar-booking");
+
+  await expect(page.getByLabel("Public booking handle")).toHaveValue("admin-user");
+  await page.getByLabel("Public booking handle").fill("admin-scheduling");
+  const updateRequest = page.waitForRequest(
+    (request) => request.method() === "PUT" && request.url().endsWith("/calendar/booking-types/handle/current"),
+  );
+  await page.getByRole("button", { name: "Save handle" }).click();
+  expect((await updateRequest).postDataJSON()).toEqual({ booking_handle: "admin-scheduling" });
+
+  await page.getByRole("button", { name: "Discovery call" }).click();
+  await expect(page.getByText("The public URL will be /book/admin-user/discovery-call.")).toBeVisible();
+  await expect(page.getByText("Duration (minutes)")).toBeVisible();
 });

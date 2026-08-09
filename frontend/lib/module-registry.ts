@@ -56,7 +56,10 @@ export const MODULE_REGISTRY: readonly ModuleRegistryEntry[] = [
 
 export const SETTINGS_NAV_ITEMS = [
   { href: SETTINGS_ROUTES.general, label: "General", sortOrder: 10 },
-  { href: SETTINGS_ROUTES.users, label: "User Management", sortOrder: 20 },
+  { href: SETTINGS_ROUTES.users, label: "Users", sortOrder: 20 },
+  { href: SETTINGS_ROUTES.authentication, label: "Authentication", sortOrder: 21 },
+  { href: SETTINGS_ROUTES.domains, label: "Domains", sortOrder: 22 },
+  { href: SETTINGS_ROUTES.provisioning, label: "Provisioning", sortOrder: 23 },
   { href: SETTINGS_ROUTES.teams, label: "Teams", sortOrder: 30 },
   { href: SETTINGS_ROUTES.customerGroups, label: "Customer Groups", sortOrder: 40 },
   { href: SETTINGS_ROUTES.permissions, label: "Permissions", sortOrder: 50 },
@@ -76,7 +79,7 @@ export const ADMIN_QUICK_ACTIONS = [
   {
     label: "Add user",
     description: "Provision a user and assign their role and team",
-    href: `${SETTINGS_ROUTES.users}?tab=users&action=create-user`,
+    href: `${SETTINGS_ROUTES.users}?action=create-user`,
   },
   {
     label: "Create team",

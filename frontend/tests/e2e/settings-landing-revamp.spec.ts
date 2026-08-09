@@ -4,7 +4,7 @@ import { loginAsAdmin } from "./helpers/auth";
 
 const SETTINGS_DESTINATIONS = [
   { name: "General", href: "/dashboard/settings/general" },
-  { name: "User Management", href: "/dashboard/settings/users" },
+  { name: "Users", href: "/dashboard/settings/users" },
   { name: "Teams", href: "/dashboard/settings/teams" },
   { name: "Customer Groups", href: "/dashboard/settings/customer-groups" },
   { name: "Permissions", href: "/dashboard/settings/permissions" },
@@ -18,7 +18,9 @@ const SETTINGS_DESTINATIONS = [
   { name: "Integrations", href: "/dashboard/settings/integrations" },
   { name: "Activity Log", href: "/dashboard/settings/activity-log" },
   { name: "Recycle Bin", href: "/dashboard/settings/recycle-bin" },
-  { name: "Domains & SSO", href: "/dashboard/settings/users?tab=domains" },
+  { name: "Authentication", href: "/dashboard/settings/authentication" },
+  { name: "Domains", href: "/dashboard/settings/domains" },
+  { name: "Provisioning", href: "/dashboard/settings/provisioning" },
 ] as const;
 
 test.beforeEach(async ({ page }) => {
@@ -46,7 +48,7 @@ test("settings rows use one scan column and support keyboard navigation", async 
   await page.goto("/dashboard/settings");
 
   const generalLink = page.getByRole("link", { name: /^General/ });
-  const usersLink = page.getByRole("link", { name: /^User Management/ });
+  const usersLink = page.getByRole("link", { name: /^Users/ });
   const generalBox = await generalLink.boundingBox();
   const usersBox = await usersLink.boundingBox();
 

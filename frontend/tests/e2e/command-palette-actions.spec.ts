@@ -284,7 +284,7 @@ test("record-search failures stay recoverable without exposing backend details",
 
 test("routes administrator actions to their addressable create workflows", async ({ page }) => {
   const workflows = [
-    { label: "Add user", path: "/dashboard/settings/users?tab=users&action=create-user" },
+    { label: "Add user", path: "/dashboard/settings/users?action=create-user" },
     { label: "Create team", path: "/dashboard/settings/teams?action=create-team" },
     { label: "Create department", path: "/dashboard/settings/teams?action=create-department" },
     { label: "Create role", path: "/dashboard/settings/permissions?action=create-role" },

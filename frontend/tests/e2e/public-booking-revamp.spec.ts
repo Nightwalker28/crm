@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
 
 const slug = "public-booking-browser";
-const bookingUrl = `/book/${slug}`;
-const bookingApiPattern = `**/booking-links/${slug}`;
-const slotsApiPattern = `**/booking-links/${slug}/slots?**`;
-const submitApiPattern = `**/booking-links/${slug}/book`;
+const ownerHandle = "ada-owner";
+const bookingUrl = `/book/${ownerHandle}/${slug}`;
+const bookingApiPattern = `**/booking-links/owners/${ownerHandle}/${slug}`;
+const slotsApiPattern = `**/booking-links/owners/${ownerHandle}/${slug}/slots?**`;
+const submitApiPattern = `**/booking-links/owners/${ownerHandle}/${slug}/book`;
 
 function bookingTypeFixture() {
   return {
@@ -13,6 +14,8 @@ function bookingTypeFixture() {
     duration_minutes: 30,
     timezone: "UTC",
     owner_name: "Ada Owner",
+    owner_handle: ownerHandle,
+    canonical_path: bookingUrl,
     questions: [{
       id: 7,
       label: "Company",
@@ -22,6 +25,23 @@ function bookingTypeFixture() {
     }],
   };
 }
+
+test("Legacy booking links redirect to the canonical owner-scoped URL", async ({ page }) => {
+  await page.route(`**/booking-links/${slug}`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(bookingTypeFixture()) }),
+  );
+  await page.route(slotsApiPattern, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(slotsFixture()) }),
+  );
+  await page.route(bookingApiPattern, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(bookingTypeFixture()) }),
+  );
+
+  await page.goto(`/book/${slug}`);
+
+  await expect(page).toHaveURL(new RegExp(`/book/${ownerHandle}/${slug}$`));
+  await expect(page.getByRole("heading", { name: "Discovery call" })).toBeVisible();
+});
 
 function slotsFixture() {
   return {

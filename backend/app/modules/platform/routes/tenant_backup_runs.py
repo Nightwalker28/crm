@@ -15,6 +15,7 @@ from app.modules.platform.services.tenant_backup_runs import (
     create_queued_manual_tenant_backup_run,
     delete_tenant_backup_artifact,
     get_tenant_backup_artifact_path,
+    get_tenant_backup_download_filename,
     get_tenant_backup_run_or_404,
     list_tenant_backup_runs,
     serialize_tenant_backup_run,
@@ -57,6 +58,7 @@ def get_run(run_id: int, db: Session = Depends(get_db), admin=Depends(require_ad
 def download_run(run_id: int, db: Session = Depends(get_db), admin=Depends(require_admin)):
     run = get_tenant_backup_run_or_404(db, tenant_id=admin.tenant_id, run_id=run_id)
     path = get_tenant_backup_artifact_path(run)
+    filename = get_tenant_backup_download_filename(db, run=run)
     safe_log_activity(
         db,
         tenant_id=admin.tenant_id,
@@ -71,7 +73,7 @@ def download_run(run_id: int, db: Session = Depends(get_db), admin=Depends(requi
     return FileResponse(
         path,
         media_type="application/zip",
-        filename=path.name,
+        filename=filename,
     )
 
 

@@ -224,6 +224,44 @@ class SavedViewConfigTests(unittest.TestCase):
         self.assertEqual(views[0]["id"], 9)
         self.assertTrue(views[0]["is_default"])
 
+    def test_system_view_cannot_be_renamed_or_reconfigured(self):
+        system_view = UserSavedView(
+            id=9,
+            user_id=7,
+            module_key="tasks",
+            name=profile.SYSTEM_DEFAULT_VIEW_NAME,
+            config={"_meta": {"system_default": True}},
+            is_default=1,
+        )
+        db = SavedViewListDB([system_view])
+        db.table_preference = system_view
+        user = SimpleNamespace(id=7, tenant_id=1)
+
+        with self.assertRaisesRegex(ValueError, "read-only"):
+            profile.update_saved_view(
+                db,
+                user,
+                "tasks",
+                9,
+                {"name": "Renamed"},
+            )
+
+    def test_system_view_cannot_be_deleted(self):
+        system_view = UserSavedView(
+            id=9,
+            user_id=7,
+            module_key="tasks",
+            name=profile.SYSTEM_DEFAULT_VIEW_NAME,
+            config={"_meta": {"system_default": True}},
+            is_default=1,
+        )
+        db = SavedViewListDB([system_view])
+        db.table_preference = system_view
+        user = SimpleNamespace(id=7, tenant_id=1)
+
+        with self.assertRaisesRegex(ValueError, "cannot be deleted"):
+            profile.delete_saved_view(db, user, "tasks", 9)
+
 
 if __name__ == "__main__":
     unittest.main()

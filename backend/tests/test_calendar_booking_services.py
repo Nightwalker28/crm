@@ -29,8 +29,8 @@ class CalendarBookingServiceTests(unittest.TestCase):
             [
                 Tenant(id=10, slug="default", name="Default"),
                 Tenant(id=99, slug="other", name="Other"),
-                User(id=1, tenant_id=10, email="owner@example.com", first_name="Ada", is_active=UserStatus.active),
-                User(id=2, tenant_id=99, email="other@example.com", first_name="Other", is_active=UserStatus.active),
+                User(id=1, tenant_id=10, email="owner@example.com", first_name="Ada", booking_handle="ada-owner", is_active=UserStatus.active),
+                User(id=2, tenant_id=99, email="other@example.com", first_name="Other", booking_handle="other-owner", is_active=UserStatus.active),
             ]
         )
         self.db.commit()
@@ -71,6 +71,51 @@ class CalendarBookingServiceTests(unittest.TestCase):
             )
 
         self.assertIn("Booking owner not found", str(exc.exception))
+
+    def test_owner_scoped_lookup_and_legacy_resolution_use_persisted_handle(self):
+        self._create_booking_type()
+
+        canonical = booking_services.get_public_booking_type(
+            self.db,
+            owner_handle="ada-owner",
+            slug="discovery-call",
+        )
+        legacy = booking_services.get_public_booking_type(self.db, slug="discovery-call")
+
+        self.assertEqual(canonical["canonical_path"], "/book/ada-owner/discovery-call")
+        self.assertEqual(legacy["canonical_path"], canonical["canonical_path"])
+        with self.assertRaises(HTTPException) as mismatch:
+            booking_services.get_public_booking_type(
+                self.db,
+                owner_handle="other-owner",
+                slug="discovery-call",
+            )
+        self.assertEqual(mismatch.exception.status_code, 404)
+        with self.assertRaises(HTTPException) as malformed:
+            booking_services.get_public_booking_type(
+                self.db,
+                owner_handle="invalid handle",
+                slug="discovery-call",
+            )
+        self.assertEqual(malformed.exception.status_code, 404)
+
+    def test_booking_handle_validation_and_collision(self):
+        owner = self.db.query(User).filter(User.id == 1).one()
+
+        with self.assertRaises(HTTPException) as reserved:
+            booking_services.update_booking_handle(self.db, owner, booking_handle="admin")
+        self.assertEqual(reserved.exception.status_code, 422)
+
+        with self.assertRaises(HTTPException) as invalid:
+            booking_services.update_booking_handle(self.db, owner, booking_handle="not valid")
+        self.assertEqual(invalid.exception.status_code, 422)
+
+        with self.assertRaises(HTTPException) as collision:
+            booking_services.update_booking_handle(self.db, owner, booking_handle="other-owner")
+        self.assertEqual(collision.exception.status_code, 409)
+
+        saved = booking_services.update_booking_handle(self.db, owner, booking_handle="Ada-Scheduling")
+        self.assertEqual(saved["booking_handle"], "ada-scheduling")
 
     def test_visible_calendar_query_uses_exists_without_distinct(self):
         query = calendar_repository.build_visible_calendar_events_query(

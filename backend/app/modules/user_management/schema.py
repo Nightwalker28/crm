@@ -19,6 +19,7 @@ class UserProfile(BaseModel):
     first_name: Optional[str]
     last_name: Optional[str]
     email: EmailStr
+    booking_handle: Optional[str] = None
     team_id: Optional[int]
     role_id: Optional[int]
     team_name: Optional[str] = None
@@ -43,6 +44,7 @@ class UserListItem(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     email: Optional[EmailStr] = None
+    booking_handle: Optional[str] = None
     team_id: Optional[int] = None
     role_id: Optional[int] = None
     team_name: Optional[str] = None
