@@ -208,41 +208,106 @@ Codex must not:
 | `09-customization-metadata.md` | Field types, layout resolver/builder, tenant/team/role/user layout customization |
 | `10-dx-ci-api-contracts.md` | Guardrails, generated frontend contracts, module metadata consolidation |
 
-## 9. Revised execution order
+## 9. Execution order
 
-The newer UX decisions are higher priority than the original research sequence.
+The initiative is organized around one opening user journey:
 
-### Wave 0 — safety and UX foundations
+```text
+Find/filter Leads
+  -> create a Lead without losing list context
+  -> open the Lead workspace
+  -> complete the next relationship action
+```
 
-1. Read/implement only the immediate guardrail portions of `10-dx-ci-api-contracts.md`.
-2. Implement `00-product-ux-foundation.md` primitives and conventions.
-3. Implement **Phase 1–2 only** of `09-customization-metadata.md` so Quick Create/detail layouts have a real resolver instead of becoming another hardcoded frontend layer.
+Do not start with a visual reskin, a complete metadata builder, or a provider integration. Prove this journey first, then reuse its primitives.
 
-### Wave 1 — core CRM work surface
+### Wave 0 — measurable safety and UX foundations
 
-4. Complete Quick Create rollout for Lead, Contact, Organization, and quick Opportunity.
-5. Implement `01-record-workspace.md`, beginning with Lead.
-6. Complete detail-layout integration and safe user layout personalization from `09-customization-metadata.md`.
+1. Implement only Phase 1 of `10-dx-ci-api-contracts.md`: close verified gaps in migration-to-head, OpenAPI generation, tenant/permission regression coverage, and local/CI parity. Record the current Lead journey as a behavior baseline. Do not begin code generation or registry redesign.
+2. Implement only Phase 1 of `00-product-ux-foundation.md`: the semantic `QuickCreateSurface` and its accessibility/responsive behavior tests. Do not connect it to a sales module yet.
+3. Implement the minimum layout foundation from `09-customization-metadata.md`:
+   - backend Phase 1: definitions, resolver, system fallback, and Lead `quick_create` plus `detail` seeds;
+   - the smallest runtime frontend renderers needed to prove resolved Quick Create and read-only Details contracts;
+   - no role/team override, user personalization, broad custom-field expansion, or arbitrary actions.
+4. After the layout APIs exist, run the bounded layout-family contract-generation pilot from Phase 2 of `10-dx-ci-api-contracts.md`. Keep generated types behind current frontend API/auth adapters.
 
-### Wave 2 — communication core
+### Wave 1 — Lead vertical slice
 
-7. Implement `02-communications-activity.md`.
-8. Implement `03-email-integration.md`.
+5. Implement the Lead Quick Create pilot from Phase 2 of `00-product-ux-foundation.md`.
+6. Add tenant layout administration/validation/preview for the proven Lead surfaces: backend Phase 2 and the corresponding bounded admin UI from `09-customization-metadata.md`.
+7. Audit the existing Lead detail implementation, then implement only the missing Lead composition from Phase 1 of `01-record-workspace.md`. Extract reusable workspace primitives instead of rebuilding existing header, task, note, file, communication, and audit behavior.
+8. Implement a minimal Lead-supported activity projection from `02-communications-activity.md`. Audit history remains separate.
+9. Add contextual Lead email only after existing mail/calendar correctness is verified and deterministic mail-record associations exist.
 
-### Wave 3 — sales workflow and relationships
+### Wave 2 — core CRM rollout and relationships
 
-9. Implement `04-pipelines-kanban.md`.
-10. Implement `05-relationships-data-model.md`.
+10. Roll the proven Quick Create and workspace patterns to Contact and Organization with server-validated contextual defaults.
+11. Implement Phase 1, then Phase 2, of `05-relationships-data-model.md` as separate accepted slices before advanced Opportunity workspace or communication-recipient work.
+12. Roll Quick Create/workspace behavior to Opportunity using explicit participant relationships, including participant display and management.
+13. Implement pipeline models, compatibility, and dependent business logic from `04-pipelines-kanban.md`; add Kanban only after the data migration and List/Kanban query parity are proven.
 
-### Wave 4 — omnichannel
+### Wave 3 — communication expansion
 
-11. Implement `06-whatsapp-business.md` without removing external click-to-chat.
-12. Implement `07-telephony.md`.
+14. Complete activity and contextual email adoption for Contact, Organization, and Opportunity.
+15. Implement Phase 1 of `06-whatsapp-business.md` to formalize and regression-test the existing external `wa.me` mode.
+16. Implement Phase 1 of `07-telephony.md` for truthful `tel:` fallback/manual call logging.
+17. Open Meta Cloud API or an integrated telephony provider only through an explicit phase request after current official provider requirements and product routing/retention decisions are documented.
 
-### Wave 5 — platform expansion
+### Wave 4 — platform expansion
 
-13. Implement `08-webhooks-events.md`.
-14. Finish advanced portions of `09-customization-metadata.md` and `10-dx-ci-api-contracts.md`.
+18. Implement `08-webhooks-events.md` sequentially: safe event contract, subscriptions, delivery worker, then replay/testing.
+19. Add role/team layout overrides, then narrower user presentation preferences from `09-customization-metadata.md`.
+20. Expand generated-contract adoption and consolidate one module-metadata consumer family at a time from `10-dx-ci-api-contracts.md`.
+21. Treat new custom field types and declarative custom actions as separately approved, end-to-end slices.
+
+### 9.1 Workstream ownership
+
+| Concern | Owning workstream | Consumers |
+|---|---|---|
+| Interaction surface and contextual-action contracts | `00` | Workspaces and domain forms |
+| Workspace composition | `01` | Lead, Contact, Organization, Opportunity adapters |
+| Business activity projection, pagination, and filtering | `02` | Workspaces and communication domains |
+| Mail/thread association persistence | `03` | Activity projection and contextual email UI |
+| Pipeline and stage semantics | `04` | Opportunity forms, workspaces, reports, automation, Kanban |
+| Typed CRM relationship invariants | `05` | Workspaces and communication recipient selection |
+| WhatsApp provider behavior | `06` | Activity and communication actions |
+| Telephony provider behavior | `07` | Activity and communication actions |
+| Outbound customer webhook delivery | `08` | Existing CRM event producers |
+| Field/layout resolution | `09` | Quick Create, Details, Full Form |
+| Engineering contracts and derived module metadata | `10` | New roadmap APIs and stable registry consumers |
+
+Do not implement overlapping persistence or business rules in a consuming workstream. For example, `02` consumes mail associations owned by `03`; `01` renders relationships owned by `05`; and `09` may position a pipeline field but does not own stage semantics.
+
+### 9.2 UX quality baseline
+
+All new or materially changed interaction surfaces target:
+
+- WCAG 2.2 AA, using current W3C guidance;
+- WAI-ARIA Authoring Practices keyboard and focus behavior for dialogs, tabs, menus, and composite widgets;
+- visible, unobscured focus and logical focus restoration;
+- at least the WCAG 2.2 minimum pointer target size, with a larger product target where practical;
+- a non-drag alternative for every drag-based action;
+- reduced-motion behavior for non-essential animation;
+- responsive behavior tested at narrow/mobile and desktop widths;
+- Interaction to Next Paint at or below 200 ms at the 75th percentile for measured critical interactions where field measurement is available.
+
+Use primary references when implementing or reviewing these requirements:
+
+- <https://www.w3.org/WAI/standards-guidelines/wcag/new-in-22/>
+- <https://www.w3.org/WAI/ARIA/apg/patterns/>
+- <https://web.dev/articles/optimize-inp>
+
+For the opening Lead journey, record and compare:
+
+- task completion rate;
+- time to create a basic Lead;
+- navigation/context switches;
+- validation recovery and abandoned attempts;
+- lost list state or lost entered data;
+- desktop and mobile completion;
+- permission, tenant-isolation, and accessibility failures.
+
+Do not claim the initiative improved usability from visual inspection alone. Use behavior-level acceptance and, where available, before/after measurements.
 
 ## 10. Shared implementation rules
 

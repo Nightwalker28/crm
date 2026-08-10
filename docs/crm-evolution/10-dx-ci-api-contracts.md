@@ -77,6 +77,8 @@ Without broad refactoring:
 
 Evaluate current frontend patterns and select a minimal tool such as `openapi-typescript` or Orval only after confirming compatibility.
 
+Run this phase immediately after the first bounded layout runtime/admin API exists, not after most roadmap APIs are already implemented.
+
 Pilot on a bounded API family (for example layout runtime/admin APIs) and define:
 
 - generation command;

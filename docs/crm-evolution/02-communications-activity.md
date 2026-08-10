@@ -97,6 +97,8 @@ Prefer no new canonical activity table. Add indexes to source tables when requir
 
 If a source domain lacks explicit record association, add a narrow relationship/link table or fields rather than relying permanently on email/phone inference.
 
+The source domain owns that association persistence. In particular, mail message/thread associations belong to `03-email-integration.md`; this workstream only consumes them through the mail projection adapter.
+
 ## 9. API contracts
 
 Candidate contract:

@@ -115,6 +115,8 @@ Use generic provider fields rather than naming domain models `TwilioCall`.
 
 ### Phase 4 — inbound call context
 
+Entry gate: document and approve the product routing policy (for example assigned owner, team queue, availability, escalation, and no-match handling) before implementation. Stop rather than inventing routing behavior inside the provider adapter.
+
 - verify incoming provider callback;
 - normalize caller number;
 - deterministic tenant/account lookup;
@@ -219,4 +221,4 @@ Tenants without telephony integration retain normal calling. Configured tenants 
 
 ## 20. Codex implementation instructions
 
-Implement manual/logging/fallback semantics before integrated calls. Select and implement one provider only behind the neutral interface. Verify current provider documentation when coding. Do not enable recording by default. Include callback-verification, tenant-isolation, and idempotency tests before considering provider phases complete.
+Implement manual/logging/fallback semantics before integrated calls. Provider selection requires an explicit phase request; completion of fallback work does not imply approval. Select and implement one provider only behind the neutral interface. Verify current provider documentation when coding. Do not begin inbound routing until its product policy is approved, and do not enable recording by default. Include callback-verification, tenant-isolation, and idempotency tests before considering provider phases complete.

@@ -147,12 +147,13 @@ Build/reuse:
 - responsive desktop/mobile behavior;
 - accessible title/description/focus trap/return focus;
 - escape/close behavior with dirty-state confirmation when required;
+- visible/unobscured focus, reduced-motion behavior, and WCAG 2.2 target sizing;
 - standardized footer actions;
 - loading/error/field-validation region;
 - mutation pending state that prevents duplicate submit;
 - optional `QuickEditPopover`/inline-edit convention, not necessarily a universal component.
 
-Acceptance gate: a component test/demo proves keyboard/focus behavior and responsive rendering without any sales-module migration.
+Acceptance gate: behavior tests prove keyboard/focus behavior, reduced motion, and responsive desktop/narrow rendering without any sales-module migration. Visual inspection or a component existing in source is not sufficient acceptance.
 
 ### Phase 2 — Lead pilot
 

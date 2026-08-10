@@ -55,7 +55,7 @@ OpportunityContact
 - created_at/by
 ```
 
-Initial role semantics may include decision maker, champion, technical, finance, procurement, legal, influencer, other. Prefer a future-configurable role catalog over baking display labels permanently into code.
+Initial role semantics may include decision maker, champion, technical, finance, procurement, legal, influencer, other. Keep the catalog a typed sales-domain configuration. Prefer future configurability over baking display labels permanently into code, but do not move relationship invariants into generic layout metadata.
 
 ## 5. Existing code to inspect
 
@@ -70,6 +70,8 @@ Maintain a primary-contact compatibility concept during migration, but model add
 Do not build a universal “any record links to any record” table as a replacement for core typed relationships. Generic links can complement typed domain relations when necessary, not erase them.
 
 ## 7. Backend changes — phased
+
+Phases 1–2 are separate Wave 2 slices and both are prerequisites for advanced Opportunity workspace and contextual communication-recipient work. They intentionally occur before the broader pipeline/communication rollout even though this file is numbered `05`.
 
 ### Phase 1 — OpportunityContact compatibility model
 

@@ -120,12 +120,13 @@ Do not persist unlimited response bodies or secrets.
 ### Phase 4 — replay/testing
 
 - admin test webhook with explicit non-production event marker;
-- replay failed delivery without changing original event ID;
+- replay failed delivery without changing the original event ID;
+- model replay as a new attempt/request under the same logical `(subscription,event)` delivery, with its own replay/attempt identity and audit fields;
 - rotate signing secret safely.
 
 ## 8. Database changes
 
-Add subscription/delivery tables with tenant indexes, unique event/subscription delivery identity, status/retry indexes, and retention strategy. Preserve event rows according to existing event policy.
+Add subscription/delivery tables with tenant indexes, unique logical event/subscription delivery identity, separate attempt/replay identity where needed, status/retry indexes, and retention strategy. Preserve event rows according to existing event policy.
 
 ## 9. API contracts
 

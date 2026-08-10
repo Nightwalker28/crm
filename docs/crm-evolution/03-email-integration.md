@@ -82,6 +82,8 @@ MailMessage/Thread
 
 A message may need multiple safe associations (for example Contact + Opportunity) but associations must be explicit and permission-aware.
 
+This workstream owns mail/message/thread association persistence and its invariants. `02-communications-activity.md` consumes those associations through a mail activity adapter; it must not create a competing mail-link model.
+
 ## 7. Backend changes
 
 ### Phase 1 — association contract

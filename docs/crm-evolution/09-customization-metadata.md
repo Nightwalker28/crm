@@ -155,6 +155,8 @@ Layout metadata controls record data/details regions. It does not remove product
 
 ## 7. Backend changes — phased
 
+Backend and frontend phase numbers below are independent tracks. Launch prompts must name exact deliverables from each track; “implement Phases 1–2” is not sufficient scope.
+
 ### Phase 1 — layout definitions + resolver (Wave 0 priority)
 
 Add/reuse models for tenant layout definitions and service to resolve a surface for `(tenant, user, module, surface)`.
@@ -171,7 +173,9 @@ Requirements:
 
 Seed default layouts for Lead first, then Contact/Organization/Opportunity before each module adopts the renderer.
 
-### Phase 2 — tenant admin CRUD + preview (Wave 0 priority)
+### Phase 2 — tenant admin CRUD + preview (Wave 1 after Lead pilot)
+
+Land this after the Lead resolver/runtime contract and Lead Quick Create pilot have proven the metadata shape. Start with the proven Lead surfaces before widening administration to other modules.
 
 Admin/configure APIs:
 
@@ -324,6 +328,8 @@ Create a visual builder in Settings with:
 - desktop/mobile preview;
 - validation/errors/warnings;
 - save/publish/reset.
+
+Start with the proven Lead surfaces. Every drag reorder interaction must also provide an accessible non-drag/keyboard alternative.
 
 Quick Create shows guidance such as “Recommended 5–8 fields” and warns on long-text/files/many sections without arbitrarily blocking a valid tenant workflow.
 

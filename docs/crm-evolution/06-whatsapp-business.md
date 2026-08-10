@@ -135,7 +135,7 @@ Before Meta work:
 - clarify statuses/terminology so click/open preparation is not mislabeled provider-delivered;
 - unify the frontend direct external action and backend template/interaction path where sensible without regressing simple `wa.me` fallback;
 - expose a provider/mode capability endpoint for UI decisions;
-- define tenant default/allowed modes with backward-compatible default = existing external behavior.
+- define the tenant capability/allowed-mode contract with backward-compatible effective default = existing external behavior.
 
 No Meta credentials are required for this phase.
 
@@ -173,11 +173,13 @@ At implementation time, inspect current official Meta WhatsApp Cloud API documen
 
 ### Phase 5 — mode preference and advanced workflow
 
-- tenant setting: allowed modes + default;
+- tenant setting UI/policy management for the allowed-mode/default contract established in Phase 1;
 - user setting: preferred mode = external / Meta / ask each time, constrained by tenant policy;
 - split-button/menu behavior when multiple modes are enabled;
 - remember preference without making external fallback inaccessible when policy permits;
 - optional automation/template tooling after core reliability is proven.
+
+Phase 1 owns tenant capability/default resolution. Phase 5 adds tenant management UX and the narrower user preference overlay; it must not introduce a second mode-policy model.
 
 ## 8. Database changes
 

@@ -109,6 +109,7 @@ Do not create one unbounded “everything about record” endpoint.
 
 ### Phase 1 — Lead workspace shell
 
+- inventory the current Lead workspace behavior and identify confirmed gaps before changing composition;
 - compose existing header/actions into a denser record header;
 - expose primary communication/task/note actions without module switching;
 - create relationship/context rail;
@@ -206,4 +207,4 @@ A salesperson can open a Lead and perform most routine relationship work without
 
 ## 20. Codex implementation instructions
 
-Start with Lead only. Inspect current recordActivity components and preserve useful behavior. Keep the shell reusable but domain adapters explicit. Do not begin Contact/Organization/Opportunity until Lead passes tests and UX acceptance. Run repository checks and report deferred dependencies on `02`, `05`, `06`, `07`, and `09`.
+Start with Lead only. Treat the current detail page as working product behavior to audit, not a blank implementation target. Inspect current recordActivity components and preserve useful behavior. Keep the shell reusable but domain adapters explicit. Do not begin Contact/Organization/Opportunity until Lead passes tests and UX acceptance. Run repository checks and report deferred dependencies on `02`, `05`, `06`, `07`, and `09`.
