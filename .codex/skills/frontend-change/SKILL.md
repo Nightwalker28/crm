@@ -28,6 +28,8 @@ Before editing, inspect:
 - Use linked selectors where the relationship is canonical; do not regress to free text.
 - Use shared timezone-aware datetime helpers for user-facing timestamps.
 - Keep required markers, form validation, and error messaging aligned with backend rules.
+- Route every request through `apiFetch`. Only GET/HEAD are retried automatically; never add a client that replays writes.
+- Generated API contracts in `frontend/contracts/` are committed artifacts. Consume them through an adapter in `lib/contracts/`, and regenerate with `./scripts/generate-contracts.sh` instead of hand-editing.
 
 ## Product boundaries
 

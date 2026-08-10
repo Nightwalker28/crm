@@ -19,6 +19,10 @@ echo "== OpenAPI generation =="
 docker compose exec -T backend python -m scripts.verify_openapi
 
 echo
+echo "== Generated API contract drift =="
+"$ROOT_DIR/scripts/generate-contracts.sh" --check
+
+echo
 echo "== Backend unit tests =="
 docker compose exec -T backend python -m unittest discover -s tests -p 'test_*.py'
 

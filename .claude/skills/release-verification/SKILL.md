@@ -25,6 +25,7 @@ When schema changed:
 When frontend code changed:
 - run `docker compose exec -T frontend npm run lint`
 - run `docker compose exec -T frontend npm run build` for meaningful UI changes
+- run `./scripts/generate-contracts.sh --check` when a touched API family has generated contracts in `frontend/contracts/`
 - smoke-check affected pages, dialogs, tables, and detail pages
 - check for console/runtime warnings
 - confirm required markers and validation still match backend rules

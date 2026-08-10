@@ -30,6 +30,12 @@ jobs:
           leads-revamp.spec.ts
           --grep "Lead journey behavior baseline"
 
+      - name: Run generated contract transport guards
+        run: >-
+          docker compose run --rm frontend-e2e
+          npm run test:e2e --
+          contract-transport.spec.ts
+
       - name: Show service logs on failure
         if: failure()
         run: docker compose logs --no-color backend frontend postgres redis

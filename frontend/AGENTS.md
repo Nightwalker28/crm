@@ -5,6 +5,8 @@ The frontend is Next.js + React + TypeScript and should stay aligned with the sh
 ## Core frontend rules
 
 - Prefer shared UI primitives, hooks, and route patterns over page-specific copies.
+- Keep every request on `apiFetch`. Only GET/HEAD may be retried automatically; write operations must not be replayed.
+- Generated API contracts live in `contracts/` and are committed. Import them only through an adapter in `lib/contracts/`, never directly from UI code, and regenerate with `./scripts/generate-contracts.sh` rather than editing them.
 - Main operational lists should use the shared table/list language where a table is the right default.
 - Saved views, inline quick filters, visible columns, column order, pagination, and search should reuse the shared module-view patterns.
 - Existing records should prefer detail pages with summary/history/editing over modal-only workflows.
@@ -25,7 +27,12 @@ The frontend is Next.js + React + TypeScript and should stay aligned with the sh
 For frontend changes, consider:
 - `docker compose exec -T frontend npm run lint`
 - `docker compose exec -T frontend npm run build`
+- `./scripts/generate-contracts.sh --check` when a touched API family has generated contracts
 - affected page/dialog/table/detail-page smoke checks
 - console/runtime warnings
 - required-field and validation behavior
 - browser tests through the Compose E2E service when the changed flow is already covered or high-risk
+
+Authenticated browser tests sign in as `INITIAL_ADMIN_EMAIL`/`INITIAL_ADMIN_PASSWORD` from `.env`. If that
+account has MFA enabled, add `E2E_ADMIN_TOTP_SECRET=<authenticator setup key>` to `.env`; the suite derives
+live codes from it. `.env` is gitignored — never commit the secret.
