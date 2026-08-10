@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { loginAsAdmin } from "./helpers/auth";
 
 const contractId = 7123;
-const moduleCacheKey = "lynk_modules:v3";
+const moduleCacheKey = "lynk_modules:v4";
 
 function contractFixture() {
   return {
@@ -99,6 +99,30 @@ async function cacheContractPermissions(
     },
     { cacheKey: moduleCacheKey, editAllowed: canEdit, moduleOverrides: overrides },
   );
+
+  // useAccessibleModules revalidates from the API and overwrites the seeded cache, so the
+  // stub has to agree with it or the real admin permissions win.
+  await page.route("**/api/v1/users/me/modules", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: 71,
+        name: "contracts",
+        is_enabled: true,
+        actions: {
+          can_view: true,
+          can_create: true,
+          can_edit: canEdit,
+          can_delete: false,
+          can_restore: false,
+          can_export: false,
+          can_configure: false,
+          ...overrides,
+        },
+      }]),
+    }),
+  );
 }
 
 test.beforeEach(async ({ page }) => {
@@ -130,7 +154,7 @@ test("Contract creation is responsive and focuses the first invalid field", asyn
 
 test("Contract creation omits disabled fields and opens the created record", async ({ page }) => {
   let submittedPayload: Record<string, unknown> | null = null;
-  await page.route("**/contracts", async (route) => {
+  await page.route("**/api/v1/contracts", async (route) => {
     if (route.request().method() !== "POST") {
       await route.continue();
       return;
@@ -156,7 +180,7 @@ test("Contract detail and edit share a routed record workflow", async ({ page })
   await cacheContractPermissions(page, true);
   let contract = contractFixture();
   let updatedPayload: Record<string, unknown> | null = null;
-  await page.route(`**/contracts/${contractId}`, async (route) => {
+  await page.route(`**/api/v1/contracts/${contractId}`, async (route) => {
     if (route.request().method() === "PATCH") {
       updatedPayload = route.request().postDataJSON() as Record<string, unknown>;
       contract = { ...contract, ...updatedPayload, updated_at: "2099-07-24T10:00:00Z" };
@@ -188,7 +212,7 @@ test("Contract detail confirms lifecycle changes and keeps the mobile workflow a
   await cacheContractPermissions(page, true);
   let contract = populatedContractFixture();
   let updatedPayload: Record<string, unknown> | null = null;
-  await page.route(`**/contracts/${contractId}`, async (route) => {
+  await page.route(`**/api/v1/contracts/${contractId}`, async (route) => {
     if (route.request().method() === "PATCH") {
       updatedPayload = route.request().postDataJSON() as Record<string, unknown>;
       contract = { ...contract, ...updatedPayload, updated_at: "2099-07-24T10:00:00Z" };
@@ -219,7 +243,7 @@ test("Contract detail confirms lifecycle changes and keeps the mobile workflow a
 
 test("Contract detail is read-only without edit permission", async ({ page }) => {
   await cacheContractPermissions(page, false);
-  await page.route(`**/contracts/${contractId}`, async (route) => {
+  await page.route(`**/api/v1/contracts/${contractId}`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",

@@ -122,7 +122,7 @@ test("CRM association search keeps records with the same numeric ID distinct acr
 
 test("Document upload keeps per-file completion actions on the full page", async ({ page }) => {
   const document = documentFixture();
-  await page.route("**/documents", async (route) => {
+  await page.route("**/api/v1/documents", async (route) => {
     if (route.request().method() !== "POST") {
       await route.continue();
       return;
@@ -185,7 +185,7 @@ test("Connected Google Drive destination uploads and keeps stable provider actio
     contentType: "application/json",
     body: JSON.stringify([{ provider: "google_drive", status: "connected", account_email: "files@example.com", provider_root_name: "Lynk", updated_at: "2099-07-24T08:00:00Z" }]),
   }));
-  await page.route("**/documents", async (route) => {
+  await page.route("**/api/v1/documents", async (route) => {
     if (route.request().method() !== "POST") return route.continue();
     expect((await route.request().postDataBuffer())?.toString("utf8")).toContain("google_drive");
     return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(cloudDocument) });
@@ -205,7 +205,7 @@ test("Failed rows retry with the same upload key and completed rows are not uplo
   const document = documentFixture();
   const uploadKeys: string[] = [];
   let attempts = 0;
-  await page.route("**/documents", async (route) => {
+  await page.route("**/api/v1/documents", async (route) => {
     if (route.request().method() !== "POST") return route.continue();
     attempts += 1;
     const body = await route.request().postDataBuffer();
@@ -269,7 +269,7 @@ test("Document removal requires confirmation and redacts backend failures", asyn
       body: JSON.stringify({ results: [document], total: 1 }),
     }),
   );
-  await page.route(`**/documents/${documentId}`, (route) =>
+  await page.route(`**/api/v1/documents/${documentId}`, (route) =>
     route.fulfill({
       status: 500,
       contentType: "application/json",

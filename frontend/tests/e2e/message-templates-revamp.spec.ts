@@ -30,7 +30,7 @@ test.beforeEach(async ({ page }) => {
 
 test("Message template creation uses a responsive routed form and preserves dotted variables", async ({ page }) => {
   let submitted: Record<string, unknown> | null = null;
-  await page.route("**/message-templates", async (route) => {
+  await page.route("**/api/v1/message-templates", async (route) => {
     submitted = route.request().postDataJSON() as Record<string, unknown>;
     await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ...templateFixture(), ...submitted }) });
   });
@@ -73,7 +73,7 @@ test("Message template editing hydrates the routed form and confirms deletion fr
 });
 
 test("Message template failures are redacted and restricted actions stay hidden", async ({ page }) => {
-  await page.route("**/message-templates", (route) =>
+  await page.route("**/api/v1/message-templates", (route) =>
     route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: "SECRET database constraint output" }) }),
   );
   await page.goto("/dashboard/settings/message-templates/new");

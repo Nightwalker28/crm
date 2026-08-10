@@ -549,7 +549,7 @@ test("hides admin-only actions from non-admin users even with module actions", a
       is_admin: false,
     }));
     window.sessionStorage.setItem("lynk_user_verified_at", String(Date.now()));
-    window.sessionStorage.setItem("lynk_modules:v3", JSON.stringify(modules));
+    window.sessionStorage.setItem("lynk_modules:v4", JSON.stringify(modules));
   }, [{
     id: 14,
     name: "integrations",

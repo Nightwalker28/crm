@@ -69,7 +69,7 @@ test.beforeEach(async ({ page }) => {
       body: JSON.stringify({ results: [supportCase], range_start: 1, range_end: 1, total_count: 1, total_pages: 1, page: 1 }),
     }),
   );
-  await page.route(`**/support/cases/${caseId}`, async (route) => {
+  await page.route(`**/api/v1/support/cases/${caseId}`, async (route) => {
     if (route.request().method() === "PATCH") {
       supportCase = { ...supportCase, ...route.request().postDataJSON(), updated_at: "2099-07-24T10:00:00Z" };
     }

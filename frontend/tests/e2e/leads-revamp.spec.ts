@@ -149,7 +149,7 @@ test("Lead journey behavior baseline: filter, create, open, and add a note", asy
       }),
     });
   });
-  await page.route("**/sales/leads", async (route) => {
+  await page.route("**/api/v1/sales/leads", async (route) => {
     if (route.request().method() !== "POST") {
       await route.continue();
       return;
@@ -460,7 +460,7 @@ test("Lead custom fields are labeled and preserve required false boolean values"
       ]),
     }),
   );
-  await page.route("**/sales/leads", async (route) => {
+  await page.route("**/api/v1/sales/leads", async (route) => {
     if (route.request().method() !== "POST") {
       await route.continue();
       return;

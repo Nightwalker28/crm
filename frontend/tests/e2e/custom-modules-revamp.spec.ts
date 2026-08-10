@@ -111,7 +111,7 @@ test("refreshes mounted module guards after custom-module access changes", async
 
   const emptyRefresh = page.waitForResponse((response) => response.url().includes("/users/me/modules"));
   await page.evaluate(() => {
-    window.sessionStorage.removeItem("lynk_modules:v3");
+    window.sessionStorage.removeItem("lynk_modules:v4");
     window.dispatchEvent(new Event("lynk:modules-invalidated"));
   });
   await emptyRefresh;
@@ -119,7 +119,7 @@ test("refreshes mounted module guards after custom-module access changes", async
   accessibleModules = [moduleFixture];
   const accessRefresh = page.waitForResponse((response) => response.url().includes("/users/me/modules"));
   await page.evaluate(() => {
-    window.sessionStorage.removeItem("lynk_modules:v3");
+    window.sessionStorage.removeItem("lynk_modules:v4");
     window.dispatchEvent(new Event("lynk:modules-invalidated"));
   });
   await accessRefresh;
@@ -139,7 +139,7 @@ async function cachePermissions(
   await page.evaluate(
     ({ module, actions }) => {
       window.sessionStorage.setItem(
-        "lynk_modules:v3",
+        "lynk_modules:v4",
         JSON.stringify([{ ...module, actions: { ...module.actions, ...actions } }]),
       );
     },
@@ -224,7 +224,7 @@ test("blocks the routed create form without custom-module create permission", as
       body: JSON.stringify([{ ...moduleFixture, actions: { ...fullActions, can_create: false } }]),
     }),
   );
-  await page.evaluate(() => window.sessionStorage.removeItem("lynk_modules:v3"));
+  await page.evaluate(() => window.sessionStorage.removeItem("lynk_modules:v4"));
 
   await page.goto("/dashboard/custom/custom_projects/new");
 

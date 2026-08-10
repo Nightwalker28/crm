@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 import { loginAsAdmin } from "./helpers/auth";
 
-const moduleCacheKey = "lynk_modules:v3";
+const moduleCacheKey = "lynk_modules:v4";
 
 async function cachePosPermissions(
   page: Parameters<typeof loginAsAdmin>[0],

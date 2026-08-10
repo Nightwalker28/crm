@@ -44,7 +44,7 @@ test.beforeEach(async ({ page }) => {
       body: JSON.stringify({ results: [task], range_start: 1, range_end: 1, total_count: 1, total_pages: 1, page: 1, page_size: pageSize }),
     });
   });
-  await page.route(`**/tasks/${taskId}`, async (route) => {
+  await page.route(`**/api/v1/tasks/${taskId}`, async (route) => {
     if (route.request().method() === "PUT") {
       task = { ...task, ...route.request().postDataJSON(), updated_at: new Date().toISOString() };
     }

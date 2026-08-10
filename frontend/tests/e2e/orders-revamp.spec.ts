@@ -83,7 +83,7 @@ test("Order editing hydrates customer, item, and fulfillment fields", async ({
   page,
 }) => {
   const orderId = 987654342;
-  await page.route(`**/sales/orders/${orderId}`, async (route) =>
+  await page.route(`**/api/v1/sales/orders/${orderId}`, async (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
