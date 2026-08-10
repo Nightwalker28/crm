@@ -11,6 +11,14 @@ echo "== Backend syntax check =="
 docker compose exec -T backend python -m compileall app tests
 
 echo
+echo "== Database migration verification =="
+docker compose exec -T backend python -m scripts.verify_migrations
+
+echo
+echo "== OpenAPI generation =="
+docker compose exec -T backend python -m scripts.verify_openapi
+
+echo
 echo "== Backend unit tests =="
 docker compose exec -T backend python -m unittest discover -s tests -p 'test_*.py'
 

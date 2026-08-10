@@ -20,6 +20,7 @@ from app.modules.user_management.models import (
     RoleModulePermission,
     Tenant,
     Team,
+    TeamModulePermission,
     User,
     UserStatus,
 )
@@ -48,6 +49,7 @@ class PermissionPolicyTests(unittest.TestCase):
                 RoleModulePermission(id=99, role_id=99, module_id=10, can_view=1, can_create=1),
                 DepartmentModulePermission(id=10, department_id=10, module_id=10),
                 DepartmentModulePermission(id=99, department_id=99, module_id=10),
+                TeamModulePermission(id=10, team_id=10, module_id=10),
             ]
         )
         self.db.commit()

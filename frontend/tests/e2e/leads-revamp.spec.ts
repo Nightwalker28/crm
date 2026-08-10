@@ -58,6 +58,133 @@ test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
 });
 
+test("Lead journey behavior baseline: filter, create, open, and add a note", async ({ page }) => {
+  const createdLeadId = 987654399;
+  const createdLeadEmail = "journey.baseline@example.test";
+  const noteBody = "Baseline next action recorded.";
+  let createdLeadPayload: Record<string, unknown> | null = null;
+  let createdNotePayload: Record<string, unknown> | null = null;
+  let noteWasCreated = false;
+
+  await page.route("**/users/saved-views/sales_leads?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ views: [] }),
+    }),
+  );
+  await page.route("**/module-fields/sales_leads", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }),
+  );
+  await page.route("**/custom-fields/sales_leads", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }),
+  );
+  await page.route("**/sales/leads/search?**", (route) => {
+    const requestUrl = new URL(route.request().url());
+    expect(requestUrl.searchParams.get("search")).toBe("Baseline");
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [{
+          lead_id: fakeLeadId,
+          first_name: "Existing",
+          last_name: "Baseline",
+          company: "Lynk QA",
+          primary_email: "existing.baseline@example.test",
+          status: "new",
+          assigned_to: 7,
+          assigned_to_name: "Ada Owner",
+          created_time: "2099-07-20T09:30:00Z",
+          tags: [],
+          custom_fields: {},
+        }],
+        range_start: 1,
+        range_end: 1,
+        total_count: 1,
+        total_pages: 1,
+        page: 1,
+      }),
+    });
+  });
+  await page.route("**/sales/leads", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    createdLeadPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ lead_id: createdLeadId }),
+    });
+  });
+  await page.route(`**/sales/leads/${createdLeadId}/summary`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        lead: {
+          ...fakeLeadSummary.lead,
+          lead_id: createdLeadId,
+          first_name: "Journey",
+          last_name: "Baseline",
+          primary_email: createdLeadEmail,
+          status: "new",
+        },
+      }),
+    }),
+  );
+  await page.route("**/record-comments?**", async (route) => {
+    if (route.request().method() === "POST") {
+      createdNotePayload = route.request().postDataJSON() as Record<string, unknown>;
+      noteWasCreated = true;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ id: 73, body: noteBody }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: noteWasCreated
+          ? [{ id: 73, body: noteBody, author_name: "System Admin", created_at: "2099-07-20T09:35:00Z" }]
+          : [],
+      }),
+    });
+  });
+
+  await page.goto("/dashboard/sales/leads");
+  await page.getByPlaceholder("Search leads").fill("Baseline");
+  await expect(page.getByText("Existing Baseline", { exact: true })).toBeVisible();
+
+  await page.getByRole("link", { name: "Create lead" }).click();
+  await expect(page).toHaveURL(/\/dashboard\/sales\/leads\/new$/);
+  await page.getByRole("group").filter({ hasText: "First name" }).getByRole("textbox").fill("Journey");
+  await page.getByRole("group").filter({ hasText: "Last name" }).getByRole("textbox").fill("Baseline");
+  await page.getByLabel("Email").fill(createdLeadEmail);
+  await page.getByRole("button", { name: "Create lead" }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${createdLeadId}$`));
+  await expect(page.getByRole("heading", { name: "Journey Baseline" })).toBeVisible();
+  expect(createdLeadPayload).toMatchObject({
+    first_name: "Journey",
+    last_name: "Baseline",
+    primary_email: createdLeadEmail,
+  });
+
+  await page.getByRole("link", { name: "Note", exact: true }).click();
+  await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${createdLeadId}\\?tab=notes$`));
+  await page.getByLabel("Add internal note").fill(noteBody);
+  await page.getByRole("button", { name: "Add note" }).click();
+
+  await expect(page.getByText(noteBody)).toBeVisible();
+  expect(createdNotePayload).toMatchObject({ body: noteBody, mentioned_user_ids: [] });
+});
+
 test("Leads list keeps its controls usable in a narrow viewport", async ({ page }) => {
   await page.route("**/users/saved-views/sales_leads?**", (route) =>
     route.fulfill({

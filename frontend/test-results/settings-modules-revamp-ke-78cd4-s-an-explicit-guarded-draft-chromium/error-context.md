@@ -43,10 +43,10 @@ Call Log:
           - generic [ref=e284]:
             - generic [ref=e285]:
               - generic [ref=e286]: Email
-              - textbox "Email" [ref=e287]: maad@maadmustafa.dev
+              - textbox "Email" [ref=e287]: [REDACTED]
             - generic [ref=e288]:
               - generic [ref=e289]: Password
-              - textbox "Password" [ref=e290]: Maadmanco@28
+              - textbox "Password" [ref=e290]: [REDACTED]
             - button "Signing in..." [disabled]
           - generic [ref=e293]: or
           - button "Continue with SSO" [disabled]:
