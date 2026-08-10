@@ -92,9 +92,11 @@ test("adds and reorders fields, updates preview, and saves from mobile", async (
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/views/sales_contacts?viewId=72");
 
-  await expect(page.getByRole("heading", { name: "Manage Contacts View" })).toBeVisible();
+  await page.getByRole("button", { name: "Edit view" }).click();
   await page.getByRole("button", { name: "Add Last Name" }).click();
-  await page.getByRole("button", { name: "Move Email up" }).click();
+  await page.getByRole("button", { name: "Move Email up" }).focus();
+  await page.keyboard.press("Enter");
+  await page.getByRole("tab", { name: "Filters" }).click();
   await page.getByLabel("Default search").fill("active customer");
   await expect(page.getByText("Unsaved changes")).toBeVisible();
 
@@ -106,10 +108,8 @@ test("adds and reorders fields, updates preview, and saves from mobile", async (
     "selected-column-first_name",
     "selected-column-last_name",
   ]);
-  await expect(page.getByTestId("preview-column-primary_email")).toBeVisible();
-
   const updateRequest = page.waitForRequest((request) => request.method() === "PUT" && request.url().endsWith("/users/saved-views/sales_contacts/72"));
-  await page.getByRole("button", { name: "Save Changes" }).click();
+  await page.getByRole("button", { name: "Save changes" }).click();
   const request = await updateRequest;
   expect(request.postDataJSON()).toMatchObject({
     config: {
@@ -120,15 +120,60 @@ test("adds and reorders fields, updates preview, and saves from mobile", async (
   await expect(page.getByText("All changes saved")).toBeVisible();
 });
 
+test("system views are read-only and user views support create, default, and delete", async ({ page }) => {
+  await page.goto("/dashboard/views/sales_contacts?viewId=71");
+  await expect(page.getByText("System · read-only")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Edit view" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Duplicate" })).toBeVisible();
+
+  await page.getByRole("button", { name: "New view" }).click();
+  await page.getByLabel("View name").fill("Fresh Contacts");
+  await page.getByRole("button", { name: "Create view" }).click();
+  await expect(page).toHaveURL(/viewId=73/);
+  await page.getByRole("button", { name: "Set default" }).click();
+  await expect(page.getByText("Default view updated.")).toBeVisible();
+  await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Delete View" }).click();
+  await expect(page).toHaveURL(/viewId=system-default/);
+});
+
 test("adds editable AND and OR conditions and omits the redundant views breadcrumb", async ({ page }) => {
   await page.goto("/dashboard/views/sales_contacts?viewId=72");
 
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Edit view" }).click();
+  await page.getByRole("tab", { name: "Filters" }).click();
   await page.getByRole("button", { name: "Add AND Condition" }).click();
   await expect(page.getByText("No AND conditions yet.")).toHaveCount(0);
   await page.getByRole("button", { name: "Add OR Condition" }).click();
   await expect(page.getByText("No OR conditions yet.")).toHaveCount(0);
   await expect(page.getByText("2 saved conditions")).toBeVisible();
+});
+
+test("failed and concurrently deleted saves preserve the editable draft", async ({ page }) => {
+  await page.route("**/users/saved-views/sales_contacts/72", (route) =>
+    route.fulfill({ status: 400, contentType: "application/json", body: JSON.stringify({ detail: "Saved view not found" }) }),
+  );
+  await page.goto("/dashboard/views/sales_contacts?viewId=72");
+  await page.getByRole("button", { name: "Edit view" }).click();
+  await page.getByLabel("View name").fill("Still My Draft");
+  await page.getByRole("button", { name: "Save changes" }).click();
+
+  await expect(page.getByText("This view was deleted elsewhere. Your draft is still available; duplicate it to keep these changes.")).toBeVisible();
+  await expect(page.getByLabel("View name")).toHaveValue("Still My Draft");
+});
+
+test("failed delete keeps the selected user view", async ({ page }) => {
+  await page.route("**/users/saved-views/sales_contacts/72", (route) =>
+    route.fulfill({ status: 500, contentType: "application/json", body: "{}" }),
+  );
+  await page.goto("/dashboard/views/sales_contacts?viewId=72");
+  await page.getByRole("button", { name: "Delete" }).click();
+  await page.getByRole("button", { name: "Delete View" }).click();
+
+  await expect(page.getByText("The saved view could not be deleted. Please try again.")).toBeVisible();
+  await expect(page).toHaveURL(/viewId=72/);
 });
 
 test("loads view management and filter controls for every extended built-in module", async ({ page }) => {
@@ -166,13 +211,10 @@ test("loads view management and filter controls for every extended built-in modu
 
     await page.goto(`/dashboard/views/${moduleConfig.key}`);
 
-    await expect(page.getByRole("heading", { name: `Manage ${moduleConfig.label} View` })).toBeVisible();
+    await expect(page.getByText("System · read-only")).toBeVisible();
     await expect(page.getByText("View manager could not be loaded")).toHaveCount(0);
     await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
-
-    await page.getByRole("button", { name: "Add AND Condition" }).click();
-    await page.getByRole("button", { name: "Add OR Condition" }).click();
-    await expect(page.getByText("2 saved conditions")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Edit view" })).toHaveCount(0);
 
     await page.unroute(`**/module-fields/${moduleConfig.fieldConfigKey}`);
     await page.unroute(`**/users/saved-views/${moduleConfig.key}?**`);
@@ -181,6 +223,7 @@ test("loads view management and filter controls for every extended built-in modu
 
 test("supports drag ordering, guards switching, and saves a new view from default", async ({ page }) => {
   await page.goto("/dashboard/views/sales_contacts?viewId=72");
+  await page.getByRole("button", { name: "Edit view" }).click();
   await page.getByTestId("selected-column-primary_email").dragTo(page.getByTestId("selected-column-first_name"));
   await expect(page.getByText("Unsaved changes")).toBeVisible();
 
@@ -193,13 +236,55 @@ test("supports drag ordering, guards switching, and saves a new view from defaul
   await expect(page).toHaveURL(/viewId=72/);
 
   await page.getByRole("button", { name: "Discard" }).click();
-  await page.getByRole("button", { name: "New From Default" }).click();
-  await expect(page.getByText("System", { exact: true })).toBeVisible();
+  await page.getByLabel("Select saved view").click();
+  await page.getByRole("option", { name: "Default View" }).click();
+  await page.getByRole("button", { name: "Duplicate" }).click();
   await page.getByLabel("View name").fill("Focused Contacts");
 
   const createRequest = page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith("/users/saved-views/sales_contacts"));
-  await page.getByRole("button", { name: "Save As New" }).click();
+  await page.getByRole("button", { name: "Create duplicate" }).click();
   const request = await createRequest;
   expect(request.postDataJSON()).toMatchObject({ name: "Focused Contacts" });
   await expect(page).toHaveURL(/viewId=73/);
+});
+
+test("custom module views omit disabled fields without adding re-enabled fields", async ({ page }) => {
+  await page.route("**/custom-modules/service_requests/schema", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: 11,
+        key: "service_requests",
+        name: "Service Requests",
+        description: "Requests",
+        is_active: true,
+        fields: [
+          { id: 1, key: "legacy", label: "Legacy", field_type: "text", is_required: false, is_unique: false, display_in_list: true, sort_order: 0, is_active: false, is_protected: false },
+          { id: 2, key: "restored", label: "Restored", field_type: "text", is_required: false, is_unique: false, display_in_list: true, sort_order: 1, is_active: true, is_protected: false },
+        ],
+      }),
+    }),
+  );
+  await page.route("**/module-fields/service_requests", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
+  );
+  await page.route("**/users/saved-views/service_requests?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ views: [
+        { id: 91, module_key: "service_requests", name: "Default View", config: { visible_columns: ["title", "legacy"], filters: emptyFilters, sort: null }, is_default: false, is_system: true },
+        { id: 92, module_key: "service_requests", name: "My View", config: { visible_columns: ["title"], filters: emptyFilters, sort: null }, is_default: true, is_system: false },
+      ] }),
+    }),
+  );
+
+  await page.goto("/dashboard/views/service_requests?viewId=91");
+  await expect(page.getByTestId("selected-column-title")).toBeVisible();
+  await expect(page.getByTestId("selected-column-legacy")).toHaveCount(0);
+
+  await page.getByLabel("Select saved view").click();
+  await page.getByRole("option", { name: "My View (Default)" }).click();
+  await expect(page.getByTestId("selected-column-restored")).toHaveCount(0);
 });

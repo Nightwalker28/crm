@@ -47,8 +47,8 @@ function accessFixture() {
         department_id: 10,
         department_name: "Sales",
         has_access: true,
-        has_direct_access: false,
-        direct_grant_allowed: false,
+        has_direct_access: true,
+        direct_grant_allowed: true,
         access_state: "department_access",
       },
       {
@@ -150,14 +150,18 @@ test("keeps department and team access as an explicit guarded draft", async ({ p
         })),
         teams: currentAccess.teams.map((team) => ({
           ...team,
-          has_access: team.department_id == null
-            ? (savedPayload?.team_ids.includes(team.id) ?? false)
-            : (savedPayload?.department_ids.includes(team.department_id) ?? false),
-          has_direct_access: team.department_id == null && (savedPayload?.team_ids.includes(team.id) ?? false),
-          direct_grant_allowed: team.department_id == null,
+          has_access: (savedPayload?.team_ids.includes(team.id) ?? false) && (
+            team.department_id == null || (savedPayload?.department_ids.includes(team.department_id) ?? false)
+          ),
+          has_direct_access: (savedPayload?.team_ids.includes(team.id) ?? false) && (
+            team.department_id == null || (savedPayload?.department_ids.includes(team.department_id) ?? false)
+          ),
+          direct_grant_allowed: team.department_id == null || (savedPayload?.department_ids.includes(team.department_id) ?? false),
           access_state: team.department_id == null
             ? (savedPayload?.team_ids.includes(team.id) ? "direct_team_access" : "blocked")
-            : (savedPayload?.department_ids.includes(team.department_id) ? "department_access" : "blocked_by_department"),
+            : !(savedPayload?.department_ids.includes(team.department_id) ?? false)
+              ? "blocked_by_department"
+              : savedPayload?.team_ids.includes(team.id) ? "department_access" : "blocked",
         })),
       };
     }
@@ -167,11 +171,19 @@ test("keeps department and team access as an explicit guarded draft", async ({ p
   await page.goto(`/dashboard/settings/modules/${moduleId}`);
   await expect.poll(() => accessibleModuleRequests).toBeGreaterThan(0);
   const accessibleRequestsBeforeSave = accessibleModuleRequests;
+  await page.getByRole("checkbox", { name: "Allow Sales department" }).click();
+  await page.getByRole("tab", { name: "Teams (3)" }).click();
+  await expect(page.getByRole("checkbox", { name: "Allow SMB team" })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: "Allow SMB team" })).not.toBeChecked();
+  await page.getByRole("tab", { name: "Departments (2)" }).click();
+  await page.getByRole("checkbox", { name: "Allow Sales department" }).click();
   await page.getByRole("checkbox", { name: "Allow Support department" }).click();
   await page.getByRole("tab", { name: "Teams (3)" }).click();
-  await expect(page.getByText("Department access.", { exact: true })).toHaveCount(2);
-  await expect(page.getByRole("checkbox", { name: "Allow SMB team" })).toBeDisabled();
-  await expect(page.getByRole("checkbox", { name: "Allow Enterprise team" })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: "Allow SMB team" })).toBeEnabled();
+  await expect(page.getByRole("checkbox", { name: "Allow SMB team" })).not.toBeChecked();
+  await expect(page.getByRole("checkbox", { name: "Allow Enterprise team" })).toBeEnabled();
+  await expect(page.getByRole("checkbox", { name: "Allow Enterprise team" })).not.toBeChecked();
+  await page.getByRole("checkbox", { name: "Allow Enterprise team" }).click();
   await page.getByRole("checkbox", { name: "Allow Field Ops team" }).click();
 
   expect(updateRequests).toBe(0);
@@ -188,7 +200,7 @@ test("keeps department and team access as an explicit guarded draft", async ({ p
   await page.getByRole("button", { name: "Save Access" }).click();
   await saveRequest;
 
-  expect(savedPayload).toEqual({ department_ids: [10, 11], team_ids: [23] });
+  expect(savedPayload).toEqual({ department_ids: [10, 11], team_ids: [22, 23] });
   await expect.poll(() => updateRequests).toBe(1);
   await expect.poll(() => accessibleModuleRequests).toBeGreaterThan(accessibleRequestsBeforeSave);
   await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
@@ -204,8 +216,8 @@ test("shows blocked teams and preserves the draft when a concurrent department c
         body: JSON.stringify({
           detail: {
             code: "team_department_conflict",
-            message: "Direct team grants are only allowed for teams without a department.",
-            team_ids: [23],
+            message: "A team cannot receive module access while its parent department is blocked.",
+            team_ids: [21],
           },
         }),
       });

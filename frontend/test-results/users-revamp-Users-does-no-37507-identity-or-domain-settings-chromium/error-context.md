@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: settings-modules-revamp.spec.ts >> aligns module controls and confirms tenant-wide disablement with safe failures
-- Location: tests/e2e/settings-modules-revamp.spec.ts:93:5
+- Name: users-revamp.spec.ts >> Users does not fetch identity or domain settings
+- Location: tests/e2e/users-revamp.spec.ts:170:5
 
 # Error details
 

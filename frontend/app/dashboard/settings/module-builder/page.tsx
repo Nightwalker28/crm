@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
-  Bot,
   Boxes,
   ChevronDown,
   ChevronUp,
@@ -13,7 +12,6 @@ import {
   RotateCcw,
   Save,
   Settings2,
-  ShieldCheck,
   Trash2,
   X,
 } from "lucide-react";
@@ -78,7 +76,7 @@ const HIDDEN_SIDEBAR_TAB: SidebarTab = {
   is_system: true,
 };
 
-const EDITOR_TABS = ["general", "fields", "layout", "permissions", "automation"] as const;
+const EDITOR_TABS = ["general", "fields", "layout"] as const;
 type EditorTab = typeof EDITOR_TABS[number];
 
 type EditableField = {
@@ -269,7 +267,14 @@ function FieldInspector({
           ) : null}
           <SettingsSwitchRow id="builder-field-required" label="Required" description="Require a value when records are saved." checked={field.is_required} onCheckedChange={(checked) => onChange({ is_required: checked })} disabled={disabled} />
           <SettingsSwitchRow id="builder-field-unique" label="Unique values" description="Prevent two records from using the same value." checked={field.is_unique} onCheckedChange={(checked) => onChange({ is_unique: checked })} disabled={disabled || field.field_type === "multi_select"} />
-          <SettingsSwitchRow id="builder-field-list" label="Show in list" description="Include this field in the module's default table." checked={field.display_in_list} onCheckedChange={(checked) => onChange({ display_in_list: checked })} disabled={disabled} />
+          <SettingsSwitchRow
+            id="builder-field-list"
+            label="Include in initial system default view"
+            description="Used only when the system default view is first created. Saved Views controls each user's ongoing column visibility and ordering."
+            checked={field.display_in_list}
+            onCheckedChange={(checked) => onChange({ display_in_list: checked })}
+            disabled={disabled}
+          />
           <SettingsSwitchRow id="builder-field-active" label="Enabled" description={field.is_protected ? "Protected fields must remain enabled." : "Make this field available in records, lists, and filters."} checked={field.is_active} onCheckedChange={(checked) => onChange({ is_active: checked })} disabled={disabled || field.is_protected} />
         </FieldGroup>
       </div>
@@ -578,21 +583,7 @@ function ModuleWorkspace({
               </Field>
               <SidebarGroupManager tabs={sidebarTabs} disabled={disabled} onCreate={onCreateTab} onRename={onRenameTab} />
             </FieldGroup>
-          ) : tab === "permissions" ? (
-            <EmptyState
-              icon={ShieldCheck}
-              title="Permissions use the shared role matrix"
-              description="Module availability and role actions remain separate. Configure access in the central permissions workspace."
-              action={<Button asChild variant="outline"><Link href="/dashboard/settings/permissions">Open permissions</Link></Button>}
-            />
-          ) : (
-            <EmptyState
-              icon={Bot}
-              title="Automation stays in the automation builder"
-              description="Build rules against this module from the shared automation workspace."
-              action={<Button asChild variant="outline"><Link href="/dashboard/settings/automation">Open automation builder</Link></Button>}
-            />
-          )}
+          ) : null}
         </CardBody>
 
         <CardFooter className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 bg-surface/95 backdrop-blur">
@@ -813,6 +804,13 @@ export default function ModuleBuilderPage() {
               </Select>
             ) : null}
             <Button type="button" onClick={() => void startCreating()}><Plus />New module</Button>
+            {!creating && selectedModule && !selectedModule.deleted_at ? (
+              <>
+                <Button asChild type="button" variant="ghost"><Link href={`/dashboard/views/${selectedModule.key}`}>Saved views</Link></Button>
+                <Button asChild type="button" variant="ghost"><Link href="/dashboard/settings/permissions">Permissions</Link></Button>
+                <Button asChild type="button" variant="ghost"><Link href="/dashboard/settings/automation">Automation</Link></Button>
+              </>
+            ) : null}
           </div>
       </PageToolbar>
 

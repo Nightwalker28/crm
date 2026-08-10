@@ -93,7 +93,7 @@ function ModuleAccessEditor({
   const departmentsPanel = (
     <div>
       <p className="border-b border-line-subtle px-5 py-3 text-sm text-copy-secondary">
-        Department access applies to every user whose team belongs to that department.
+        Department access opens the parent gate. Select the individual teams that should receive access from the Teams tab.
       </p>
       <ModuleTableShell className="min-h-[44vh] max-h-[58vh] rounded-none border-0">
         <Table className="min-w-[760px]">
@@ -127,7 +127,18 @@ function ModuleAccessEditor({
                     <Checkbox
                       aria-label={`Allow ${department.name} department`}
                       checked={checked}
-                      onCheckedChange={(nextChecked) => setDepartmentIds((current) => toggleId(current, department.id, nextChecked === true))}
+                      onCheckedChange={(nextChecked) => {
+                        const allowDepartment = nextChecked === true;
+                        setDepartmentIds((current) => toggleId(current, department.id, allowDepartment));
+                        if (!allowDepartment) {
+                          const childTeamIds = new Set(
+                            access.teams
+                              .filter((team) => team.department_id === department.id)
+                              .map((team) => team.id),
+                          );
+                          setTeamIds((current) => current.filter((teamId) => !childTeamIds.has(teamId)));
+                        }
+                      }}
                       className="ml-auto flex h-5 w-5 items-center justify-center rounded border border-line-strong bg-surface text-copy-primary focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       <CheckboxIndicator className="h-3.5 w-3.5" />
@@ -145,7 +156,7 @@ function ModuleAccessEditor({
   const teamsPanel = (
     <div>
       <p className="border-b border-line-subtle px-5 py-3 text-sm text-copy-secondary">
-        Teams with a department follow that department&apos;s access. Only unassigned teams can receive a direct grant.
+        A team can be selected only when its parent department is allowed. Unassigned teams use a direct team grant.
       </p>
       <ModuleTableShell className="min-h-[44vh] max-h-[58vh] rounded-none border-0">
         <Table className="min-w-[860px]">
@@ -169,6 +180,7 @@ function ModuleAccessEditor({
               const directAccess = selectedTeamIds.has(team.id);
               const hasDepartment = team.department_id != null;
               const departmentAccess = hasDepartment && selectedDepartmentIds.has(team.department_id as number);
+              const teamAllowed = directAccess && (!hasDepartment || departmentAccess);
               const checkboxDescriptionId = `team-access-help-${team.id}`;
               return (
                 <TableRow key={team.id}>
@@ -176,12 +188,12 @@ function ModuleAccessEditor({
                   <TableCell className="text-copy-secondary">{team.department_name || "Unassigned"}</TableCell>
                   <TableCell className="text-copy-secondary">{team.description || "-"}</TableCell>
                   <TableCell>
-                    {departmentAccess ? (
-                      <Pill bg="bg-state-info-muted" text="text-state-info" border="border-state-info/40" className="w-36">Department access.</Pill>
-                    ) : hasDepartment ? (
+                    {hasDepartment && !departmentAccess ? (
                       <Pill className="w-44">Blocked by department.</Pill>
-                    ) : directAccess ? (
-                      <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40" className="w-24">Allowed</Pill>
+                    ) : teamAllowed ? (
+                      <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40" className="w-28">Team access</Pill>
+                    ) : hasDepartment ? (
+                      <Pill className="w-32">Team blocked</Pill>
                     ) : <Pill className="w-24">Blocked</Pill>}
                   </TableCell>
                   <TableCell className="text-right">
@@ -190,7 +202,7 @@ function ModuleAccessEditor({
                         aria-label={`Allow ${team.name} team`}
                         aria-describedby={hasDepartment ? checkboxDescriptionId : undefined}
                         checked={directAccess}
-                        disabled={!team.direct_grant_allowed || isSaving}
+                        disabled={(hasDepartment && !departmentAccess) || isSaving}
                         onCheckedChange={(nextChecked) => setTeamIds((current) => toggleId(current, team.id, nextChecked === true))}
                         className="flex h-5 w-5 items-center justify-center rounded border border-line-strong bg-surface text-copy-primary focus-visible:ring-2 focus-visible:ring-primary"
                       >
@@ -198,7 +210,9 @@ function ModuleAccessEditor({
                       </Checkbox>
                       {hasDepartment ? (
                         <span id={checkboxDescriptionId} className="max-w-44 text-xs text-copy-muted">
-                          Managed by {team.department_name || "the parent department"}.
+                          {departmentAccess
+                            ? `${team.department_name || "Parent department"} is allowed; choose this team separately.`
+                            : `Allow ${team.department_name || "the parent department"} first.`}
                         </span>
                       ) : null}
                     </div>
@@ -249,7 +263,7 @@ function ModuleAccessEditor({
       <Card className="min-w-0 overflow-hidden">
         <div className="border-b border-line-subtle px-5 py-4">
           <h2 className="font-semibold text-copy-primary">Access rules</h2>
-          <p className="mt-1 text-sm text-copy-muted">Departments are authoritative. Direct grants are available only for teams without a department.</p>
+          <p className="mt-1 text-sm text-copy-muted">Departments are the parent gate. Teams inside an allowed department remain individually selectable.</p>
         </div>
         <RecordTabs
           className="gap-0"

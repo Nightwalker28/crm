@@ -51,6 +51,7 @@ type BookingType = {
   id: number;
   owner_id: number;
   owner_name?: string | null;
+  owner_handle: string;
   name: string;
   slug: string;
   duration_minutes: number;
@@ -136,9 +137,32 @@ async function disableBookingType(id: number) {
   }
 }
 
-function publicUrl(slug: string) {
-  if (typeof window === "undefined") return `/book/${slug}`;
-  return `${window.location.origin}/book/${slug}`;
+type BookingHandle = { booking_handle: string; canonical_prefix: string };
+
+async function fetchBookingHandle() {
+  const res = await apiFetch("/calendar/booking-types/handle/current");
+  const body = await readJson(res);
+  if (!res.ok) throw new Error("Your booking handle could not be loaded.");
+  return body as BookingHandle;
+}
+
+async function saveBookingHandle(bookingHandle: string) {
+  const res = await apiFetch("/calendar/booking-types/handle/current", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ booking_handle: bookingHandle.trim().toLowerCase() }),
+  });
+  const body = await readJson(res);
+  if (!res.ok) {
+    throw new Error(typeof body?.detail === "string" ? body.detail : "Your booking handle could not be saved.");
+  }
+  return body as BookingHandle;
+}
+
+function publicUrl(ownerHandle: string, slug: string) {
+  const path = `/book/${ownerHandle}/${slug}`;
+  if (typeof window === "undefined") return path;
+  return `${window.location.origin}${path}`;
 }
 
 export default function CalendarBookingSettingsPage() {
@@ -146,16 +170,40 @@ export default function CalendarBookingSettingsPage() {
   const { confirm } = useConfirm();
   const contextQuery = useCalendarContext();
   const bookingTypesQuery = useQuery({ queryKey: ["calendar-booking-types"], queryFn: fetchBookingTypes });
+  const bookingHandleQuery = useQuery({ queryKey: ["calendar-booking-handle"], queryFn: fetchBookingHandle });
+  const [bookingHandleOverride, setBookingHandleOverride] = useState<string | null>(null);
   const [draft, setDraft] = useState<BookingDraft>(emptyDraft);
   const [initialDraft, setInitialDraft] = useState<BookingDraft>(emptyDraft);
   const [editorOpen, setEditorOpen] = useState(false);
   const bookingTypes = bookingTypesQuery.data ?? [];
+  const bookingHandleDraft = bookingHandleOverride ?? bookingHandleQuery.data?.booking_handle ?? "";
   const isEditing = Boolean(draft.id);
   const isDirty = useMemo(() => JSON.stringify(draft) !== JSON.stringify(initialDraft), [draft, initialDraft]);
+  const isHandleDirty = Boolean(
+    bookingHandleDraft
+    && bookingHandleDraft !== bookingHandleQuery.data?.booking_handle,
+  );
   const ownerOptions = (contextQuery.data?.users ?? []).map((user) => ({
     value: String(user.id),
     label: user.name || user.email || `User ${user.id}`,
+    bookingHandle: user.booking_handle,
   }));
+  const selectedOwnerHandle = ownerOptions.find((option) => option.value === draft.owner_id)?.bookingHandle
+    || bookingHandleQuery.data?.booking_handle
+    || "your-handle";
+
+  const bookingHandleMutation = useMutation({
+    mutationFn: saveBookingHandle,
+    onSuccess: async (saved) => {
+      queryClient.setQueryData(["calendar-booking-handle"], saved);
+      setBookingHandleOverride(null);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["calendar-context"] }),
+        queryClient.invalidateQueries({ queryKey: ["calendar-booking-types"] }),
+      ]);
+      toast.success("Booking handle saved.");
+    },
+  });
 
   const saveMutation = useMutation({
     mutationFn: saveBookingType,
@@ -177,7 +225,7 @@ export default function CalendarBookingSettingsPage() {
     },
     onError: () => toast.error("The booking link could not be disabled."),
   });
-  useUnsavedChangesGuard(isDirty, saveMutation.isPending);
+  useUnsavedChangesGuard(isDirty || isHandleDirty, saveMutation.isPending || bookingHandleMutation.isPending);
 
   async function editBookingType(item: BookingType) {
     if (isDirty && item.id !== draft.id) {
@@ -263,7 +311,7 @@ export default function CalendarBookingSettingsPage() {
 
   return (
     <div className="flex flex-col gap-6">
-      <PageToolbar context={isDirty ? "Unsaved booking-link changes" : undefined}>
+      <PageToolbar context={isDirty || isHandleDirty ? "Unsaved booking-link changes" : undefined}>
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
             <Button asChild variant="outline"><Link href={SETTINGS_ROUTES.integrations}>Integrations</Link></Button>
             <Button type="button" onClick={() => void startNewBookingLink()}><Plus />New booking link</Button>
@@ -276,6 +324,38 @@ export default function CalendarBookingSettingsPage() {
           <Button type="button" size="sm" variant="outline" onClick={() => void bookingTypesQuery.refetch()}>Try again</Button>
         </div>
       ) : null}
+
+      <Card className="px-5 py-4">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <Field className="max-w-xl flex-1">
+            <FieldLabel htmlFor="booking-owner-handle">Public booking handle</FieldLabel>
+            <Input
+              id="booking-owner-handle"
+              value={bookingHandleDraft}
+              disabled={bookingHandleQuery.isLoading || bookingHandleMutation.isPending}
+              onChange={(event) => setBookingHandleOverride(slugify(event.target.value).slice(0, 60))}
+              aria-describedby="booking-owner-handle-description"
+            />
+            <FieldDescription id="booking-owner-handle-description">
+              Your stable public links begin with /book/{bookingHandleDraft || "your-handle"}. Changing this updates your canonical links.
+            </FieldDescription>
+            {bookingHandleQuery.isError ? <FieldError>Your booking handle could not be loaded.</FieldError> : null}
+            {bookingHandleMutation.error ? <FieldError>{bookingHandleMutation.error.message}</FieldError> : null}
+          </Field>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={
+              bookingHandleMutation.isPending
+              || bookingHandleDraft === bookingHandleQuery.data?.booking_handle
+              || bookingHandleDraft.length < 3
+            }
+            onClick={() => bookingHandleMutation.mutate(bookingHandleDraft)}
+          >
+            {bookingHandleMutation.isPending ? "Saving..." : "Save handle"}
+          </Button>
+        </div>
+      </Card>
 
       <>
         <Sheet open={editorOpen} onOpenChange={handleEditorOpenChange}>
@@ -326,7 +406,7 @@ export default function CalendarBookingSettingsPage() {
             <Field>
               <FieldLabel htmlFor="booking-link-slug">Slug <RequiredMark /></FieldLabel>
               <Input id="booking-link-slug" value={draft.slug} onChange={(event) => setDraft((current) => ({ ...current, slug: slugify(event.target.value) }))} />
-              <FieldDescription>The public URL will be /book/{draft.slug || "your-link"}.</FieldDescription>
+              <FieldDescription>The public URL will be /book/{selectedOwnerHandle}/{draft.slug || "your-link"}.</FieldDescription>
             </Field>
             <Field>
               <FieldLabel>Owner</FieldLabel>
@@ -342,7 +422,7 @@ export default function CalendarBookingSettingsPage() {
               <TimezonePicker value={draft.timezone} onChange={(timezone) => setDraft((current) => ({ ...current, timezone }))} />
             </Field>
             <Field>
-              <FieldLabel>Duration</FieldLabel>
+              <FieldLabel>Duration (minutes)</FieldLabel>
               <Input type="number" min="15" max="240" value={draft.duration_minutes} onChange={(event) => setDraft((current) => ({ ...current, duration_minutes: Number(event.target.value) }))} />
               {draft.duration_minutes < 15 || draft.duration_minutes > 240 ? <FieldError>Use a duration between 15 and 240 minutes.</FieldError> : null}
             </Field>
@@ -507,19 +587,19 @@ export default function CalendarBookingSettingsPage() {
                         className="inline-flex items-center gap-2 text-sm text-copy-secondary hover:text-copy-primary focus:outline-none focus:ring-2 focus:ring-ring"
                         onClick={(event) => {
                           event.stopPropagation();
-                          void navigator.clipboard.writeText(publicUrl(item.slug));
+                          void navigator.clipboard.writeText(publicUrl(item.owner_handle, item.slug));
                           toast.success("Booking link copied.");
                         }}
                       >
                         <Copy className="h-4 w-4" />
-                        /book/{item.slug}
+                        /book/{item.owner_handle}/{item.slug}
                       </button>
                     </TableCell>
                     <TableCell className={item.enabled ? "text-state-success" : "text-copy-muted"}>{item.enabled ? "Enabled" : "Disabled"}</TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
                         <Button asChild variant="ghost" size="icon-sm">
-                          <Link aria-label={`Open ${item.name} booking page`} href={`/book/${item.slug}`} target="_blank"><ExternalLink className="h-4 w-4" /></Link>
+                          <Link aria-label={`Open ${item.name} booking page`} href={`/book/${item.owner_handle}/${item.slug}`} target="_blank"><ExternalLink className="h-4 w-4" /></Link>
                         </Button>
                         <Button aria-label={`Disable ${item.name}`} variant="ghost" size="icon-sm" onClick={() => void confirmDisableBookingType(item)} disabled={!item.enabled || disableMutation.isPending}>
                           <Trash2 className="h-4 w-4" />

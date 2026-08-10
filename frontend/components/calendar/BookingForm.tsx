@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays, CheckCircle2, Clock3, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -26,6 +27,8 @@ type PublicBookingType = {
   duration_minutes: number;
   timezone: string;
   owner_name?: string | null;
+  owner_handle: string;
+  canonical_path: string;
   questions: BookingQuestion[];
 };
 
@@ -91,6 +94,8 @@ function isBookingType(value: unknown): value is PublicBookingType {
     && typeof bookingType.slug === "string"
     && typeof bookingType.duration_minutes === "number"
     && typeof bookingType.timezone === "string"
+    && typeof bookingType.owner_handle === "string"
+    && typeof bookingType.canonical_path === "string"
     && Array.isArray(bookingType.questions)
   );
 }
@@ -114,17 +119,22 @@ async function publicFetch(path: string, init?: RequestInit) {
   });
 }
 
-async function fetchBookingType(slug: string, signal?: AbortSignal) {
-  const response = await publicFetch(`/booking-links/${encodeURIComponent(slug)}`, { signal });
+function bookingApiPath(slug: string, ownerHandle?: string) {
+  if (!ownerHandle) return `/booking-links/${encodeURIComponent(slug)}`;
+  return `/booking-links/owners/${encodeURIComponent(ownerHandle)}/${encodeURIComponent(slug)}`;
+}
+
+async function fetchBookingType(slug: string, ownerHandle?: string, signal?: AbortSignal) {
+  const response = await publicFetch(bookingApiPath(slug, ownerHandle), { signal });
   const body = await readJson(response);
   if (response.status === 404) throw new BookingLoadError("unavailable");
   if (!response.ok || !isBookingType(body)) throw new BookingLoadError("temporary");
   return body;
 }
 
-async function fetchSlots(slug: string, signal?: AbortSignal) {
+async function fetchSlots(slug: string, ownerHandle?: string, signal?: AbortSignal) {
   const params = new URLSearchParams({ start_date: todayIso(), end_date: addDaysIso(14) });
-  const response = await publicFetch(`/booking-links/${encodeURIComponent(slug)}/slots?${params.toString()}`, { signal });
+  const response = await publicFetch(`${bookingApiPath(slug, ownerHandle)}/slots?${params.toString()}`, { signal });
   const body = await readJson(response);
   if (response.status === 404) throw new BookingLoadError("unavailable");
   if (!response.ok || !body || typeof body !== "object" || !Array.isArray((body as { results?: unknown }).results)) {
@@ -133,8 +143,8 @@ async function fetchSlots(slug: string, signal?: AbortSignal) {
   return (body as { results: unknown[] }).results.filter(isPublicSlot);
 }
 
-async function submitBooking(slug: string, payload: Record<string, unknown>) {
-  const response = await publicFetch(`/booking-links/${encodeURIComponent(slug)}/book`, {
+async function submitBooking(slug: string, ownerHandle: string | undefined, payload: Record<string, unknown>) {
+  const response = await publicFetch(`${bookingApiPath(slug, ownerHandle)}/book`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -144,7 +154,8 @@ async function submitBooking(slug: string, payload: Record<string, unknown>) {
   if (!response.ok) throw new BookingSubmitError("temporary");
 }
 
-export default function BookingForm({ slug }: { slug: string }) {
+export default function BookingForm({ slug, ownerHandle }: { slug: string; ownerHandle?: string }) {
+  const router = useRouter();
   const nameRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
   const [bookingType, setBookingType] = useState<PublicBookingType | null>(null);
@@ -172,12 +183,16 @@ export default function BookingForm({ slug }: { slug: string }) {
       setLoadError(null);
       setSlotsError(false);
       try {
-        const typeData = await fetchBookingType(slug, controller.signal);
+        const typeData = await fetchBookingType(slug, ownerHandle, controller.signal);
+        if (!ownerHandle && typeData.canonical_path) {
+          router.replace(typeData.canonical_path);
+          return;
+        }
         setBookingType(typeData);
         setDisplayTimezone((current) => current || typeData.timezone || browserTimezone());
         try {
           setSlotsLoading(true);
-          setSlots(await fetchSlots(slug, controller.signal));
+          setSlots(await fetchSlots(slug, ownerHandle, controller.signal));
         } catch (error) {
           if (error instanceof DOMException && error.name === "AbortError") return;
           if (error instanceof BookingLoadError && error.kind === "unavailable") {
@@ -199,13 +214,13 @@ export default function BookingForm({ slug }: { slug: string }) {
     }
     void load();
     return () => controller.abort();
-  }, [slug, reloadKey]);
+  }, [ownerHandle, reloadKey, router, slug]);
 
   async function refreshSlots() {
     setSlotsLoading(true);
     setSlotsError(false);
     try {
-      setSlots(await fetchSlots(slug));
+      setSlots(await fetchSlots(slug, ownerHandle));
     } catch {
       setSlotsError(true);
     } finally {
@@ -242,7 +257,7 @@ export default function BookingForm({ slug }: { slug: string }) {
 
     try {
       setSubmitting(true);
-      await submitBooking(slug, {
+      await submitBooking(slug, ownerHandle, {
         start_at: selectedSlot.start_at,
         guest_name: guestName.trim(),
         guest_email: guestEmail.trim(),

@@ -32,6 +32,7 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { downloadBlob } from "@/lib/browser";
+import { getFilenameFromDisposition } from "@/components/ui/importExportUtils";
 import { formatDateTime } from "@/lib/datetime";
 import { getModuleDisplayName } from "@/lib/module-display";
 
@@ -448,7 +449,11 @@ export default function BackupSettingsPage() {
       throw new Error("The backup artifact could not be downloaded.");
     }
     const blob = await res.blob();
-    downloadBlob(blob, `tenant-backup-${run.id}.zip`);
+    const filename = getFilenameFromDisposition(
+      res.headers.get("Content-Disposition"),
+      `lynk-workspace-backup-${run.id}.zip`,
+    );
+    downloadBlob(blob, filename);
   }
 
   function toggleModule(moduleKey: string) {

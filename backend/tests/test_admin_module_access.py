@@ -51,6 +51,7 @@ class AdminModuleAccessHierarchyTests(unittest.TestCase):
             DepartmentModulePermission(id=1000, department_id=10, module_id=100),
             TeamModulePermission(id=1001, team_id=22, module_id=100),
             TeamModulePermission(id=1002, team_id=23, module_id=100),
+            TeamModulePermission(id=1003, team_id=21, module_id=100),
         ])
         self.db.commit()
         self.module_scope = patch.object(admin_modules, "_module_belongs_to_tenant_or_global", return_value=True)
@@ -66,7 +67,8 @@ class AdminModuleAccessHierarchyTests(unittest.TestCase):
 
         self.assertTrue(teams[21].has_access)
         self.assertEqual(teams[21].access_state, "department_access")
-        self.assertFalse(teams[21].direct_grant_allowed)
+        self.assertTrue(teams[21].has_direct_access)
+        self.assertTrue(teams[21].direct_grant_allowed)
         self.assertFalse(teams[22].has_access)
         self.assertEqual(teams[22].access_state, "blocked_by_department")
         self.assertFalse(teams[22].has_direct_access)
@@ -75,7 +77,7 @@ class AdminModuleAccessHierarchyTests(unittest.TestCase):
         self.assertTrue(teams[23].direct_grant_allowed)
         self.assertEqual(teams[23].access_state, "direct_team_access")
 
-    def test_assigned_team_direct_grant_is_rejected(self):
+    def test_team_grant_under_blocked_department_is_rejected(self):
         with self.assertRaises(HTTPException) as exc:
             admin_modules.update_module_access(
                 self.db,
@@ -103,12 +105,12 @@ class AdminModuleAccessHierarchyTests(unittest.TestCase):
                 )
             self.assertEqual(exc.exception.status_code, 400)
 
-    def test_update_keeps_only_unassigned_direct_grants_and_logs_change(self):
+    def test_update_keeps_selected_teams_under_allowed_departments_and_logs_change(self):
         with patch.object(admin_modules, "safe_log_activity") as log_mock:
             response = admin_modules.update_module_access(
                 self.db,
                 100,
-                ModuleAccessUpdateRequest(department_ids=[10], team_ids=[23]),
+                ModuleAccessUpdateRequest(department_ids=[10], team_ids=[21, 23]),
                 tenant_id=1,
                 actor_user_id=7,
             )
@@ -117,12 +119,16 @@ class AdminModuleAccessHierarchyTests(unittest.TestCase):
             permission.team_id
             for permission in self.db.query(TeamModulePermission).filter_by(module_id=100).all()
         }
-        self.assertEqual(stored_team_ids, {23})
+        self.assertEqual(stored_team_ids, {21, 23})
         self.assertEqual({team.id for team in response.teams if team.has_access}, {21, 23})
         log_mock.assert_called_once()
         self.assertEqual(log_mock.call_args.kwargs["action"], "module.access.updated")
         self.assertEqual(log_mock.call_args.kwargs["tenant_id"], 1)
         self.assertEqual(log_mock.call_args.kwargs["actor_user_id"], 7)
+        self.assertEqual(
+            log_mock.call_args.kwargs["after_state"]["team_access_rule"],
+            "department_gate_plus_team_selection",
+        )
 
 
 if __name__ == "__main__":

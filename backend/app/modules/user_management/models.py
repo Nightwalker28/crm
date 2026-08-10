@@ -1,4 +1,5 @@
 import enum
+import uuid
 from sqlalchemy import (
     Column,
     BigInteger,
@@ -239,6 +240,7 @@ class User(Base):
         Index("ix_users_tenant_team", "tenant_id", "team_id"),
         Index("ix_users_tenant_role", "tenant_id", "role_id"),
         UniqueConstraint("tenant_id", "email", name="uq_users_tenant_email"),
+        UniqueConstraint("booking_handle", name="uq_users_booking_handle"),
     )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
@@ -255,6 +257,12 @@ class User(Base):
     first_name = Column(String(100), nullable=True)
     last_name = Column(String(100), nullable=True)
     email = Column(String(150), nullable=False, index=True)
+    booking_handle = Column(
+        String(60),
+        nullable=False,
+        index=True,
+        default=lambda: f"member-{uuid.uuid4().hex[:12]}",
+    )
     password_hash = Column(Text, nullable=True)
     photo_url = Column(String(500), nullable=True)
     phone_number = Column(String(50), nullable=True)

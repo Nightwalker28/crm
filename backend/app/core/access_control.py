@@ -169,13 +169,25 @@ def user_has_module_assignment(
                 is not None
             )
 
-        return (
+        department_has_access = (
             db.query(DepartmentModulePermission)
             .join(Department, Department.id == DepartmentModulePermission.department_id)
             .filter(
                 Department.tenant_id == user.tenant_id,
                 DepartmentModulePermission.department_id == team.department_id,
                 DepartmentModulePermission.module_id == module.id,
+            )
+            .first()
+            is not None
+        )
+        if not department_has_access:
+            return False
+
+        return (
+            db.query(TeamModulePermission)
+            .filter(
+                TeamModulePermission.team_id == team.id,
+                TeamModulePermission.module_id == module.id,
             )
             .first()
             is not None

@@ -16,11 +16,14 @@ from app.modules.platform.models import ActivityLog, TenantBackupRun, TenantBack
 from app.modules.platform.services import tenant_backup_runs as tenant_backup_runs_service
 from app.modules.platform.services import tenant_restore_runs as tenant_restore_runs_service
 from app.modules.platform.services.tenant_backup_runs import (
+    _artifact_path,
+    build_tenant_backup_filename,
     create_manual_tenant_backup_run,
     create_queued_manual_tenant_backup_run,
     delete_tenant_backup_artifact,
     run_due_tenant_backup_schedules,
 )
+from app.modules.platform.routes.tenant_backup_runs import download_run
 from app.modules.platform.services.tenant_restore_runs import (
     execute_tenant_module_restore,
     execute_whole_tenant_restore,
@@ -281,6 +284,48 @@ class TenantBackupSettingsTests(unittest.TestCase):
         self.assertEqual([row["contact_id"] for row in contacts], [1])
         self.assertEqual(self.db.query(TenantBackupSettings).filter(TenantBackupSettings.tenant_id == 10).one().last_run_at, run.completed_at)
 
+    def test_backup_display_filename_is_safe_utc_and_independent_of_run_identity(self):
+        completed_at = datetime(2026, 8, 5, 21, 0, tzinfo=timezone(timedelta(hours=5, minutes=30)))
+        filename = build_tenant_backup_filename(
+            workspace_name="  Acme / 日本\r\nInjected: value  ",
+            completed_at=completed_at,
+        )
+        long_filename = build_tenant_backup_filename(workspace_name="Workspace " * 40, completed_at=completed_at)
+
+        self.assertEqual(filename, "lynk-acme-injected-value-backup-2026-08-05T153000Z.zip")
+        self.assertLessEqual(len(long_filename), 90)
+        self.assertNotIn("/", filename)
+        self.assertNotIn("\r", filename)
+        self.assertNotIn("\n", filename)
+        self.assertNotEqual(_artifact_path(tenant_id=10, run_id=1), _artifact_path(tenant_id=10, run_id=2))
+        self.assertEqual(
+            build_tenant_backup_filename(workspace_name="Acme", completed_at=completed_at),
+            build_tenant_backup_filename(workspace_name="Acme", completed_at=completed_at),
+        )
+
+    def test_backup_download_uses_human_filename_without_changing_artifact_path(self):
+        self.db.query(Tenant).filter(Tenant.id == 10).update({Tenant.name: "North / South\r\nCorp"})
+        self.db.commit()
+        update_tenant_backup_settings(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={"scope": "selected_modules", "selected_modules": ["sales_contacts"], "include_documents": False},
+        )
+        self.db.add(SalesContact(contact_id=1, tenant_id=10, first_name="A", last_name="B", primary_email="header@example.com", assigned_to=1))
+        self.db.commit()
+        run = create_manual_tenant_backup_run(self.db, tenant_id=10, actor_user_id=1)
+        internal_path = Path(run.file_path)
+
+        response = download_run(run.id, db=self.db, admin=self.db.query(User).filter(User.id == 1).one())
+
+        self.assertEqual(Path(run.file_path), internal_path)
+        self.assertEqual(internal_path.name, f"tenant-10-backup-{run.id}.zip")
+        disposition = response.headers["content-disposition"]
+        self.assertIn("lynk-north-south-corp-backup-", disposition)
+        self.assertNotIn("%0D", disposition.upper())
+        self.assertNotIn("%0A", disposition.upper())
+
     def test_queued_manual_backup_run_records_pending_run_without_running_export(self):
         update_tenant_backup_settings(
             self.db,
@@ -344,7 +389,9 @@ class TenantBackupSettingsTests(unittest.TestCase):
             self.assertEqual(kwargs["tenant_id"], 10)
             self.assertEqual(kwargs["user_id"], 1)
             self.assertEqual(kwargs["provider"], "google_drive")
-            self.assertTrue(kwargs["filename"].endswith(".zip"))
+            self.assertTrue(kwargs["filename"].startswith("lynk-default-backup-"))
+            self.assertTrue(kwargs["filename"].endswith("Z.zip"))
+            self.assertNotIn("tenant-10-backup", kwargs["filename"])
             self.assertGreater(len(kwargs["content"]), 0)
             return {"provider": "google_drive", "storage_path": "drive-file-id"}
 

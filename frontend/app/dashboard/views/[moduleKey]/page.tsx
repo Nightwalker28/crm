@@ -3,16 +3,15 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ArrowDown, ArrowLeft, ArrowUp, Eye, EyeOff, GripVertical, Plus, Search } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowUp, Copy, EyeOff, GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { SavedViewConditionEditor, getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageToolbar } from "@/components/ui/PageToolbar";
 import { Pill } from "@/components/ui/Pill";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
@@ -21,39 +20,24 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useCustomModuleSchema } from "@/hooks/useModuleBuilder";
-import { useSavedViews, type SavedViewConfig } from "@/hooks/useSavedViews";
+import { SavedViewApiError, useSavedViews, type SavedViewConfig } from "@/hooks/useSavedViews";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
-import type { TableColumnOption } from "@/types/table";
-import {
-  buildCustomModuleViewDefinition,
-  buildModuleViewDefinition,
-  CUSTOM_FIELD_SUPPORTED_MODULES,
-  getModuleViewDefinition,
-  resolveSavedViewFilters,
-  resolveVisibleColumns,
-} from "@/lib/moduleViewConfigs";
+import { buildCustomModuleViewDefinition, buildModuleViewDefinition, CUSTOM_FIELD_SUPPORTED_MODULES, getModuleViewDefinition, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 import { canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
+import type { TableColumnOption } from "@/types/table";
 
-const EMPTY_CONFIG: SavedViewConfig = {
-  visible_columns: [],
-  filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
-  sort: null,
-};
+const EMPTY_CONFIG: SavedViewConfig = { visible_columns: [], filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] }, sort: null };
+type EditorMode = "view" | "edit" | "duplicate" | "create";
+type EditorSection = "columns" | "filters" | "sort";
 
-function sameColumns(left: string[], right: string[]) {
-  return left.length === right.length && left.every((value, index) => value === right[index]);
-}
-
-function sameSort(left: SavedViewConfig["sort"], right: SavedViewConfig["sort"]) {
-  return JSON.stringify(left ?? null) === JSON.stringify(right ?? null);
-}
+function sameColumns(left: string[], right: string[]) { return left.length === right.length && left.every((value, index) => value === right[index]); }
+function sameSort(left: SavedViewConfig["sort"], right: SavedViewConfig["sort"]) { return JSON.stringify(left ?? null) === JSON.stringify(right ?? null); }
 
 export default function ManageModuleViewPage() {
-  const params = useParams<{ moduleKey: string }>();
+  const { moduleKey } = useParams<{ moduleKey: string }>();
   const searchParams = useSearchParams();
   const router = useRouter();
   const { confirm } = useConfirm();
-  const moduleKey = params.moduleKey;
   const builtInDefinition = getModuleViewDefinition(moduleKey);
   const shouldLoadCustomModule = !builtInDefinition;
   const fieldConfigModuleKey = moduleKey === "finance_payments" ? "finance_pos" : moduleKey;
@@ -61,401 +45,108 @@ export default function ManageModuleViewPage() {
   const customModuleSchema = useCustomModuleSchema(moduleKey, shouldLoadCustomModule);
   const moduleFieldsQuery = useModuleFieldConfigs(fieldConfigModuleKey);
   const definition = useMemo(() => {
-    const moduleDefinition = buildModuleViewDefinition(moduleKey, customFieldsQuery.data ?? [], moduleFieldsQuery.fields);
-    if (moduleDefinition) return moduleDefinition;
+    const built = buildModuleViewDefinition(moduleKey, customFieldsQuery.data ?? [], moduleFieldsQuery.fields);
+    if (built) return built;
     return customModuleSchema.data ? buildCustomModuleViewDefinition(customModuleSchema.data, moduleFieldsQuery.fields) : null;
   }, [customFieldsQuery.data, customModuleSchema.data, moduleFieldsQuery.fields, moduleKey]);
-  const safeDefinition = definition ?? {
-    key: moduleKey,
-    label: "Module",
-    route: "/dashboard",
-    columns: [],
-    filterFields: [],
-    defaultConfig: EMPTY_CONFIG,
-  };
-  const definitionLoading = moduleFieldsQuery.isLoading
-    || (CUSTOM_FIELD_SUPPORTED_MODULES.has(moduleKey) && customFieldsQuery.isLoading)
-    || (shouldLoadCustomModule && customModuleSchema.isLoading);
+  const safeDefinition = definition ?? { key: moduleKey, label: "Module", route: "/dashboard", columns: [], filterFields: [], defaultConfig: EMPTY_CONFIG };
+  const definitionLoading = moduleFieldsQuery.isLoading || (CUSTOM_FIELD_SUPPORTED_MODULES.has(moduleKey) && customFieldsQuery.isLoading) || (shouldLoadCustomModule && customModuleSchema.isLoading);
   const requestedViewId = searchParams.get("viewId") ?? "system-default";
-
-  const {
-    views,
-    selectedView,
-    selectedViewId,
-    setSelectedViewId,
-    draftConfig,
-    setDraftConfig,
-    createViewWithConfig,
-    updateView,
-    setCurrentAsDefault,
-    deleteCurrentView,
-    isLoading: viewsLoading,
-    isSaving,
-    error: viewsError,
-    refresh: refreshViews,
-  } = useSavedViews(moduleKey, safeDefinition.defaultConfig, Boolean(definition) && !definitionLoading);
-
-  const [nameEdit, setNameEdit] = useState<{ viewKey: string; value: string } | null>(null);
+  const saved = useSavedViews(moduleKey, safeDefinition.defaultConfig, Boolean(definition) && !definitionLoading);
+  const [mode, setMode] = useState<EditorMode>("view");
+  const [section, setSection] = useState<EditorSection>("columns");
+  const [name, setName] = useState("");
   const [availableSearch, setAvailableSearch] = useState("");
   const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
 
-  const selectedViewKey = String(selectedView?.id ?? "system-default");
-  const baseViewName = selectedView && !selectedView.is_system ? selectedView.name : "";
-  const viewName = nameEdit?.viewKey === selectedViewKey ? nameEdit.value : baseViewName;
-  const visibleColumns = resolveVisibleColumns(safeDefinition, draftConfig, safeDefinition.defaultConfig);
-  const safeFilters = resolveSavedViewFilters(safeDefinition, draftConfig.filters);
-  const baseColumns = selectedView
-    ? resolveVisibleColumns(safeDefinition, selectedView.config, safeDefinition.defaultConfig)
-    : safeDefinition.defaultConfig.visible_columns;
-  const baseFilters = selectedView
-    ? resolveSavedViewFilters(safeDefinition, selectedView.config.filters)
-    : safeDefinition.defaultConfig.filters;
-  const isDirty = Boolean(selectedView) && (
-    viewName !== baseViewName
-    || !sameColumns(visibleColumns, baseColumns)
-    || canonicalSavedViewFiltersKey(safeFilters) !== canonicalSavedViewFiltersKey(baseFilters)
-    || !sameSort(draftConfig.sort, selectedView?.config.sort)
-  );
-  useUnsavedChangesGuard(isDirty, isSaving);
+  const selectedViewKey = String(saved.selectedView?.id ?? "system-default");
+  const visibleColumns = resolveVisibleColumns(safeDefinition, saved.draftConfig, safeDefinition.defaultConfig);
+  const safeFilters = resolveSavedViewFilters(safeDefinition, saved.draftConfig.filters);
+  const baseColumns = saved.selectedView ? resolveVisibleColumns(safeDefinition, saved.selectedView.config, safeDefinition.defaultConfig) : safeDefinition.defaultConfig.visible_columns;
+  const baseFilters = saved.selectedView ? resolveSavedViewFilters(safeDefinition, saved.selectedView.config.filters) : safeDefinition.defaultConfig.filters;
+  const baseName = saved.selectedView?.name ?? "";
+  const editDirty = mode === "edit" && Boolean(saved.selectedView) && (name !== baseName || !sameColumns(visibleColumns, baseColumns) || canonicalSavedViewFiltersKey(safeFilters) !== canonicalSavedViewFiltersKey(baseFilters) || !sameSort(saved.draftConfig.sort, saved.selectedView?.config.sort));
+  const isDirty = editDirty || mode === "duplicate" || mode === "create";
+  const editable = mode !== "view";
+  useUnsavedChangesGuard(isDirty, saved.isSaving);
 
-  const selectedOptions = visibleColumns
-    .map((key) => safeDefinition.columns.find((column) => column.key === key))
-    .filter((column): column is TableColumnOption => Boolean(column));
+  const selectedOptions = visibleColumns.map((key) => safeDefinition.columns.find((column) => column.key === key)).filter((column): column is TableColumnOption => Boolean(column));
+  const protectedColumnKey = safeDefinition.defaultConfig.visible_columns[0];
   const availableOptions = safeDefinition.columns.filter((column) => !visibleColumns.includes(column.key));
-  const filteredAvailableOptions = availableOptions.filter((column) =>
-    column.label.toLocaleLowerCase().includes(availableSearch.trim().toLocaleLowerCase()),
-  );
+  const filteredAvailable = availableOptions.filter((column) => column.label.toLowerCase().includes(availableSearch.trim().toLowerCase()));
   const { allConditions, anyConditions } = getConditionGroups(safeFilters);
   const conditionCount = allConditions.length + anyConditions.length;
-  const hasLoadError = Boolean(
-    viewsError
-    || moduleFieldsQuery.error
-    || customFieldsQuery.error
-    || customModuleSchema.error,
-  );
-  const pageLoading = definitionLoading || (Boolean(definition) && viewsLoading);
+  const sortKey = typeof saved.draftConfig.sort?.key === "string" ? saved.draftConfig.sort.key : "__none__";
+  const sortDirection = saved.draftConfig.sort?.direction === "desc" ? "desc" : "asc";
+  const hasLoadError = Boolean(saved.error || moduleFieldsQuery.error || customFieldsQuery.error || customModuleSchema.error);
+  const pageLoading = definitionLoading || (Boolean(definition) && saved.isLoading);
 
   useEffect(() => {
-    if (requestedViewId === "system-default" && selectedView?.is_system) return;
-    if (selectedViewId !== requestedViewId) {
-      setSelectedViewId(requestedViewId);
-    }
-  }, [requestedViewId, selectedView, selectedViewId, setSelectedViewId]);
+    if (saved.selectedViewId !== requestedViewId && !(requestedViewId === "system-default" && saved.selectedView?.is_system)) saved.setSelectedViewId(requestedViewId);
+  }, [requestedViewId, saved]);
 
-  function updateVisibleColumns(next: string[]) {
-    if (!next.length) return;
-    setDraftConfig((current) => ({ ...current, visible_columns: next }));
+  function setConfig(config: SavedViewConfig) { saved.setDraftConfig({ visible_columns: [...config.visible_columns], filters: { ...config.filters }, sort: config.sort ? { ...config.sort } : null }); }
+  function startEdit() { if (!saved.selectedView || saved.selectedView.is_system) return; setName(saved.selectedView.name); setMode("edit"); setActionError(null); }
+  function startDuplicate() { if (!saved.selectedView) return; setName(`${saved.selectedView.name} copy`); setConfig({ ...saved.draftConfig, visible_columns: visibleColumns, filters: safeFilters }); setMode("duplicate"); setActionError(null); }
+  function startCreate() { setName(""); setConfig(safeDefinition.defaultConfig); setMode("create"); setActionError(null); }
+  function discard() { setName(baseName); if (saved.selectedView) setConfig({ ...saved.selectedView.config, visible_columns: baseColumns, filters: baseFilters }); setMode("view"); setActionError(null); }
+  function navigateToView(viewId: string) { if (viewId === saved.selectedViewId) return; if (isDirty && !window.confirm("Switch views and discard unsaved changes?")) return; setMode("view"); setActionError(null); router.replace(`/dashboard/views/${moduleKey}?viewId=${viewId}`); }
+
+  function updateColumns(next: string[], message?: string) { if (!editable || !next.length) return; saved.setDraftConfig((current) => ({ ...current, visible_columns: next })); if (message) setAnnouncement(message); }
+  function addColumn(key: string) { const option = safeDefinition.columns.find((column) => column.key === key); if (!visibleColumns.includes(key)) updateColumns([...visibleColumns, key], `${option?.label ?? key} added.`); }
+  function removeColumn(key: string) { const option = safeDefinition.columns.find((column) => column.key === key); if (option?.is_protected || key === protectedColumnKey || visibleColumns.length <= 1) return; updateColumns(visibleColumns.filter((column) => column !== key), `${option?.label ?? key} removed.`); }
+  function moveColumn(key: string, direction: "up" | "down") { const index = visibleColumns.indexOf(key); const target = direction === "up" ? index - 1 : index + 1; if (index < 0 || target < 0 || target >= visibleColumns.length) return; const next = [...visibleColumns]; const [column] = next.splice(index, 1); next.splice(target, 0, column); const label = safeDefinition.columns.find((item) => item.key === key)?.label ?? key; updateColumns(next, `${label} moved to position ${target + 1}.`); }
+  function dropColumn(targetKey: string) { if (!editable || !draggedColumn || draggedColumn === targetKey) return; const next = [...visibleColumns]; const from = next.indexOf(draggedColumn); const target = next.indexOf(targetKey); if (from < 0 || target < 0) return; const [column] = next.splice(from, 1); next.splice(target, 0, column); setDraggedColumn(null); updateColumns(next, `${safeDefinition.columns.find((item) => item.key === column)?.label ?? column} moved to position ${target + 1}.`); }
+
+  async function saveDraft() {
+    if (!name.trim()) { setActionError("Enter a view name before saving."); return; }
     setActionError(null);
-  }
-
-  function addColumn(columnKey: string) {
-    if (visibleColumns.includes(columnKey)) return;
-    updateVisibleColumns([...visibleColumns, columnKey]);
-  }
-
-  function removeColumn(columnKey: string) {
-    const option = safeDefinition.columns.find((column) => column.key === columnKey);
-    if (option?.is_protected || visibleColumns.length <= 1) return;
-    updateVisibleColumns(visibleColumns.filter((key) => key !== columnKey));
-  }
-
-  function moveColumn(columnKey: string, direction: "up" | "down") {
-    const currentIndex = visibleColumns.indexOf(columnKey);
-    const targetIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
-    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= visibleColumns.length) return;
-    const next = [...visibleColumns];
-    const [column] = next.splice(currentIndex, 1);
-    next.splice(targetIndex, 0, column);
-    updateVisibleColumns(next);
-  }
-
-  function dropColumn(targetKey: string) {
-    if (!draggedColumn || draggedColumn === targetKey) return;
-    const next = [...visibleColumns];
-    const fromIndex = next.indexOf(draggedColumn);
-    const targetIndex = next.indexOf(targetKey);
-    if (fromIndex < 0 || targetIndex < 0) return;
-    const [column] = next.splice(fromIndex, 1);
-    next.splice(targetIndex, 0, column);
-    updateVisibleColumns(next);
-    setDraggedColumn(null);
-  }
-
-  function discardChanges() {
-    if (!selectedView) return;
-    setNameEdit(null);
-    setDraftConfig({
-      visible_columns: baseColumns,
-      filters: baseFilters,
-      sort: selectedView.config.sort ?? null,
-    });
-    setActionError(null);
-  }
-
-  function navigateToView(viewId: string) {
-    if (viewId === selectedViewId) return;
-    if (isDirty && !window.confirm("Switch views and discard unsaved changes?")) return;
-    setNameEdit(null);
-    setActionError(null);
-    router.replace(`/dashboard/views/${moduleKey}?viewId=${viewId}`);
-  }
-
-  async function handleSave() {
-    if (!selectedView || selectedView.id == null || selectedView.is_system) return;
-    setActionError(null);
+    const config = { ...saved.draftConfig, visible_columns: visibleColumns, filters: safeFilters };
     try {
-      await updateView(selectedView.id, {
-        name: viewName.trim() || selectedView.name,
-        config: { ...draftConfig, visible_columns: visibleColumns, filters: safeFilters },
-      });
-      setNameEdit(null);
-      toast.success("Saved view updated.");
-    } catch {
-      setActionError("The saved view could not be updated. Please try again.");
+      if (mode === "edit" && saved.selectedView?.id != null) {
+        await saved.updateView(saved.selectedView.id, { name: name.trim(), config });
+        setMode("view"); toast.success("Saved view updated.");
+      } else {
+        const created = await saved.createViewWithConfig({ name: name.trim(), config });
+        setMode("view"); toast.success(mode === "duplicate" ? "View duplicated." : "Saved view created.");
+        router.replace(`/dashboard/views/${moduleKey}?viewId=${created.id}`);
+      }
+    } catch (error) {
+      setActionError(error instanceof SavedViewApiError && error.code === "not-found" ? "This view was deleted elsewhere. Your draft is still available; duplicate it to keep these changes." : "The saved view could not be saved. Your draft has been kept.");
     }
   }
-
-  async function handleSaveAsNew() {
-    if (!viewName.trim()) {
-      setActionError("Enter a view name before saving a new view.");
-      return;
-    }
-    setActionError(null);
-    try {
-      const created = await createViewWithConfig({
-        name: viewName.trim(),
-        config: { ...draftConfig, visible_columns: visibleColumns, filters: safeFilters },
-      });
-      setNameEdit(null);
-      toast.success("Saved view created.");
-      router.replace(`/dashboard/views/${moduleKey}?viewId=${created.id}`);
-    } catch {
-      setActionError("The saved view could not be created. Please try again.");
-    }
-  }
-
-  async function handleSetDefault() {
-    if (!selectedView || selectedView.id == null || selectedView.is_system) return;
-    setActionError(null);
-    try {
-      await setCurrentAsDefault();
-      toast.success("Default view updated.");
-    } catch {
-      setActionError("The default view could not be updated. Please try again.");
-    }
-  }
-
-  async function handleDelete() {
-    if (!selectedView || selectedView.id == null || selectedView.is_system) return;
-    const confirmed = await confirm({
-      title: "Delete saved view?",
-      description: `Delete the view "${selectedView.name}"?`,
-      confirmLabel: "Delete View",
-      variant: "destructive",
-    });
-    if (!confirmed) return;
-    setActionError(null);
-    try {
-      await deleteCurrentView();
-      toast.success("Saved view deleted.");
-      router.replace(`/dashboard/views/${moduleKey}?viewId=system-default`);
-    } catch {
-      setActionError("The saved view could not be deleted. Please try again.");
-    }
-  }
-
-  async function retryAll() {
-    await Promise.all([
-      refreshViews(),
-      moduleFieldsQuery.refresh(),
-      CUSTOM_FIELD_SUPPORTED_MODULES.has(moduleKey) ? customFieldsQuery.refetch() : Promise.resolve(),
-      shouldLoadCustomModule ? customModuleSchema.refetch() : Promise.resolve(),
-    ]);
-  }
+  async function setDefault() { try { await saved.setCurrentAsDefault(); toast.success("Default view updated."); } catch { setActionError("The default view could not be updated."); } }
+  async function removeView() { if (!saved.selectedView || saved.selectedView.is_system) return; if (!(await confirm({ title: "Delete saved view?", description: `Delete the view "${saved.selectedView.name}"?`, confirmLabel: "Delete View", variant: "destructive" }))) return; try { await saved.deleteCurrentView(); toast.success("Saved view deleted."); router.replace(`/dashboard/views/${moduleKey}?viewId=system-default`); } catch (error) { setActionError(error instanceof SavedViewApiError && error.code === "not-found" ? "This view was already deleted elsewhere." : "The saved view could not be deleted. Please try again."); } }
+  async function retryAll() { await Promise.all([saved.refresh(), moduleFieldsQuery.refresh(), CUSTOM_FIELD_SUPPORTED_MODULES.has(moduleKey) ? customFieldsQuery.refetch() : Promise.resolve(), shouldLoadCustomModule ? customModuleSchema.refetch() : Promise.resolve()]); }
 
   if (pageLoading) return <RouteLoadingState label="view manager" />;
+  if (hasLoadError) return <Card className="p-6" role="alert"><h1 className="text-lg font-semibold text-copy-primary">View manager could not be loaded</h1><p className="mt-1 text-sm text-copy-secondary">Try again. Your existing saved views have not been changed.</p><Button className="mt-4" variant="outline" onClick={() => void retryAll()}>Try again</Button></Card>;
+  if (!definition) return <Card className="p-6" role="alert"><h1 className="text-lg font-semibold text-copy-primary">Unsupported module view</h1><p className="mt-1 text-sm text-copy-secondary">This module does not provide configurable list columns and filters.</p><Button asChild className="mt-4" variant="outline"><Link href="/dashboard">Return to dashboard</Link></Button></Card>;
 
-  if (hasLoadError) {
-    return (
-      <Card className="p-6" role="alert">
-        <h1 className="text-lg font-semibold text-copy-primary">View manager could not be loaded</h1>
-        <p className="mt-1 text-sm text-copy-secondary">Try again. Your existing saved views have not been changed.</p>
-        <Button className="mt-4" variant="outline" onClick={() => void retryAll()}>Try again</Button>
-      </Card>
-    );
-  }
+  return <div className="flex flex-col gap-5 pb-6">
+    <PageToolbar>
+      <Button asChild variant="ghost" size="sm"><Link href={definition.route}><ArrowLeft />Back to {definition.label}</Link></Button>
+      <Select value={saved.selectedViewId || selectedViewKey} onValueChange={navigateToView}><SelectTrigger className="w-full sm:w-64" aria-label="Select saved view"><SelectValue /></SelectTrigger><SelectContent>{saved.views.map((view) => <SelectItem key={String(view.id ?? "system-default")} value={String(view.id ?? "system-default")}>{view.name}{view.is_default ? " (Default)" : ""}</SelectItem>)}</SelectContent></Select>
+      {saved.selectedView?.is_system ? <Button variant="outline" onClick={startDuplicate}><Copy />Duplicate</Button> : mode === "view" ? <Button variant="outline" onClick={startEdit}><Pencil />Edit view</Button> : null}
+      <Button onClick={startCreate}><Plus />New view</Button>
+    </PageToolbar>
 
-  if (!definition) {
-    return (
-      <Card className="p-6" role="alert">
-        <h1 className="text-lg font-semibold text-copy-primary">Unsupported module view</h1>
-        <p className="mt-1 text-sm text-copy-secondary">This module does not provide configurable list columns and filters.</p>
-        <Button asChild className="mt-4" variant="outline"><Link href="/dashboard">Return to dashboard</Link></Button>
-      </Card>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        title={`Manage ${definition.label} View`}
-        description="Choose fields, drag them into order, preview the result, and define the filters this view applies."
-        actions={
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <Button asChild type="button" variant="ghost" size="sm">
-              <Link href={definition.route}><ArrowLeft />Back to {definition.label}</Link>
-            </Button>
-            <Select value={selectedViewId || selectedViewKey} onValueChange={navigateToView}>
-              <SelectTrigger className="w-full sm:w-64" aria-label="Select saved view"><SelectValue placeholder="Select view" /></SelectTrigger>
-              <SelectContent>
-                {views.map((view) => (
-                  <SelectItem key={String(view.id ?? "system-default")} value={String(view.id ?? "system-default")}>
-                    {view.name}{view.is_default ? " (Default)" : ""}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button type="button" variant="outline" onClick={() => navigateToView("system-default")}>New From Default</Button>
-          </div>
-        }
-      />
-
-      <div className="grid items-start gap-4 xl:grid-cols-2">
-        <Card className="overflow-visible">
-          <div className="border-b border-line-subtle p-4">
-            <h2 className="font-semibold text-copy-primary">Available fields</h2>
-            <p className="mt-1 text-xs text-copy-muted">Add hidden fields to this view.</p>
-            <SearchBar value={availableSearch} onChange={setAvailableSearch} placeholder="Search available fields" className="mt-3 md:w-full" />
-          </div>
-          <div className="max-h-[32rem] overflow-y-auto p-3">
-            {filteredAvailableOptions.length ? (
-              <div className="space-y-2">
-                {filteredAvailableOptions.map((column) => (
-                  <button
-                    key={column.key}
-                    type="button"
-                    className="flex w-full items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-subtle bg-surface px-3 py-2.5 text-left text-sm text-copy-secondary transition-colors hover:border-line-strong hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                    onClick={() => addColumn(column.key)}
-                    aria-label={`Add ${column.label}`}
-                  >
-                    <span>{column.label}</span><Plus className="h-4 w-4 text-copy-muted" />
-                  </button>
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                icon={availableOptions.length ? Search : Eye}
-                title={availableOptions.length ? "No fields match" : "All fields selected"}
-                description={availableOptions.length ? "Clear the search to see available fields." : "Hide a selected field to move it back here."}
-                action={availableOptions.length ? <Button variant="outline" onClick={() => setAvailableSearch("")}>Clear search</Button> : undefined}
-              />
-            )}
-          </div>
-        </Card>
-
-        <Card className="overflow-visible">
-          <div className="border-b border-line-subtle p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="font-semibold text-copy-primary">Selected fields</h2>
-                <p className="mt-1 text-xs text-copy-muted">Drag to reorder, or use the arrow controls.</p>
-              </div>
-              <Pill>{selectedOptions.length}</Pill>
-            </div>
-          </div>
-          <div className="max-h-[32rem] space-y-2 overflow-y-auto p-3">
-            {selectedOptions.map((column, index) => (
-              <div
-                key={column.key}
-                data-testid={`selected-column-${column.key}`}
-                draggable
-                onDragStart={() => setDraggedColumn(column.key)}
-                onDragEnd={() => setDraggedColumn(null)}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => dropColumn(column.key)}
-                className={`flex items-center gap-2 rounded-[var(--radius-control)] border bg-surface px-2 py-2 transition-colors ${draggedColumn === column.key ? "border-primary opacity-60" : "border-line-subtle"}`}
-              >
-                <GripVertical className="h-4 w-4 cursor-grab text-copy-muted" aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate text-sm text-copy-primary">{column.label}</span>
-                <Button type="button" size="icon-sm" variant="ghost" disabled={index === 0} onClick={() => moveColumn(column.key, "up")} aria-label={`Move ${column.label} up`}><ArrowUp /></Button>
-                <Button type="button" size="icon-sm" variant="ghost" disabled={index === selectedOptions.length - 1} onClick={() => moveColumn(column.key, "down")} aria-label={`Move ${column.label} down`}><ArrowDown /></Button>
-                <Button type="button" size="icon-sm" variant="ghost" disabled={column.is_protected || selectedOptions.length <= 1} onClick={() => removeColumn(column.key)} aria-label={`Hide ${column.label}`} title={column.is_protected ? "This field is required by the view." : undefined}><EyeOff /></Button>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card className="overflow-visible p-4 xl:col-span-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="font-semibold text-copy-primary">View preview & filters</h2>
-              <p className="mt-1 text-xs text-copy-muted">{conditionCount} saved {conditionCount === 1 ? "condition" : "conditions"}</p>
-            </div>
-            <div className="flex gap-2">
-              {selectedView?.is_system ? <Pill>System</Pill> : null}
-              {selectedView?.is_default ? <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">Default</Pill> : null}
-            </div>
-          </div>
-
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="view-name">View name</Label>
-              <Input
-                id="view-name"
-                value={viewName}
-                onChange={(event) => setNameEdit({ viewKey: selectedViewKey, value: event.target.value })}
-                placeholder={selectedView?.is_system ? `New ${definition.label} view` : "View name"}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="default-search">Default search</Label>
-              <Input
-                id="default-search"
-                value={typeof safeFilters.search === "string" ? safeFilters.search : ""}
-                onChange={(event) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: event.target.value } }))}
-                placeholder={`Search ${definition.label.toLowerCase()}`}
-              />
-            </div>
-          </div>
-
-          <div className="mt-5 overflow-x-auto rounded-[var(--radius-control)] border border-line-default bg-surface">
-            <div className="min-w-max">
-              <div className="flex border-b border-line-default bg-surface-raised">
-                {selectedOptions.map((column) => <div key={column.key} data-testid={`preview-column-${column.key}`} className="w-36 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-copy-muted">{column.label}</div>)}
-              </div>
-              {[0, 1, 2].map((row) => (
-                <div key={row} className="flex border-b border-line-subtle last:border-b-0">
-                  {selectedOptions.map((column) => <div key={column.key} className="w-36 px-3 py-3"><div className="h-2 w-20 rounded-full bg-surface-muted" /></div>)}
-                </div>
-              ))}
-            </div>
-          </div>
-          <p className="mt-3 text-xs text-copy-muted">Preview shows column order only. Record data is not loaded in the manager.</p>
-        </Card>
-      </div>
-
-      <SavedViewConditionEditor
-        filterFields={safeDefinition.filterFields}
-        filters={safeFilters}
-        onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))}
-        title="View filters"
-        description="Add required conditions in the AND group, optional-match conditions in the OR group, or use both together."
-      />
-
-      <div className="sticky bottom-0 z-30 flex flex-col gap-3 rounded-[var(--radius-card)] border border-line-default bg-surface-raised/95 px-4 py-3 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <div className={`text-sm font-medium ${isDirty ? "text-state-warning" : "text-state-success"}`}>{isDirty ? "Unsaved changes" : "All changes saved"}</div>
-          {actionError ? <p className="mt-1 text-sm text-state-danger" role="alert">{actionError}</p> : null}
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="ghost" onClick={discardChanges} disabled={!isDirty || isSaving}>Discard</Button>
-          <Button type="button" variant="outline" onClick={() => void handleSetDefault()} disabled={!selectedView || selectedView.id == null || selectedView.is_system || selectedView.is_default || isSaving}>Set Default</Button>
-          <Button type="button" variant="dangerGhost" onClick={() => void handleDelete()} disabled={!selectedView || selectedView.id == null || selectedView.is_system || isSaving}>Delete</Button>
-          <Button type="button" variant="outline" onClick={() => void handleSaveAsNew()} disabled={isSaving || !viewName.trim()}>Save As New</Button>
-          <Button type="button" onClick={() => void handleSave()} disabled={!isDirty || !selectedView || selectedView.id == null || selectedView.is_system || isSaving}>Save Changes</Button>
-        </div>
-      </div>
-    </div>
-  );
+    <Card className="overflow-visible">
+      <CardHeader className="flex-col gap-4 sm:flex-row">
+        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-semibold text-copy-primary">{mode === "view" ? saved.selectedView?.name : mode === "edit" ? "Edit user view" : mode === "duplicate" ? "Duplicate view" : "Create new view"}</h2>{saved.selectedView?.is_system && mode === "view" ? <Pill>System · read-only</Pill> : null}{saved.selectedView?.is_default && mode === "view" ? <Pill>Default</Pill> : null}</div><p className="mt-1 text-sm text-copy-muted">{visibleColumns.length} columns · {conditionCount} conditions · {sortKey === "__none__" ? "Default sorting" : `Sorted by ${safeDefinition.columns.find((column) => column.key === sortKey)?.label ?? sortKey}`}</p></div>
+        {editable ? <div className="w-full sm:w-72"><Label htmlFor="view-name">View name</Label><Input id="view-name" className="mt-2" value={name} onChange={(event) => setName(event.target.value)} placeholder={`${definition.label} view`} /></div> : null}
+      </CardHeader>
+      <div className="mt-5 overflow-x-auto border-y border-line-subtle px-4" role="tablist" aria-label="Saved view editor">{(["columns", "filters", "sort"] as EditorSection[]).map((item) => <button key={item} type="button" role="tab" aria-selected={section === item} onClick={() => setSection(item)} className={`px-4 py-3 text-sm font-medium capitalize ${section === item ? "border-b-2 border-primary text-primary" : "text-copy-secondary"}`}>{item}</button>)}</div>
+      <CardBody>
+        {section === "columns" ? <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)]">
+          <div><div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-copy-primary">Selected columns</h3><p className="text-xs text-copy-muted">Ordered from left to right in the module table.</p></div><Pill>{selectedOptions.length}</Pill></div><div className="mt-3 divide-y divide-line-subtle rounded-[var(--radius-control)] border border-line-default">{selectedOptions.map((column, index) => { const isProtected = column.is_protected || column.key === protectedColumnKey; return <div key={column.key} data-testid={`selected-column-${column.key}`} draggable={editable} onDragStart={() => setDraggedColumn(column.key)} onDragEnd={() => setDraggedColumn(null)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropColumn(column.key)} className="flex items-center gap-2 px-3 py-2"><GripVertical className="h-4 w-4 text-copy-muted" /><span className="min-w-0 flex-1 truncate text-sm text-copy-primary">{index + 1}. {column.label}{isProtected ? " · Required" : ""}</span>{editable ? <><Button size="icon-sm" variant="ghost" disabled={index === 0} onClick={() => moveColumn(column.key, "up")} aria-label={`Move ${column.label} up`}><ArrowUp /></Button><Button size="icon-sm" variant="ghost" disabled={index === selectedOptions.length - 1} onClick={() => moveColumn(column.key, "down")} aria-label={`Move ${column.label} down`}><ArrowDown /></Button><Button size="icon-sm" variant="ghost" disabled={isProtected || selectedOptions.length <= 1} onClick={() => removeColumn(column.key)} aria-label={`Hide ${column.label}`} title={isProtected ? "This column is required." : undefined}><EyeOff /></Button></> : null}</div>; })}</div></div>
+          <div><h3 className="text-sm font-semibold text-copy-primary">Available columns</h3><SearchBar value={availableSearch} onChange={setAvailableSearch} placeholder="Search available columns" className="mt-3 md:w-full" />{editable ? <div className="mt-3 max-h-72 divide-y divide-line-subtle overflow-y-auto rounded-[var(--radius-control)] border border-line-default">{filteredAvailable.length ? filteredAvailable.map((column) => <button key={column.key} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-surface-muted" onClick={() => addColumn(column.key)}><span>{column.label}</span><Plus className="h-4 w-4" /></button>) : <p className="p-3 text-sm text-copy-muted">{availableOptions.length ? "No columns match this search." : "All available columns are selected."}</p>}</div> : <p className="mt-3 text-sm text-copy-muted">Choose Edit view or Duplicate to change columns.</p>}</div>
+          <p className="sr-only" aria-live="polite">{announcement}</p>
+        </div> : section === "filters" ? editable ? <div className="space-y-5"><div className="max-w-md"><Label htmlFor="default-search">Default search</Label><Input id="default-search" className="mt-2" value={typeof safeFilters.search === "string" ? safeFilters.search : ""} onChange={(event) => saved.setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: event.target.value } }))} /></div><SavedViewConditionEditor filterFields={safeDefinition.filterFields} filters={safeFilters} onChange={(filters) => saved.setDraftConfig((current) => ({ ...current, filters }))} allConditions={allConditions} anyConditions={anyConditions} title="View filters" description="AND conditions must all match; OR conditions may match." wrapInCard={false} /></div> : <div className="space-y-3"><p className="text-sm text-copy-secondary">Default search: {typeof safeFilters.search === "string" && safeFilters.search ? safeFilters.search : "None"}</p><p className="text-sm text-copy-secondary">{allConditions.length} AND conditions · {anyConditions.length} OR conditions</p><p className="text-sm text-copy-muted">Choose Edit view or Duplicate to change filters.</p></div> : <div className="grid gap-4 sm:grid-cols-2"><div><Label>Sort column</Label><Select value={sortKey} disabled={!editable} onValueChange={(key) => saved.setDraftConfig((current) => ({ ...current, sort: key === "__none__" ? null : { key, direction: sortDirection } }))}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">Module default</SelectItem>{safeDefinition.columns.map((column) => <SelectItem key={column.key} value={column.key}>{column.label}</SelectItem>)}</SelectContent></Select></div><div><Label>Direction</Label><Select value={sortDirection} disabled={!editable || sortKey === "__none__"} onValueChange={(direction) => saved.setDraftConfig((current) => ({ ...current, sort: sortKey === "__none__" ? null : { key: sortKey, direction } }))}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="asc">Ascending</SelectItem><SelectItem value="desc">Descending</SelectItem></SelectContent></Select></div></div>}
+      </CardBody>
+      <CardFooter className="sticky bottom-0 z-20 flex flex-col gap-3 bg-surface/95 backdrop-blur sm:flex-row sm:items-center sm:justify-between"><div><p className={`text-sm font-medium ${isDirty ? "text-state-warning" : "text-state-success"}`}>{isDirty ? "Unsaved changes" : mode === "view" ? "Viewing saved configuration" : "All changes saved"}</p>{actionError ? <p role="alert" className="mt-1 text-sm text-state-danger">{actionError}</p> : null}</div><div className="flex flex-wrap gap-2">{mode === "view" && saved.selectedView && !saved.selectedView.is_system ? <><Button variant="outline" disabled={saved.selectedView.is_default || saved.isSaving} onClick={() => void setDefault()}>Set default</Button><Button variant="dangerGhost" disabled={saved.isSaving} onClick={() => void removeView()}><Trash2 />Delete</Button></> : null}{editable ? <><Button variant="ghost" disabled={saved.isSaving} onClick={discard}>Discard</Button><Button disabled={saved.isSaving || !name.trim() || (mode === "edit" && !editDirty)} onClick={() => void saveDraft()}>{saved.isSaving ? "Saving…" : mode === "edit" ? "Save changes" : mode === "duplicate" ? "Create duplicate" : "Create view"}</Button></> : null}</div></CardFooter>
+    </Card>
+  </div>;
 }

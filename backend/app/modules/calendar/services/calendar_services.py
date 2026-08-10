@@ -1127,6 +1127,7 @@ def build_calendar_context(db: Session, *, tenant_id: int, current_user) -> dict
                 "email": user.email,
                 "team_id": user.team_id,
                 "team_name": getattr(getattr(user, "team", None), "name", None),
+                "booking_handle": user.booking_handle,
             }
             for user in users
         ],

@@ -6,8 +6,8 @@
 
 # Test info
 
-- Name: settings-modules-revamp.spec.ts >> shows retryable module load failures without backend detail
-- Location: tests/e2e/settings-modules-revamp.spec.ts:230:5
+- Name: users-revamp.spec.ts >> Administration settings use dedicated routes
+- Location: tests/e2e/users-revamp.spec.ts:364:5
 
 # Error details
 

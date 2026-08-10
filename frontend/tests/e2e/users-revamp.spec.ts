@@ -160,8 +160,66 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+test("legacy tab URLs redirect to dedicated routes", async ({ page }) => {
+  for (const section of ["authentication", "domains", "provisioning"]) {
+    await page.goto(`/dashboard/settings/users?tab=${section}`);
+    await expect(page).toHaveURL(new RegExp(`/dashboard/settings/${section}$`));
+  }
+});
+
+test("Users does not fetch identity or domain settings", async ({ page }) => {
+  let identityRequests = 0;
+  await page.route(/\/admin\/users\/(mfa-policy|sso-settings|domains)/, async (route) => {
+    identityRequests += 1;
+    await route.continue();
+  });
+  await page.goto("/dashboard/settings/users");
+  await expect(page.getByPlaceholder("Search users...")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "User and access settings" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Authentication", exact: true })).toHaveCount(0);
+  expect(identityRequests).toBe(0);
+});
+
+test("Authentication keeps dirty SSO values until save", async ({ page }) => {
+  let savedPayload: Record<string, unknown> | null = null;
+  await page.route("**/admin/users/sso-settings", async (route) => {
+    if (route.request().method() === "PUT") {
+      savedPayload = route.request().postDataJSON();
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...savedPayload, provider_type: "oidc", has_client_secret: false, allowed_email_domains: [], auto_provision_users: false, default_role_id: null, default_team_id: null, email_claim: "email", first_name_claim: "given_name", last_name_claim: "family_name", status: "configured", last_test_result: null, last_successful_test: null, last_failed_test: null, last_successful_login_at: null, last_failed_login_reason: null }) });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.goto("/dashboard/settings/authentication");
+  await page.getByLabel("Issuer URL").fill("https://identity.example.test");
+  page.once("dialog", (dialog) => dialog.dismiss());
+  await page.goto("/dashboard/settings/domains").catch(() => undefined);
+  await expect(page).toHaveURL(/settings\/authentication/);
+  await expect(page.getByLabel("Issuer URL")).toHaveValue("https://identity.example.test");
+  await page.getByRole("button", { name: "Save changes" }).click();
+  await expect.poll(() => savedPayload?.issuer_url).toBe("https://identity.example.test");
+});
+
+test("Provisioning saves defaults without authentication fields", async ({ page }) => {
+  let savedPayload: Record<string, unknown> | null = null;
+  await page.route("**/admin/users/sso-settings", async (route) => {
+    if (route.request().method() === "PUT") {
+      savedPayload = route.request().postDataJSON();
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ...savedPayload, enabled: false, provider_type: "oidc", issuer_url: null, authorization_endpoint: null, token_endpoint: null, userinfo_endpoint: null, jwks_uri: null, client_id: null, has_client_secret: false, allowed_email_domains: [], status: "disabled", last_test_result: null, last_successful_test: null, last_failed_test: null, last_successful_login_at: null, last_failed_login_reason: null }) });
+      return;
+    }
+    await route.fallback();
+  });
+  await page.goto("/dashboard/settings/provisioning");
+  await page.getByRole("combobox", { name: "Default role" }).click();
+  await page.getByRole("option", { name: "Manager" }).click();
+  await page.getByRole("button", { name: "Save provisioning" }).click();
+  await expect.poll(() => savedPayload?.default_role_id).toBe(22);
+  expect(savedPayload).not.toHaveProperty("issuer_url");
+});
+
 test("User filters follow one vertical scan path and expose selected state", async ({ page }) => {
-  await page.goto("/dashboard/settings/users?tab=users");
+  await page.goto("/dashboard/settings/users");
   await page.getByRole("button", { name: /^Filters/ }).click();
 
   const teamsHeading = page.getByRole("heading", { name: "Teams", exact: true });
@@ -222,7 +280,7 @@ test("Users supports responsive bulk role and status updates", async ({
 });
 
 test("opens Add User from the palette action deep link", async ({ page }) => {
-  await page.goto("/dashboard/settings/users?tab=users&action=create-user");
+  await page.goto("/dashboard/settings/users?action=create-user");
 
   await expect(page.getByRole("heading", { name: "Add user" })).toBeVisible();
 });
@@ -237,7 +295,7 @@ test("Add user validates labeled fields and redacts create failures", async ({
       body: JSON.stringify({ detail: "database_password=private-secret" }),
     }),
   );
-  await page.goto("/dashboard/settings/users?tab=users&action=create-user");
+  await page.goto("/dashboard/settings/users?action=create-user");
 
   const email = page.getByLabel("Email");
   await email.fill("not-an-email");
@@ -303,13 +361,11 @@ test("Edit user prevents repeat saves and redacts update failures", async ({
   await expect(saveButton).toBeEnabled();
 });
 
-test("Administration settings are split into addressable tabs", async ({
+test("Administration settings use dedicated routes", async ({
   page,
 }) => {
-  await page.goto("/dashboard/settings/users");
-
-  await page.getByRole("tab", { name: "Authentication" }).click();
-  await expect(page).toHaveURL(/tab=authentication/);
+  await page.goto("/dashboard/settings/authentication");
+  await expect(page.getByRole("navigation", { name: "User and access settings" })).toHaveCount(0);
   await expect(page.getByText("MFA policy")).toBeVisible();
   await expect(page.getByText("Password policy")).toBeVisible();
   await expect(page.getByText("Use at least 12 characters.")).toBeVisible();
@@ -324,12 +380,12 @@ test("Administration settings are split into addressable tabs", async ({
   await page.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByText("SSO configuration test passed.")).toBeVisible();
 
-  await page.getByRole("tab", { name: "Domains" }).click();
-  await expect(page).toHaveURL(/tab=domains/);
+  await page.goto("/dashboard/settings/domains");
+  await expect(page).toHaveURL(/settings\/domains/);
   await expect(page.getByText("Custom domains")).toBeVisible();
 
-  await page.getByRole("tab", { name: "Provisioning" }).click();
-  await expect(page).toHaveURL(/tab=provisioning/);
+  await page.goto("/dashboard/settings/provisioning");
+  await expect(page).toHaveURL(/settings\/provisioning/);
   await expect(page.getByText("User provisioning")).toBeVisible();
   await expect(page.getByText("Auto-provision users")).toBeVisible();
 });
@@ -388,7 +444,7 @@ test("Domains shows DNS records, failed checks, and guarded removal", async ({
     await route.fulfill({ status: 204, body: "" });
   });
 
-  await page.goto("/dashboard/settings/users?tab=domains");
+  await page.goto("/dashboard/settings/domains");
 
   await expect(page.getByText("No custom domains yet")).toBeVisible();
   await page.getByLabel("Custom domain").fill("lynk.example.com");

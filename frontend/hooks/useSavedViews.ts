@@ -60,6 +60,26 @@ type SavedViewsResponse = {
   views: SavedView[];
 };
 
+export class SavedViewApiError extends Error {
+  constructor(
+    message: string,
+    readonly code: "not-found" | "request-failed" = "request-failed",
+  ) {
+    super(message);
+  }
+}
+
+async function savedViewError(res: Response, fallback: string) {
+  const body = await res.json().catch(() => null);
+  const detail = typeof body?.detail === "string" ? body.detail : "";
+  return new SavedViewApiError(
+    fallback,
+    detail === "Saved view not found" || res.status === 404
+      ? "not-found"
+      : "request-failed",
+  );
+}
+
 function sameStringArray(left: string[] = [], right: string[] = []) {
   if (left.length !== right.length) return false;
   return left.every((value, index) => value === right[index]);
@@ -98,7 +118,7 @@ async function createSavedView(moduleKey: string, payload: { name: string; confi
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("The saved view could not be created.");
+  if (!res.ok) throw await savedViewError(res, "The saved view could not be created.");
   return res.json() as Promise<SavedView>;
 }
 
@@ -108,7 +128,7 @@ async function updateSavedView(moduleKey: string, viewId: number, payload: Parti
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error("The saved view could not be updated.");
+  if (!res.ok) throw await savedViewError(res, "The saved view could not be updated.");
   return res.json() as Promise<SavedView>;
 }
 
@@ -116,7 +136,7 @@ async function deleteSavedView(moduleKey: string, viewId: number) {
   const res = await apiFetch(`/users/saved-views/${moduleKey}/${viewId}`, {
     method: "DELETE",
   });
-  if (!res.ok) throw new Error("The saved view could not be deleted.");
+  if (!res.ok) throw await savedViewError(res, "The saved view could not be deleted.");
 }
 
 export function useSavedViews(

@@ -154,6 +154,7 @@ class CalendarAssignmentUserOption(BaseModel):
     email: str | None = None
     team_id: int | None = None
     team_name: str | None = None
+    booking_handle: str
 
 
 class CalendarAssignmentTeamOption(BaseModel):
@@ -255,6 +256,7 @@ class MeetingBookingTypeResponse(BaseModel):
     id: int
     owner_id: int
     owner_name: str | None = None
+    owner_handle: str
     name: str
     slug: str
     duration_minutes: int
@@ -278,7 +280,18 @@ class PublicMeetingBookingTypeResponse(BaseModel):
     duration_minutes: int
     timezone: str
     owner_name: str | None = None
+    owner_handle: str
+    canonical_path: str
     questions: list[MeetingBookingQuestionResponse]
+
+
+class BookingHandleResponse(BaseModel):
+    booking_handle: str
+    canonical_prefix: str
+
+
+class BookingHandleUpdateRequest(BaseModel):
+    booking_handle: str = Field(min_length=3, max_length=60)
 
 
 class PublicMeetingSlot(BaseModel):
