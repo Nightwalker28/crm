@@ -2,7 +2,12 @@
 
 import * as React from 'react';
 import { Dialog as SheetPrimitive } from 'radix-ui';
-import { AnimatePresence, motion, type HTMLMotionProps } from 'motion/react';
+import {
+  AnimatePresence,
+  motion,
+  useReducedMotion,
+  type HTMLMotionProps,
+} from 'motion/react';
 
 import { getStrictContext } from '@/lib/get-strict-context';
 import { useControlledState } from '@/hooks/use-controlled-state';
@@ -71,15 +76,18 @@ function SheetOverlay({
   transition = { duration: 0.2, ease: 'easeInOut' },
   ...props
 }: SheetOverlayProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <SheetPrimitive.Overlay asChild forceMount>
       <motion.div
         key="sheet-overlay"
         data-slot="sheet-overlay"
-        initial={{ opacity: 0, filter: 'blur(4px)' }}
+        data-reduced-motion={shouldReduceMotion ? 'true' : 'false'}
+        initial={shouldReduceMotion ? false : { opacity: 0, filter: 'blur(4px)' }}
         animate={{ opacity: 1, filter: 'blur(0px)' }}
-        exit={{ opacity: 0, filter: 'blur(4px)' }}
-        transition={transition}
+        exit={shouldReduceMotion ? undefined : { opacity: 0, filter: 'blur(4px)' }}
+        transition={shouldReduceMotion ? { duration: 0 } : transition}
         {...props}
       />
     </SheetPrimitive.Overlay>
@@ -100,6 +108,7 @@ function SheetContent({
   children,
   ...props
 }: SheetContentProps) {
+  const shouldReduceMotion = useReducedMotion();
   const axis = side === 'left' || side === 'right' ? 'x' : 'y';
 
   const offscreen: Record<Side, { x?: string; y?: string; opacity: number }> = {
@@ -122,15 +131,16 @@ function SheetContent({
         key="sheet-content"
         data-slot="sheet-content"
         data-side={side}
-        initial={offscreen[side]}
+        data-reduced-motion={shouldReduceMotion ? 'true' : 'false'}
+        initial={shouldReduceMotion ? false : offscreen[side]}
         animate={{ [axis]: 0, opacity: 1 }}
-        exit={offscreen[side]}
+        exit={shouldReduceMotion ? undefined : offscreen[side]}
         style={{
           position: 'fixed',
           ...positionStyle[side],
           ...style,
         }}
-        transition={transition}
+        transition={shouldReduceMotion ? { duration: 0 } : transition}
       >
         {children}
       </motion.div>

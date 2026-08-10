@@ -4,6 +4,10 @@ import type { NextRequest } from "next/server";
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
+  if (process.env.NODE_ENV === "production" && pathname.startsWith("/e2e/")) {
+    return new NextResponse("Not Found", { status: 404 });
+  }
+
   const hasAccessToken = request.cookies.get("lynk_access_token");
   const hasRefreshToken = request.cookies.get("lynk_refresh_token");
 
@@ -15,5 +19,5 @@ export function proxy(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/auth/:path*"],
+  matcher: ["/dashboard/:path*", "/auth/:path*", "/e2e/:path*"],
 };
