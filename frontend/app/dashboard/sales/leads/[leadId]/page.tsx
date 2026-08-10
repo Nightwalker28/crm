@@ -21,6 +21,7 @@ import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import {
   RouteErrorState,
@@ -30,6 +31,10 @@ import {
   isModuleFieldEnabled,
   useModuleFieldConfigs,
 } from "@/hooks/useModuleFieldConfigs";
+import {
+  useResolvedRecordLayout,
+  type ResolvedRecordLayout as ResolvedRecordLayoutContract,
+} from "@/hooks/useResolvedRecordLayout";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { getLeadScoreStyle } from "@/lib/statusStyles";
@@ -90,6 +95,7 @@ export default function LeadDetailPage() {
     enabled: Boolean(params.leadId),
     refetchOnWindowFocus: false,
   });
+  const detailLayoutQuery = useResolvedRecordLayout("sales_leads", "detail");
   const summary = summaryQuery.data ?? null;
 
   return (
@@ -201,7 +207,13 @@ export default function LeadDetailPage() {
                 id: "overview",
                 label: "Overview",
                 content: (
-                  <LeadOverview summary={summary} fieldEnabled={fieldEnabled} />
+                  <LeadOverview
+                    summary={summary}
+                    layout={detailLayoutQuery.data}
+                    isLayoutLoading={detailLayoutQuery.isLoading}
+                    layoutError={detailLayoutQuery.error}
+                    onRetryLayout={() => void detailLayoutQuery.refetch()}
+                  />
                 ),
               },
               {
@@ -276,101 +288,76 @@ export default function LeadDetailPage() {
 
 function LeadOverview({
   summary,
-  fieldEnabled,
+  layout,
+  isLayoutLoading,
+  layoutError,
+  onRetryLayout,
 }: {
   summary: LeadSummary;
-  fieldEnabled: (fieldKey: string) => boolean;
+  layout?: ResolvedRecordLayoutContract;
+  isLayoutLoading: boolean;
+  layoutError: Error | null;
+  onRetryLayout: () => void;
 }) {
-  return (
-    <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-      <Card className="px-5 py-5">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-copy-primary">
-            Lead details
-          </h2>
-          <p className="mt-1 text-sm text-copy-muted">
-            Core contact and qualification information.
-          </p>
-        </div>
-        <div className="grid gap-x-6 gap-y-4 md:grid-cols-2">
-          {fieldEnabled("primary_email") ? (
-            <DetailField label="Email" value={summary.lead.primary_email} />
-          ) : null}
-          {fieldEnabled("phone") ? (
-            <DetailField label="Phone" value={summary.lead.phone} />
-          ) : null}
-          {fieldEnabled("company") ? (
-            <DetailField label="Company" value={summary.lead.company} />
-          ) : null}
-          {fieldEnabled("title") ? (
-            <DetailField label="Job title" value={summary.lead.title} />
-          ) : null}
-          {fieldEnabled("source") ? (
-            <DetailField label="Source" value={summary.lead.source} />
-          ) : null}
-          {fieldEnabled("status") ? (
-            <DetailField
-              label="Status"
-              value={(summary.lead.status || "new").replace(/_/g, " ")}
-              capitalize
-            />
-          ) : null}
-          {fieldEnabled("assigned_to") ? (
-            <DetailField label="Owner" value={summary.lead.assigned_to_name} />
-          ) : null}
-          {fieldEnabled("team_id") ? (
-            <DetailField label="Team" value={summary.lead.team_name} />
-          ) : null}
-          {fieldEnabled("next_follow_up_at") ? (
-            <FollowUpDetail
-              value={summary.lead.next_follow_up_at}
-              isOverdue={summary.lead.next_follow_up_is_overdue}
-            />
-          ) : null}
-        </div>
-        {fieldEnabled("notes") ? (
-          <div className="mt-5 border-t border-line-subtle pt-5">
-            <DetailField label="Notes" value={summary.lead.notes} />
-          </div>
-        ) : null}
-        {fieldEnabled("tags") && (summary.lead.tags ?? []).length ? (
-          <div className="mt-5 border-t border-line-subtle pt-5">
-            <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">
-              Tags
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {(summary.lead.tags ?? []).map((tag) => (
-                <span
-                  key={tag.toLocaleLowerCase()}
-                  className="rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-xs text-copy-secondary"
-                >
-                  {tag}
-                </span>
-              ))}
-            </div>
-          </div>
-        ) : null}
-        {Object.keys(summary.lead.custom_fields ?? {}).length ? (
-          <details className="mt-5 border-t border-line-subtle pt-5">
-            <summary className="cursor-pointer text-sm font-medium text-copy-primary">
-              Custom fields
-            </summary>
-            <div className="mt-4 grid gap-x-6 gap-y-4 md:grid-cols-2">
-              {Object.entries(summary.lead.custom_fields ?? {}).map(
-                ([key, value]) => (
-                  <DetailField
-                    key={key}
-                    label={key.replace(/_/g, " ")}
-                    value={formatFieldValue(value)}
-                  />
-                ),
-              )}
-            </div>
-          </details>
-        ) : null}
-      </Card>
+  const layoutValues: Record<string, unknown> = {
+    ...summary.lead,
+    assigned_to: summary.lead.assigned_to_name,
+    team_id: summary.lead.team_name,
+  };
+  const summaryCard = <LeadSummaryCard summary={summary} />;
 
-      <Card className="px-5 py-5">
+  if (isLayoutLoading || !layout) {
+    return (
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(0,2fr)_minmax(18rem,0.8fr)]">
+        <Card className="px-5 py-5">
+          {layoutError ? (
+            <div role="alert">
+              <h2 className="text-base font-semibold text-copy-primary">Lead details are unavailable</h2>
+              <p className="mt-1 text-sm text-copy-muted">The configurable details layout could not be loaded.</p>
+              <Button className="mt-4" type="button" variant="outline" size="sm" onClick={onRetryLayout}>Try again</Button>
+            </div>
+          ) : (
+            <div role="status" className="text-sm text-copy-muted">Loading Lead details…</div>
+          )}
+        </Card>
+        {summaryCard}
+      </div>
+    );
+  }
+
+  return (
+    <ReadOnlyRecordLayout
+        layout={layout}
+        values={layoutValues}
+        customValues={summary.lead.custom_fields ?? {}}
+        fixedSidebar={summaryCard}
+        renderValue={(field, value) => {
+          if (field.field_key === "tags" && Array.isArray(value)) {
+            return value.length ? (
+              <div className="flex flex-wrap gap-2">
+                {value.map((tag) => (
+                  <span
+                    key={String(tag).toLocaleLowerCase()}
+                    className="rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-xs text-copy-secondary"
+                  >
+                    {String(tag)}
+                  </span>
+                ))}
+              </div>
+            ) : "Not recorded";
+          }
+          if (field.field_key !== "next_follow_up_at") return undefined;
+          return value
+            ? `${formatDateTime(String(value))}${summary.lead.next_follow_up_is_overdue ? " · Overdue" : ""}`
+            : "Not scheduled";
+        }}
+    />
+  );
+}
+
+function LeadSummaryCard({ summary }: { summary: LeadSummary }) {
+  return (
+    <Card className="px-5 py-5">
         <h2 className="text-lg font-semibold text-copy-primary">Summary</h2>
         <div className="mt-4 grid gap-3">
           <ScoreTile
@@ -392,31 +379,7 @@ function LeadOverview({
             value={(summary.lead.status || "new").replace(/_/g, " ")}
           />
         </div>
-      </Card>
-    </div>
-  );
-}
-
-function FollowUpDetail({
-  value,
-  isOverdue = false,
-}: {
-  value?: string | null;
-  isOverdue?: boolean;
-}) {
-  return (
-    <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">
-        Next follow-up
-      </div>
-      <div
-        className={`mt-1 text-sm ${isOverdue ? "font-medium text-state-warning" : "text-copy-secondary"}`}
-      >
-        {value
-          ? `${formatDateTime(value)}${isOverdue ? " · Overdue" : ""}`
-          : "Not scheduled"}
-      </div>
-    </div>
+    </Card>
   );
 }
 
@@ -488,35 +451,4 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
       <div className="mt-2 text-sm capitalize text-copy-primary">{value}</div>
     </div>
   );
-}
-
-function DetailField({
-  label,
-  value,
-  capitalize = false,
-}: {
-  label: string;
-  value?: string | null;
-  capitalize?: boolean;
-}) {
-  return (
-    <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">
-        {label}
-      </div>
-      <div
-        className={`mt-1 text-sm text-copy-secondary ${capitalize ? "capitalize" : ""}`}
-      >
-        {value || "Not recorded"}
-      </div>
-    </div>
-  );
-}
-
-function formatFieldValue(value: unknown) {
-  if (value === null || value === undefined || value === "")
-    return "Not recorded";
-  if (Array.isArray(value)) return value.map(String).join(", ");
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
 }

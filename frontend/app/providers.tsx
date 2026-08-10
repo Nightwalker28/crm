@@ -2,8 +2,9 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ConfirmProvider } from "@/hooks/useConfirm";
+import { subscribeToAuthSessionChanges } from "@/lib/authSessionEvents";
 
 export default function Providers({ children }: { children: React.ReactNode }) {
   // Ensure QueryClient is created only once per client lifecycle
@@ -20,6 +21,16 @@ export default function Providers({ children }: { children: React.ReactNode }) {
           },
         },
       })
+  );
+
+  useEffect(
+    () =>
+      subscribeToAuthSessionChanges((source) => {
+        window.sessionStorage.clear();
+        queryClient.clear();
+        if (source === "cross-tab") window.location.reload();
+      }),
+    [queryClient]
   );
 
   return (

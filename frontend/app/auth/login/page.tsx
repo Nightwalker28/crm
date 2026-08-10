@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
+import { publishAuthSessionChange } from "@/lib/authSessionEvents";
 
 type SignInForm = {
   email: string;
@@ -139,10 +140,12 @@ export default function LoginPage() {
       }
 
       if (data?.status === "mfa_setup_required") {
+        publishAuthSessionChange();
         await startMfaSetup();
         return;
       }
 
+      publishAuthSessionChange();
       router.replace("/dashboard");
       router.refresh();
     } catch {
@@ -191,6 +194,7 @@ export default function LoginPage() {
       });
       await res.json().catch(() => null);
       if (!res.ok) throw new Error("The authenticator or recovery code was not accepted.");
+      publishAuthSessionChange();
       router.replace("/dashboard");
       router.refresh();
     } catch {
@@ -309,6 +313,7 @@ export default function LoginPage() {
               <Button
                 type="button"
                 onClick={() => {
+                  publishAuthSessionChange();
                   router.replace("/dashboard");
                   router.refresh();
                 }}

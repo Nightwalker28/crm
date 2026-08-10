@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 
 import { Button } from "@/components/ui/button";
+import { publishAuthSessionChange } from "@/lib/authSessionEvents";
 
 export default function AuthCallbackClient() {
   const router = useRouter();
@@ -19,6 +20,7 @@ export default function AuthCallbackClient() {
   useEffect(() => {
     if (status === "active" && !redirectedRef.current) {
       redirectedRef.current = true;
+      publishAuthSessionChange();
       router.replace("/dashboard");
     }
   }, [router, status]);

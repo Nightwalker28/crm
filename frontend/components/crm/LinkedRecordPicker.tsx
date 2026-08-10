@@ -61,6 +61,8 @@ type Props = {
   sourceAction?: "create" | "edit" | "view";
   allowClear?: boolean;
   allowedModuleKeys?: string[];
+  ariaDescribedBy?: string;
+  ariaInvalid?: boolean;
 };
 
 function appendRelationshipFilters(params: URLSearchParams, filters?: LinkedRecordFilters) {
@@ -254,6 +256,8 @@ export default function LinkedRecordPicker({
   sourceAction = "create",
   allowClear = true,
   allowedModuleKeys,
+  ariaDescribedBy,
+  ariaInvalid,
 }: Props) {
   const generatedListboxId = useId();
   const listboxId = `${generatedListboxId}-options`;
@@ -317,6 +321,8 @@ export default function LinkedRecordPicker({
           aria-autocomplete="list"
           aria-expanded={isOpen && Boolean(displayValue.trim())}
           aria-controls={listboxId}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
           aria-activedescendant={
             activeIndex >= 0 && options[activeIndex]
               ? `${listboxId}-${recordType}-${optionIdentity(recordType, options[activeIndex])}`

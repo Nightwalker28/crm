@@ -15,7 +15,7 @@ const fakeLeadSummary = {
     source: "Browser verification",
     status: "qualified",
     notes: "Non-persistent browser fixture",
-    custom_fields: {},
+    custom_fields: { renewal_tier: "Gold" },
     updated_at: "2099-07-20T09:30:00Z",
     score: 45,
     score_grade: "warm",
@@ -28,6 +28,45 @@ const fakeLeadSummary = {
     next_follow_up_at: "2099-07-20T09:30:00Z",
     next_follow_up_is_overdue: false,
   },
+};
+
+const leadDetailLayout = {
+  layout_id: null,
+  module_key: "sales_leads",
+  surface: "detail",
+  name: "Lead Details",
+  source: "system",
+  version: 1,
+  can_customize: false,
+  warnings: [],
+  sections: [
+    {
+      id: "contact",
+      label: "Contact",
+      position: 0,
+      region: "main",
+      collapsed_by_default: false,
+      fields: [
+        { field_key: "company", label: "Company", field_type: "text", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: true },
+        { field_key: "primary_email", label: "Email", field_type: "email", field_source: "system", position: 1, width: "half", visible: true, required: true, readonly: true },
+        { field_key: "phone", label: "Phone", field_type: "phone", field_source: "system", position: 2, width: "half", visible: false, required: false, readonly: true },
+        { field_key: "assigned_to", label: "Owner", field_type: "user_reference", field_source: "system", position: 3, width: "half", visible: true, required: false, readonly: true },
+        { field_key: "team_id", label: "Team", field_type: "team_reference", field_source: "system", position: 4, width: "half", visible: true, required: false, readonly: true },
+        { field_key: "next_follow_up_at", label: "Next follow-up", field_type: "datetime", field_source: "system", position: 5, width: "full", visible: true, required: false, readonly: true },
+        { field_key: "tags", label: "Tags", field_type: "tags", field_source: "system", position: 6, width: "full", visible: true, required: false, readonly: true },
+      ],
+    },
+    {
+      id: "custom_fields",
+      label: "Configured details",
+      position: 1,
+      region: "main",
+      collapsed_by_default: true,
+      fields: [
+        { field_key: "custom:renewal_tier", label: "Renewal tier", field_type: "text", field_source: "custom_field", position: 0, width: "half", visible: true, required: false, readonly: true },
+      ],
+    },
+  ],
 };
 
 async function mockLeadRelationshipOptions(page: Page) {
@@ -56,6 +95,9 @@ async function mockLeadRelationshipOptions(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
+  await page.route("**/record-layouts/sales_leads/detail/resolved", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(leadDetailLayout) }),
+  );
 });
 
 test("Lead journey behavior baseline: filter, create, open, and add a note", async ({ page }) => {
@@ -324,6 +366,13 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await expect(page.getByText("Warm", { exact: true })).toBeVisible();
   await expect(page.locator("div.bg-state-warning-muted", { hasText: "Lead Score" })).toBeVisible();
   await expect(page.getByText("Next follow-up", { exact: true })).toBeVisible();
+  const detailFields = page.locator("[data-layout-section='contact'] [data-layout-field]");
+  await expect(detailFields.nth(0)).toHaveAttribute("data-layout-field", "company");
+  await expect(detailFields.nth(1)).toHaveAttribute("data-layout-field", "primary_email");
+  await expect(page.locator("[data-layout-field='phone']")).toHaveCount(0);
+  await page.locator("[data-layout-section='custom_fields'] summary").click();
+  await expect(page.getByText("Renewal tier", { exact: true })).toBeVisible();
+  await expect(page.getByText("Gold", { exact: true })).toBeVisible();
 
   await page.getByRole("tab", { name: "Audit history" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${fakeLeadId}\\?tab=audit$`));

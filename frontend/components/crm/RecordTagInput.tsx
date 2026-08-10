@@ -16,6 +16,8 @@ type Props = {
   action: "create" | "edit";
   disabled?: boolean;
   inputId?: string;
+  ariaDescribedBy?: string;
+  ariaInvalid?: boolean;
 };
 
 const MAX_TAGS = 20;
@@ -35,7 +37,16 @@ async function searchTags(moduleKey: string, action: Props["action"], query: str
     .filter(Boolean) as string[];
 }
 
-export default function RecordTagInput({ value, onChange, moduleKey, action, disabled = false, inputId }: Props) {
+export default function RecordTagInput({
+  value,
+  onChange,
+  moduleKey,
+  action,
+  disabled = false,
+  inputId,
+  ariaDescribedBy,
+  ariaInvalid = false,
+}: Props) {
   const generatedId = useId();
   const resolvedInputId = inputId ?? `${generatedId}-input`;
   const listboxId = `${generatedId}-options`;
@@ -153,8 +164,8 @@ export default function RecordTagInput({ value, onChange, moduleKey, action, dis
           aria-expanded={isOpen && Boolean(draft.trim())}
           aria-controls={listboxId}
           aria-activedescendant={activeIndex >= 0 && options[activeIndex] ? `${listboxId}-${activeIndex}` : undefined}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? errorId : undefined}
+          aria-invalid={ariaInvalid || Boolean(error)}
+          aria-describedby={[ariaDescribedBy, error ? errorId : undefined].filter(Boolean).join(" ") || undefined}
           autoComplete="off"
         />
         {isOpen && draft.trim() ? (
