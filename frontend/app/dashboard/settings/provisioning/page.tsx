@@ -1,6 +1,5 @@
 "use client";
 
-import { IdentitySettingsNav } from "@/components/settings/IdentitySettingsNav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,7 +26,6 @@ export default function ProvisioningSettingsPage() {
 
   return (
     <div className="flex flex-col gap-5 pb-20 text-copy-primary">
-      <IdentitySettingsNav />
       {!settings.isLoading && !settings.ssoSettings?.enabled ? <div role="status" className="rounded-control border border-line-default bg-surface-muted p-3 text-sm text-copy-secondary">SSO is disabled. You can prepare provisioning defaults now, but automatic provisioning starts only after SSO is enabled.</div> : null}
       <Card className="px-4 py-4">
         <div className="flex flex-col gap-4">

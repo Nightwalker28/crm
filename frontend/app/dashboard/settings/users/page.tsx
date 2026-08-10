@@ -8,7 +8,6 @@ import CreateUserDialog from "@/components/users/createUserDialog";
 import EditUserDialog from "@/components/users/editUserDialog";
 import type { UserFiltersValue } from "@/components/users/userFilters";
 import { UserManagementTable, type SortDirection, type SortKey } from "@/components/users/userManagementTable";
-import { IdentitySettingsNav } from "@/components/settings/IdentitySettingsNav";
 import { Button } from "@/components/ui/button";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { PageToolbar } from "@/components/ui/PageToolbar";
@@ -70,7 +69,6 @@ function UsersWorkspace({ createRequested }: { createRequested: boolean }) {
 
   return (
     <div className="flex flex-col gap-5 text-copy-primary">
-      <IdentitySettingsNav />
       <PageToolbar>
         <SavedViewSelector moduleKey="admin_users" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />
         <Button onClick={admin.openCreateModal}><Plus />Add User</Button>

@@ -2,7 +2,6 @@
 
 import { Check, KeyRound, ShieldCheck } from "lucide-react";
 
-import { IdentitySettingsNav } from "@/components/settings/IdentitySettingsNav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -40,7 +39,6 @@ export default function AuthenticationSettingsPage() {
 
   return (
     <div className="flex flex-col gap-5 pb-20 text-copy-primary">
-      <IdentitySettingsNav />
       <Card className="px-4 py-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex items-center gap-3"><ShieldCheck className="size-4 text-copy-secondary" /><div><h2 className="text-sm font-semibold">MFA policy</h2><p className="text-xs text-copy-muted">Applies to manual CRM sign-in.</p></div></div>

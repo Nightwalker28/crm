@@ -162,8 +162,17 @@ class HierarchicalModuleAssignmentTests(unittest.TestCase):
 
         self.assertFalse(self.has_access())
 
-    def test_department_grant_allows_assigned_team(self):
+    def test_department_grant_without_team_selection_denies_assigned_team(self):
         self.db.add(DepartmentModulePermission(id=1003, department_id=10, module_id=100))
+        self.db.commit()
+
+        self.assertFalse(self.has_access())
+
+    def test_department_gate_and_team_selection_allow_assigned_team(self):
+        self.db.add_all([
+            DepartmentModulePermission(id=1003, department_id=10, module_id=100),
+            TeamModulePermission(id=1004, team_id=11, module_id=100),
+        ])
         self.db.commit()
 
         self.assertTrue(self.has_access())
@@ -173,7 +182,7 @@ class HierarchicalModuleAssignmentTests(unittest.TestCase):
         user.department_id = None
         self.assertFalse(self.has_access(user))
 
-        self.db.add(TeamModulePermission(id=1004, team_id=12, module_id=100))
+        self.db.add(TeamModulePermission(id=1005, team_id=12, module_id=100))
         self.db.commit()
         self.assertTrue(self.has_access(user))
 

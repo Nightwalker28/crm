@@ -332,17 +332,25 @@ def get_module_access(db: Session, module_id: int, *, tenant_id: int) -> ModuleA
                 department_id=team.department_id,
                 department_name=department_name_by_id.get(team.department_id),
                 has_access=(
-                    team.department_id in department_ids
-                    if team.department_id is not None
-                    else team.id in team_ids
+                    team.id in team_ids
+                    and (team.department_id is None or team.department_id in department_ids)
                 ),
-                has_direct_access=team.department_id is None and team.id in team_ids,
-                direct_grant_allowed=team.department_id is None,
+                has_direct_access=(
+                    team.id in team_ids
+                    and (team.department_id is None or team.department_id in department_ids)
+                ),
+                direct_grant_allowed=(
+                    team.department_id is None or team.department_id in department_ids
+                ),
                 access_state=(
                     "department_access"
-                    if team.department_id is not None and team.department_id in department_ids
+                    if (
+                        team.department_id is not None
+                        and team.department_id in department_ids
+                        and team.id in team_ids
+                    )
                     else "blocked_by_department"
-                    if team.department_id is not None
+                    if team.department_id is not None and team.department_id not in department_ids
                     else "direct_team_access"
                     if team.id in team_ids
                     else "blocked"
@@ -392,14 +400,18 @@ def update_module_access(
     if invalid_department_ids or invalid_team_ids:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid department or team selection")
 
-    assigned_team_ids = sorted(team.id for team in teams if team.department_id is not None)
-    if assigned_team_ids:
+    blocked_child_team_ids = sorted(
+        team.id
+        for team in teams
+        if team.department_id is not None and team.department_id not in valid_department_ids
+    )
+    if blocked_child_team_ids:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={
                 "code": "team_department_conflict",
-                "message": "Direct team grants are only allowed for teams without a department.",
-                "team_ids": assigned_team_ids,
+                "message": "A team cannot receive module access while its parent department is blocked.",
+                "team_ids": blocked_child_team_ids,
             },
         )
 
@@ -461,7 +473,7 @@ def update_module_access(
         after_state={
             "department_ids": sorted(valid_department_ids),
             "team_ids": sorted(valid_team_ids),
-            "direct_team_rule": "unassigned_teams_only",
+            "team_access_rule": "department_gate_plus_team_selection",
         },
     )
     return get_module_access(db, module_id, tenant_id=tenant_id)

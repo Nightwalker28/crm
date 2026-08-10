@@ -6,13 +6,20 @@
 
 # Test info
 
-- Name: automation-builder-revamp.spec.ts >> keeps run history separate and opens sanitized details in a sheet
-- Location: tests/e2e/automation-builder-revamp.spec.ts:92:5
+- Name: users-revamp.spec.ts >> Administration settings use dedicated routes
+- Location: tests/e2e/users-revamp.spec.ts:364:5
 
 # Error details
 
 ```
-Error: Admin MFA is enabled. Set E2E_ADMIN_MFA_CODE or E2E_ADMIN_RECOVERY_CODE to run authenticated browser tests.
+Error: Expected login to reach the dashboard or MFA challenge.
+
+expect(received).toBeTruthy()
+
+Received: false
+
+Call Log:
+- Timeout 20000ms exceeded while waiting on the predicate
 ```
 
 # Page snapshot
@@ -34,17 +41,27 @@ Error: Admin MFA is enabled. Set E2E_ADMIN_MFA_CODE or E2E_ADMIN_RECOVERY_CODE t
           - heading "Lynk" [level=1] [ref=e282]
           - paragraph [ref=e283]: Sign in with your provisioned account.
           - generic [ref=e284]:
-            - generic [ref=e285]: Enter your authenticator code or one recovery code to finish signing in.
-            - generic [ref=e286]:
-              - generic [ref=e287]: Authenticator Code
-              - textbox "Authenticator Code" [ref=e288]
-            - generic [ref=e289]:
-              - generic [ref=e290]: Recovery Code
-              - textbox "Recovery Code" [ref=e291]
-            - button "Verify MFA" [disabled]
-  - button "Open Next.js Dev Tools" [ref=e297] [cursor=pointer]:
-    - img [ref=e298]
-  - alert [ref=e301]
+            - generic [ref=e285]:
+              - generic [ref=e286]: Email
+              - textbox "Email" [ref=e287]: maad@maadmustafa.dev
+            - generic [ref=e288]:
+              - generic [ref=e289]: Password
+              - textbox "Password" [ref=e290]: Maadmanco@28
+            - button "Signing in..." [disabled]
+          - generic [ref=e293]: or
+          - button "Continue with SSO" [disabled]:
+            - generic:
+              - generic: Continue with SSO
+          - button "Sign in with Google" [disabled]:
+            - generic:
+              - img
+              - generic: Sign in with Google
+          - button "Sign in with Microsoft" [disabled]:
+            - generic:
+              - generic: Sign in with Microsoft
+  - button "Open Next.js Dev Tools" [ref=e300] [cursor=pointer]:
+    - img [ref=e301]
+  - alert [ref=e304]
 ```
 
 # Test source
@@ -70,7 +87,8 @@ Error: Admin MFA is enabled. Set E2E_ADMIN_MFA_CODE or E2E_ADMIN_RECOVERY_CODE t
   18 |   await page.getByRole("button", { name: "Sign in with email" }).click();
   19 | 
   20 |   const authenticatorInput = page.getByLabel("Authenticator Code");
-  21 |   await expect
+> 21 |   await expect
+     |   ^ Error: Expected login to reach the dashboard or MFA challenge.
   22 |     .poll(
   23 |       async () => page.url().endsWith("/dashboard") || await authenticatorInput.isVisible().catch(() => false),
   24 |       { message: "Expected login to reach the dashboard or MFA challenge.", timeout: 20_000 },
@@ -83,8 +101,7 @@ Error: Admin MFA is enabled. Set E2E_ADMIN_MFA_CODE or E2E_ADMIN_RECOVERY_CODE t
   31 |     } else if (adminRecoveryCode) {
   32 |       await page.getByLabel("Recovery Code").fill(adminRecoveryCode);
   33 |     } else {
-> 34 |       throw new Error("Admin MFA is enabled. Set E2E_ADMIN_MFA_CODE or E2E_ADMIN_RECOVERY_CODE to run authenticated browser tests.");
-     |             ^ Error: Admin MFA is enabled. Set E2E_ADMIN_MFA_CODE or E2E_ADMIN_RECOVERY_CODE to run authenticated browser tests.
+  34 |       throw new Error("Admin MFA is enabled. Set E2E_ADMIN_MFA_CODE or E2E_ADMIN_RECOVERY_CODE to run authenticated browser tests.");
   35 |     }
   36 |     await page.getByRole("button", { name: "Verify MFA" }).click();
   37 |   }

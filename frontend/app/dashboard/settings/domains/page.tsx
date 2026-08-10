@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Copy, Globe2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { IdentitySettingsNav } from "@/components/settings/IdentitySettingsNav";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Dialog, DialogBackdrop, DialogDescription, DialogFooter, DialogHeader, DialogPanel, DialogTitle } from "@/components/ui/dialog";
@@ -32,7 +31,6 @@ export default function DomainsSettingsPage() {
 
   return (
     <div className="flex flex-col gap-5 text-copy-primary">
-      <IdentitySettingsNav />
       <Card className="px-4 py-4">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">

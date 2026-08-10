@@ -175,6 +175,8 @@ test("Users does not fetch identity or domain settings", async ({ page }) => {
   });
   await page.goto("/dashboard/settings/users");
   await expect(page.getByPlaceholder("Search users...")).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "User and access settings" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Authentication", exact: true })).toHaveCount(0);
   expect(identityRequests).toBe(0);
 });
 
@@ -191,7 +193,7 @@ test("Authentication keeps dirty SSO values until save", async ({ page }) => {
   await page.goto("/dashboard/settings/authentication");
   await page.getByLabel("Issuer URL").fill("https://identity.example.test");
   page.once("dialog", (dialog) => dialog.dismiss());
-  await page.getByRole("link", { name: "Domains", exact: true }).click();
+  await page.goto("/dashboard/settings/domains").catch(() => undefined);
   await expect(page).toHaveURL(/settings\/authentication/);
   await expect(page.getByLabel("Issuer URL")).toHaveValue("https://identity.example.test");
   await page.getByRole("button", { name: "Save changes" }).click();
@@ -363,6 +365,7 @@ test("Administration settings use dedicated routes", async ({
   page,
 }) => {
   await page.goto("/dashboard/settings/authentication");
+  await expect(page.getByRole("navigation", { name: "User and access settings" })).toHaveCount(0);
   await expect(page.getByText("MFA policy")).toBeVisible();
   await expect(page.getByText("Password policy")).toBeVisible();
   await expect(page.getByText("Use at least 12 characters.")).toBeVisible();
@@ -377,11 +380,11 @@ test("Administration settings use dedicated routes", async ({
   await page.getByRole("button", { name: "Retry" }).click();
   await expect(page.getByText("SSO configuration test passed.")).toBeVisible();
 
-  await page.getByRole("link", { name: "Domains", exact: true }).click();
+  await page.goto("/dashboard/settings/domains");
   await expect(page).toHaveURL(/settings\/domains/);
   await expect(page.getByText("Custom domains")).toBeVisible();
 
-  await page.getByRole("link", { name: "Provisioning", exact: true }).click();
+  await page.goto("/dashboard/settings/provisioning");
   await expect(page).toHaveURL(/settings\/provisioning/);
   await expect(page.getByText("User provisioning")).toBeVisible();
   await expect(page.getByText("Auto-provision users")).toBeVisible();
