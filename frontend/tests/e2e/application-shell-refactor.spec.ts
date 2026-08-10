@@ -62,10 +62,12 @@ test("renders neither breadcrumb trails nor visible page-title headers across da
     ["/dashboard/mail", "Mail"],
     ["/dashboard/reports", "Reports"],
     ["/dashboard/client-portal", "Client Portal"],
+    // The sidebar has one flat Settings entry, so the landing page is named for the section.
+    // An open settings page names itself in the header.
     ["/dashboard/settings", "Settings"],
-    ["/dashboard/settings/general", "Settings"],
-    ["/dashboard/settings/permissions", "Settings"],
-    ["/dashboard/settings/integrations", "Settings"],
+    ["/dashboard/settings/general", "General"],
+    ["/dashboard/settings/permissions", "Permissions"],
+    ["/dashboard/settings/integrations", "Integrations"],
   ];
 
   for (const [route, moduleName] of routes) {

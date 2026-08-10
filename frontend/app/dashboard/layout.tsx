@@ -18,7 +18,7 @@ import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getGuardedModuleRoutePrefixes, getModuleRegistryLabel, getRequiredModuleKeyForRoute, MODULE_REGISTRY, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
-import { DASHBOARD_ROUTES, SETTINGS_ROUTES, canonicalizeDashboardHref } from "@/lib/routes";
+import { DASHBOARD_ROUTES, SETTINGS_ROUTES, canonicalizeDashboardHref, getFriendlyRouteLabel } from "@/lib/routes";
 
 const ADMIN_ONLY_PREFIXES = [
   SETTINGS_ROUTES.root,
@@ -43,6 +43,24 @@ function registryModuleTitle(pathname: string) {
     ?.label;
 }
 
+// The sidebar carries a single flat "Settings" entry that opens the settings landing page.
+// Once a specific settings page is open, the header names that page, using the same label the
+// sidebar and landing page use so the name you click is the name you land on.
+function settingsPageTitle(pathname: string) {
+  const segments = pathname.slice(SETTINGS_ROUTES.root.length).split("/").filter(Boolean);
+  const leaf = segments[segments.length - 1];
+  if (!leaf) return "Settings";
+  if (segments.length > 1 && segments[segments.length - 2] === "modules" && /^\d+$/.test(leaf)) {
+    return "Access Settings";
+  }
+
+  const navItem = [...SETTINGS_NAV_ITEMS]
+    .sort((left, right) => right.href.length - left.href.length)
+    .find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+
+  return navItem?.label ?? getFriendlyRouteLabel(leaf);
+}
+
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -61,7 +79,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const moduleTitle = pathname === DASHBOARD_ROUTES.home
     ? "Dashboard"
     : pathname === SETTINGS_ROUTES.root || pathname.startsWith(`${SETTINGS_ROUTES.root}/`)
-      ? "Settings"
+      ? settingsPageTitle(pathname)
       : pathname === "/dashboard/profile"
         ? "Profile"
         : viewModuleKey

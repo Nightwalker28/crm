@@ -10,6 +10,7 @@ import {
 } from 'motion/react';
 
 import { getStrictContext } from '@/lib/get-strict-context';
+import { useDialogLayerCovered } from '@/components/ui/dialog-layer';
 import { useControlledState } from '@/hooks/use-controlled-state';
 
 type SheetContextType = {
@@ -28,12 +29,16 @@ function Sheet(props: SheetProps) {
     defaultValue: props.defaultOpen,
     onChange: props.onOpenChange,
   });
+  const covered = useDialogLayerCovered();
 
   return (
     <SheetProvider value={{ isOpen, setIsOpen }}>
       <SheetPrimitive.Root
         data-slot="sheet"
         {...props}
+        // While a confirmation sits on top, the sheet releases its focus trap and body
+        // pointer lock so the dialog above it can be reached.
+        modal={covered ? false : props.modal}
         onOpenChange={setIsOpen}
       />
     </SheetProvider>
@@ -106,10 +111,26 @@ function SheetContent({
   transition = { type: 'spring', stiffness: 150, damping: 22 },
   style,
   children,
+  onInteractOutside,
+  onEscapeKeyDown,
   ...props
 }: SheetContentProps) {
   const shouldReduceMotion = useReducedMotion();
+  const covered = useDialogLayerCovered();
   const axis = side === 'left' || side === 'right' ? 'x' : 'y';
+
+  // Releasing `modal` also hands dismissal back to Radix, which would treat a click on the
+  // confirmation above as an outside interaction and close the sheet underneath it. While
+  // covered, the sheet ignores outside interaction and Escape; the dialog on top owns both.
+  const guardWhileCovered = <TEvent extends { preventDefault: () => void }>(
+    handler: ((event: TEvent) => void) | undefined,
+  ) => (event: TEvent) => {
+    if (covered) {
+      event.preventDefault();
+      return;
+    }
+    handler?.(event);
+  };
 
   const offscreen: Record<Side, { x?: string; y?: string; opacity: number }> = {
     right: { x: '100%', opacity: 0 },
@@ -126,11 +147,19 @@ function SheetContent({
   };
 
   return (
-    <SheetPrimitive.Content asChild forceMount {...props}>
+    <SheetPrimitive.Content
+      asChild
+      forceMount
+      onInteractOutside={guardWhileCovered(onInteractOutside)}
+      onEscapeKeyDown={guardWhileCovered(onEscapeKeyDown)}
+      {...props}
+    >
       <motion.div
         key="sheet-content"
         data-slot="sheet-content"
         data-side={side}
+        aria-hidden={covered || undefined}
+        inert={covered}
         data-reduced-motion={shouldReduceMotion ? 'true' : 'false'}
         initial={shouldReduceMotion ? false : offscreen[side]}
         animate={{ [axis]: 0, opacity: 1 }}

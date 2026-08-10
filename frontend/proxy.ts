@@ -15,6 +15,13 @@ export function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/auth/login", request.url));
   }
 
+  // Signing in is the login page's only job, so send an already-signed-in visitor onward.
+  // Other /auth routes stay reachable with a session: /auth/callback still has to explain a
+  // failed SSO attempt, and /auth/setup-password still has to accept a setup link.
+  if (pathname === "/auth/login" && (hasAccessToken || hasRefreshToken)) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
   return NextResponse.next();
 }
 
