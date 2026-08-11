@@ -56,7 +56,7 @@ export function SavedViewSelector({ moduleKey, views, selectedViewId, onSelect }
               onClick={() => {
                 if (!selected) onSelect(viewId);
               }}
-              className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius-control-sm)] px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+              className={`inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[var(--radius-control-sm)] px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
                 selected
                   ? "bg-action-primary-muted text-primary"
                   : "text-copy-secondary hover:bg-surface-muted hover:text-copy-primary"

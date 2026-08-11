@@ -77,7 +77,7 @@ export function ColumnPicker({
             forceOpen ? "static shadow-none" : "absolute right-0 top-11 z-30",
           )}
         >
-          <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-copy-secondary">
+          <div className="mb-3 text-xs font-semibold text-copy-secondary">
             Visible columns
           </div>
           <div className="space-y-3">
@@ -85,7 +85,7 @@ export function ColumnPicker({
               {orderedVisibleOptions.map((option, index) => (
                 <div
                   key={option.key}
-                  className="flex items-center gap-2 rounded-md px-2 py-2 text-sm text-copy-secondary hover:bg-surface-muted"
+                  className="flex items-center gap-2 rounded-[var(--radius-control)] px-2 py-2 text-sm text-copy-secondary hover:bg-surface-muted"
                 >
                   <button
                     type="button"
@@ -122,14 +122,14 @@ export function ColumnPicker({
 
             {hiddenColumns.length ? (
               <>
-                <div className="border-t border-line-default pt-3 text-xs font-semibold uppercase tracking-wide text-copy-muted">
+                <div className="border-t border-line-default pt-3 text-xs font-semibold text-copy-label">
                   Hidden columns
                 </div>
                 <div className="space-y-2">
                   {hiddenColumns.map((option) => (
                     <label
                       key={option.key}
-                      className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-2 text-sm text-copy-secondary hover:bg-surface-muted"
+                      className="flex cursor-pointer items-center gap-3 rounded-[var(--radius-control)] px-2 py-2 text-sm text-copy-secondary hover:bg-surface-muted"
                     >
                       <input
                         type="checkbox"

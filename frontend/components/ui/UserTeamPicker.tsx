@@ -128,7 +128,7 @@ export function UserTeamPicker({
               <div className="space-y-3">
                 {filteredUsers.length ? (
                   <div className="overflow-hidden rounded-[var(--radius-control)] border border-line-default bg-surface p-1">
-                    <div className="flex items-center gap-2 px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                    <div className="flex items-center gap-2 px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                       <UserRound className="h-3.5 w-3.5" />
                       {userGroupLabel}
                     </div>
@@ -140,7 +140,7 @@ export function UserTeamPicker({
                           type="button"
                           onClick={() => onToggle("user", user.id)}
                           aria-pressed={selected}
-                          className="flex w-full items-center justify-between rounded-[var(--radius-control)] px-3 py-2 text-left text-sm text-copy-secondary transition-colors hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          className="flex w-full items-center justify-between rounded-[var(--radius-control)] px-3 py-2 text-left text-sm text-copy-secondary transition-colors hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                         >
                           <div className="min-w-0">
                             <div className="truncate font-medium text-copy-primary">{user.name}</div>
@@ -158,7 +158,7 @@ export function UserTeamPicker({
 
                 {filteredTeams.length ? (
                   <div className="overflow-hidden rounded-[var(--radius-control)] border border-line-default bg-surface p-1">
-                    <div className="flex items-center gap-2 px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                    <div className="flex items-center gap-2 px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                       <Users className="h-3.5 w-3.5" />
                       {teamGroupLabel}
                     </div>
@@ -170,7 +170,7 @@ export function UserTeamPicker({
                           type="button"
                           onClick={() => onToggle("team", team.id)}
                           aria-pressed={selected}
-                          className="flex w-full items-center justify-between rounded-[var(--radius-control)] px-3 py-2 text-left text-sm text-copy-secondary transition-colors hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          className="flex w-full items-center justify-between rounded-[var(--radius-control)] px-3 py-2 text-left text-sm text-copy-secondary transition-colors hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                         >
                           <div className="min-w-0">
                             <div className="truncate font-medium text-copy-primary">{team.name}</div>
@@ -198,7 +198,7 @@ export function UserTeamPicker({
                 type="button"
                 disabled={disabled}
                 onClick={() => onToggle(entry.type, entry.id)}
-                className="rounded-full p-0.5 text-copy-muted transition-colors hover:bg-surface-raised hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="rounded-full p-0.5 text-copy-muted transition-colors hover:bg-surface-raised hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                 aria-label={`Remove ${entry.label}`}
               >
                 <X className="h-3.5 w-3.5" />

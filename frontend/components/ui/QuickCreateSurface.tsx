@@ -173,7 +173,7 @@ export function QuickCreateSurface({
           <SheetHeader className="flex min-h-16 items-start justify-between gap-4 border-b border-line-subtle px-4 py-3 sm:px-5">
             <div className="min-w-0">
               <SheetTitle className="text-lg font-semibold text-copy-primary">{title}</SheetTitle>
-              <SheetDescription className="mt-1 text-sm leading-5 text-copy-muted">
+              <SheetDescription className="mt-1 text-p-sm text-copy-muted">
                 {description}
               </SheetDescription>
             </div>
@@ -192,8 +192,8 @@ export function QuickCreateSurface({
           <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-5">
             {isLoading ? (
               <div role="status" aria-label={`Loading ${title}`} className="grid gap-4">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-[var(--size-control)] w-full" />
+                <Skeleton className="h-[var(--size-control)] w-full" />
                 <Skeleton className="h-24 w-full" />
               </div>
             ) : (
@@ -277,7 +277,7 @@ export function QuickCreateSurface({
                 <DialogPrimitive.Title className="text-base font-semibold text-copy-primary">
                   {discardTitle}
                 </DialogPrimitive.Title>
-                <DialogPrimitive.Description className="mt-2 text-sm leading-6 text-copy-secondary">
+                <DialogPrimitive.Description className="mt-2 text-p-sm text-copy-secondary">
                   {discardDescription}
                 </DialogPrimitive.Description>
                 <div className="mt-5 flex justify-end gap-2">

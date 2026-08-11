@@ -68,7 +68,7 @@ export function DataTransferJobProgress({
           aria-valuemax={100}
           aria-valuenow={safeProgress}
         >
-          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${safeProgress}%` }} />
+          <div className="h-full rounded-full bg-primary transition-[width] duration-150" style={{ width: `${safeProgress}%` }} />
         </div>
         <div className="mt-2 flex items-center justify-between gap-3 text-xs text-copy-muted">
           <span>{message || "Waiting for progress..."}</span>

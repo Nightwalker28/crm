@@ -10,7 +10,7 @@ export function PermissionDeniedState() {
         <ShieldX aria-hidden="true" />
       </div>
       <h1 className="mt-4 text-xl font-semibold text-copy-primary">You do not have permission to view this page</h1>
-      <p className="mt-2 max-w-md text-sm leading-6 text-copy-secondary">Ask an administrator for the required module or action access.</p>
+      <p className="mt-2 max-w-md text-p-sm text-copy-secondary">Ask an administrator for the required module or action access.</p>
       <Button asChild className="mt-6" variant="outline"><Link href="/dashboard">Return to dashboard</Link></Button>
     </div>
   );

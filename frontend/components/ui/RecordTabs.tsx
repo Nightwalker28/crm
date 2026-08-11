@@ -72,7 +72,7 @@ export function RecordTabs({
                   renderPanel ? `record-tab-panel-${tab.id}` : undefined
                 }
                 className={cn(
-                  "border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+                  "border-b-2 px-3 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
                   active
                     ? "border-primary text-copy-primary"
                     : "border-transparent text-copy-muted hover:text-copy-primary",

@@ -218,7 +218,7 @@ function ConditionGroupsContent({
                     <div className="space-y-2">
                       <Label>Value</Label>
                       {hidesValue ? (
-                        <div className="flex h-10 items-center rounded-md border border-line-default px-3 text-sm text-copy-muted">
+                        <div className="flex h-10 items-center rounded-[var(--radius-card)] border border-line-default px-3 text-sm text-copy-muted">
                           No value needed
                         </div>
                       ) : selectedField?.type === "relation" && selectedField.recordType ? (

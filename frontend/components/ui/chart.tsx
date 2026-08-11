@@ -51,7 +51,7 @@ function ChartTooltipContent({ active, payload, label }: { active?: boolean; pay
   const context = React.useContext(ChartContext);
   if (!active || !payload?.length) return null;
   return (
-    <div className="min-w-36 rounded-md border border-line-default bg-surface-raised px-3 py-2 text-sm shadow-[var(--shadow-panel)]">
+    <div className="min-w-36 rounded-[var(--radius-card)] border border-line-default bg-surface-raised px-3 py-2 text-sm shadow-[var(--shadow-panel)]">
       {label ? <div className="mb-2 font-medium text-copy-primary">{label}</div> : null}
       <div className="space-y-1.5">
         {payload.map((item, index) => {

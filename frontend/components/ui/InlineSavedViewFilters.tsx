@@ -27,7 +27,7 @@ export function InlineSavedViewFilters({ filterFields, filters, onChange, hideHe
       {!hideHeader ? <Card className="px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-copy-secondary">Quick Filters</h2>
+            <h2 className="text-sm font-semibold text-copy-secondary">Quick Filters</h2>
             <p className="mt-1 text-xs text-copy-muted">
               Apply reusable AND/OR conditions directly from this module page.
             </p>

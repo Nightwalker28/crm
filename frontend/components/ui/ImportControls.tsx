@@ -211,8 +211,8 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
             type="button"
             disabled={menuDisabled}
             onClick={() => inputRef.current?.click()}
-            className={`flex w-full items-center gap-2 rounded-[var(--radius-control-sm)] px-3 py-2 text-sm text-copy-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:text-copy-disabled ${
-              focus ? "bg-action-primary-muted text-copy-primary" : ""
+            className={`flex w-full items-center gap-2 rounded-[var(--radius-control-sm)] px-3 py-2 text-sm text-copy-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:pointer-events-none disabled:text-copy-disabled ${
+ focus ? "bg-action-primary-muted text-copy-primary" : ""
             }`}
           >
             <Upload aria-hidden="true" />
@@ -380,7 +380,7 @@ function SummaryCard({
     tone === "success" ? "text-state-success" : tone === "danger" ? "text-state-danger" : "text-copy-primary";
   return (
     <Card variant="status" className="px-4 py-3">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">{label}</div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
       <div className={`mt-1 font-semibold ${size === "lg" ? "text-2xl" : "text-lg"} ${valueClassName}`}>{value}</div>
     </Card>
   );
