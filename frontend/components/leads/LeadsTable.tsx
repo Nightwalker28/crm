@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { UserRoundPlus } from "lucide-react";
 
@@ -44,6 +43,8 @@ type LeadsTableProps = {
   onSortChange?: (sort: SortState) => void;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
+  /** Opens the list's Quick Create surface. Omitted when the user cannot create leads. */
+  onCreateLead?: () => void;
 };
 
 function initials(lead: Lead) {
@@ -67,6 +68,7 @@ export default function LeadsTable({
   onSortChange,
   hasActiveFilters = false,
   onClearFilters,
+  onCreateLead,
 }: LeadsTableProps) {
   const router = useRouter();
 
@@ -197,7 +199,10 @@ export default function LeadsTable({
                     icon={UserRoundPlus}
                     title="No leads yet"
                     description="Create your first lead or import existing records from CSV."
-                    action={<Button asChild><Link href="/dashboard/sales/leads/new">Create lead</Link></Button>}
+                    action={onCreateLead ? (
+                      // Same Quick Create surface as the toolbar, so the list has one create interaction.
+                      <Button type="button" onClick={onCreateLead}>Create lead</Button>
+                    ) : null}
                   />
                 )}
               </TableCell>

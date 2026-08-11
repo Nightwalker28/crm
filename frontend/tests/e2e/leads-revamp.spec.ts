@@ -69,6 +69,31 @@ const leadDetailLayout = {
   ],
 };
 
+const leadQuickCreateLayout = {
+  layout_id: null,
+  module_key: "sales_leads",
+  surface: "quick_create",
+  name: "Lead Quick Create",
+  source: "system",
+  version: 1,
+  can_customize: false,
+  warnings: [],
+  sections: [
+    {
+      id: "contact",
+      label: "Contact",
+      position: 0,
+      region: "main",
+      collapsed_by_default: false,
+      fields: [
+        { field_key: "first_name", label: "First name", field_type: "text", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: false },
+        { field_key: "last_name", label: "Last name", field_type: "text", field_source: "system", position: 1, width: "half", visible: true, required: false, readonly: false },
+        { field_key: "primary_email", label: "Email", field_type: "email", field_source: "system", position: 2, width: "full", visible: true, required: true, readonly: false },
+      ],
+    },
+  ],
+};
+
 async function mockLeadRelationshipOptions(page: Page) {
   await page.route("**/linked-record-options/users?**", async (route) => {
     await route.fulfill({
@@ -100,6 +125,9 @@ test.beforeEach(async ({ page }) => {
   );
 });
 
+// The primary create interaction on the Leads list is Quick Create, so this baseline now runs
+// the journey through it. The canonical /dashboard/sales/leads/new route is still first-class
+// and is covered end to end by leads-quick-create.spec.ts ("More details").
 test("Lead journey behavior baseline: filter, create, open, and add a note", async ({ page }) => {
   const createdLeadId = 987654399;
   const createdLeadEmail = "journey.baseline@example.test";
@@ -120,6 +148,9 @@ test("Lead journey behavior baseline: filter, create, open, and add a note", asy
   );
   await page.route("**/custom-fields/sales_leads", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }),
+  );
+  await page.route("**/record-layouts/sales_leads/quick_create/resolved", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(leadQuickCreateLayout) }),
   );
   await page.route("**/sales/leads/search?**", (route) => {
     const requestUrl = new URL(route.request().url());
@@ -203,12 +234,12 @@ test("Lead journey behavior baseline: filter, create, open, and add a note", asy
   await page.getByPlaceholder("Search leads").fill("Baseline");
   await expect(page.getByText("Existing Baseline", { exact: true })).toBeVisible();
 
-  await page.getByRole("link", { name: "Create lead" }).click();
-  await expect(page).toHaveURL(/\/dashboard\/sales\/leads\/new$/);
-  await page.getByRole("group").filter({ hasText: "First name" }).getByRole("textbox").fill("Journey");
-  await page.getByRole("group").filter({ hasText: "Last name" }).getByRole("textbox").fill("Baseline");
-  await page.getByLabel("Email").fill(createdLeadEmail);
   await page.getByRole("button", { name: "Create lead" }).click();
+  const quickCreate = page.getByRole("dialog", { name: "Create lead" });
+  await quickCreate.getByLabel("First name").fill("Journey");
+  await quickCreate.getByLabel("Last name").fill("Baseline");
+  await quickCreate.getByLabel("Email").fill(createdLeadEmail);
+  await quickCreate.getByRole("button", { name: "Create & open" }).click();
 
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${createdLeadId}$`));
   await expect(page.getByRole("heading", { name: "Journey Baseline" })).toBeVisible();
@@ -300,7 +331,7 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
   await expect(page.getByRole("heading", { name: "Leads" })).toBeVisible();
   await expect(page.getByPlaceholder("Search leads")).toBeVisible();
   await expect(page.getByRole("button", { name: /Filters/ })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create lead" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create lead" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
   await expect(page.getByRole("tablist", { name: "Record views" })).toBeVisible();
   await expect(page.getByRole("tab", { name: /All leads/ })).toHaveAttribute("aria-selected", "true");

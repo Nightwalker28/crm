@@ -45,7 +45,7 @@ test("shows only the module name in the global header and a cached profile photo
   await expect(page.locator("main > div > header").getByRole("heading", { name: "Leads", exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
   await expect(page.getByPlaceholder("Search leads")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create lead" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create lead" })).toBeVisible();
 
   await page.evaluate(() => {
     const current = JSON.parse(sessionStorage.getItem("lynk_user") || "{}");
