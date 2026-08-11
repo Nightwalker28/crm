@@ -150,9 +150,12 @@ test("Document upload keeps per-file completion actions on the full page", async
   await page.getByText("Add file overrides").click();
   await page.getByRole("button", { name: "Customize this file" }).click();
   await page.getByLabel("Display title").fill("Renewal agreement");
-  await page.getByLabel("Category").last().fill("Contract");
-  await page.getByLabel("Tags").last().fill("renewal");
-  await page.getByLabel("Tags").last().press("Enter");
+  // The per-file override inputs render before the shared ones, and the shared Category is
+  // hidden while overrides are open, so last() picks an unfillable element.
+  await page.getByLabel("Category").first().fill("Contract");
+  const overrideTags = page.getByLabel("Tags", { exact: true }).first();
+  await overrideTags.fill("renewal");
+  await overrideTags.press("Enter");
   await page.getByRole("button", { name: "Upload files" }).click();
 
   await expect(page).toHaveURL(/\/dashboard\/documents\/upload$/);
@@ -209,7 +212,9 @@ test("Failed rows retry with the same upload key and completed rows are not uplo
     if (route.request().method() !== "POST") return route.continue();
     attempts += 1;
     const body = await route.request().postDataBuffer();
-    uploadKeys.push(body?.toString("utf8").match(/idempotency_key\r\n\r\n([^\r]+)/)?.[1] ?? "");
+    // The multipart header is name="idempotency_key", so the value only starts after the
+    // closing quote; without it the match never lands and the key reads as empty.
+    uploadKeys.push(body?.toString("utf8").match(/name="idempotency_key"\r\n\r\n([^\r]+)/)?.[1] ?? "");
     if (attempts === 1) return route.fulfill({ status: 503, contentType: "application/json", body: "{}" });
     return route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify(document) });
   });

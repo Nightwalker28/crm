@@ -114,7 +114,9 @@ test("Support detail prioritizes the requester and conversation with guarded sav
   await page.goto(`/dashboard/support/cases/${caseId}`);
 
   await expect(page.getByRole("heading", { name: "CASE-2407-001" })).toBeVisible();
-  await expect(page.getByText("Grace Buyer")).toBeVisible();
+  // The requester shows twice: once as a plain summary tile and once linked to its contact.
+  // Assert the linked one, which also proves the record connection is present.
+  await expect(page.getByRole("link", { name: "Grace Buyer" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Conversation" })).toBeVisible();
   await expect(page.getByText("We are reviewing the account permissions.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();

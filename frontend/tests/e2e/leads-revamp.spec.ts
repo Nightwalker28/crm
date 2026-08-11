@@ -239,7 +239,8 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
             module_key: "sales_leads",
             name: "All leads",
             config: {
-              visible_columns: ["first_name", "last_name", "company", "status"],
+              // score_grade carries the "Warm" pill this test asserts on; score shows the number.
+              visible_columns: ["score_grade", "first_name", "last_name", "company", "status"],
               filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
               sort: null,
             },
@@ -251,7 +252,7 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
             module_key: "sales_leads",
             name: "My qualified leads",
             config: {
-              visible_columns: ["first_name", "company", "status"],
+              visible_columns: ["score_grade", "first_name", "company", "status"],
               filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
               sort: null,
             },
@@ -336,13 +337,17 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await page.goto("/dashboard/sales/leads/new");
   await expect(page.getByRole("heading", { name: "Create lead" })).toBeVisible();
   await page.getByRole("button", { name: "Create lead" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Email is required.");
+  // Next renders an empty route announcer with role="alert", so match the form's own error
+  // slot rather than every alert on the page.
+  await expect(page.locator('[data-slot="field-error"]')).toHaveText("Email is required.");
   await expect(page.getByLabel("Email")).toBeFocused();
 
   const ownerPicker = page.getByPlaceholder("Search owners (defaults to you)");
   await ownerPicker.fill("Ada");
+  // ArrowDown no-ops until the debounced lookup returns, so wait for the option to exist.
+  await expect(page.getByRole("option", { name: /Ada Owner/ })).toBeVisible();
   await ownerPicker.press("ArrowDown");
-  await expect(ownerPicker).toHaveAttribute("aria-activedescendant", /users-7$/);
+  await expect(ownerPicker).toHaveAttribute("aria-activedescendant", /-user-7$/);
   await ownerPicker.press("Enter");
   await expect(ownerPicker).toHaveValue("Ada Owner");
 
@@ -363,7 +368,8 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await expect(page.getByText("Ada Owner", { exact: true })).toBeVisible();
   await expect(page.getByText("Revenue", { exact: true })).toBeVisible();
   await expect(page.getByText("Enterprise", { exact: true })).toBeVisible();
-  await expect(page.getByText("Warm", { exact: true })).toBeVisible();
+  // "Warm" is both a tag and the score grade; this line is about the tag, like the one above.
+  await expect(page.locator("[data-layout-field='tags']").getByText("Warm", { exact: true })).toBeVisible();
   await expect(page.locator("div.bg-state-warning-muted", { hasText: "Lead Score" })).toBeVisible();
   await expect(page.getByText("Next follow-up", { exact: true })).toBeVisible();
   const detailFields = page.locator("[data-layout-section='contact'] [data-layout-field]");
