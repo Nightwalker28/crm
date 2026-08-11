@@ -36,9 +36,9 @@ export default function TasksBoard({ tasks, isLoading, isRefreshing = false, onO
 
   if (isLoading) {
     return (
-      <div className="flex gap-4 overflow-x-auto rounded-xl border border-line-default bg-surface p-4">
+      <div className="flex min-h-56 flex-1 gap-4 overflow-auto rounded-[var(--radius-panel)] border border-line-default bg-surface p-4">
         {STATUSES.map((status) => (
-          <div key={status.value} className="min-w-[260px] flex-1 rounded-lg border border-line-default bg-surface-muted p-3">
+          <div key={status.value} className="min-w-[260px] flex-1 rounded-[var(--radius-card)] border border-line-default bg-surface-muted p-3">
             <Skeleton className="h-6 w-28" />
             <Skeleton className="mt-4 h-32 w-full" />
             <Skeleton className="mt-3 h-32 w-full" />
@@ -53,7 +53,7 @@ export default function TasksBoard({ tasks, isLoading, isRefreshing = false, onO
   }
 
   return (
-    <div className="relative overflow-x-auto rounded-xl border border-line-default bg-surface p-4">
+    <div className="relative min-h-56 flex-1 overflow-auto rounded-[var(--radius-panel)] border border-line-default bg-surface p-4">
       {isRefreshing ? <div className="absolute right-4 top-4 text-xs text-copy-muted">Refreshing…</div> : null}
       <div className="flex min-w-max gap-4">
         {STATUSES.map((column) => {
@@ -71,7 +71,7 @@ export default function TasksBoard({ tasks, isLoading, isRefreshing = false, onO
                 setDropStatus(null);
                 if (task && task.status !== column.value) void onStatusChange(task, column.value);
               }}
-              className={`min-w-[270px] w-[270px] rounded-lg border bg-surface-muted transition-colors ${dropStatus === column.value ? "border-action-primary bg-action-primary-muted/20" : "border-line-default"}`}
+              className={`min-w-[270px] w-[270px] rounded-[var(--radius-card)] border bg-surface-muted transition-colors ${dropStatus === column.value ? "border-action-primary bg-action-primary-muted/20" : "border-line-default"}`}
             >
               <div className="flex items-center justify-between border-b border-line-default px-3 py-3">
                 <Pill bg={statusStyle.bg} text={statusStyle.text} border={statusStyle.border}>{column.label}</Pill>
@@ -86,7 +86,7 @@ export default function TasksBoard({ tasks, isLoading, isRefreshing = false, onO
                       draggable
                       onDragStart={() => setDraggedId(task.id)}
                       onDragEnd={() => { setDraggedId(null); setDropStatus(null); }}
-                      className={`rounded-lg border bg-surface p-3 shadow-sm ${isOverdue(task) ? "border-state-warning/60" : "border-line-default"}`}
+                      className={`rounded-[var(--radius-card)] border bg-surface p-3 shadow-sm ${isOverdue(task) ? "border-state-warning/60" : "border-line-default"}`}
                     >
                       <div className="flex items-start gap-2">
                         <GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" />

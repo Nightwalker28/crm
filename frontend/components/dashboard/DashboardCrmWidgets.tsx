@@ -90,7 +90,7 @@ export function formatDashboardCurrency(value: number | string | null | undefine
 function Metric({ label, value, helper }: { label: string; value: string | number; helper: string }) {
   return (
     <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-[0.16em] text-copy-muted">{label}</div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
       <div className="mt-3 text-3xl font-semibold text-copy-primary">{value}</div>
       <div className="mt-1 text-sm text-copy-secondary">{helper}</div>
     </div>

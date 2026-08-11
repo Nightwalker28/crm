@@ -50,7 +50,7 @@ function statusPill(value: string, type: "invoice" | "payment") {
 }
 
 function cell(invoice: PosInvoice, column: string) {
-  if (column === "invoice_number") return <TableCell className="sticky left-10 z-10 bg-surface"><Link href={`/dashboard/finance/pos/${invoice.id}`} className="font-mono text-xs font-semibold text-copy-primary hover:underline">{invoice.invoice_number}</Link></TableCell>;
+  if (column === "invoice_number") return <TableCell className="sticky left-10 z-10 bg-surface"><Link href={`/dashboard/finance/pos/${invoice.id}`} className="text-xs font-semibold tabular-nums text-copy-primary hover:underline">{invoice.invoice_number}</Link></TableCell>;
   if (column === "customer_name") return <TableCell><span className="font-medium text-copy-primary">{invoice.customer_name}</span></TableCell>;
   if (column === "status") return <TableCell>{statusPill(invoice.status, "invoice")}</TableCell>;
   if (column === "payment_status") return <TableCell>{statusPill(invoice.payment_status, "payment")}</TableCell>;
@@ -82,7 +82,7 @@ export default function InvoicesTable({ invoices, visibleColumns, isLoading, isR
             <TableRow key={invoice.id}>
               <TableCell className="sticky left-0 z-10 bg-surface"><Checkbox aria-label={`Select ${invoice.invoice_number}`} checked={selectedIds.includes(invoice.id)} onCheckedChange={(checked) => onToggle(invoice.id, checked === true)} /></TableCell>
               {visibleColumns.map((column) => <Fragment key={column}>{cell(invoice, column)}</Fragment>)}
-              <TableCell className="text-right"><Button asChild variant="ghost" size="icon-sm"><Link href={`/dashboard/finance/pos/${invoice.id}/print`} title={`Print ${invoice.invoice_number}`}><Printer /></Link></Button></TableCell>
+              <TableCell className="text-right"><Button asChild variant="ghost" size="icon-sm"><Link href={`/dashboard/finance/pos/${invoice.id}/print`} aria-label={`Print invoice ${invoice.invoice_number}`}><Printer /></Link></Button></TableCell>
             </TableRow>
           ))}
         </TableBody>

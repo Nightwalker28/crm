@@ -149,9 +149,9 @@ export function DashboardModuleSummary({
       href={href}
       className="block rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-raised"
     >
-      <div className="text-xs uppercase tracking-[0.16em] text-copy-muted">{moduleName}</div>
+      <div className="text-xs font-medium text-copy-label">{moduleName}</div>
       <div className="mt-3 text-3xl font-semibold text-copy-primary">{value}</div>
-      <div className="mt-2 text-sm leading-6 text-copy-secondary">{helper}</div>
+      <div className="mt-2 text-p-sm text-copy-secondary">{helper}</div>
       <div className="mt-4 flex items-center gap-2 text-sm font-medium text-copy-primary">
         Open module
         <ArrowRight className="h-4 w-4" />

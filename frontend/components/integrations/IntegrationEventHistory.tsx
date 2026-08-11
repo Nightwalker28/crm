@@ -171,7 +171,7 @@ export function IntegrationEventHistory() {
                     </TableCell>
                     <TableCell>
                       <div className="text-sm text-copy-secondary">{event.entity_type}</div>
-                      <div className="font-mono text-xs text-copy-muted">{event.entity_id}</div>
+                      <div className="text-xs tabular-nums text-copy-muted">{event.entity_id}</div>
                     </TableCell>
                     <TableCell>
                       {event.deliveries.length ? (

@@ -171,7 +171,7 @@ export default function InsertionOrdersList({
               <Link
                 href={`/dashboard/finance/insertion-orders/${order.id}`}
                 onClick={(event) => event.stopPropagation()}
-                className="rounded-[var(--radius-control-sm)] font-mono text-sm font-medium text-copy-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="rounded-[var(--radius-control-sm)] text-sm font-medium tabular-nums text-copy-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
               >
                 {order.io_number}
               </Link>
@@ -202,7 +202,7 @@ export default function InsertionOrdersList({
       case "currency":
         return (
           <TableCell>
-            <span className="rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted px-1.5 py-0.5 text-xs font-semibold tracking-wider text-copy-secondary">
+            <span className="rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted px-1.5 py-0.5 text-xs font-medium text-copy-secondary">
               {order.currency || "—"}
             </span>
           </TableCell>
@@ -243,7 +243,7 @@ export default function InsertionOrdersList({
         const textValue = getStringValue(order, column);
         return renderTextCell(
           textValue,
-          "block max-w-[140px] truncate font-mono text-sm tracking-tight text-copy-secondary",
+          "block max-w-[140px] truncate text-sm text-copy-secondary",
         );
       }
       case "user_name":

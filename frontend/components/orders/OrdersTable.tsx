@@ -94,7 +94,7 @@ export default function OrdersTable({
           <TableCell className="sticky left-0 z-10 bg-surface">
             <Link
               href={`/dashboard/sales/orders/${order.id}`}
-              className="font-mono text-sm font-medium text-copy-primary hover:underline"
+              className="text-sm font-medium tabular-nums text-copy-primary hover:underline"
             >
               {order.order_number}
             </Link>

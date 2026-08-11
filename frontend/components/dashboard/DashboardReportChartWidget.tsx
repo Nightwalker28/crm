@@ -12,6 +12,7 @@ import { getModuleDisplayName } from "@/lib/module-display";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
+import { CHART_AXIS_STROKE, CHART_GRID_STROKE, CHART_TICK_FILL, seriesColor } from "@/lib/chartColors";
 
 type ReportField = {
   key: string;
@@ -59,8 +60,6 @@ const DEFAULT_FILTERS: SavedViewFilters = {
   all_conditions: [],
   any_conditions: [],
 };
-
-const CHART_COLORS = ["#8bdbc1", "#7aa7ff", "#f2c86b", "#e58fb1", "#9fd56e", "#c2a5ff", "#f09568", "#6ed4e8"];
 
 export async function fetchDashboardSavedReports() {
   const res = await apiFetch("/reports/saved");
@@ -135,23 +134,23 @@ export function DashboardReportChartWidget({
         <div className="mt-1 text-xs text-copy-muted">{getModuleDisplayName(savedReport.module_key)} / {report?.dimension.label ?? savedReport.config.dimension}</div>
       </div>
       {rows.length ? (
-        <ChartContainer config={{ value: { label: valueLabel, color: CHART_COLORS[0] } }} className="h-64 w-full min-w-0">
+        <ChartContainer config={{ value: { label: valueLabel, color: seriesColor(0) } }} className="h-64 w-full min-w-0">
           <ResponsiveContainer width="100%" height="100%">
             {viewMode === "pie" ? (
               <PieChart>
                 <Tooltip content={<ChartTooltipContent />} />
                 <Pie data={rows} dataKey="value" nameKey="label" outerRadius="82%" innerRadius="48%" paddingAngle={2}>
-                  {rows.map((row, index) => <Cell key={row.key} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+                  {rows.map((row, index) => <Cell key={row.key} fill={seriesColor(index)} />)}
                 </Pie>
               </PieChart>
             ) : (
               <BarChart data={rows} margin={{ top: 8, right: 12, left: 0, bottom: 34 }}>
-                <CartesianGrid vertical={false} />
-                <XAxis dataKey="label" interval={0} tickLine={false} axisLine={false} angle={-22} textAnchor="end" height={48} />
-                <YAxis tickLine={false} axisLine={false} width={42} />
+                <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
+                <XAxis dataKey="label" interval={0} tickLine={false} axisLine={false} stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} angle={-22} textAnchor="end" height={48} />
+                <YAxis tickLine={false} axisLine={false} stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} width={42} />
                 <Tooltip content={<ChartTooltipContent />} />
                 <Bar dataKey="value" radius={[5, 5, 0, 0]}>
-                  {rows.map((row, index) => <Cell key={row.key} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+                  {rows.map((row, index) => <Cell key={row.key} fill={seriesColor(index)} />)}
                 </Bar>
               </BarChart>
             )}

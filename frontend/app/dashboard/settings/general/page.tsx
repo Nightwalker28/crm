@@ -252,7 +252,7 @@ export default function CompanyPage() {
             <CardHeader>
               <div>
                 <h2 className="text-base font-semibold text-copy-primary">Company profile</h2>
-                <p className="mt-1 text-sm leading-6 text-copy-muted">Primary business details shown across administrative and operational surfaces.</p>
+                <p className="mt-1 text-p-sm text-copy-muted">Primary business details shown across administrative and operational surfaces.</p>
               </div>
             </CardHeader>
             <CardBody>
@@ -287,7 +287,7 @@ export default function CompanyPage() {
             <CardHeader>
               <div>
                 <h2 className="text-base font-semibold text-copy-primary">Commercial defaults</h2>
-                <p className="mt-1 text-sm leading-6 text-copy-muted">Shared currency and billing information used by commercial records.</p>
+                <p className="mt-1 text-p-sm text-copy-muted">Shared currency and billing information used by commercial records.</p>
               </div>
             </CardHeader>
             <CardBody>
@@ -318,7 +318,7 @@ export default function CompanyPage() {
             <CardHeader>
               <div>
                 <h2 className="text-base font-semibold text-copy-primary">Branding</h2>
-                <p className="mt-1 text-sm leading-6 text-copy-muted">Manage the tenant company logo used across CRM documents and workspace surfaces.</p>
+                <p className="mt-1 text-p-sm text-copy-muted">Manage the tenant company logo used across CRM documents and workspace surfaces.</p>
               </div>
             </CardHeader>
             <CardBody>

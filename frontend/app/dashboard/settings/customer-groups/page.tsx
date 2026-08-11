@@ -471,7 +471,7 @@ export default function CustomerGroupsSettingsPage() {
                     <div className="font-medium text-copy-primary">{group.name}</div>
                     {group.description ? <div className="mt-1 text-xs text-copy-muted">{group.description}</div> : null}
                   </TableCell>
-                  <TableCell className="font-mono text-xs text-copy-muted">{group.group_key}</TableCell>
+                  <TableCell className="text-xs text-copy-muted">{group.group_key}</TableCell>
                   <TableCell className="text-copy-secondary">{formatDiscount(group.discount_type, group.discount_value)}</TableCell>
                   <TableCell>
                     <Pill

@@ -61,7 +61,7 @@ export default function SupportCasesTable({ cases, isLoading, isRefreshing = fal
   function renderCell(item: SupportCase, column: string) {
     switch (column) {
       case "case_number":
-        return <TableCell><span className="font-mono text-sm font-medium text-copy-primary">{item.case_number}</span></TableCell>;
+        return <TableCell><span className="text-sm font-medium tabular-nums text-copy-primary">{item.case_number}</span></TableCell>;
       case "subject":
         return <TableCell><span className="text-sm font-medium text-copy-primary">{item.subject}</span></TableCell>;
       case "status": {

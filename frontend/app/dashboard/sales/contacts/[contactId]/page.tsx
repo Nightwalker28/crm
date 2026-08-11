@@ -533,7 +533,7 @@ function ContactOverview(props: OverviewProps) {
           </div>
         </Card>
         <Card className="px-5 py-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-copy-secondary">
+          <h2 className="text-sm font-semibold text-copy-secondary">
             Customer group
           </h2>
           <Select
@@ -569,7 +569,7 @@ function ContactOverview(props: OverviewProps) {
         <Card className="px-5 py-5">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-copy-secondary">
+              <h2 className="text-sm font-semibold text-copy-secondary">
                 WhatsApp
               </h2>
               <p className="mt-2 text-sm text-copy-muted">
@@ -666,7 +666,7 @@ function RelatedRecords({
               <Link
                 key={opportunity.opportunity_id}
                 href={`/dashboard/sales/opportunities/${opportunity.opportunity_id}`}
-                className="block rounded-md border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"
+                className="block rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"
               >
                 <div className="text-sm font-semibold text-copy-primary">
                   {opportunity.opportunity_name}
@@ -694,7 +694,7 @@ function RelatedRecords({
               <Link
                 key={quote.quote_id}
                 href={`/dashboard/sales/quotes/${quote.quote_id}`}
-                className="block rounded-md border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"
+                className="block rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"
               >
                 <div className="text-sm font-semibold text-copy-primary">
                   {quote.quote_number}
@@ -738,7 +738,7 @@ function DetailField({
   const content = value || "Not recorded";
   return (
     <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">
+      <div className="text-xs font-medium text-copy-label">
         {label}
       </div>
       <div className="mt-1 text-sm text-copy-primary">
@@ -761,8 +761,8 @@ function DetailField({
 
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-line-subtle bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">
+    <div className="rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-4">
+      <div className="text-xs font-medium text-copy-label">
         {label}
       </div>
       <div className="mt-2 text-sm font-medium text-copy-primary">{value}</div>

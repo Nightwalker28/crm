@@ -34,15 +34,15 @@ export default function ClientOrderDetailPage() {
         </header>
 
         {orderQuery.isLoading ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading order...</div>
+          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading order...</div>
         ) : orderQuery.error ? (
-          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
+          <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {orderQuery.error instanceof Error ? orderQuery.error.message : "Order unavailable."}
           </div>
         ) : order ? (
           <div className="grid gap-5">
-            <section className="rounded-md border border-line-default bg-surface p-5">
-              <div className="text-xs uppercase text-copy-muted">{order.external_reference}</div>
+            <section className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
+              <div className="text-xs font-medium text-copy-label">{order.external_reference}</div>
               <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
                 <div>
                   <h1 className="text-3xl font-semibold tracking-normal text-copy-primary">Order details</h1>
@@ -55,7 +55,7 @@ export default function ClientOrderDetailPage() {
               </div>
             </section>
 
-            <section className="overflow-hidden rounded-md border border-line-default bg-surface">
+            <section className="overflow-hidden rounded-[var(--radius-card)] border border-line-default bg-surface">
               <Table>
                 <TableHeader>
                   <TableHeaderRow>
@@ -70,7 +70,7 @@ export default function ClientOrderDetailPage() {
                     <TableRow key={line.id}>
                       <TableCell>
                         <div className="font-medium text-copy-primary">{line.name}</div>
-                        <div className="mt-1 text-xs uppercase text-copy-muted">{line.item_type}</div>
+                        <div className="mt-1 text-xs font-medium text-copy-label">{line.item_type}</div>
                       </TableCell>
                       <TableCell className="text-right text-copy-secondary">{line.quantity}</TableCell>
                       <TableCell className="text-right text-copy-secondary">{money(line.unit_price_snapshot, line.currency)}</TableCell>

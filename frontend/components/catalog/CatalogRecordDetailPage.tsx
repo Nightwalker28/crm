@@ -126,7 +126,7 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
               <div className="min-w-0">
                 <h2 id="catalog-details-heading" className="text-base font-semibold text-copy-primary">Details</h2>
                 {record.description ? (
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{record.description}</p>
+                  <p className="mt-2 whitespace-pre-wrap text-p-sm text-copy-secondary">{record.description}</p>
                 ) : (
                   <p className="mt-2 text-sm text-copy-muted">No description recorded.</p>
                 )}
@@ -141,9 +141,9 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
             </CardHeader>
             <CardBody>
               <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-                <DetailField label="Public slug" value={record.slug || "Not set"} mono />
+                <DetailField label="Public slug" value={record.slug || "Not set"} />
                 <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">Website feed</dt>
+                  <dt className="text-xs font-medium text-copy-label">Website feed</dt>
                   <dd className="mt-1.5">
                     {record.is_public ? (
                       <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">
@@ -154,17 +154,17 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
                     )}
                   </dd>
                 </div>
-                {isProduct ? <DetailField label="SKU" value={record.sku || "Not set"} mono /> : null}
+                {isProduct ? <DetailField label="SKU" value={record.sku || "Not set"} /> : null}
                 <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">Public base price</dt>
+                  <dt className="text-xs font-medium text-copy-label">Public base price</dt>
                   <dd className="mt-1 text-sm font-semibold text-copy-primary">
                     {formatAmount(record.public_unit_price, record.currency)}
                   </dd>
-                  <p className="mt-1 text-xs leading-5 text-copy-muted">
+                  <p className="mt-1 text-p-xs text-copy-muted">
                     Customer-specific pricing is resolved separately for authenticated customers.
                   </p>
                 </div>
-                <DetailField label="Currency" value={record.currency} mono />
+                <DetailField label="Currency" value={record.currency} />
                 {isProduct ? (
                   <>
                     <DetailField label="Stock status" value={stockLabel(record.stock_status)} />
@@ -227,16 +227,14 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
 function DetailField({
   label,
   value,
-  mono = false,
 }: {
   label: string;
   value: string | number;
-  mono?: boolean;
 }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</dt>
-      <dd className={`mt-1 text-sm text-copy-primary ${mono ? "font-mono" : ""}`}>{value}</dd>
+      <dt className="text-xs font-medium text-copy-muted">{label}</dt>
+      <dd className="mt-1 text-sm text-copy-primary">{value}</dd>
     </div>
   );
 }

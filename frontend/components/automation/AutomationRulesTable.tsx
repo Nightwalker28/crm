@@ -57,7 +57,7 @@ export function AutomationRulesTable({
           {rules.map((rule) => (
             <TableRow key={rule.id}>
               <TableCell>
-                <button type="button" className="max-w-72 text-left font-semibold text-copy-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => onEdit(rule)}>
+                <button type="button" className="max-w-72 text-left font-semibold text-copy-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus" onClick={() => onEdit(rule)}>
                   {rule.name}
                 </button>
                 {rule.description ? <p className="mt-1 max-w-72 truncate text-xs text-copy-muted">{rule.description}</p> : null}

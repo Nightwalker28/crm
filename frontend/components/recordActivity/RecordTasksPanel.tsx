@@ -307,7 +307,7 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
                 <div className="min-w-0">
                   <Link
                     href={`/dashboard/tasks?taskId=${task.id}`}
-                    className="block truncate text-sm font-semibold text-copy-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="block truncate text-sm font-semibold text-copy-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                   >
                     {task.title}
                   </Link>
@@ -336,7 +336,7 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
                   ) : null}
                 </div>
               </div>
-              {task.description ? <div className="mt-3 line-clamp-2 text-sm leading-6 text-copy-secondary">{task.description}</div> : null}
+              {task.description ? <div className="mt-3 line-clamp-2 text-p-sm text-copy-secondary">{task.description}</div> : null}
             </li>
           ))}
         </ol>

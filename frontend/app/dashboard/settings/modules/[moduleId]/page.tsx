@@ -95,7 +95,7 @@ function ModuleAccessEditor({
       <p className="border-b border-line-subtle px-5 py-3 text-sm text-copy-secondary">
         Department access opens the parent gate. Select the individual teams that should receive access from the Teams tab.
       </p>
-      <ModuleTableShell className="min-h-[44vh] max-h-[58vh] rounded-none border-0">
+      <ModuleTableShell className="rounded-none border-0">
         <Table className="min-w-[760px]">
           <TableHeader>
             <TableHeaderRow>
@@ -139,7 +139,7 @@ function ModuleAccessEditor({
                           setTeamIds((current) => current.filter((teamId) => !childTeamIds.has(teamId)));
                         }
                       }}
-                      className="ml-auto flex h-5 w-5 items-center justify-center rounded border border-line-strong bg-surface text-copy-primary focus-visible:ring-2 focus-visible:ring-primary"
+                      className="ml-auto flex h-5 w-5 items-center justify-center rounded border border-line-strong bg-surface text-copy-primary focus-visible:ring-2 focus-visible:ring-focus"
                     >
                       <CheckboxIndicator className="h-3.5 w-3.5" />
                     </Checkbox>
@@ -158,7 +158,7 @@ function ModuleAccessEditor({
       <p className="border-b border-line-subtle px-5 py-3 text-sm text-copy-secondary">
         A team can be selected only when its parent department is allowed. Unassigned teams use a direct team grant.
       </p>
-      <ModuleTableShell className="min-h-[44vh] max-h-[58vh] rounded-none border-0">
+      <ModuleTableShell className="rounded-none border-0">
         <Table className="min-w-[860px]">
           <TableHeader>
             <TableHeaderRow>
@@ -204,7 +204,7 @@ function ModuleAccessEditor({
                         checked={directAccess}
                         disabled={(hasDepartment && !departmentAccess) || isSaving}
                         onCheckedChange={(nextChecked) => setTeamIds((current) => toggleId(current, team.id, nextChecked === true))}
-                        className="flex h-5 w-5 items-center justify-center rounded border border-line-strong bg-surface text-copy-primary focus-visible:ring-2 focus-visible:ring-primary"
+                        className="flex h-5 w-5 items-center justify-center rounded border border-line-strong bg-surface text-copy-primary focus-visible:ring-2 focus-visible:ring-focus"
                       >
                         <CheckboxIndicator className="h-3.5 w-3.5" />
                       </Checkbox>

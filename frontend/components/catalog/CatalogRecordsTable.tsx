@@ -139,7 +139,7 @@ export default function CatalogRecordsTable({
               <Link
                 href={`/dashboard/catalog/${kind}/${record.id}`}
                 onClick={(event) => event.stopPropagation()}
-                className="truncate text-sm font-semibold text-copy-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                className="truncate text-sm font-semibold text-copy-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
               >
                 {record.name}
               </Link>
@@ -152,7 +152,7 @@ export default function CatalogRecordsTable({
       case "sku":
         return isProduct ? (
           <TableCell>
-            <span className="rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted px-2 py-0.5 font-mono text-xs tracking-wider text-copy-secondary">
+            <span className="rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted px-2 py-0.5 text-xs text-copy-secondary">
               {record.sku || <span className="text-copy-disabled">—</span>}
             </span>
           </TableCell>
@@ -160,7 +160,7 @@ export default function CatalogRecordsTable({
       case "slug":
         return (
           <TableCell>
-            <span className="font-mono text-xs text-copy-secondary">{record.slug || "—"}</span>
+            <span className="text-xs text-copy-secondary">{record.slug || "—"}</span>
           </TableCell>
         );
       case "description":
@@ -182,7 +182,7 @@ export default function CatalogRecordsTable({
       case "currency":
         return (
           <TableCell>
-            <span className="font-mono text-xs text-copy-secondary">{record.currency || "—"}</span>
+            <span className="text-xs text-copy-secondary">{record.currency || "—"}</span>
           </TableCell>
         );
       case "stock_status":
@@ -217,7 +217,7 @@ export default function CatalogRecordsTable({
                   checked={record.is_active}
                   disabled={togglingRecordId === record.id}
                   onCheckedChange={(checked) => onToggleActive(record, checked)}
-                  className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:bg-action-primary"
+                  className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:bg-action-primary"
                 >
                   <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
                 </Switch>

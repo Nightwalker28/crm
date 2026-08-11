@@ -192,7 +192,7 @@ export default function OpportunitiesTable({
         return (
           <TableCell>
             {opportunity.currency_type ? (
-              <span className="rounded border border-line-default bg-surface-muted px-1.5 py-0.5 text-xs font-bold tracking-wider text-copy-muted">
+              <span className="rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted px-1.5 py-0.5 text-xs font-medium text-copy-muted">
                 {opportunity.currency_type}
               </span>
             ) : (

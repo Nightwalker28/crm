@@ -75,15 +75,15 @@ export default function DocumentsPage() {
     <div className="flex flex-col gap-4 text-copy-primary">
       <div className="grid gap-3 md:grid-cols-3">
         <Card variant="status" className="px-4 py-3">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-copy-muted"><HardDrive className="size-3.5" />Used</div>
+          <div className="flex items-center gap-2 text-xs font-medium text-copy-label"><HardDrive className="size-3.5" />Used</div>
           <div className="mt-1 text-lg font-semibold text-copy-primary">{storageUsageQuery.error ? "Unavailable" : storageUsage ? formatBytes(storageUsage.used_bytes) : "Loading"}</div>
         </Card>
         <Card variant="status" className="px-4 py-3">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-copy-muted"><HardDrive className="size-3.5" />Remaining</div>
+          <div className="flex items-center gap-2 text-xs font-medium text-copy-label"><HardDrive className="size-3.5" />Remaining</div>
           <div className="mt-1 text-lg font-semibold text-copy-primary">{storageUsageQuery.error ? "Unavailable" : storageUsage ? formatBytes(storageUsage.remaining_bytes) : "Loading"}</div>
         </Card>
         <Card variant="status" className="px-4 py-3">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-copy-muted"><HardDrive className="size-3.5" />Quota</div>
+          <div className="flex items-center gap-2 text-xs font-medium text-copy-label"><HardDrive className="size-3.5" />Quota</div>
           <div className="mt-1 text-lg font-semibold text-copy-primary">
             {storageUsageQuery.error ? "Unavailable" : storageUsage ? `${storageUsage.usage_percent.toFixed(1)}% of ${formatBytes(storageUsage.tenant_storage_limit_bytes)}` : "Loading"}
           </div>

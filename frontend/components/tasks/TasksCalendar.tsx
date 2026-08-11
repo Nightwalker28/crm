@@ -63,11 +63,11 @@ export default function TasksCalendar({ tasks, isLoading, isRefreshing = false, 
     setSelectedDay(today);
   }
 
-  if (isLoading) return <Skeleton className="h-[640px] w-full rounded-xl" />;
+  if (isLoading) return <Skeleton className="h-[640px] w-full rounded-[var(--radius-panel)]" />;
   if (!tasks.length) return <EmptyState icon={CalendarDays} title="No tasks to schedule" description="Tasks matching the current view will appear here." />;
 
   return (
-    <section className="overflow-hidden rounded-xl border border-line-default bg-surface" aria-label="Task due date calendar">
+    <section className="overflow-hidden rounded-[var(--radius-panel)] border border-line-default bg-surface" aria-label="Task due date calendar">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-default px-4 py-3">
         <div>
           <h2 className="font-semibold text-copy-primary">{month.toLocaleDateString(undefined, { month: "long", year: "numeric" })}</h2>
@@ -132,7 +132,7 @@ export default function TasksCalendar({ tasks, isLoading, isRefreshing = false, 
       <div className="hidden overflow-x-auto md:block">
         <div className="min-w-[840px]">
           <div className="grid grid-cols-7 border-b border-line-default bg-surface-muted">
-            {WEEKDAYS.map((day) => <div key={day} className="px-2 py-2 text-center text-xs font-semibold uppercase tracking-wide text-copy-muted">{day}</div>)}
+            {WEEKDAYS.map((day) => <div key={day} className="px-2 py-2 text-center text-xs font-semibold text-copy-label">{day}</div>)}
           </div>
           <div className="grid grid-cols-7">
             {days.map((date) => {
@@ -146,7 +146,7 @@ export default function TasksCalendar({ tasks, isLoading, isRefreshing = false, 
                     {entries.slice(0, 3).map((task) => {
                       const priority = getTaskPriorityStyle(task.priority);
                       return (
-                        <button key={task.id} type="button" onClick={() => onOpen(task)} className="block w-full rounded-md border border-line-default bg-surface px-2 py-1.5 text-left hover:border-action-primary">
+                        <button key={task.id} type="button" onClick={() => onOpen(task)} className="block w-full rounded-[var(--radius-card)] border border-line-default bg-surface px-2 py-1.5 text-left hover:border-action-primary">
                           <span className="block truncate text-xs font-medium text-copy-primary">{task.title}</span>
                           <Pill bg={priority.bg} text={priority.text} border={priority.border} className="mt-1">{priority.label}</Pill>
                         </button>

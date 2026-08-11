@@ -293,7 +293,7 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
         <h1 className="mt-4 text-xl font-semibold text-copy-primary">
           {loadError === "unavailable" ? "This booking link is unavailable" : "The booking page could not be loaded"}
         </h1>
-        <p className="mt-2 max-w-md text-sm leading-6 text-copy-secondary">
+        <p className="mt-2 max-w-md text-p-sm text-copy-secondary">
           {loadError === "unavailable"
             ? "The link may be disabled or no longer available. Ask the organizer for an updated link."
             : "Check your connection and try again."}
@@ -380,7 +380,15 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
                 <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void refreshSlots()}>Try again</Button>
               </div>
             ) : slots.length ? (
-              <div className="mt-3 grid max-h-[28rem] gap-2 overflow-y-auto pr-1" role="radiogroup" aria-label="Available meeting times">
+              <div
+                // Bounded on purpose: a day can expose dozens of slots, and an uncapped
+                // list would make the page jump on every date change. This is a picker,
+                // not page content - see docs/design/design.md 4.5.
+                data-bounded-list
+                className="mt-3 grid max-h-[28rem] gap-2 overflow-y-auto pr-1"
+                role="radiogroup"
+                aria-label="Available meeting times"
+              >
                 {slots.map((slot) => {
                   const selected = selectedSlot?.start_at === slot.start_at;
                   return (
@@ -393,7 +401,7 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
                         setSelectedSlot(slot);
                         setSubmitError(null);
                       }}
-                      className={`rounded-[var(--radius-control)] border px-3 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                      className={`rounded-[var(--radius-control)] border px-3 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
                         selected
                           ? "border-state-success/60 bg-state-success-muted text-copy-primary"
                           : "border-line-default bg-surface-muted text-copy-secondary hover:border-line-strong hover:bg-surface-raised"

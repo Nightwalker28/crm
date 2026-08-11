@@ -31,6 +31,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { appendSavedViewFilterParams, canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
 import type { ModuleFilterField } from "@/lib/moduleViewConfigs";
+import { CHART_AXIS_STROKE, CHART_GRID_STROKE, CHART_TICK_FILL, seriesColor } from "@/lib/chartColors";
 
 type ReportField = {
   key: string;
@@ -131,7 +132,6 @@ const DEFAULT_FILTERS: SavedViewFilters = {
 
 const CRM_TASK_SOURCE_MODULE_KEYS = ["sales_leads", "sales_contacts", "sales_organizations", "sales_opportunities", "sales_quotes"];
 // Concrete colors keep downloaded SVG charts portable outside the app's CSS token scope.
-const CHART_COLORS = ["#8bdbc1", "#7aa7ff", "#f2c86b", "#e58fb1", "#9fd56e", "#c2a5ff", "#f09568", "#6ed4e8"];
 
 const CRM_REPORT_PRESETS: ReportPreset[] = [
   {
@@ -581,7 +581,7 @@ export default function ReportsPage() {
               className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3 text-left transition hover:border-action-primary/60 hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
             >
               <span className="block text-sm font-medium text-copy-primary">{preset.label}</span>
-              <span className="mt-1 block text-xs leading-5 text-copy-secondary">{preset.description}</span>
+              <span className="mt-1 block text-p-xs text-copy-secondary">{preset.description}</span>
             </button>
           ))}
         </div>
@@ -828,7 +828,7 @@ export default function ReportsPage() {
               action={hasActiveFilters ? <Button type="button" variant="outline" onClick={clearReportFilters}>Clear filters</Button> : undefined}
             />
           ) : viewMode === "table" ? (
-            <ModuleTableShell className="min-h-[24rem] max-h-[24rem]" isRefreshing={reportQuery.isFetching && !reportQuery.isLoading}>
+            <ModuleTableShell isRefreshing={reportQuery.isFetching && !reportQuery.isLoading}>
               <Table>
                 <TableHeader>
                   <TableHeaderRow>
@@ -849,26 +849,26 @@ export default function ReportsPage() {
               </Table>
             </ModuleTableShell>
           ) : (
-            <ChartContainer ref={chartRef} config={{ value: { label: valueLabel, color: CHART_COLORS[0] } }} className="h-[24rem] w-full" role="img" aria-label={`${selectedModule?.label ?? "Module"} report grouped by ${report?.dimension.label ?? "selected field"}`}>
+            <ChartContainer ref={chartRef} config={{ value: { label: valueLabel, color: seriesColor(0) } }} className="h-[24rem] w-full" role="img" aria-label={`${selectedModule?.label ?? "Module"} report grouped by ${report?.dimension.label ?? "selected field"}`}>
               <ResponsiveContainer width="100%" height="100%">
                 {viewMode === "pie" ? (
                   <PieChart>
                     <Tooltip content={<ChartTooltipContent />} />
                     <Pie data={chartData} dataKey="value" nameKey="label" outerRadius="82%" innerRadius="52%" paddingAngle={2}>
                       {chartData.map((row, index) => (
-                        <Cell key={row.key} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                        <Cell key={row.key} fill={seriesColor(index)} />
                       ))}
                     </Pie>
                   </PieChart>
                 ) : (
                   <BarChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 42 }}>
-                    <CartesianGrid stroke="#262626" vertical={false} />
-                    <XAxis dataKey="label" stroke="#a3a3a3" tick={{ fill: "#a3a3a3", fontSize: 11 }} angle={-28} textAnchor="end" interval={0} height={58} />
-                    <YAxis stroke="#a3a3a3" tick={{ fill: "#a3a3a3", fontSize: 11 }} />
+                    <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
+                    <XAxis dataKey="label" stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} angle={-28} textAnchor="end" interval={0} height={58} />
+                    <YAxis stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} />
                     <Tooltip content={<ChartTooltipContent />} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                       {chartData.map((row, index) => (
-                        <Cell key={row.key} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                        <Cell key={row.key} fill={seriesColor(index)} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -881,15 +881,15 @@ export default function ReportsPage() {
         <Card className="p-4">
           <div className="space-y-5">
             <div>
-              <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">Records matched</div>
+              <div className="text-xs font-medium text-copy-label">Records matched</div>
               <div className="mt-2 text-3xl font-semibold text-copy-primary">{reportQuery.isLoading ? "—" : formatNumber(report?.total_count ?? 0)}</div>
             </div>
             <div>
-              <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">Groups</div>
+              <div className="text-xs font-medium text-copy-label">Groups</div>
               <div className="mt-2 text-3xl font-semibold text-copy-primary">{reportQuery.isLoading ? "—" : formatNumber(chartData.length)}</div>
             </div>
             <div className="border-t border-line-subtle pt-4">
-              <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">Top result</div>
+              <div className="text-xs font-medium text-copy-label">Top result</div>
               <div className="mt-2 text-sm font-medium text-copy-primary">{chartData[0]?.label ?? "No data"}</div>
               <div className="mt-1 text-sm text-copy-secondary">{chartData[0] ? `${formatNumber(chartData[0].value)} ${valueLabel.toLowerCase()}` : "No grouped results"}</div>
             </div>
@@ -940,7 +940,7 @@ export default function ReportsPage() {
 function MetricCard({ label, value, helper }: { label: string; value: string; helper: string }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3">
-      <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
       <div className="mt-2 text-xl font-semibold text-copy-primary">{value}</div>
       <div className="mt-1 text-xs text-copy-muted">{helper}</div>
     </div>
@@ -950,7 +950,7 @@ function MetricCard({ label, value, helper }: { label: string; value: string; he
 function ForecastBucketList({ title, rows }: { title: string; rows: ForecastBucket[] }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
-      <div className="border-b border-line-subtle px-3 py-2 text-xs font-medium uppercase tracking-wide text-copy-muted">{title}</div>
+      <div className="border-b border-line-subtle px-3 py-2 text-xs font-medium text-copy-label">{title}</div>
       <div className="divide-y divide-line-subtle">
         {rows.length ? rows.slice(0, 5).map((row) => (
           <div key={row.key} className="flex items-center justify-between gap-3 px-3 py-3">

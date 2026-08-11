@@ -112,7 +112,7 @@ export default function QuotesTable({
           <TableCell className="sticky left-12 z-10 bg-surface">
             <Link
               href={`/dashboard/sales/quotes/${quote.quote_id}`}
-              className="font-mono text-sm font-medium text-copy-primary hover:underline"
+              className="text-sm font-medium tabular-nums text-copy-primary hover:underline"
             >
               {quote.quote_number}
             </Link>

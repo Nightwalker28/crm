@@ -49,7 +49,7 @@ export default function AuthenticationSettingsPage() {
       <Card className="px-4 py-4">
         <div className="flex flex-col gap-4">
           <div className="flex items-center gap-3"><KeyRound className="size-4 text-copy-secondary" /><div><h2 className="text-sm font-semibold">Password policy</h2><p className="text-xs text-copy-muted">Platform-enforced password requirements.</p></div></div>
-          {settings.isPasswordPolicyLoading ? <p className="text-sm text-copy-muted" aria-live="polite">Loading password requirements…</p> : settings.passwordPolicy ? <div className="grid gap-2 sm:grid-cols-2">{settings.passwordPolicy.requirements.map((requirement) => <div key={requirement} className="flex gap-2 rounded-control border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary"><Check className="mt-0.5 size-4 shrink-0 text-state-success" /><span>{requirement}</span></div>)}</div> : <p role="alert" className="text-sm text-state-danger">Password requirements could not be loaded.</p>}
+          {settings.isPasswordPolicyLoading ? <p className="text-sm text-copy-muted" aria-live="polite">Loading password requirements…</p> : settings.passwordPolicy ? <div className="grid gap-2 sm:grid-cols-2">{settings.passwordPolicy.requirements.map((requirement) => <div key={requirement} className="flex gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary"><Check className="mt-0.5 size-4 shrink-0 text-state-success" /><span>{requirement}</span></div>)}</div> : <p role="alert" className="text-sm text-state-danger">Password requirements could not be loaded.</p>}
         </div>
       </Card>
 
@@ -73,11 +73,11 @@ export default function AuthenticationSettingsPage() {
             <Status label="Last failed login" value={settings.ssoSettings?.last_failed_login_reason ? "A recent sign-in failed" : "None recorded"} />
           </div>
           {settings.ssoSettings?.last_failed_test ? (
-            <div className="flex flex-col gap-2 rounded-control border border-line-default bg-surface-muted p-3 text-sm sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex flex-col gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3 text-sm sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <p className="text-copy-secondary">Connection failed. Review the provider settings and try again.</p>
                 <details className="mt-2 text-xs text-copy-muted">
-                  <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">View technical details</summary>
+                  <summary className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">View technical details</summary>
                   <div className="mt-2 space-y-1"><p className="break-words">{settings.ssoSettings.last_failed_test.message}</p>{settings.ssoSettings.last_failed_test.errors.map((error) => <p key={error} className="break-words">{error}</p>)}</div>
                 </details>
               </div>
@@ -97,5 +97,5 @@ export default function AuthenticationSettingsPage() {
 }
 
 function Status({ label, value }: { label: string; value: string }) {
-  return <div><div className="text-xs uppercase text-copy-muted">{label}</div><div className="mt-1 text-copy-secondary">{value}</div></div>;
+  return <div><div className="text-xs font-medium text-copy-label">{label}</div><div className="mt-1 text-copy-secondary">{value}</div></div>;
 }

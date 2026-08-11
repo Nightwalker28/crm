@@ -130,7 +130,7 @@ export default function ContactList({
       case "primary_email":
         return (
           <TableCell>
-            <span className="font-mono text-sm tracking-tight text-copy-secondary">
+            <span className="text-sm text-copy-secondary">
               {contact.primary_email || <span className="text-copy-disabled">—</span>}
             </span>
           </TableCell>
@@ -138,7 +138,7 @@ export default function ContactList({
       case "contact_telephone":
         return (
           <TableCell>
-            <span className="font-mono text-sm tracking-tight text-copy-secondary">
+            <span className="text-sm text-copy-secondary">
               {contact.contact_telephone || <span className="text-copy-disabled">—</span>}
             </span>
           </TableCell>

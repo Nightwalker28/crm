@@ -293,7 +293,7 @@ function InsertionOrderFormEditor({
               </Card>
               <Card className="p-5">
                 <h2 className="text-sm font-semibold text-copy-primary">Customer relationship</h2>
-                <p className="mt-2 text-sm leading-6 text-copy-secondary">
+                <p className="mt-2 text-p-sm text-copy-secondary">
                   Link an existing contact or account when possible. A lightweight contact can be created only when no record is linked.
                 </p>
               </Card>

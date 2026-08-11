@@ -266,7 +266,7 @@ export default function OpportunityDetailPage() {
                 type="button"
                 key={item}
                 onClick={() => void updateStage(item)}
-                className={`rounded-md border px-3 py-2 text-left text-xs transition-colors ${active ? "border-action-primary bg-action-primary-muted text-copy-primary" : complete ? "border-state-success/40 bg-state-success-muted text-copy-primary" : "border-line-default bg-surface-subtle text-copy-muted hover:border-line-strong"}`}
+                className={`rounded-[var(--radius-control)] border px-3 py-2 text-left text-xs transition-colors ${active ? "border-action-primary bg-action-primary-muted text-copy-primary" : complete ? "border-state-success/40 bg-state-success-muted text-copy-primary" : "border-line-default bg-surface-muted text-copy-muted hover:border-line-strong"}`}
               >
                 <span className="block font-medium">
                   {getOpportunityStageLabel(item)}
@@ -281,7 +281,7 @@ export default function OpportunityDetailPage() {
           <h2 className="font-semibold text-copy-primary">Customer context</h2>
           <div className="mt-4 space-y-4">
             <div>
-              <div className="text-xs uppercase tracking-wide text-copy-muted">
+              <div className="text-xs font-medium text-copy-label">
                 Contact
               </div>
               {summary.contact ? (
@@ -312,7 +312,7 @@ export default function OpportunityDetailPage() {
               ) : null}
             </div>
             <div>
-              <div className="text-xs uppercase tracking-wide text-copy-muted">
+              <div className="text-xs font-medium text-copy-label">
                 Account
               </div>
               {summary.organization ? (
@@ -345,7 +345,7 @@ export default function OpportunityDetailPage() {
           </dl>
           {opportunity.tactics ? (
             <div className="mt-4 border-t border-line-subtle pt-4">
-              <div className="text-xs uppercase tracking-wide text-copy-muted">
+              <div className="text-xs font-medium text-copy-label">
                 Tactics
               </div>
               <p className="mt-1 whitespace-pre-wrap text-sm text-copy-secondary">
@@ -370,7 +370,7 @@ export default function OpportunityDetailPage() {
               <Link
                 key={quote.quote_id}
                 href={`/dashboard/sales/quotes/${quote.quote_id}`}
-                className="block rounded-md border border-line-default bg-surface-subtle px-4 py-3 hover:border-line-strong"
+                className="block rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-3 hover:border-line-strong"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -393,7 +393,7 @@ export default function OpportunityDetailPage() {
               </Link>
             ))
           ) : (
-            <p className="rounded-md border border-dashed border-line-default px-4 py-8 text-center text-sm text-copy-muted">
+            <p className="rounded-[var(--radius-card)] border border-dashed border-line-default px-4 py-8 text-center text-sm text-copy-muted">
               No quotes are linked yet.
             </p>
           )}
@@ -538,7 +538,7 @@ function MetricCard({
 }) {
   return (
     <Card className="p-4">
-      <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-copy-muted">
+      <div className="flex items-center gap-2 text-xs font-medium text-copy-label">
         <Icon className="h-4 w-4" />
         {label}
       </div>
@@ -554,7 +554,7 @@ function MetricCard({
 function Detail({ label, value }: { label: string; value?: string | null }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-copy-muted">
+      <dt className="text-xs font-medium text-copy-label">
         {label}
       </dt>
       <dd className="mt-1 text-sm text-copy-secondary">{value || "Not set"}</dd>

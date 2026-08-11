@@ -631,7 +631,7 @@ export default function MailPage() {
               </Button>
             </div>
           ) : messages.length ? (
-            <div className="max-h-[28rem] divide-y divide-line-subtle overflow-y-auto">
+            <div className="divide-y divide-line-subtle">
               {messages.map((message) => (
                 <Button
                   key={message.id}
@@ -706,7 +706,7 @@ export default function MailPage() {
                 ) : null}
 
                 <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-copy-muted">Link Mail To Record</div>
+                  <div className="mb-3 text-xs font-semibold text-copy-label">Link Mail To Record</div>
                   <div className="grid gap-3 md:grid-cols-[180px_1fr]">
                     <Select
                       value={linkModuleKey}
@@ -745,7 +745,7 @@ export default function MailPage() {
                   </div>
                 </div>
 
-                <div className="whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4 text-sm leading-6 text-copy-secondary">
+                <div className="whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4 text-p-sm text-copy-secondary">
                   {selectedMessageQuery.isLoading ? "Loading message..." : selectedMessage.body_text || selectedMessage.snippet || "This synced message has no readable text body."}
                 </div>
               </div>

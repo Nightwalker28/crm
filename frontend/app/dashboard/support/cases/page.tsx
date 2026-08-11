@@ -56,7 +56,7 @@ export default function SupportCasesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-4">
       <ModuleListToolbar
         searchValue={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -113,7 +113,7 @@ function SupportMetric({ label, value, loading, tone = "default" }: { label: str
 
   return (
     <Card className="px-4 py-3">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">{label}</div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
       {loading ? <Skeleton className="mt-2 h-8 w-14" /> : <div className={`mt-2 text-2xl font-semibold ${valueClass}`}>{value ?? "—"}</div>}
     </Card>
   );

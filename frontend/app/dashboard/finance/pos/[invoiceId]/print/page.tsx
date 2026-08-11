@@ -163,7 +163,7 @@ export default function PosInvoicePrintPage() {
                   {company.name || "Company"}
                 </h1>
                 <div
-                  className={`mt-2 text-sm leading-6 ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
+                  className={`mt-2 text-p-sm ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
                 >
                   {multiline(company.billing_address)}
                   {[company.primary_email, company.primary_phone, company.website].filter(Boolean).map((item) => (
@@ -179,7 +179,7 @@ export default function PosInvoicePrintPage() {
               className={`min-w-[230px] rounded-[var(--radius-control)] border p-4 ${isClassic ? "border-neutral-300 bg-white" : "border-neutral-800 bg-neutral-900/70"}`}
             >
               <div
-                className="text-xs font-semibold uppercase tracking-[0.2em]"
+                className="text-xs font-semibold"
                 style={{ color: accentColor }}
               >
                 POS Invoice
@@ -205,7 +205,7 @@ export default function PosInvoicePrintPage() {
           <div className="mt-8 grid gap-5 sm:grid-cols-2">
             <div>
               <div
-                className="text-xs font-semibold uppercase tracking-[0.18em]"
+                className="text-xs font-semibold"
                 style={{ color: accentColor }}
               >
                 Bill To
@@ -214,7 +214,7 @@ export default function PosInvoicePrintPage() {
                 {invoice.customer_name}
               </div>
               <div
-                className={`mt-2 text-sm leading-6 ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
+                className={`mt-2 text-p-sm ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
               >
                 {multiline(invoice.customer_address)}
                 {invoice.customer_email || "Email not provided"}

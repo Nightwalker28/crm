@@ -100,8 +100,8 @@ export default function InsertionOrderDetailPage() {
             </dl>
             {order.notes ? (
               <div className="mt-6 border-t border-line-subtle pt-5">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-copy-muted">Notes</h3>
-                <p className="mt-2 whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3 text-sm leading-6 text-copy-secondary">
+                <h3 className="text-xs font-medium text-copy-label">Notes</h3>
+                <p className="mt-2 whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3 text-p-sm text-copy-secondary">
                   {order.notes}
                 </p>
               </div>
@@ -198,10 +198,10 @@ function formatCustomFieldValue(value: unknown) {
 function DetailField({ label, value, href }: { label: string; value: string; href?: string | null }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</dt>
+      <dt className="text-xs font-medium text-copy-label">{label}</dt>
       <dd className="mt-1 text-sm text-copy-primary">
         {href ? (
-          <Link href={href} className="rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Link href={href} className="rounded-[var(--radius-control-sm)] text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {value}
           </Link>
         ) : value}

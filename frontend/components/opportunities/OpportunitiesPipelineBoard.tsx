@@ -63,7 +63,7 @@ export default function OpportunitiesPipelineBoard({
   }));
 
   return (
-    <div className="rounded-[var(--radius-panel)] border border-line-default bg-surface">
+    <div className="flex min-h-56 flex-1 flex-col overflow-auto rounded-[var(--radius-panel)] border border-line-default bg-surface">
       <div className="border-b border-line-subtle px-5 py-4">
         <h2 className="text-base font-semibold text-copy-primary">Pipeline View</h2>
         <p className="mt-1 text-sm text-copy-muted">
@@ -99,7 +99,7 @@ export default function OpportunitiesPipelineBoard({
       ) : (
         <div className="overflow-x-auto px-4 py-4">
           {isRefreshing ? (
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-line-subtle bg-surface-muted px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-copy-muted">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-line-subtle bg-surface-muted px-3 py-1 text-2xs font-medium text-copy-label">
               <span className="h-2 w-2 animate-pulse rounded-full bg-copy-muted motion-reduce:animate-none" />
               Refreshing
             </div>
@@ -139,7 +139,7 @@ export default function OpportunitiesPipelineBoard({
                         <div className="flex items-start gap-2"><GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" /><button
                           type="button"
                           onClick={() => onEdit(opportunity)}
-                          className="w-full text-left text-sm font-medium text-copy-primary hover:text-action-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          className="w-full text-left text-sm font-medium text-copy-primary hover:text-action-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                         >
                           {opportunity.opportunity_name}
                         </button></div>
@@ -159,7 +159,7 @@ export default function OpportunitiesPipelineBoard({
                             value={normalizeOpportunityStage(opportunity.sales_stage) || "lead"}
                             onValueChange={(value) => onStageChange(opportunity, value)}
                           >
-                            <SelectTrigger className="h-8 w-full text-xs">
+                            <SelectTrigger size="sm" className="w-full text-xs">
                               <SelectValue placeholder="Move stage" />
                             </SelectTrigger>
                             <SelectContent>
@@ -172,7 +172,7 @@ export default function OpportunitiesPipelineBoard({
                           </Select>
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-2">
-                          <span className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">
+                          <span className="text-2xs font-medium text-copy-label">
                             {opportunity.currency_type || "USD"}
                           </span>
                         </div>

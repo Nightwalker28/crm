@@ -994,7 +994,7 @@ export default function QuoteDetailPage() {
                   value={summary.quote.customer_name || "No customer recorded"}
                 />
                 <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-                  <div className="text-xs uppercase tracking-wide text-copy-muted">
+                  <div className="text-xs font-medium text-copy-label">
                     Deal
                   </div>
                   <div className="mt-2 text-sm text-copy-primary">
@@ -1170,7 +1170,7 @@ export default function QuoteDetailPage() {
                   </a>
                 ) : null}
                 <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-                  <div className="text-xs uppercase tracking-wide text-copy-muted">
+                  <div className="text-xs font-medium text-copy-label">
                     Lifecycle
                   </div>
                   <div className="mt-3 grid gap-3">
@@ -1297,7 +1297,7 @@ export default function QuoteDetailPage() {
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">
+      <div className="text-xs font-medium text-copy-label">
         {label}
       </div>
       <div className="mt-2 text-sm capitalize text-copy-primary">{value}</div>
@@ -1316,7 +1316,7 @@ function LinkedRecordTile({
 }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">
+      <div className="text-xs font-medium text-copy-label">
         {label}
       </div>
       <div className="mt-2 text-sm text-copy-primary">

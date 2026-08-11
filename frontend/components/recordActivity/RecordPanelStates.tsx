@@ -22,7 +22,7 @@ export function RecordPanelHeader({
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
         <h2 className="text-lg font-semibold text-copy-primary">{title}</h2>
-        <p className="mt-1 text-sm leading-6 text-copy-muted">{description}</p>
+        <p className="mt-1 text-p-sm text-copy-muted">{description}</p>
       </div>
       <div className="flex shrink-0 items-center gap-2">
         {action}
@@ -51,7 +51,7 @@ export function RecordPanelError({
   return (
     <div role="alert" className="flex min-h-28 flex-col items-center justify-center rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-6 text-center">
       <p className="text-sm font-medium text-copy-primary">{message}</p>
-      <p className="mt-1 text-xs leading-5 text-copy-muted">Check your connection and try again.</p>
+      <p className="mt-1 text-p-xs text-copy-muted">Check your connection and try again.</p>
       <Button type="button" variant="outline" size="sm" className="mt-3" onClick={onRetry}>
         <RefreshCw />
         Try again

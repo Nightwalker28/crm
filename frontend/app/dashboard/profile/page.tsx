@@ -435,12 +435,12 @@ export default function ProfilePage() {
               ) : (
                 <div className="grid gap-4">
                   <div className="rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted p-4">
-                    <div className="text-xs font-medium uppercase tracking-wide text-state-warning">Authenticator secret</div>
+                    <div className="text-xs font-medium text-state-warning">Authenticator secret</div>
                     <div className="mt-2 break-all font-mono text-sm text-copy-primary">{mfaSecret}</div>
                     <p className="mt-2 text-xs text-copy-secondary">Treat this secret like a password. Add it to your authenticator before continuing.</p>
                   </div>
                   {mfaOtpAuthUri ? (
-                    <a href={mfaOtpAuthUri} className="w-fit rounded-sm text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <a href={mfaOtpAuthUri} className="w-fit rounded-[var(--radius-control-sm)] text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                       Open authenticator setup link
                     </a>
                   ) : null}
@@ -456,7 +456,7 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="grid gap-4">
-              <p className="text-sm leading-6 text-copy-secondary">
+              <p className="text-p-sm text-copy-secondary">
                 Disabling MFA requires your current password and either an authenticator or recovery code.
               </p>
               <FieldGroup className="grid gap-4 md:grid-cols-3">
@@ -497,7 +497,7 @@ export default function ProfilePage() {
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</dt>
+      <dt className="text-xs font-medium text-copy-label">{label}</dt>
       <dd className="mt-2 break-words text-sm text-copy-primary">{value}</dd>
     </div>
   );

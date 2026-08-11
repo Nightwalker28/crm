@@ -345,7 +345,7 @@ export function DashboardLayoutEditor({
                 >
                   <span>
                     <span className="block text-sm font-semibold text-copy-primary">{item.title}</span>
-                    <span className="mt-1 block text-sm font-normal leading-6 text-copy-secondary">{item.description}</span>
+                    <span className="mt-1 block text-p-sm font-normal text-copy-secondary">{item.description}</span>
                   </span>
                 </Button>
               ))}

@@ -432,7 +432,7 @@ function AccountOverview({
           </div>
         </Card>
         <Card className="px-5 py-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-copy-secondary">
+          <h2 className="text-sm font-semibold text-copy-secondary">
             Customer group
           </h2>
           <Select
@@ -585,7 +585,7 @@ function RelatedLink({
   return (
     <Link
       href={href}
-      className="block rounded-md border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"
+      className="block rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"
     >
       <div className="text-sm font-semibold text-copy-primary">{title}</div>
       <div className="mt-1 text-sm text-copy-muted">{detail}</div>
@@ -606,7 +606,7 @@ function DetailField({
   const content = value || "Not recorded";
   return (
     <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">
+      <div className="text-xs font-medium text-copy-label">
         {label}
       </div>
       <div className="mt-1 text-sm text-copy-primary">
@@ -634,8 +634,8 @@ function SummaryTile({
   value: string | number;
 }) {
   return (
-    <div className="rounded-md border border-line-subtle bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">
+    <div className="rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-4">
+      <div className="text-xs font-medium text-copy-label">
         {label}
       </div>
       <div className="mt-2 text-sm font-medium text-copy-primary">{value}</div>

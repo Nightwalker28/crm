@@ -26,7 +26,7 @@ export default function ProvisioningSettingsPage() {
 
   return (
     <div className="flex flex-col gap-5 pb-20 text-copy-primary">
-      {!settings.isLoading && !settings.ssoSettings?.enabled ? <div role="status" className="rounded-control border border-line-default bg-surface-muted p-3 text-sm text-copy-secondary">SSO is disabled. You can prepare provisioning defaults now, but automatic provisioning starts only after SSO is enabled.</div> : null}
+      {!settings.isLoading && !settings.ssoSettings?.enabled ? <div role="status" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3 text-sm text-copy-secondary">SSO is disabled. You can prepare provisioning defaults now, but automatic provisioning starts only after SSO is enabled.</div> : null}
       <Card className="px-4 py-4">
         <div className="flex flex-col gap-4">
           <div><h2 className="text-sm font-semibold">User provisioning</h2><p className="text-xs text-copy-muted">Choose how verified identities map to users, roles, and teams.</p></div>

@@ -459,7 +459,7 @@ function StatusPill({ status }: { status: string }) {
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
       <div className="mt-2 text-sm text-copy-primary">{value}</div>
     </div>
   );
@@ -468,9 +468,9 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
 function LinkedTile({ label, value, href }: { label: string; value: string; href: string | null }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
       <div className="mt-2 text-sm text-copy-primary">
-        {href ? <Link href={href} className="rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{value}</Link> : value}
+        {href ? <Link href={href} className="rounded-[var(--radius-control-sm)] text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{value}</Link> : value}
       </div>
     </div>
   );

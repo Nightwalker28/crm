@@ -63,7 +63,7 @@ export function DashboardModuleEntryPoints({
                 <div className="text-sm font-semibold text-copy-primary">
                   {getModuleDisplayName(module.name, module.description ?? undefined)}
                 </div>
-                <div className="mt-1 text-sm leading-6 text-copy-secondary">
+                <div className="mt-1 text-p-sm text-copy-secondary">
                   {module.description || "Open this module and continue where your role allows."}
                 </div>
               </div>
@@ -127,7 +127,7 @@ export function DashboardRecentActivity({
       {items.map((item) => (
         <div key={item.id} className="px-4 py-4">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-line-default bg-surface-raised px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-copy-secondary">
+            <span className="rounded-full border border-line-default bg-surface-raised px-2 py-1 text-2xs font-medium text-copy-secondary">
               {actionLabel(item.action)}
             </span>
             <span className="text-sm font-medium text-copy-primary">{getModuleDisplayName(item.module_key)}</span>
@@ -171,12 +171,12 @@ export function DashboardNotifications({
           key={notification.id}
           href={resolveNotificationHref(notification.link_url, SETTINGS_ROUTES.activityLog)}
           onClick={() => onRead(notification.id)}
-          className="block px-4 py-4 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          className="block px-4 py-4 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-sm font-medium text-copy-primary">{notification.title}</div>
-              <div className="mt-1 text-sm leading-6 text-copy-secondary">{notification.message}</div>
+              <div className="mt-1 text-p-sm text-copy-secondary">{notification.message}</div>
               <div className="mt-2 text-xs text-copy-muted">{formatDateTime(notification.created_at)}</div>
             </div>
             {notification.read_at ? null : <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-state-success" />}

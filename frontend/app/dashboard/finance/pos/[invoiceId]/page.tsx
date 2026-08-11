@@ -117,7 +117,7 @@ export default function InvoiceDetailPage() {
         </dl>
         {invoice.customer_address ? (
           <div className="mt-4 rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted p-4 text-sm text-copy-secondary">
-            <div className="text-xs font-semibold uppercase tracking-wide text-copy-muted">
+            <div className="text-xs font-semibold text-copy-label">
               Billing address
             </div>
             <div className="mt-2 whitespace-pre-line">
@@ -279,7 +279,7 @@ export default function InvoiceDetailPage() {
 function Summary({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs font-semibold uppercase tracking-wide text-copy-muted">
+      <dt className="text-xs font-semibold text-copy-label">
         {label}
       </dt>
       <dd className="mt-1 text-sm text-copy-primary">{value}</dd>

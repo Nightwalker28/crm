@@ -187,7 +187,7 @@ export default function CustomModulePage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-4">
       <ModuleListToolbar
         searchValue={search}
         onSearchChange={(value) => {
@@ -324,7 +324,7 @@ export default function CustomModulePage() {
                       <Link
                         href={`/dashboard/custom/${moduleKey}/${record.id}`}
                         onClick={(event) => event.stopPropagation()}
-                        className="block max-w-[320px] truncate rounded-[var(--radius-control-sm)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                        className="block max-w-[320px] truncate rounded-[var(--radius-control-sm)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                       >
                         {renderRecordColumn(record, column.key)}
                       </Link>

@@ -233,7 +233,6 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
                     value={templateCategory}
                     onChange={(event) => setTemplateCategory(event.target.value)}
                     placeholder="Optional category"
-                    className="h-9"
                   />
                 </Field>
                 <Button
@@ -261,7 +260,7 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
               </div>
 
               <div className="mt-5 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3">
-                <div className="mb-3 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-copy-muted">
+                <div className="mb-3 flex items-center gap-2 text-xs font-medium text-copy-label">
                   <Share2 className="h-3.5 w-3.5" />
                   Client Portal Access
                 </div>
@@ -333,7 +332,7 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
               </div>
 
               <div className="mt-4">
-                <div className="mb-2 flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-copy-muted">
+                <div className="mb-2 flex items-center gap-2 text-xs font-medium text-copy-label">
                   <History className="h-3.5 w-3.5" />
                   Version History
                 </div>
@@ -405,7 +404,7 @@ export default function DocumentList({ documents, emptyText = "No documents yet.
   }
 
   return (
-    <ModuleTableShell className="min-h-[34rem] max-h-[44rem]" isRefreshing={isRefreshing}>
+    <ModuleTableShell isRefreshing={isRefreshing}>
       <Table className="min-w-[1120px]">
         <TableHeader>
           <TableHeaderRow>

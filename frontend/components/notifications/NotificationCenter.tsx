@@ -124,7 +124,7 @@ export default function NotificationCenter() {
           ) : isError ? (
             <div role="alert" className="flex min-h-40 flex-col items-center justify-center gap-3 px-6 text-center">
               <p className="text-sm font-medium text-copy-primary">Notifications could not be loaded.</p>
-              <p className="text-xs leading-5 text-copy-muted">Check your connection and try again.</p>
+              <p className="text-p-xs text-copy-muted">Check your connection and try again.</p>
               <Button type="button" variant="outline" size="sm" onClick={() => void refetch()}>
                 <RefreshCw />
                 Try again
@@ -159,7 +159,7 @@ export default function NotificationCenter() {
                         })}
                       </span>
                     </div>
-                    <p className="text-xs leading-5 text-copy-secondary">
+                    <p className="text-p-xs text-copy-secondary">
                       {notification.message}
                     </p>
                   </div>
@@ -171,7 +171,7 @@ export default function NotificationCenter() {
                       key={notification.id}
                       href={resolveNotificationHref(notification.link_url)}
                       onClick={() => void handleNotificationClick(notification.id)}
-                      className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                      className="block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
                     >
                       {content}
                     </Link>
@@ -183,7 +183,7 @@ export default function NotificationCenter() {
                     key={notification.id}
                     type="button"
                     onClick={() => void handleNotificationClick(notification.id)}
-                    className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                    className="block w-full text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
                   >
                     {content}
                   </button>
@@ -194,7 +194,7 @@ export default function NotificationCenter() {
             <div className="flex min-h-40 flex-col items-center justify-center px-6 text-center">
               <Bell className="h-5 w-5 text-copy-disabled" />
               <p className="mt-3 text-sm font-medium text-copy-primary">No notifications yet</p>
-              <p className="mt-1 text-xs leading-5 text-copy-muted">
+              <p className="mt-1 text-p-xs text-copy-muted">
                 Task assignments and background jobs will start writing updates here.
               </p>
             </div>
@@ -207,7 +207,7 @@ export default function NotificationCenter() {
           </div>
         ) : null}
         <div className="border-t border-line-default px-4 py-3">
-          <Link href={SETTINGS_ROUTES.activityLog} className="text-xs font-medium text-copy-secondary hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <Link href={SETTINGS_ROUTES.activityLog} className="text-xs font-medium text-copy-secondary hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">
             View all activity
           </Link>
         </div>

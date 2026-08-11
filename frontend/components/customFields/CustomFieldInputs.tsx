@@ -115,7 +115,7 @@ export default function CustomFieldInputs({ definitions, values, onChange }: Pro
     <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4">
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-copy-primary">Configured fields</h3>
-        <p className="mt-1 text-sm leading-6 text-copy-muted">These fields are managed by a workspace administrator.</p>
+        <p className="mt-1 text-p-sm text-copy-muted">These fields are managed by a workspace administrator.</p>
       </div>
 
       <FieldGroup className="grid gap-4 sm:grid-cols-2">

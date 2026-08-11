@@ -164,7 +164,7 @@ export default function PublicQuoteProposalPage() {
               <h1 className="mt-4 text-xl font-semibold text-copy-primary">
                 {error === "unavailable" ? "This proposal link is unavailable" : "The proposal could not be loaded"}
               </h1>
-              <p className="mt-2 max-w-md text-sm leading-6 text-copy-secondary">
+              <p className="mt-2 max-w-md text-p-sm text-copy-secondary">
                 {error === "unavailable"
                   ? "The link may have expired or been replaced. Ask the sender for a new proposal link."
                   : "Check your connection and try again. If the problem continues, contact the sender."}
@@ -211,7 +211,7 @@ export default function PublicQuoteProposalPage() {
                   </Button>
                 </div>
                 {proposal.content_text.trim() ? (
-                  <article className="whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted p-4 text-sm leading-7 text-copy-secondary sm:p-5">
+                  <article className="whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted p-4 text-p-sm text-copy-secondary sm:p-5">
                     {proposal.content_text}
                   </article>
                 ) : (
@@ -224,7 +224,7 @@ export default function PublicQuoteProposalPage() {
           )}
         </section>
 
-        <footer className="border-t border-line-subtle pt-4 text-center text-xs leading-5 text-copy-muted">
+        <footer className="border-t border-line-subtle pt-4 text-center text-p-xs text-copy-muted">
           This link provides access only to the proposal shared by its sender.
         </footer>
       </div>

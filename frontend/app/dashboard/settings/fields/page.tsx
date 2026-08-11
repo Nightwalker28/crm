@@ -582,7 +582,7 @@ export default function FieldsPage() {
                   >
                     <button
                       type="button"
-                      className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-focus"
                       aria-pressed={selectedField?.field_key === field.field_key && panelMode === "inspect"}
                       onClick={() => void selectField(field.field_key)}
                     >

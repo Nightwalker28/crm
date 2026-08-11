@@ -247,7 +247,7 @@ export default function RecordCommentsPanel({
                       type="button"
                       role="option"
                       aria-selected="false"
-                      className="flex w-full flex-col px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                      className="flex w-full flex-col px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
                       onClick={() => insertMention(user)}
                     >
                       <span className="text-sm font-medium text-copy-primary">{user.label}</span>
@@ -297,7 +297,7 @@ export default function RecordCommentsPanel({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
-              <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{item.body}</div>
+              <div className="mt-3 whitespace-pre-wrap text-p-sm text-copy-secondary">{item.body}</div>
             </li>
           ))}
         </ol>

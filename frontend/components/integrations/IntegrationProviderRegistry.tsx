@@ -133,13 +133,13 @@ export function IntegrationProviderRegistry({
                       <PlugZap className="text-copy-secondary" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-xs uppercase text-copy-muted">{provider.category}</div>
+                      <div className="text-xs font-medium text-copy-label">{provider.category}</div>
                       <h3 className="mt-1 text-base font-semibold text-copy-primary">{provider.name}</h3>
                     </div>
                   </div>
                   <Pill bg={tone.bg} text={tone.text} border={tone.border}>{formatStatus(connection.status)}</Pill>
                 </div>
-                <p className="mt-3 text-sm leading-5 text-copy-muted">{provider.description}</p>
+                <p className="mt-3 text-p-sm text-copy-muted">{provider.description}</p>
                 <div className="mt-4 grid gap-2 text-xs text-copy-muted">
                   <div><span>Account: </span><span className="text-copy-secondary">{connection.account_label || (connection.connection_count ? "Connected account" : "Not connected")}</span></div>
                   <div className="grid grid-cols-2 gap-2">

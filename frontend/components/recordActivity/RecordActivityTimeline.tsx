@@ -69,12 +69,12 @@ export default function RecordActivityTimeline({
           {query.data.results.map((item) => (
             <li key={item.id} className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="rounded-full border border-line-default bg-surface-raised px-2 py-1 text-[11px] font-medium uppercase tracking-[0.14em] text-copy-secondary">
+                <span className="rounded-full border border-line-default bg-surface-raised px-2 py-1 text-[11px] font-medium text-copy-secondary">
                   {getActionLabel(item.action)}
                 </span>
                 <span className="text-xs text-copy-muted">{formatDateTime(item.created_at)}</span>
               </div>
-              <div className="mt-2 text-sm leading-6 text-copy-secondary">
+              <div className="mt-2 text-p-sm text-copy-secondary">
                 {item.description || `${item.entity_type} ${item.entity_id}`}
               </div>
             </li>

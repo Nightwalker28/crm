@@ -63,7 +63,7 @@ function renderCell(task: Task, column: string) {
         <TableCell>
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-copy-primary">{task.title}</div>
-            <div className="mt-1 line-clamp-2 text-xs leading-5 text-copy-muted">
+            <div className="mt-1 line-clamp-2 text-p-xs text-copy-muted">
               {task.description || "No additional task notes yet."}
             </div>
           </div>

@@ -186,7 +186,7 @@ export default function RecordTagInput({
                 type="button"
                 role="option"
                 aria-selected={optionIndex === activeIndex}
-                className="block w-full px-3 py-2 text-left text-sm text-copy-primary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary aria-selected:bg-action-primary-muted"
+                className="block w-full px-3 py-2 text-left text-sm text-copy-primary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus aria-selected:bg-action-primary-muted"
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => setActiveIndex(optionIndex)}
                 onClick={() => addTag(tag)}
@@ -200,7 +200,7 @@ export default function RecordTagInput({
                 type="button"
                 role="option"
                 aria-selected={activeIndex === 0}
-                className="block w-full px-3 py-2 text-left text-sm text-copy-secondary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
+                className="block w-full px-3 py-2 text-left text-sm text-copy-secondary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => setActiveIndex(0)}
                 onClick={() => addTag(draft)}

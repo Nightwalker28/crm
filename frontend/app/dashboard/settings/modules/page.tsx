@@ -209,7 +209,7 @@ export default function ModulesPage() {
                     <TableRow
                       key={module.id}
                       tabIndex={0}
-                      className="cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+                      className="cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-focus"
                       onClick={() => router.push(SETTINGS_ROUTES.moduleAccess(module.id))}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
@@ -220,7 +220,7 @@ export default function ModulesPage() {
                     >
                       <TableCell>
                         <div className="font-medium text-copy-primary">{displayName}</div>
-                        <div className="mt-1 font-mono text-xs text-copy-muted">{module.name}</div>
+                        <div className="mt-1 text-xs text-copy-muted">{module.name}</div>
                       </TableCell>
                       <TableCell>
                         <div className="text-copy-primary">{module.display_name || displayName}</div>

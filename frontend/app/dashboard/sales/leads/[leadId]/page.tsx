@@ -396,10 +396,10 @@ function ScoreTile({
 }) {
   const gradeStyle = getLeadScoreStyle(grade || "cold");
   return (
-    <div className={`rounded-md border px-4 py-4 ${gradeStyle.border} ${gradeStyle.bg} ${gradeStyle.text}`}>
+    <div className={`rounded-[var(--radius-control)] border px-4 py-4 ${gradeStyle.border} ${gradeStyle.bg} ${gradeStyle.text}`}>
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-xs uppercase tracking-wide opacity-75">
+          <div className="text-xs font-medium opacity-75">
             Lead Score
           </div>
           <div className="mt-2 flex items-baseline gap-2">
@@ -414,7 +414,7 @@ function ScoreTile({
         </div>
       </div>
       <details className="mt-4">
-        <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide opacity-80">
+        <summary className="cursor-pointer text-xs font-medium opacity-80">
           Factors
         </summary>
         <div className="mt-3 grid gap-2">
@@ -445,7 +445,7 @@ function ScoreTile({
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">
+      <div className="text-xs font-medium text-copy-label">
         {label}
       </div>
       <div className="mt-2 text-sm capitalize text-copy-primary">{value}</div>

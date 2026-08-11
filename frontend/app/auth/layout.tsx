@@ -29,7 +29,7 @@ export default function AuthLayout({
 
         {/* card noise */}
         <div
-          className="noise-overlay absolute inset-0 pointer-events-none rounded-md opacity-5"
+          className="noise-overlay absolute inset-0 pointer-events-none rounded-[var(--radius-control)] opacity-5"
         ></div>
 
         {/* actual page content */}

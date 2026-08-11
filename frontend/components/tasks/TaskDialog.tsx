@@ -308,7 +308,7 @@ export default function TaskDialog({
                     Search and assign individual users or whole teams. Team assignments notify the full team.
                   </FieldDescription>
                 </div>
-                <div className="text-xs uppercase tracking-[0.16em] text-copy-muted">
+                <div className="text-xs font-medium text-copy-label">
                   {selectedAssigneeCount} selected
                 </div>
               </div>

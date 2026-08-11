@@ -58,7 +58,7 @@ export default function ContactsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-4">
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: value } }))}
@@ -75,7 +75,7 @@ export default function ContactsPage() {
         primaryAction={<Button asChild><Link href="/dashboard/sales/contacts/new"><Plus />Create contact</Link></Button>}
       />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />
-      {error ? <div className="flex justify-between rounded-lg border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-state-danger"><span>We could not load contacts.</span><button onClick={refresh} className="underline underline-offset-2">Retry</button></div> : null}
+      {error ? <div className="flex justify-between rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-state-danger"><span>We could not load contacts.</span><button onClick={refresh} className="underline underline-offset-2">Retry</button></div> : null}
       <ContactList
         contacts={contacts}
         isLoading={isLoading}

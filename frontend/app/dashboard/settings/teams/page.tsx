@@ -346,7 +346,7 @@ export default function TeamsAndDepartmentsPage() {
             </div>
             <div>
               <h2 className="text-lg font-semibold text-copy-primary">Organization structure</h2>
-              <p className="mt-1 text-sm leading-6 text-copy-muted">Departments contain teams. Manage the hierarchy from one workspace.</p>
+              <p className="mt-1 text-p-sm text-copy-muted">Departments contain teams. Manage the hierarchy from one workspace.</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -383,7 +383,7 @@ export default function TeamsAndDepartmentsPage() {
                       <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-raised p-2 text-copy-secondary"><Building2 size={15} aria-hidden="true" /></div>
                       <div className="min-w-0">
                         <h3 id={`department-${department.id}`} className="text-sm font-semibold text-copy-primary">{department.name}</h3>
-                        <p className="mt-1 text-sm leading-6 text-copy-secondary">{department.description || "No description"}</p>
+                        <p className="mt-1 text-p-sm text-copy-secondary">{department.description || "No description"}</p>
                         <p className="mt-1 text-xs text-copy-muted">{departmentTeams.length} {departmentTeams.length === 1 ? "team" : "teams"}</p>
                       </div>
                     </div>

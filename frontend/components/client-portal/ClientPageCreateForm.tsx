@@ -183,7 +183,7 @@ export default function ClientPageCreateForm() {
             <>
               <Card className="p-5">
                 <h2 className="text-sm font-semibold text-copy-primary">Sharing boundary</h2>
-                <p className="mt-2 text-sm leading-6 text-copy-secondary">
+                <p className="mt-2 text-p-sm text-copy-secondary">
                   This draft is private to CRM users until you explicitly publish a scoped, expiring client link.
                 </p>
               </Card>

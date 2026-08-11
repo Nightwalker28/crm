@@ -66,14 +66,14 @@ function ClientLoginContent() {
           <p className="mt-2 text-sm text-copy-secondary">Sign in to view personalized pricing for shared pages.</p>
         </div>
 
-        <form className="space-y-4 rounded-md border border-line-default bg-surface p-5" onSubmit={handleSubmit}>
+        <form className="space-y-4 rounded-[var(--radius-card)] border border-line-default bg-surface p-5" onSubmit={handleSubmit}>
           <div>
-            <label className="mb-2 block text-sm font-medium">Email</label>
-            <Input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
+            <label htmlFor="client-login-email" className="mb-2 block text-sm font-medium">Email</label>
+            <Input id="client-login-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
           </div>
           <div>
-            <label className="mb-2 block text-sm font-medium">Password</label>
-            <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
+            <label htmlFor="client-login-password" className="mb-2 block text-sm font-medium">Password</label>
+            <Input id="client-login-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
           </div>
           <Button type="submit" className="w-full" disabled={isSubmitting}>
             {isSubmitting ? "Signing in..." : "Sign In"}

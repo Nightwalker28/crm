@@ -14,7 +14,7 @@ export function PublicBookingPage({
           <div className="font-lynk text-3xl text-copy-primary">Lynk</div>
         </header>
         <BookingForm ownerHandle={ownerHandle} slug={slug} />
-        <footer className="mt-6 border-t border-line-subtle pt-4 text-center text-xs leading-5 text-copy-muted">
+        <footer className="mt-6 border-t border-line-subtle pt-4 text-center text-p-xs text-copy-muted">
           Booking details are shared only with the meeting organizer.
         </footer>
       </div>

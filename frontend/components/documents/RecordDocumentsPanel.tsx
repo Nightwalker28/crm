@@ -75,7 +75,6 @@ export default function RecordDocumentsPanel({ moduleKey, entityId }: Props) {
             value={title}
             onChange={(event) => setTitle(event.target.value)}
             placeholder="Optional document title"
-            className="h-9"
           />
           <Input
             ref={inputRef}

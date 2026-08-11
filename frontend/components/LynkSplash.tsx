@@ -55,7 +55,7 @@ export default function LynkSplash() {
 
       {/* custom hex loader */}
       <div className="relative z-10 mt-10 flex flex-col items-center gap-4">
-        <p className="pl-[0.2em] text-center text-[11px] uppercase tracking-[0.25em] text-copy-muted">
+        <p className="pl-[0.2em] text-center text-2xs font-medium text-copy-label">
           Loading
         </p>
       </div>

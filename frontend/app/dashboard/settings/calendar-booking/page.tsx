@@ -574,7 +574,7 @@ export default function CalendarBookingSettingsPage() {
                     <TableCell className="font-medium text-copy-primary">
                       <button
                         type="button"
-                        className="rounded-sm text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring"
+                        className="rounded-[var(--radius-control-sm)] text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring"
                         onClick={() => void editBookingType(item)}
                       >
                         {item.name}

@@ -110,7 +110,15 @@ function CustomerSelector({
           className="md:w-full"
         />
       </div>
-      <div className="max-h-44 overflow-y-auto rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-1">
+      {/* Bounded on purpose: this is a search-filtered picker, not page content. An
+          uncapped customer list would push the rest of the form off screen. The marker
+          declares the intent - see docs/design/design.md 4.5. */}
+      <div
+        data-bounded-list
+        role="group"
+        aria-label="Customer search results"
+        className="max-h-44 overflow-y-auto rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-1"
+      >
         {optionsQuery.isLoading ? (
           <div className="px-3 py-3 text-sm text-copy-muted" aria-busy="true">Loading customers...</div>
         ) : optionsQuery.isError ? (
@@ -287,7 +295,7 @@ export default function ClientPortalDashboardPage() {
           </form>
           {lastSetupLink ? (
             <div className="mt-4 rounded-[var(--radius-control)] border border-state-info/40 bg-state-info-muted p-3 text-sm">
-              <div className="mb-2 text-xs uppercase text-copy-muted">Latest setup link</div>
+              <div className="mb-2 text-xs font-medium text-copy-label">Latest setup link</div>
               <div className="break-all text-copy-primary">{lastSetupLink}</div>
               <p className="mt-2 text-xs text-copy-muted">Share this link securely. Regenerating it invalidates the previous link.</p>
               <Button type="button" variant="outline" className="mt-3" onClick={() => void copyText(lastSetupLink, "Setup link")}>

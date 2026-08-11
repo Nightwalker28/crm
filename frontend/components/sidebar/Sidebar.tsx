@@ -181,7 +181,7 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
     >
       <div className="relative z-10 flex h-full min-h-0 flex-col overflow-hidden px-2 py-3">
         <div className={`mb-4 flex items-center gap-2 px-1 ${collapsed ? "flex-col justify-center" : "justify-between"}`}>
-          <Link href={DASHBOARD_ROUTES.home} onClick={onNavigate} className="flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] focus:outline-none focus:ring-2 focus:ring-primary">
+          <Link href={DASHBOARD_ROUTES.home} onClick={onNavigate} className="flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] focus:outline-none focus:ring-2 focus:ring-focus">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
               <span className="font-lynk text-xl leading-none text-copy-primary">L</span>
             </div>
@@ -190,7 +190,7 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
           {!mobile ? <button
             type="button"
             onClick={toggleCollapsed}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-action-primary-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-action-primary-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}

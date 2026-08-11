@@ -367,7 +367,7 @@ export default function LinkedRecordPicker({
                   type="button"
                   role="option"
                   aria-selected={optionIndex === activeIndex}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseEnter={() => setActiveIndex(optionIndex)}
                   onClick={() => selectOption(option)}

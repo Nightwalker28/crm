@@ -44,7 +44,7 @@ export function ReadOnlyRecordLayout({
     const renderedValue = renderValue?.(field, value);
     return (
       <div>
-        <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">
+        <div className="text-xs font-medium text-copy-label">
           {field.label}
         </div>
         <div className="mt-1 whitespace-pre-wrap text-sm text-copy-secondary">

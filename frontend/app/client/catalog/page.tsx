@@ -47,25 +47,25 @@ export default function ClientCatalogPage() {
         </section>
 
         {catalogQuery.isLoading ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading catalog...</div>
+          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading catalog...</div>
         ) : catalogQuery.error ? (
-          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
+          <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {catalogQuery.error instanceof Error ? catalogQuery.error.message : "Failed to load catalog."}
           </div>
         ) : items.length === 0 ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No published catalog items are available.</div>
+          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No published catalog items are available.</div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item) => (
-              <Link key={`${item.kind}-${item.id}`} href={`/client/catalog/${item.kind}/${item.id}`} className="group rounded-md border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
+              <Link key={`${item.kind}-${item.id}`} href={`/client/catalog/${item.kind}/${item.id}`} className="group rounded-[var(--radius-card)] border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-xs uppercase text-copy-muted">{item.kind}</div>
+                    <div className="text-xs font-medium text-copy-label">{item.kind}</div>
                     <h2 className="mt-1 truncate font-semibold text-copy-primary">{item.name}</h2>
                   </div>
                   <ArrowRight className="h-4 w-4 text-copy-muted transition-transform group-hover:translate-x-0.5" />
                 </div>
-                {item.description ? <p className="mt-2 line-clamp-2 text-sm leading-6 text-copy-secondary">{item.description}</p> : null}
+                {item.description ? <p className="mt-2 line-clamp-2 text-p-sm text-copy-secondary">{item.description}</p> : null}
                 <div className="mt-4 flex items-center justify-between gap-3 text-sm">
                   <span className="capitalize text-copy-secondary">{availabilityLabel(item)}</span>
                   <span className="font-semibold text-copy-primary">{money(item.resolved_unit_price, item.currency)}</span>

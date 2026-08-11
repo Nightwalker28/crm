@@ -119,7 +119,7 @@ export default function RecordPaymentPage() {
                 <div className="flex justify-between gap-3 border-t border-line-subtle pt-3"><dt className="text-copy-muted">Outstanding</dt><dd className="font-semibold text-state-warning">{money(invoice.balance_due, invoice.currency)}</dd></div>
               </dl>
             ) : (
-              <p className="mt-2 text-sm leading-6 text-copy-secondary">Choose an invoice from the outstanding receivables list.</p>
+              <p className="mt-2 text-p-sm text-copy-secondary">Choose an invoice from the outstanding receivables list.</p>
             )}
           </Card>
         }

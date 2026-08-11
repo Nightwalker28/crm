@@ -127,7 +127,7 @@ export default function OrganizationsTable({
       case "primary_email":
         return (
           <TableCell>
-            <span className="font-mono text-sm tracking-tight text-copy-secondary">
+            <span className="text-sm text-copy-secondary">
               {org.primary_email || <span className="text-copy-disabled">—</span>}
             </span>
           </TableCell>
@@ -173,7 +173,7 @@ export default function OrganizationsTable({
       case "primary_phone":
         return (
           <TableCell>
-            <span className="font-mono text-sm tracking-tight text-copy-muted">
+            <span className="text-sm text-copy-muted">
               {org.primary_phone || <span className="text-copy-disabled">—</span>}
             </span>
           </TableCell>

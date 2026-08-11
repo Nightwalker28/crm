@@ -322,7 +322,7 @@ export default function RolesPermissionsPage() {
   if (isOverviewLoading) return <RouteLoadingState label="roles and permissions" />;
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex h-full min-h-0 flex-col gap-5">
       <PageToolbar><Button onClick={() => setDialogOpen(true)}><Plus />Create Role</Button></PageToolbar>
 
       {overviewError ? (
@@ -332,7 +332,7 @@ export default function RolesPermissionsPage() {
           <Button className="mt-4" variant="outline" onClick={() => void retryOverview()}>Try again</Button>
         </Card>
       ) : (
-        <Card className="overflow-visible">
+        <Card className="flex min-h-0 flex-1 flex-col overflow-visible">
             <div className="border-b border-line-subtle px-5 py-4">
               <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
                 <div>
@@ -345,7 +345,7 @@ export default function RolesPermissionsPage() {
                 </div>
                 {roles.length ? (
                   <div className="w-full lg:w-72">
-                    <label htmlFor="permission-role-selector" className="mb-1.5 block text-xs font-medium uppercase tracking-wide text-copy-muted">Role</label>
+                    <label htmlFor="permission-role-selector" className="mb-1.5 block text-xs font-medium text-copy-label">Role</label>
                     <Select
                       value={selectedRoleId == null ? "" : String(selectedRoleId)}
                       onValueChange={(value) => void switchRole(Number(value))}
@@ -396,8 +396,8 @@ export default function RolesPermissionsPage() {
               </div>
             ) : selectedRole && baselineLoaded ? (
               <>
-                <div className="p-4">
-                  <ModuleTableShell className="max-h-[62vh]" isRefreshing={isSaving || isPermissionsFetching}>
+                <div className="flex min-h-0 flex-1 flex-col p-4">
+                  <ModuleTableShell isRefreshing={isSaving || isPermissionsFetching}>
                     <Table className="min-w-[920px]">
                       <TableHeader>
                         <TableHeaderRow>

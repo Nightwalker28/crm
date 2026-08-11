@@ -57,9 +57,9 @@ export default function ContractsTable({ contracts, isLoading, isRefreshing = fa
     const href = `/dashboard/contracts/${item.id}`;
     switch (column) {
       case "contract_number":
-        return <Link href={href} onClick={(event) => event.stopPropagation()} className="rounded-[var(--radius-control-sm)] font-mono text-sm font-medium text-copy-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{item.contract_number}</Link>;
+        return <Link href={href} onClick={(event) => event.stopPropagation()} className="rounded-[var(--radius-control-sm)] text-sm font-medium tabular-nums text-copy-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">{item.contract_number}</Link>;
       case "title":
-        return <Link href={href} onClick={(event) => event.stopPropagation()} className="block max-w-[300px] truncate rounded-[var(--radius-control-sm)] text-sm font-medium text-copy-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{item.title}</Link>;
+        return <Link href={href} onClick={(event) => event.stopPropagation()} className="block max-w-[300px] truncate rounded-[var(--radius-control-sm)] text-sm font-medium text-copy-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">{item.title}</Link>;
       case "status": {
         const style = getContractStatusStyle(item.status);
         return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;

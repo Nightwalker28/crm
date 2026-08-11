@@ -53,7 +53,7 @@ function nextSort(sort: PosInvoiceSortState, column: string): PosInvoiceSortStat
 }
 
 function cell(invoice: PosInvoice, column: string, hasSelection: boolean) {
-  if (column === "invoice_number") return <TableCell className={`sticky z-10 bg-surface ${hasSelection ? "left-10" : "left-0"}`}><Link href={`/dashboard/finance/pos/${invoice.id}`} className="font-mono text-xs font-semibold text-copy-primary hover:underline">{invoice.invoice_number}</Link></TableCell>;
+  if (column === "invoice_number") return <TableCell className={`sticky z-10 bg-surface ${hasSelection ? "left-10" : "left-0"}`}><Link href={`/dashboard/finance/pos/${invoice.id}`} className="text-xs font-semibold tabular-nums text-copy-primary hover:underline">{invoice.invoice_number}</Link></TableCell>;
   if (column === "customer_name") return <TableCell><span className="font-medium text-copy-primary">{invoice.customer_name}</span></TableCell>;
   if (column === "payment_status") { const style = STATUS_STYLE[invoice.payment_status] ?? STATUS_STYLE.unpaid; return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>; }
   if (column === "total_amount") return <TableCell className="text-right font-medium text-copy-primary">{money(invoice.total_amount, invoice.currency)}</TableCell>;

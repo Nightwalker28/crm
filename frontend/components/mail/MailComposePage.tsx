@@ -115,7 +115,7 @@ export default function MailComposePage() {
         />
         <Card className="p-6">
           <h2 className="text-base font-semibold text-copy-primary">No sending mailbox available</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-copy-secondary">
+          <p className="mt-2 max-w-2xl text-p-sm text-copy-secondary">
             Connect or repair a Gmail, Microsoft, or IMAP/SMTP mailbox before composing an email.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
@@ -160,7 +160,7 @@ export default function MailComposePage() {
             </Card>
             <Card className="p-5">
               <h2 className="text-sm font-semibold text-copy-primary">CRM variables</h2>
-              <p className="mt-2 text-sm leading-6 text-copy-secondary">
+              <p className="mt-2 text-p-sm text-copy-secondary">
                 Variables resolve from linked record context or a matching contact recipient when the message is sent.
               </p>
               <div className="mt-4 flex flex-wrap gap-2">

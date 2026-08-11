@@ -235,8 +235,8 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
         type="button"
         onClick={() => setOpen(true)}
         className={responsive
-          ? "flex h-8 w-8 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-action-primary-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary xl:h-auto xl:w-full xl:justify-between xl:gap-3 xl:rounded-[var(--radius-control)] xl:border xl:border-line-default xl:bg-surface-muted xl:px-3 xl:py-2 xl:text-left xl:hover:border-line-strong xl:hover:bg-surface-raised"
-          : "flex w-full items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"}
+          ? "flex h-8 w-8 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-action-primary-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus xl:h-auto xl:w-full xl:justify-between xl:gap-3 xl:rounded-[var(--radius-control)] xl:border xl:border-line-default xl:bg-surface-muted xl:px-3 xl:py-2 xl:text-left xl:hover:border-line-strong xl:hover:bg-surface-raised"
+          : "flex w-full items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"}
         aria-label="Open command palette"
       >
         {responsive ? <Search className="h-4 w-4 xl:hidden" /> : null}
@@ -282,7 +282,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                   <>
                     {recentPages.length ? (
                       <Command.Group className="mb-3" data-testid="recent-pages">
-                        <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                        <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                           Recent Pages
                         </div>
                         {recentPages.map((item) => (
@@ -296,12 +296,12 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                               <div className="font-medium text-copy-primary">{item.label}</div>
                               <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
                             </div>
-                            <div className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">Recent</div>
+                            <div className="text-2xs font-medium text-copy-label">Recent</div>
                           </Command.Item>
                         ))}
                       </Command.Group>
                     ) : null}
-                    <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                    <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                       Quick Links
                     </div>
                     {quickLinks.map((item) => (
@@ -317,7 +317,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                           <div className="font-medium text-copy-primary">{item.label}</div>
                           <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
                         </div>
-                        <div className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">{item.group}</div>
+                        <div className="text-2xs font-medium text-copy-label">{item.group}</div>
                       </Command.Item>
                     ))}
                   </>
@@ -325,7 +325,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                   <>
                     {matchingQuickLinks.length ? (
                       <Command.Group className="mb-3 overflow-hidden rounded-[var(--radius-card)] border border-line-subtle bg-surface p-1 text-copy-secondary">
-                        <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                        <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                           Modules
                         </div>
                         {matchingQuickLinks.map((item) => (
@@ -341,7 +341,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                               <div className="font-medium text-copy-primary">{item.label}</div>
                               <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
                             </div>
-                            <div className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">{item.group}</div>
+                            <div className="text-2xs font-medium text-copy-label">{item.group}</div>
                           </Command.Item>
                         ))}
                       </Command.Group>
@@ -366,7 +366,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                           heading={group}
                           className="mb-3 overflow-hidden rounded-[var(--radius-card)] border border-line-subtle bg-surface p-1 text-copy-secondary"
                         >
-                          <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                          <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                             {group}
                           </div>
                           {items.map((item) => (

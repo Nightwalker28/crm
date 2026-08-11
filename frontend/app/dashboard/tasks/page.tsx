@@ -181,7 +181,7 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex h-full min-h-0 flex-col gap-4">
       <ModuleListToolbar
         searchValue={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -193,7 +193,7 @@ export default function TasksPage() {
         viewControls={
           <>
             <SavedViewSelector moduleKey="tasks" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />
-            <div className="inline-flex rounded-md border border-line-default p-0.5" aria-label="Task display">
+            <div className="inline-flex rounded-[var(--radius-card)] border border-line-default p-0.5" aria-label="Task display">
               <Button type="button" variant={displayMode === "list" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "list"} onClick={() => changeDisplayMode("list")}><Table2 />List</Button>
               <Button type="button" variant={displayMode === "board" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "board"} onClick={() => changeDisplayMode("board")}><Columns3 />Board</Button>
               <Button type="button" variant={displayMode === "calendar" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "calendar"} onClick={() => changeDisplayMode("calendar")}><CalendarDays />Calendar</Button>
@@ -203,7 +203,7 @@ export default function TasksPage() {
         primaryAction={<Button aria-label="Add Task" onClick={openCreateDialog}><Plus className="h-4 w-4" /><span className="hidden sm:inline">Add Task</span></Button>}
       />
 
-      <div className="rounded-xl border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
+      <div className="rounded-[var(--radius-panel)] border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
         <div className="flex items-center gap-2 text-copy-secondary">
           <CheckSquare className="h-4 w-4" />
           Default task views hide completed work. Use Manage View to include a completed-task queue.
@@ -225,7 +225,7 @@ export default function TasksPage() {
       ) : null}
 
       {displayMode !== "list" ? (
-        <div className="rounded-lg border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
+        <div className="rounded-[var(--radius-card)] border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
           Showing loaded records {rangeStart}-{rangeEnd} of {totalCount}. {displayMode === "board" ? "Drag cards between columns or use the status menu for keyboard access." : "Calendar placement follows each task's due date in your local timezone."}
         </div>
       ) : null}

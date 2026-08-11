@@ -171,7 +171,7 @@ function SupportCaseWorkspace({ item }: { item: SupportCase }) {
               <SummaryTile label="SLA due" value={item.sla_due_at ? formatDateTime(item.sla_due_at) : "No SLA deadline"} />
               <SummaryTile label="Source" value={item.source ? titleCase(item.source) : "Not recorded"} />
             </div>
-            {item.description ? <p className="mt-5 whitespace-pre-wrap border-t border-line-subtle pt-5 text-sm leading-6 text-copy-secondary">{item.description}</p> : null}
+            {item.description ? <p className="mt-5 whitespace-pre-wrap border-t border-line-subtle pt-5 text-p-sm text-copy-secondary">{item.description}</p> : null}
           </Card>
 
           <Card className="p-5">
@@ -187,7 +187,7 @@ function SupportCaseWorkspace({ item }: { item: SupportCase }) {
                     <span>{entry.author_name || "Team member"}</span>
                     <time dateTime={entry.created_at}>{formatDateTime(entry.created_at)}</time>
                   </div>
-                  <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-copy-primary">{entry.body}</div>
+                  <div className="mt-2 whitespace-pre-wrap text-p-sm text-copy-primary">{entry.body}</div>
                 </article>
               )) : (
                 <div className="rounded-[var(--radius-control)] border border-dashed border-line-default px-4 py-8 text-center text-sm text-copy-muted">No replies yet. Add the first response below.</div>
@@ -248,7 +248,7 @@ function CasePill({ value, type }: { value: string; type: "status" | "priority" 
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">{label}</div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
       <div className="mt-1 text-sm font-medium text-copy-primary">{value}</div>
     </div>
   );
@@ -257,7 +257,7 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
 function LinkedTile({ label, value, href }: { label: string; value: string; href: string | null }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">{label}</div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
       <div className="mt-1 text-sm font-medium text-copy-primary">
         {href ? <Link href={href} className="hover:text-action-primary hover:underline">{value}</Link> : value}
       </div>

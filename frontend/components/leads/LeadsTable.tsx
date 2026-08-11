@@ -96,7 +96,7 @@ export default function LeadsTable({
           </TableCell>
         );
       case "primary_email":
-        return <TableCell className={stickyClassName}><span className="font-mono text-sm tracking-tight text-copy-secondary">{lead.primary_email || <span className="text-copy-disabled">-</span>}</span></TableCell>;
+        return <TableCell className={stickyClassName}><span className="text-sm text-copy-secondary">{lead.primary_email || <span className="text-copy-disabled">-</span>}</span></TableCell>;
       case "status": {
         const style = getLeadStatusStyle(lead.status ?? "");
         return <TableCell className={stickyClassName}><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;

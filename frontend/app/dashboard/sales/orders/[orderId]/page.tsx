@@ -343,7 +343,7 @@ export default function OrderDetailPage() {
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">
+      <div className="text-xs font-medium text-copy-label">
         {label}
       </div>
       <div className="mt-2 text-sm text-copy-primary">{value}</div>
@@ -362,7 +362,7 @@ function LinkedTile({
 }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">
+      <div className="text-xs font-medium text-copy-label">
         {label}
       </div>
       <div className="mt-2 text-sm text-copy-primary">

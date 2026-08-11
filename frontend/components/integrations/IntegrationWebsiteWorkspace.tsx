@@ -393,13 +393,13 @@ export function IntegrationWebsiteWorkspace() {
                   <Field>
                     <FieldLabel htmlFor="api-key-origins">Allowed Origins</FieldLabel>
                     <Textarea id="api-key-origins" value={apiKeyDraft.allowedOrigins} onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowedOrigins: event.target.value }))} placeholder="https://example.com, https://www.example.com" className="min-h-20" />
-                    <p className="text-xs leading-5 text-copy-muted">Comma-separated browser origins. Leave empty only for server-to-server clients that do not send an Origin header.</p>
+                    <p className="text-p-xs text-copy-muted">Comma-separated browser origins. Leave empty only for server-to-server clients that do not send an Origin header.</p>
                   </Field>
                 </FieldGroup>
 
                 {latestApiKey ? (
                   <div role="status" className="mt-5 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted p-3">
-                    <div className="mb-2 text-xs font-medium uppercase text-copy-muted">Copy this key now</div>
+                    <div className="mb-2 text-xs font-medium text-copy-muted">Copy this key now</div>
                     <div className="break-all font-mono text-xs text-copy-primary">{latestApiKey}</div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button type="button" variant="outline" size="sm" onClick={() => void copyApiKey()}><Copy size={14} />Copy</Button>
@@ -587,7 +587,7 @@ export function IntegrationWebsiteWorkspace() {
                     <div className="mt-1 text-xs text-copy-muted">{order.source_platform || "external site"}</div>
                     <div className="mt-2 max-w-[180px]">
                       <Select value={order.status} onValueChange={(value) => void updateOrderStatus(order, value)} disabled={saving}>
-                        <SelectTrigger className="h-8 bg-surface-muted text-xs" aria-label={`Status for order ${order.external_reference}`}>
+                        <SelectTrigger size="sm" className="bg-surface-muted text-xs" aria-label={`Status for order ${order.external_reference}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
