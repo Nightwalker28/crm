@@ -2,6 +2,15 @@
 
 The frontend is Next.js + React + TypeScript and should stay aligned with the shared dashboard system rather than growing one-off UI patterns.
 
+## Design system
+
+`docs/design/` is the written source of truth for how Lynk looks and feels. Read it before writing or restyling UI:
+
+- `docs/design/design.md` — design principles, colour policy, typography, spacing, component law, accessibility floors, and the pre-ship checklist.
+- `docs/design/tokens.md` — the token vocabulary, both themes, and how light values are derived from dark.
+
+Short form: neutral gray instrument with no brand accent, hierarchy from ink and space rather than boxes, dark as default with light derived from it in OKLCH, Inter everywhere with monospace reserved for secrets, and shared primitives instead of page-local UI.
+
 ## Core frontend rules
 
 - Prefer shared UI primitives, hooks, and route patterns over page-specific copies.

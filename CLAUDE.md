@@ -90,6 +90,8 @@ Auth alone is never sufficient: service-layer queries must scope by `tenant_id` 
 
 Render user-facing time through the shared timezone helpers (`lib/datetime.ts`), use `LinkedRecordPicker` for canonical relationships rather than free text, and keep required-field/validation copy aligned with backend constraints.
 
+**Visual design is specified, not improvised.** `docs/design/design.md` (design language) and `docs/design/tokens.md` (token vocabulary) are the source of truth for colour, typography, spacing, radius, icons, motion, and accessibility floors. Read them before writing or restyling UI, and use semantic tokens — never raw hex or Tailwind's own colour palette.
+
 ## Adding a module
 
 `python3 scripts/create-module.py <area> <modules>` scaffolds backend repository/service/route files, a migration template, and frontend hook/type/page/component files. It never overwrites, and it does **not** patch shared registries — it prints the snippets you must paste into `models.py`, `schema.py`, `api/v1/router.py`, `bootstrap/seed.py`, `lib/routes.ts`, `Sidebar.tsx`, `lib/moduleViewConfigs.ts`, and `lib/module-display.ts`. See `docs/module-template/README.md` and `checklist.md`.
