@@ -16,6 +16,8 @@ import { ADMIN_QUICK_ACTIONS, getDependentModuleDefinitions, getModuleDefinition
 import { describeRecentDashboardPage, getRecentPagesSnapshot, parseRecentPages, recordRecentPage, subscribeToRecentPages } from "@/lib/recent-pages";
 import { canonicalizeDashboardHref } from "@/lib/routes";
 
+const SEARCH_LABEL = "Search records and modules";
+
 type PaletteLink = {
   label: string;
   subtitle: string;
@@ -255,7 +257,10 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
         <DialogBackdrop />
         <div className="fixed inset-0 flex items-start justify-center px-4 pt-[12vh]">
           <DialogPanel className="w-full max-w-2xl overflow-hidden rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-0 shadow-[0_32px_100px_rgba(0,0,0,0.55)]">
-            <Command shouldFilter={false} className="overflow-hidden bg-transparent">
+            {/* cmdk always points the input's aria-labelledby at the element it renders for
+                `label`, and aria-labelledby wins over aria-label. Without it the reference
+                resolved to empty text, leaving the combobox with no accessible name at all. */}
+            <Command label={SEARCH_LABEL} shouldFilter={false} className="overflow-hidden bg-transparent">
               <div className="flex items-center gap-3 border-b border-line-subtle px-4 py-3">
                 <Search className="h-4 w-4 text-copy-muted" />
                 <Command.Input
@@ -264,7 +269,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                   onValueChange={setQuery}
                   placeholder="Search records across the workspace..."
                   className="h-10 w-full bg-transparent text-sm text-copy-primary outline-none placeholder:text-copy-muted"
-                  aria-label="Search records and modules"
+                  aria-label={SEARCH_LABEL}
                 />
                 <div className="hidden items-center gap-1 text-[11px] text-copy-muted sm:flex">
                   <CornerDownLeft className="h-3 w-3" />

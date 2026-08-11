@@ -506,7 +506,9 @@ test("opens message-template creation as a routed full-page workflow", async ({ 
   await page.getByText("Create message template", { exact: true }).click();
 
   await expect(page).toHaveURL(/\/dashboard\/settings\/message-templates\/new$/);
-  await expect(page.getByRole("heading", { name: "Create message template" })).toBeVisible();
+  // Routed settings pages carry no heading of their own; the shell header names the section.
+  await expect(page.locator("main > div > header").getByRole("heading", { name: "Templates" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Template details" })).toBeVisible();
 });
 
 test("opens integration configuration at the provider registry", async ({ page }) => {
@@ -541,6 +543,28 @@ test("hides integration configuration without configure permission", async ({ pa
 });
 
 test("hides admin-only actions from non-admin users even with module actions", async ({ page }) => {
+  // useSidebarUser revalidates from /users/me and caches whatever it gets back, so the seeded
+  // non-admin only survives the reload if the endpoint agrees with it.
+  await page.route("**/api/v1/users/me", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: 99,
+        email: "standard@example.com",
+        first_name: "Standard",
+        last_name: "User",
+        role_level: 10,
+        is_admin: false,
+      }),
+    }),
+  );
+  // Signing in leaves an in-flight /users/me write in the page. Seeding before it lands lets
+  // the real admin clobber the standard user, so wait for it first.
+  await expect
+    .poll(async () => page.evaluate(() => window.sessionStorage.getItem("lynk_user")))
+    .toContain('"is_admin":true');
+
   await page.evaluate((modules) => {
     window.sessionStorage.setItem("lynk_user", JSON.stringify({
       id: 99,
