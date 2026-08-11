@@ -420,6 +420,17 @@ when a lucide glyph exists.
 - Icons are supporting, not decorative. If removing the icon loses no information and
   the label is already clear, remove it.
 
+**Audited August 2026: clean.** 165 icon imports, all lucide, no second package.
+Exactly two files hand-author SVG, and both are **third-party brand marks**, which
+lucide excludes by policy:
+
+| File | Mark |
+|---|---|
+| `app/auth/login/page.tsx` | Google and Microsoft OAuth logos |
+| `components/contacts/contactList.tsx` | LinkedIn |
+
+Those are the only permitted hand-authored icons. Anything else is a lucide glyph.
+
 ---
 
 ## 6. Motion
@@ -606,6 +617,26 @@ an unrelated change, and do not copy them.
 |---|---|---|
 | Body copy is still one size in practice | 872 `text-sm` | The tight/prose split (§3.3) and `text-2xs` exist, but the finer 13/15px steps have not been introduced. Add them only if a real hierarchy needs them. |
 | `text-copy-label` applied to swept labels only | — | The token exists and the 118 ex-`uppercase` labels use it. Other hand-written labels still sit on `text-copy-muted`. Move them as you touch them. |
+
+### 11.0 Components that predate the shadcn rule
+
+§7.2 makes shadcn primitives the only source. Four places were built before that rule
+and hand-roll something shadcn already provides. Two have user-facing consequences, so
+they are ordered by that rather than by size.
+
+| Component | Built as | Consequence |
+|---|---|---|
+| `RecordTabs` | raw `<button role="tab">` + `useState` | **Broken ARIA contract.** It announces itself as a tablist but has no `onKeyDown`, no arrow-key navigation and no roving `tabIndex`. Claiming the role without the behaviour is worse than not claiming it. radix Tabs gives all of it. |
+| `ColumnPicker` | `absolute right-0 top-11` div + `useState` | **Cannot be dismissed.** No Escape handler and no outside-click. The `popover` primitive already vendored in this repo handles both, plus positioning. |
+| `Table` | raw `<table>` | Consistency only; it works. shadcn has a Table to build on. |
+| Card-shaped boxes | hand-rolled `rounded-card + border + bg` | 93 such boxes against 63 files using `<Card>`. Roughly a third of card-shaped things bypass the primitive, so a change to `Card` reaches two thirds of them. |
+
+`Pagination`, `SearchBar`, `spinner` and `sonner` are thin compositions over existing
+primitives and are fine as they are. The remaining `components/ui/` files are
+Lynk-specific compositions (`ModuleTableShell`, `SavedViewSelector`, `PageHeader` and
+so on) that shadcn has no equivalent for — those are correct, not drift.
+
+Fix `RecordTabs` and `ColumnPicker` first; they are accessibility defects, not style.
 
 ### 11.1 List pages are full-height — do not put a max-height back
 

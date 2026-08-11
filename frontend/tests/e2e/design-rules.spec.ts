@@ -138,7 +138,7 @@ test("design rule audit", async ({ page }) => {
     for (const s of l.suffixes) routes.push(href + s);
   }
 
-  const violations: Record<string, string[]> = { uppercase: [], mono: [], radius: [], controlHeight: [], font: [] };
+  const violations: Record<string, string[]> = { uppercase: [], mono: [], radius: [], controlHeight: [], font: [], nesting: [] };
   const seen = new Set<string>();
 
   for (const route of routes) {
@@ -149,7 +149,7 @@ test("design rule audit", async ({ page }) => {
 
     const r = await page.evaluate((args) => {
       const { allowedRadii, allowedH } = args;
-      const out = { uppercase: [] as string[], mono: [] as string[], radius: [] as string[], controlHeight: [] as string[], font: [] as string[] };
+      const out = { uppercase: [] as string[], mono: [] as string[], radius: [] as string[], controlHeight: [] as string[], font: [] as string[], nesting: [] as string[] };
       const visible = (el: Element) => {
         const b = (el as HTMLElement).getBoundingClientRect();
         return b.width > 0 && b.height > 0;
@@ -179,6 +179,34 @@ test("design rule audit", async ({ page }) => {
         const h = Math.round(el.getBoundingClientRect().height);
         if (!allowedH.includes(h) && h > 20) out.controlHeight.push(`${h}px ${label(el)}`);
       });
+      // Nesting depth: a visible container is a radius plus a border or a tint, at
+      // panel size. Form controls are excluded - a textarea has all three but is a
+      // control, not a container. Budget is 2 (design.md 1.3): page -> panel.
+      {
+        const CONTROLS = new Set(["TEXTAREA", "INPUT", "SELECT", "BUTTON", "IMG", "SVG"]);
+        const isContainer = (el: Element) => {
+          if (CONTROLS.has(el.tagName)) return false;
+          if ((el as HTMLElement).closest('[data-slot="button"]')) return false;
+          const cs = getComputedStyle(el);
+          const b = (el as HTMLElement).getBoundingClientRect();
+          if (b.width < 200 || b.height < 60) return false;
+          if ((parseFloat(cs.borderTopLeftRadius) || 0) <= 0) return false;
+          const bordered = (parseFloat(cs.borderTopWidth) || 0) > 0 && cs.borderTopStyle !== "none";
+          const tinted = cs.backgroundColor !== "rgba(0, 0, 0, 0)" && cs.backgroundColor !== "transparent";
+          return bordered || tinted;
+        };
+        const BUDGET = 2;
+        const walk = (el: Element, depth: number, trail: string[]) => {
+          const here = isContainer(el);
+          const d = depth + (here ? 1 : 0);
+          const t = here ? [...trail, label(el)] : trail;
+          if (d > BUDGET) { out.nesting.push(t.join(" > ")); return; }
+          Array.from(el.children).forEach((c) => walk(c, d, t));
+        };
+        const root = document.querySelector("main") ?? document.body;
+        Array.from(root.children).forEach((c) => walk(c, 0, []));
+      }
+
       const bodyFont = getComputedStyle(document.body).fontFamily;
       if (!/inter/i.test(bodyFont)) out.font.push(bodyFont);
       return out;
@@ -201,4 +229,5 @@ test("design rule audit", async ({ page }) => {
   expect(violations.radius, "radius outside the token scale (design.md 4.3)").toEqual([]);
   expect(violations.mono, "monospace outside secrets and raw payloads (design.md 3.2)").toEqual([]);
   expect(violations.controlHeight, "control height outside 32/38/44 (design.md 4.2)").toEqual([]);
+  expect(violations.nesting, "more than 2 levels of visible container (design.md 1.3)").toEqual([]);
 });
