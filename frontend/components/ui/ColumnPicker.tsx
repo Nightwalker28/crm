@@ -1,10 +1,9 @@
 "use client";
 
 import { ArrowDown, ArrowUp, EyeOff, Settings2 } from "lucide-react";
-import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import type { TableColumnOption } from "@/types/table";
 
 type Props = {
@@ -13,19 +12,24 @@ type Props = {
   visibleColumns: string[];
   onChange: (visibleColumns: string[]) => Promise<unknown> | unknown;
   className?: string;
-  forceOpen?: boolean;
 };
 
+/**
+ * Column visibility and order.
+ *
+ * Built on the Popover primitive rather than a hand-positioned div: the previous
+ * version was an `absolute right-0 top-11` panel with no Escape handler and no
+ * outside-click, so once open it could only be dismissed by hitting the trigger
+ * again. Popover also returns focus to the trigger on close and keeps the panel on
+ * screen near a viewport edge instead of trusting a fixed offset.
+ */
 export function ColumnPicker({
   title = "Columns",
   options,
   visibleColumns,
   onChange,
   className,
-  forceOpen = false,
 }: Props) {
-  const [open, setOpen] = useState(false);
-
   const hiddenColumns = options.filter((option) => !visibleColumns.includes(option.key));
   const orderedVisibleOptions = visibleColumns
     .map((key) => options.find((option) => option.key === key))
@@ -57,95 +61,83 @@ export function ColumnPicker({
   }
 
   return (
-    <div className={cn("relative", className)}>
-      {!forceOpen ? (
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={() => setOpen((value) => !value)}
-        >
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button type="button" variant="outline" size="sm" className={className}>
           <Settings2 className="h-4 w-4" />
           {title}
         </Button>
-      ) : null}
+      </PopoverTrigger>
 
-      {(forceOpen || open) && (
-        <div
-          className={cn(
-            "w-64 rounded-[var(--radius-panel)] border border-line-default bg-surface-raised p-3 shadow-2xl",
-            forceOpen ? "static shadow-none" : "absolute right-0 top-11 z-30",
-          )}
-        >
-          <div className="mb-3 text-xs font-semibold text-copy-secondary">
-            Visible columns
-          </div>
-          <div className="space-y-3">
-            <div className="space-y-2">
-              {orderedVisibleOptions.map((option, index) => (
-                <div
-                  key={option.key}
-                  className="flex items-center gap-2 rounded-[var(--radius-control)] px-2 py-2 text-sm text-copy-secondary hover:bg-surface-muted"
+      <PopoverContent align="end" className="w-64 border-line-default bg-surface-raised p-3">
+        <div className="mb-3 text-xs font-semibold text-copy-secondary">
+          Visible columns
+        </div>
+        <div className="space-y-3">
+          <div className="space-y-2">
+            {orderedVisibleOptions.map((option, index) => (
+              <div
+                key={option.key}
+                className="flex items-center gap-2 rounded-[var(--radius-control)] px-2 py-2 text-sm text-copy-secondary hover:bg-surface-muted"
+              >
+                <button
+                  type="button"
+                  onClick={() => void toggleColumn(option.key)}
+                  className="rounded p-1 text-copy-muted hover:bg-surface-muted hover:text-copy-primary"
+                  title="Hide column"
                 >
+                  <EyeOff className="h-4 w-4" />
+                </button>
+                <span className="flex-1">{option.label}</span>
+                <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={() => void toggleColumn(option.key)}
-                    className="rounded p-1 text-copy-muted hover:bg-surface-muted hover:text-copy-primary"
-                    title="Hide column"
+                    onClick={() => void moveColumn(option.key, "up")}
+                    disabled={index === 0}
+                    className="rounded p-1 text-copy-muted hover:bg-surface-muted hover:text-copy-primary disabled:cursor-not-allowed disabled:opacity-30"
+                    title="Move up"
                   >
-                    <EyeOff className="h-4 w-4" />
+                    <ArrowUp className="h-4 w-4" />
                   </button>
-                  <span className="flex-1">{option.label}</span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => void moveColumn(option.key, "up")}
-                      disabled={index === 0}
-                      className="rounded p-1 text-copy-muted hover:bg-surface-muted hover:text-copy-primary disabled:cursor-not-allowed disabled:opacity-30"
-                      title="Move up"
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void moveColumn(option.key, "down")}
-                      disabled={index === orderedVisibleOptions.length - 1}
-                      className="rounded p-1 text-copy-muted hover:bg-surface-muted hover:text-copy-primary disabled:cursor-not-allowed disabled:opacity-30"
-                      title="Move down"
-                    >
-                      <ArrowDown className="h-4 w-4" />
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void moveColumn(option.key, "down")}
+                    disabled={index === orderedVisibleOptions.length - 1}
+                    className="rounded p-1 text-copy-muted hover:bg-surface-muted hover:text-copy-primary disabled:cursor-not-allowed disabled:opacity-30"
+                    title="Move down"
+                  >
+                    <ArrowDown className="h-4 w-4" />
+                  </button>
                 </div>
-              ))}
-            </div>
-
-            {hiddenColumns.length ? (
-              <>
-                <div className="border-t border-line-default pt-3 text-xs font-semibold text-copy-label">
-                  Hidden columns
-                </div>
-                <div className="space-y-2">
-                  {hiddenColumns.map((option) => (
-                    <label
-                      key={option.key}
-                      className="flex cursor-pointer items-center gap-3 rounded-[var(--radius-control)] px-2 py-2 text-sm text-copy-secondary hover:bg-surface-muted"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={false}
-                        onChange={() => void toggleColumn(option.key)}
-                        className="h-4 w-4 rounded border-line-strong bg-surface"
-                      />
-                      <span>{option.label}</span>
-                    </label>
-                  ))}
-                </div>
-              </>
-            ) : null}
+              </div>
+            ))}
           </div>
+
+          {hiddenColumns.length ? (
+            <>
+              <div className="border-t border-line-default pt-3 text-xs font-semibold text-copy-label">
+                Hidden columns
+              </div>
+              <div className="space-y-2">
+                {hiddenColumns.map((option) => (
+                  <label
+                    key={option.key}
+                    className="flex cursor-pointer items-center gap-3 rounded-[var(--radius-control)] px-2 py-2 text-sm text-copy-secondary hover:bg-surface-muted"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={false}
+                      onChange={() => void toggleColumn(option.key)}
+                      className="h-4 w-4 rounded border-line-strong bg-surface"
+                    />
+                    <span>{option.label}</span>
+                  </label>
+                ))}
+              </div>
+            </>
+          ) : null}
         </div>
-      )}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }
