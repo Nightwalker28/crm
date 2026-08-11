@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAsAdmin } from "./helpers/auth";
+import { stubDefaultSavedViews } from "./helpers/savedViews";
 
 const productId = 4401;
 const serviceId = 4402;
@@ -96,6 +97,7 @@ async function cacheCatalogPermissions(
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
+  await stubDefaultSavedViews(page);
 });
 
 test("Product list uses permission-aware semantic actions and safe mutation feedback", async ({ page }) => {

@@ -411,7 +411,8 @@ test("Lead tags support keyboard suggestions and redact lookup failures", async 
   );
 
   await page.goto("/dashboard/sales/leads/new");
-  const tagInput = page.getByLabel("Tags");
+  // Exact: the tag input's chip container is labelled "Selected tags", which a substring match also picks up.
+  const tagInput = page.getByLabel("Tags", { exact: true });
   await tagInput.fill("Ent");
   await expect(page.getByRole("option", { name: "Enterprise" })).toBeVisible();
   await tagInput.press("ArrowDown");

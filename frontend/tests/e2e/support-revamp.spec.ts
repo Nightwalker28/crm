@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAsAdmin } from "./helpers/auth";
+import { stubDefaultSavedViews } from "./helpers/savedViews";
 
 const caseId = 987654301;
 
@@ -57,6 +58,7 @@ function supportCaseFixture() {
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
+  await stubDefaultSavedViews(page);
   let supportCase = supportCaseFixture();
 
   await page.route("**/support/cases/summary", (route) =>

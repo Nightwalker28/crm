@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAsAdmin } from "./helpers/auth";
+import { stubDefaultSavedViews } from "./helpers/savedViews";
 
 const moduleCacheKey = "lynk_modules:v4";
 
@@ -73,6 +74,7 @@ function invoiceFixture(invoiceId: number) {
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
+  await stubDefaultSavedViews(page);
 });
 
 test("Invoice creation uses the dedicated itemized transaction workflow", async ({
