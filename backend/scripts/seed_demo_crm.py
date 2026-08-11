@@ -188,6 +188,13 @@ def slugify(value: str) -> str:
 
 
 def demo_hash(value: str) -> str:
+    """Deterministic stand-in for a real token hash.
+
+    Callers must include the tenant id in `value` whenever the column it backs is
+    globally unique (client setup tokens, public page tokens). Those indexes are not
+    tenant-scoped - a signed link has to be unique across the whole install - so
+    seeding a second tenant with the same inputs would collide.
+    """
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
@@ -214,8 +221,14 @@ def get_or_create(db: Session, model, defaults: dict | None = None, **filters):
     return obj
 
 
-def reset_demo_tenant(db: Session) -> None:
-    tenant = get_one(db, Tenant, slug=DEMO_TENANT_SLUG)
+def reset_demo_tenant(db: Session, slug: str = DEMO_TENANT_SLUG) -> None:
+    if slug != DEMO_TENANT_SLUG:
+        raise SystemExit(
+            f"Refusing to reset tenant '{slug}'. --reset-demo deletes the tenant and every "
+            f"record linked to it, and is only allowed for the demo tenant "
+            f"('{DEMO_TENANT_SLUG}')."
+        )
+    tenant = get_one(db, Tenant, slug=slug)
     if tenant:
         print(f"Deleting existing demo tenant: {tenant.name} ({tenant.id})")
         db.delete(tenant)
@@ -243,26 +256,34 @@ def seed_modules(db: Session) -> dict[str, Module]:
     return modules
 
 
-def seed_tenant(db: Session) -> Tenant:
+def seed_tenant(db: Session, slug: str = DEMO_TENANT_SLUG, name: str = "Lynk Demo CRM") -> Tenant:
+    """Find or create the target tenant.
+
+    `get_or_create` matches on slug alone, so pointing this at an existing tenant
+    reuses it and leaves its name and status untouched - the defaults only apply
+    when the tenant is being created.
+    """
     tenant = get_or_create(
         db,
         Tenant,
-        slug=DEMO_TENANT_SLUG,
+        slug=slug,
         defaults={
-            "name": "Lynk Demo CRM",
+            "name": name,
             "is_active": 1,
         },
     )
 
-    get_or_create(
-        db,
-        TenantDomain,
-        hostname=DEMO_DOMAIN,
-        defaults={
-            "tenant_id": tenant.id,
-            "is_primary": 1,
-        },
-    )
+    # The demo hostname belongs to the demo tenant. Never attach it to a real one.
+    if slug == DEMO_TENANT_SLUG:
+        get_or_create(
+            db,
+            TenantDomain,
+            hostname=DEMO_DOMAIN,
+            defaults={
+                "tenant_id": tenant.id,
+                "is_primary": 1,
+            },
+        )
 
     db.commit()
     return tenant
@@ -892,7 +913,7 @@ def seed_client_portal(db: Session, tenant: Tenant, users, contacts, organizatio
                 "email": contact.primary_email,
                 "password_hash": hash_password(DEMO_CLIENT_PASSWORD),
                 "status": "active" if idx % 2 == 0 else "pending",
-                "setup_token_hash": demo_hash(f"setup-{contact.primary_email}"),
+                "setup_token_hash": demo_hash(f"setup-{tenant.id}-{contact.primary_email}"),
                 "setup_token_expires_at": NOW + timedelta(days=7),
                 "last_login_at": NOW - timedelta(days=idx) if idx % 2 == 0 else None,
                 "created_by_user_id": admin.id,
@@ -914,7 +935,7 @@ def seed_client_portal(db: Session, tenant: Tenant, users, contacts, organizatio
                     "email": email,
                     "password_hash": hash_password(DEMO_CLIENT_PASSWORD),
                     "status": "active",
-                    "setup_token_hash": demo_hash(f"setup-{email}"),
+                    "setup_token_hash": demo_hash(f"setup-{tenant.id}-{email}"),
                     "setup_token_expires_at": NOW + timedelta(days=10),
                     "last_login_at": NOW - timedelta(days=idx + 1),
                     "created_by_user_id": admin.id,
@@ -964,7 +985,7 @@ def seed_client_portal(db: Session, tenant: Tenant, users, contacts, organizatio
                 },
                 "source_module_key": "sales_contacts",
                 "source_entity_id": str(contact.contact_id),
-                "public_token_hash": demo_hash(f"public-page-{contact.contact_id}"),
+                "public_token_hash": demo_hash(f"public-page-{tenant.id}-{contact.contact_id}"),
                 "public_token_expires_at": NOW + timedelta(days=30),
                 "published_at": NOW - timedelta(days=idx) if idx % 4 in (1, 2) else None,
                 "created_by_user_id": admin.id,
@@ -1188,7 +1209,21 @@ def main():
     parser.add_argument(
         "--reset-demo",
         action="store_true",
-        help="Delete the demo tenant and recreate all linked demo data.",
+        help="Delete the demo tenant and recreate all linked demo data. Demo tenant only.",
+    )
+    parser.add_argument(
+        "--tenant-slug",
+        default=DEMO_TENANT_SLUG,
+        help=(
+            "Slug of the tenant to seed. Defaults to the demo tenant. Point it at an "
+            "existing slug to load sample records into that tenant instead; the tenant's "
+            "own name and status are left unchanged."
+        ),
+    )
+    parser.add_argument(
+        "--tenant-name",
+        default="Lynk Demo CRM",
+        help="Name used only when the target tenant does not exist yet.",
     )
     args = parser.parse_args()
 
@@ -1196,10 +1231,10 @@ def main():
 
     try:
         if args.reset_demo:
-            reset_demo_tenant(db)
+            reset_demo_tenant(db, args.tenant_slug)
 
         modules = seed_modules(db)
-        tenant = seed_tenant(db)
+        tenant = seed_tenant(db, args.tenant_slug, args.tenant_name)
         roles, departments, teams = seed_roles_departments_teams(db, tenant, modules)
         users = seed_users(db, tenant, roles, departments, teams)
         groups = seed_customer_groups(db, tenant)
