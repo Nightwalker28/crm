@@ -608,6 +608,39 @@ def _find_system_saved_view(db: Session, user: User, module_key: str) -> UserSav
     return next((view for view in saved_views if _is_system_saved_view(view)), None)
 
 
+def _resync_system_saved_view(
+    db: Session,
+    system_view: UserSavedView,
+    module_key: str,
+    visible_columns: list[str],
+) -> UserSavedView:
+    """Keeps a system default view tracking the columns the module currently defines.
+
+    A system view is only ever written by _build_system_default_config -- update_saved_view
+    rejects edits to it -- so its stored config is a materialised copy of the platform
+    defaults rather than anything the user chose. When those defaults change, an untouched
+    copy silently rots: keys the module has since renamed survive in the database, the client
+    drops them as unknown, and the list degrades to whatever happens to be left. Re-deriving
+    the copy is safe precisely because no user intent can be lost with it.
+
+    Skipped when the caller reports no defaults, so a client that omits the parameter cannot
+    blank out a stored view.
+    """
+    if not visible_columns:
+        return system_view
+
+    config = system_view.config if isinstance(system_view.config, dict) else {}
+    stored_columns = config.get("visible_columns")
+    if isinstance(stored_columns, list) and list(stored_columns) == list(visible_columns):
+        return system_view
+
+    system_view.config = _build_system_default_config(module_key, visible_columns)
+    db.add(system_view)
+    db.commit()
+    db.refresh(system_view)
+    return system_view
+
+
 def _get_or_create_system_saved_view(
     db: Session,
     user: User,
@@ -617,7 +650,7 @@ def _get_or_create_system_saved_view(
 ) -> UserSavedView:
     system_view = _find_system_saved_view(db, user, module_key)
     if system_view:
-        return system_view
+        return _resync_system_saved_view(db, system_view, module_key, visible_columns)
 
     system_view = UserSavedView(
         user_id=user.id,
@@ -663,7 +696,9 @@ def list_saved_views(
         .all()
     )
     system_view = next((view for view in saved_views if _is_system_saved_view(view)), None)
-    if not system_view:
+    if system_view:
+        _resync_system_saved_view(db, system_view, module_key, default_columns)
+    else:
         system_view = _get_or_create_system_saved_view(
             db,
             user,
