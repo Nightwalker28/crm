@@ -26,6 +26,27 @@ async function cachePosPermissions(
     },
     { cacheKey: moduleCacheKey, moduleActions: actions },
   );
+
+  // useAccessibleModules revalidates from the API and overwrites the seeded cache, so the
+  // stub has to agree with it or the real admin permissions win.
+  await page.route("**/api/v1/users/me/modules", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: 91,
+        name: "finance_pos",
+        is_enabled: true,
+        actions: {
+          can_view: true,
+          ...actions,
+          can_restore: false,
+          can_export: false,
+          can_configure: false,
+        },
+      }]),
+    }),
+  );
 }
 
 function invoiceFixture(invoiceId: number) {

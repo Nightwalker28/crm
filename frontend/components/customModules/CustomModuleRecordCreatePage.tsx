@@ -179,7 +179,10 @@ function CustomModuleRecordCreateEditor({
         </div>
       ) : null}
 
-      <form id="custom-module-create-form" onSubmit={handleSubmit}>
+      {/* The field inputs carry the native required attribute, so without noValidate the
+          browser blocks submit and validateRequiredFields never runs: the form's own message
+          and focus handling would never be reached. */}
+      <form id="custom-module-create-form" onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
           sidebar={
             <FormSection title="Module context" description="This record uses your tenant-configured module schema.">

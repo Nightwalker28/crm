@@ -95,8 +95,10 @@ function CustomModuleRecordOverview({
     }
   }
 
+  // The field inputs carry the native required attribute, so without noValidate the browser
+  // blocks submit and validateRequiredFields never runs.
   return (
-    <form id="custom-module-record-form" onSubmit={handleSubmit}>
+    <form id="custom-module-record-form" onSubmit={handleSubmit} noValidate>
       {submitError ? (
         <div role="alert" className="mb-4 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           <div className="font-medium">We could not save this record.</div>

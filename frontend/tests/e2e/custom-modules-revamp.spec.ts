@@ -145,6 +145,17 @@ async function cachePermissions(
     },
     { module: moduleFixture, actions: overrides },
   );
+
+  // The beforeEach stub still serves the unrestricted fixture, and useAccessibleModules
+  // revalidates and overwrites the seeded cache, so the endpoint has to be narrowed too.
+  await page.unroute("**/users/me/modules");
+  await page.route("**/users/me/modules", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{ ...moduleFixture, actions: { ...moduleFixture.actions, ...overrides } }]),
+    }),
+  );
 }
 
 test("creates a custom-module record from the responsive routed form", async ({ page }) => {
