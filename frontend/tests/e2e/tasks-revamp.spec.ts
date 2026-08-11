@@ -35,7 +35,7 @@ function taskFixture(status = "todo") {
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
   let task = taskFixture();
-  await page.route("**/tasks?**", async (route) => {
+  await page.route("**/api/v1/tasks?**", async (route) => {
     const url = new URL(route.request().url());
     const pageSize = Number(url.searchParams.get("page_size") ?? 10);
     await route.fulfill({
@@ -53,7 +53,7 @@ test.beforeEach(async ({ page }) => {
   await page.route(`**/calendar/events/from-task/${taskId}`, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ event: null }) });
   });
-  await page.route("**/tasks/options**", async (route) => {
+  await page.route("**/api/v1/tasks/options**", async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ users: [], teams: [] }) });
   });
 });
@@ -75,6 +75,10 @@ test("Tasks expose list, board, and calendar views with quick review", async ({ 
   await expect(page.getByRole("heading", { name: "Edit Task" })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/dashboard/tasks\\?taskId=${taskId}$`));
   await page.getByRole("button", { name: "Cancel" }).click();
+  // Closing clears ?taskId through router.replace, which lands in a transition rather than
+  // synchronously. Switching views before it settles loses the click to the re-render.
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page).toHaveURL(/\/dashboard\/tasks$/);
 
   await page.getByRole("button", { name: "Calendar" }).click();
   await expect(page.getByRole("region", { name: "Task due date calendar" })).toBeVisible();
@@ -108,8 +112,8 @@ test("Task creation labels required fields and validates the schedule", async ({
 });
 
 test("Task assignees use the shared accessible user and team picker", async ({ page }) => {
-  await page.unroute("**/tasks/options**");
-  await page.route("**/tasks/options**", (route) =>
+  await page.unroute("**/api/v1/tasks/options**");
+  await page.route("**/api/v1/tasks/options**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -128,7 +132,9 @@ test("Task assignees use the shared accessible user and team picker", async ({ p
   await search.fill("Revenue");
 
   const userOption = page.getByRole("button", { name: /Ada Owner/ });
-  const teamOption = page.getByRole("button", { name: /RevenueTeam assignment/ });
+  // The team name and its description are separate blocks, so the accessible name depends on
+  // how they get joined. Match across the boundary rather than on one exact spelling of it.
+  const teamOption = page.getByRole("button", { name: /Revenue\s*Team assignment/ });
   await expect(userOption).toHaveAttribute("aria-pressed", "false");
   await userOption.click();
   await teamOption.click();
@@ -138,8 +144,8 @@ test("Task assignees use the shared accessible user and team picker", async ({ p
 });
 
 test("Task list failures do not expose backend details", async ({ page }) => {
-  await page.unroute("**/tasks?**");
-  await page.route("**/tasks?**", (route) =>
+  await page.unroute("**/api/v1/tasks?**");
+  await page.route("**/api/v1/tasks?**", (route) =>
     route.fulfill({
       status: 500,
       contentType: "application/json",

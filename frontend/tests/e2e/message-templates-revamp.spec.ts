@@ -40,7 +40,9 @@ test("Message template creation uses a responsive routed form and preserves dott
   await page.getByLabel("Name").fill("Customer update");
   await page.getByRole("button", { name: "Back to templates" }).click();
   const discardDialog = page.getByRole("dialog", { name: "Discard template changes?" });
-  await expect(discardDialog).toBeVisible();
+  // role="dialog" sits on the Headless UI root, whose children are all position: fixed, so it
+  // has no box of its own. Assert on the titled panel inside it, which does.
+  await expect(discardDialog.getByRole("heading", { name: "Discard template changes?" })).toBeVisible();
   await discardDialog.getByRole("button", { name: "Cancel" }).click();
   await expect(page).toHaveURL(/\/dashboard\/settings\/message-templates\/new$/);
 
@@ -62,7 +64,9 @@ test("Message template creation uses a responsive routed form and preserves dott
 
 test("Message template editing hydrates the routed form and confirms deletion from the list", async ({ page }) => {
   await page.goto(`/dashboard/settings/message-templates/${templateId}/edit`);
-  await expect(page.getByRole("heading", { name: "Edit message template" })).toBeVisible();
+  // Routed settings pages carry no heading of their own; the shell header names the section.
+  await expect(page.locator("main > div > header").getByRole("heading", { name: "Templates" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Template details" })).toBeVisible();
   await expect(page.getByLabel("Name")).toHaveValue("Quote follow-up");
   await expect(page.getByLabel("Body")).toHaveValue(/{{contact\.first_name}}/);
 
