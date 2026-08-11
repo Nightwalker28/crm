@@ -329,9 +329,10 @@ after implementation** — see [`design.md`](./design.md) for the rules that res
    icon medallions, not controls. The genuine defect was call-site `className="h-9"`
    overrides on `Input` and a select trigger 2px shorter than the input beside it.
 8. **A small bespoke icon tier.**
-   → **Deferred, deliberately.** It is a design-asset task — ~12 hand-drawn 16px
-   filled glyphs matched to Lucide's optical weight — not a code change. Nothing else
-   depends on it.
+   → **Not taken, and now ruled out.** The owner subsequently made shadcn primitives
+   and lucide icons a hard rule ([`design.md` §7.2](./design.md)), which closes this
+   item rather than deferring it: Lynk takes consistency over identity in the icon
+   layer. The observation in §6 stands as research, but it is not a plan.
 
 Also taken, not in the original list: the chart palette was extended to eight slots
 (§5's "a series keeps its hue across a theme flip") and moved behind

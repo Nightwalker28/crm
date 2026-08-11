@@ -686,9 +686,10 @@ Both the general rule (§4.5) and the audit spec exist because of this.
   and it does not fix the muddy light-mode value that motivated it. That value is
   dark because it must clear 4.5:1 on white; the fix is to use warning as a tint
   background with the solid as text (§2.4), which is already the rule.
-- *A bespoke domain icon tier* (research §8). Real, but it is a design-asset task —
-  ~12 hand-drawn 16px filled glyphs matched to Lucide's optical weight — not a code
-  change. Deliberately deferred, not forgotten.
+- *A bespoke domain icon tier* (research §8). **Closed, not deferred.** The owner set
+  shadcn primitives and lucide icons as a hard rule (§7.2), which rules this out by
+  design. Lynk buys consistency over icon-layer identity, deliberately. Do not
+  re-propose hand-drawn glyphs.
 
 ---
 
