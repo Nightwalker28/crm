@@ -7,7 +7,7 @@ from app.core.list_fields import parse_list_fields as _parse_list_fields
 from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, count_csv_rows_bytes, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
-from app.core.permissions import require_action_access, require_module_access
+from app.core.permissions import require_action_access, require_linked_record_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
@@ -124,6 +124,19 @@ OPPORTUNITY_IMPORT_ALIASES = {
 
 def _serialize_opportunity(opportunity) -> dict:
     return SalesOpportunityResponse.model_validate(opportunity).model_dump(mode="json")
+
+
+def _require_relationship_link_access(db: Session, *, current_user, payload_data: dict) -> None:
+    """A deal may only point at a contact and account the user is allowed to see.
+
+    Contextual create ("+ Deal" from a Contact or Organization) prefills these, so the check
+    covers every write that carries one rather than only the contextual path.
+    """
+
+    if payload_data.get("contact_id") is not None:
+        require_linked_record_access(db, user=current_user, module_key="sales_contacts")
+    if payload_data.get("organization_id") is not None:
+        require_linked_record_access(db, user=current_user, module_key="sales_organizations")
 
 
 def _display_user_name(user) -> str | None:
@@ -384,6 +397,7 @@ def create_sales_opportunity(
         module_key="sales_opportunities",
         payload=data,
     )
+    _require_relationship_link_access(db, current_user=current_user, payload_data=data)
     opportunity = create_opportunity(db, data, current_user=current_user)
     log_activity(
         db,
@@ -457,7 +471,7 @@ def get_sales_opportunity_summary(
     require_permission = Depends(require_action_access("sales_opportunities", "view")),
 ):
     opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
-    return build_opportunity_summary(db, opportunity)
+    return build_opportunity_summary(db, opportunity, current_user=current_user)
 
 
 @router.post("/{opportunity_id}/follow-up", response_model=FollowUpActionResponse)
@@ -503,6 +517,7 @@ def update_sales_opportunity(
         module_key="sales_opportunities",
         payload=update_data,
     )
+    _require_relationship_link_access(db, current_user=current_user, payload_data=update_data)
 
     before_state = _serialize_opportunity(opportunity)
     updated = update_opportunity(db, opportunity, update_data, current_user=current_user)

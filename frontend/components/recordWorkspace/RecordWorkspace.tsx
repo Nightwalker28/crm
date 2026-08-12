@@ -43,7 +43,14 @@ export function RecordWorkspaceHeader({
           </div>
           {metadata ? <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-copy-muted">{metadata}</div> : null}
         </div>
-        {actions ? <div className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end">{actions}</div> : null}
+        {actions ? (
+          <div
+            data-record-workspace-actions
+            className="flex min-w-0 flex-wrap items-center gap-2 lg:justify-end"
+          >
+            {actions}
+          </div>
+        ) : null}
       </div>
       {updatedLabel ? <div className="mt-3 text-xs text-copy-muted lg:text-right">{updatedLabel}</div> : null}
     </Card>

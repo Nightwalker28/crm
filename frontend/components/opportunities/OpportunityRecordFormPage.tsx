@@ -14,6 +14,12 @@ import {
   OpportunityFormSidebarFields,
   type OpportunityFormValue,
 } from "@/components/opportunities/OpportunityFormFields";
+import {
+  buildOpportunityPayload,
+  saveOpportunity,
+  validateOpportunityContact,
+  validateOpportunityName,
+} from "@/components/opportunities/opportunityMutation";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/PageHeader";
 import {
@@ -21,10 +27,7 @@ import {
   RouteLoadingState,
 } from "@/components/ui/RouteStates";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
-import {
-  pickEnabledModulePayload,
-  useModuleFieldConfigs,
-} from "@/hooks/useModuleFieldConfigs";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -117,66 +120,23 @@ export default function OpportunityRecordFormPage({
   const dirty = snapshot !== initialSnapshot;
   useUnsavedChangesGuard(dirty, submitting);
   function validate() {
-    const validName = Boolean(form.opportunity_name.trim());
-    const validContact = Boolean(form.contact_id);
-    setNameError(validName ? null : "Deal name is required.");
-    setContactError(validContact ? null : "Select an existing contact.");
-    if (!validName) document.getElementById("deal-name")?.focus();
-    return validName && validContact;
+    const nextNameError = validateOpportunityName(form.opportunity_name);
+    const nextContactError = validateOpportunityContact(form.contact_id);
+    setNameError(nextNameError);
+    setContactError(nextContactError);
+    if (nextNameError) document.getElementById("deal-name")?.focus();
+    return !nextNameError && !nextContactError;
   }
   async function submit() {
     if (!validate()) return;
     try {
       setSubmitting(true);
       setSubmitError(null);
-      const trim = (value: string) => value.trim() || null;
-      const payload = pickEnabledModulePayload(
-        {
-          opportunity_name: form.opportunity_name.trim(),
-          client: form.contact_name.trim(),
-          contact_id: form.contact_id,
-          organization_id: form.organization_id,
-          assigned_to:
-            mode === "edit" && form.assigned_to === null
-              ? undefined
-              : form.assigned_to,
-          sales_stage: form.sales_stage || "lead",
-          start_date: form.start_date || null,
-          expected_close_date: form.expected_close_date || null,
-          probability_percent: form.probability_percent.trim()
-            ? Number(form.probability_percent)
-            : null,
-          total_cost_of_project: trim(form.total_cost_of_project),
-          currency_type: form.currency_type || null,
-          campaign_type: trim(form.campaign_type),
-          total_leads: trim(form.total_leads),
-          cpl: trim(form.cpl),
-          target_geography: trim(form.target_geography),
-          target_audience: trim(form.target_audience),
-          domain_cap: trim(form.domain_cap),
-          tactics: trim(form.tactics),
-          delivery_format: trim(form.delivery_format),
-          attachments: form.attachments,
-          custom_fields: customValues,
-        },
-        moduleFields,
-        ["opportunity_name", "contact_id", "custom_fields"],
-      );
-      const endpoint =
-        mode === "edit"
-          ? `/sales/opportunities/${opportunityId}`
-          : "/sales/opportunities";
-      const res = await apiFetch(endpoint, {
-        method: mode === "edit" ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      const savedId = await saveOpportunity({
+        mode,
+        opportunityId,
+        payload: buildOpportunityPayload(form, customValues, moduleFields, mode),
       });
-      const body = (await res.json().catch(() => null)) as {
-        opportunity_id?: number;
-        detail?: string;
-      } | null;
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      const savedId = mode === "edit" ? opportunityId : body?.opportunity_id;
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
         queryClient.invalidateQueries({

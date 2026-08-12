@@ -22,6 +22,7 @@ from app.modules.platform.services.custom_fields import (
 from app.modules.sales.models import SalesOpportunity, SalesContact, SalesOrganization
 from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_LABELS, OPPORTUNITY_STAGE_ORDER, OPPORTUNITY_STAGE_SET
 from app.modules.sales.repositories import opportunities_repository
+from app.modules.sales.services.opportunity_contacts_services import sync_primary_contact_association
 from app.modules.sales.services.time_utils import utc_now
 from app.modules.user_management.services.profile import get_company_operating_currencies
 
@@ -397,6 +398,12 @@ def create_opportunity(db: Session, data: dict, *, current_user) -> SalesOpportu
     data["tenant_id"] = current_user.tenant_id
     opportunity = SalesOpportunity(**data)
     db.add(opportunity)
+    db.flush()
+    sync_primary_contact_association(
+        db,
+        opportunity=opportunity,
+        actor_user_id=getattr(current_user, "id", None),
+    )
     db.commit()
     db.refresh(opportunity)
     save_custom_field_values(
@@ -451,6 +458,14 @@ def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict, *
 
     for field, value in data.items():
         setattr(opportunity, field, value)
+
+    if "contact_id" in data:
+        db.flush()
+        sync_primary_contact_association(
+            db,
+            opportunity=opportunity,
+            actor_user_id=getattr(current_user, "id", None),
+        )
 
     db.commit()
     db.refresh(opportunity)

@@ -17,6 +17,7 @@ from app.modules.mail.schema import (
     MailRecordAssociationCreateRequest,
     MailRecordAssociationListResponse,
     MailRecordAssociationResponse,
+    MailRecordSendRequest,
     MailSendRequest,
     MailSyncResponse,
 )
@@ -36,6 +37,7 @@ from app.modules.mail.services.mail_services import (
     list_mail_messages_cursor,
     list_mail_messages,
     send_mail_message,
+    send_record_context_mail,
     serialize_mail_message,
     sync_google_inbox,
     sync_imap_smtp_inbox,
@@ -216,6 +218,30 @@ def send_mail(
     require_permission=Depends(require_action_access("mail", "edit")),
 ):
     message = send_mail_message(db, current_user=current_user, payload=payload.model_dump(mode="json"))
+    return MailMessageResponse.model_validate(serialize_mail_message(message))
+
+
+@router.post("/records/{module_key}/{entity_id}/send", response_model=MailMessageResponse)
+def send_record_context_mail_message(
+    module_key: str,
+    entity_id: str,
+    payload: MailRecordSendRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("mail")),
+    # Sending is a mail action, so it is gated on mail. The service separately
+    # requires `view` on the source record's module, `view` on message_templates
+    # when a template is cited, and `view` on documents when files are attached,
+    # so composing from a record never widens what the sender can reach.
+    require_permission=Depends(require_action_access("mail", "edit")),
+):
+    message = send_record_context_mail(
+        db,
+        current_user=current_user,
+        module_key=module_key,
+        entity_id=entity_id,
+        payload=payload.model_dump(mode="json"),
+    )
     return MailMessageResponse.model_validate(serialize_mail_message(message))
 
 

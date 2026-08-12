@@ -19,8 +19,10 @@ import requests
 from fastapi import HTTPException, Request, status
 from jose import jwt, JWTError
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.access_control import require_role_module_action_access
 from app.core.config import settings
 from app.core.encrypted_fields import get_encrypted_model_value, set_encrypted_model_value
 from app.core.microsoft_oauth import MICROSOFT_GRAPH_BASE, MICROSOFT_MAIL_SCOPES, microsoft_auth_url, microsoft_scope_string, microsoft_token_url
@@ -30,12 +32,29 @@ from app.core.tenancy import (
     get_google_redirect_uri_for_request,
     get_microsoft_redirect_uri_for_request,
 )
+from app.modules.documents.services.document_services import (
+    get_document_or_404,
+    resolve_document_download,
+)
 from app.modules.mail.models import MailMessage, UserMailConnection
 from app.modules.mail.repositories import mail_repository
 from app.modules.mail.schema import MailProvider
 from app.modules.mail.services import mail_associations
+from app.modules.mail.services.mail_errors import (
+    MAILBOX_DISCONNECTED,
+    PROVIDER_UNAVAILABLE,
+    SEND_IN_FLIGHT,
+    VALIDATION,
+    MailSendError,
+    classify_http_response,
+    classify_request_exception,
+    classify_smtp_exception,
+)
 from app.modules.platform.services.activity_logs import log_activity
-from app.modules.platform.services.message_templates import render_template_text
+from app.modules.platform.services.message_templates import (
+    get_message_template_or_404,
+    render_template_text,
+)
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
 from app.modules.user_management.models import Tenant, User, UserStatus
 
@@ -59,6 +78,14 @@ MAIL_CONNECT_STATE_TYPES = {
     MailProvider.google.value: "google_mail_oauth_state",
     MailProvider.microsoft.value: "microsoft_mail_oauth_state",
 }
+MAIL_TEMPLATE_CHANNEL = "email"
+MAX_MAIL_ATTACHMENTS = 5
+# Reuse the document upload ceiling rather than inventing a second limit: a file
+# that was allowed into the CRM is the same file being attached to a message.
+MAIL_ATTACHMENT_TOTAL_BYTES = settings.DOCUMENT_MAX_UPLOAD_BYTES
+SEND_STATUS_SENDING = "sending"
+SEND_STATUS_SENT = "sent"
+SEND_STATUS_FAILED = "failed"
 
 
 def _as_aware_utc(value: datetime | None) -> datetime | None:
@@ -219,6 +246,13 @@ def serialize_mail_message(message: MailMessage) -> dict:
         "source_module_key": message.source_module_key,
         "source_entity_id": message.source_entity_id,
         "source_label": message.source_label,
+        "send_status": message.send_status,
+        "send_error_code": message.send_error_code,
+        # `send_error_detail` is deliberately not serialized: it can carry raw
+        # provider text. The composer branches on the code and renders its own
+        # copy, so the raw string stays server-side.
+        "template_id": message.template_id,
+        "attachments": message.attachments or [],
         "created_at": message.created_at,
         "updated_at": message.updated_at,
     }
@@ -727,18 +761,34 @@ def _refresh_oauth_mail_token(
 
     refresh_token = _oauth_connection_token(db, connection, "refresh_token")
     if not refresh_token:
+        # A missing refresh token is a credential problem, not a bad request:
+        # nothing about the message or the sync will fix it, only reconnecting.
         _mark_mail_connection_error(db, connection, missing_refresh_detail)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
+        raise MailSendError(MAILBOX_DISCONNECTED, connection.last_error, provider=connection.provider)
 
-    res = requests.post(
-        token_url,
-        data={**token_data, "refresh_token": refresh_token},
-        timeout=20,
-    )
-    body = res.json()
+    try:
+        res = requests.post(
+            token_url,
+            data={**token_data, "refresh_token": refresh_token},
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        # The identity provider was unreachable. The credentials may still be
+        # valid, so this must not be reported as a disconnected mailbox.
+        raise classify_request_exception(exc, provider=connection.provider) from exc
+    try:
+        body = res.json()
+    except ValueError:
+        body = {}
     if not res.ok or not body.get("access_token"):
+        if res.status_code == 429 or res.status_code >= 500:
+            raise MailSendError(
+                PROVIDER_UNAVAILABLE,
+                "The mail provider could not refresh mailbox access right now. Retry in a moment.",
+                provider=connection.provider,
+            )
         _mark_mail_connection_error(db, connection, failed_refresh_detail)
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=connection.last_error)
+        raise MailSendError(MAILBOX_DISCONNECTED, connection.last_error, provider=connection.provider)
 
     _set_oauth_connection_token(connection, "access_token", body["access_token"])
     if body.get("refresh_token"):
@@ -794,7 +844,25 @@ def _mail_connection_for_user(
 ) -> UserMailConnection:
     connection = mail_repository.get_connection(db, tenant_id=tenant_id, user_id=user_id, provider=provider, connected_only=True)
     if not connection:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Connect {provider.value} mail before sending.")
+        raise MailSendError(
+            MAILBOX_DISCONNECTED,
+            f"Connect {provider.value} mail before sending.",
+            provider=provider.value,
+        )
+    # `_serialize_connection` already decides whether this mailbox can send at
+    # all — missing send scope, missing IMAP password, expired credentials.
+    # Reusing it keeps the composer's capability view and the send gate from
+    # drifting apart.
+    summary = _serialize_connection(connection)
+    if not summary["can_send"]:
+        reconnect_label = summary.get("reconnect_label")
+        raise MailSendError(
+            MAILBOX_DISCONNECTED,
+            f"{reconnect_label} before sending."
+            if reconnect_label
+            else "This mailbox cannot send email until it is reconnected.",
+            provider=provider.value,
+        )
     return connection
 
 
@@ -993,20 +1061,32 @@ def _render_mail_template_variables(db: Session, *, current_user: User, payload:
     return rendered
 
 
-def _resolve_mail_source_context(db: Session, *, current_user: User, payload: dict) -> dict | None:
+def _resolve_mail_source_context(
+    db: Session,
+    *,
+    current_user: User,
+    payload: dict,
+    required: bool = False,
+) -> dict | None:
     """Validate the record a message is being sent from.
 
     Resolution is shared with the link action, so sending with context and
     linking afterwards produce the same association and the same label. The
     label is taken from the record, never from the request body.
+
+    ``required`` is what separates the contextual send contract from the inbox
+    composer: a record-context send has no meaning without a record, so it is
+    rejected up front rather than silently producing unlinked mail.
     """
 
     module_key = _normalize_source_value(payload.get("source_module_key"))
     entity_id = _normalize_source_value(payload.get("source_entity_id"))
     if not module_key and not entity_id:
+        if required:
+            raise MailSendError(VALIDATION, "This email must be sent from a CRM record.")
         return None
     if not module_key or not entity_id:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mail source requires both module and record.")
+        raise MailSendError(VALIDATION, "Mail source requires both module and record.")
 
     try:
         return mail_associations.resolve_link_target(
@@ -1016,12 +1096,150 @@ def _resolve_mail_source_context(db: Session, *, current_user: User, payload: di
             entity_id=entity_id,
         )
     except HTTPException as exc:
-        if exc.detail == mail_associations.UNAVAILABLE_RECORD_DETAIL:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Mail source is not available.",
+        # One message for every reason a target is unusable — wrong tenant, no
+        # permission, unsupported module, deleted record. Separating them would
+        # confirm that a record id exists somewhere the user cannot see.
+        raise MailSendError(VALIDATION, "Mail source is not available.") from exc
+
+
+def _resolve_mail_template(db: Session, *, current_user: User, template_id) -> int | None:
+    """Validate template provenance for a send.
+
+    The composer inserts template text into the body client-side, so this does
+    not render anything: it proves the user may use templates, that this
+    template belongs to their tenant, and that it is an email template — then
+    records which one the message came from.
+    """
+
+    if template_id in (None, ""):
+        return None
+    try:
+        require_role_module_action_access(
+            db,
+            user=current_user,
+            module_key="message_templates",
+            action="view",
+        )
+        template = get_message_template_or_404(db, tenant_id=current_user.tenant_id, template_id=int(template_id))
+    except (HTTPException, PermissionError, ValueError, TypeError) as exc:
+        raise MailSendError(VALIDATION, "Selected template is not available.") from exc
+
+    if template.channel != MAIL_TEMPLATE_CHANNEL or not template.is_active:
+        raise MailSendError(VALIDATION, "Selected template is not available.")
+    return template.id
+
+
+def _resolve_mail_attachments(db: Session, *, current_user: User, document_ids: list) -> list[dict]:
+    """Load attachment content from the documents module.
+
+    Attachments are CRM documents, not raw uploads: the file already passed
+    document validation, storage, and quota. Access is checked separately from
+    the record and the mailbox, so composing from a record never widens who can
+    read a document.
+    """
+
+    normalized_ids: list[int] = []
+    for value in document_ids or []:
+        try:
+            document_id = int(value)
+        except (TypeError, ValueError) as exc:
+            raise MailSendError(VALIDATION, "Selected attachment is not available.") from exc
+        if document_id not in normalized_ids:
+            normalized_ids.append(document_id)
+    if not normalized_ids:
+        return []
+    if len(normalized_ids) > MAX_MAIL_ATTACHMENTS:
+        raise MailSendError(
+            VALIDATION,
+            f"Attach at most {MAX_MAIL_ATTACHMENTS} files to one email.",
+        )
+
+    try:
+        require_role_module_action_access(db, user=current_user, module_key="documents", action="view")
+    except (HTTPException, PermissionError, ValueError) as exc:
+        raise MailSendError(VALIDATION, "Selected attachment is not available.") from exc
+
+    attachments: list[dict] = []
+    total_bytes = 0
+    for document_id in normalized_ids:
+        try:
+            document = get_document_or_404(db, tenant_id=current_user.tenant_id, document_id=document_id)
+        except HTTPException as exc:
+            raise MailSendError(VALIDATION, "Selected attachment is not available.") from exc
+
+        try:
+            resolved = resolve_document_download(db, document=document, current_user=current_user)
+            content = (
+                resolved["path"].read_bytes() if resolved["kind"] == "path" else resolved["content"]
+            )
+        except HTTPException as exc:
+            # A cloud-storage provider that is unreachable or has lost access is
+            # a provider problem, not a malformed message: retrying the same
+            # send is the right recovery.
+            raise MailSendError(
+                PROVIDER_UNAVAILABLE,
+                "An attachment could not be read from document storage. The message was not sent — retry in a moment.",
             ) from exc
-        raise
+        except OSError as exc:
+            raise MailSendError(
+                PROVIDER_UNAVAILABLE,
+                "An attachment could not be read from document storage. The message was not sent — retry in a moment.",
+            ) from exc
+
+        total_bytes += len(content)
+        if total_bytes > MAIL_ATTACHMENT_TOTAL_BYTES:
+            raise MailSendError(
+                VALIDATION,
+                f"Attachments exceed the {MAIL_ATTACHMENT_TOTAL_BYTES} byte limit for one email.",
+            )
+        attachments.append(
+            {
+                "document_id": document.id,
+                "filename": document.display_name or document.original_filename,
+                "content_type": document.content_type,
+                "size_bytes": len(content),
+                "content": content,
+            }
+        )
+    return attachments
+
+
+def _attachment_manifest(attachments: list[dict]) -> list[dict] | None:
+    """Persistable attachment metadata — never the bytes."""
+
+    manifest = [
+        {
+            "document_id": attachment["document_id"],
+            "filename": attachment["filename"],
+            "content_type": attachment["content_type"],
+            "size_bytes": attachment["size_bytes"],
+        }
+        for attachment in attachments
+    ]
+    return manifest or None
+
+
+def _apply_email_message_attachments(message: EmailMessage, attachments: list[dict]) -> None:
+    for attachment in attachments:
+        main_type, _, sub_type = (attachment["content_type"] or "application/octet-stream").partition("/")
+        message.add_attachment(
+            attachment["content"],
+            maintype=main_type or "application",
+            subtype=sub_type or "octet-stream",
+            filename=attachment["filename"],
+        )
+
+
+def _graph_attachments(attachments: list[dict]) -> list[dict]:
+    return [
+        {
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            "name": attachment["filename"],
+            "contentType": attachment["content_type"] or "application/octet-stream",
+            "contentBytes": base64.b64encode(attachment["content"]).decode("ascii"),
+        }
+        for attachment in attachments
+    ]
 
 
 def _log_mail_source_activity(
@@ -1053,48 +1271,115 @@ def _send_gmail_message(
     connection: UserMailConnection,
     payload: dict,
     sender_email: str,
-) -> str | None:
+    attachments: list[dict],
+) -> dict:
     if GMAIL_SEND_SCOPE not in set(connection.scopes or []):
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reconnect Gmail to grant send-mail access.")
+        raise MailSendError(
+            MAILBOX_DISCONNECTED,
+            "Reconnect Gmail to grant send-mail access.",
+            provider=MailProvider.google.value,
+        )
     token = _refresh_google_mail_token(db, connection)
     message = EmailMessage()
     message["From"] = sender_email
     _apply_email_message_recipients(message, payload)
     message["Subject"] = payload.get("subject") or ""
     message.set_content(payload.get("body_text") or "")
+    _apply_email_message_attachments(message, attachments)
     raw = base64.urlsafe_b64encode(message.as_bytes()).decode("utf-8")
-    res = requests.post(
-        f"{GMAIL_API_BASE}/users/me/messages/send",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={"raw": raw},
-        timeout=20,
-    )
+    try:
+        res = requests.post(
+            f"{GMAIL_API_BASE}/users/me/messages/send",
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+            json={"raw": raw},
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        raise classify_request_exception(exc, provider=MailProvider.google.value) from exc
+    if not res.ok:
+        raise classify_http_response(
+            res,
+            provider=MailProvider.google.value,
+            fallback="Gmail refused this message.",
+        )
     body = res.json() if res.content else {}
-    if not res.ok:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=body.get("error", {}).get("message") or "Failed to send Gmail message.")
-    return body.get("id")
+    # Gmail returns both identifiers on send, so an outbound message carries the
+    # same thread key its replies will arrive under.
+    return {"provider_message_id": body.get("id"), "provider_thread_id": body.get("threadId")}
 
 
-def _send_microsoft_message(db: Session, *, connection: UserMailConnection, payload: dict) -> None:
+def _send_microsoft_message(
+    db: Session,
+    *,
+    connection: UserMailConnection,
+    payload: dict,
+    attachments: list[dict],
+) -> dict:
+    """Send through Graph as create-draft then send.
+
+    `POST /me/sendMail` returns 202 with no body, which would leave every
+    outbound Microsoft message without a provider identity — nothing to
+    reconcile a reply against later, and nothing to prove the send happened.
+    Creating the message first yields its id and conversationId, and sending it
+    afterwards is the same delivery.
+    """
+
     token = _refresh_microsoft_mail_token(db, connection)
-    res = requests.post(
-        f"{MICROSOFT_GRAPH_BASE}/me/sendMail",
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
-        json={
-            "message": {
-                "subject": payload.get("subject") or "",
-                "body": {"contentType": "Text", "content": payload.get("body_text") or ""},
-                "toRecipients": _microsoft_recipients(payload["to"]),
-                "ccRecipients": _microsoft_recipients(payload.get("cc") or []),
-                "bccRecipients": _microsoft_recipients(payload.get("bcc") or []),
-            },
-            "saveToSentItems": True,
-        },
-        timeout=20,
-    )
-    if not res.ok:
-        body = res.json() if res.content else {}
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=body.get("error", {}).get("message") or "Failed to send Microsoft message.")
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+    draft_body = {
+        "subject": payload.get("subject") or "",
+        "body": {"contentType": "Text", "content": payload.get("body_text") or ""},
+        "toRecipients": _microsoft_recipients(payload["to"]),
+        "ccRecipients": _microsoft_recipients(payload.get("cc") or []),
+        "bccRecipients": _microsoft_recipients(payload.get("bcc") or []),
+    }
+    if attachments:
+        draft_body["attachments"] = _graph_attachments(attachments)
+
+    try:
+        create_res = requests.post(
+            f"{MICROSOFT_GRAPH_BASE}/me/messages",
+            headers=headers,
+            json=draft_body,
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        raise classify_request_exception(exc, provider=MailProvider.microsoft.value) from exc
+    if not create_res.ok:
+        raise classify_http_response(
+            create_res,
+            provider=MailProvider.microsoft.value,
+            fallback="Microsoft refused this message.",
+        )
+    created = create_res.json() if create_res.content else {}
+    provider_message_id = created.get("id")
+    if not provider_message_id:
+        raise MailSendError(
+            PROVIDER_UNAVAILABLE,
+            "Microsoft did not return a message identifier. The message was not sent — retry in a moment.",
+            provider=MailProvider.microsoft.value,
+        )
+
+    try:
+        send_res = requests.post(
+            f"{MICROSOFT_GRAPH_BASE}/me/messages/{urllib.parse.quote(str(provider_message_id))}/send",
+            headers=headers,
+            timeout=20,
+        )
+    except requests.RequestException as exc:
+        # The draft exists but was never sent. The caller marks the claim failed,
+        # so a retry creates a fresh draft rather than sending this one twice.
+        raise classify_request_exception(exc, provider=MailProvider.microsoft.value) from exc
+    if not send_res.ok:
+        raise classify_http_response(
+            send_res,
+            provider=MailProvider.microsoft.value,
+            fallback="Microsoft refused this message.",
+        )
+    return {
+        "provider_message_id": provider_message_id,
+        "provider_thread_id": created.get("conversationId"),
+    }
 
 
 def _append_sent_imap_message(*, connection: UserMailConnection, password: str, message: EmailMessage) -> None:
@@ -1124,12 +1409,27 @@ def _append_sent_imap_message(*, connection: UserMailConnection, password: str, 
                 pass
 
 
-def _send_imap_smtp_message(*, db: Session, connection: UserMailConnection, payload: dict, sender_email: str) -> str | None:
+def _send_imap_smtp_message(
+    *,
+    db: Session,
+    connection: UserMailConnection,
+    payload: dict,
+    sender_email: str,
+    attachments: list[dict],
+) -> dict:
     password = _decrypt_connection_password(db, connection)
     if not password:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reconnect IMAP/SMTP mail to save mailbox credentials.")
+        raise MailSendError(
+            MAILBOX_DISCONNECTED,
+            "Reconnect IMAP/SMTP mail to save mailbox credentials.",
+            provider=MailProvider.imap_smtp.value,
+        )
     if not connection.smtp_host or not connection.smtp_port or not connection.smtp_username:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reconnect IMAP/SMTP mail to complete SMTP settings.")
+        raise MailSendError(
+            MAILBOX_DISCONNECTED,
+            "Reconnect IMAP/SMTP mail to complete SMTP settings.",
+            provider=MailProvider.imap_smtp.value,
+        )
 
     message = EmailMessage()
     message_id = make_msgid()
@@ -1138,6 +1438,7 @@ def _send_imap_smtp_message(*, db: Session, connection: UserMailConnection, payl
     message["Subject"] = payload.get("subject") or ""
     message["Message-ID"] = message_id
     message.set_content(payload.get("body_text") or "")
+    _apply_email_message_attachments(message, attachments)
 
     try:
         client = _connect_smtp(connection.smtp_host, int(connection.smtp_port), connection.smtp_security or "starttls")
@@ -1147,10 +1448,7 @@ def _send_imap_smtp_message(*, db: Session, connection: UserMailConnection, payl
         finally:
             client.quit()
     except Exception as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Failed to send SMTP message: {_mail_provider_error(exc, protocol='SMTP')}",
-        ) from exc
+        raise classify_smtp_exception(exc, provider=MailProvider.imap_smtp.value) from exc
 
     try:
         _append_sent_imap_message(connection=connection, password=password, message=message)
@@ -1167,62 +1465,92 @@ def _send_imap_smtp_message(*, db: Session, connection: UserMailConnection, payl
             },
             exc_info=True,
         )
-    return message_id
+    # SMTP has no server-assigned id, so the Message-ID we generated is the
+    # provider identity, and it is also the key inbound sync threads replies on.
+    return {"provider_message_id": message_id, "provider_thread_id": message_id}
 
 
-def send_mail_message(db: Session, *, current_user: User, payload: dict) -> MailMessage:
-    provider = MailProvider(payload["provider"])
-    source_context = _resolve_mail_source_context(db, current_user=current_user, payload=payload)
-    payload = _render_mail_template_variables(db, current_user=current_user, payload=payload)
-    connection = _mail_connection_for_user(
-        db,
-        tenant_id=current_user.tenant_id,
-        user_id=current_user.id,
-        provider=provider,
-    )
-    provider_message_id = None
-    if provider == MailProvider.google:
-        provider_message_id = _send_gmail_message(
+def _claim_outbound_message(
+    db: Session,
+    *,
+    current_user: User,
+    connection: UserMailConnection,
+    provider: MailProvider,
+    payload: dict,
+    source_context: dict | None,
+    template_id: int | None,
+    attachment_manifest: list[dict] | None,
+    idempotency_key: str | None,
+) -> tuple[MailMessage, bool]:
+    """Persist the outbound message and its linkage *before* the provider call.
+
+    This is what makes a retry safe. The row and its primary association are
+    committed while the send is still only intended, so:
+
+    - a send that reaches the provider but fails to persist afterwards is still
+      recorded and still linked to its record;
+    - resending the same compose attempt finds the existing claim instead of
+      delivering a second copy;
+    - a failed claim can be re-attempted in place, with no second row.
+
+    Returns the message and whether it is a replay of an already-sent message.
+    """
+
+    existing = (
+        mail_repository.find_message_by_idempotency_key(
             db,
-            connection=connection,
-            payload=payload,
-            sender_email=connection.account_email or current_user.email,
+            tenant_id=current_user.tenant_id,
+            owner_user_id=current_user.id,
+            idempotency_key=idempotency_key,
         )
-    elif provider == MailProvider.microsoft:
-        _send_microsoft_message(db, connection=connection, payload=payload)
-    else:
-        provider_message_id = _send_imap_smtp_message(
-            db=db,
-            connection=connection,
-            payload=payload,
-            sender_email=connection.account_email or current_user.email,
-        )
+        if idempotency_key
+        else None
+    )
+    if existing is not None:
+        if existing.send_status == SEND_STATUS_SENT:
+            return existing, True
+        if existing.send_status == SEND_STATUS_SENDING:
+            # A concurrent or interrupted attempt already holds this key. The
+            # provider may have accepted it, so re-sending would risk a
+            # duplicate; refuse rather than guess.
+            raise MailSendError(
+                SEND_IN_FLIGHT,
+                "This email is already being sent. Check your sent mail before trying again.",
+                provider=provider.value,
+            )
 
     now = _utcnow()
-    message = MailMessage(
+    message = existing or MailMessage(
         tenant_id=current_user.tenant_id,
         owner_user_id=current_user.id,
-        connection_id=connection.id,
-        provider=provider.value,
-        provider_message_id=provider_message_id,
         direction="outbound",
         folder="sent",
-        from_email=connection.account_email or current_user.email,
-        to_recipients=_recipient_dicts(payload["to"]),
-        cc_recipients=_recipient_dicts(payload.get("cc") or []),
-        bcc_recipients=_recipient_dicts(payload.get("bcc") or []),
-        subject=payload.get("subject") or None,
-        snippet=(payload.get("body_text") or "")[:300] or None,
-        body_text=payload.get("body_text") or None,
-        sent_at=now,
+        idempotency_key=idempotency_key,
     )
+    message.connection_id = connection.id
+    message.provider = provider.value
+    message.from_email = connection.account_email or current_user.email
+    message.to_recipients = _recipient_dicts(payload["to"])
+    message.cc_recipients = _recipient_dicts(payload.get("cc") or [])
+    message.bcc_recipients = _recipient_dicts(payload.get("bcc") or [])
+    message.subject = payload.get("subject") or None
+    message.snippet = (payload.get("body_text") or "")[:300] or None
+    message.body_text = payload.get("body_text") or None
+    message.template_id = template_id
+    message.attachments = attachment_manifest
+    message.sent_at = now
+    message.send_status = SEND_STATUS_SENDING
+    message.send_error_code = None
+    message.send_error_detail = None
     db.add(message)
+    db.flush()
+
     if source_context:
-        # The record context the message was composed from becomes its primary
-        # association, written in the same transaction as the message so a
+        # The record the message was composed from becomes its primary
+        # association, written in the same transaction as the claim so a
         # persisted outbound send is never left unlinked. The label comes from
-        # the resolved record, not from `source_label` in the request body.
-        db.flush()
+        # the resolved record, not from the request body. This is the only
+        # place record linkage is stored — the activity projection reads it.
         mail_associations.upsert_association(
             db,
             current_user=current_user,
@@ -1230,8 +1558,203 @@ def send_mail_message(db: Session, *, current_user: User, payload: dict) -> Mail
             target=source_context,
             association_type=mail_associations.PRIMARY,
         )
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        # Two requests raced for the same key. The winner owns the send.
+        db.rollback()
+        claimed = (
+            mail_repository.find_message_by_idempotency_key(
+                db,
+                tenant_id=current_user.tenant_id,
+                owner_user_id=current_user.id,
+                idempotency_key=idempotency_key,
+            )
+            if idempotency_key
+            else None
+        )
+        if claimed is not None and claimed.send_status == SEND_STATUS_SENT:
+            return claimed, True
+        raise MailSendError(
+            SEND_IN_FLIGHT,
+            "This email is already being sent. Check your sent mail before trying again.",
+            provider=provider.value,
+        ) from exc
+    db.refresh(message)
+    return message, False
+
+
+def _settle_failed_send(db: Session, *, message: MailMessage, code: str, detail: str | None) -> None:
+    """Record why the claim did not become a sent message.
+
+    The row stays: it is the evidence that an attempt happened, and it holds the
+    idempotency key that keeps a retry from duplicating the send. There is no
+    rollback here — a token refreshed during the attempt, and any connection
+    error state the provider adapter recorded, must survive the failure.
+    """
+
+    message.send_status = SEND_STATUS_FAILED
+    message.send_error_code = code
+    message.send_error_detail = (detail or "")[:2000] or None
+    message.sent_at = None
+    db.add(message)
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.exception(
+            "Failed to record mail send failure",
+            extra={
+                "tenant_id": message.tenant_id,
+                "message_id": message.id,
+                "provider": message.provider,
+                "send_error_code": code,
+            },
+        )
+
+
+def _deliver_mail_message(
+    db: Session,
+    *,
+    current_user: User,
+    connection: UserMailConnection,
+    provider: MailProvider,
+    payload: dict,
+    attachments: list[dict],
+) -> dict:
+    sender_email = connection.account_email or current_user.email
+    if provider == MailProvider.google:
+        return _send_gmail_message(
+            db,
+            connection=connection,
+            payload=payload,
+            sender_email=sender_email,
+            attachments=attachments,
+        )
+    if provider == MailProvider.microsoft:
+        return _send_microsoft_message(
+            db,
+            connection=connection,
+            payload=payload,
+            attachments=attachments,
+        )
+    return _send_imap_smtp_message(
+        db=db,
+        connection=connection,
+        payload=payload,
+        sender_email=sender_email,
+        attachments=attachments,
+    )
+
+
+def send_mail_message(
+    db: Session,
+    *,
+    current_user: User,
+    payload: dict,
+    require_source_context: bool = False,
+) -> MailMessage:
+    """Send one message through the user's connected mailbox.
+
+    One path serves both entry points. The inbox composer sends without record
+    context; the contextual composer sets ``require_source_context`` so a
+    record-context send cannot silently produce unlinked mail. Everything after
+    that — validation, claim, provider dispatch, persistence — is identical, so
+    the two surfaces cannot drift.
+    """
+
+    provider = MailProvider(payload["provider"])
+    idempotency_key = _normalize_source_value(payload.get("idempotency_key"))
+
+    if idempotency_key:
+        # Answer a repeat of an already-sent attempt before validating anything
+        # else. The message is gone; whether its template or attachments still
+        # exist today cannot change that, and re-checking them would turn a
+        # harmless retry into an error.
+        already_sent = mail_repository.find_message_by_idempotency_key(
+            db,
+            tenant_id=current_user.tenant_id,
+            owner_user_id=current_user.id,
+            idempotency_key=idempotency_key,
+        )
+        if already_sent is not None and already_sent.send_status == SEND_STATUS_SENT:
+            return already_sent
+
+    source_context = _resolve_mail_source_context(
+        db,
+        current_user=current_user,
+        payload=payload,
+        required=require_source_context,
+    )
+    template_id = _resolve_mail_template(db, current_user=current_user, template_id=payload.get("template_id"))
+    attachments = _resolve_mail_attachments(
+        db,
+        current_user=current_user,
+        document_ids=payload.get("attachment_document_ids") or [],
+    )
+    payload = _render_mail_template_variables(db, current_user=current_user, payload=payload)
+    connection = _mail_connection_for_user(
+        db,
+        tenant_id=current_user.tenant_id,
+        user_id=current_user.id,
+        provider=provider,
+    )
+
+    message, is_replay = _claim_outbound_message(
+        db,
+        current_user=current_user,
+        connection=connection,
+        provider=provider,
+        payload=payload,
+        source_context=source_context,
+        template_id=template_id,
+        attachment_manifest=_attachment_manifest(attachments),
+        idempotency_key=idempotency_key,
+    )
+    if is_replay:
+        # A concurrent request won the claim and completed it while this one was
+        # validating. Return what was sent instead of sending it again.
+        return message
+
+    try:
+        identity = _deliver_mail_message(
+            db,
+            current_user=current_user,
+            connection=connection,
+            provider=provider,
+            payload=payload,
+            attachments=attachments,
+        )
+    except MailSendError as exc:
+        _settle_failed_send(db, message=message, code=exc.code, detail=exc.message)
+        raise
+    except Exception as exc:
+        # Everything the adapters raise deliberately is a MailSendError, so
+        # reaching here means the attempt failed before the provider accepted
+        # anything (an unconfigured provider, or a defect). Settling the claim
+        # keeps a retry possible; leaving it `sending` would block this key for
+        # good and show the message as forever in flight.
+        _settle_failed_send(db, message=message, code="unknown", detail=str(exc))
+        logger.exception(
+            "Unclassified mail send failure",
+            extra={
+                "tenant_id": current_user.tenant_id,
+                "message_id": message.id,
+                "provider": provider.value,
+            },
+        )
+        raise
+
+    message.provider_message_id = identity.get("provider_message_id")
+    message.provider_thread_id = identity.get("provider_thread_id")
+    message.sent_at = _utcnow()
+    message.send_status = SEND_STATUS_SENT
+    message.send_error_code = None
+    message.send_error_detail = None
+    db.add(message)
     db.commit()
     db.refresh(message)
+
     try:
         _log_mail_source_activity(db, current_user=current_user, message=message, source_context=source_context)
     except Exception:
@@ -1249,6 +1772,32 @@ def send_mail_message(db: Session, *, current_user: User, payload: dict) -> Mail
             },
         )
     return message
+
+
+def send_record_context_mail(
+    db: Session,
+    *,
+    current_user: User,
+    module_key: str,
+    entity_id: str,
+    payload: dict,
+) -> MailMessage:
+    """Contextual send: the record is the contract, not an optional hint.
+
+    The source record comes from the route path rather than the body so the
+    linkage a caller asked for is the linkage that is validated and persisted.
+    """
+
+    return send_mail_message(
+        db,
+        current_user=current_user,
+        payload={
+            **payload,
+            "source_module_key": module_key,
+            "source_entity_id": entity_id,
+        },
+        require_source_context=True,
+    )
 
 
 def _header(headers: list[dict], name: str) -> str | None:

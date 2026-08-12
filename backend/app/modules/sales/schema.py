@@ -899,10 +899,35 @@ class SalesOpportunityListResponse(BaseModel):
     page: int
 
 
+class OpportunityContactParticipant(BaseModel):
+    """One contact involved in a deal, with the role they play in it."""
+
+    id: int
+    opportunity_id: int
+    contact_id: int
+    role_key: str
+    role_label: str
+    is_primary: bool
+    contact_name: str | None = None
+    contact: ContactCompactSummary
+    created_at: datetime | None = None
+    created_by_user_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class OpportunitySummaryResponse(BaseModel):
     opportunity: SalesOpportunityResponse
     contact: ContactCompactSummary | None = None
     organization: OrganizationCompactSummary | None = None
+    # `participant_contacts` carries every association including the primary one,
+    # which is repeated in `primary_contact` for clients that only need that.
+    # `contact` above stays the legacy single-contact field.
+    primary_contact: OpportunityContactParticipant | None = None
+    participant_contacts: list[OpportunityContactParticipant] = Field(default_factory=list)
+    # False when the reader may not view Contacts; the participant lists are then
+    # empty because they are hidden, not because the deal has no participants.
+    can_view_contacts: bool = True
     related_quotes: list[RelatedQuoteSummary]
     related_insertion_orders: list[RelatedInsertionOrderSummary]
     inferred_services: list[str]

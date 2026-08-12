@@ -3,9 +3,11 @@ from decimal import Decimal
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
+from app.core.access_control import PermissionPolicy
 from app.modules.platform.services.custom_fields import hydrate_custom_field_record, hydrate_custom_field_records
 from app.modules.finance.models import FinanceIO, FinancePosInvoice
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesOrder, SalesQuote
+from app.modules.sales.services import opportunity_contacts_services
 from app.modules.sales.services.quotes_services import get_latest_quote_proposal, list_quote_proposal_events
 
 
@@ -267,7 +269,20 @@ def build_organization_summary(db: Session, organization: SalesOrganization) -> 
     }
 
 
-def build_opportunity_summary(db: Session, opportunity: SalesOpportunity) -> dict:
+def _can_view_contacts(db: Session, current_user) -> bool:
+    """Seeing a deal is not permission to see the people on it.
+
+    Mirrors `require_linked_record_access`: module availability plus the Contacts
+    `view` action, the same bar as opening the Contacts module directly.
+    """
+
+    if current_user is None:
+        return False
+    policy = PermissionPolicy(db, current_user)
+    return policy.can_view_module("sales_contacts") and policy.can_perform_action("sales_contacts", "view")
+
+
+def build_opportunity_summary(db: Session, opportunity: SalesOpportunity, *, current_user=None) -> dict:
     contact = None
     if opportunity.contact_id:
         contact = (
@@ -315,10 +330,26 @@ def build_opportunity_summary(db: Session, opportunity: SalesOpportunity) -> dic
         opportunity.contact_id,
     )
 
+    can_view_contacts = _can_view_contacts(db, current_user)
+    participants = (
+        opportunity_contacts_services.serialize_participants(
+            opportunity_contacts_services.list_opportunity_participants(
+                db,
+                tenant_id=opportunity.tenant_id,
+                opportunity_id=opportunity.opportunity_id,
+            )
+        )
+        if can_view_contacts
+        else []
+    )
+
     return {
         "opportunity": opportunity,
         "contact": contact,
         "organization": organization,
+        "primary_contact": next((item for item in participants if item["is_primary"]), None),
+        "participant_contacts": participants,
+        "can_view_contacts": can_view_contacts,
         "related_quotes": hydrate_custom_field_records(
             db,
             tenant_id=opportunity.tenant_id,

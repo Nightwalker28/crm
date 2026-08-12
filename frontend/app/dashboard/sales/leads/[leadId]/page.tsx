@@ -250,6 +250,14 @@ export default function LeadDetailPage() {
                 email={summary.lead.primary_email}
                 phone={fieldEnabled("phone") ? summary.lead.phone : null}
                 showCopyActions={false}
+                // Record context only. Which mailbox sends, whether one is
+                // connected, and how the message is filed are all decided by
+                // the mail domain, not by this page.
+                emailContext={{
+                  moduleKey: "sales_leads",
+                  entityId: summary.lead.lead_id,
+                  recordLabel: leadName,
+                }}
               />
               {canEditLead ? <Button
                 type="button"

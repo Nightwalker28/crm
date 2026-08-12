@@ -26,7 +26,17 @@ from app.modules.platform.services.custom_fields import list_custom_field_defini
 from app.modules.platform.services.module_fields import module_field_enabled_map
 
 
-SUPPORTED_LAYOUT_MODULES = {"sales_leads"}
+# Which (module, surface) pairs the runtime resolver will answer for. Opportunity is
+# deliberately quick_create-only: workstream 01 Phase 4 owns the Opportunity workspace and
+# therefore its `detail` surface, and this rollout only needs the contextual create surface
+# reachable from a Contact or Organization record.
+SUPPORTED_LAYOUT_SURFACES_BY_MODULE: dict[str, set[str]] = {
+    "sales_leads": {"quick_create", "detail"},
+    "sales_contacts": {"quick_create", "detail"},
+    "sales_organizations": {"quick_create", "detail"},
+    "sales_opportunities": {"quick_create"},
+}
+SUPPORTED_LAYOUT_MODULES = set(SUPPORTED_LAYOUT_SURFACES_BY_MODULE)
 SUPPORTED_LAYOUT_SURFACES = {"quick_create", "detail"}
 
 # Administration is deliberately narrower than the runtime. Phase 2 of workstream 09 only
@@ -59,94 +69,331 @@ class RuntimeFieldDefinition:
     help_text: str | None = None
 
 
-LEAD_SYSTEM_FIELDS = {
-    item.field_key: item
-    for item in (
-        RuntimeFieldDefinition("first_name", "First name", "text"),
-        RuntimeFieldDefinition("last_name", "Last name", "text"),
-        RuntimeFieldDefinition("company", "Company", "text"),
-        RuntimeFieldDefinition("primary_email", "Email", "email", required=True),
-        RuntimeFieldDefinition("phone", "Phone", "phone"),
-        RuntimeFieldDefinition("title", "Job title", "text"),
-        RuntimeFieldDefinition("source", "Source", "text"),
-        RuntimeFieldDefinition("status", "Status", "select"),
-        RuntimeFieldDefinition("notes", "Notes", "long_text"),
-        RuntimeFieldDefinition("assigned_to", "Owner", "user_reference"),
-        RuntimeFieldDefinition("team_id", "Team", "team_reference"),
-        RuntimeFieldDefinition("next_follow_up_at", "Next follow-up", "datetime"),
-        RuntimeFieldDefinition("tags", "Tags", "tags"),
+def _field_map(*fields: RuntimeFieldDefinition) -> dict[str, RuntimeFieldDefinition]:
+    return {field.field_key: field for field in fields}
+
+
+# `required` here means "the domain rejects a create without it", not "an administrator
+# marked it required". It is what stops a layout from hiding a field the create endpoint
+# still demands, so each entry must match the module's create schema and service.
+LEAD_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("first_name", "First name", "text"),
+    RuntimeFieldDefinition("last_name", "Last name", "text"),
+    RuntimeFieldDefinition("company", "Company", "text"),
+    RuntimeFieldDefinition("primary_email", "Email", "email", required=True),
+    RuntimeFieldDefinition("phone", "Phone", "phone"),
+    RuntimeFieldDefinition("title", "Job title", "text"),
+    RuntimeFieldDefinition("source", "Source", "text"),
+    RuntimeFieldDefinition("status", "Status", "select"),
+    RuntimeFieldDefinition("notes", "Notes", "long_text"),
+    RuntimeFieldDefinition("assigned_to", "Owner", "user_reference"),
+    RuntimeFieldDefinition("team_id", "Team", "team_reference"),
+    RuntimeFieldDefinition("next_follow_up_at", "Next follow-up", "datetime"),
+    RuntimeFieldDefinition("tags", "Tags", "tags"),
+)
+
+CONTACT_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("first_name", "First name", "text"),
+    RuntimeFieldDefinition("last_name", "Last name", "text"),
+    RuntimeFieldDefinition("primary_email", "Email", "email", required=True),
+    RuntimeFieldDefinition("contact_telephone", "Phone", "phone"),
+    RuntimeFieldDefinition("current_title", "Job title", "text"),
+    RuntimeFieldDefinition("linkedin_url", "LinkedIn", "url"),
+    RuntimeFieldDefinition("organization_id", "Account", "organization_reference"),
+    RuntimeFieldDefinition("assigned_to", "Owner", "user_reference"),
+    RuntimeFieldDefinition("region", "Region", "select"),
+    RuntimeFieldDefinition("country", "Country", "select"),
+    RuntimeFieldDefinition("email_opt_out", "Email opt-out", "boolean"),
+)
+
+ORGANIZATION_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("org_name", "Account name", "text", required=True),
+    RuntimeFieldDefinition("primary_email", "Primary email", "email", required=True),
+    RuntimeFieldDefinition("secondary_email", "Secondary email", "email"),
+    RuntimeFieldDefinition("primary_phone", "Primary phone", "phone"),
+    RuntimeFieldDefinition("secondary_phone", "Secondary phone", "phone"),
+    RuntimeFieldDefinition("website", "Website", "url"),
+    RuntimeFieldDefinition("industry", "Industry", "text"),
+    RuntimeFieldDefinition("annual_revenue", "Annual revenue", "text"),
+    RuntimeFieldDefinition("assigned_to", "Owner", "user_reference"),
+    RuntimeFieldDefinition("billing_address", "Billing address", "long_text"),
+    RuntimeFieldDefinition("billing_city", "City", "text"),
+    RuntimeFieldDefinition("billing_state", "State or province", "text"),
+    RuntimeFieldDefinition("billing_postal_code", "Postal code", "text"),
+    RuntimeFieldDefinition("billing_country", "Country", "select"),
+)
+
+# Opportunity keeps the legacy single primary contact. Multi-contact participants are
+# workstream 05 and must not be anticipated here.
+OPPORTUNITY_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("opportunity_name", "Deal name", "text", required=True),
+    RuntimeFieldDefinition("contact_id", "Contact", "contact_reference", required=True),
+    RuntimeFieldDefinition("organization_id", "Account", "organization_reference"),
+    RuntimeFieldDefinition("sales_stage", "Stage", "select"),
+    RuntimeFieldDefinition("expected_close_date", "Expected close date", "date"),
+    RuntimeFieldDefinition("total_cost_of_project", "Deal value", "text"),
+    RuntimeFieldDefinition("currency_type", "Currency", "select"),
+    RuntimeFieldDefinition("assigned_to", "Owner", "user_reference"),
+)
+
+MODULE_SYSTEM_FIELDS: dict[str, dict[str, RuntimeFieldDefinition]] = {
+    "sales_leads": LEAD_SYSTEM_FIELDS,
+    "sales_contacts": CONTACT_SYSTEM_FIELDS,
+    "sales_organizations": ORGANIZATION_SYSTEM_FIELDS,
+    "sales_opportunities": OPPORTUNITY_SYSTEM_FIELDS,
+}
+
+
+def _seed_section(
+    section_id: str,
+    label: str,
+    position: int,
+    fields: list[tuple[str, str]],
+    *,
+    region: str = "main",
+    collapsed_by_default: bool = False,
+) -> RecordLayoutSectionDefinition:
+    """A seed section written as an ordered `(field_key, width)` table."""
+
+    return RecordLayoutSectionDefinition(
+        id=section_id,
+        label=label,
+        position=position,
+        region=region,  # type: ignore[arg-type]
+        collapsed_by_default=collapsed_by_default,
+        fields=[
+            RecordLayoutFieldDefinition(field_key=field_key, position=index, width=width)  # type: ignore[arg-type]
+            for index, (field_key, width) in enumerate(fields)
+        ],
     )
-}
 
 
-LEAD_LAYOUT_SEEDS: dict[str, RecordLayoutDefinitionPayload] = {
-    "quick_create": RecordLayoutDefinitionPayload(
-        module_key="sales_leads",
-        surface="quick_create",
-        name="Lead Quick Create",
+def _seed(
+    module_key: str,
+    surface: str,
+    name: str,
+    sections: list[RecordLayoutSectionDefinition],
+) -> RecordLayoutDefinitionPayload:
+    return RecordLayoutDefinitionPayload(
+        module_key=module_key,
+        surface=surface,  # type: ignore[arg-type]
+        name=name,
         version=1,
-        sections=[
-            RecordLayoutSectionDefinition(
-                id="contact",
-                label="Contact",
-                position=0,
-                region="main",
-                fields=[
-                    RecordLayoutFieldDefinition(field_key="first_name", position=0, width="half"),
-                    RecordLayoutFieldDefinition(field_key="last_name", position=1, width="half"),
-                    RecordLayoutFieldDefinition(field_key="company", position=2, width="full"),
-                    RecordLayoutFieldDefinition(field_key="primary_email", position=3, width="full"),
-                    RecordLayoutFieldDefinition(field_key="phone", position=4, width="half"),
-                ],
-            ),
-            RecordLayoutSectionDefinition(
-                id="qualification",
-                label="Qualification",
-                position=1,
-                region="main",
-                fields=[
-                    RecordLayoutFieldDefinition(field_key="status", position=0, width="half"),
-                    RecordLayoutFieldDefinition(field_key="assigned_to", position=1, width="half"),
-                ],
-            ),
-        ],
-    ),
-    "detail": RecordLayoutDefinitionPayload(
-        module_key="sales_leads",
-        surface="detail",
-        name="Lead Details",
-        version=1,
-        sections=[
-            RecordLayoutSectionDefinition(
-                id="contact",
-                label="Contact",
-                position=0,
-                region="main",
-                fields=[
-                    RecordLayoutFieldDefinition(field_key="primary_email", position=0, width="half"),
-                    RecordLayoutFieldDefinition(field_key="phone", position=1, width="half"),
-                    RecordLayoutFieldDefinition(field_key="company", position=2, width="half"),
-                    RecordLayoutFieldDefinition(field_key="title", position=3, width="half"),
-                ],
-            ),
-            RecordLayoutSectionDefinition(
-                id="qualification",
-                label="Qualification",
-                position=1,
-                region="main",
-                fields=[
-                    RecordLayoutFieldDefinition(field_key="source", position=0, width="half"),
-                    RecordLayoutFieldDefinition(field_key="status", position=1, width="half"),
-                    RecordLayoutFieldDefinition(field_key="assigned_to", position=2, width="half"),
-                    RecordLayoutFieldDefinition(field_key="team_id", position=3, width="half"),
-                    RecordLayoutFieldDefinition(field_key="next_follow_up_at", position=4, width="full"),
-                    RecordLayoutFieldDefinition(field_key="tags", position=5, width="full"),
-                    RecordLayoutFieldDefinition(field_key="notes", position=6, width="full"),
-                ],
-            ),
-        ],
-    ),
+        sections=sections,
+    )
+
+
+# The system fallback for every supported (module, surface). These mirror what the canonical
+# forms and detail pages already show, so a tenant that never opens the layout builder sees
+# no behaviour change. Quick Create seeds stay inside the 5–8 field guidance.
+MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
+    "sales_leads": {
+        "quick_create": _seed(
+            "sales_leads",
+            "quick_create",
+            "Lead Quick Create",
+            [
+                _seed_section(
+                    "contact",
+                    "Contact",
+                    0,
+                    [
+                        ("first_name", "half"),
+                        ("last_name", "half"),
+                        ("company", "full"),
+                        ("primary_email", "full"),
+                        ("phone", "half"),
+                    ],
+                ),
+                _seed_section(
+                    "qualification",
+                    "Qualification",
+                    1,
+                    [("status", "half"), ("assigned_to", "half")],
+                ),
+            ],
+        ),
+        "detail": _seed(
+            "sales_leads",
+            "detail",
+            "Lead Details",
+            [
+                _seed_section(
+                    "contact",
+                    "Contact",
+                    0,
+                    [
+                        ("primary_email", "half"),
+                        ("phone", "half"),
+                        ("company", "half"),
+                        ("title", "half"),
+                    ],
+                ),
+                _seed_section(
+                    "qualification",
+                    "Qualification",
+                    1,
+                    [
+                        ("source", "half"),
+                        ("status", "half"),
+                        ("assigned_to", "half"),
+                        ("team_id", "half"),
+                        ("next_follow_up_at", "full"),
+                        ("tags", "full"),
+                        ("notes", "full"),
+                    ],
+                ),
+            ],
+        ),
+    },
+    "sales_contacts": {
+        "quick_create": _seed(
+            "sales_contacts",
+            "quick_create",
+            "Contact Quick Create",
+            [
+                _seed_section(
+                    "identity",
+                    "Contact",
+                    0,
+                    [
+                        ("first_name", "half"),
+                        ("last_name", "half"),
+                        ("primary_email", "full"),
+                        ("contact_telephone", "half"),
+                        ("current_title", "half"),
+                    ],
+                ),
+                _seed_section(
+                    "account",
+                    "Account and ownership",
+                    1,
+                    [("organization_id", "half"), ("assigned_to", "half")],
+                ),
+            ],
+        ),
+        "detail": _seed(
+            "sales_contacts",
+            "detail",
+            "Contact Details",
+            [
+                _seed_section(
+                    "identity",
+                    "Contact",
+                    0,
+                    [
+                        ("primary_email", "half"),
+                        ("contact_telephone", "half"),
+                        ("current_title", "half"),
+                        ("linkedin_url", "half"),
+                    ],
+                ),
+                _seed_section(
+                    "account",
+                    "Account and ownership",
+                    1,
+                    [
+                        ("organization_id", "half"),
+                        ("assigned_to", "half"),
+                        ("region", "half"),
+                        ("country", "half"),
+                        ("email_opt_out", "half"),
+                    ],
+                ),
+            ],
+        ),
+    },
+    "sales_organizations": {
+        "quick_create": _seed(
+            "sales_organizations",
+            "quick_create",
+            "Account Quick Create",
+            [
+                _seed_section(
+                    "account",
+                    "Account",
+                    0,
+                    [
+                        ("org_name", "full"),
+                        ("primary_email", "full"),
+                        ("primary_phone", "half"),
+                        ("website", "half"),
+                    ],
+                ),
+                _seed_section(
+                    "profile",
+                    "Profile and ownership",
+                    1,
+                    [("industry", "half"), ("assigned_to", "half")],
+                ),
+            ],
+        ),
+        "detail": _seed(
+            "sales_organizations",
+            "detail",
+            "Account Details",
+            [
+                _seed_section(
+                    "account",
+                    "Account",
+                    0,
+                    [
+                        ("primary_email", "half"),
+                        ("secondary_email", "half"),
+                        ("primary_phone", "half"),
+                        ("secondary_phone", "half"),
+                        ("website", "half"),
+                        ("industry", "half"),
+                        ("annual_revenue", "half"),
+                        ("assigned_to", "half"),
+                    ],
+                ),
+                _seed_section(
+                    "billing",
+                    "Billing",
+                    1,
+                    [
+                        ("billing_address", "full"),
+                        ("billing_city", "half"),
+                        ("billing_state", "half"),
+                        ("billing_postal_code", "half"),
+                        ("billing_country", "half"),
+                    ],
+                ),
+            ],
+        ),
+    },
+    "sales_opportunities": {
+        "quick_create": _seed(
+            "sales_opportunities",
+            "quick_create",
+            "Deal Quick Create",
+            [
+                _seed_section(
+                    "deal",
+                    "Deal",
+                    0,
+                    [
+                        ("opportunity_name", "full"),
+                        ("contact_id", "half"),
+                        ("organization_id", "half"),
+                        ("sales_stage", "half"),
+                        ("expected_close_date", "half"),
+                    ],
+                ),
+                _seed_section(
+                    "value",
+                    "Value and ownership",
+                    1,
+                    [("total_cost_of_project", "half"), ("assigned_to", "half")],
+                ),
+            ],
+        ),
+    },
 }
+
+# Kept as a name for the Lead surfaces specifically; the resolver reads the registry above.
+LEAD_LAYOUT_SEEDS: dict[str, RecordLayoutDefinitionPayload] = MODULE_LAYOUT_SEEDS["sales_leads"]
 
 
 def validate_module_and_surface(module_key: str, surface: str) -> tuple[str, RecordLayoutSurface]:
@@ -156,13 +403,19 @@ def validate_module_and_surface(module_key: str, surface: str) -> tuple[str, Rec
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Record layouts are not available for this module")
     if normalized_surface not in SUPPORTED_LAYOUT_SURFACES:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail="Unsupported record layout surface")
+    if normalized_surface not in SUPPORTED_LAYOUT_SURFACES_BY_MODULE[normalized_module]:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="This module does not have a layout for that surface yet",
+        )
     return normalized_module, normalized_surface  # type: ignore[return-value]
 
 
 def _field_catalog(db: Session, *, tenant_id: int, module_key: str) -> dict[str, RuntimeFieldDefinition]:
-    if module_key != "sales_leads":
+    system_fields = MODULE_SYSTEM_FIELDS.get(module_key)
+    if system_fields is None:
         return {}
-    catalog = dict(LEAD_SYSTEM_FIELDS)
+    catalog = dict(system_fields)
     for definition in list_custom_field_definitions(
         db,
         tenant_id=tenant_id,
@@ -479,7 +732,7 @@ def resolve_record_layout(
     surface: str,
 ) -> ResolvedRecordLayoutResponse:
     module_key, normalized_surface = validate_module_and_surface(module_key, surface)
-    fallback = LEAD_LAYOUT_SEEDS.get(normalized_surface)
+    fallback = MODULE_LAYOUT_SEEDS.get(module_key, {}).get(normalized_surface)
     if fallback is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No system layout is available for this surface")
 
@@ -649,12 +902,13 @@ def _validation_report(
 
 
 def _system_definition(
+    module_key: str,
     surface: str,
     catalog: dict[str, RuntimeFieldDefinition],
 ) -> RecordLayoutDefinitionPayload:
     """The product default exactly as the runtime resolver would fall back to it."""
 
-    seed = LEAD_LAYOUT_SEEDS.get(surface)
+    seed = MODULE_LAYOUT_SEEDS.get(module_key, {}).get(surface)
     if seed is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -677,7 +931,7 @@ def _admin_state(
 ) -> RecordLayoutAdminStateResponse:
     catalog = _field_catalog(db, tenant_id=tenant_id, module_key=module_key)
     enabled_states = module_field_enabled_map(db, tenant_id=tenant_id, module_key=module_key)
-    system_definition = _system_definition(surface, catalog)
+    system_definition = _system_definition(module_key, surface, catalog)
 
     record = _load_default_layout(db, tenant_id=tenant_id, module_key=module_key, surface=surface)
     definition = system_definition

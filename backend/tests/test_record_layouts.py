@@ -278,14 +278,30 @@ class RecordLayoutResolverTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             RecordLayoutDefinitionPayload.model_validate(payload)
 
-    def test_module_and_surface_are_bounded_to_phase_one(self):
-        with self.assertRaises(HTTPException) as unknown_module:
-            validate_module_and_surface("sales_contacts", "detail")
-        self.assertEqual(unknown_module.exception.status_code, 404)
+    def test_module_and_surface_are_bounded_to_adopted_modules(self):
+        for module_key in ("sales_leads", "sales_contacts", "sales_organizations"):
+            for surface in ("quick_create", "detail"):
+                self.assertEqual(
+                    validate_module_and_surface(module_key, surface),
+                    (module_key, surface),
+                )
+        self.assertEqual(
+            validate_module_and_surface("sales_opportunities", "quick_create"),
+            ("sales_opportunities", "quick_create"),
+        )
+
+        with self.assertRaises(HTTPException) as unadopted_module:
+            validate_module_and_surface("sales_quotes", "detail")
+        self.assertEqual(unadopted_module.exception.status_code, 404)
 
         with self.assertRaises(HTTPException) as future_surface:
             validate_module_and_surface("sales_leads", "full_form")
         self.assertEqual(future_surface.exception.status_code, 422)
+
+        # The Opportunity workspace, and so its detail layout, belongs to a later slice.
+        with self.assertRaises(HTTPException) as unseeded_surface:
+            validate_module_and_surface("sales_opportunities", "detail")
+        self.assertEqual(unseeded_surface.exception.status_code, 422)
 
 
 class RecordLayoutRouteTests(unittest.TestCase):

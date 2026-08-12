@@ -8,7 +8,7 @@ from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, 
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.security import require_user
-from app.core.permissions import require_action_access, require_module_access
+from app.core.permissions import require_action_access, require_linked_record_access, require_module_access
 from app.modules.sales.schema import (
     FollowUpActionRequest,
     FollowUpActionResponse,
@@ -108,6 +108,18 @@ CONTACT_IMPORT_ALIASES = {
 
 def _serialize_contact(contact) -> dict:
     return SalesContactResponse.model_validate(contact).model_dump(mode="json")
+
+
+def _require_account_link_access(db: Session, *, current_user, payload_data: dict) -> None:
+    """A contact may only be attached to an account the user is allowed to see.
+
+    Contextual create ("+ Contact" from an Organization) prefills `organization_id`, so this
+    runs on every write that carries one, not just on the contextual path.
+    """
+
+    if payload_data.get("organization_id") is None:
+        return
+    require_linked_record_access(db, user=current_user, module_key="sales_organizations")
 
 
 def _display_user_name(user) -> str | None:
@@ -303,6 +315,7 @@ def create_contact(
             module_key="sales_contacts",
             payload=payload.model_dump(),
         )
+        _require_account_link_access(db, current_user=current_user, payload_data=sanitized_payload)
         created = create_sales_contact(
             db=db,
             payload=sanitized_payload,
@@ -562,6 +575,7 @@ def update_contact(
         module_key="sales_contacts",
         payload=update_data,
     )
+    _require_account_link_access(db, current_user=current_user, payload_data=update_data)
 
     before_state = _serialize_contact(contact)
     updated = update_sales_contact(db, contact, update_data)

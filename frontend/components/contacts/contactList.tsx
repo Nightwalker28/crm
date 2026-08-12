@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Users } from "lucide-react";
 
@@ -44,6 +43,7 @@ interface ContactListProps {
   onSortChange?: (sort: SortState) => void;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
+  onCreateContact?: () => void;
 }
 
 function getInitials(firstName?: string | null, lastName?: string | null, email?: string | null): string {
@@ -67,6 +67,7 @@ export default function ContactList({
   onSortChange,
   hasActiveFilters = false,
   onClearFilters,
+  onCreateContact,
 }: ContactListProps) {
   const router = useRouter();
   const headers: Record<string, string> = {
@@ -260,7 +261,8 @@ export default function ContactList({
                 {hasActiveFilters ? (
                   <EmptyState icon={Users} title="No contacts match these filters" description="Clear one or more filters and try again." action={<Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button>} />
                 ) : (
-                  <EmptyState icon={Users} title="No contacts yet" description="Create a contact or import contacts from CSV." action={<Button asChild><Link href="/dashboard/sales/contacts/new">Create contact</Link></Button>} />
+                  // Same Quick Create surface as the toolbar, so the list has one create interaction.
+                  <EmptyState icon={Users} title="No contacts yet" description="Create a contact or import contacts from CSV." action={onCreateContact ? <Button type="button" onClick={onCreateContact}>Create contact</Button> : null} />
                 )}
               </TableCell>
             </TableRow>

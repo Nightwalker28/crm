@@ -6,6 +6,10 @@ from sqlalchemy.sql import expression
 
 from app.core.database import Base
 from app.modules.client_portal.models import CustomerGroup  # noqa: F401
+from app.modules.sales.opportunity_contact_roles import (
+    DEFAULT_OPPORTUNITY_CONTACT_ROLE,
+    OPPORTUNITY_CONTACT_ROLE_CHECK_SQL,
+)
 from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_CHECK_SQL
 
 
@@ -631,6 +635,12 @@ class SalesOpportunity(Base):
     organization = relationship("SalesOrganization", lazy="selectin")
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
     last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="selectin")
+    contact_associations = relationship(
+        "SalesOpportunityContact",
+        back_populates="opportunity",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     @property
     def custom_data(self) -> dict | None:
@@ -667,3 +677,66 @@ class SalesOpportunity(Base):
             return None
         full_name = " ".join(part for part in [self.contact.first_name, self.contact.last_name] if part).strip()
         return full_name or self.contact.primary_email
+
+
+class SalesOpportunityContact(Base):
+    """Every contact involved in a deal, with the role they play in it.
+
+    A B2B deal routinely runs through a champion, a decision maker, a technical
+    evaluator, and procurement. `sales_opportunities.contact_id` can only hold one
+    of them, so it stays as the legacy primary field and the row flagged
+    `is_primary` here mirrors it for the compatibility period. Domain services own
+    that mirror; nothing writes this table directly.
+
+    Rows are tenant-denormalized: the partial primary uniqueness index and the
+    contact -> opportunities lookup both run without joining the parent, and the
+    service validates the tenant against the opportunity on every write.
+    """
+
+    __tablename__ = "sales_opportunity_contacts"
+    __table_args__ = (
+        # A contact appears on a deal once, so a duplicate participant is rejected
+        # by the database rather than by whichever caller happens to check first.
+        UniqueConstraint("opportunity_id", "contact_id", name="uq_sales_opportunity_contacts_link"),
+        # At most one primary per opportunity, enforced in the database so two
+        # concurrent legacy `contact_id` writes cannot leave a deal with two.
+        Index(
+            "uq_sales_opportunity_contacts_primary",
+            "opportunity_id",
+            unique=True,
+            postgresql_where=text("is_primary"),
+            sqlite_where=text("is_primary"),
+        ),
+        # Contact -> deals, for the relationship rails that read from the contact side.
+        Index(
+            "ix_sales_opportunity_contacts_contact",
+            "tenant_id",
+            "contact_id",
+            "opportunity_id",
+        ),
+        CheckConstraint(OPPORTUNITY_CONTACT_ROLE_CHECK_SQL, name="ck_sales_opportunity_contacts_role"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    opportunity_id = Column(
+        BigInteger,
+        ForeignKey("sales_opportunities.opportunity_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    contact_id = Column(
+        BigInteger,
+        ForeignKey("sales_contacts.contact_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role_key = Column(Text, nullable=False, server_default=DEFAULT_OPPORTUNITY_CONTACT_ROLE)
+    is_primary = Column(Boolean, nullable=False, server_default=expression.false())
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    opportunity = relationship("SalesOpportunity", back_populates="contact_associations")
+    contact = relationship("SalesContact", lazy="selectin")
+    created_by = relationship("User", foreign_keys=[created_by_user_id])

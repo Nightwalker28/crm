@@ -3,12 +3,20 @@
 import { Copy, Mail, MessageCircle, Phone, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
+import RecordEmailAction, { type RecordEmailContext } from "@/components/mail/RecordEmailAction";
 import { Button } from "@/components/ui/button";
 
 type Props = {
   email?: string | null;
   phone?: string | null;
   emailOptOut?: boolean;
+  /**
+   * Pass the record this action belongs to and the Email button becomes a
+   * contextual composer whose message is filed against that record. Without it
+   * the button keeps its `mailto:` behavior, which stays the correct fallback
+   * for tenants with no connected mailbox.
+   */
+  emailContext?: RecordEmailContext;
   showWhatsApp?: boolean;
   whatsAppDisabled?: boolean;
   whatsAppBusy?: boolean;
@@ -39,6 +47,7 @@ export default function CommunicationActions({
   email,
   phone,
   emailOptOut = false,
+  emailContext,
   showWhatsApp = true,
   whatsAppDisabled = false,
   whatsAppBusy = false,
@@ -66,7 +75,9 @@ export default function CommunicationActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {canEmail ? (
+      {emailContext ? (
+        <RecordEmailAction {...emailContext} email={email} emailOptOut={emailOptOut} />
+      ) : canEmail ? (
         <Button asChild size="sm" variant="outline">
           <a href={`mailto:${email}`}>
             <Mail className="h-4 w-4" />

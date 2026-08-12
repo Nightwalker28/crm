@@ -111,6 +111,14 @@ function ActivityBody({ item }: { item: RecordActivityEnvelope }) {
           {from ? <DetailLine label="From" value={from} /> : null}
           {to.length ? <DetailLine label="To" value={to.join(", ")} /> : null}
           {item.summary ? <p className="mt-1 text-p-sm text-copy-secondary">{item.summary}</p> : null}
+          {/* A send that never left is history too, but it must not read as a
+              delivered email. */}
+          {item.status === "failed" ? (
+            <p className="mt-1 text-p-xs text-state-danger">This email was not delivered.</p>
+          ) : null}
+          {item.status === "sending" ? (
+            <p className="mt-1 text-p-xs text-copy-muted">This email is still being sent.</p>
+          ) : null}
         </div>
       );
     }

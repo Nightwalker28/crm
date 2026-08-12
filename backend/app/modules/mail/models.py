@@ -70,9 +70,23 @@ class MailMessage(Base):
             "connection_id",
             "provider_thread_id",
         ),
+        # The duplicate-send guard. An outbound send claims its row under this
+        # key before the provider is called, so a retry of the same compose
+        # attempt finds the claim instead of sending a second message.
+        Index(
+            "uq_mail_messages_idempotency",
+            "tenant_id",
+            "owner_user_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+            sqlite_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
+    # SQLite only autoincrements INTEGER primary keys; the variant keeps the
+    # PostgreSQL column a BIGINT while letting tests insert without an id.
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     owner_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     connection_id = Column(BigInteger, ForeignKey("user_mail_connections.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -91,6 +105,19 @@ class MailMessage(Base):
     body_text = Column(Text, nullable=True)
     received_at = Column(DateTime(timezone=True), nullable=True, index=True)
     sent_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    # Outbound send lifecycle: `sending` (claimed, provider call in progress),
+    # `sent`, or `failed`. Inbound messages leave it NULL — they were never
+    # sent from here, and a synced message has no send outcome to report.
+    send_status = Column(String(20), nullable=True, index=True)
+    send_error_code = Column(String(40), nullable=True)
+    send_error_detail = Column(Text, nullable=True)
+    idempotency_key = Column(String(64), nullable=True)
+    # Template provenance only. The body is composed and edited by the user;
+    # this records which template it started from.
+    template_id = Column(BigInteger, ForeignKey("message_templates.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Attachment manifest (document id, filename, content type, size). File
+    # bytes stay in the documents module; this never stores content.
+    attachments = Column(JSON, nullable=True)
     # Denormalized mirror of the `primary` row in `mail_record_associations`.
     # `MailRecordAssociation` is the authoritative link set; these columns keep
     # the primary contextual record available to inbox rendering and search

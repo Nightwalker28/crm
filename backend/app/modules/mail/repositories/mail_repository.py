@@ -158,6 +158,31 @@ def find_message_by_provider_id(
     )
 
 
+def find_message_by_idempotency_key(
+    db: Session,
+    *,
+    tenant_id: int,
+    owner_user_id: int,
+    idempotency_key: str,
+) -> MailMessage | None:
+    """Find an earlier claim for this compose attempt.
+
+    Scoped to the owner as well as the tenant because the uniqueness contract
+    is per mailbox owner: two users may independently generate the same key
+    without colliding.
+    """
+
+    return (
+        db.query(MailMessage)
+        .filter(
+            MailMessage.tenant_id == tenant_id,
+            MailMessage.owner_user_id == owner_user_id,
+            MailMessage.idempotency_key == idempotency_key,
+        )
+        .first()
+    )
+
+
 def list_message_associations(
     db: Session,
     *,

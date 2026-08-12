@@ -1,8 +1,9 @@
-# E2E Suite Status — 45 Remaining Failures
+# E2E Suite Status — 43 Remaining Failures
 
-Snapshot taken 2026-08-11 from a full serial run on `docs/crm-evolution-2026-plan`.
+Snapshot taken 2026-08-11 from a full serial run on `docs/crm-evolution-2026-plan`, with the
+two `mail-revamp` locator failures cleared on 2026-08-12.
 
-**199 passed / 45 failed (29.8 min)**, up from 159 passed / 85 failed at the start of the session.
+**201 passed / 43 failed**, up from 159 passed / 85 failed at the start of the 2026-08-11 session.
 
 This is a working document for picking the failures back up later. Each group below records what
 was actually observed, how confident the root cause is, and what the fix looks like. Groups are
@@ -51,7 +52,10 @@ Next renders `<div role="alert" aria-live="assertive" id="__next-route-announcer
 it satisfies the role — so any bare `getByRole('alert')` is a strict-mode violation on every page.
 
 - `automation-builder-revamp.spec.ts:59` — shows distinct loading, error, and empty rule-list states
-- `contacts-revamp.spec.ts:112` — Contact create, detail, edit, and record tabs follow the shared workflow
+- ~~`contacts-revamp.spec.ts:112`~~ — fixed 2026-08-12 during the Contact/Organization rollout. It
+  needed three fixes, not one: the announcer, then `getByLabel("Email")` also matching the
+  "Email opt-out" checkbox, then a stale `button "Lynk QA"` for what is now `role="option"`. Expect
+  the same layering elsewhere in this group — clearing the alert only exposes the next assertion.
 - `payments-revamp.spec.ts:122` — Payment recording hides backend failure details
 - `settings-modules-revamp.spec.ts:209` — shows blocked teams and preserves the draft when a concurrent department change rejects save
 
@@ -106,7 +110,7 @@ to whatever that decision is — do not paper over it with `.first()`.
 
 ## Group 4 — ambiguous locators, one element per intent
 
-**10 failures. Causes visible in the log. Each needs a judgement call about which element is meant.**
+**8 failures. Causes visible in the log. Each needs a judgement call about which element is meant.**
 
 These resolve to 2–3 elements because the same text legitimately appears more than once. The fix is
 per-case: name the element the assertion is actually about, the way `support-revamp` now asserts the
@@ -121,8 +125,6 @@ linked requester rather than the plain summary tile.
 | `client-portal-revamp.spec.ts:47` | `getByLabel("Customer")` | 2 |
 | `client-portal-revamp.spec.ts:80` | `button "Publish"` | 2 |
 | `fields-revamp.spec.ts:124` | `button /Contract Term/` | 2 |
-| `mail-revamp.spec.ts:33` | `getByLabel("To")` | 2 |
-| `mail-revamp.spec.ts:128` | `button "Cancel"` | 2 |
 | `opportunities-revamp.spec.ts:21` | `button "Table"` | 3 |
 | `payments-revamp.spec.ts:56` | `getByText("Paid", { exact: true })` | 2 |
 | `profile-revamp.spec.ts:146` | `getByText("MFA enabled")` | 2 |
@@ -131,6 +133,23 @@ linked requester rather than the plain summary tile.
 Watch for the `getByLabel` trap specifically: it is substring and case-insensitive by default, and
 it matches `aria-label` on any element, not just form controls. `getByLabel("Tags")` matched a chip
 container labelled "Selected tags" this session. `{ exact: true }` fixes that class.
+
+The `mail-revamp` pair was cleared on 2026-08-12 and shows both shapes of the fix. `getByLabel("To")`
+was also matching the Next.js dev-tools button — `aria-label="Open Next.js Dev Tools"` contains
+"To" — so naming the role (`getByRole("textbox", { name: "To" })`) excluded it. `button "Cancel"`
+matched the page behind the confirmation as well as the confirmation itself, so the assertion now
+scopes to `getByRole("dialog", { name: "Disconnect IMAP/SMTP?" })`. Both are product-neutral: the
+markup was already correct, the locators were not.
+
+## Not in the groups below: `primitive-behaviour.spec.ts:13`
+
+Observed failing on a clean tree on 2026-08-12 and **absent from every group in this document**, so
+it was never triaged. "record tabs support the ARIA tabs keyboard pattern" navigates to the real
+`/dashboard/sales/contacts/23` and finds that ArrowRight leaves `aria-selected` unchanged
+(`["true","false","false","false","false","false"]` before and after). Confirmed pre-existing by
+stashing an unrelated working tree and reproducing. Worth checking against the Radix `RecordTabs`
+rebuild in `docs/design/design.md` 7.2 before assuming it is test debt — the spec exists precisely
+because that keyboard pattern was broken once already.
 
 ## Group 5 — interaction timeouts, likely one shared cause
 

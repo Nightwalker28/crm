@@ -49,6 +49,12 @@ export type QuickCreateSurfaceProps = {
   statusMessage?: ReactNode;
   onMoreDetails?: () => void;
   createLabel?: string;
+  /**
+   * Contextual actions that produce one thing and have nowhere to "open"
+   * (sending an email, for example) opt out of the secondary outcome rather
+   * than showing a button that cannot mean anything.
+   */
+  showCreateAndOpen?: boolean;
   createAndOpenLabel?: string;
   moreDetailsLabel?: string;
   pendingLabel?: string;
@@ -75,6 +81,7 @@ export function QuickCreateSurface({
   statusMessage,
   onMoreDetails,
   createLabel = "Create",
+  showCreateAndOpen = true,
   createAndOpenLabel = "Create & open",
   moreDetailsLabel = "More details",
   pendingLabel = "Creating...",
@@ -248,15 +255,17 @@ export function QuickCreateSurface({
                 >
                   Cancel
                 </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="lg"
-                  disabled={isSubmitting || isLoading}
-                  onClick={() => void submit("create-and-open")}
-                >
-                  {createAndOpenLabel}
-                </Button>
+                {showCreateAndOpen ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="lg"
+                    disabled={isSubmitting || isLoading}
+                    onClick={() => void submit("create-and-open")}
+                  >
+                    {createAndOpenLabel}
+                  </Button>
+                ) : null}
                 <Button
                   type="button"
                   size="lg"

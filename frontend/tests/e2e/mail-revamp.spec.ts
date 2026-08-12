@@ -80,12 +80,12 @@ test("Mail composer is responsive, validates recipients, and sends through the s
   await page.goto("/dashboard/mail/compose");
   await expect(page.getByRole("heading", { name: "Compose email" })).toBeVisible();
 
-  await page.getByLabel("To").fill("not-an-email");
+  await page.getByRole("textbox", { name: "To" }).fill("not-an-email");
   await page.getByRole("button", { name: "Send email" }).click();
   await expect(page.getByText("Enter a valid email address for not-an-email.")).toBeVisible();
-  await expect(page.getByLabel("To")).toBeFocused();
+  await expect(page.getByRole("textbox", { name: "To" })).toBeFocused();
 
-  await page.getByLabel("To").fill("client@example.com");
+  await page.getByRole("textbox", { name: "To" }).fill("client@example.com");
   await page.getByLabel("Subject").fill("Renewal review");
   await page.getByLabel("Message").fill("Hello");
   await page.getByRole("button", { name: "{{contact.first_name}}" }).click();
@@ -165,8 +165,10 @@ test("IMAP settings use labeled controls and confirm mailbox disconnection", asy
   await expect(page.getByRole("combobox", { name: "SMTP security" })).toBeVisible();
 
   await page.getByRole("button", { name: "Disconnect IMAP" }).click();
-  await expect(page.getByRole("heading", { name: "Disconnect IMAP/SMTP?" })).toBeVisible();
-  await page.getByRole("button", { name: "Cancel" }).click();
+  const disconnectConfirmation = page.getByRole("dialog", { name: "Disconnect IMAP/SMTP?" });
+  await expect(disconnectConfirmation.getByRole("heading", { name: "Disconnect IMAP/SMTP?" })).toBeVisible();
+  // The page behind the dialog has its own Cancel; scope to the confirmation.
+  await disconnectConfirmation.getByRole("button", { name: "Cancel" }).click();
   expect(disconnectRequests).toBe(0);
 
   await page.getByRole("button", { name: "Disconnect IMAP" }).click();

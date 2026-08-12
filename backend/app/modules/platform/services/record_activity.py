@@ -360,6 +360,9 @@ def _fetch_emails(db, *, tenant_id, module_key, entity_id, limit, cursor, viewer
                 actor_user_id=row.owner_user_id,
                 actor_name=row.from_name or row.from_email,
                 direction=row.direction,
+                # Outbound mail carries its send outcome so a failed attempt is
+                # never rendered as a delivered email. Inbound mail has none.
+                status=row.send_status,
                 capabilities=("open", "reply"),
                 meta={
                     "from_email": row.from_email,

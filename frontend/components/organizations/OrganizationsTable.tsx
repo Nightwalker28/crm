@@ -1,7 +1,6 @@
 "use client";
 
 import { Fragment } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Building2 } from "lucide-react";
 
@@ -44,6 +43,7 @@ type Props = {
   onSortChange?: (sort: SortState) => void;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
+  onCreateOrganization?: () => void;
 };
 
 function getOrgInitials(name: string): string {
@@ -69,6 +69,7 @@ export default function OrganizationsTable({
   onSortChange,
   hasActiveFilters = false,
   onClearFilters,
+  onCreateOrganization,
 }: Props) {
   const router = useRouter();
   const headers: Record<string, string> = {
@@ -239,7 +240,7 @@ export default function OrganizationsTable({
           ) : organizations.length === 0 ? (
             <TableRow>
               <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
-                {hasActiveFilters ? <EmptyState icon={Building2} title="No accounts match these filters" description="Clear one or more filters and try again." action={<Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button>} /> : <EmptyState icon={Building2} title="No accounts yet" description="Create an account or import accounts from CSV." action={<Button asChild><Link href="/dashboard/sales/organizations/new">Create account</Link></Button>} />}
+                {hasActiveFilters ? <EmptyState icon={Building2} title="No accounts match these filters" description="Clear one or more filters and try again." action={<Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button>} /> : <EmptyState icon={Building2} title="No accounts yet" description="Create an account or import accounts from CSV." action={onCreateOrganization ? <Button type="button" onClick={onCreateOrganization}>Create account</Button> : null} />}
               </TableCell>
             </TableRow>
           ) : (

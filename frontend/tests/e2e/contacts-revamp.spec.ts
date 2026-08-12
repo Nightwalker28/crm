@@ -98,7 +98,8 @@ test("Contacts list keeps the shared controls usable on mobile", async ({ page }
 
   await expect(page.getByRole("heading", { name: "Contacts" })).toBeVisible();
   await expect(page.getByPlaceholder("Search contacts")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create contact" })).toBeVisible();
+  // Create is the Quick Create surface now, not a navigation to /new.
+  await expect(page.getByRole("button", { name: "Create contact" })).toBeVisible();
   const filtersButton = page.getByRole("button", { name: /Filters/ });
   await filtersButton.focus();
   await page.keyboard.press("Enter");
@@ -118,8 +119,10 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
   await page.goto("/dashboard/sales/contacts/new");
   await expect(page.getByRole("heading", { name: "Create contact" })).toBeVisible();
   await page.getByRole("button", { name: "Create contact" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Email is required.");
-  await expect(page.getByLabel("Email")).toBeFocused();
+  // A bare getByRole("alert") also matches Next's route announcer, and a bare "Email" label
+  // also matches the "Email opt-out" checkbox. Target the field slot and the input itself.
+  await expect(page.locator('[data-slot="field-error"]')).toHaveText("Email is required.");
+  await expect(page.getByRole("textbox", { name: "Email", exact: true })).toBeFocused();
 
   const ownerPicker = page.getByPlaceholder("Search owners (defaults to you)");
   await ownerPicker.fill("Ada");
@@ -127,20 +130,22 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
   await expect(ownerPicker).toHaveValue("Ada Owner");
   const accountPicker = page.getByPlaceholder("Search accounts");
   await accountPicker.fill("Lynk");
-  await page.getByRole("button", { name: "Lynk QA" }).click();
+  await page.getByRole("option", { name: "Lynk QA" }).click();
   await expect(accountPicker).toHaveValue("Lynk QA");
 
   await page.goto(`/dashboard/sales/contacts/${fakeContactId}`);
   await expect(page.getByRole("heading", { name: "Browser Contact" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByText("Ada Owner", { exact: true })).toBeVisible();
-  await expect(page.getByText("Lynk QA", { exact: true })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
+  // Ownership and the account now read from the workspace relationship rail.
+  const rail = page.locator("[data-record-workspace-relationship-rail]");
+  await expect(rail.getByText("Ada Owner", { exact: true })).toBeVisible();
+  await expect(rail.getByRole("link", { name: "Lynk QA" })).toBeVisible();
   await page.getByRole("tab", { name: "Audit history" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/contacts/${fakeContactId}\\?tab=audit$`));
 
   await page.goto(`/dashboard/sales/contacts/${fakeContactId}/edit`);
   await expect(page.getByRole("heading", { name: "Edit contact" })).toBeVisible();
-  await expect(page.getByLabel("Email")).toHaveValue("browser.contact@example.com");
+  await expect(page.getByRole("textbox", { name: "Email", exact: true })).toHaveValue("browser.contact@example.com");
   await expect(page.getByPlaceholder("Search owners")).toHaveValue("Ada Owner");
   await expect(page.getByPlaceholder("Search accounts")).toHaveValue("Lynk QA");
   await expect(page.getByText(/Last modified/)).toBeVisible();

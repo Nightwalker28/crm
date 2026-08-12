@@ -62,8 +62,11 @@ export function RecordLayoutPreview({
 
       {layout ? (
         <div
+          // No frame of its own: the runtime renderer already puts each section in a card, and
+          // wrapping those in another bordered, tinted box makes three visible container
+          // levels (design.md 1.3). The mobile width is what communicates the viewport.
           className={cn(
-            "rounded-[var(--radius-card)] border border-line-default bg-surface p-4 transition-opacity",
+            "transition-opacity",
             viewport === "mobile" && "mx-auto w-full max-w-[26rem]",
             isStale && "opacity-60",
           )}
