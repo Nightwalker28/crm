@@ -44,9 +44,14 @@ TENANT = 10
 OTHER_TENANT = 99
 
 
-MIGRATION_PATH = (
-    Path(__file__).resolve().parents[1] / "alembic" / "versions" / "20260815_opportunity_contacts.py"
-)
+VERSIONS_DIR = Path(__file__).resolve().parents[1] / "alembic" / "versions"
+MIGRATION_PATH = VERSIONS_DIR / "20260815_opportunity_contacts.py"
+# Phase 2 made removal recoverable in a follow-up revision, so the model is now the
+# sum of both. The drift checks below read the chain, not one file.
+ASSOCIATION_MIGRATION_PATHS = [
+    MIGRATION_PATH,
+    VERSIONS_DIR / "20260816_opportunity_participants.py",
+]
 
 
 def _load_migration_module():
@@ -195,17 +200,39 @@ class MigrationSchemaTests(unittest.TestCase):
                 "is_primary",
                 "created_at",
                 "created_by_user_id",
+                "deleted_at",
+                "deleted_by_user_id",
             },
         )
         self.assertIn("uq_sales_opportunity_contacts_primary", indexes)
         self.assertIn("ix_sales_opportunity_contacts_contact", indexes)
 
-    def test_the_revision_creates_every_column_and_index_the_model_maps(self):
-        source = MIGRATION_PATH.read_text()
+    def test_the_revisions_create_every_column_and_index_the_model_maps(self):
+        source = "\n".join(path.read_text() for path in ASSOCIATION_MIGRATION_PATHS)
         for column in SalesOpportunityContact.__table__.columns:
             self.assertIn(f'"{column.name}"', source)
         for index in SalesOpportunityContact.__table__.indexes:
             self.assertIn(index.name, source)
+
+    def test_the_primary_uniqueness_index_still_ignores_removal(self):
+        """A removed association must not be able to sit on the primary flag.
+
+        The Phase 2 revision deliberately leaves the partial unique index as
+        `WHERE is_primary` rather than adding `AND deleted_at IS NULL`, which is
+        what makes "the primary participant cannot be removed" a database
+        guarantee and not only a service rule.
+        """
+
+        index = next(
+            item
+            for item in SalesOpportunityContact.__table__.indexes
+            if item.name == "uq_sales_opportunity_contacts_primary"
+        )
+        self.assertTrue(index.unique)
+        for dialect_options in index.dialect_options.values():
+            where = dialect_options.get("where")
+            if where is not None:
+                self.assertNotIn("deleted_at", str(where))
 
 
 class BackfillTests(OpportunityContactFixture):

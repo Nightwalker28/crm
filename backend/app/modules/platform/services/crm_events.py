@@ -22,6 +22,12 @@ CRM_EVENT_TYPES = {
     "lead.converted",
     "deal.assigned",
     "opportunity.stage_changed",
+    # Relationship changes worth reacting to. A participant's role change is
+    # deliberately absent: it is audited, but it is not an event worth waking
+    # automations for.
+    "opportunity.participant_added",
+    "opportunity.participant_removed",
+    "opportunity.primary_contact_changed",
     "invoice.overdue",
     "quote.created",
     "quote.status_changed",

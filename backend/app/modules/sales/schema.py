@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.modules.sales.opportunity_contact_roles import OPPORTUNITY_CONTACT_ROLE_PATTERN
 from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_PATTERN
 
 
@@ -912,8 +913,49 @@ class OpportunityContactParticipant(BaseModel):
     contact: ContactCompactSummary
     created_at: datetime | None = None
     created_by_user_id: int | None = None
+    # Populated only on removed participants, which are served by their own route.
+    removed_at: datetime | None = None
+    removed_by_user_id: int | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class OpportunityParticipantCreate(BaseModel):
+    """Put an existing contact on a deal.
+
+    `contact_id` is a hint from the client, never an authorization: the service
+    resolves it inside the caller's tenant and the route independently requires
+    Contacts link access.
+    """
+
+    contact_id: int
+    # Omitted role means the catalog default rather than a rejection, matching the
+    # legacy mirror, which records no role.
+    role_key: str | None = Field(default=None, pattern=OPPORTUNITY_CONTACT_ROLE_PATTERN)
+    # Adding someone straight as the primary contact also moves the legacy
+    # `sales_opportunities.contact_id`.
+    is_primary: bool = False
+
+
+class OpportunityParticipantRoleUpdate(BaseModel):
+    role_key: str = Field(pattern=OPPORTUNITY_CONTACT_ROLE_PATTERN)
+
+
+class OpportunityParticipantListResponse(BaseModel):
+    results: list[OpportunityContactParticipant]
+    # Whether this reader may change the participant list, so a client can render a
+    # read-only relationship rail without probing the write routes. UI hiding is not
+    # the authorization; the routes enforce it independently.
+    can_manage: bool = False
+
+
+class OpportunityContactRoleOption(BaseModel):
+    key: str
+    label: str
+
+
+class OpportunityContactRoleCatalogResponse(BaseModel):
+    results: list[OpportunityContactRoleOption]
 
 
 class OpportunitySummaryResponse(BaseModel):

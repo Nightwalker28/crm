@@ -737,6 +737,15 @@ class SalesOpportunityContact(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     created_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
+    # Removing a participant is recoverable: the row is retained so the link, its
+    # role, and who established it survive, and re-adding the same contact revives
+    # this row rather than creating a second one under the unique link constraint.
+    # The primary partial unique index above deliberately ignores `deleted_at`, so
+    # a removed row can never sit on the primary flag.
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
     opportunity = relationship("SalesOpportunity", back_populates="contact_associations")
     contact = relationship("SalesContact", lazy="selectin")
     created_by = relationship("User", foreign_keys=[created_by_user_id])
+    deleted_by = relationship("User", foreign_keys=[deleted_by_user_id])
