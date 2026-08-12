@@ -22,11 +22,14 @@ def _run_alembic(
     revision: str,
     *,
     postgres_options: str | None = None,
+    version_table_schema: str | None = None,
 ) -> None:
     environment = os.environ.copy()
     environment["DATABASE_URL"] = database_url
     if postgres_options:
         environment["PGOPTIONS"] = postgres_options
+    if version_table_schema:
+        environment["ALEMBIC_VERSION_TABLE_SCHEMA"] = version_table_schema
     subprocess.run(
         ["alembic", "upgrade", revision],
         cwd=BACKEND_DIR,
@@ -63,6 +66,7 @@ def main() -> None:
     isolated_url = source_url.set(database=isolation_name)
     verification_url = isolated_url
     postgres_options: str | None = None
+    version_table_schema: str | None = None
     created_database = False
     schema_engine = None
 
@@ -86,27 +90,39 @@ def main() -> None:
                 connection.execute(text(f"CREATE SCHEMA {quoted_isolation_name}"))
             verification_url = source_url
             postgres_options = f"-csearch_path={isolation_name},public"
+            # `public` stays on the search path so shared extensions resolve,
+            # which also means an unqualified `alembic_version` would resolve to
+            # the real one. Pin the version table to the temporary schema so the
+            # verification run cannot stamp the live database.
+            version_table_schema = isolation_name
 
         rendered_verification_url = verification_url.render_as_string(hide_password=False)
         _run_alembic(
             rendered_verification_url,
             prior_revision,
             postgres_options=postgres_options,
+            version_table_schema=version_table_schema,
         )
         _run_alembic(
             rendered_verification_url,
             "head",
             postgres_options=postgres_options,
+            version_table_schema=version_table_schema,
         )
 
         verification_engine = create_engine(
             verification_url,
             connect_args={"options": postgres_options} if postgres_options else {},
         )
+        version_table = (
+            f"{quoted_isolation_name}.alembic_version"
+            if version_table_schema
+            else "alembic_version"
+        )
         try:
             with verification_engine.connect() as connection:
                 current_revision = connection.execute(
-                    text("SELECT version_num FROM alembic_version")
+                    text(f"SELECT version_num FROM {version_table}")
                 ).scalar_one()
         finally:
             verification_engine.dispose()

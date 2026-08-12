@@ -3,7 +3,10 @@
 import { CustomFieldInput } from "@/components/customFields/CustomFieldInputs";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import RecordTagInput from "@/components/crm/RecordTagInput";
-import { ResolvedRecordLayout } from "@/components/forms/ResolvedRecordLayout";
+import {
+  ResolvedRecordLayout,
+  type ResolvedRecordLayoutViewport,
+} from "@/components/forms/ResolvedRecordLayout";
 import { LEAD_STATUSES, type LeadFormValue } from "@/components/leads/LeadFormFields";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -31,6 +34,8 @@ type Props = {
   customValues: Record<string, unknown>;
   onCustomChange: (fieldKey: string, value: unknown) => void;
   errors?: Record<string, string | null | undefined>;
+  /** Only the layout builder sets this, to preview the narrow-screen result. */
+  viewport?: ResolvedRecordLayoutViewport;
 };
 
 function resolvedLeadFieldValue(
@@ -82,6 +87,7 @@ export function LeadQuickCreateLayoutFields({
   customValues,
   onCustomChange,
   errors = {},
+  viewport = "auto",
 }: Props) {
   function renderCustomField(field: ResolvedRecordLayoutField) {
     const fieldType = field.field_type as CustomFieldDefinition["field_type"];
@@ -272,6 +278,7 @@ export function LeadQuickCreateLayoutFields({
     <ResolvedRecordLayout
       layout={layout}
       renderField={renderField}
+      viewport={viewport}
       invalidFieldKeys={Object.entries(errors).filter(([, error]) => Boolean(error)).map(([fieldKey]) => fieldKey)}
     />
   );

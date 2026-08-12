@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { CheckCircle2, ClipboardList, Plus } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -36,6 +36,10 @@ type Props = {
   moduleKey: RecordModuleKey;
   entityId: string | number;
   sourceLabel?: string;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  createRequestId?: number;
+  createActionVariant?: "default" | "outline";
 };
 
 type TaskDraft = {
@@ -117,12 +121,34 @@ async function completeTask(task: Task) {
   return body as Task;
 }
 
-export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: Props) {
+export default function RecordTasksPanel({
+  moduleKey,
+  entityId,
+  sourceLabel,
+  canCreate = true,
+  canEdit = true,
+  createRequestId = 0,
+  createActionVariant = "default",
+}: Props) {
   const queryClient = useQueryClient();
-  const [isCreating, setIsCreating] = useState(false);
+  const [isCreating, setIsCreating] = useState(createRequestId > 0);
   const [draft, setDraft] = useState<TaskDraft>(() => emptyDraft());
   const [submitting, setSubmitting] = useState(false);
   const [completingTaskId, setCompletingTaskId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!canCreate || createRequestId <= 0) return;
+    setIsCreating(true);
+  }, [canCreate, createRequestId]);
+
+  useEffect(() => {
+    if (!isCreating || createRequestId <= 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`record-task-title-${moduleKey}-${entityId}`)?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [createRequestId, entityId, isCreating, moduleKey]);
+
   const query = useQuery({
     queryKey: ["record-tasks", moduleKey, String(entityId)],
     queryFn: () => fetchRecordTasks(moduleKey, entityId),
@@ -131,7 +157,7 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
   const optionsQuery = useQuery({
     queryKey: ["task-assignment-options"],
     queryFn: fetchTaskAssignmentOptions,
-    enabled: isCreating,
+    enabled: canCreate && isCreating,
     staleTime: 5 * 60_000,
   });
   const tasks = query.data?.results ?? [];
@@ -147,7 +173,7 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
 
   async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft.title.trim()) return;
+    if (!canCreate || !draft.title.trim()) return;
 
     try {
       setSubmitting(true);
@@ -182,15 +208,15 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
         title="Tasks & reminders"
         description="Follow-up tasks linked to this record."
         icon={ClipboardList}
-        action={
+        action={canCreate ? (
           <Button type="button" variant="outline" size="sm" onClick={() => setIsCreating((current) => !current)}>
             <Plus className="h-4 w-4" />
             {isCreating ? "Close" : "Add task"}
           </Button>
-        }
+        ) : undefined}
       />
 
-      {isCreating ? (
+      {canCreate && isCreating ? (
         <form onSubmit={handleCreateTask} className="my-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-4">
           <FieldGroup className="grid gap-4 md:grid-cols-2">
             <Field className="md:col-span-2">
@@ -285,7 +311,7 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting || !draft.title.trim()}>
+            <Button type="submit" variant={createActionVariant} disabled={submitting || !draft.title.trim()}>
               {submitting ? "Creating…" : "Create linked task"}
             </Button>
           </div>
@@ -318,7 +344,7 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
                   {task.due_at ? <div className="text-xs text-copy-muted">Due {formatDateTime(task.due_at)}</div> : null}
-                  {task.status !== "completed" ? (
+                  {canEdit && task.status !== "completed" ? (
                     <Button
                       type="button"
                       variant="outline"

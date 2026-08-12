@@ -9,6 +9,7 @@ import {
   Database,
   FileText,
   KeyRound,
+  LayoutTemplate,
   Plug,
   Recycle,
   Repeat2,
@@ -80,6 +81,12 @@ const SETTINGS_SECTIONS = [
         description: "Add configurable fields to supported modules.",
         href: SETTINGS_ROUTES.fields,
         icon: Settings2,
+      },
+      {
+        title: "Record Layouts",
+        description: "Arrange and preview the Lead Quick Create form.",
+        href: SETTINGS_ROUTES.recordLayouts,
+        icon: LayoutTemplate,
       },
       {
         title: "Templates",

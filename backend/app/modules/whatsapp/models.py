@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, String, Text, func
+from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -6,6 +6,16 @@ from app.core.database import Base
 
 class WhatsAppInteraction(Base):
     __tablename__ = "whatsapp_interactions"
+    __table_args__ = (
+        Index(
+            "ix_whatsapp_interactions_tenant_source",
+            "tenant_id",
+            "source_module_key",
+            "source_entity_id",
+            "sent_at",
+            "id",
+        ),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)

@@ -40,6 +40,7 @@ type Props = {
   documents: DocumentItem[];
   emptyText?: string;
   onDelete?: (document: DocumentItem) => void;
+  canEdit?: boolean;
   isDeleting?: boolean;
   sort?: DocumentSortState;
   onSortChange?: (sort: DocumentSortState) => void;
@@ -64,7 +65,7 @@ function errorMessage(_error: unknown, fallback: string) {
   return fallback;
 }
 
-function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document: DocumentItem; onDelete?: (document: DocumentItem) => void; isDeleting?: boolean; highlighted?: boolean }) {
+function DocumentRow({ document, onDelete, canEdit, isDeleting, highlighted }: { document: DocumentItem; onDelete?: (document: DocumentItem) => void; canEdit: boolean; isDeleting?: boolean; highlighted?: boolean }) {
   const { confirm } = useConfirm();
   const rowRef = useRef<HTMLTableRowElement>(null);
   const versionInputRef = useRef<HTMLInputElement>(null);
@@ -225,7 +226,7 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
         <TableRow>
           <TableCell colSpan={7} className="bg-surface-muted/50">
             <div className="rounded-[var(--radius-control)] border border-line-default bg-surface p-3">
-              <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
+              {canEdit ? <div className="grid gap-3 md:grid-cols-[1fr_auto_auto] md:items-end">
                 <Field>
                   <FieldLabel htmlFor={`document-template-category-${document.id}`}>Template category</FieldLabel>
                   <Input
@@ -257,14 +258,14 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
                     New Version
                   </Button>
                 </div>
-              </div>
+              </div> : null}
 
               <div className="mt-5 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3">
                 <div className="mb-3 flex items-center gap-2 text-xs font-medium text-copy-label">
                   <Share2 className="h-3.5 w-3.5" />
                   Client Portal Access
                 </div>
-                <div className="grid gap-3 lg:grid-cols-[160px_minmax(220px,1fr)_220px_auto] lg:items-end">
+                {canEdit ? <div className="grid gap-3 lg:grid-cols-[160px_minmax(220px,1fr)_220px_auto] lg:items-end">
                   <Field>
                     <FieldLabel>Target</FieldLabel>
                     <Select
@@ -312,7 +313,7 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
                     <Share2 className="h-4 w-4" />
                     Share
                   </Button>
-                </div>
+                </div> : null}
                 <div className="mt-4 divide-y divide-line-subtle rounded-[var(--radius-control)] border border-line-default bg-surface">
                   {activeShares.length ? activeShares.map((share) => (
                     <div key={share.id} className="flex flex-col gap-2 px-3 py-3 md:flex-row md:items-center md:justify-between">
@@ -322,10 +323,10 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
                           {share.expires_at ? `Expires ${formatDateTime(share.expires_at)}` : "No expiry"}
                         </span>
                       </div>
-                      <Button type="button" variant="dangerGhost" onClick={() => void handleRevokeShare(share.id)} disabled={isRevokingDocumentShare}>
+                      {canEdit ? <Button type="button" variant="dangerGhost" onClick={() => void handleRevokeShare(share.id)} disabled={isRevokingDocumentShare}>
                         <XCircle className="h-4 w-4" />
                         Revoke
-                      </Button>
+                      </Button> : null}
                     </div>
                   )) : <div className="px-3 py-3 text-sm text-copy-muted">Not shared with any client portal account.</div>}
                 </div>
@@ -375,7 +376,7 @@ function DocumentRow({ document, onDelete, isDeleting, highlighted }: { document
   );
 }
 
-export default function DocumentList({ documents, emptyText = "No documents yet.", onDelete, isDeleting, sort = null, onSortChange, isRefreshing = false, highlightedDocumentId = null }: Props) {
+export default function DocumentList({ documents, emptyText = "No documents yet.", onDelete, canEdit = true, isDeleting, sort = null, onSortChange, isRefreshing = false, highlightedDocumentId = null }: Props) {
   function toggleSort(column: DocumentSortableColumn) {
     const nextSort: DocumentSortState = sort?.key === column
       ? { key: column, direction: sort.direction === "asc" ? "desc" : "asc" }
@@ -423,6 +424,7 @@ export default function DocumentList({ documents, emptyText = "No documents yet.
               key={document.id}
               document={document}
               onDelete={onDelete}
+              canEdit={canEdit}
               isDeleting={isDeleting}
               highlighted={document.id === highlightedDocumentId}
             />

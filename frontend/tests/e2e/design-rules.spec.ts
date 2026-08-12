@@ -70,6 +70,7 @@ const STATIC_ROUTES = [
   "/dashboard/settings/customer-groups",
   "/dashboard/settings/domains",
   "/dashboard/settings/fields",
+  "/dashboard/settings/record-layouts",
   "/dashboard/settings/general",
   "/dashboard/settings/integrations",
   "/dashboard/settings/message-templates",

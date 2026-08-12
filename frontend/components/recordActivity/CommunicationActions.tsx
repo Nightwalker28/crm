@@ -14,6 +14,7 @@ type Props = {
   whatsAppBusy?: boolean;
   onWhatsAppClick?: () => Promise<void> | void;
   followUpTargetId?: string;
+  showCopyActions?: boolean;
 };
 
 function phoneDigits(phone: string) {
@@ -43,6 +44,7 @@ export default function CommunicationActions({
   whatsAppBusy = false,
   onWhatsAppClick,
   followUpTargetId,
+  showCopyActions = true,
 }: Props) {
   const canEmail = Boolean(email) && !emailOptOut;
   const canCall = Boolean(phone);
@@ -99,14 +101,14 @@ export default function CommunicationActions({
         </Button>
       )}
 
-      <Button type="button" size="sm" variant="ghost" onClick={() => email && void copyValue(email, "Email")} disabled={!email}>
+      {showCopyActions ? <Button type="button" size="sm" variant="ghost" onClick={() => email && void copyValue(email, "Email")} disabled={!email}>
         <Copy className="h-4 w-4" />
         Copy Email
-      </Button>
-      <Button type="button" size="sm" variant="ghost" onClick={() => phone && void copyValue(phone, "Phone")} disabled={!phone}>
+      </Button> : null}
+      {showCopyActions ? <Button type="button" size="sm" variant="ghost" onClick={() => phone && void copyValue(phone, "Phone")} disabled={!phone}>
         <Copy className="h-4 w-4" />
         Copy Phone
-      </Button>
+      </Button> : null}
       {followUpTargetId ? (
         <Button type="button" size="sm" variant="ghost" onClick={() => scrollToFollowUp(followUpTargetId)}>
           <RotateCcw className="h-4 w-4" />

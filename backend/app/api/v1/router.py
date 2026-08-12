@@ -34,8 +34,12 @@ from app.modules.platform.routes.global_search import router as global_search_ro
 from app.modules.platform.routes.integrations_registry import router as integrations_registry_router
 from app.modules.platform.routes.linked_record_options import router as linked_record_options_router
 from app.modules.platform.routes.notifications import router as notifications_router
+from app.modules.platform.routes.record_activity import router as record_activity_router
 from app.modules.platform.routes.record_comments import router as record_comments_router
-from app.modules.platform.routes.record_layouts import router as record_layouts_router
+from app.modules.platform.routes.record_layouts import (
+    admin_router as record_layouts_admin_router,
+    router as record_layouts_router,
+)
 from app.modules.platform.routes.realtime import router as realtime_router
 from app.modules.platform.routes.message_templates import router as message_templates_router
 from app.modules.platform.routes.notification_channels import router as notification_channels_router
@@ -82,7 +86,9 @@ router.include_router(global_search_router)
 router.include_router(integrations_registry_router)
 router.include_router(linked_record_options_router)
 router.include_router(notifications_router)
+router.include_router(record_activity_router)
 router.include_router(record_comments_router)
+router.include_router(record_layouts_admin_router)
 router.include_router(record_layouts_router)
 router.include_router(realtime_router)
 router.include_router(message_templates_router)

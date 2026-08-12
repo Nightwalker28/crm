@@ -10,22 +10,33 @@ import type {
 } from "@/hooks/useResolvedRecordLayout";
 import { cn } from "@/lib/utils";
 
+/**
+ * `viewport` exists for the layout builder's mobile preview. "auto" is the product
+ * behaviour — breakpoints follow the real viewport. "mobile" pins the layout to the
+ * single-column form it takes below `sm`, so an administrator on a desktop can see the
+ * narrow-screen result without resizing the browser.
+ */
+export type ResolvedRecordLayoutViewport = "auto" | "mobile";
+
 type Props = {
   layout: ResolvedRecordLayoutContract;
   renderField: (field: ResolvedRecordLayoutField) => ReactNode;
   className?: string;
   invalidFieldKeys?: string[];
   fixedSidebar?: ReactNode;
+  viewport?: ResolvedRecordLayoutViewport;
 };
 
 function LayoutSection({
   section,
   renderField,
   invalidFieldKeys,
+  viewport,
 }: {
   section: ResolvedRecordLayoutSection;
   renderField: Props["renderField"];
   invalidFieldKeys: Set<string>;
+  viewport: ResolvedRecordLayoutViewport;
 }) {
   const fields = [...section.fields]
     .filter((field) => field.visible)
@@ -34,13 +45,13 @@ function LayoutSection({
   const hasInvalidField = fields.some((field) => invalidFieldKeys.has(field.field_key));
 
   const body = (
-    <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+    <div className={cn("grid gap-x-6 gap-y-4", viewport === "auto" && "sm:grid-cols-2")}>
       {fields.map((field) => (
         <div
           key={field.field_key}
           data-layout-field={field.field_key}
           data-layout-width={field.width}
-          className={cn(field.width === "full" && "sm:col-span-2")}
+          className={cn(field.width === "full" && viewport === "auto" && "sm:col-span-2")}
         >
           {renderField(field)}
         </div>
@@ -71,7 +82,14 @@ function LayoutSection({
   );
 }
 
-export function ResolvedRecordLayout({ layout, renderField, className, invalidFieldKeys = [], fixedSidebar }: Props) {
+export function ResolvedRecordLayout({
+  layout,
+  renderField,
+  className,
+  invalidFieldKeys = [],
+  fixedSidebar,
+  viewport = "auto",
+}: Props) {
   const sections = [...layout.sections].sort((left, right) => left.position - right.position);
   const mainSections = sections.filter((section) => section.region === "main");
   const sidebarSections = sections.filter((section) => section.region === "sidebar");
@@ -82,22 +100,23 @@ export function ResolvedRecordLayout({ layout, renderField, className, invalidFi
     <div
       className={cn(
         "grid items-start gap-4",
-        hasSidebar && "lg:grid-cols-[minmax(0,2fr)_minmax(18rem,0.8fr)]",
+        hasSidebar && viewport === "auto" && "lg:grid-cols-[minmax(0,2fr)_minmax(18rem,0.8fr)]",
         className,
       )}
       data-record-layout={`${layout.module_key}:${layout.surface}`}
       data-layout-source={layout.source}
       data-layout-version={layout.version}
+      data-layout-viewport={viewport}
     >
       <div className="grid min-w-0 gap-4">
         {mainSections.map((section) => (
-          <LayoutSection key={section.id} section={section} renderField={renderField} invalidFieldKeys={invalidFields} />
+          <LayoutSection key={section.id} section={section} renderField={renderField} invalidFieldKeys={invalidFields} viewport={viewport} />
         ))}
       </div>
       {hasSidebar ? (
         <aside className="grid gap-4">
           {sidebarSections.map((section) => (
-            <LayoutSection key={section.id} section={section} renderField={renderField} invalidFieldKeys={invalidFields} />
+            <LayoutSection key={section.id} section={section} renderField={renderField} invalidFieldKeys={invalidFields} viewport={viewport} />
           ))}
           {fixedSidebar}
         </aside>

@@ -22,6 +22,51 @@ class ActivityLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RecordActivityActor(BaseModel):
+    user_id: int | None = None
+    name: str | None = None
+
+
+class RecordActivitySourceRef(BaseModel):
+    module_key: str
+    record_id: str
+
+
+class RecordActivityRecordRef(BaseModel):
+    module_key: str
+    entity_id: str
+
+
+class RecordActivityItemResponse(BaseModel):
+    """Normalized envelope over one source-domain row.
+
+    ``meta`` carries small, type-specific display detail only. Provider
+    secrets, tokens, and raw provider payloads are never projected here.
+    """
+
+    id: str
+    type: str
+    occurred_at: datetime
+    title: str
+    summary: str | None = None
+    direction: str | None = None
+    status: str | None = None
+    actor: RecordActivityActor | None = None
+    source: RecordActivitySourceRef
+    record: RecordActivityRecordRef
+    capabilities: list[str] = Field(default_factory=list)
+    meta: dict[str, Any] = Field(default_factory=dict)
+
+
+class RecordActivityListResponse(BaseModel):
+    items: list[RecordActivityItemResponse]
+    next_cursor: str | None = None
+    has_more: bool
+    limit: int
+    available_types: list[str]
+    omitted_types: list[str] = Field(default_factory=list)
+
+
 class ActivityLogListResponse(BaseModel):
     results: list[ActivityLogResponse]
     range_start: int

@@ -545,6 +545,16 @@ class AutomationRuleDeadLetter(Base):
 
 class RecordComment(Base):
     __tablename__ = "record_comments"
+    __table_args__ = (
+        Index(
+            "ix_record_comments_tenant_record",
+            "tenant_id",
+            "module_key",
+            "entity_id",
+            "created_at",
+            "id",
+        ),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -566,6 +576,50 @@ class RecordComment(Base):
             if self.actor.email:
                 return self.actor.email
         return "Unknown user"
+
+
+class RecordFollowUp(Base):
+    """Source of truth for a logged salesperson follow-up outcome.
+
+    Follow-ups previously existed only as ``activity_logs`` rows, which mixed
+    salesperson interaction history into the immutable audit store. This table
+    owns the interaction; the audit log keeps recording the change separately.
+    ``follow_up_task_id`` is a soft reference (no FK) matching the existing
+    cross-module convention used by ``tasks.source_entity_id``.
+    """
+
+    __tablename__ = "record_follow_ups"
+    __table_args__ = (
+        CheckConstraint(
+            "channel IN ('whatsapp', 'email', 'call')",
+            name="ck_record_follow_ups_channel",
+        ),
+        Index(
+            "ix_record_follow_ups_tenant_record",
+            "tenant_id",
+            "module_key",
+            "entity_id",
+            "occurred_at",
+            "id",
+        ),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    entity_id = Column(String(100), nullable=False, index=True)
+    channel = Column(String(20), nullable=False, index=True)
+    note = Column(Text, nullable=True)
+    follow_up_task_id = Column(BigInteger, nullable=True, index=True)
+    occurred_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    actor = relationship("User")
+
+    @validates("entity_id")
+    def _normalize_entity_id(self, _key, value):
+        return str(value)
 
 
 class MessageTemplate(Base):

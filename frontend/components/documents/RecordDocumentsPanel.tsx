@@ -17,13 +17,22 @@ import type { RecordModuleKey } from "@/types/record-activity";
 type Props = {
   moduleKey: RecordModuleKey;
   entityId: string | number;
+  canUpload?: boolean;
+  canEdit?: boolean;
+  canDelete?: boolean;
 };
 
 function errorMessage(_error: unknown, fallback: string) {
   return fallback;
 }
 
-export default function RecordDocumentsPanel({ moduleKey, entityId }: Props) {
+export default function RecordDocumentsPanel({
+  moduleKey,
+  entityId,
+  canUpload = true,
+  canEdit = true,
+  canDelete = true,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const { confirm } = useConfirm();
   const [title, setTitle] = useState("");
@@ -31,7 +40,7 @@ export default function RecordDocumentsPanel({ moduleKey, entityId }: Props) {
   const { uploadDocument, deleteDocument, isUploadingDocument, isDeletingDocument } = useDocumentActions({ moduleKey, entityId });
 
   async function handleSelectedFile(file: File | undefined) {
-    if (!file) return;
+    if (!canUpload || !file) return;
     try {
       await uploadDocument({
         file,
@@ -70,7 +79,7 @@ export default function RecordDocumentsPanel({ moduleKey, entityId }: Props) {
           <h2 className="text-lg font-semibold text-copy-primary">Documents</h2>
           <FieldDescription className="mt-1">PDF, DOC, DOCX, TXT, RTF, and ODT files linked to this record.</FieldDescription>
         </div>
-        <div className="flex flex-col gap-2 md:w-72">
+        {canUpload ? <div className="flex flex-col gap-2 md:w-72">
           <Input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
@@ -87,7 +96,7 @@ export default function RecordDocumentsPanel({ moduleKey, entityId }: Props) {
             <Upload className="h-4 w-4" />
             {isUploadingDocument ? "Uploading..." : "Upload Document"}
           </Button>
-        </div>
+        </div> : null}
       </div>
       <div className="mt-4">
         {documentsQuery.isLoading ? (
@@ -112,7 +121,8 @@ export default function RecordDocumentsPanel({ moduleKey, entityId }: Props) {
           <DocumentList
             documents={documentsQuery.data?.results ?? []}
             emptyText="No documents are linked to this record yet."
-            onDelete={(document) => void handleDelete(document)}
+            onDelete={canDelete ? (document) => void handleDelete(document) : undefined}
+            canEdit={canEdit}
             isDeleting={isDeletingDocument}
           />
         )}

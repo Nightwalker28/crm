@@ -24,7 +24,6 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.encrypted_fields import get_encrypted_model_value, set_encrypted_model_value
 from app.core.microsoft_oauth import MICROSOFT_GRAPH_BASE, MICROSOFT_MAIL_SCOPES, microsoft_auth_url, microsoft_scope_string, microsoft_token_url
-from app.core.access_control import require_role_module_action_access
 from app.core.secrets import decrypt_secret_with_rotation
 from app.core.tenancy import (
     get_frontend_origin_for_request,
@@ -34,9 +33,9 @@ from app.core.tenancy import (
 from app.modules.mail.models import MailMessage, UserMailConnection
 from app.modules.mail.repositories import mail_repository
 from app.modules.mail.schema import MailProvider
+from app.modules.mail.services import mail_associations
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.message_templates import render_template_text
-from app.modules.platform.services.record_comments import get_record_comment_module_config, get_record_reference
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
 from app.modules.user_management.models import Tenant, User, UserStatus
 
@@ -280,13 +279,6 @@ def get_mail_message_or_404(
     return message
 
 
-def _record_label(record, config: dict) -> str:
-    label = getattr(record, config["label_field"], None)
-    if label:
-        return str(label)
-    return f"{config['entity_type']} #{getattr(record, config['id_field'])}"
-
-
 def link_mail_message_to_record(
     db: Session,
     *,
@@ -294,6 +286,14 @@ def link_mail_message_to_record(
     current_user: User,
     payload: dict,
 ) -> MailMessage:
+    """Designate the primary contextual record for a message.
+
+    This is the long-standing inbox "link to record" action. It now writes a
+    ``primary`` association alongside the mirrored ``source_*`` columns, so a
+    record's mail is discoverable through one link model. Any association the
+    user previously added survives as ``related``.
+    """
+
     message = get_mail_message_or_404(
         db,
         message_id,
@@ -305,25 +305,21 @@ def link_mail_message_to_record(
     if not module_key or not entity_id:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a record to link this mail message.")
 
-    try:
-        require_role_module_action_access(db, user=current_user, module_key=module_key, action="view")
-        config = get_record_comment_module_config(module_key)
-        record = get_record_reference(
-            db,
-            tenant_id=current_user.tenant_id,
-            module_key=module_key,
-            entity_id=entity_id,
-        )
-    except HTTPException as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected record is not available.") from exc
-    except (PermissionError, ValueError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Selected record is not available.") from exc
+    target = mail_associations.resolve_link_target(
+        db,
+        current_user=current_user,
+        module_key=module_key,
+        entity_id=entity_id,
+    )
 
     before_state = serialize_mail_message(message)
-    message.source_module_key = module_key
-    message.source_entity_id = str(entity_id)
-    message.source_label = _record_label(record, config)
-    db.add(message)
+    mail_associations.upsert_association(
+        db,
+        current_user=current_user,
+        message=message,
+        target=target,
+        association_type=mail_associations.PRIMARY,
+    )
     db.commit()
     db.refresh(message)
     after_state = serialize_mail_message(message)
@@ -332,7 +328,7 @@ def link_mail_message_to_record(
         tenant_id=current_user.tenant_id,
         actor_user_id=current_user.id,
         module_key=module_key,
-        entity_type=config["entity_type"],
+        entity_type=target["entity_type"],
         entity_id=entity_id,
         action="mail.linked",
         description=f"Linked email: {message.subject or '(no subject)'}",
@@ -827,10 +823,7 @@ def _microsoft_recipients(emails: list[str]) -> list[dict]:
 
 
 def _normalize_source_value(value) -> str | None:
-    if value is None:
-        return None
-    normalized = str(value).strip()
-    return normalized or None
+    return mail_associations.normalize_link_value(value)
 
 
 def _full_name(first_name: str | None, last_name: str | None, fallback: str | None = None) -> str:
@@ -1001,6 +994,13 @@ def _render_mail_template_variables(db: Session, *, current_user: User, payload:
 
 
 def _resolve_mail_source_context(db: Session, *, current_user: User, payload: dict) -> dict | None:
+    """Validate the record a message is being sent from.
+
+    Resolution is shared with the link action, so sending with context and
+    linking afterwards produce the same association and the same label. The
+    label is taken from the record, never from the request body.
+    """
+
     module_key = _normalize_source_value(payload.get("source_module_key"))
     entity_id = _normalize_source_value(payload.get("source_entity_id"))
     if not module_key and not entity_id:
@@ -1009,26 +1009,19 @@ def _resolve_mail_source_context(db: Session, *, current_user: User, payload: di
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mail source requires both module and record.")
 
     try:
-        require_role_module_action_access(db, user=current_user, module_key=module_key, action="view")
-        config = get_record_comment_module_config(module_key)
-        get_record_reference(
+        return mail_associations.resolve_link_target(
             db,
-            tenant_id=current_user.tenant_id,
+            current_user=current_user,
             module_key=module_key,
             entity_id=entity_id,
         )
     except HTTPException as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mail source is not available.") from exc
-    except PermissionError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mail source is not available.") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Mail source is not available.") from exc
-
-    return {
-        "module_key": module_key,
-        "entity_type": config["entity_type"],
-        "entity_id": entity_id,
-    }
+        if exc.detail == mail_associations.UNAVAILABLE_RECORD_DETAIL:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Mail source is not available.",
+            ) from exc
+        raise
 
 
 def _log_mail_source_activity(
@@ -1222,11 +1215,21 @@ def send_mail_message(db: Session, *, current_user: User, payload: dict) -> Mail
         snippet=(payload.get("body_text") or "")[:300] or None,
         body_text=payload.get("body_text") or None,
         sent_at=now,
-        source_module_key=payload.get("source_module_key"),
-        source_entity_id=payload.get("source_entity_id"),
-        source_label=payload.get("source_label"),
     )
     db.add(message)
+    if source_context:
+        # The record context the message was composed from becomes its primary
+        # association, written in the same transaction as the message so a
+        # persisted outbound send is never left unlinked. The label comes from
+        # the resolved record, not from `source_label` in the request body.
+        db.flush()
+        mail_associations.upsert_association(
+            db,
+            current_user=current_user,
+            message=message,
+            target=source_context,
+            association_type=mail_associations.PRIMARY,
+        )
     db.commit()
     db.refresh(message)
     try:

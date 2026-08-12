@@ -404,7 +404,14 @@ class MailImapSmtpTests(unittest.TestCase):
 
         self.assertEqual(
             context,
-            {"module_key": "sales_contacts", "entity_type": "sales_contact", "entity_id": "7"},
+            {
+                "module_key": "sales_contacts",
+                "entity_type": "sales_contact",
+                "entity_id": "7",
+                # Resolved from the record, so sending with context and linking
+                # afterwards store the same label.
+                "label": "lead@example.com",
+            },
         )
 
     def test_mail_source_context_rejects_partial_source(self):
@@ -540,7 +547,7 @@ class MailImapSmtpTests(unittest.TestCase):
         def mail_message_factory(**kwargs):
             return MailMessage(id=77, **kwargs)
 
-        with patch.object(mail_services, "_resolve_mail_source_context", return_value={"module_key": "sales_contacts", "entity_type": "sales_contact", "entity_id": "7"}), \
+        with patch.object(mail_services, "_resolve_mail_source_context", return_value={"module_key": "sales_contacts", "entity_type": "sales_contact", "entity_id": "7", "label": "lead@example.com"}), \
              patch.object(mail_services, "_mail_connection_for_user", return_value=connection), \
              patch.object(mail_services, "_send_imap_smtp_message", return_value="smtp-id"), \
              patch.object(mail_services, "MailMessage", side_effect=mail_message_factory), \

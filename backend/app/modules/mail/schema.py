@@ -90,6 +90,38 @@ class MailMessageLinkRequest(BaseModel):
     source_entity_id: str = Field(max_length=100)
 
 
+class MailAssociationType(str, Enum):
+    primary = "primary"
+    related = "related"
+
+
+class MailRecordAssociationCreateRequest(BaseModel):
+    module_key: str = Field(min_length=1, max_length=100)
+    entity_id: str = Field(min_length=1, max_length=100)
+    association_type: MailAssociationType = MailAssociationType.related
+    # Link every message the provider already threaded together, so a
+    # conversation lands on the record in one action instead of message by
+    # message.
+    apply_to_thread: bool = False
+
+
+class MailRecordAssociationResponse(BaseModel):
+    id: int
+    message_id: int
+    module_key: str
+    entity_id: str
+    association_type: MailAssociationType
+    record_label: str | None = None
+    created_by_user_id: int | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MailRecordAssociationListResponse(BaseModel):
+    results: list[MailRecordAssociationResponse]
+
+
 class MailSendRequest(BaseModel):
     provider: MailProvider
     to: list[EmailStr] = Field(min_length=1)
@@ -97,9 +129,10 @@ class MailSendRequest(BaseModel):
     bcc: list[EmailStr] = Field(default_factory=list)
     subject: str = Field(default="", max_length=500)
     body_text: str = ""
+    # The display label is resolved from the record server-side; it is not
+    # accepted from the client because it is persisted and searchable.
     source_module_key: str | None = Field(default=None, max_length=100)
     source_entity_id: str | None = Field(default=None, max_length=100)
-    source_label: str | None = Field(default=None, max_length=255)
 
 
 class MailProviderConnectResponse(BaseModel):

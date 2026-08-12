@@ -39,6 +39,8 @@ type Props = {
   entityId: string | number;
   title?: string;
   description?: string;
+  canEdit?: boolean;
+  submitVariant?: "default" | "outline";
 };
 
 async function fetchRecordComments(moduleKey: Props["moduleKey"], entityId: string | number): Promise<CommentsResponse> {
@@ -79,6 +81,8 @@ export default function RecordCommentsPanel({
   entityId,
   title = "Notes & Comments",
   description = "Shared record notes for internal collaboration and context.",
+  canEdit = true,
+  submitVariant = "default",
 }: Props) {
   const { confirm } = useConfirm();
   const queryClient = useQueryClient();
@@ -151,7 +155,7 @@ export default function RecordCommentsPanel({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const body = draft.trim();
-    if (!body) {
+    if (!canEdit || !body) {
       return;
     }
 
@@ -214,7 +218,7 @@ export default function RecordCommentsPanel({
     <Card className="px-5 py-5">
       <RecordPanelHeader title={title} description={description} icon={MessageSquareText} />
 
-      <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
+      {canEdit ? <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
         <Field>
           <FieldLabel htmlFor={`record-note-${moduleKey}-${entityId}`}>Add internal note</FieldLabel>
           <div className="relative">
@@ -266,11 +270,13 @@ export default function RecordCommentsPanel({
         </Field>
         <div className="flex items-center justify-between gap-3">
           <div />
-          <Button type="submit" disabled={submitting || !draft.trim()}>
+          <Button type="submit" variant={submitVariant} disabled={submitting || !draft.trim()}>
             {submitting ? "Saving…" : "Add note"}
           </Button>
         </div>
-      </form>
+      </form> : (
+        <p className="mt-4 text-p-sm text-copy-muted">Edit access is required to add or remove internal notes.</p>
+      )}
 
       {query.isLoading ? (
         <div className="mt-4"><RecordPanelLoading label="Loading notes…" /></div>
@@ -285,7 +291,7 @@ export default function RecordCommentsPanel({
                   <div className="text-sm font-semibold text-copy-primary">{item.author_name}</div>
                   <div className="mt-1 text-xs text-copy-muted">{formatDateTime(item.created_at)}</div>
                 </div>
-                <Button
+                {canEdit ? <Button
                   type="button"
                   variant="ghost"
                   size="icon-sm"
@@ -295,7 +301,7 @@ export default function RecordCommentsPanel({
                   aria-label={`Delete note by ${item.author_name}`}
                 >
                   <Trash2 className="h-4 w-4" />
-                </Button>
+                </Button> : null}
               </div>
               <div className="mt-3 whitespace-pre-wrap text-p-sm text-copy-secondary">{item.body}</div>
             </li>

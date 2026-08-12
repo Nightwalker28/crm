@@ -14,8 +14,17 @@ from app.modules.mail.schema import (
     MailMessageResponse,
     MailProvider,
     MailProviderConnectResponse,
+    MailRecordAssociationCreateRequest,
+    MailRecordAssociationListResponse,
+    MailRecordAssociationResponse,
     MailSendRequest,
     MailSyncResponse,
+)
+from app.modules.mail.services.mail_associations import (
+    associate_mail_message,
+    disassociate_mail_message,
+    list_mail_message_associations,
+    serialize_mail_association,
 )
 from app.modules.mail.services.mail_services import (
     build_mail_context,
@@ -129,6 +138,71 @@ def link_mail_message(
         message_id=message_id,
         current_user=current_user,
         payload=payload.model_dump(),
+    )
+    return MailMessageResponse.model_validate(serialize_mail_message(message))
+
+
+@router.get("/messages/{message_id}/associations", response_model=MailRecordAssociationListResponse)
+def get_mail_message_associations(
+    message_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("mail")),
+    require_permission=Depends(require_action_access("mail", "view")),
+):
+    associations = list_mail_message_associations(db, current_user=current_user, message_id=message_id)
+    return {
+        "results": [
+            MailRecordAssociationResponse.model_validate(serialize_mail_association(association))
+            for association in associations
+        ]
+    }
+
+
+@router.post(
+    "/messages/{message_id}/associations",
+    response_model=MailRecordAssociationListResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_mail_message_association(
+    message_id: int,
+    payload: MailRecordAssociationCreateRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("mail")),
+    # Linking mail to a record edits mail. The service separately requires
+    # `view` on the target record's module, so a user cannot file mail against
+    # a record they are not allowed to see.
+    require_permission=Depends(require_action_access("mail", "edit")),
+):
+    associations = associate_mail_message(
+        db,
+        current_user=current_user,
+        message_id=message_id,
+        payload=payload.model_dump(mode="json"),
+    )
+    return {
+        "results": [
+            MailRecordAssociationResponse.model_validate(serialize_mail_association(association))
+            for association in associations
+        ]
+    }
+
+
+@router.delete("/messages/{message_id}/associations/{association_id}", response_model=MailMessageResponse)
+def delete_mail_message_association(
+    message_id: int,
+    association_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("mail")),
+    require_permission=Depends(require_action_access("mail", "edit")),
+):
+    message = disassociate_mail_message(
+        db,
+        current_user=current_user,
+        message_id=message_id,
+        association_id=association_id,
     )
     return MailMessageResponse.model_validate(serialize_mail_message(message))
 

@@ -109,8 +109,11 @@ function malformed(detail: string): never {
  * Generated types are erased at runtime, so the payload is checked here before it reaches
  * the renderer. A backend contract change that slips past the CI drift check fails loudly
  * at the boundary rather than rendering a half-built layout.
+ *
+ * Exported because the layout builder previews a candidate through the same renderer; its
+ * preview endpoint returns this exact shape, so it must clear the same boundary check.
  */
-function parseResolvedRecordLayout(body: unknown): ResolvedRecordLayout {
+export function parseResolvedRecordLayout(body: unknown): ResolvedRecordLayout {
   if (!isRecord(body)) malformed("the body was not an object");
   if (typeof body.module_key !== "string") malformed("module_key was missing");
   if (typeof body.name !== "string") malformed("name was missing");

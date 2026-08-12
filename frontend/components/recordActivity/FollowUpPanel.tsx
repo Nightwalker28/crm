@@ -25,6 +25,8 @@ type Props = {
   email?: string | null;
   phone?: string | null;
   onLogged?: () => Promise<void> | void;
+  canLog?: boolean;
+  canCreateTask?: boolean;
 };
 
 const channelLabels: Record<Channel, string> = {
@@ -47,14 +49,18 @@ export default function FollowUpPanel({
   email,
   phone,
   onLogged,
+  canLog = true,
+  canCreateTask = true,
 }: Props) {
   const queryClient = useQueryClient();
   const [note, setNote] = useState("");
   const [createReminder, setCreateReminder] = useState(true);
   const [dueAt, setDueAt] = useState("");
   const [isLogging, setIsLogging] = useState<Channel | null>(null);
+  const shouldCreateReminder = canCreateTask && createReminder;
 
   async function logFollowUp(channel: Channel) {
+    if (!canLog) return;
     try {
       setIsLogging(channel);
       const res = await apiFetch(endpoint, {
@@ -63,8 +69,8 @@ export default function FollowUpPanel({
         body: JSON.stringify({
           channel,
           note: note.trim() || null,
-          create_follow_up_task: createReminder,
-          follow_up_due_at: createReminder ? toIsoOrNull(dueAt) : null,
+          create_follow_up_task: shouldCreateReminder,
+          follow_up_due_at: shouldCreateReminder ? toIsoOrNull(dueAt) : null,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -96,7 +102,7 @@ export default function FollowUpPanel({
         }
         icon={MessageCircle}
       />
-      <div className="mt-4 grid gap-3">
+      {canLog ? <div className="mt-4 grid gap-3">
         <Field>
           <FieldLabel htmlFor="record-follow-up-note">Follow-up note</FieldLabel>
           <Textarea
@@ -108,7 +114,7 @@ export default function FollowUpPanel({
             placeholder="Capture the outcome and next action."
           />
         </Field>
-        <label className="flex items-center gap-2 text-sm text-copy-secondary">
+        {canCreateTask ? <label className="flex items-center gap-2 text-sm text-copy-secondary">
           <Checkbox
             checked={createReminder}
             onCheckedChange={(checked) => setCreateReminder(checked === true)}
@@ -117,8 +123,8 @@ export default function FollowUpPanel({
             <CheckboxIndicator className="h-3 w-3" />
           </Checkbox>
           Create reminder task
-        </label>
-        {createReminder ? (
+        </label> : null}
+        {shouldCreateReminder ? (
           <Field>
             <FieldLabel htmlFor="record-follow-up-due">Reminder due</FieldLabel>
             <Input
@@ -144,7 +150,11 @@ export default function FollowUpPanel({
             {isLogging === "call" ? "Logging..." : "Call"}
           </Button>
         </div>
-      </div>
+      </div> : (
+        <p className="mt-4 text-p-sm text-copy-muted">
+          You can view the latest follow-up here. Edit access is required to log a new outcome.
+        </p>
+      )}
     </Card>
   );
 }

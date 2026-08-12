@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -93,3 +94,64 @@ class ResolvedRecordLayoutResponse(StrictLayoutModel):
     can_customize: bool = False
     sections: list[ResolvedRecordLayoutSection]
     warnings: list[str] = Field(default_factory=list)
+
+
+# --- Administration (workstream 09, backend Phase 2) -------------------------------------
+#
+# These schemas back the tenant layout builder. They are deliberately kept out of the
+# generated runtime contract slice (`/api/v1/record-layouts`); the admin surface lives under
+# `/api/v1/admin/record-layouts` so widening the builder does not churn the runtime contract.
+
+
+class RecordLayoutCatalogField(StrictLayoutModel):
+    """A field an administrator may place on the surface, with its non-negotiable constraints."""
+
+    field_key: str
+    label: str
+    field_type: str
+    field_source: Literal["system", "custom_field"]
+    required: bool
+    readonly: bool
+    enabled: bool
+    locked: bool
+    locked_reason: str | None = None
+
+
+class RecordLayoutValidationReport(StrictLayoutModel):
+    """Blocking errors and advisory warnings are separate lists, never merged."""
+
+    valid: bool
+    errors: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class RecordLayoutAdminStateResponse(StrictLayoutModel):
+    module_key: str
+    surface: RecordLayoutSurface
+    layout_id: int | None = None
+    source: Literal["system", "tenant"]
+    version: int
+    # Echoes the stored version so the builder can send it back as `expected_version`.
+    # `null` means no tenant layout is stored and the system default is being shown.
+    expected_version: int | None = None
+    updated_at: datetime | None = None
+    definition: RecordLayoutDefinitionPayload
+    system_definition: RecordLayoutDefinitionPayload
+    available_fields: list[RecordLayoutCatalogField]
+    validation: RecordLayoutValidationReport
+
+
+class RecordLayoutPreviewRequest(StrictLayoutModel):
+    definition: RecordLayoutDefinitionPayload
+
+
+class RecordLayoutPreviewResponse(StrictLayoutModel):
+    validation: RecordLayoutValidationReport
+    # Null when the candidate has blocking errors: there is nothing truthful to preview.
+    resolved: ResolvedRecordLayoutResponse | None = None
+
+
+class RecordLayoutPublishRequest(StrictLayoutModel):
+    definition: RecordLayoutDefinitionPayload
+    # The version the builder loaded. `null` asserts "no tenant layout existed".
+    expected_version: int | None = None

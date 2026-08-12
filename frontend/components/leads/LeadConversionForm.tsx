@@ -21,6 +21,14 @@ type LeadConversionResult = {
   deal_id?: number | null;
 };
 
+export type LeadConversionCapabilities = {
+  canViewOrganizations: boolean;
+  canCreateOrganizations: boolean;
+  canViewContacts: boolean;
+  canCreateContacts: boolean;
+  canCreateOpportunities: boolean;
+};
+
 const DEAL_STAGES = [
   { value: "qualified", label: "Qualified" },
   { value: "proposal", label: "Proposal" },
@@ -29,12 +37,22 @@ const DEAL_STAGES = [
   { value: "closed_lost", label: "Closed Lost" },
 ];
 
-export default function LeadConversionForm({ leadId, leadName, company }: { leadId: number; leadName: string; company?: string | null }) {
+export default function LeadConversionForm({
+  leadId,
+  leadName,
+  company,
+  capabilities,
+}: {
+  leadId: number;
+  leadName: string;
+  company?: string | null;
+  capabilities: LeadConversionCapabilities;
+}) {
   const queryClient = useQueryClient();
-  const [createAccount, setCreateAccount] = useState(true);
+  const [createAccount, setCreateAccount] = useState(capabilities.canCreateOrganizations);
   const [accountId, setAccountId] = useState<number | null>(null);
   const [accountSearch, setAccountSearch] = useState("");
-  const [createContact, setCreateContact] = useState(true);
+  const [createContact, setCreateContact] = useState(capabilities.canCreateContacts);
   const [contactId, setContactId] = useState<number | null>(null);
   const [contactSearch, setContactSearch] = useState("");
   const [createDeal, setCreateDeal] = useState(false);
@@ -45,8 +63,11 @@ export default function LeadConversionForm({ leadId, leadName, company }: { lead
   const [result, setResult] = useState<LeadConversionResult | null>(null);
 
   const defaultDealName = useMemo(() => `${company || leadName} opportunity`, [company, leadName]);
-  const accountIsValid = createAccount || Boolean(accountId);
-  const contactIsValid = createContact || Boolean(contactId);
+  const shouldCreateAccount = capabilities.canCreateOrganizations && createAccount;
+  const shouldCreateContact = capabilities.canCreateContacts && createContact;
+  const shouldCreateDeal = capabilities.canCreateOpportunities && createDeal;
+  const accountIsValid = shouldCreateAccount || (capabilities.canViewOrganizations && Boolean(accountId));
+  const contactIsValid = shouldCreateContact || (capabilities.canViewContacts && Boolean(contactId));
   const canSubmit = !submitting && accountIsValid && contactIsValid;
 
   async function submit() {
@@ -57,13 +78,13 @@ export default function LeadConversionForm({ leadId, leadName, company }: { lead
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          create_account: createAccount,
-          account_id: createAccount ? null : accountId,
-          create_contact: createContact,
-          contact_id: createContact ? null : contactId,
-          create_deal: createDeal,
-          deal_name: createDeal ? (dealName.trim() || defaultDealName) : null,
-          deal_stage: createDeal ? dealStage : null,
+          create_account: shouldCreateAccount,
+          account_id: shouldCreateAccount ? null : accountId,
+          create_contact: shouldCreateContact,
+          contact_id: shouldCreateContact ? null : contactId,
+          create_deal: shouldCreateDeal,
+          deal_name: shouldCreateDeal ? (dealName.trim() || defaultDealName) : null,
+          deal_stage: shouldCreateDeal ? dealStage : null,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -104,9 +125,9 @@ export default function LeadConversionForm({ leadId, leadName, company }: { lead
         sidebar={(
           <FormSection title="Conversion summary" description="Review what will happen before converting.">
             <dl className="grid gap-3 text-sm">
-              <SummaryRow label="Account" value={createAccount ? "Create or reuse by name" : accountSearch || "Select an account"} />
-              <SummaryRow label="Contact" value={createContact ? "Create or reuse by email" : contactSearch || "Select a contact"} />
-              <SummaryRow label="Opportunity" value={createDeal ? (dealName.trim() || defaultDealName) : "Do not create"} />
+              <SummaryRow label="Account" value={shouldCreateAccount ? "Create or reuse by name" : accountSearch || "Select an account"} />
+              <SummaryRow label="Contact" value={shouldCreateContact ? "Create or reuse by email" : contactSearch || "Select a contact"} />
+              <SummaryRow label="Opportunity" value={shouldCreateDeal ? (dealName.trim() || defaultDealName) : "Do not create"} />
             </dl>
           </FormSection>
         )}
@@ -121,8 +142,16 @@ export default function LeadConversionForm({ leadId, leadName, company }: { lead
         )}
       >
         <FormSection title="Target account" description="Create an account from the lead or link an existing account.">
-          <ToggleRow label="Create account" description={company ? `Use ${company}; an existing account with the same name is reused.` : "Use the lead name when no company is present."} checked={createAccount} onCheckedChange={setCreateAccount} />
-          {!createAccount ? (
+          <ToggleRow
+            label="Create account"
+            description={capabilities.canCreateOrganizations
+              ? (company ? `Use ${company}; an existing account with the same name is reused.` : "Use the lead name when no company is present.")
+              : "Account creation is unavailable with your current permissions."}
+            checked={shouldCreateAccount}
+            disabled={!capabilities.canCreateOrganizations || !capabilities.canViewOrganizations}
+            onCheckedChange={setCreateAccount}
+          />
+          {!shouldCreateAccount && capabilities.canViewOrganizations ? (
             <Field className="mt-4">
               <FieldLabel>Existing account</FieldLabel>
               <LinkedRecordPicker recordType="organization" valueId={accountId} displayValue={accountSearch} onDisplayValueChange={(value) => { setAccountSearch(value); setAccountId(null); }} onSelect={(option) => { setAccountId(option.id); setAccountSearch(option.label); }} onClear={() => { setAccountId(null); setAccountSearch(""); }} placeholder="Search accounts" queryKeyPrefix="convert-lead-account" noResultsText="No accounts matched this search." />
@@ -131,18 +160,34 @@ export default function LeadConversionForm({ leadId, leadName, company }: { lead
         </FormSection>
 
         <FormSection title="Target contact" description="Create a contact from the lead or link an existing contact.">
-          <ToggleRow label="Create contact" description="An existing contact with the same email is reused." checked={createContact} onCheckedChange={setCreateContact} />
-          {!createContact ? (
+          <ToggleRow
+            label="Create contact"
+            description={capabilities.canCreateContacts
+              ? "An existing contact with the same email is reused."
+              : "Contact creation is unavailable with your current permissions."}
+            checked={shouldCreateContact}
+            disabled={!capabilities.canCreateContacts || !capabilities.canViewContacts}
+            onCheckedChange={setCreateContact}
+          />
+          {!shouldCreateContact && capabilities.canViewContacts ? (
             <Field className="mt-4">
               <FieldLabel>Existing contact</FieldLabel>
-              <LinkedRecordPicker recordType="contact" valueId={contactId} displayValue={contactSearch} onDisplayValueChange={(value) => { setContactSearch(value); setContactId(null); }} onSelect={(option) => { setContactId(option.id); setContactSearch(option.label); if (!createAccount && !accountId && option.organization_id) { setAccountId(option.organization_id); setAccountSearch(option.organization_name || "Linked via contact"); } }} onClear={() => { setContactId(null); setContactSearch(""); }} placeholder="Search contacts" queryKeyPrefix="convert-lead-contact" noResultsText="No contacts matched this search." />
+              <LinkedRecordPicker recordType="contact" valueId={contactId} displayValue={contactSearch} onDisplayValueChange={(value) => { setContactSearch(value); setContactId(null); }} onSelect={(option) => { setContactId(option.id); setContactSearch(option.label); if (!shouldCreateAccount && !accountId && option.organization_id) { setAccountId(option.organization_id); setAccountSearch(option.organization_name || "Linked via contact"); } }} onClear={() => { setContactId(null); setContactSearch(""); }} placeholder="Search contacts" queryKeyPrefix="convert-lead-contact" noResultsText="No contacts matched this search." />
             </Field>
           ) : null}
         </FormSection>
 
         <FormSection title="Opportunity" description="Optionally create an opportunity linked to the converted records.">
-          <ToggleRow label="Create opportunity" description="Start a deal as part of this conversion." checked={createDeal} onCheckedChange={setCreateDeal} />
-          {createDeal ? (
+          <ToggleRow
+            label="Create opportunity"
+            description={capabilities.canCreateOpportunities
+              ? "Start a deal as part of this conversion."
+              : "Opportunity creation is unavailable with your current permissions."}
+            checked={shouldCreateDeal}
+            disabled={!capabilities.canCreateOpportunities}
+            onCheckedChange={setCreateDeal}
+          />
+          {shouldCreateDeal ? (
             <div className="mt-4 grid gap-4 md:grid-cols-2">
               <Field><FieldLabel>Opportunity name</FieldLabel><Input value={dealName} onChange={(event) => setDealName(event.target.value)} placeholder={defaultDealName} /></Field>
               <Field><FieldLabel>Initial stage</FieldLabel><Select value={dealStage} onValueChange={setDealStage}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{DEAL_STAGES.map((stage) => <SelectItem key={stage.value} value={stage.value}>{stage.label}</SelectItem>)}</SelectContent></Select></Field>
@@ -154,11 +199,11 @@ export default function LeadConversionForm({ leadId, leadName, company }: { lead
   );
 }
 
-function ToggleRow({ label, description, checked, onCheckedChange }: { label: string; description: string; checked: boolean; onCheckedChange: (checked: boolean) => void }) {
+function ToggleRow({ label, description, checked, disabled = false, onCheckedChange }: { label: string; description: string; checked: boolean; disabled?: boolean; onCheckedChange: (checked: boolean) => void }) {
   return (
     <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
       <div><div className="text-sm font-medium text-copy-primary">{label}</div><FieldDescription className="mt-1">{description}</FieldDescription></div>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised data-[state=checked]:bg-action-primary"><SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" /></Switch>
+      <Switch aria-label={label} checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised data-[state=checked]:bg-action-primary"><SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" /></Switch>
     </div>
   );
 }
