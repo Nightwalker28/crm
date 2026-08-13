@@ -185,7 +185,9 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
               <span className="font-lynk text-xl leading-none text-copy-primary">L</span>
             </div>
-            {!collapsed ? <h1 className="font-lynk text-2xl tracking-tight text-copy-primary">Lynk</h1> : null}
+            {/* The wordmark is a brand mark inside a nav link, not the page's heading — it was an
+                h1, which gave every dashboard page a second one. See design.md §8. */}
+            {!collapsed ? <span className="font-lynk text-2xl tracking-tight text-copy-primary">Lynk</span> : null}
           </Link>
           {!mobile ? <button
             type="button"

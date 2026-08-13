@@ -240,8 +240,12 @@ await expect.poll(async () => page.evaluate(() => sessionStorage.getItem("lynk_u
 
 ## Known flaky
 
-- `application-shell-refactor.spec.ts:19` — "keeps the global search centered" observed
-  fail/pass/pass across repeated runs. Not in this run's failure list.
+- ~~`application-shell-refactor.spec.ts:19` — "keeps the global search centered" observed
+  fail/pass/pass across repeated runs.~~ **Fixed 2026-08-13.** Not flake in the usual
+  sense: the spec read `boundingBox()` immediately after clicking Collapse, sampling a
+  frame of the sidebar's declared 200ms width transition. Measured at 18.5px off at t=0,
+  0.3px at t=100ms, 0 once settled — so whether it passed depended on how long two
+  Playwright calls happened to take. Now polls for the settled value. Passes 3/3.
 - `accounts-revamp.spec.ts` — "keeps shared controls usable on mobile" passed 3/3 in isolation
   after failing in a full run.
 

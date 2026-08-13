@@ -630,6 +630,17 @@ Plus:
   and announced, while the visible header row carries only actions. Do not "fix" it
   by adding a second visible `h1`.
 
+  **`PageHeader` owns the page's `h1`, and nothing else may emit one.** This was
+  measured in a browser and had drifted three ways at once: the sidebar wordmark was
+  an `h1` on every page, `app/dashboard/layout.tsx` renders the module name as a
+  second, and `PageHeader` adds a third — so `/dashboard/profile` announced "Profile"
+  twice. The wordmark is a brand mark inside a nav link and is now a `span`; the
+  layout's module title becomes a plain element once every page carries a `PageShell`
+  (tracked in `docs/design/consistency-pass.md` Phase 4).
+
+  Neither guard counts headings, so nothing caught this. If you add an `h1` outside
+  `PageHeader`, you are adding the second one.
+
 `--color-border-control` exists *because* of 1.4.11. Structural hairlines
 (`--color-border-subtle` / `-default`) are deliberately below 3:1 and must never be
 used to bound an input, checkbox, or select.

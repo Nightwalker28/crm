@@ -93,10 +93,33 @@ No page-shell primitive exists in `components/ui/`. Every page hand-writes its r
 | `space-y-6` (**documented**) | 1 |
 
 `PageHeader` and `PageToolbar` are the same component — a right-aligned action row —
-with different spacing (`PageToolbar` has `min-h-9`, `PageHeader` doesn't). 14 files use
-one, 18 use the other, **0 use both**. `PageHeader` is also the only thing that emits
-the `sr-only` `h1`, so pages using `PageToolbar` ship **no `h1` at all** (§8) —
-`MessageTemplateRecordFormPage.tsx:126`, `settings/modules/[moduleId]:232`.
+with different spacing (`PageToolbar` has `min-h-9`, `PageHeader` doesn't). Across `app/`
+and `components/`, **32 files use one, 20 the other, 0 use both**.
+
+**Correction (Phase 1, measured in a browser).** The audit recorded this as "pages using
+`PageToolbar` ship no `h1` at all". That is wrong, and the real defect is the opposite
+one. Three components emit an `h1` inside the dashboard shell:
+
+| Source | Scope |
+|---|---|
+| `Sidebar.tsx:188` — the `Lynk` wordmark | every dashboard page |
+| `app/dashboard/layout.tsx:141` — `moduleTitle` | every dashboard page with a registry match |
+| `PageHeader.tsx` — the `sr-only` title | the 32 pages that use it |
+
+So no page was short an `h1`; pages were carrying **two or three**, and on a
+`PageHeader` page the extra one is usually the *same string twice*. An `h1` census after
+the wordmark fix:
+
+```
+/dashboard                    => 1  ["Dashboard"]
+/dashboard/sales/leads        => 1  ["Leads"]
+/dashboard/settings/users     => 1  ["Users"]
+/dashboard/profile            => 2  ["Profile", "Profile [sr-only]"]
+```
+
+§8's wording turns out to be exact about this: it blesses `PageHeader`'s `sr-only` `h1`
+and warns against "fixing" it by adding a second **visible** one — which is precisely
+what `layout.tsx:141` does. Neither guard checks `h1` count, which is why this survived.
 
 Only 14 list pages carry the §11.1 full-height root. `CatalogRecordsPage.tsx:111` lacks
 `h-full min-h-0`, so `ModuleTableShell`'s `flex-1` is inert and its toolbar scrolls away
@@ -354,6 +377,15 @@ set here, in Phase 0, so Phase 7 has something to migrate onto.
 
 **Files:** `docs/design/design.md`, `docs/design/tokens.md`.
 
+### Status: done
+
+All items landed, plus two that the audit had not found and Phase 1 surfaced: §11.3
+(the `@headlessui/react` exception, recorded rather than fixed) and the `h1` ownership
+paragraph in §8. No product code, so nothing to verify beyond the docs themselves.
+
+The `gap-5` / `p-5` ruling came back **declare them out** — §4.1 now says so, and the
+112 call sites are Phase 6's sweep.
+
 ---
 
 ## Phase 1 — The page shell
@@ -366,13 +398,59 @@ Add `components/ui/PageShell.tsx`, owning the page root:
 
 **Converge `PageHeader` and `PageToolbar`.** Keep the `PageHeader` name (the docs
 reference it), fold in `PageToolbar`'s `context` slot and `min-h-9`, and re-export
-`PageToolbar` as a deprecated alias so 18 call sites keep compiling. This also fixes the
-missing-`h1` bug, since the merged component always emits the `sr-only` heading.
+`PageToolbar` as a deprecated alias so its call sites keep compiling.
 
 Preserve exactly: the `sr-only` `h1` contract (§8 — correct, must not become visible),
 and `ModuleTableShell`'s no-max-height rule (§11.1).
 
 **Files:** new `PageShell.tsx`; `PageHeader.tsx`, `PageToolbar.tsx`.
+
+### Status: done
+
+Green on lint, build, `check-design.sh` (no new failures against the 6-rule baseline
+above), both rendered guards across 86 routes, and the shell specs.
+
+**Visual pass — 8 routes × 2 themes, stashed/restored for a true before-and-after.**
+The merged `PageHeader` carries a `min-h-9` the old one did not, so this needed measuring
+rather than assuming. Pixel diff of each pair:
+
+| Page shape | Result |
+|---|---|
+| Old `PageToolbar` pages (`/dashboard`, `reports`, `settings/users`) | **0.00% — pixel-identical.** The alias is a true no-op. |
+| `PageHeader` **with** actions (the `/new` forms) | Action row 32px → **36px**; content below shifts down 4px. |
+| `PageHeader` **without** actions (`/dashboard/profile`) | Content shifts **up 24px** — a dead `gap` reclaimed. |
+
+Both movements are corrections, not regressions:
+
+- 36px *is* the documented toolbar row (§4.4, `min-h-9`). The old header was 32px — below
+  spec — so these pages moved onto the ladder rather than off it.
+- Profile was spending a full `gap-6` on an empty heading row, which is exactly what the
+  `display: contents` branch exists to prevent. The page gains 24px of usable height.
+
+Screenshots are in `frontend/phase1-visual/` (untracked, safe to delete). Worth keeping
+until Phase 4, since that phase migrates every page onto this component and these are the
+baseline it should be compared against.
+
+`PageShell` ships three variants against §4.4 — `list` (`h-full min-h-0 gap-4`),
+`document` (`gap-6`), `settings` (`gap-8`) — as `cva` variants so §7.3 has something to
+enforce, and emits `data-slot="page-shell"` for the Phase 8 guard. `title` is **required**
+on it: that is the forcing function that gives every migrated page an `h1`.
+
+Two details worth keeping:
+
+- `PageHeader` renders `display: contents` when it has no context and no actions. As a
+  normal flex item an empty heading row would draw a full `gap` of dead space under the
+  shell's stack; its `sr-only` children are absolutely positioned and contribute none.
+- `title` is optional on `PageHeader` but required on `PageShell`, so the deprecated
+  `PageToolbar` alias still compiles while the migration supplies real titles.
+
+**The `h1` fix is sequenced, not done in one step.** Only the sidebar wordmark changed
+here — it is a brand mark inside a nav link and was never a page heading, so demoting it
+to a `span` has no downside. `layout.tsx:141` **stays an `h1` for now**: demoting it
+while most pages still lack a `PageHeader` would take those pages from one heading to
+zero, which is the worse defect. It is marked with a comment and flips in Phase 4, once
+every page is on `PageShell`. Net effect of this phase: 3 headings → 2 on `PageHeader`
+pages, 2 → 1 everywhere else.
 
 ---
 
@@ -474,6 +552,12 @@ success state; that is the rule this pass is enforcing, not a stretch goal.
    saved. Pick one model per page and make the choice legible; 8 editing patterns across
    19 pages is the widest single divergence the audit found.
 7. Retire the `PageToolbar` alias once call sites hit zero.
+8. **Close the `h1` sequence.** Once every page is on `PageShell` and therefore carries a
+   `PageHeader` title, demote `app/dashboard/layout.tsx:141` from `<h1>` to a plain
+   element — it names the module, `PageHeader` names the page, and §8 allows one. Re-run
+   the census from Layer 2 and expect `1` on every route. Deferring this to the end of
+   Phase 4 is deliberate: doing it earlier takes unmigrated pages from one heading to
+   zero.
 
 ---
 
