@@ -33,6 +33,9 @@ Examples already present in Lynk:
 ## Shared primitive expectations
 
 A shared primitive should:
+- for UI, live in `components/ui/`, be assembled from shadcn primitives and lucide icons only,
+  read the token layer rather than hardcoding values, and carry its variants in its own `cva`
+  config — see `docs/design/design.md` §7
 - be tenant-scoped where relevant
 - expose one consistent contract
 - be permission-aware

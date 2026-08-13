@@ -14,6 +14,20 @@ Implementation lives in `frontend/app/globals.css` (tokens) and
 docs — but a disagreement between them is a bug in one of the two, and it should be
 resolved, not left.
 
+## The guards
+
+The mechanical rules are enforced, not just written down:
+
+| Guard | Covers | Run |
+|---|---|---|
+| `scripts/check-design.sh` | the source-level rules — colour, case, line height, spacing, control heights, radius, height caps, icon and component sources, motion | `./scripts/check-design.sh` (also inside `./scripts/codex-check.sh`) |
+| `frontend/tests/e2e/design-rules.spec.ts` | the rendered truth across every route — Inter, monospace scope, case, control heights, radius | `docker compose run --rm frontend-e2e npm run test:e2e -- design-rules.spec.ts --workers=1` |
+| `frontend/tests/e2e/scroll-containers.spec.ts` | one scroll region per screen | same, with `scroll-containers.spec.ts` |
+
+A failing guard means the code is wrong. A legitimate case is marked — `design-exempt:
+<reason>` on the line for the source guard, a named exemption in the spec for the
+rendered ones — and a new *class* of exemption is written into `design.md` first.
+
 ## The short version
 
 - Neutral gray instrument. **No brand accent in the UI.** Colour only where it carries

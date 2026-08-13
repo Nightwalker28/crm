@@ -7,8 +7,27 @@ Review only unless explicitly asked to edit.
 
 Use:
 - frontend/AGENTS.md
+- docs/design/design.md and docs/design/tokens.md
 - frontend-change
 - platform-primitive when a shared UI behavior may be involved
+
+Design is specified, not improvised. Cite the design.md section number (e.g. §2.5, §4.3) in every visual finding.
+
+Review for design conformance (docs/design/design.md):
+- raw hex, Tailwind palette classes, or arbitrary colour instead of semantic tokens; ring-primary instead of ring-focus (§2.3, §2.5)
+- colour used decoratively rather than for status, destructive intent, or chart series; more than one primary button in a view; coloured links in body copy (§1.2, §2.2)
+- hierarchy built from boxes, borders, fills, or shadows instead of ink weight and space; containers nested more than two deep (§1.3, §4.6)
+- uppercase, faked small caps, non-sentence-case labels, font-mono on content that is not a secret or raw payload, hand-tuned leading-* instead of the text-p-* prose family (§3.2, §3.3, §3.5)
+- off-grid spacing, call-site control-height overrides, bare Tailwind radius aliases (which emit no CSS), radius not named for what it wraps (§4.1-4.3)
+- a page-content height cap or a nested scroller producing two scrollbars; overflow-x-hidden on a vertical stack (§4.5, §11.1)
+- non-lucide icons, hand-authored SVG where a lucide glyph exists, icon colour set independently of its label, icon-only controls without an accessible name (§5)
+- transition-all, entrance animation on page or list content, ambient motion outside auth/marketing surfaces (§6)
+- page-local tables, dialogs, or toolbars where a components/ui/ primitive exists; skin passed through call-site className instead of a cva variant; a second component library instead of a vendored shadcn primitive (§7.1-7.3)
+- missing hover/focus-visible/active/disabled states, or missing loading/empty/error/permission-denied views; placeholder used as a label; error copy naming the failure instead of the fix (§7.4, §7.5)
+- contrast below 4.5:1 text / 3:1 controls and focus rings, meaning carried by colour alone, structural hairlines used to bound an input, a second visible h1 (§8)
+- the hive motif applied to work surfaces rather than auth/splash/ambient backdrop (§9)
+- structural changes to screens the task did not name, which is a redesign and needs proposing first (§1.1)
+- a change that contradicts a design rule without updating docs/design/design.md in the same slice (§12)
 
 Review for:
 - reuse of shared primitives and hooks instead of page-local copies
@@ -29,8 +48,8 @@ Review for:
 
 Return only concrete findings:
 - file/path
-- issue
+- issue (with the design section number when it is a visual finding)
 - user or product impact
 - smallest safe fix
-- checks to run
+- checks to run - include ./scripts/check-design.sh and the design-rules.spec.ts / scroll-containers.spec.ts guards when UI changed
 """

@@ -56,7 +56,7 @@ const EMPTY_FORM: PageForm = {
   itemPrice: "",
   brandCompanyName: "",
   brandLogoUrl: "",
-  brandAccentColor: "#14b8a6",
+  brandAccentColor: "#14b8a6", // design-exempt: tenant brand colour is data, this is the unset fallback (§2.5)
   proposalOverview: "",
   proposalScope: "",
   proposalTerms: "",
@@ -116,7 +116,7 @@ export default function ClientPageCreateForm() {
     if (!Number.isFinite(price) || price < 0) next.price = "Public price must be zero or greater.";
     if (!validOptionalUrl(form.brandLogoUrl)) next.logoUrl = "Enter a valid HTTP or HTTPS logo URL.";
     if (form.brandAccentColor.trim() && !/^#[0-9a-fA-F]{6}$/.test(form.brandAccentColor.trim())) {
-      next.accentColor = "Use a six-digit hex color such as #14b8a6.";
+      next.accentColor = "Use a six-digit hex color such as #14b8a6."; // design-exempt: validation copy, not a styling value (§2.5)
     }
     setErrors(next);
 

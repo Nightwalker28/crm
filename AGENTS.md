@@ -9,6 +9,7 @@ Lynk is a modular CRM + ERP platform. Build it as a durable multi-tenant product
 - Keep the product modular: tenant module enablement, department/team availability, and role action permissions are separate concerns.
 - Core operational deletes are soft-delete/recoverable by default.
 - Public surfaces expose only intentionally public data; personalized pricing, private documents, and customer-specific terms require authenticated or scoped signed access.
+- Visual design is specified, not improvised. `docs/design/` is the source of truth for anything the user sees; read it before writing or restyling UI.
 - Do not reopen intentionally deferred slices by accident. Examples: automated WhatsApp sending, payment links, broad Gmail inbox access, user-created modules.
 
 ## Required working pattern
@@ -35,6 +36,7 @@ Before calling work complete:
 
 - `backend/`: FastAPI, SQLAlchemy, Alembic, PostgreSQL, Redis, Celery.
 - `frontend/`: Next.js, React, TypeScript, shared dashboard primitives.
+- `docs/design/`: the design language (`design.md`) and token vocabulary (`tokens.md`) that all UI must follow.
 - `docker-compose.yml`: default app stack with backend, frontend, Redis, Celery worker, and Celery beat; PostgreSQL comes from `DATABASE_URL`.
 - `docker-compose.local-db.yml`: optional override for a fully local PostgreSQL container when an isolated DB is needed.
 
@@ -51,12 +53,15 @@ From repo root:
 - Migration state: `docker compose exec -T backend alembic current`
 - Frontend lint: `docker compose exec -T frontend npm run lint`
 - Frontend build verification: `docker compose exec -T frontend npm run build`
+- Design rules (source-level, runs on the host, included in `codex-check.sh`): `./scripts/check-design.sh`
+- Design rules (rendered, walks every route): `docker compose run --rm frontend-e2e npm run test:e2e -- design-rules.spec.ts scroll-containers.spec.ts --workers=1`
 - Browser tests when relevant: `docker compose run --rm frontend-e2e npm run test:e2e`
 
 ## Where to look next
 
 - Backend-specific rules: `backend/AGENTS.md`
 - Frontend-specific rules: `frontend/AGENTS.md`
+- Design rules for anything user-facing: `docs/design/README.md`, then `docs/design/design.md` and `docs/design/tokens.md`
 - Reusable workflows: `.codex/skills/`
 - Cross-checks: `.codex/agents/`
 - Treat this guide, scoped `AGENTS.md` files, and `.codex/` skills as the current operational source of truth for agent work.

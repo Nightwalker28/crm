@@ -207,6 +207,9 @@ Three exceptions, and only these:
 3. **Tenant-configured brand colour** — a tenant's accent for client-facing pages is
    *data*. The hardcoded hex is only the fallback for an unset value.
 
+The first two are path exceptions in `scripts/check-design.sh`. The third is per-line:
+mark it with a `design-exempt: <reason>` comment on the offending line (§10).
+
 ---
 
 ## 3. Typography
@@ -574,9 +577,22 @@ before claiming the motif is intact.
 docker compose exec -T frontend npm run lint
 docker compose exec -T frontend npm run build
 
-# the two rule guards - they walk every route in a browser
+# the source guard - greps the rules that are mechanical (also inside codex-check.sh)
+./scripts/check-design.sh
+
+# the rendered guards - they walk every route in a browser
 docker compose run --rm frontend-e2e npm run test:e2e -- design-rules.spec.ts scroll-containers.spec.ts --workers=1
 ```
+
+The guard has two halves, and they are complementary.
+
+`scripts/check-design.sh` reads the source and enforces what is visible there: raw hex
+and Tailwind palette classes (§2.5), `ring-primary` (§2.3), `uppercase` and faked small
+caps (§3.5), hand-tuned line heights (§3.3), off-grid spacing (§4.1), call-site control
+heights (§4.2), bare radius aliases (§4.3), a height cap on `ModuleTableShell` (§4.5,
+§11.1), `overflow-x-hidden` on a stack with no explicit other axis (§4.5), non-lucide
+icon packages and hand-authored SVG (§5), a second component library (§7.2), and
+`transition-all` (§6). Every failure names its section.
 
 `design-rules.spec.ts` reads computed styles from all 94 routes and enforces §3.1, §3.2,
 §3.5, §4.2 and §4.3. `scroll-containers.spec.ts` enforces §4.5. Between them they catch
@@ -584,6 +600,17 @@ what grepping the source cannot — a `<code>` element inheriting a monospace UA
 an id column that turns out to hold plain integers, a height cap passed in through a
 call-site `className`. If a guard fails, fix the code; only widen a guard when you can
 name why the case is legitimate, and say so in the exemption comment.
+
+**Exempting a line.** A genuinely legitimate case carries a `design-exempt: <reason>`
+comment on the offending line, and the source guard skips it:
+
+```tsx
+accent_color: "#14b8a6", // design-exempt: tenant brand colour is data, this is the unset fallback (§2.5)
+```
+
+Mark the line; do not widen the check. If the exemption is a new *class* of case rather
+than a one-off, it goes into this document first (§12), and the check learns about it
+after the rule does.
 
 Detail routes need records to be reachable. Seed a tenant with:
 

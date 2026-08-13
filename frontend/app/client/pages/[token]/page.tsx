@@ -31,7 +31,7 @@ function formatBytes(value: number) {
 }
 
 function brandAccent(value?: string | null) {
-  return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#14b8a6";
+  return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#14b8a6"; // design-exempt: tenant brand colour is data, this is the unset fallback (§2.5)
 }
 
 export default function PublicClientPage() {

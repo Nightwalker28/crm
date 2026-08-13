@@ -20,6 +20,8 @@ Inspect first:
 - nearby routes, services, models, tests, hooks, pages, and shared primitives
 - existing permission/module patterns
 - existing activity, notification, import/export, or background-job patterns if relevant
+- `docs/design/design.md` and `docs/design/tokens.md` before designing any UI surface — the
+  slice's screens are built from existing primitives and tokens, not from new visual patterns
 
 ## Slice design rules
 

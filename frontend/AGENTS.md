@@ -11,6 +11,13 @@ The frontend is Next.js + React + TypeScript and should stay aligned with the sh
 
 Short form: neutral gray instrument with no brand accent, hierarchy from ink and space rather than boxes, dark as default with light derived from it in OKLCH, Inter everywhere with monospace reserved for secrets, and shared primitives instead of page-local UI.
 
+The rules are guarded, not just written down:
+
+- `./scripts/check-design.sh` checks the source-level rules (raw hex, Tailwind palette classes, `ring-primary`, uppercase and faked small caps, hand-tuned line heights, off-grid spacing, call-site control heights, bare radius aliases, a height cap on `ModuleTableShell`, implicit scroll containers, non-lucide icons, a second component library, `transition-all`). It runs on the host and is part of `./scripts/codex-check.sh`.
+- `tests/e2e/design-rules.spec.ts` and `tests/e2e/scroll-containers.spec.ts` check the rendered truth across every route — what grep cannot see.
+
+A failing guard means the code is wrong. If a case is genuinely legitimate, mark it (`design-exempt: <reason>` on the line, or a named exemption in the spec) and, when it is a new class of case, write it into `docs/design/design.md` first.
+
 ## Core frontend rules
 
 - Prefer shared UI primitives, hooks, and route patterns over page-specific copies.
@@ -36,6 +43,8 @@ Short form: neutral gray instrument with no brand accent, hierarchy from ink and
 For frontend changes, consider:
 - `docker compose exec -T frontend npm run lint`
 - `docker compose exec -T frontend npm run build`
+- `./scripts/check-design.sh` for any UI change
+- `docker compose run --rm frontend-e2e npm run test:e2e -- design-rules.spec.ts scroll-containers.spec.ts --workers=1` for restyles and new screens, plus a both-themes pass
 - `./scripts/generate-contracts.sh --check` when a touched API family has generated contracts
 - affected page/dialog/table/detail-page smoke checks
 - console/runtime warnings

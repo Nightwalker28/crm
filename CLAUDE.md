@@ -16,8 +16,9 @@ Everything runs in containers; Python/Node dependencies are not expected on the 
 
 ```bash
 docker compose up --build            # full stack: backend :8000, frontend :3000, redis, celery worker + beat
-./scripts/codex-check.sh             # default close-out check (compileall, migration verify, OpenAPI gen, contract drift, unit tests, lint, build)
+./scripts/codex-check.sh             # default close-out check (compileall, migration verify, OpenAPI gen, contract drift, unit tests, design rules, lint, build)
 ./scripts/generate-contracts.sh      # regenerate the committed generated API contracts (repair command)
+./scripts/check-design.sh            # source-level design rules from docs/design/design.md (runs on the host; also inside codex-check.sh)
 ```
 
 Backend (from repo root):
@@ -40,6 +41,7 @@ docker compose exec -T frontend npm run lint
 docker compose exec -T frontend npm run build
 docker compose run --rm frontend-e2e npm run test:e2e
 docker compose run --rm frontend-e2e npm run test:e2e -- leads-revamp.spec.ts --grep "Lead journey behavior baseline"
+docker compose run --rm frontend-e2e npm run test:e2e -- design-rules.spec.ts scroll-containers.spec.ts --workers=1   # rendered design guards
 ```
 
 Tests are stdlib `unittest` (no pytest installed) and mostly build a SQLite in-memory session against `Base.metadata`. Playwright specs live in `frontend/tests/e2e/`.
@@ -91,6 +93,8 @@ Auth alone is never sufficient: service-layer queries must scope by `tenant_id` 
 Render user-facing time through the shared timezone helpers (`lib/datetime.ts`), use `LinkedRecordPicker` for canonical relationships rather than free text, and keep required-field/validation copy aligned with backend constraints.
 
 **Visual design is specified, not improvised.** `docs/design/design.md` (design language) and `docs/design/tokens.md` (token vocabulary) are the source of truth for colour, typography, spacing, radius, icons, motion, and accessibility floors. Read them before writing or restyling UI, and use semantic tokens — never raw hex or Tailwind's own colour palette.
+
+The rules are enforced in two halves: `./scripts/check-design.sh` (source-level greps, inside `codex-check.sh`) and the `design-rules.spec.ts` / `scroll-containers.spec.ts` Playwright guards (rendered truth across every route). A failing guard means the code is wrong — fix the code, and only mark an exemption (`design-exempt: <reason>` on the line) when the case is genuinely legitimate.
 
 ## Adding a module
 

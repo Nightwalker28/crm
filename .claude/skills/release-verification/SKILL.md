@@ -30,6 +30,21 @@ When frontend code changed:
 - check for console/runtime warnings
 - confirm required markers and validation still match backend rules
 
+## Design
+
+When UI changed — new screens, restyles, or anything touching colour, type, spacing, radius, or a shared primitive:
+
+- run `./scripts/check-design.sh` (source-level rules from `docs/design/design.md`; also runs inside `./scripts/codex-check.sh`)
+- run the rendered guards, which walk every route in a browser:
+  `docker compose run --rm frontend-e2e npm run test:e2e -- design-rules.spec.ts scroll-containers.spec.ts --workers=1`
+- seed first so detail routes are reachable:
+  `docker compose exec -T backend python -m scripts.seed_demo_crm --tenant-slug default` and
+  `docker compose exec -T backend python -m scripts.seed_module_samples --tenant-slug default`
+- open the screen in **dark and light**; nothing may be invisible or change identity between them
+- walk the ship checklist in `docs/design/design.md` §10: tokens not raw colour, primitives not page-local copies, all four interactive states and all four data views, keyboard focus visible at every stop, contrast measured against §8, density matching neighbouring screens, and no structural change to screens the task did not name
+
+A failing guard means the code is wrong, not the guard. Widen a guard only with a named reason recorded in the exemption.
+
 ## Security and product safety
 
 Check:

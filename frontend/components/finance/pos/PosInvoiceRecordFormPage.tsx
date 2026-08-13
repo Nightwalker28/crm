@@ -89,7 +89,7 @@ const EMPTY_FORM: InvoiceForm = {
   payment_status: "unpaid",
   payment_method: "cash",
   template_id: "modern",
-  accent_color: "#14b8a6",
+  accent_color: "#14b8a6", // design-exempt: tenant brand colour is data, this is the unset fallback (§2.5)
   currency: "USD",
   discount_amount: "0",
   tax_rate: "0",
