@@ -185,6 +185,38 @@ neutral tokens and follow the theme. Assign series in order and do not reorder f
 aesthetics; the same series should keep the same colour across screens. Series colour
 is never the only cue: label directly or provide a legend with markers.
 
+### 3.5 Ambient — auth and marketing only
+
+Product UI is flat, neutral, and has no atmosphere. The auth screen, the splash and
+the dashboard's ambient backdrop are the exception, licensed by `design.md` §9 (the
+hive) and §6 (ambient motion). Those surfaces need atmospheric values that the ground
+and ink ladders do not supply — a shimmer, a vignette, a raised glow on a floating
+card — and before these tokens existed the only way to write one was a raw `rgba()`
+in an arbitrary value, which §10 forbids.
+
+| Token | Role |
+|---|---|
+| `--noise-texture` | the repeating grain behind `.noise-overlay` |
+| `--ambient-grid` | the fine grid shimmer over the hive |
+| `--ambient-vignette` | the edge falloff that seats the card on the page |
+| `--ambient-card-glow` | the top-left / bottom-right radials on a floating auth card |
+
+Rules:
+
+- **These four are the entire vocabulary.** A new atmospheric value is a new token
+  here (§9), never an arbitrary colour at the call site.
+- They are legal on `app/auth/**`, `LynkSplash`, and the dashboard backdrop. Anywhere
+  an operator works — tables, forms, dialogs, cards, empty states — they are out, on
+  the same grounds §9 keeps the hive out of those places.
+- They carry no contrast contract, because nothing readable sits on them alone. Text
+  and controls still meet §8 against the ground *underneath* the atmosphere.
+- Both themes get a value. The light theme needs different ones — a vignette tuned
+  for a dark ground reads as dirt on a light one.
+
+Tokenising these is not permission to add more of them, and removing them is not a
+cleanup: `design.md` §9 records that the auth atmosphere is intent, and that a screen
+made more correct and less itself has gone wrong.
+
 ---
 
 ## 4. How light is derived from dark
@@ -344,11 +376,25 @@ grep -rnE "className=\"[^\"]*(^| )h-[0-9]+!? " app components | grep -E "Input|B
 
 # uppercase and faked small caps, inside class strings only
 grep -rnE "className=[\"{\`][^\"\`]*(uppercase|tracking-(wide|wider|widest))" app components
+
+# focus is never removed - outline-none is legal only with focus-visible: alongside it
+grep -rn "outline-none" app components | grep -v "focus-visible"
+
+# spacing steps that are not on the ladder (design.md 4.1)
+grep -rnE "\b(gap|p)-5\b" app components --include=*.tsx
+
+# a looping animation must carry its own reduced-motion guard
+grep -rn "animate-\|animation:" app components app/globals.css | grep -v "motion-reduce\|motion-safe\|prefers-reduced-motion"
 ```
 
 Two of these are deliberately loose and will surface a handful of legitimate hits:
 the shadcn `label`/`field` primitives set `leading-none`/`leading-snug` on purpose for
 single-line labels, and the invoice print document is exempt from the colour greps
-(§2.5 of `design.md`). Everything else should come back empty.
+(§2.5 of `design.md`). The arbitrary-colour grep is also expected to hit the ambient
+layers on `app/auth/**` until those move onto the §3.5 tokens. Everything else should
+come back empty.
+
+The reduced-motion grep is a prompt, not a verdict — a one-shot transition does not
+need a guard, a loop does. Anything `infinite` that comes back is a defect.
 
 A hit is not automatically a defect, but it is automatically something to justify.

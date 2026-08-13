@@ -35,7 +35,24 @@ supplies that rhythm and no guard checks it.
 2. **Consistency only — no behaviour change.** No new flows, no quick-create rollout,
    no inline editing. Workflow findings are in **Appendix A**, out of scope.
    Functional bugs surfaced by the audit are in **Appendix B** and need their own call.
-3. **This document is the deliverable.** Nothing is implemented in this pass.
+3. **This document was the deliverable of the audit.** Implementation is now approved and
+   begins at Phase 0.
+
+**Revision — design review, 2026-08-13.** The plan was re-read against the
+`frontend-design` skill and against `design.md` itself. The structure held; four things
+were missing and are now folded in rather than tracked separately:
+
+- The §7.4 states and §6/§2.3 focus-and-motion floors were **measured in the audit but
+  fixed by no phase**. They now have Layer 9 (evidence), a slot in Phases 2, 3 and 4
+  (fix), and two new checks in Phase 8 (guard).
+- Phase 6 covered vocabulary but not **voice** — the error, empty and confirmation copy
+  that the newly-standardised states will render.
+- Phase 7's auth item read as "delete the raw `rgba()`", which would have stripped the
+  one screen carrying §9 identity. It is now "tokenise it", with the token set added in
+  Phase 0 so there is somewhere legal to move it to.
+- The convergence rule is now written down: **resolve to documented intent, not to the
+  most frequent value** — the failure mode that turns a consistency pass into a
+  flattening pass.
 
 ---
 
@@ -88,7 +105,7 @@ Only 14 list pages carry the §11.1 full-height root. `CatalogRecordsPage.tsx:11
 ### Layer 3 — Card, and 205 boxes that aren't one
 
 `design.md` §11.0 recorded 93 hand-rolled card-shaped boxes against 63 files using
-`<Card>`. It is now **205 vs 67** — the drift is accelerating, so a change to `Card`
+`<Card>`. It is now **206 vs 65** — the drift is accelerating, so a change to `Card`
 reaches well under half of the things that look like cards.
 
 `Card` itself has three problems:
@@ -157,7 +174,7 @@ Smaller vocabularies that add up:
 | Editing container | **8 patterns** — sheet, in-page + sticky page footer, in-page + sticky CardFooter, toolbar save, dialog, inline panel, separate route, **autosave** |
 | Tables | `ModuleTableShell` ×8, raw `Table` in a hand-rolled div ×2, bespoke ×4 |
 | Default ink | 7 pages redeclare `text-copy-primary`/`-secondary` **on the root**, disagreeing with each other |
-| `PermissionDeniedState` | **1 of 20** |
+| `PermissionDeniedState` | **1 of 23** (`settings/record-layouts` only) |
 | Error state | 3 competing idioms; 7 pages have none |
 | Loading | 4 expressions (`RouteLoadingState`, `Skeleton`, inline `<TableRow>`, plain paragraph) |
 
@@ -199,7 +216,7 @@ detail page. Also unwalked: `/dashboard/views/[moduleKey]`, `/dashboard/custom/*
   (`SidebarNav.tsx:166` — a size §11 says was never introduced). Two are in shared
   primitives (`ModuleListToolbar.tsx:53`, `InlineSavedViewFilters.tsx:46`) so they
   render on every list page.
-- **`gap-5` ×32 and `p-5` ×81** — 113 uses of a step §4.1 does not contain. Card padding
+- **`gap-5` ×32 and `p-5` ×80** — 112 uses of a step §4.1 does not contain. Card padding
   is simultaneously `p-4` (77), `p-5` (81), `p-6` (25) while `CardBody` uses `px-6 py-5`.
 - **5 elevation vocabularies** for floating layers: `shadow-xl`, `shadow-lg`,
   `shadow-sm`, `shadow-[0_32px_100px_rgba(...)]`, `shadow-[var(--shadow-panel)]`.
@@ -215,9 +232,35 @@ detail page. Also unwalked: `/dashboard/views/[moduleKey]`, `/dashboard/custom/*
 an undismissable div. Commit `e6a53f8` rebuilt both on Radix. The doc will keep sending
 agents to re-fix solved problems until corrected.
 
-But the defect **reappeared elsewhere**: `views/[moduleKey]/page.tsx:131` hand-rolls a
+But the defect **reappeared elsewhere**: `views/[moduleKey]/page.tsx:141` hand-rolls a
 `role="tablist"` from raw buttons with no `onKeyDown`, no roving tabindex, no
 `aria-controls` — the exact pattern §11.0 records as fixed.
+
+### Layer 9 — The mandatory floors are the least-consistent thing measured
+
+§7.4 and §6 are not style preferences; they are the two rules in `design.md` written as
+non-negotiable. Both are drifting, and neither is guarded — `design-rules.spec.ts` reads
+static computed style, so it never focuses an element and never queries a media feature.
+
+| Floor | Rule | Reality |
+|---|---|---|
+| Permission-denied state | §7.4 — every data view ships one | `PermissionDeniedState` in **15 files repo-wide**; **1 of 23** settings pages |
+| Error state | §7.4 | 3 competing idioms in settings, **7 pages have none** |
+| Loading state | §7.4 | 4 expressions (`RouteLoadingState`, `Skeleton`, inline `<TableRow>`, plain `<p>`) |
+| Empty state | §7.4 — "say what the thing is and offer the create action" | 3 module tables ship no create action (Layer 1) |
+| `focus-visible` | §2.3 — focus is never removed | 68 uses across the whole frontend, unguarded and unaudited |
+| `prefers-reduced-motion` | §6 — respect it for anything that loops | **13 uses**, all hand-placed; `Skeleton` and `Pagination` have it, most spinners do not |
+
+This matters most for Phase 3. The record-table composition introduces a **keyboard-
+activable row** on 13 lists at once. A row that takes focus without showing a ring is a
+worse outcome than the mouse-only row it replaces — it moves the focus point somewhere
+the operator cannot see. The focus treatment is part of that primitive's contract, not a
+follow-up.
+
+Responsive is *not* on this list deliberately. Lynk is a dense desktop CRM, §4.4 sets
+gutters at `px-4 sm:px-6`, and no brief asks for a mobile product. The pass adds a narrow-
+viewport capture to the visual check (Verification) to confirm nothing *breaks*, and goes
+no further.
 
 ---
 
@@ -236,7 +279,49 @@ sweeping pages against a primitive that is about to change is wasted work.
 does and structurally blind to this whole class of problem. Extending it — and widening
 its route list to the surfaces that drifted furthest — is what makes the pass permanent.
 
+**Converge on documented intent, not on the median.** A consistency pass has one
+characteristic failure mode: picking whichever value appears most often and calling it
+the standard. That is how a product flattens. Every convergence below resolves to what
+`design.md` specifies — and where the doc is silent, the choice is made and written into
+the doc first (§12), not inferred from a frequency count. Two places carry Lynk's actual
+identity and are protected rather than swept: the §1.3 ink hierarchy, and the §9 hive on
+auth (see Phase 7).
+
+**The floors are part of the sweep, not a later pass.** §7.4 makes hover / focus-visible
+/ active / disabled and loading / empty / error / permission-denied mandatory, and §6
+requires `prefers-reduced-motion` on anything that loops. The audit measured how badly
+those have drifted (below) but the original phase list did not fix them; it does now.
+
 Phases are independently shippable. Each ends green on lint, build, and both guards.
+
+**The baseline is not green.** `./scripts/check-design.sh` fails **6 of 14 rules at
+HEAD**, before this pass touches anything — so "ends green" means *no new failures and
+the phase's own rules cleared*, not a clean run, until Phase 6 closes these out. The
+audit did not record them; they are cheap, and each already belongs to a phase:
+
+| Failing rule | Site | Owner |
+|---|---|---|
+| §2.3 focus ring is its own token | `documents/DocumentList.tsx:173` — `ring-primary/40` on the highlighted row | Phase 2 (focus pass) |
+| §4.5/§11.1 no height cap on `ModuleTableShell` | `reports/page.tsx:674` — `max-h-72` | Phase 4 — this is the exact nested-scroll regression §11.1 exists to prevent |
+| §4.2 no call-site control heights | `ClientPageCreateForm.tsx:337` — `size-6` on a `Button` | Phase 7 (portal) |
+| §4.1 spacing off the 4px grid | 1 match | Phase 6 |
+| §6 transitions name their properties | `HexagonBackground.tsx:92`, `sonner.tsx:24` — `transition-all` | Phase 2 |
+| §7.2 shadcn is the only component library | `@headlessui/react` is **live in 4 shared primitives** — `ui/dialog.tsx`, `ExportControls`, `ImportControls`, `ModuleImportExportControls` | **Not this pass.** See below |
+
+Run the source guard at the start of a phase as well as the end. It is the cheapest of
+the three checks and the only one that reads `package.json`.
+
+**The headlessui one is out of scope and should stay out.** It is not a stale dependency
+to delete — `components/ui/dialog.tsx` is built on it, so every dialog and sheet in the
+product is a Headless UI dialog, and three import/export menus use its `Menu`. Migrating
+the dialog primitive to radix changes focus-trap and close behaviour on every modal
+surface at once, which is a behaviour change and fails scoping decision 2. It is also the
+one §7.2 violation with a real argument on both sides: Headless UI's dialog is a correct,
+accessible implementation, so this is consistency debt, not a defect.
+
+Record it, do not fold it in. It wants its own slice with its own e2e pass, and §7.2 in
+`design.md` should be amended to name the exception until then rather than leaving the
+guard permanently red.
 
 ---
 
@@ -245,8 +330,8 @@ Phases are independently shippable. Each ends green on lint, build, and both gua
 No product code. Do this first so later phases have something true to check against.
 
 - §11.0: mark `RecordTabs` / `ColumnPicker` resolved (cite `e6a53f8`); update the
-  card-box count to the measured 205 vs 67; add `views/[moduleKey]:131` as a new
-  instance of the raw-tablist defect.
+  card-box count to the measured 206 vs 65; add **both** surviving raw-tablist sites
+  (`views/[moduleKey]:141`, `settings/module-builder:480`) — the audit found one.
 - §4.1: rule on `gap-5` / `p-5`. **Recommendation: declare them out.** A dense-CRM
   ladder of 2/3/4/6/8 is already tight, and the 5-step is why card padding has three
   values.
@@ -254,6 +339,18 @@ No product code. Do this first so later phases have something true to check agai
 - §3.5: note that Title Case is in scope for the sentence-case rule and that the
   `uppercase` guard cannot detect it.
 - Record the `PageHeader`/`PageToolbar` convergence decision.
+- §7.4: state that the four data-view states are supplied by the composition
+  (`PageShell`, `RecordTable`), not re-implemented per page — the reason 7 settings
+  pages have no error state is that nothing supplied one.
+- §11: add the Layer 9 floors to the Known-drift table (`focus-visible` unaudited,
+  `prefers-reduced-motion` at 13 uses, `PermissionDeniedState` at 1 of 23 settings
+  pages) so the numbers have a home after this doc is archived.
+- §9: record that the auth surface's ambient layers are **intended identity**, and that
+  the Phase 7 fix is to tokenise them, not remove them (see Phase 7).
+
+`tokens.md` §10 forbids raw colour in arbitrary values but names no token for ambient
+atmosphere, which is why `app/auth/layout.tsx` had nowhere legal to go. Add that token
+set here, in Phase 0, so Phase 7 has something to migrate onto.
 
 **Files:** `docs/design/design.md`, `docs/design/tokens.md`.
 
@@ -296,6 +393,14 @@ Before any page is touched.
   the primitive is already correct. Same for the four indicator sizings.
 - **Elevation**: collapse the five shadow vocabularies onto `--shadow-panel`.
 - Define or remove the dead `custom-scrollbar` class.
+- **Interaction states on every primitive touched** (§7.4): hover, `focus-visible`,
+  active, disabled. Audit rather than assume — `outline-none` is only legal paired with a
+  `focus-visible:` ring on the same element (§2.3), and this phase is the cheapest place
+  to check it, since these are the components every page inherits.
+- **`prefers-reduced-motion` on anything that loops** (§6). `Skeleton` and `Pagination`
+  already carry `motion-reduce:`; the spinners in `QuickCreateSurface` and the shared
+  loading states do not. 13 hand-placed uses repo-wide is not a policy — put it in the
+  primitives so pages stop needing to remember.
 
 Expect a visible-but-correct change: card edges get slightly stronger everywhere.
 Screenshot before/after in both themes.
@@ -316,9 +421,15 @@ cell primitives, owning what all 13 module tables currently duplicate:
   everywhere
 - the sticky identity column
 - **one row-open gesture**, keyboard-activable — this fixes 7 mouse-only lists and the
-  Enter-vs-Enter+Space disagreement
-- empty / loading / error slots, defaulting to `EmptyState` + `ModuleTableLoading` with
-  the create action always wired
+  Enter-vs-Enter+Space disagreement. It ships with a **visible `focus-visible` ring on
+  the row** and Enter + Space both bound. A row that takes focus invisibly is a
+  regression on the mouse-only row it replaces (Layer 9); the ring is part of the
+  contract, not a follow-up.
+- **all four §7.4 data-view slots** — empty / loading / error / **permission-denied** —
+  defaulting to `EmptyState` + `ModuleTableLoading` + `RouteErrorState` +
+  `PermissionDeniedState`, with the create action always wired. Permission-denied is the
+  one the audit found missing almost everywhere (Layer 9); supplying it from the
+  composition is what stops it being forgotten per page.
 
 Then migrate the 13 tables onto it, one module at a time. Expect the 3,403 lines to fall
 by well over half.
@@ -335,9 +446,13 @@ extract it while migrating).
 
 ---
 
-## Phase 4 — Migrate pages onto the shell
+## Phase 4 — Migrate pages onto the shell, and finish the mandatory states
 
-Mechanical, one area at a time, verifying after each.
+Mechanical, one area at a time, verifying after each. Every page that moves onto
+`PageShell` also gets its §7.4 states settled in the same edit — loading, empty, error,
+permission-denied, drawn from the existing `RouteStates` / `EmptyState` /
+`PermissionDeniedState` primitives. No page is "migrated" while it still ships only a
+success state; that is the rule this pass is enforcing, not a stretch goal.
 
 1. **Sales** — closest to canonical; proves the migration.
 2. **Catalog, documents, client-portal** — the lists that never got the §11.1 root.
@@ -349,7 +464,16 @@ Mechanical, one area at a time, verifying after each.
    that should be a shell concern). Move the two raw-`Table` pages onto
    `ModuleTableShell`, and drop the `rounded-none border-0` call-site overrides in favour
    of a shell variant.
-5. Retire the `PageToolbar` alias once call sites hit zero.
+5. **The settings states, explicitly** — this is where the floors are worst (Layer 9).
+   One loading expression, one error idiom for the 7 pages with none, and
+   `PermissionDeniedState` on all 23 rather than 1. Settings is entirely admin-gated, so
+   a missing permission-denied state is what a non-admin actually hits.
+6. **Settle the commit model** while the pages are open. `authentication/page.tsx` runs
+   autosave at `:45` and an explicit Save/Discard footer 40 lines below, with no visual
+   difference between them — the operator cannot tell which half of the page has already
+   saved. Pick one model per page and make the choice legible; 8 editing patterns across
+   19 pages is the widest single divergence the audit found.
+7. Retire the `PageToolbar` alias once call sites hit zero.
 
 ---
 
@@ -363,17 +487,26 @@ Consistency only — no inline editing, no new panels (Appendix A).
   `RecordTabs`; stop rendering it inside another one on the six affected pages.
 - Replace the six private `DetailField`/`Summary` components with
   `ReadOnlyRecordLayout`.
-- Fix `views/[moduleKey]:131` — the hand-rolled `role="tablist"` — onto `RecordTabs`.
+- Fix **both** hand-rolled `role="tablist"` sites — `views/[moduleKey]:141` and
+  `settings/module-builder:480` — onto `RecordTabs`. `SavedViewSelector.tsx:26` is the
+  correct reference if radix genuinely does not fit.
 - Give leads' tab order a default that matches its first tab.
 
 ---
 
 ## Phase 6 — The copy and vocabulary sweep
 
-Cheap, high-signal, and best done once the structure is settled.
+Cheap, high-signal, and best done once the structure is settled. Copy is design
+material here, not labelling: the vocabulary of the interface is the signposting an
+operator learns the product by, so it converges on one voice the same way spacing does.
+
+**Vocabulary — one value per role:**
 
 - **One section-heading size** per role (§3.3: `text-base` inside a page).
-- **One empty-value string** (recommend "Not set"; 6 in use).
+- **One empty-value string.** "Not set" over the other five — it reads as a field with
+  no value yet, which is true, where "Not recorded" and "Unassigned" each imply a
+  different reason and "—" implies none. Chosen for what it says, not because it is the
+  most frequent.
 - **One link treatment** — `text-copy-primary` + underline offset per §2.2 (4 in use).
 - **Sentence case** — fix the Title Case leaks the `uppercase` guard cannot see, and the
   runtime title-casers at `SupportCaseCreateFormPage.tsx:260`,
@@ -384,7 +517,22 @@ Cheap, high-signal, and best done once the structure is settled.
   grid breakpoint (`md`, not a mix of `sm`/`md`), one two-column ratio.
 - Resolve the `gap-5`/`p-5` sweep per the Phase 0 ruling.
 - `contracts/[contractId]:244,264,265` — resolve foreign keys to names, as support
-  cases already do.
+  cases already do. `User #7` is the schema talking; the operator knows a person.
+
+**Voice — the states Phase 4 just standardised now get their words:**
+
+- **An action keeps its name through the flow.** "Create invoice" produces "Invoice
+  created", not "Saved successfully". The verb sweep above picks the name; this makes it
+  survive to the toast and the confirmation.
+- **Errors name the fix, not the failure** (§7.5, already the rule for field errors —
+  extend it to the route-level error states Phase 4 adds). No apologies, and never vague
+  about what happened.
+- **Empty states are an invitation to act** (§7.4): what the thing is, then the create
+  action. This is the copy half of the three tables that ship no create button at all.
+- **Destructive confirmations name the record and the consequence** (§7.5) — audit these
+  while the strings are open; a "Are you sure?" that names nothing is the same defect as
+  an error that says "Invalid".
+- Sentence case and active voice throughout, per §3.5 and the item above.
 
 ---
 
@@ -398,8 +546,25 @@ Cheap, high-signal, and best done once the structure is settled.
 - Decide deliberately whether `/client/login` should match `/auth/login`'s treatment.
   They are currently two different products; either is defensible, but it should be a
   choice written into `design.md` §9.
-- `app/auth/layout.tsx:20,22,28` — three raw `rgba()` gradients in arbitrary values, a
-  `tokens.md` §10 forbidden pattern, on the first screen every operator sees.
+- `app/auth/layout.tsx:20,22,28` — raw `rgba()` gradients in arbitrary values (a grid
+  shimmer, a vignette, and two inner-card radials), a `tokens.md` §10 forbidden pattern,
+  on the first screen every operator sees.
+
+  **Tokenise these; do not delete them.** This is the one file in the sweep where the
+  drift and the identity are the same lines of code. `/auth` is where §9 puts the hive
+  and where §6 permits ambient motion — it is deliberately the least generic screen Lynk
+  has, and `HexagonBackground` is still rendering above those layers. Stripping the
+  atmosphere to satisfy a colour grep would pass every guard in the repo and leave the
+  product's signature screen looking like a login form from any template. The correct fix
+  is the ambient token set added in Phase 0: the values move into `tokens.md`, the
+  arbitrary values disappear, the screen looks the same.
+
+  §9 already records what happens when this goes wrong — a previous attempt replaced the
+  hive with three gradients at 150°/30°/90°, drawing a triangular lattice at a contrast
+  low enough to be invisible, and nothing caught it. So: **screenshot `/auth` in both
+  themes before and after, and confirm the honeycomb is still a honeycomb.** That check
+  is on this phase's exit criteria, not left to the guard, because no assertion in the
+  suite can tell the difference.
 
 ---
 
@@ -421,6 +586,19 @@ New checks:
 - **Title Case** — visible button/heading text where a non-first word is capitalized and
   isn't a known proper noun. Needs an allowlist; worth it, since §3.5 is currently
   enforced for `uppercase` only.
+- **Focus is visible** (§2.3, §8) — the spec currently never focuses anything, which is
+  why 68 scattered `focus-visible` uses have never been checked. Focus a sampled set of
+  interactive elements per route (first row, first control in the toolbar, first
+  navigation item) and assert the computed `outline` or `box-shadow` actually changes.
+  Cheap, and it is the only check that can catch Phase 3 shipping an invisible row focus.
+- **Reduced motion is respected** (§6) — re-run one representative route under
+  `page.emulateMedia({ reducedMotion: "reduce" })` and assert nothing reports a running
+  animation. This is the only rule in `design.md` that a media query can turn off, so
+  static computed style will never see it.
+
+These two are why the guard's blindness is structural rather than incidental: it reads
+one static snapshot of one state. Focusing an element and emulating a media feature are
+the two cheapest ways to widen what it can see at all.
 
 **Widen the route list** to the surfaces that drifted furthest and are currently
 unwalked: `/auth/*`, `/book/**`, `/public/quotes/proposal/[token]`,
@@ -460,17 +638,26 @@ wc -l components/*/[A-Z]*Table.tsx components/*/*[Ll]ist.tsx components/finance/
 # hardcoded table min-widths — 9 values today, target 0
 grep -rn 'min-w-\[[0-9]*px\]' components --include='*.tsx'
 
-# hand-rolled card boxes vs <Card> — 205 vs 67 today
+# hand-rolled card boxes vs <Card> — 206 vs 65 today
 grep -rn 'rounded-\[var(--radius-card)\]' app components --include='*.tsx' | grep -c border
 
 # type-ramp escapes — 22 today, target 0
 grep -rnE 'text-\[[0-9]+px\]' app components --include='*.tsx'
 
-# off-ladder spacing — 113 today
+# off-ladder spacing — 112 today
 grep -rnE '\b(gap|p)-5\b' app components --include='*.tsx' | wc -l
 
 # the two header primitives — target: PageToolbar at 0
 grep -rln 'PageToolbar' app --include='*.tsx' | wc -l
+
+# permission-denied coverage — 15 files repo-wide, 1 of 23 settings pages today
+grep -rln 'PermissionDeniedState' app/dashboard/settings | wc -l
+
+# reduced-motion coverage — 13 hand-placed uses today; expect it to move into primitives
+grep -rn 'prefers-reduced-motion\|motion-reduce' app components --include='*.tsx' | wc -l
+
+# focus never removed (§2.3) — every hit must pair with focus-visible: on the same element
+grep -rn 'outline-none' app components --include='*.tsx' | grep -v 'focus-visible'
 ```
 
 **Visual pass — both tools, per the owner's call.**
@@ -478,7 +665,11 @@ grep -rln 'PageToolbar' app --include='*.tsx' | wc -l
 *Playwright* (repeatable, per phase): a screenshot spec over one representative route
 per area, captured in **both themes**, before and after each phase. Phase 2 changes card
 edges globally and Phase 3 changes every table — both must be eyeballed, not just
-asserted. Seed first or detail routes are unreachable:
+asserted. Capture one **narrow viewport** (768px) per area alongside the desktop shot:
+Lynk is a desktop product and this pass is not making it responsive, but `PageShell` and
+`RecordTable` change every page root and every table wrapper at once, and a narrow shot
+is the cheapest way to see if that broke a gutter or forced a horizontal page scroll.
+Seed first or detail routes are unreachable:
 
 ```bash
 docker compose exec -T backend python -m scripts.seed_demo_crm --tenant-slug default
@@ -488,6 +679,15 @@ docker compose exec -T backend python -m scripts.seed_module_samples --tenant-sl
 *Claude in Chrome* (interactive, for what assertions miss): confirming the Appendix B.1
 dropdown clipping, hover/focus/active states, and walking a click path to feel its cost.
 Access is verified; the tab needs a signed-in session.
+
+Two things only a human or a browser session can settle, both on the exit criteria of
+their phase rather than delegated to an assertion:
+
+- **The hive still renders as a honeycomb** after Phase 7 tokenises the auth
+  atmosphere, in both themes (§9 — this has silently broken once before).
+- **Tabbing through a migrated list page** after Phase 3: the focus point stays visible
+  the whole way across toolbar → rows → pagination. The guard samples; a tab-through is
+  what actually proves the row gesture is usable without a mouse.
 
 ---
 
@@ -578,5 +778,10 @@ backend query-param contract, which is out of scope for a frontend pass.
 - Not re-fixing `RecordTabs` or `ColumnPicker` — done in `e6a53f8`; Phase 0 corrects the
   doc that claims otherwise.
 - Not touching the invoice print document's colours (§2.5 exception 2).
+- Not stripping the auth surface's ambient layers. They are §9 identity on the one screen
+  licensed to have it; Phase 7 tokenises the raw `rgba()` and leaves the screen looking
+  the same.
+- Not making Lynk responsive. §4.4 gutters stand; the narrow-viewport capture in
+  Verification is a regression check on the new shell, not the start of a mobile pass.
 - Not reopening deliberately deferred slices (WhatsApp sending, payment links, broad
   Gmail access, user-created modules) per `CLAUDE.md`.

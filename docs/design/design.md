@@ -293,6 +293,14 @@ small caps with `tracking-wider` is the same mistake and is equally out.
 Uppercase cost legibility on exactly the text operators scan most, and the
 wide-tracked variant was the single biggest reason the UI read as templated.
 
+**Title Case is in scope, and nothing catches it.** The rule is sentence case, so
+"Save Quote", "New Contract" and "Module Settings" break it exactly as `uppercase`
+does. Both guards are blind here: the grep matches class strings, and the rendered
+spec reads `text-transform`, which is `none` for text that was simply typed
+capitalised. The same applies to the `capitalize` class and to runtime title-casers
+that rebuild a label from a key. Until the Title Case check in
+`design-rules.spec.ts` lands, this one is enforced by reading.
+
 ---
 
 ## 4. Space and size
@@ -308,6 +316,17 @@ All spacing is a Tailwind step (multiples of 4px). No arbitrary `p-[13px]`.
 | `gap-4` | Between fields in a form |
 | `gap-6` | Between sections of a page |
 | `gap-8` | Between major regions. Rare. |
+
+**There is no 5-step.** `gap-5` and `p-5` are not on the ladder and are being swept
+out (112 uses at the time of the ruling). Being a multiple of 4px is necessary, not
+sufficient — the ladder is a closed set, the same way control heights are (§4.2).
+
+The 5-step is why card padding has three values at once (`p-4` ×77, `p-5` ×81,
+`p-6` ×25) for one role. A step that sits between the two legitimate answers gets
+picked whenever neither feels right, which is how a padding decision stops being a
+decision. Choose `p-4` for dense containers and `p-6` for a card that holds sections;
+if a screen genuinely needs the value in between, that is a case for changing this
+table under §12, not for reaching past it at the call site.
 
 ### 4.2 Control heights are a closed set
 
@@ -369,6 +388,46 @@ nearest shipping screen rather than inventing one.
 
 **One row mechanism per list.** A list picks dense or comfortable and every row in it
 matches; do not mix heights inside a single table.
+
+**These numbers are supplied by a primitive, not retyped per page.** Every value above
+that a page could get wrong now has a component that owns it. Reaching past them to
+hand-assemble a page root or a table is the drift this section exists to prevent.
+
+`PageShell` — owns the page root, and is the only thing that writes it:
+
+| Variant | Root | For |
+|---|---|---|
+| `list` | `flex h-full min-h-0 flex-col gap-4` | the §11.1 full-height column: pinned toolbar, one scrolling table, pinned pagination |
+| `document` | the documented section stack (`space-y-6`; `space-y-8` in settings) | scrolling form, detail and settings pages |
+
+It emits `data-slot="page-shell"` so the rendered guard can assert that the first
+element inside the content scroller is one. `PageHeader` is its heading row — see below.
+
+`RecordTable` — owns everything above the cell, which `Table` (a cell primitive) does
+not and should not:
+
+- min-width **derived from the visible column count**, never a hardcoded
+  `min-w-[Npx]`. A view trimmed to three columns must not still force a horizontal
+  scrollbar sized for twelve.
+- the selection column: one width, one sticky offset, one indicator size, tri-state
+  `indeterminate` on every list that has it.
+- the sticky identity column, including its header cell — a sticky body cell under a
+  non-sticky header leaves the value floating over a hole.
+- **one row-open gesture**, bound to click, Enter and Space, with a visible
+  `focus-visible` ring on the row. Keyboard-reachable is a §8 floor; a row that takes
+  focus invisibly is worse than one that cannot take it at all.
+- all four §7.4 data-view states as slots — loading, empty, error, permission-denied —
+  with the empty state's create action wired by default.
+
+Legitimate differences between lists are `cva` variants on the primitive (§7.3), not
+`className` at the call site.
+
+**`PageHeader` and `PageToolbar` are one component.** They were the same thing — a
+right-aligned action row — differing only in `min-h-9` and which one emitted the
+heading. `PageHeader` is the surviving name; `PageToolbar` is a deprecated alias.
+Because only `PageHeader` rendered the `sr-only` `h1`, every page built on
+`PageToolbar` shipped no `h1` at all, breaking §8; the merged component always emits
+it, which fixes that class of bug rather than each instance of it.
 
 ### 4.5 One scroll region per screen
 
@@ -452,6 +511,17 @@ times a day must be effectively invisible.
 - Ambient motion (`float-slow`, shimmer) belongs on auth and marketing surfaces only.
 - Respect `prefers-reduced-motion` for anything that loops.
 
+**Reduced motion is a property of the primitive, not of the call site.** Anything that
+loops must carry the guard where the animation is *defined* — `.float-slow` in
+`globals.css`, the spinner inside its component — so a page cannot forget it. The 13
+hand-placed `motion-reduce:` uses found in the frontend audit are the symptom of the
+opposite approach: `Skeleton` and `Pagination` remembered, most spinners did not, and
+`.float-slow` runs `infinite` with no guard on the first screen every operator sees.
+
+This is the one rule here that a media query can switch off, so no amount of static
+computed style will catch a violation. `design-rules.spec.ts` checks it by re-running a
+route under `emulateMedia({ reducedMotion: "reduce" })`.
+
 ---
 
 ## 7. Components
@@ -511,6 +581,19 @@ every data view ships **loading, empty, error, permission-denied**. A view with 
 a success state is unfinished. Empty states say what the thing is and offer the
 create action; they do not just say "No data".
 
+**The states come from the composition.** `PageShell` and `RecordTable` (§4.4) supply
+all four, drawn from `RouteStates`, `EmptyState` and `PermissionDeniedState`. This is
+deliberate: when each page had to remember, most did not — the four states were the
+least consistent thing in the app, with `PermissionDeniedState` reaching 1 of 23
+settings pages and 7 settings pages carrying no error state at all. A page opts out of
+a state by passing its own slot, never by omitting it.
+
+Copy carries the same contract as the container. An error names the fix, not the
+failure (§7.5). An empty state is an invitation to act. An action keeps its name for
+the whole flow — a button reading "Create invoice" produces "Invoice created", not
+"Saved successfully" — because the interface's vocabulary is how an operator learns
+their way around it.
+
 ### 7.5 Forms
 
 - Every input has a visible `label`. Placeholder is never a label.
@@ -568,6 +651,21 @@ If you touch the hive, verify it actually renders. A previous attempt replaced i
 with three linear-gradients at 150°/30°/90° — which draws a *triangular* lattice, not
 a honeycomb — at a contrast so low it was invisible. Take a screenshot in both themes
 before claiming the motif is intact.
+
+**The auth surface's atmosphere is intent, not drift.** `app/auth/layout.tsx` layers a
+grid shimmer, a vignette and two inner-card radials over `HexagonBackground`. Those
+are the reason `/auth` is the least generic screen Lynk has, and they are licensed
+here and by §6's allowance for ambient motion on auth and marketing.
+
+They are also, as written, raw `rgba()` in arbitrary values — a `tokens.md` §10
+forbidden pattern. **The fix is to tokenise them, not to delete them.** `tokens.md`
+§3.5 now names the ambient set. Deleting the layers would satisfy every grep and every
+rendered guard in this repo and leave a login form indistinguishable from a template,
+which is the failure this document exists to prevent. A cleanup that makes a screen
+more correct and less itself has gone wrong.
+
+No assertion in the suite can tell the two outcomes apart. Screenshot `/auth` in both
+themes before and after, and confirm the honeycomb is still a honeycomb.
 
 ---
 
@@ -653,17 +751,21 @@ they are ordered by that rather than by size.
 
 | Component | Built as | Consequence |
 |---|---|---|
-| `RecordTabs` | raw `<button role="tab">` + `useState` | **Broken ARIA contract.** It announces itself as a tablist but has no `onKeyDown`, no arrow-key navigation and no roving `tabIndex`. Claiming the role without the behaviour is worse than not claiming it. radix Tabs gives all of it. |
-| `ColumnPicker` | `absolute right-0 top-11` div + `useState` | **Cannot be dismissed.** No Escape handler and no outside-click. The `popover` primitive already vendored in this repo handles both, plus positioning. |
-| `Table` | raw `<table>` | Consistency only; it works. shadcn has a Table to build on. |
-| Card-shaped boxes | hand-rolled `rounded-card + border + bg` | 93 such boxes against 63 files using `<Card>`. Roughly a third of card-shaped things bypass the primitive, so a change to `Card` reaches two thirds of them. |
+| ~~`RecordTabs`~~ | radix `Tabs` | **Resolved** in `e6a53f8`. Keyboard navigation, roving `tabIndex` and the ARIA wiring come from radix. Do not re-fix this. |
+| ~~`ColumnPicker`~~ | shadcn `Popover` | **Resolved** in `e6a53f8`. Escape and outside-click are handled by the primitive. Do not re-fix this. |
+| Hand-rolled tablists | raw `<button role="tab">` + `useState` | **The defect `RecordTabs` had, reappearing at two new call sites**: `app/dashboard/views/[moduleKey]/page.tsx:141` and `app/dashboard/settings/module-builder/page.tsx:480`. Both announce `role="tablist"` with no `onKeyDown`, no roving `tabIndex` and no `aria-controls`. `SavedViewSelector.tsx:26` is the correct hand-rolled reference if a radix `Tabs` genuinely does not fit — it implements arrow/Home/End, roving `tabIndex` and a focus ring. |
+| `Table` | raw `<table>` | Consistency only; it works. shadcn has a Table to build on. It is a **cell** primitive — everything above the cell belongs to `RecordTable` (§4.4). |
+| Card-shaped boxes | hand-rolled `rounded-card + border + bg` | **206** such boxes against **65** files using `<Card>`, up from 93/63 when this was first recorded. The drift is accelerating: a change to `Card` now reaches well under half of the things that look like one. |
 
 `Pagination`, `SearchBar`, `spinner` and `sonner` are thin compositions over existing
 primitives and are fine as they are. The remaining `components/ui/` files are
 Lynk-specific compositions (`ModuleTableShell`, `SavedViewSelector`, `PageHeader` and
 so on) that shadcn has no equivalent for — those are correct, not drift.
 
-Fix `RecordTabs` and `ColumnPicker` first; they are accessibility defects, not style.
+The two hand-rolled tablists are accessibility defects rather than style, and come
+first. That they reappeared *after* `RecordTabs` was fixed is the lesson in this
+table: fixing an instance does not fix the pattern, which is why the rule now lives in
+§4.4 and the check lives in the rendered guard.
 
 ### 11.1 List pages are full-height — do not put a max-height back
 
@@ -748,6 +850,42 @@ Both the general rule (§4.5) and the audit spec exist because of this.
   shadcn primitives and lucide icons as a hard rule (§7.2), which rules this out by
   design. Lynk buys consistency over icon-layer identity, deliberately. Do not
   re-propose hand-drawn glyphs.
+### 11.2 The mandatory floors are drifting
+
+Measured during the 2026-08 frontend consistency audit. These are §7.4, §2.3 and §6
+rules — not preferences — and none of them is currently guarded, because
+`design-rules.spec.ts` reads one static snapshot of one state and so never focuses an
+element or queries a media feature.
+
+| Floor | Rule | Measured |
+|---|---|---|
+| Permission-denied state | §7.4 | `PermissionDeniedState` in 15 files repo-wide; **1 of 23** settings pages |
+| Error state | §7.4 | 3 competing idioms in settings; **7 pages have none** |
+| Loading state | §7.4 | 4 expressions — `RouteLoadingState`, `Skeleton`, inline `<TableRow>`, plain `<p>` |
+| Empty state | §7.4 | 3 module tables ship no create action |
+| `focus-visible` | §2.3 | 68 uses, never audited or guarded |
+| `prefers-reduced-motion` | §6 | 13 hand-placed uses; `.float-slow` loops `infinite` unguarded |
+
+The fix is structural and is described in §4.4: the states are supplied by
+`PageShell` / `RecordTable` rather than remembered per page. Track the sweep in
+`docs/design/consistency-pass.md`.
+### 11.3 `dialog` is built on Headless UI, not shadcn
+
+§7.2 makes shadcn the only component library, and `@headlessui/react` is still a live
+dependency behind four shared primitives: `components/ui/dialog.tsx`, `ExportControls`,
+`ImportControls`, and `ModuleImportExportControls`. The source guard fails on it.
+
+This is **consistency debt, not a defect**. Headless UI's dialog is a correct,
+accessible implementation — it traps focus and restores it, which is what §8 asks for.
+Nothing user-facing is wrong.
+
+It is also not a dependency to delete opportunistically: `dialog.tsx` backs every modal
+and sheet in the product, so swapping it changes focus-trap and close behaviour
+everywhere at once. That needs its own slice and its own e2e pass, not a line in an
+unrelated PR. Until then this is a **named exception to §7.2**, recorded here so the
+failing guard rule is understood rather than re-diagnosed.
+
+
 
 ---
 
