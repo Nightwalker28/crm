@@ -8,6 +8,8 @@ restyle any UI in `frontend/`, start here.
 | [`design.md`](./design.md) | The design language — principles, colour policy, type, spacing, components, a11y floors, ship checklist | Before writing **any** UI |
 | [`tokens.md`](./tokens.md) | The token vocabulary — every token, its value in both themes, and how light is derived from dark | Before touching colour, type, spacing, or radius |
 | [`research-frappe-crm.md`](./research-frappe-crm.md) | Notes on Frappe CRM's design methodology, where several of our rules came from | Background. Not law. |
+| [`rebuild.md`](./rebuild.md) | **The active work.** The rebuild programme — every surface rebuilt onto one archetype set, sub-phases 5.0–5.10 | Before starting or reviewing any frontend work right now |
+| [`consistency-pass.md`](./consistency-pass.md) | The 2026-08 audit and Phases 0–4, which added `PageShell` and `RecordTable`. Phase 5 onward moved to `rebuild.md` | For the measurements, and for what has already landed |
 
 Implementation lives in `frontend/app/globals.css` (tokens) and
 `frontend/components/ui/` (primitives). Those files are authoritative over these

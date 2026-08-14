@@ -35,6 +35,11 @@ supplies that rhythm and no guard checks it.
 2. **Consistency only — no behaviour change.** No new flows, no quick-create rollout,
    no inline editing. Workflow findings are in **Appendix A**, out of scope.
    Functional bugs surfaced by the audit are in **Appendix B** and need their own call.
+
+   > **Retired from Phase 5 onward, 2026-08-14.** This decision governed Phases 0–4 and
+   > is what they were executed under; it no longer applies. The owner has opened
+   > behaviour change and folded all 13 Appendix A findings into the rebuild programme.
+   > See [`rebuild.md`](./rebuild.md).
 3. **This document was the deliverable of the audit.** Implementation is now approved and
    begins at Phase 0.
 
@@ -319,17 +324,18 @@ Phases are independently shippable. Each ends green on lint, build, and both gua
 
 **The baseline is not green.** `./scripts/check-design.sh` fails **6 of 14 rules at
 HEAD**, before this pass touches anything — so "ends green" means *no new failures and
-the phase's own rules cleared*, not a clean run, until Phase 6 closes these out. The
-audit did not record them; they are cheap, and each already belongs to a phase:
+the phase's own rules cleared*, not a clean run. The audit did not record them; they are
+cheap, and each already belongs to a phase. **Three of the six are now closed; the
+remaining three carry into `rebuild.md`:**
 
 | Failing rule | Site | Owner |
 |---|---|---|
 | ~~§2.3 focus ring is its own token~~ | `documents/DocumentList.tsx:173` — `ring-primary/40` on the highlighted row | **cleared in Phase 2** |
-| §4.5/§11.1 no height cap on `ModuleTableShell` | `reports/page.tsx:674` — `max-h-72` | Phase 4 — this is the exact nested-scroll regression §11.1 exists to prevent |
-| §4.2 no call-site control heights | `ClientPageCreateForm.tsx:337` — `size-6` on a `Button` | Phase 7 (portal) |
-| §4.1 spacing off the 4px grid | 1 match | Phase 6 |
+| ~~§4.5/§11.1 no height cap on `ModuleTableShell`~~ | `reports/page.tsx:674` — `max-h-72` | **cleared in Phase 4** |
 | ~~§6 transitions name their properties~~ | `HexagonBackground.tsx:92`, `sonner.tsx:24` — `transition-all` | **cleared in Phase 2** |
-| §7.2 shadcn is the only component library | `@headlessui/react` is **live in 4 shared primitives** — `ui/dialog.tsx`, `ExportControls`, `ImportControls`, `ModuleImportExportControls` | **Not this pass.** See below |
+| §4.2 no call-site control heights | `ClientPageCreateForm.tsx:335` — `size-6` on a `Button` | rebuild **5.8** (portal) |
+| §4.1 spacing off the 4px grid | `LynkSplash.tsx:58` — `pl-[0.2em]` | rebuild **5.9** |
+| §7.2 shadcn is the only component library | `@headlessui/react` is **live in 4 shared primitives** — `ui/dialog.tsx`, `ExportControls`, `ImportControls`, `ModuleImportExportControls` | Not this pass — recorded as the §11.3 exception. **Now owned by rebuild 5.1**, which retires the exception |
 
 Run the source guard at the start of a phase as well as the end. It is the cheapest of
 the three checks and the only one that reads `package.json`.
@@ -738,137 +744,61 @@ success state; that is the rule this pass is enforcing, not a stretch goal.
    Phase 4 is deliberate: doing it earlier takes unmigrated pages from one heading to
    zero.
 
----
+### Status: done, with two items carried forward
 
-## Phase 5 — Detail-page archetype
+Items 1–4, 7 and 8 landed. Measured at HEAD: **53 `PageShell` call sites, 0
+`PageToolbar`**, 15 `variant="list"` and 23 `variant="settings"`, and
+`app/dashboard/layout.tsx:141` demoted out of `<h1>` with the reason written into the
+file. The source guard is at **3 of 14 failing**, down from 6 — `reports/page.tsx`'s
+`max-h-72` cleared with it.
 
-Consistency only — no inline editing, no new panels (Appendix A).
+Two items did **not** land, and are not to be read as done:
 
-- Pick one archetype: `RecordWorkspace` + `RecordTabs` + `ReadOnlyRecordLayout`, and
-  move the other four onto it.
-- **Retire the nested-tabs pattern.** `CrmRecordActivitySection` is itself a
-  `RecordTabs`; stop rendering it inside another one on the six affected pages.
-- Replace the six private `DetailField`/`Summary` components with
-  `ReadOnlyRecordLayout`.
-- Fix **both** hand-rolled `role="tablist"` sites — `views/[moduleKey]:141` and
-  `settings/module-builder:480` — onto `RecordTabs`. `SavedViewSelector.tsx:26` is the
-  correct reference if radix genuinely does not fit.
-- Give leads' tab order a default that matches its first tab.
+- **Item 5 — the settings states.** `PermissionDeniedState` reaches **1 of 23** settings
+  pages (`isPermissionDenied` is passed on exactly one). Settings is entirely
+  admin-gated, so this is precisely what a non-admin hits.
+- **Item 6 — the commit model.** `settings/authentication/page.tsx` still autosaves a
+  select at `:45` while demanding an explicit Save/Discard footer 40 lines below.
 
----
-
-## Phase 6 — The copy and vocabulary sweep
-
-Cheap, high-signal, and best done once the structure is settled. Copy is design
-material here, not labelling: the vocabulary of the interface is the signposting an
-operator learns the product by, so it converges on one voice the same way spacing does.
-
-**Vocabulary — one value per role:**
-
-- **One section-heading size** per role (§3.3: `text-base` inside a page).
-- **One empty-value string.** "Not set" over the other five — it reads as a field with
-  no value yet, which is true, where "Not recorded" and "Unassigned" each imply a
-  different reason and "—" implies none. Chosen for what it says, not because it is the
-  most frequent.
-- **One link treatment** — `text-copy-primary` + underline offset per §2.2 (4 in use).
-- **Sentence case** — fix the Title Case leaks the `uppercase` guard cannot see, and the
-  runtime title-casers at `SupportCaseCreateFormPage.tsx:260`,
-  `support/cases/[caseId]:269`, `insertion-orders/[ioId]:186`.
-- **One create-button verb** — "Create X" (currently Create/Add/New/Upload).
-- **One pending-label ellipsis** — "Saving…".
-- One form-section container, one back-button treatment, one dirty-state string, one
-  grid breakpoint (`md`, not a mix of `sm`/`md`), one two-column ratio.
-- Resolve the `gap-5`/`p-5` sweep per the Phase 0 ruling.
-- `contracts/[contractId]:244,264,265` — resolve foreign keys to names, as support
-  cases already do. `User #7` is the schema talking; the operator knows a person.
-
-**Voice — the states Phase 4 just standardised now get their words:**
-
-- **An action keeps its name through the flow.** "Create invoice" produces "Invoice
-  created", not "Saved successfully". The verb sweep above picks the name; this makes it
-  survive to the toast and the confirmation.
-- **Errors name the fix, not the failure** (§7.5, already the rule for field errors —
-  extend it to the route-level error states Phase 4 adds). No apologies, and never vague
-  about what happened.
-- **Empty states are an invitation to act** (§7.4): what the thing is, then the create
-  action. This is the copy half of the three tables that ship no create button at all.
-- **Destructive confirmations name the record and the consequence** (§7.5) — audit these
-  while the strings are open; a "Are you sure?" that names nothing is the same defect as
-  an error that says "Invalid".
-- Sentence case and active voice throughout, per §3.5 and the item above.
+Both carry to **rebuild 5.6**.
 
 ---
 
-## Phase 7 — Client portal, public, and auth
+## Phase 5 — the rebuild program
 
-- Add `app/client/layout.tsx` carrying the shell all 14 pages hand-roll, plus real
-  lateral navigation (today the only route between portal sections is the hub).
-- Adopt `Card`, `EmptyState`, `RouteStates`, `Pill` — replacing 18 hand-written state
-  blocks.
-- Bring portal type onto the product ramp (`text-2xl`/`3xl` `h1`s → `text-lg`).
-- Decide deliberately whether `/client/login` should match `/auth/login`'s treatment.
-  They are currently two different products; either is defensible, but it should be a
-  choice written into `design.md` §9.
-- `app/auth/layout.tsx:20,22,28` — raw `rgba()` gradients in arbitrary values (a grid
-  shimmer, a vignette, and two inner-card radials), a `tokens.md` §10 forbidden pattern,
-  on the first screen every operator sees.
+**Phase 5 grew into its own programme. It lives in
+[`rebuild.md`](./rebuild.md).**
 
-  **Tokenise these; do not delete them.** This is the one file in the sweep where the
-  drift and the identity are the same lines of code. `/auth` is where §9 puts the hive
-  and where §6 permits ambient motion — it is deliberately the least generic screen Lynk
-  has, and `HexagonBackground` is still rendering above those layers. Stripping the
-  atmosphere to satisfy a colour grep would pass every guard in the repo and leave the
-  product's signature screen looking like a login form from any template. The correct fix
-  is the ambient token set added in Phase 0: the values move into `tokens.md`, the
-  arbitrary values disappear, the screen looks the same.
+Why it moved: it outgrew this document, and it carries scoping decisions that
+*contradict* decision 2 above. Two opposing scoping rules in one file get read wrong.
 
-  §9 already records what happens when this goes wrong — a previous attempt replaced the
-  hive with three gradients at 150°/30°/90°, drawing a triangular lattice at a contrast
-  low enough to be invisible, and nothing caught it. So: **screenshot `/auth` in both
-  themes before and after, and confirm the honeycomb is still a honeycomb.** That check
-  is on this phase's exit criteria, not left to the guard, because no assertion in the
-  suite can tell the difference.
+**Decision 2 is retired from Phase 5 onward.** "Consistency only — no behaviour change"
+governed Phases 0–4 and no longer applies: the owner has folded all 13 Appendix A
+workflow findings into the rebuild, and the visual composition is being rebuilt rather
+than swept. Phases 0–4 above are unchanged history and were executed under the original
+rule.
 
----
+**Phases 6, 7 and 8 are gone from this document** and land in `rebuild.md` as 5.9
+(copy and voice), 5.8 (client portal, public, auth) and 5.10 (guard the composition).
 
-## Phase 8 — Guard composition
+| | Sub-phase | Owns |
+|---|---|---|
+| 5.0 | Direction, law, census | The archetypes, the type ladder, the signature, the rulings every later sub-phase needs |
+| 5.1 | Cross-cutting primitives | Seven extractions + the `@headlessui/react` → radix dialog migration |
+| 5.2 | Panel language | The 206 hand-rolled card boxes |
+| 5.3 | Record detail | **7** archetypes → 1 (the audit's Layer 4 recorded 5; catalog and the portal pages were missed) |
+| 5.4 | Forms | The create/edit model |
+| 5.5 | One table, list workflow | The 18 files still on raw `Table`, + Appendix A's core |
+| 5.6 | Settings | All 23 pages, plus Phase 4's two carried-forward items |
+| 5.7 | Dashboard, reports, boards, calendars, mail | The surfaces no phase has touched |
+| 5.8 | Client portal, public, auth | was Phase 7 |
+| 5.9 | Copy and voice | was Phase 6 |
+| 5.10 | Guard the composition | was Phase 8 |
 
-Extend `tests/e2e/design-rules.spec.ts` — do not add a new spec; it already walks every
-route and logging in is the expensive part.
-
-New checks:
-
-- **Type ramp** — computed `font-size` on visible text must be in {11, 12, 14, 16, 18}.
-  Catches the `text-[Npx]` class at the rendered layer.
-- **Page-root rhythm** — the first element inside the layout's content scroller must
-  carry `data-slot="page-shell"`. This makes Phase 1 permanent.
-- **Card border tier** — no visible container at panel size may use `border-line-subtle`
-  (reuse the existing `isContainer` predicate at line 188; it already computes this).
-- **Control border tier** — no `input`/`select`/`checkbox` bounded by a sub-3:1 token.
-  Locks in Phase 2's WCAG fix.
-- **Title Case** — visible button/heading text where a non-first word is capitalized and
-  isn't a known proper noun. Needs an allowlist; worth it, since §3.5 is currently
-  enforced for `uppercase` only.
-- **Focus is visible** (§2.3, §8) — the spec currently never focuses anything, which is
-  why 68 scattered `focus-visible` uses have never been checked. Focus a sampled set of
-  interactive elements per route (first row, first control in the toolbar, first
-  navigation item) and assert the computed `outline` or `box-shadow` actually changes.
-  Cheap, and it is the only check that can catch Phase 3 shipping an invisible row focus.
-- **Reduced motion is respected** (§6) — re-run one representative route under
-  `page.emulateMedia({ reducedMotion: "reduce" })` and assert nothing reports a running
-  animation. This is the only rule in `design.md` that a media query can turn off, so
-  static computed style will never see it.
-
-These two are why the guard's blindness is structural rather than incidental: it reads
-one static snapshot of one state. Focusing an element and emulating a media feature are
-the two cheapest ways to widen what it can see at all.
-
-**Widen the route list** to the surfaces that drifted furthest and are currently
-unwalked: `/auth/*`, `/book/**`, `/public/quotes/proposal/[token]`,
-`/client/pages/[token]`, `/client/*/[id]`, `/dashboard/views/[moduleKey]`,
-`/dashboard/custom/**`, `settings/message-templates/[id]/edit`. This is arguably the
-single highest-leverage item in the plan — Layer 6 exists *because* the guard stops at
-the portal's list pages.
+Three of the audit's numbers were **stale and are corrected in `rebuild.md`**: the
+nested-tabs pattern is at **2 sites, not 6**; the private field renderers are **9–12,
+not 6**; and forms had already converged further than Layer 4 implies — 14 of 16 routes
+are on `RecordFormLayout`.
 
 ---
 
@@ -948,7 +878,7 @@ Access is verified; the tab needs a signed-in session.
 Two things only a human or a browser session can settle, both on the exit criteria of
 their phase rather than delegated to an assertion:
 
-- **The hive still renders as a honeycomb** after Phase 7 tokenises the auth
+- **The hive still renders as a honeycomb** after rebuild 5.8 tokenises the auth
   atmosphere, in both themes (§9 — this has silently broken once before).
 - **Tabbing through a migrated list page** after Phase 3: the focus point stays visible
   the whole way across toolbar → rows → pagination. The guard samples; a tab-through is
@@ -956,10 +886,16 @@ their phase rather than delegated to an assertion:
 
 ---
 
-## Appendix A — Workflow findings (recorded, NOT in scope)
+## Appendix A — Workflow findings (out of scope for Phases 0–4; **now in scope**)
 
-The brief asked about click cost; the scoping decision was consistency only. Recorded so
-they are not lost, for a separately-approved pass. Ordered by cost × frequency.
+The brief asked about click cost; the scoping decision for Phases 0–4 was consistency
+only. Ordered by cost × frequency.
+
+**These are no longer deferred.** All 13 are folded into the rebuild programme — see
+[`rebuild.md`](./rebuild.md). Owners: **A1, A2, A5, A6, A7** → 5.5 (lists) · **A3** →
+5.4 (forms) · **A4, A12, A13** → 5.3 (record detail) · **A8, A9, A10** → 5.6
+(settings) · **A11** → 5.7 (reports). The list below stays here as the measurement;
+`rebuild.md` is where the work is tracked.
 
 1. **List state is not addressable.** `usePagedList` and `useSavedViews` hold search,
    filters, sort, page and page size in React state — no URL params, no storage. Opening
@@ -1037,15 +973,19 @@ backend query-param contract, which is out of scope for a frontend pass.
 
 ## Explicitly not doing
 
-- No new flows, no inline editing, no quick-create rollout (scoping decision 2).
+**Scope note.** This list governed Phases 0–4. The first bullet is **retired from Phase
+5 onward** — see `rebuild.md` for the list that applies now. The rest still hold.
+
+- ~~No new flows, no inline editing, no quick-create rollout (scoping decision 2).~~
+  **Retired.** Behaviour change is in scope for the rebuild; Appendix A is folded in.
 - Not touching the `sr-only` `h1` in `PageHeader` — §8 says it is correct.
 - Not reintroducing a `max-height` on `ModuleTableShell` (§11.1).
 - Not re-fixing `RecordTabs` or `ColumnPicker` — done in `e6a53f8`; Phase 0 corrects the
   doc that claims otherwise.
 - Not touching the invoice print document's colours (§2.5 exception 2).
 - Not stripping the auth surface's ambient layers. They are §9 identity on the one screen
-  licensed to have it; Phase 7 tokenises the raw `rgba()` and leaves the screen looking
-  the same.
+  licensed to have it; rebuild 5.8 tokenises the raw `rgba()` and leaves the screen
+  looking the same.
 - Not making Lynk responsive. §4.4 gutters stand; the narrow-viewport capture in
   Verification is a regression check on the new shell, not the start of a mobile pass.
 - Not reopening deliberately deferred slices (WhatsApp sending, payment links, broad

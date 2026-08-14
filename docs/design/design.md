@@ -624,7 +624,7 @@ exists. The list-and-record language in particular is not optional:
 | Nothing to show | `EmptyState` |
 | No permission | `PermissionDeniedState` |
 | Loading | `skeleton`, `ModuleTableLoading`, `RouteStates` |
-| Status label | `Pill` |
+| Status label | `Pill` — **being retired.** See `rebuild.md` R5: colour marks exception, not state, and `StatusValue` replaces it. Do not add a new `Pill` call site |
 | Linked record | `LinkedRecordPicker` |
 | Import / export | `ImportControls`, `ExportControls`, `ModuleImportExportControls` |
 
@@ -949,16 +949,17 @@ element or queries a media feature.
 
 | Floor | Rule | Measured | Status |
 |---|---|---|---|
-| Permission-denied state | §7.4 | `PermissionDeniedState` in 15 files repo-wide; **1 of 23** settings pages | open — Phase 3/4 |
-| Error state | §7.4 | 3 competing idioms in settings; **7 pages have none** | open — Phase 4 |
-| Loading state | §7.4 | 4 expressions — `RouteLoadingState`, `Skeleton`, inline `<TableRow>`, plain `<p>` | open — Phase 4 |
-| Empty state | §7.4 | 3 module tables ship no create action | open — Phase 3 |
-| `focus-visible` | §2.3 | 68 uses, never audited or guarded | partly closed — the shared controls were audited in Phase 2; the rendered check lands in Phase 8 |
+| Permission-denied state | §7.4 | `PermissionDeniedState` in 15 files repo-wide; **still 1 of 23** settings pages after Phase 4 | open — rebuild 5.6 |
+| Error state | §7.4 | 3 competing idioms in settings; **7 pages have none** | open — rebuild 5.6 |
+| Loading state | §7.4 | 4 expressions — `RouteLoadingState`, `Skeleton`, inline `<TableRow>`, plain `<p>` | **closed** for routes — `PageShell` supplies it |
+| Empty state | §7.4 | 3 module tables shipped no create action | **closed** — `RecordTable` wires it by default |
+| `focus-visible` | §2.3 | 68 uses, never audited or guarded | partly closed — the shared controls were audited in Phase 2; the rendered check lands in rebuild 5.10 |
 | `prefers-reduced-motion` | §6 | 13 hand-placed uses; `.float-slow` looped `infinite` unguarded | **closed** — enforced in `globals.css` and `MotionConfig`, see §6 |
 
 The fix is structural and is described in §4.4: the states are supplied by
-`PageShell` / `RecordTable` rather than remembered per page. Track the sweep in
-`docs/design/consistency-pass.md`.
+`PageShell` / `RecordTable` rather than remembered per page. Phases 0–4 of that sweep
+are in `docs/design/consistency-pass.md`; **the remaining work is
+`docs/design/rebuild.md`**, which absorbed Phases 5–8 and is the active plan.
 
 **Also closed by the Phase 2 primitive pass**, recorded here because the audit
 measured them and they will otherwise read as still-open:

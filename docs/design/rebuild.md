@@ -1,0 +1,815 @@
+# Lynk frontend: the rebuild program
+
+**Status:** approved 2026-08-14. Sub-phase 5.0 in progress.
+
+This is Phase 5 of [`consistency-pass.md`](./consistency-pass.md), expanded into its own
+programme because it outgrew the pass containing it — and because it carries scoping
+decisions that *contradict* that document's decision 2. Two opposing scoping rules in
+one file get read wrong. They live here instead.
+
+Phases 6, 7 and 8 of the consistency pass are deleted there and land here as 5.9, 5.8
+and 5.10.
+
+---
+
+## Why
+
+Consistency-pass Phases 0–4 added the composition layer that **list pages** were
+missing: `PageShell` (53 call sites, `PageToolbar` at zero), `RecordTable` (24
+consumers), `Card` on the panel tier, reduced motion as a platform property. The source
+guard went 6 failures → 3.
+
+That work fixed lists. Every other surface still has no owner, and the product reads as
+templated because of it. Measured 2026-08-14:
+
+| Surface | State |
+|---|---|
+| Record detail | **7 archetypes** — the audit recorded 5; catalog and the 7 client-portal pages were never listed |
+| Tables | 24 files on `RecordTable`, **18 still on raw `Table`** (census in 5.5) |
+| Field display | **9–12 private `SummaryTile` / `DetailField` / `LinkedTile` / `MoneyRow` renderers**, 4 container recipes, 3 value inks |
+| Panels | **206 hand-rolled card boxes vs 65 `<Card>`** — accelerating |
+| Currency | **15 local formatters + 24 raw `Intl.NumberFormat`**, no `lib/currency.ts`. Dates *are* centralised in `lib/datetime.ts` — the contrast is the argument |
+| Section headings | **137 hand-written `<h2>`**, no owner |
+| Sticky footers | 10 implementations on 3 recipes; one is a verbatim copy of `RecordFormLayout`'s classes |
+| Button | 3 dead variants, 4 near-dead; **76 `className` overrides, ~38 external spacing** — the missing thing is an action-row container, not more variants |
+| Panel states | `RecordPanelStates` is the right abstraction, trapped in `recordActivity/` — 5 files of ~40 panels |
+| Empty value | `"—"` 32, `"-"` 25, `"Not set"` 21, `"Not recorded"` 17 — and `ReadOnlyRecordLayout` emits the one the copy sweep rejected |
+| Boards | 2 unshared kanbans, 3 unshared calendar grids, 6 raw HTML5 DnD implementations |
+
+---
+
+## Scoping decisions
+
+Confirmed with the owner. Items 2 and 5 override `consistency-pass.md` decision 2.
+
+1. **The visual language stays.** `design.md` §1.2 (no accent), §3.1 (Inter only), §1.5
+   (density) are not up for revision. What changes is *composition*: page archetypes,
+   panel language, form layout, detail-page structure, button hierarchy, section
+   headings, and the voice of the states.
+2. **Behaviour change is in scope.** All 13 Appendix A workflow findings are folded into
+   sub-phases. "Consistency only, no behaviour change" is retired.
+3. **This programme absorbs consistency-pass Phases 6, 7 and 8.**
+4. **Rebuild in place, module by module** — rewrite the surface, hoist the shared
+   component out as it emerges, then move the rest of the family onto it. No primitive
+   is built ahead of a real call site, with the one exception noted in 5.1.
+5. **Total coverage. Every page, every component, no representative subsets.** The
+   mechanism is the census below. A surface with no owning sub-phase is a bug in this
+   document, not a thing to skip.
+6. **One shared table, everywhere.** Differences are `cva` variants on the primitive
+   (§7.3), never a second table. Anything that genuinely cannot be a variant is listed
+   with its reason in 5.5 and nowhere else.
+7. **Testing is scoped, not skipped.** See the policy below.
+
+---
+
+## Settled rulings
+
+Decided with the owner 2026-08-14, before 5.0 draws a wireframe. These are the answers
+every later sub-phase builds against; they move into `design.md` as part of 5.0.
+
+### R1 — The commit model is per surface, and visible from the control
+
+| Surface | Model | Why |
+|---|---|---|
+| Settings toggles, switches, selects | **Autosave** on change | One independent field, reversible, no cross-field validation. A switch with a Save button is a UX smell |
+| Detail-page **state** fields — status, stage, owner, priority, assignee | **Autosave** on change | A workflow action performed dozens of times a day |
+| Detail-page **content** fields — name, email, amount, notes | **Read-only**; edit on `/[id]/edit` | See R2 |
+| `/new` create forms | **Manual save** | The record does not exist yet. Autosaved drafts put half-formed records into lists, counts and reports — a real product defect in a CRM |
+| Line-item documents — quote, order, invoice | **Manual save** | Totals are derived from line items, discounts and tax. Field-by-field commit saves states the backend rejects and totals that are briefly wrong |
+| Anything with a side effect — a status that fires an automation or an email | **Explicit confirm**, never a silent commit | A mis-click that autosaves an irreversible action is worse than one extra click |
+
+Two consequences that are easy to skip and expensive to retrofit:
+
+- **Autosave needs a save-state indicator** — `Saving…` / `Saved` / `Couldn't save —
+  retry`. Removing the button removes the operator's only feedback. It is a shared
+  component, built in 5.1.
+- **Every write is an activity entry.** Field-by-field autosave on a 30-field record
+  would put 30 rows into the `RecordActivityFeed` this app renders on every record.
+  Writes must be debounced client-side, and activity entries coalesced within a window
+  — **the coalescing is a backend change** and is a dependency of 5.3, not a frontend
+  detail.
+
+Concurrent editing stays last-write-wins per field. Noted, not solved here.
+
+### R2 — State is live, content is read-only
+
+The detail page's editable set is **categorical, not arbitrary**. Dropdown-shaped
+controls hold *state* and edit in place; text, number, date and relationship fields hold
+*content* and are read-only until you open the edit page.
+
+The failure this avoids: a half-editable page where a dropdown edits in place and the
+text field beside it silently does not is worse than either pure model, because nothing
+tells the operator what is clickable. A categorical boundary is learnable in seconds; a
+per-field one never is.
+
+Four affordances, each with an obvious trigger:
+
+```
+change a status / stage / owner   →  inline, right there, autosaves
+create something fast             →  QuickCreate sheet
+create something detailed         →  /new page
+edit something detailed           →  /[id]/edit page
+```
+
+`/[id]/edit` **stays**, but two defects go with the migration: it drops `?tab=` (edit
+from the Files tab and you land back on Details), and the Edit affordance must be
+reachable from every tab rather than only the record header. Those are most of why the
+round trip currently feels expensive.
+
+This closes **A3** (create is standardised: QuickCreate *and* `/new` on all 15 modules,
+rather than a sheet on 4 and a page on 11) and **partly closes A4** — a workflow change
+is now one click; correcting a typo is still a page trip, deliberately.
+
+### R3 — Sticky is almost all gone
+
+Sticky is only 14 uses in the frontend, and **ten of them are save bars**:
+
+| Sticky | Count | Ruling |
+|---|---|---|
+| `sticky top-0` | 2 | **Keep.** Table column headers — a twelve-column list is unreadable without them |
+| `sticky bottom-0` | 10 | **Delete.** R1's autosave removes most; the rest move their action into the page header |
+| `sticky left-0` | 2 | **Check and remove.** Leftovers from the horizontal pinning §4.4 already took back out |
+
+Not sticky and not affected: the list page's toolbar and pagination are **flex siblings
+of the scroll region**, not `position: sticky` (§11.1). Nothing overlaps, nothing hides
+content underneath, and the full-height column stays.
+
+### R4 — One control height per action row
+
+§4.2 already says an input and the button beside it resolve to the same token. It never
+extended that to buttons beside each other, and nothing guards it — so with `default`
+(38px) at 364 call sites and `sm` (32px) at 228, mixed rows are near-certain.
+
+**`ActionBar` sets the size for its children**, so a call site cannot mix them: toolbars
+are `sm`, page headers and forms are `default`. `lg` (44px) stays restricted to auth and
+empty-state CTAs per §4.2.
+
+Width may still differ — an icon-only button beside a labelled one is the same height and
+narrower. That is not a mismatch. Guarded in 5.10 by comparing rendered sibling heights.
+
+### R5 — Colour marks exception, not state. `Pill` is retired
+
+Two faults compounded, and both are measurable in `lib/statusStyles.ts` today.
+
+**Not every enum is a status.** A lead's *source* (Web / Referral / Cold call) is a
+**category** — no value is better than another. A quote's *status* is an **outcome**.
+Both render as coloured pills now, so colour has stopped meaning "pay attention" and
+started meaning "this field is a dropdown".
+
+**Colouring the happy path is most of the noise.** The contract map colours **7 of its 8
+values**; insertion orders colour 5 of 6. But an operator scanning a list is looking for
+*problems*, not for normal. Green "Paid" on 90% of rows is 90% noise, and it makes the
+5% that need attention harder to find — the opposite of what status colour is for.
+
+**The ruling.** Every enum value carries a **tone**, not a colour:
+
+| Tone | Examples | In a list | On a record page |
+|---|---|---|---|
+| `neutral` | Draft, Sent, Signed, Active, Paid, Open, New | Plain `text-copy-primary` | May take its semantic colour — one instance, so the budget reads |
+| `attention` | Expired, Partially signed, Pending, Due soon | `text-state-warning` | same |
+| `critical` | Overdue, Cancelled, Rejected, Failed, Void | `text-state-danger` | same |
+
+Roughly **15% of values keep colour in a list**, against ~85% today. Categories —
+source, type, industry, priority where it is not an SLA — get no tone at all and render
+as plain text.
+
+`lib/statusStyles.ts` stops returning raw Tailwind strings (`{bg, text, border, label}`)
+and returns `{tone, label}`. The **renderer** decides the treatment from context: plain
+ink in a list, semantic colour on a record header. That is also what fixes the 52 files
+currently re-deriving colour at the call site.
+
+**`Pill` is deleted, not restyled.** It is `rounded-full` + border + tinted fill +
+`text-xs font-medium` + `backdrop-blur-sm` **plus a noise-texture overlay `<div>`** —
+decoration carrying no information, rendered once per chip, hundreds of times per table.
+§1.3 is explicit that hierarchy comes from ink rather than boxes, and a capsule in every
+row of every list is the clearest violation of it in the app. Where a genuine badge is
+still needed (a count, a tag), that is a different component with a different name.
+
+**Two live bugs this sweep clears.** `sent` / `issued` / `imported` map to
+`bg-action-primary-muted` + `text-primary`, and §11 records that `--color-primary` was
+neutralised and `bg-action-primary` was a dead class emitting no CSS. Those chips are
+already rendering wrong; nobody noticed because a pill looks plausible either way.
+
+**Classify richly, render sparsely — this is a build requirement, not a preference.**
+R5 is the ruling most likely to be revisited once it is seen on real data, so it must be
+built so that revisiting it is a one-line edit rather than a refactor. Two rules:
+
+- **The tone vocabulary includes `success` from day one**, and every value that *is* a
+  success is classified as one — even though a list currently renders `success` as plain
+  ink. Defining only `neutral` / `attention` / `critical` now would make "colour the
+  signed states green" mean *adding a fourth tone*, which is a type change rippling
+  through every map and every switch. Classified-but-unpainted costs nothing today and
+  makes that decision permanently free.
+- **No call site ever names a colour.** `statusStyles.ts` owns *which values carry which
+  tone*; `StatusValue` owns *how a tone looks in a given context*. Nothing else
+  participates. That is what keeps the two foreseeable changes — reclassifying a value,
+  and switching lists to the dot treatment — at one line and one component respectively,
+  no matter how many modules have already migrated.
+
+The cost of changing this ruling therefore does **not** grow as the programme runs. It
+shrinks: 52 files currently hardcode `bg-state-success-muted`, so the same change today
+is a 52-file sweep and after 5.5 it is one line.
+
+**The fallback is named, not improvised.** If plain ink reads as flat rather than calm on
+a real list with real data, the fallback is a 6px tone-coloured dot before the label —
+per-state differentiation at a fraction of a pill's weight. Judge it on one seeded list
+in both themes before it propagates to fifteen.
+
+### R6 — Inline edit is detail-page only, and the affordance is explicit
+
+R2 made state fields editable. R6 bounds *where*: **the record detail page only.** In a
+table, status is display-only text — no chevron, no hover affordance, no edit. Changing
+it means opening the record.
+
+This keeps the table calm, which is the whole point of R5, and it avoids the three costs
+of table-cell editing: an affordance repeated on every row, a keyboard path that has to
+coexist with Phase 3's row-open gesture, and an accidental click that changes data.
+
+**The affordance is an always-visible quiet chevron** after the value, in
+`text-copy-muted` — not a hover reveal. A hover-only affordance is invisible until you
+happen to point at it, which fails discoverability and fails anyone driving by keyboard.
+No border on the value at rest (§1.3). Hover raises the ground to `bg-surface-muted`;
+focus takes the §2.3 ring.
+
+Fast list triage — re-staging five leads without opening five records — is **not being
+built**. If it is wanted later it is a follow-on with its own interaction pass, not a
+side effect of this one.
+
+---
+
+## The coverage contract
+
+"Every single one" needs a denominator, or it degrades into "the ones we remembered".
+
+| Surface | Count |
+|---|---|
+| `app/**/page.tsx` | **116** — dashboard 90, client 17, auth 3, public 1, book 1, e2e harness 3 |
+| `app/**/layout.tsx` | 4 |
+| `components/**` (non-`ui`) | 115 files, ~32,000 lines |
+| `components/ui/` | 54 files, 6,273 lines |
+
+**5.0 produces `rebuild-census.md`** — every one of those files, one row each, with its
+owning sub-phase and a one-word verdict (`rebuild` / `adopt` / `delete` / `unchanged`).
+It is updated as each sub-phase closes, so *"did we skip anything"* is answered by
+reading a table rather than by memory. **A sub-phase is not done while a row it owns is
+unmarked.**
+
+Three groups are marked `unchanged` up front, with reasons, and they are the only ones:
+
+| Marked unchanged | Reason |
+|---|---|
+| `app/e2e/**` (3 harness routes) | Test-only, blocked in production by `proxy.ts` |
+| `app/dashboard/finance/pos/[invoiceId]/print` | §2.5 exception 2 — the invoice carries its own document theme and must not follow the app theme |
+| `HexagonBackground.tsx`, `AnimatedShinyText.tsx`, `LynkSplash.tsx` | §9 identity surfaces. `LynkSplash:58` still gets its off-grid `pl-[0.2em]` fixed in 5.9; the motif itself is not touched |
+
+---
+
+## Testing policy
+
+The 58-spec suite at `--workers=1` is what has been costing the time. **It stops running
+per sub-phase.**
+
+**Every sub-phase, always** — cheap, and they are the actual contract:
+
+```bash
+docker compose exec -T frontend npm run lint
+docker compose exec -T frontend npm run build
+./scripts/check-design.sh                      # run at the START of a sub-phase too
+docker compose run --rm frontend-e2e npm run test:e2e -- design-rules.spec.ts scroll-containers.spec.ts --workers=1
+```
+
+The two rendered guards stay. They cannot be narrowed — `design-rules.spec.ts` is a
+*single* test that loops ~95 routes internally, so there is no `--grep` that scopes it —
+but that is also why it is cheap: one login, one pass. Dropping the design guard from a
+design programme would be the wrong economy.
+
+**Only the specs for what changed.** Each sub-phase runs the module specs for the modules
+it touched, and nothing else:
+
+```bash
+docker compose run --rm frontend-e2e npm run test:e2e -- leads-revamp.spec.ts quotes-revamp.spec.ts --workers=1
+```
+
+**Full suite exactly twice** — once at the end of 5.5 (the halfway structural point,
+where tables and lists have all moved) and once before 5.10. Not per sub-phase.
+
+**No new e2e specs during the programme.** Existing specs get *updated* where a rebuild
+moves the thing they assert. New coverage lands only in 5.10, as checks inside the guard
+spec that already exists. Writing eleven sub-phases' worth of new specs is the cost being
+cut.
+
+**Screenshots, trimmed.** The stash/restore before-and-after ritual runs only where a
+change is global and invisible to assertions — 5.1, 5.2, and 5.8's auth surface. Every
+other sub-phase takes plain after-shots of the routes whose structure changed, both
+themes, one narrow (768px).
+
+**Two checks stay mandatory and are not delegable to an assertion:**
+
+- the honeycomb still renders as a honeycomb after 5.8 (§9 records it silently breaking
+  once already);
+- a tab-through of a rebuilt record page after 5.3, focus visible at every stop.
+
+Run-shape traps, already paid for once: a cold run reports sales lists unreachable — warm
+the routes first; parallel runs add a dozen timeout failures that vanish serially. Judge
+on `--workers=1`, and read `docs/e2e-suite-status.md` before treating a red as new.
+
+Seed before any detail route is reachable:
+
+```bash
+docker compose exec -T backend python -m scripts.seed_demo_crm --tenant-slug default
+docker compose exec -T backend python -m scripts.seed_module_samples --tenant-slug default
+```
+
+---
+
+## The risk in the chosen method, and the mitigation
+
+Rebuilding in place discovers the shared API *late* — the first module's rewrite is also
+the API proposal, and modules 2–4 usually force a revision that sends you back. Phase 3
+avoided this by building `RecordTable` first.
+
+Mitigation, applied to every sub-phase:
+
+- The **first module of a family is rebuilt in place and its shared components are
+  hoisted in the same sub-phase**, before module two starts. A sub-phase that ends with a
+  shared shape still living in a page file has not ended.
+- The **second module is the API test.** If it needs a `className` to fit, that is a
+  missing `cva` variant (§7.3), and the primitive changes before module three.
+- 5.1 is the one deliberate exception, explained there.
+
+---
+
+## Sub-phase index
+
+| | Sub-phase | Owns |
+|---|---|---|
+| 5.0 | Direction, law, census | The archetypes, the type ladder, the signature, the rulings every later sub-phase needs |
+| 5.1 | Cross-cutting primitives | The seven extractions + the dialog migration |
+| 5.2 | Panel language | The 206 hand-rolled boxes |
+| 5.3 | Record detail | 7 archetypes → 1 |
+| 5.4 | Forms | The create/edit model |
+| 5.5 | One table, list workflow | 18 raw-`Table` files + Appendix A's core |
+| 5.6 | Settings | All 23 pages, plus Phase 4's unfinished items |
+| 5.7 | Dashboard, reports, boards, calendars, mail | The surfaces no phase has touched |
+| 5.8 | Client portal, public, auth | Was Phase 7 |
+| 5.9 | Copy and voice | Was Phase 6 |
+| 5.10 | Guard the composition | Was Phase 8; all new test coverage lands here |
+
+---
+
+## 5.0 — Direction, law, and the census
+
+**Docs only. No product code.** `design.md` §1.1 and §12 require it: a change that
+touches more than one screen's *structure* is a redesign and must be written down first.
+
+Run the `frontend-design` skill's process — brainstorm, explore, plan, critique — against
+the real brief, which is `docs/design/`. The skill's own rule applies: *where the brief
+pins down a visual direction, follow it exactly.* Palette and face are pinned. Three axes
+are open, and that is where the design work goes.
+
+**Type — the intra-page hierarchy.** §11 already records "body copy is still one size in
+practice, 872 `text-sm`", and there are four competing section-heading sizes for one
+role. Under one face, hierarchy is the *only* place typographic personality can live.
+Produce a closed, named ladder — page title → section heading → eyebrow → field label →
+value → metadata, each with size, weight and ink token — and write it into §3.3.
+
+**Layout — the five archetypes.** One ASCII wireframe each for list, record, form,
+settings, dashboard, decided from the operator's job rather than from the median of what
+exists. The record wireframe is load-bearing: it settles where activity, notes, tasks and
+documents live, and whether editing happens in place.
+
+**Signature — one element, justified.** Spend the boldness once. The hive is already
+Lynk's identity but §9 confines it to auth/splash/ambient, so the product surface needs
+its own. Leading candidate: the **record spine** — a persistent rail carrying the
+record's relationships and state, because relationships are what a CRM operator navigates
+by, and `RecordRelationshipRail` already exists on three pages as a half-built version of
+it. Work at least two alternatives before committing, and apply the skill's calibration
+test: *would I have produced this for any CRM?* If yes, revise.
+
+**R1–R4 are already decided** and constrain the wireframes: the record wireframe must
+render R2's state/content split visibly, and the form wireframe must show a footer only
+where R1 says manual save applies.
+
+Still to settle here, because every later sub-phase needs the ruling:
+
+- **Panel taxonomy.** §1.3 budgets two levels of visible container and says hierarchy
+  comes from ink, not boxes. Many of the 206 hand-rolled boxes should not be boxes at
+  all. Name which roles get a `Card`, which get a borderless ink group, which get a
+  `radius-control` row.
+- **Button variants.** R4 settled the *sizes*. Cut the variant set to the five with real
+  usage (`default`, `outline`, `ghost`, `destructive`, `dangerGhost`) and add
+  `destructiveOutline` for the string two dialogs hand-write.
+- **The tone classification itself** (**R5**) — every enum value in every module sorted
+  into `neutral` / `attention` / `critical`, or marked a category with no tone at all.
+  This is a judgement call per field and it is the one piece of R5 that cannot be
+  mechanical. Do it once, in the doc, before 5.1 rewrites `statusStyles.ts`.
+- **One empty-value string** — `"Not set"`, including inside `ReadOnlyRecordLayout`,
+  which currently emits `"Not recorded"`. The primitive contradicts the target.
+- **The table variant set** (5.5), so that sub-phase is execution rather than discovery.
+
+**Deliverables:** `design.md` (§3.3, §4.4, the archetype contracts), `tokens.md` only if
+the type ladder needs a step that does not exist, this file, `rebuild-census.md`, and the
+`consistency-pass.md` edits.
+
+**Gate: the owner reads the direction and the wireframes before 5.1 starts.**
+
+---
+
+## 5.1 — The cross-cutting primitives
+
+The one place primitives land before their surface is rebuilt, because these are not
+speculative: **every one is an extraction of code that already exists in duplicate**, and
+5.2–5.9 all need them on day one.
+
+| New / changed | Replaces |
+|---|---|
+| `lib/currency.ts` + `<Money>` | 15 local formatters, 24 raw `Intl.NumberFormat`, mixed `"en-US"` / `undefined` locale |
+| `ActionBar` / `FormFooter` (dirty-state slot) | 10 sticky footers on 3 recipes; absorbs ~38 Button spacing overrides. Per **R4** it owns its children's control height; per **R3** it is not sticky |
+| `SaveStateIndicator` — `Saving…` / `Saved` / `Couldn't save — retry` | Nothing. **R1** requires it: autosave removes the button, which was the operator's only feedback |
+| `InlineFieldEdit` — the **R2** state-field control | 5 detail pages hand-roll inline editing today, each differently |
+| `SectionHeading` | 137 hand-written `<h2>` |
+| `Avatar` | 2 bespoke — one square, one circle |
+| **Delete `Pill`** (**R5**); `lib/statusStyles.ts` returns `{tone, label}` | 52 files re-deriving colour from raw `bg` / `text` / `border` props, 2 local `StatusPill`, the noise overlay, and two dead-token maps (`bg-action-primary-muted`) |
+| `StatusValue` — renders a `tone` per context: plain ink in a list, semantic colour on a record header | The pill, everywhere it was standing in for a status |
+| Promote `RecordPanelStates` → `components/ui/` | reaches 5 of ~40 panels today |
+| `button.tsx` variant/size cut + `destructiveOutline` | 3 dead variants, 4 near-dead, 2 hand-written destructive strings |
+
+Also here, now that decision 2 is retired: **migrate `components/ui/dialog.tsx` off
+`@headlessui/react` onto the shadcn/radix dialog.** It was excluded from the consistency
+pass only because it is a behaviour change — focus trap and close semantics, on every
+modal at once. It is the last standing `check-design.sh` failure that is not a one-line
+fix, and §11.3 exists solely to explain why the guard is red. It needs its own pass over
+the 9 dialog and 13 sheet call sites; if it slips, it slips as a unit. Do not half-land
+it.
+
+**Files:** `components/ui/{button,Pill,dialog,sheet}.tsx`; new `components/ui/{Money,
+ActionBar,SectionHeading,Avatar,PanelStates}.tsx`; new `lib/currency.ts`;
+`lib/statusStyles.ts`.
+
+---
+
+## 5.2 — The panel language
+
+The likeliest single cause of the app reading as templated: **206 boxes** where §1.3
+permits two levels of container and says to use ink instead.
+
+- Sweep every hand-rolled box per the 5.0 taxonomy — to `Card`, to a borderless ink
+  group, or deleted as a nesting level.
+- Enforce the two-level budget on every dashboard route. A box inside a box inside a card
+  is what makes a dense product look generic.
+- Retire the local `SummaryTile` **container** recipes here rather than in 5.3, since they
+  are panel decisions: `radius-card` + `line-subtle` vs `radius-control` + `line-default`
+  at `py-3` vs the same at `py-4`.
+
+```bash
+grep -rn 'rounded-\[var(--radius-card)\]' app components --include='*.tsx' | grep -c border   # 206 today
+```
+
+---
+
+## 5.3 — Record detail: one archetype
+
+**7 archetypes → 1:**
+
+| # | Archetype | Records |
+|---|---|---|
+| 1 | `RecordWorkspace` + rail + `RecordTabs` + `ReadOnlyRecordLayout` | lead, contact, account |
+| 2 | `Card` grid + `RecordTabs` with activity **nested inside** | deal, invoice |
+| 3 | `Card` grid, no tabs, activity appended at the bottom | quote, order, support case, insertion order |
+| 4 | `Card`/`CardHeader`/`CardBody` grid, **no activity at all** | contract |
+| 5 | `RecordTabs` + `FormSection` inline-edit form | custom module record |
+| 6 | `PageShell actions=` with no `RecordPageHeader` | catalog product, catalog service |
+| 7 | Hand-rolled `max-w-5xl` + raw `<section>`, no record primitive | 7 client-portal pages (rebuilt in 5.8, onto this same archetype) |
+
+- **`RecordWorkspace` is nearly a no-op** — its own docstring says it forwards to
+  `PageShell`. Converging "onto `RecordWorkspace`" really means converging onto
+  `RecordWorkspaceHeader` + `Primary` + `Region` + `RelationshipRail`. Name the real
+  target, or the sub-phase converges onto a pass-through.
+- **Nested tabs: 2 sites, not 6.** `opportunities/[opportunityId]:507` and
+  `finance/pos/[invoiceId]:268`. The audit overstated this by four pages.
+- **Replace the 9–12 private field renderers** with the 5.1/5.2 family +
+  `ReadOnlyRecordLayout` (used by only 3 pages today).
+- **Fix both hand-rolled `role="tablist"`** — `views/[moduleKey]:162`,
+  `settings/module-builder:479`. `SavedViewSelector.tsx:26` is the correct reference if
+  radix genuinely does not fit.
+- **Fill the holes the archetype exposes.** Contracts have no activity, notes, documents
+  or tasks. Contacts and accounts have no `RecordActivityFeed` though leads do. Support
+  cases carry two comment systems and two histories on one screen.
+- **Five detail pages are secretly forms** — quotes (**1,335 lines**), support cases,
+  orders, contracts and custom records all edit in place with Save in `RecordPageHeader
+  primaryAction`, outside `RecordFormLayout` and outside the sticky-footer convention.
+  **R1/R2 answer this**: their *state* fields become `InlineFieldEdit` and autosave;
+  their *content* fields become read-only and move to `/[id]/edit`; the line-item
+  documents among them (quote, order, invoice) keep an explicit manual save for the
+  document body, per R1. The header Save disappears with the sticky bar (R3).
+- **Fix the `/[id]/edit` round trip while the pages are open** (R2): preserve `?tab=` so
+  editing from the Files tab returns to Files, and put the Edit affordance on every tab
+  rather than only the record header.
+- Give leads' tab order a default that matches its first tab.
+
+**Appendix A here:** A4 (partly closed by R2 — a workflow change is one click; a typo fix
+stays a page trip, deliberately), A12 (quote → order needs 3 actions), A13 (lead convert
+has no unsaved-changes guard).
+
+**Backend slice — approved, and it lands before the first module ships inline edit.**
+R1's autosave turns every state change into an activity entry, and this app renders
+`RecordActivityFeed` / `RecordActivityTimeline` on every record. Changing a lead's stage
+three times while thinking must not produce three history rows.
+
+The work is server-side, in the activity-log write path: coalesce consecutive entries for
+the **same tenant + record + field + actor** inside a short window into one entry that
+keeps the *original* previous-value and the *latest* new-value. A same-field change that
+returns to its starting value inside the window collapses to nothing. Scope it with
+`backend-change`, and keep it tenant-scoped like every other write. Client-side debounce
+on the autosave itself is necessary but not sufficient — two operators, or one operator
+across a debounce boundary, still generate the noise.
+
+---
+
+## 5.4 — Forms and the create/edit model
+
+Further along than the audit implies: **14 of 16 form routes are on `RecordFormLayout`**
+and all 16 call `useUnsavedChangesGuard`.
+
+- Two stragglers: `MessageTemplateRecordFormPage.tsx:205` (a verbatim copy of the sticky
+  footer classes) and `DocumentUploadFormPage.tsx:515` (a different footer shape).
+- `TextField` defined 4× (lead / contact / organization / opportunity form fields);
+  `ToggleRow` 2× despite `SettingsSwitchRow` owning that shape; the responsive field grid
+  `grid gap-* sm|md:grid-cols-2` hand-written **78×**.
+- `insertion-orders` renders **two Cancel buttons** — `PageShell actions:265` and
+  footer:305.
+- One pending label (`"Saving…"`), one dirty-state string, one error idiom. Two forms use
+  only a toast where the other 14 show a `role="alert"` banner.
+
+**Appendix A here — A3, closed by R2.** Both create paths are kept and both are
+standardised across all 15 modules: `QuickCreateSurface` for a fast create, the `/new`
+page for a detailed one. Today it is a sheet on 4 and a page on 11, and
+`OpportunityQuickCreate` is wired into contacts and accounts but *not* the deals list —
+so creating a deal from a contact is currently cheaper than from the deal list.
+
+**Footers follow R1 and R3.** A `/new` page and a line-item document keep a manual save;
+that action bar is no longer sticky. Every other form footer disappears with autosave.
+
+---
+
+## 5.5 — One table, and the list workflow
+
+### Every table, and where it goes
+
+24 files are on `RecordTable`. **18 are still on raw `Table`.** All 18 move. The variant
+set is decided in 5.0, so this is execution rather than discovery.
+
+**Move to `RecordTable` as-is — lists wearing a different coat (11):**
+
+`settings/customer-groups/page.tsx` · `settings/modules/page.tsx` ·
+`settings/modules/[moduleId]/page.tsx` · `settings/permissions/page.tsx` ·
+`users/userManagementTable.tsx` (**873 lines**, the largest) ·
+`automation/AutomationRulesTable.tsx` · `automation/AutomationRunsTable.tsx` ·
+`integrations/IntegrationEventHistory.tsx` ·
+`integrations/IntegrationWebhookWorkspace.tsx` ·
+`integrations/IntegrationWebsiteWorkspace.tsx` · `dashboard/DashboardPersonalWidgets.tsx`
+
+`reports/page.tsx` uses **both** `RecordTable` and raw `Table` in one file. It resolves to
+one.
+
+**`variant="lineItems"` — a variant, not an exemption (5):**
+
+`sales/quotes/[quoteId]` · `sales/orders/[orderId]` · `finance/pos/[invoiceId]` ·
+`transactions/TransactionLineItemsEditor.tsx` · and the quote / order / invoice **form**
+pages that render the same editable grid.
+
+These are editable line-item grids: add and remove row, per-row inputs, a totals footer,
+no selection, no sort, no pagination. That is a different *shape*, not a different
+*table* — §7.3 says legitimate differences are `cva` variants on the primitive. One
+primitive, two variants, no second implementation.
+
+Building this variant is the load-bearing task of this sub-phase. **If `RecordTable`
+genuinely cannot carry an editable row without contorting, that finding is written into
+`design.md` and taken to the owner before a second table is allowed to exist.** It does
+not get quietly exempted.
+
+**`variant="readOnly"` (2):** `client/orders/[orderId]` · `client/pages/[token]`. Portal
+tables — no selection, no sort, no row-open gesture. They land in 5.8, on this primitive.
+
+**No table is exempt.** The only files that keep raw `Table` are the primitives that
+*implement* it: `components/ui/{RecordTable,ModuleTableLoading,ModuleListToolbar}.tsx`.
+
+### The list workflow — where Appendix A concentrates
+
+- **A1 — list state is not addressable.** `usePagedList` and `useSavedViews` hold search,
+  filters, sort, page and page size in React state. Open a record from page 4 of a
+  filtered list, press back, and land on page 1 unfiltered — on **15 of 16 lists**.
+  Highest cost × frequency item in the appendix.
+- **A2** — `ColumnPicker` is wired into **1 of 16** pages. Elsewhere, hiding a column
+  costs 6+ clicks and leaves you owning a saved view you did not want.
+- **A5** — search fires a request per keystroke on all 14 toolbar pages. No debounce in
+  `usePagedList`, `useSavedViews`, or `SearchBar`.
+- **A6** — pos ships select-all, per-row checkboxes and a "3 invoices selected" bar that
+  nothing consumes; payments answers a 3-row selection with "Select one invoice to record
+  a payment".
+- **A7** — payments' header button is the slower of its two paths.
+- Two migration stragglers: `documents` has no `ModuleListToolbar` and **no pagination**;
+  `client-portal/page.tsx` calls `RecordTable` inline twice with no module table
+  component.
+
+**Full suite runs once at the end of this sub-phase.**
+
+---
+
+## 5.6 — Settings (all 23 pages)
+
+- **Carry-forward from Phase 4, which did not finish.** `PermissionDeniedState` reaches
+  **1 of 23** settings pages — settings is entirely admin-gated, so this is exactly what a
+  non-admin hits — and the commit model was never settled:
+  `settings/authentication/page.tsx` autosaves a select at `:45` and demands an explicit
+  Save/Discard footer 40 lines below, with no visual difference between them.
+  **R1 settles it**: settings controls autosave, so all six sticky Save/Discard footers
+  in settings go (R3), and `SaveStateIndicator` replaces them. The eight editing patterns
+  across 19 pages collapse to one.
+- **A8** — no lateral navigation; any two-page settings task round-trips through the hub.
+  Two IAs disagree — `SETTINGS_NAV_ITEMS` (flat, 18) vs the hub's `SETTINGS_SECTIONS`
+  (6 groups, 19) — leaking `record-layouts`, which is invisible to ⌘K and renders Title
+  Case from a label fallback.
+- **A10** — field config has no deep link; selection is local state, so every visit starts
+  on the default module and Back loses it.
+- **A9** — `NotificationCenter.tsx:210`, `routes.ts:86` and `app/dashboard/page.tsx:404`
+  route non-admins into permission walls with no `isAdmin` check.
+- The large ones get rebuilt, not patched: `backups` 938, `module-builder` 874, `fields`
+  788.
+
+---
+
+## 5.7 — Dashboard, reports, boards, calendars, mail
+
+The surfaces no phase has touched.
+
+- `StatTile` — 5 metric implementations plus 28 inline `text-xl`/`text-2xl font-semibold`
+  big-number treatments. **Load the `dataviz` skill** before touching chart colour or
+  stat-tile layout.
+- `ListRow` / `TimelineItem` — **11 unshared** activity / comment / notification / event
+  row implementations.
+- `DropZone` + `SortableList` — **6 raw HTML5 drag-and-drop** implementations.
+- A shared `Board` for the 2 kanbans, and one calendar grid for the 3 (tasks calendar,
+  dashboard calendar with 5 raw `<button>`s, public booking).
+- `mail/page.tsx` (760) and `calendar/page.tsx` (631) rebuilt onto the archetypes.
+- **A11** — reports costs 2 clicks because a single-item module became a collapsible
+  sidebar group, and opening it collapses the group you were in.
+- `finance/invoice-generator/page.tsx` is a 3-line `redirect()` still in the route list.
+
+---
+
+## 5.8 — Client portal, public, and auth
+
+Was consistency-pass Phase 7. The portal is a second app, not a second theme: **no
+`app/client/layout.tsx`**, 20 repeats of `min-h-screen bg-app`, 21 of the `font-lynk`
+wordmark, container width drifting `max-w-6xl` / `5xl` / `4xl` / `md`, exactly one
+dashboard primitive imported (`Button`), and 18 hand-written loading / empty / error
+blocks. Its 7 detail pages are archetype 7 from 5.3 and land on that archetype.
+
+- Add the layout, real lateral navigation, and adopt `PageShell` / `Card` / `EmptyState` /
+  `RouteStates` / `StatusValue` (**not** `Pill` — R5 deletes it) /
+  `RecordTable variant="readOnly"`.
+- Bring portal type onto the product ramp — `text-2xl`/`text-3xl` `h1`s → `text-lg`
+  (§3.3 caps product UI there).
+- Decide deliberately whether `/client/login` should match `/auth/login`'s treatment, and
+  write the choice into §9. They are currently two different products; either is
+  defensible, but it should be a decision.
+- `ClientPageCreateForm.tsx:335` — the `size-6` call-site control height, one of the three
+  standing guard failures.
+- **`app/auth/layout.tsx:20,22,28` — tokenise the raw `rgba()`, do not delete it.** §9
+  records a previous attempt replacing the hive with three linear-gradients at
+  150°/30°/90°, which draws a *triangular* lattice, at a contrast low enough to be
+  invisible — and nothing caught it. **Screenshot `/auth` in both themes before and after
+  and confirm the honeycomb is still a honeycomb.** On the exit criteria, because no
+  assertion in the suite can tell the two outcomes apart.
+
+---
+
+## 5.9 — Copy and voice
+
+Was consistency-pass Phase 6. Best done once the structure is settled, because copy is
+what the newly standardised states render.
+
+**Vocabulary — one value per role:**
+
+- One section-heading size per role (§3.3: `text-base` inside a page).
+- One link treatment — `text-copy-primary` + underline offset per §2.2. Four are in use;
+  none match.
+- One create verb — "Create X" (currently Create / Add / New / Upload).
+- One pending label — `"Saving…"`. One dirty-state string. One two-column ratio. One grid
+  breakpoint (`md`).
+- **Sentence case.** The `uppercase` guard cannot see Title Case. Known leaks: `"Save
+  Quote"` (`quotes/[quoteId]:493`), "New Contract", "Add Task", "New Product", "Module
+  Settings"; the runtime title-casers at `SupportCaseCreateFormPage.tsx:260`,
+  `support/cases/[caseId]:269`, `insertion-orders/[ioId]:186`; and 17 repeats of
+  `charAt(0).toUpperCase()` duplicating `lib/module-display.ts#formatSnakeCaseLabel`.
+- `contracts/[contractId]:244,264,265` renders raw foreign keys (`` `User #${owner_id}` ``)
+  where support cases resolve the same field to a name. The operator knows a person.
+- `LynkSplash.tsx:58` `pl-[0.2em]` — the remaining off-grid guard failure.
+- Resolve the `gap-5` / `p-5` sweep per the consistency-pass Phase 0 ruling: both are off
+  the ladder.
+
+**Voice — the states 5.1–5.8 standardised now get their words:**
+
+- **An action keeps its name through the flow.** "Create invoice" produces "Invoice
+  created", not "Saved successfully".
+- **Errors name the fix, not the failure** (§7.5) — extended from field errors to the
+  route-level error states.
+- **Empty states are an invitation to act** (§7.4): what the thing is, then the create
+  action.
+- **Destructive confirmations name the record and the consequence** (§7.5). An "Are you
+  sure?" that names nothing is the same defect as an error that says "Invalid".
+
+---
+
+## 5.10 — Guard the composition
+
+Was consistency-pass Phase 8. Extend `tests/e2e/design-rules.spec.ts` — do not add a
+spec; it already walks every route and logging in is the expensive part. **This is where
+the programme's new test coverage lands, all of it, once.**
+
+Checks carried from the original Phase 8:
+
+- **Type ramp** — computed `font-size` on visible text must be in {11, 12, 14, 16, 18}.
+- **Page-root rhythm** — the first element inside the layout's content scroller carries
+  `data-slot="page-shell"`.
+- **Card border tier** — no visible container at panel size uses `border-line-subtle`.
+- **Control border tier** — no `input` / `select` / `checkbox` bounded by a sub-3:1 token.
+- **Title Case** — visible button and heading text where a non-first word is capitalised
+  and is not a known proper noun. Needs an allowlist.
+- **Focus is visible** (§2.3, §8) — the spec never focuses anything today, which is why 68
+  scattered `focus-visible` uses have never been checked. Focus a sampled set per route
+  and assert the computed `outline` or `box-shadow` actually changes.
+- **Reduced motion is respected** (§6) — re-run one route under
+  `emulateMedia({ reducedMotion: "reduce" })` and assert nothing reports a running
+  animation.
+
+New checks this programme earns:
+
+- **Nesting depth** — no third level of visible container (§1.3), the rule 5.2 enforces.
+- **One archetype per surface** — a record detail route carries the archetype's
+  `data-slot`, not a hand-rolled root.
+- **One table** — source-level in `check-design.sh`: importing `components/ui/Table`
+  outside the three primitives that implement it fails.
+- **No page-local field renderer** — a `SummaryTile` / `DetailField` / `LinkedTile` /
+  `MoneyRow` defined outside `components/ui/` fails.
+- **Currency through `<Money>`** — no `Intl.NumberFormat` with a currency style outside
+  `lib/currency.ts`.
+- **Sibling control height** (**R4**) — buttons that are siblings in one action row must
+  compute to the same height. Rendered, since the mix comes from call-site size props.
+- **Sticky allowlist** (**R3**) — source-level in `check-design.sh`: `position: sticky`
+  is legal only on a table header. A new `sticky bottom-0` fails.
+- **Colour budget in a list** (**R5**) — rendered: count the elements inside a table body
+  carrying a non-neutral text or background colour. A list where most rows are coloured
+  has re-created the pill problem under another name. `Pill` itself is gone, so the
+  source guard also fails on the identifier returning.
+
+**Widen the route list** to the surfaces that are unwalked and drifted furthest:
+`/auth/*`, `/book/**`, `/public/quotes/proposal/[token]`, `/client/pages/[token]`,
+`/client/*/[id]`, `/dashboard/views/[moduleKey]`, `/dashboard/custom/**`,
+`settings/message-templates/[id]/edit`. Layer 6 of the audit exists *because* the guard
+stops at the portal's list pages.
+
+**Full suite runs before this sub-phase and again after it.**
+
+---
+
+## Baseline
+
+`./scripts/check-design.sh` fails **3 of 14 rules at HEAD**, before this programme
+touches anything. "Green" means *no new failures and the sub-phase's own rules cleared*,
+not a clean run, until each owner closes theirs.
+
+| Failing rule | Site | Owner |
+|---|---|---|
+| §4.1 spacing stays on the 4px grid | `LynkSplash.tsx:58` — `pl-[0.2em]` | 5.9 |
+| §4.2 no call-site control heights | `ClientPageCreateForm.tsx:335` — `size-6` | 5.8 |
+| §7.2 shadcn is the only component library | `@headlessui/react` in `package.json` | 5.1 |
+
+Run the source guard at the *start* of a sub-phase as well as the end. It is the cheapest
+of the three checks and the only one that reads `package.json`.
+
+Phase 3's lesson stands: lint, typecheck, build, both rendered guards and 99 module specs
+were all green **with a real bug in the tree**. It needed a wide table, a sideways scroll,
+and someone looking.
+
+---
+
+## Explicitly not doing
+
+- Not revisiting the visual language — no accent, no second face, no loosened density
+  (decision 1).
+- Not touching the `sr-only` `h1` in `PageHeader`; §8 says it is correct.
+- Not reintroducing a max-height on `ModuleTableShell` (§11.1), and not re-pinning table
+  columns — §4.4 records the two defects that took pinning back out.
+- Not re-fixing `RecordTabs` or `ColumnPicker` — resolved in `e6a53f8`.
+- Not touching the invoice print document's colours (§2.5 exception 2).
+- Not stripping the auth surface's ambient layers — §9 identity, tokenised in 5.8.
+- Not making Lynk responsive. §4.4 gutters stand; the narrow-viewport capture is a
+  regression check, not the start of a mobile pass.
+- Not reopening deliberately deferred slices — WhatsApp sending, payment links, broad
+  Gmail access, user-created modules (`CLAUDE.md`).
+- **Appendix B.2 stays filed, not fixed here.** Custom-module filters are collected and
+  silently discarded (`custom/[moduleKey]:251` vs `useModuleBuilder.ts:298`). It is a
+  data-correctness bug that likely needs a backend query-param contract, so it is outside
+  a frontend programme's scope.
