@@ -51,7 +51,7 @@ import {
   type DashboardWidgetCatalogItem,
   type DashboardWidgetSize,
 } from "@/components/dashboard/DashboardLayoutEditor";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -380,46 +380,50 @@ export default function DashboardHomePage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-secondary">
-      <PageToolbar>
-          {isEditing ? null : (
-            <>
-              <Select value={String(periodDays)} onValueChange={(value) => setPeriodDays(Number(value))}>
-                <SelectTrigger aria-label="Dashboard date range" className="w-36"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="7">Last 7 days</SelectItem>
-                  <SelectItem value="30">Last 30 days</SelectItem>
-                  <SelectItem value="90">Last 90 days</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button type="button" variant="outline" onClick={() => void refreshDashboard()} disabled={isRefreshing}>
-                <RefreshCw className={cn(isRefreshing && "animate-spin")} />
-                {isRefreshing ? "Refreshing…" : "Refresh"}
-              </Button>
-              <Button type="button" variant="outline" onClick={beginEditing}>
-                <Pencil />
-                Edit dashboard
-              </Button>
-              <Button asChild variant="outline">
-                <Link href={SETTINGS_ROUTES.activityLog}>
-                  <ClipboardList />
-                  Activity log
+    <PageShell
+      title="Dashboard"
+      actions={(
+        <>
+        {isEditing ? null : (
+          <>
+            <Select value={String(periodDays)} onValueChange={(value) => setPeriodDays(Number(value))}>
+              <SelectTrigger aria-label="Dashboard date range" className="w-36"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">Last 7 days</SelectItem>
+                <SelectItem value="30">Last 30 days</SelectItem>
+                <SelectItem value="90">Last 90 days</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button type="button" variant="outline" onClick={() => void refreshDashboard()} disabled={isRefreshing}>
+              <RefreshCw className={cn(isRefreshing && "animate-spin")} />
+              {isRefreshing ? "Refreshing…" : "Refresh"}
+            </Button>
+            <Button type="button" variant="outline" onClick={beginEditing}>
+              <Pencil />
+              Edit dashboard
+            </Button>
+            <Button asChild variant="outline">
+              <Link href={SETTINGS_ROUTES.activityLog}>
+                <ClipboardList />
+                Activity log
+              </Link>
+            </Button>
+            {accessibleRoutes.has(DASHBOARD_ROUTES.tasks) ? (
+              <Button asChild>
+                <Link href={DASHBOARD_ROUTES.tasks}>
+                  <Plus />
+                  New work
                 </Link>
               </Button>
-              {accessibleRoutes.has(DASHBOARD_ROUTES.tasks) ? (
-                <Button asChild>
-                  <Link href={DASHBOARD_ROUTES.tasks}>
-                    <Plus />
-                    New work
-                  </Link>
-                </Button>
-              ) : null}
-              {accessibleRoutes.has(DASHBOARD_ROUTES.calendar) ? <HeaderLink href={DASHBOARD_ROUTES.calendar} icon={<CalendarDays />} label="Calendar" /> : null}
-              {accessibleRoutes.has(DASHBOARD_ROUTES.mail) ? <HeaderLink href={DASHBOARD_ROUTES.mail} icon={<Mail />} label="Mail" /> : null}
-              {accessibleRoutes.has(DASHBOARD_ROUTES.documents) ? <HeaderLink href={DASHBOARD_ROUTES.documents} icon={<FileText />} label="Documents" /> : null}
-            </>
-          )}
-      </PageToolbar>
+            ) : null}
+            {accessibleRoutes.has(DASHBOARD_ROUTES.calendar) ? <HeaderLink href={DASHBOARD_ROUTES.calendar} icon={<CalendarDays />} label="Calendar" /> : null}
+            {accessibleRoutes.has(DASHBOARD_ROUTES.mail) ? <HeaderLink href={DASHBOARD_ROUTES.mail} icon={<Mail />} label="Mail" /> : null}
+            {accessibleRoutes.has(DASHBOARD_ROUTES.documents) ? <HeaderLink href={DASHBOARD_ROUTES.documents} icon={<FileText />} label="Documents" /> : null}
+          </>
+        )}
+        </>
+      )}
+    >
 
       {layoutQuery.error ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/30 bg-state-danger-muted px-4 py-3 text-sm text-copy-secondary">
@@ -455,7 +459,7 @@ export default function DashboardHomePage() {
         onSave={(nextWidgets) => saveMutation.mutate(nextWidgets)}
         renderWidget={renderWidget}
       />
-    </div>
+    </PageShell>
   );
 }
 

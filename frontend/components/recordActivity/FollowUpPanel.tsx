@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -118,10 +118,7 @@ export default function FollowUpPanel({
           <Checkbox
             checked={createReminder}
             onCheckedChange={(checked) => setCreateReminder(checked === true)}
-            className="flex h-4 w-4 items-center justify-center rounded border border-line-strong bg-surface-raised text-copy-primary"
-          >
-            <CheckboxIndicator className="h-3 w-3" />
-          </Checkbox>
+          />
           Create reminder task
         </label> : null}
         {shouldCreateReminder ? (

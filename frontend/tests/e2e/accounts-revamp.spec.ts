@@ -83,7 +83,7 @@ test("Accounts list keeps shared controls usable on mobile", async ({ page }) =>
   await filtersButton.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByText("Filter Conditions")).toBeVisible();
-  const tableRegion = page.getByRole("region", { name: "Data table" });
+  const tableRegion = page.getByRole("region", { name: "Accounts" });
   await expect(tableRegion).toBeVisible();
   await expect(tableRegion.locator("span.bg-surface-muted", { hasText: "Media & Entertainment" })).toBeVisible();
   expect(await tableRegion.locator("thead th").evaluateAll((headers) => headers.slice(0, 2).map((header) => window.getComputedStyle(header).position))).toEqual(["sticky", "sticky"]);

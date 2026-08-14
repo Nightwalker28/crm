@@ -8,7 +8,7 @@ import { ArrowLeft } from "lucide-react";
 import LeadConversionForm, { type LeadConversionCapabilities } from "@/components/leads/LeadConversionForm";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -51,11 +51,10 @@ export default function ConvertLeadPage() {
   const lead = summaryQuery.data.lead;
   const leadName = `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || lead.primary_email;
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title={`Convert ${leadName}`} description="Confirm the account, contact, and opportunity records created by this conversion." actions={<Button asChild variant="ghost" size="sm"><Link href={backHref}><ArrowLeft />Back to lead</Link></Button>} />
+    <PageShell title={`Convert ${leadName}`} description="Confirm the account, contact, and opportunity records created by this conversion." actions={<Button asChild variant="ghost" size="sm"><Link href={backHref}><ArrowLeft />Back to lead</Link></Button>}>
       {lead.status === "converted" ? (
         <Card className="p-6"><p className="text-sm text-copy-secondary">This lead has already been converted.</p><Button asChild className="mt-4"><Link href={backHref}>Return to lead</Link></Button></Card>
       ) : <LeadConversionForm leadId={lead.lead_id} leadName={leadName} company={lead.company} capabilities={capabilities} />}
-    </div>
+    </PageShell>
   );
 }

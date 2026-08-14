@@ -2,56 +2,32 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
+import { useParams } from "next/navigation";
+import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import CustomModuleRecordsTable from "@/components/customModules/CustomModuleRecordsTable";
 import { ColumnPicker } from "@/components/ui/ColumnPicker";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
-import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { PageShell } from "@/components/ui/PageShell";
 import Pagination from "@/components/ui/Pagination";
-import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
-import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
-import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import type { RecordTableSort } from "@/components/ui/RecordTable";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useCustomModuleRecords, useCustomModuleSchema, type CustomModuleRecord, type CustomModuleRecordSortState } from "@/hooks/useModuleBuilder";
 import { useSavedViews } from "@/hooks/useSavedViews";
-import { formatDateTime } from "@/lib/datetime";
 import { buildCustomModuleViewDefinition, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
-
-function renderValue(value: unknown) {
-  if (Array.isArray(value)) return value.length ? value.join(", ") : "—";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  return value == null || value === "" ? "—" : String(value);
-}
-
-type CustomModuleTableSortState = { column: string; direction: "asc" | "desc" } | null;
 
 const SORTABLE_RECORD_COLUMNS = new Set(["title", "created_at", "updated_at"]);
 
-function renderRecordColumn(record: CustomModuleRecord, column: string) {
-  if (column === "title") return record.title;
-  if (column === "created_at") {
-    return record.created_at ? formatDateTime(record.created_at, { hour: "numeric", minute: "2-digit" }) : "—";
-  }
-  if (column === "updated_at") {
-    return record.updated_at ? formatDateTime(record.updated_at, { hour: "numeric", minute: "2-digit" }) : "—";
-  }
-  return renderValue(record.values[column]);
-}
-
 export default function CustomModulePage() {
   const params = useParams<{ moduleKey: string }>();
-  const router = useRouter();
   const { confirm } = useConfirm();
   const moduleKey = params.moduleKey;
   const [page, setPage] = useState(1);
@@ -111,8 +87,6 @@ export default function CustomModulePage() {
         : { key: column, label: fieldsByKey.get(column)?.label ?? column, field: fieldsByKey.get(column) ?? null }
     ))
     .filter((column) => SORTABLE_RECORD_COLUMNS.has(column.key) || column.field);
-  const actionColumnCount = canDelete ? 1 : 0;
-  const columnCount = Math.max(1, tableColumns.length + actionColumnCount);
   const hasSearch = Boolean(search.trim());
   const { allConditions, anyConditions } = getConditionGroups(draftConfig.filters);
   const activeFilterCount = allConditions.length + anyConditions.length;
@@ -120,20 +94,12 @@ export default function CustomModulePage() {
   const rangeStart = records.totalCount ? (records.page - 1) * records.pageSize + 1 : 0;
   const rangeEnd = records.totalCount ? Math.min(records.page * records.pageSize, records.totalCount) : 0;
 
-  function handleSortChange(nextSort: CustomModuleTableSortState) {
+  function handleSortChange(nextSort: RecordTableSort) {
     setDraftConfig((current) => ({
       ...current,
-      sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null,
+      sort: { key: nextSort.column, direction: nextSort.direction },
     }));
     setPage(1);
-  }
-
-  function toggleSort(column: string) {
-    const nextSort: CustomModuleTableSortState =
-      sort?.key === column
-        ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
-        : { column, direction: "asc" };
-    handleSortChange(nextSort);
   }
 
   function clearFilters() {
@@ -168,26 +134,27 @@ export default function CustomModulePage() {
     }
   }
 
-  if (modulesLoading || schema.isLoading || fieldsLoading) {
-    return <RouteLoadingState label="custom module records" />;
-  }
+  const isResolving = modulesLoading || schema.isLoading || fieldsLoading;
+  const schemaFailed = !isResolving && Boolean(schema.error || fieldsError || !schema.data);
 
-  if (!accessibleModule?.actions?.can_view) {
-    return <PermissionDeniedState />;
-  }
-
-  if (schema.error || fieldsError || !schema.data) {
+  if (isResolving || schemaFailed || !accessibleModule?.actions?.can_view || !schema.data) {
     return (
-      <RouteErrorState
-        title="Unable to load this custom module"
-        description="The module configuration could not be loaded. Try again or return to the dashboard."
-        reset={() => void Promise.all([schema.refetch(), refreshFields()])}
-      />
+      <PageShell
+        variant="list"
+        title={schema.data?.name ?? "Records"}
+        isLoading={isResolving}
+        isPermissionDenied={!isResolving && !accessibleModule?.actions?.can_view}
+        hasError={schemaFailed}
+        errorDescription="The module configuration could not be loaded. Try again or return to the dashboard."
+        onRetry={() => void Promise.all([schema.refetch(), refreshFields()])}
+      >
+        {null}
+      </PageShell>
     );
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <PageShell variant="list" title={schema.data.name}>
       <ModuleListToolbar
         searchValue={search}
         onSearchChange={(value) => {
@@ -258,100 +225,24 @@ export default function CustomModulePage() {
         />
       ) : null}
 
-      {records.error ? (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <span>Records could not be loaded. Check your connection and try again.</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => void records.refresh()}>Try again</Button>
-        </div>
-      ) : null}
-
-      <ModuleTableShell isRefreshing={records.isFetching && !records.isLoading}>
-        <Table className="min-w-[900px]">
-          <TableHeader>
-            <TableHeaderRow>
-              {tableColumns.map((column) => (
-                SORTABLE_RECORD_COLUMNS.has(column.key) ? (
-                  <SortableHead
-                    key={column.key}
-                    sorted={sort?.key === column.key}
-                    direction={sort?.key === column.key ? sort.direction : "asc"}
-                    onClick={() => toggleSort(column.key)}
-                  >
-                    {column.label}
-                  </SortableHead>
-                ) : (
-                  <TableHead key={column.key}>{column.label}</TableHead>
-                )
-              ))}
-              {canDelete ? <TableHead className="text-right">Actions</TableHead> : null}
-            </TableHeaderRow>
-          </TableHeader>
-          <TableBody>
-            {records.isLoading ? (
-              <ModuleTableLoading columnCount={columnCount} withCheckbox={false} />
-            ) : records.error ? (
-              <TableRow>
-                <TableCell colSpan={columnCount} className="py-12">
-                  <EmptyState
-                    title="Records unavailable"
-                    description="Use Try again above to reload this custom module."
-                  />
-                </TableCell>
-              </TableRow>
-            ) : records.records.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={columnCount} className="py-12">
-                  <EmptyState
-                    title={hasActiveFilters ? "No records match this view" : "No records yet"}
-                    description={hasActiveFilters
-                      ? "Clear the filters or adjust this saved view."
-                      : canCreate
-                        ? "Create the first record for this custom module."
-                        : "Records will appear here when a teammate creates one."}
-                    action={hasActiveFilters
-                      ? <Button type="button" variant="outline" onClick={clearFilters}>Clear filters</Button>
-                      : canCreate
-                        ? <Button asChild><Link href={`/dashboard/custom/${moduleKey}/new`}>Create record</Link></Button>
-                        : undefined}
-                  />
-                </TableCell>
-              </TableRow>
-            ) : (
-              records.records.map((record) => (
-                <TableRow key={record.id} className="cursor-pointer" onClick={() => router.push(`/dashboard/custom/${moduleKey}/${record.id}`)}>
-                  {tableColumns.map((column) => (
-                    <TableCell key={column.key} className={column.key === "title" ? "font-medium text-copy-primary" : "text-copy-secondary"}>
-                      <Link
-                        href={`/dashboard/custom/${moduleKey}/${record.id}`}
-                        onClick={(event) => event.stopPropagation()}
-                        className="block max-w-[320px] truncate rounded-[var(--radius-control-sm)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-                      >
-                        {renderRecordColumn(record, column.key)}
-                      </Link>
-                    </TableCell>
-                  ))}
-                  {canDelete ? (
-                    <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon-sm"
-                        onClick={() => void handleDelete(record)}
-                        disabled={records.isSaving}
-                        className="text-state-danger hover:bg-state-danger-muted hover:text-state-danger"
-                        aria-label={`Delete ${record.title}`}
-                        title="Delete record"
-                      >
-                        <Trash2 />
-                      </Button>
-                    </TableCell>
-                  ) : null}
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </ModuleTableShell>
+      <CustomModuleRecordsTable
+        moduleKey={moduleKey}
+        moduleLabel={schema.data.name}
+        records={records.records}
+        columns={tableColumns}
+        isLoading={records.isLoading}
+        isRefreshing={records.isFetching && !records.isLoading}
+        hasError={Boolean(records.error)}
+        onRetry={() => void records.refresh()}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
+        sort={sort ? { column: sort.key, direction: sort.direction } : null}
+        onSortChange={handleSortChange}
+        canCreate={canCreate}
+        canDelete={canDelete}
+        isDeleting={records.isSaving}
+        onDelete={(record) => void handleDelete(record)}
+      />
 
       <Pagination
         page={records.page}
@@ -367,6 +258,6 @@ export default function CustomModulePage() {
           setPage(1);
         }}
       />
-    </div>
+    </PageShell>
   );
 }

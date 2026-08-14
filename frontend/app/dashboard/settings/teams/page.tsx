@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
-import { RouteErrorState } from "@/components/ui/RouteStates";
+import { PageShell } from "@/components/ui/PageShell";
 import {
   Sheet,
   SheetContent,
@@ -62,7 +62,7 @@ function DepartmentEditorSheet({
     <Sheet open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
       <SheetPortal>
         <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised outline-none">
           <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
             <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
               <div>
@@ -144,7 +144,7 @@ function TeamEditorSheet({
     <Sheet open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
       <SheetPortal>
         <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised outline-none">
           <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
             <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
               <div>
@@ -317,20 +317,17 @@ export default function TeamsAndDepartmentsPage() {
     }
   }
 
-  if (loadError && !loading) {
-    return (
-      <RouteErrorState
-        title="Unable to load teams and departments"
-        description="The organization structure could not be loaded. Try again or return to Settings."
-        reset={() => void retryLoad()}
-        backHref="/dashboard/settings"
-        backLabel="Back to Settings"
-      />
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-6">
+    <PageShell
+      variant="settings"
+      title="Teams"
+      description="Departments contain teams. Manage the hierarchy from one workspace."
+      hasError={Boolean(loadError) && !loading}
+      errorDescription="The organization structure could not be loaded. Try again or return to Settings."
+      onRetry={() => void retryLoad()}
+      backHref="/dashboard/settings"
+      backLabel="Back to Settings"
+    >
       {error && !departmentDialogOpen && !teamDialogOpen && !isCreateDepartmentAction && !isCreateTeamAction ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           {error}
@@ -457,6 +454,6 @@ export default function TeamsAndDepartmentsPage() {
         onChange={setTeamForm}
         onSubmit={() => void saveTeamWorkflow()}
       />
-    </div>
+    </PageShell>
   );
 }

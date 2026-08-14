@@ -203,7 +203,7 @@ function ToggleRow({ label, description, checked, disabled = false, onCheckedCha
   return (
     <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
       <div><div className="text-sm font-medium text-copy-primary">{label}</div><FieldDescription className="mt-1">{description}</FieldDescription></div>
-      <Switch aria-label={label} checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface-raised data-[state=checked]:bg-action-primary"><SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" /></Switch>
+      <Switch aria-label={label} checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} className="relative h-6 w-11 shrink-0 rounded-full border border-line-control bg-surface-raised data-[state=checked]:bg-action-primary"><SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary data-[state=checked]:translate-x-5" /></Switch>
     </div>
   );
 }

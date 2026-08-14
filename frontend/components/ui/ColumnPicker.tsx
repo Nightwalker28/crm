@@ -128,7 +128,7 @@ export function ColumnPicker({
                       type="checkbox"
                       checked={false}
                       onChange={() => void toggleColumn(option.key)}
-                      className="h-4 w-4 rounded border-line-strong bg-surface"
+                      className="h-4 w-4 rounded border-line-control bg-surface"
                     />
                     <span>{option.label}</span>
                   </label>

@@ -1,19 +1,32 @@
 import type { ReactNode } from "react";
 
 import { Card } from "@/components/ui/Card";
+import { PageShell } from "@/components/ui/PageShell";
 import { cn } from "@/lib/utils";
 
+/**
+ * A record detail page. It is a `PageShell` at the documented section stack — it always
+ * was, spelled out by hand, down to the same `gap-6`; the only thing it added was a root
+ * `text-copy-secondary` that the dashboard shell already sets.
+ *
+ * `title` is the record's name, and it is the page's one `h1` (§8). The name is also drawn
+ * visibly by `RecordWorkspaceHeader`, which is why this one is `sr-only`.
+ */
 export function RecordWorkspace({
+  title,
+  description,
   children,
   className,
 }: {
+  title: string;
+  description?: string;
   children: ReactNode;
   className?: string;
 }) {
   return (
-    <div className={cn("flex min-w-0 flex-col gap-6 text-copy-secondary", className)}>
+    <PageShell title={title} description={description} className={className}>
       {children}
-    </div>
+    </PageShell>
   );
 }
 

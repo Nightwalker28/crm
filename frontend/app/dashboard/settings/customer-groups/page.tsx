@@ -4,7 +4,7 @@ import { FormEvent, useMemo, useState } from "react";
 import { BadgePercent, Plus, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -263,13 +263,16 @@ export default function CustomerGroupsSettingsPage() {
   }, [groups.data, search, sort]);
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
-      <PageToolbar><Button type="button" onClick={() => void startNewGroup()}><Plus />New customer group</Button></PageToolbar>
-
+    <PageShell
+      variant="settings"
+      title="Customer Groups"
+      description="Segments used by contacts, accounts, and the client portal."
+      actions={<Button type="button" onClick={() => void startNewGroup()}><Plus />New customer group</Button>}
+    >
       <Sheet open={editorOpen} onOpenChange={handleEditorOpenChange}>
         <SheetPortal>
           <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised outline-none">
             <form onSubmit={saveGroup} className="flex min-h-0 flex-1 flex-col">
               <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
                 <div>
@@ -506,6 +509,6 @@ export default function CustomerGroupsSettingsPage() {
           </TableBody>
         </Table>
       </ModuleTableShell>
-    </div>
+    </PageShell>
   );
 }

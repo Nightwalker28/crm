@@ -37,7 +37,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -423,16 +423,19 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
   const isBusy = publish.isPending || reset.isPending;
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageToolbar
-        context={
-          <span>
-            Leads · Quick Create ·{" "}
-            {state.source === "tenant" ? `Workspace layout (v${state.version})` : "System default"}
-            {isDirty ? " · Unsaved changes" : ""}
-          </span>
-        }
-      >
+    <PageShell
+      variant="settings"
+      title="Record Layouts"
+      description="Arrange the fields on the Lead Quick Create surface."
+      context={
+        <span>
+          Leads · Quick Create ·{" "}
+          {state.source === "tenant" ? `Workspace layout (v${state.version})` : "System default"}
+          {isDirty ? " · Unsaved changes" : ""}
+        </span>
+      }
+      actions={(
+        <>
         <Button type="button" variant="ghost" disabled={!isDirty || isBusy} onClick={() => setDraft(baseline)}>
           <Undo2 />Discard changes
         </Button>
@@ -448,7 +451,9 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
         <Button type="button" disabled={!isDirty || !validation?.valid || isBusy} onClick={() => void handlePublish()}>
           Publish
         </Button>
-      </PageToolbar>
+        </>
+      )}
+    >
 
       {conflict ? (
         <Card className="border-state-warning/40 bg-state-warning-muted p-4" role="alert">
@@ -570,6 +575,6 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
           <RecordLayoutPreview layout={previewQuery.data?.resolved ?? null} isStale={isPreviewStale} />
         </div>
       </Card>
-    </div>
+    </PageShell>
   );
 }

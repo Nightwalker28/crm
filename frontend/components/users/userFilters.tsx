@@ -21,7 +21,7 @@ function FilterChip({ label, active, onClick }: FilterChipProps) {
         relative flex items-center justify-center rounded-[var(--radius-control)] border px-3 py-1.5 text-sm font-medium transition-colors motion-reduce:transition-none
         ${
           active
-            ? "border-action-primary bg-action-primary-muted text-copy-primary shadow-sm"
+            ? "border-action-primary bg-action-primary-muted text-copy-primary"
             : "border-line-default bg-surface-muted text-copy-muted hover:border-line-strong hover:text-copy-primary"
         }
       `}

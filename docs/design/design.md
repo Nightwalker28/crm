@@ -382,9 +382,18 @@ nearest shipping screen rather than inventing one.
 | Settings section stack | `space-y-8` |
 | Sidebar nav stack | `space-y-0.5` |
 | Inline actions | `gap-2` |
+| Card content padding | `px-6 py-6` — `CardHeader` and `CardBody` |
+| Card action bar | `px-6 py-4` — `CardFooter`, the same row height as a toolbar |
 | Dense table row | 40px |
 | Comfortable table row | 52px |
 | Toolbar row | `min-h-9` |
+
+`Card` carries **two** vertical values, not three. It ran `pt-6` / `py-5` / `py-4` —
+one step per slot, one of them the 5-step §4.1 rules off the ladder. 24px is the
+card's content padding; 16px is the action-bar padding, and a footer gets it because
+five of the six in the app are sticky save bars, where the extra 16px is height taken
+from the thing being saved. A card used as a dense container still takes `p-4` at the
+call site; `p-6` and `p-4` are the two legal answers, picked by role.
 
 **One row mechanism per list.** A list picks dense or comfortable and every row in it
 matches; do not mix heights inside a single table.
@@ -398,10 +407,24 @@ hand-assemble a page root or a table is the drift this section exists to prevent
 | Variant | Root | For |
 |---|---|---|
 | `list` | `flex h-full min-h-0 flex-col gap-4` | the §11.1 full-height column: pinned toolbar, one scrolling table, pinned pagination |
-| `document` | the documented section stack (`space-y-6`; `space-y-8` in settings) | scrolling form, detail and settings pages |
+| `document` | the documented section stack (`gap-6`) | scrolling form and detail pages |
+| `settings` | the settings section stack (`gap-8`) | settings pages |
 
 It emits `data-slot="page-shell"` so the rendered guard can assert that the first
 element inside the content scroller is one. `PageHeader` is its heading row — see below.
+
+**It also supplies the four §7.4 whole-route states** — `isPermissionDenied`,
+`isLoading`, `hasError`, each with a slot to override — resolved in that order, because
+that is the order the operator can act on them. Two rules follow from having them here:
+
+- A page whose permission check is still in flight must not pass `isPermissionDenied`
+  yet, or it flashes a wall before the answer arrives.
+- When a state is showing, the shell drops `actions` and `context`. An action row over a
+  permission wall or a failed load offers work the operator cannot do.
+
+`PermissionDeniedState`, `RouteErrorState` and `RouteNotFoundState` each take
+`titleAs="p"`. Standing alone they replace the page and own its `h1`; inside a shell the
+shell has already emitted one, and §8 allows exactly one.
 
 `RecordTable` — owns everything above the cell, which `Table` (a cell primitive) does
 not and should not:
@@ -409,10 +432,9 @@ not and should not:
 - min-width **derived from the visible column count**, never a hardcoded
   `min-w-[Npx]`. A view trimmed to three columns must not still force a horizontal
   scrollbar sized for twelve.
-- the selection column: one width, one sticky offset, one indicator size, tri-state
+- the selection column: one width, one padding, one indicator size, tri-state
   `indeterminate` on every list that has it.
-- the sticky identity column, including its header cell — a sticky body cell under a
-  non-sticky header leaves the value floating over a hole.
+- **no horizontally-sticky columns.** The header row pins; nothing pins sideways.
 - **one row-open gesture**, bound to click, Enter and Space, with a visible
   `focus-visible` ring on the row. Keyboard-reachable is a §8 floor; a row that takes
   focus invisibly is worse than one that cannot take it at all.
@@ -422,12 +444,44 @@ not and should not:
 Legitimate differences between lists are `cva` variants on the primitive (§7.3), not
 `className` at the call site.
 
-**`PageHeader` and `PageToolbar` are one component.** They were the same thing — a
-right-aligned action row — differing only in `min-h-9` and which one emitted the
-heading. `PageHeader` is the surviving name; `PageToolbar` is a deprecated alias.
-Because only `PageHeader` rendered the `sr-only` `h1`, every page built on
-`PageToolbar` shipped no `h1` at all, breaking §8; the merged component always emits
-it, which fixes that class of bug rather than each instance of it.
+**Pinned columns were tried and taken back out.** The selection and identity columns
+pinned for one phase. The owner's call, and the two defects behind it:
+
+- The row's checkbox painted *over* the header's. `thead` is `sticky top-0 z-20`, and a
+  positioned element with a z-index opens a stacking context — so the header cell's own
+  z-index was scoped inside `thead` and never compared against the body at all. `tbody`
+  opens no such context, so the body cell's `z-20` met the header's `z-20` as equals, and
+  equal z-index is resolved by DOM order, which the body wins.
+- The selection cell carried `pr-0` to stay narrow. `table-auto` collapses a column to its
+  content when the table is short of width, so at a narrow viewport the right-hand border
+  closed onto the checkbox with no gap — and a wide viewport had slack, so it looked
+  correct on the machine it was built on.
+
+Both are properties of pinning inside a table, not bugs in the pinning code, and neither
+was worth the horizontal scroll it saved. An unpositioned cell always paints under the
+sticky header, and the selection column takes the table's own `px-4` on both sides — 16 +
+16 + 16 = the 48px the primitive budgets for it. A row ground therefore no longer needs to
+be opaque for occlusion; `--color-bg-surface-row-alt` and `-row-hover` stay because a
+translucent stripe over a striped ancestor is its own inconsistency.
+
+One detail of the contract is still easy to get wrong and expensive to notice:
+
+- **The table's states are the `EmptyState` family, not the route states.**
+  `PermissionDeniedState` and `RouteErrorState` each emit the page's `h1`; they are
+  correct as a whole route and wrong inside a `td`, where they would give the page a
+  second heading (§8). Inside the table the same four states render as icon + title +
+  description + action.
+
+**`PageHeader` absorbed `PageToolbar`.** They were the same thing — a right-aligned
+action row — differing only in `min-h-9` and which one emitted the heading. Because
+only `PageHeader` rendered the `sr-only` `h1`, every page built on `PageToolbar`
+shipped no `h1` at all, breaking §8; the merged component always emits it, which fixes
+that class of bug rather than each instance of it. The deprecated alias existed for one
+phase and is now deleted: every page is a `PageShell`, which renders the header for it.
+
+`PageHeader` also has a second, narrower use: a record detail page renders one with no
+`title`, carrying only the back link and the record's actions, under a shell that has
+already named the page. `RecordPageHeader` is that call.
 
 ### 4.5 One scroll region per screen
 
@@ -462,6 +516,19 @@ If you add a legitimately bounded region, mark it — do not widen the test.
 dropdowns. Nothing anchored to the page gets a shadow. On dark grounds a shadow is
 nearly invisible anyway; elevation on dark is communicated by the *lighter ground*
 (`bg-surface-raised`), which is why that token exists.
+
+**One token, one spelling.** There were five vocabularies for the same job —
+`shadow-2xl` on twelve sheet call sites, `shadow-xl` on five overlay lists,
+`shadow-md` inside the vendored popover and select, a hand-written
+`shadow-[0_32px_100px_rgba(...)]` on the command palette, and `shadow-[var(--shadow-panel)]`
+on the three places that were right. They now all read the token, and it is set in the
+primitive — `sheet`, `dialog`, `popover`, `select` — so a call site never types an
+elevation at all.
+
+The anchored half went the other way. A switch thumb, a kanban card, a filter chip, a
+selected settings row and a sticky editor bar had picked up `shadow-sm`/`shadow-lg`;
+those are gone. What floats: dialogs, sheets, popovers, dropdowns, listboxes, toasts.
+Everything else is on the page.
 
 ---
 
@@ -511,12 +578,24 @@ times a day must be effectively invisible.
 - Ambient motion (`float-slow`, shimmer) belongs on auth and marketing surfaces only.
 - Respect `prefers-reduced-motion` for anything that loops.
 
-**Reduced motion is a property of the primitive, not of the call site.** Anything that
-loops must carry the guard where the animation is *defined* — `.float-slow` in
-`globals.css`, the spinner inside its component — so a page cannot forget it. The 13
-hand-placed `motion-reduce:` uses found in the frontend audit are the symptom of the
-opposite approach: `Skeleton` and `Pagination` remembered, most spinners did not, and
-`.float-slow` runs `infinite` with no guard on the first screen every operator sees.
+**Reduced motion is a property of the platform, not of the call site.** The 13
+hand-placed `motion-reduce:` uses found in the frontend audit were the symptom of the
+opposite approach: `Skeleton` and `Pagination` remembered, 20 of 21 spinners did not,
+and `.float-slow` ran `infinite` with no guard on the first screen every operator sees.
+
+It is now enforced in two places, because the frontend animates in two languages:
+
+- `app/globals.css` ends with a `prefers-reduced-motion: reduce` block that collapses
+  every animation and transition — loops stop, one-shot transitions become instant.
+- `MotionConfig reducedMotion="user"` in `app/providers.tsx` covers `motion/react`,
+  which animates in JS and cannot see a CSS media query. `Checkbox` and `Switch`
+  animate scale there.
+
+A component that also wants the intent legible in its own file may still carry
+`motion-reduce:` — `Skeleton` and `Spinner` do. What it must not do is *rely* on the
+call site to remember. One consequence worth knowing: a hover state expressed only as
+a `whileHover` scale disappears under reduced motion, so an interactive primitive owes
+§7.4 a CSS hover as well.
 
 This is the one rule here that a media query can switch off, so no amount of static
 computed style will catch a violation. `design-rules.spec.ts` checks it by re-running a
@@ -539,7 +618,7 @@ exists. The list-and-record language in particular is not optional:
 | Saved views / filters | `SavedViewSelector`, `InlineSavedViewFilters` |
 | Column visibility | `ColumnPicker` |
 | Paging | `Pagination` |
-| Page title and actions | `PageHeader`, `PageToolbar` |
+| Page root, title, actions and route states | `PageShell` (which renders `PageHeader`) |
 | Fast create | `QuickCreateSurface` |
 | Record detail sections | `RecordTabs` |
 | Nothing to show | `EmptyState` |
@@ -766,7 +845,7 @@ they are ordered by that rather than by size.
 | ~~`ColumnPicker`~~ | shadcn `Popover` | **Resolved** in `e6a53f8`. Escape and outside-click are handled by the primitive. Do not re-fix this. |
 | Hand-rolled tablists | raw `<button role="tab">` + `useState` | **The defect `RecordTabs` had, reappearing at two new call sites**: `app/dashboard/views/[moduleKey]/page.tsx:141` and `app/dashboard/settings/module-builder/page.tsx:480`. Both announce `role="tablist"` with no `onKeyDown`, no roving `tabIndex` and no `aria-controls`. `SavedViewSelector.tsx:26` is the correct hand-rolled reference if a radix `Tabs` genuinely does not fit — it implements arrow/Home/End, roving `tabIndex` and a focus ring. |
 | `Table` | raw `<table>` | Consistency only; it works. shadcn has a Table to build on. It is a **cell** primitive — everything above the cell belongs to `RecordTable` (§4.4). |
-| Card-shaped boxes | hand-rolled `rounded-card + border + bg` | **206** such boxes against **65** files using `<Card>`, up from 93/63 when this was first recorded. The drift is accelerating: a change to `Card` now reaches well under half of the things that look like one. |
+| Card-shaped boxes | hand-rolled `rounded-card + border + bg` | **206** such boxes against **65** files using `<Card>`, up from 93/63 when this was first recorded. The drift is accelerating: a change to `Card` now reaches well under half of the things that look like one. Phase 2 moved `Card` onto `border-line-default`; the hand-rolled boxes did not follow, so the tier split is now *between* `Card` and its imitators rather than inside `Card`. |
 
 `Pagination`, `SearchBar`, `spinner` and `sonner` are thin compositions over existing
 primitives and are fine as they are. The remaining `components/ui/` files are
@@ -868,18 +947,38 @@ rules — not preferences — and none of them is currently guarded, because
 `design-rules.spec.ts` reads one static snapshot of one state and so never focuses an
 element or queries a media feature.
 
-| Floor | Rule | Measured |
-|---|---|---|
-| Permission-denied state | §7.4 | `PermissionDeniedState` in 15 files repo-wide; **1 of 23** settings pages |
-| Error state | §7.4 | 3 competing idioms in settings; **7 pages have none** |
-| Loading state | §7.4 | 4 expressions — `RouteLoadingState`, `Skeleton`, inline `<TableRow>`, plain `<p>` |
-| Empty state | §7.4 | 3 module tables ship no create action |
-| `focus-visible` | §2.3 | 68 uses, never audited or guarded |
-| `prefers-reduced-motion` | §6 | 13 hand-placed uses; `.float-slow` loops `infinite` unguarded |
+| Floor | Rule | Measured | Status |
+|---|---|---|---|
+| Permission-denied state | §7.4 | `PermissionDeniedState` in 15 files repo-wide; **1 of 23** settings pages | open — Phase 3/4 |
+| Error state | §7.4 | 3 competing idioms in settings; **7 pages have none** | open — Phase 4 |
+| Loading state | §7.4 | 4 expressions — `RouteLoadingState`, `Skeleton`, inline `<TableRow>`, plain `<p>` | open — Phase 4 |
+| Empty state | §7.4 | 3 module tables ship no create action | open — Phase 3 |
+| `focus-visible` | §2.3 | 68 uses, never audited or guarded | partly closed — the shared controls were audited in Phase 2; the rendered check lands in Phase 8 |
+| `prefers-reduced-motion` | §6 | 13 hand-placed uses; `.float-slow` looped `infinite` unguarded | **closed** — enforced in `globals.css` and `MotionConfig`, see §6 |
 
 The fix is structural and is described in §4.4: the states are supplied by
 `PageShell` / `RecordTable` rather than remembered per page. Track the sweep in
 `docs/design/consistency-pass.md`.
+
+**Also closed by the Phase 2 primitive pass**, recorded here because the audit
+measured them and they will otherwise read as still-open:
+
+- `Input` was bounded by `border-line-default` and *hovered* to `border-line-strong` —
+  a control below the 1.4.11 floor at rest and further below it on hover. It now reads
+  the control tier, and the hover token in `tokens.md` §2 exists so hover can only
+  raise contrast.
+- 20 checkbox call sites re-typed the primitive's own skin with `border-line-strong`
+  in place of `border-line-control`. The overrides are deleted, not corrected — the
+  primitive was already right.
+- `Card` sat on `border-line-subtle`, the row-divider tier, so every card beside a
+  table had a visibly lighter edge than the table. It is a panel, and takes the panel
+  tier.
+- `Card` was `overflow-hidden`, clipping `LinkedRecordPicker`'s suggestion list in the
+  last row of any form section (Appendix B.1 of the consistency pass). Six settings
+  pages had worked around it per-call-site; no record form had.
+- `custom-scrollbar` was used on three bounded pickers and defined nowhere. It is now
+  a real utility — bounded overlay lists keep a quiet scrollbar, because it is the
+  only cue that there is more below.
 ### 11.3 `dialog` is built on Headless UI, not shadcn
 
 §7.2 makes shadcn the only component library, and `@headlessui/react` is still a live

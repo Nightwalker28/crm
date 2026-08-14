@@ -89,8 +89,11 @@ const TableRow = React.forwardRef<
     ref={ref}
     className={cn(
       "border-t border-line-subtle",
-      "odd:bg-surface even:bg-surface-muted/30",
-      "transition-colors duration-100 hover:bg-surface-raised/60",
+      // Opaque grounds, not tinted ones: a sticky cell inherits its ground from the row
+      // (design.md §4.4) and must occlude the columns scrolling beneath it. The tokens
+      // are the exact composites the tinted versions produced.
+      "odd:bg-surface even:bg-surface-row-alt",
+      "transition-colors duration-100 hover:bg-surface-row-hover",
       className
     )}
     {...props}

@@ -416,7 +416,7 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("tab", { name: "My qualified leads" })).toHaveAttribute("aria-selected", "true");
 
-  const tableRegion = page.getByRole("region", { name: "Data table" });
+  const tableRegion = page.getByRole("region", { name: "Leads" });
   await expect(tableRegion).toBeVisible();
   const tableBounds = await tableRegion.boundingBox();
   expect(tableBounds?.height).toBeLessThan(400);

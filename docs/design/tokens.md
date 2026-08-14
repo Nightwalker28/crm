@@ -53,10 +53,30 @@ caught by a rename.
 | `bg-surface-muted` | `--color-bg-surface-muted` | `#171c23` | `#f1f3f6` | Recessed strips |
 | `bg-surface-raised` | `--color-bg-surface-raised` | `#1d232c` | `#e7eaf0` | Floating layers |
 | `bg-overlay` | `--color-bg-overlay` | `rgba(5,7,10,.72)` | `rgba(16,19,25,.42)` | Dialog scrim |
+| `bg-surface-row-alt` | `--color-bg-surface-row-alt` | derived | derived | A table row's zebra ground |
+| `bg-surface-row-hover` | `--color-bg-surface-row-hover` | derived | derived | A table row's hover ground |
 
 Note the inversion: in dark, *raised* is lighter than *surface*; in light, *raised* is
 darker than white. Elevation reads as "further from the ground colour", which is why
 `bg-surface-raised` and not a shadow is the elevation device on dark.
+
+The two row grounds are **derived, not authored** — each is a `color-mix` of the tokens
+above, so neither theme carries a literal:
+
+```css
+--color-bg-surface-row-alt:   color-mix(in oklab, var(--color-bg-surface-muted)  30%, var(--color-bg-surface));
+--color-bg-surface-row-hover: color-mix(in oklab, var(--color-bg-surface-raised) 60%, var(--color-bg-surface));
+```
+
+Those are the exact composites `bg-surface-muted/30` and `bg-surface-raised/60` used to
+produce on a row, so the stripe and the hover look unchanged. They exist because the
+result has to be **opaque**: a sticky column inherits its ground from the row it sits in
+(`design.md` §4.4), and a translucent ground does not occlude — the columns scrolling
+underneath show straight through the pinned cell. That was a real regression, visible
+only on a table wide enough to scroll sideways, and only on alternate rows.
+
+The rule generalises: **anything a sticky element inherits must be opaque.** Reach for a
+tinted ground (`/30`, `/60`) only where nothing is ever pinned over it.
 
 ### Ink
 
@@ -84,15 +104,22 @@ the raised ground in both themes.
 | `border-line-default` | `--color-border-default` | `#2a313c` | `#dde1e8` | Panel edges | no |
 | `border-line-strong` | `--color-border-strong` | `#3a4350` | `#c4cad4` | Emphasised separation | no |
 | `border-line-control` | `--color-border-control` | `#646d7c` | `#7f8693` | Input/select/checkbox edge | **yes** |
+| `border-line-control-hover` | `--color-border-control-hover` | `#7a8492` | `#6a7280` | The same edge on hover | **yes** |
 
-The first three are structural hairlines and are deliberately quiet. Only
-`border-line-control` clears WCAG 1.4.11, so it is the *only* one allowed to bound a
-form control. Using `border-line-default` on an input is an accessibility bug, not a
-style preference.
+The first three are structural hairlines and are deliberately quiet. Only the two
+control tokens clear WCAG 1.4.11, so they are the *only* ones allowed to bound a form
+control. Using `border-line-default` on an input is an accessibility bug, not a style
+preference.
 
 `border-line-control` is measured against the *worst* ground it can land on, which is
 `bg-surface-raised` — a checkbox inside a popover. Dark 3.03 / light 3.04 there, and
 higher on every other ground.
+
+**Hover moves away from the ground, never toward it.** `border-line-control-hover`
+measures 4.17:1 dark / 4.02:1 light on that same worst ground. It exists because
+`Input` hovered to `border-line-strong` — 2.0:1 on the raised ground — so pointing at
+a text field quietly dropped it below the floor it had been holding at rest. A hover
+that reduces contrast is the one direction a control edge must never move.
 
 ---
 
@@ -386,6 +413,13 @@ grep -rnE "\b(gap|p)-5\b" app components --include=*.tsx
 # a looping animation must carry its own reduced-motion guard
 grep -rn "animate-\|animation:" app components app/globals.css | grep -v "motion-reduce\|motion-safe\|prefers-reduced-motion"
 ```
+
+**The reduced-motion grep is now informational.** `globals.css` ends with a
+`prefers-reduced-motion: reduce` block that collapses every animation and transition,
+and `app/providers.tsx` wraps the tree in `MotionConfig reducedMotion="user"` for
+`motion/react`, so the guard is a property of the platform rather than of the class
+string. What the grep is still good for is spotting a *new* looping animation whose
+intent you should think about — not for finding violations.
 
 Two of these are deliberately loose and will surface a handful of legitimate hits:
 the shadcn `label`/`field` primitives set `leading-none`/`leading-snug` on purpose for

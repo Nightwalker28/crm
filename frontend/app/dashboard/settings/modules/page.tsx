@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -154,7 +155,16 @@ export default function ModulesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
+    <PageShell
+      variant="settings"
+      title="Module Settings"
+      description="Enable modules and assign department or team access."
+      hasError={Boolean(error)}
+      errorDescription="Check your connection and try again. No module settings were changed."
+      onRetry={() => void refetch()}
+      backHref="/dashboard/settings"
+      backLabel="Back to Settings"
+    >
       <Card variant="status" className="px-4 py-3 text-sm text-copy-secondary">
         Module availability applies tenant-wide. Department and team access is managed separately, while action access remains in{" "}
         <Link href={SETTINGS_ROUTES.permissions} className="font-medium text-copy-primary underline-offset-4 hover:underline">Roles & Permissions</Link>.
@@ -167,13 +177,7 @@ export default function ModulesPage() {
         </div>
       ) : null}
 
-      {error ? (
-        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-6">
-          <h2 className="text-base font-semibold text-copy-primary">Module settings could not be loaded</h2>
-          <p className="mt-2 text-sm text-copy-secondary">Check your connection and try again.</p>
-          <Button type="button" className="mt-4" onClick={() => void refetch()}><RefreshCw />Try again</Button>
-        </div>
-      ) : (
+      {(
         <ModuleTableShell>
           <div className="flex flex-col gap-3 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <SearchBar value={search} onChange={setSearch} placeholder="Search modules" className="sm:max-w-sm" />
@@ -259,7 +263,7 @@ export default function ModulesPage() {
       <Sheet open={editorOpen} onOpenChange={(open) => { if (!open) void closeEditor(); }}>
         <SheetPortal>
           <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised outline-none">
             <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
               <div>
                 <SheetTitle className="text-lg font-semibold text-copy-primary">Edit module settings</SheetTitle>
@@ -352,6 +356,6 @@ export default function ModulesPage() {
           </SheetContent>
         </SheetPortal>
       </Sheet>
-    </div>
+    </PageShell>
   );
 }

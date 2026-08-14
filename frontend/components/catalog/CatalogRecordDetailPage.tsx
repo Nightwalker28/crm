@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import type { CatalogKind } from "@/hooks/catalog/useCatalogRecords";
@@ -89,36 +89,34 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={record?.name ?? noun}
-        description={record ? `${noun} catalog record` : "Loading catalog record"}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
+    <PageShell
+      title={record?.name ?? noun}
+      description={record ? `${noun} catalog record` : "Loading catalog record"}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" asChild>
+            <Link href={listHref}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </Link>
+          </Button>
+          {canEdit ? (
             <Button type="button" variant="outline" asChild>
-              <Link href={listHref}>
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back
+              <Link href={`${listHref}/${recordId}/edit`}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit {noun.toLowerCase()}
               </Link>
             </Button>
-            {canEdit ? (
-              <Button type="button" variant="outline" asChild>
-                <Link href={`${listHref}/${recordId}/edit`}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Edit {noun.toLowerCase()}
-                </Link>
-              </Button>
-            ) : null}
-            {canDelete ? (
-              <Button type="button" variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete {noun.toLowerCase()}
-              </Button>
-            ) : null}
-          </div>
-        }
-      />
-
+          ) : null}
+          {canDelete ? (
+            <Button type="button" variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete {noun.toLowerCase()}
+            </Button>
+          ) : null}
+        </div>
+      }
+    >
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <section aria-labelledby="catalog-details-heading">
           <Card>
@@ -220,7 +218,7 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
           taskSourceLabel={record.name}
         />
       </div>
-    </div>
+    </PageShell>
   );
 }
 

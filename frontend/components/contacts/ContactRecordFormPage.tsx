@@ -15,7 +15,7 @@ import {
 } from "@/components/contacts/contactQuickCreateDraft";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
@@ -132,13 +132,12 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
   const title = mode === "edit" ? "Edit contact" : "Create contact";
   const cancelHref = mode === "edit" && contactId ? `/dashboard/sales/contacts/${contactId}` : "/dashboard/sales/contacts";
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={title}
-        eyebrow={mode === "edit" && summaryQuery.data?.contact.updated_at ? `Last modified ${formatDateTime(summaryQuery.data.contact.updated_at)}` : undefined}
-        description={mode === "edit" ? "Update contact details, ownership, and account information." : "Add a person and connect them to the right account and owner."}
-        actions={<Button asChild variant="ghost" size="sm"><Link href={cancelHref}><ArrowLeft />Back to {mode === "edit" ? "contact" : "contacts"}</Link></Button>}
-      />
+    <PageShell
+      title={title}
+      eyebrow={mode === "edit" && summaryQuery.data?.contact.updated_at ? `Last modified ${formatDateTime(summaryQuery.data.contact.updated_at)}` : undefined}
+      description={mode === "edit" ? "Update contact details, ownership, and account information." : "Add a person and connect them to the right account and owner."}
+      actions={<Button asChild variant="ghost" size="sm"><Link href={cancelHref}><ArrowLeft />Back to {mode === "edit" ? "contact" : "contacts"}</Link></Button>}
+    >
       {submitError ? <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"><div className="font-medium">We could not save this contact.</div><div className="mt-1 text-copy-secondary">{submitError}</div></div> : null}
       <RecordFormLayout
         sidebar={<ContactFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />}
@@ -155,6 +154,6 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
           mode={mode}
         />
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

@@ -33,6 +33,34 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* Bounded overlay lists - pickers, notification panels, option lists. They
+     keep a visible scrollbar because it is the only cue that there is more
+     below; .scrollbar-hide is for chrome strips where the content is already
+     obviously continuous. The class was in use on three pickers for months
+     while being defined nowhere, so those rendered the native bar. */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--color-border-strong);
+    border-radius: 9999px;
+  }
+
+  .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+    background-color: var(--color-border-control);
+  }
 }
 
 @keyframes shiny-slide {
@@ -61,11 +89,14 @@
   --color-surface: var(--color-bg-surface);
   --color-surface-muted: var(--color-bg-surface-muted);
   --color-surface-raised: var(--color-bg-surface-raised);
+  --color-surface-row-alt: var(--color-bg-surface-row-alt);
+  --color-surface-row-hover: var(--color-bg-surface-row-hover);
   --color-overlay: var(--color-bg-overlay);
   --color-line-subtle: var(--color-border-subtle);
   --color-line-default: var(--color-border-default);
   --color-line-strong: var(--color-border-strong);
   --color-line-control: var(--color-border-control);
+  --color-line-control-hover: var(--color-border-control-hover);
   --color-copy-primary: var(--color-text-primary);
   --color-copy-secondary: var(--color-text-secondary);
   --color-copy-label: var(--color-text-label);
@@ -188,6 +219,9 @@
                                     seams). Deliberately quiet, no contrast floor.
      --color-border-control         the visible edge of an input, select or
                                     checkbox. Holds >= 3:1 per WCAG 1.4.11.
+     --color-border-control-hover   the same edge on hover. It moves *away* from
+                                    the ground, never toward it - hover must not
+                                    drop a control below the 1.4.11 floor.
    Do not use a structural border to bound a control.
 
    Light is not a second palette. Every status colour in `.light` is the dark
@@ -221,6 +255,12 @@
   --color-bg-surface: #12161c;
   --color-bg-surface-muted: #171c23;
   --color-bg-surface-raised: #1d232c;
+  /* A table row's zebra and hover grounds. These are the composites the row used to
+     paint with `bg-surface-muted/30` and `bg-surface-raised/60` — same colour, no alpha.
+     A sticky column takes its ground from the row (design.md 4.4), and a translucent
+     ground does not occlude: the columns scrolling underneath show straight through it. */
+  --color-bg-surface-row-alt: color-mix(in oklab, var(--color-bg-surface-muted) 30%, var(--color-bg-surface));
+  --color-bg-surface-row-hover: color-mix(in oklab, var(--color-bg-surface-raised) 60%, var(--color-bg-surface));
   --color-bg-overlay: rgba(5, 7, 10, 0.72);
   --background-accent-glow: radial-gradient(circle at top right, rgba(244, 247, 251, 0.04), transparent 38%);
   --shadow-panel: 0 24px 80px rgba(0, 0, 0, 0.28);
@@ -229,6 +269,10 @@
   --color-border-default: #2a313c;
   --color-border-strong: #3a4350;
   --color-border-control: #646d7c;
+  /* 4.17:1 on bg-surface-raised, the worst ground a control lands on. The old
+     hover moved inputs to --color-border-strong, which is 2.0:1 there - hover
+     was quietly dropping the control below the WCAG 1.4.11 floor. */
+  --color-border-control-hover: #7a8492;
 
   --color-text-primary: #f4f7fb;
   --color-text-secondary: #b7c0cc;
@@ -314,6 +358,8 @@
   --color-bg-surface: #ffffff;
   --color-bg-surface-muted: #f1f3f6;
   --color-bg-surface-raised: #e7eaf0;
+  --color-bg-surface-row-alt: color-mix(in oklab, var(--color-bg-surface-muted) 30%, var(--color-bg-surface));
+  --color-bg-surface-row-hover: color-mix(in oklab, var(--color-bg-surface-raised) 60%, var(--color-bg-surface));
   --color-bg-overlay: rgba(16, 19, 25, 0.42);
   --background-accent-glow: radial-gradient(circle at top right, rgba(16, 19, 25, 0.03), transparent 38%);
   --shadow-panel: 0 18px 48px rgba(16, 19, 25, 0.12);
@@ -322,6 +368,8 @@
   --color-border-default: #dde1e8;
   --color-border-strong: #c4cad4;
   --color-border-control: #7f8693;
+  /* 4.02:1 on the light bg-surface-raised. Same operation as dark, inverted. */
+  --color-border-control-hover: #6a7280;
 
   --color-text-primary: #101319;
   --color-text-secondary: #4a515d;
@@ -380,6 +428,23 @@
 ::view-transition-old(root), ::view-transition-new(root) {
     animation: none;
     mix-blend-mode: normal;
+}
+
+/* Reduced motion is a property of the platform, not of the call site
+   (docs/design/design.md 6). Before this block it was 13 hand-placed
+   `motion-reduce:` classes: Skeleton and Pagination remembered, 20 of 21
+   spinners did not, and `.float-slow` ran `infinite` on the first screen every
+   operator sees. Loops stop, one-shot transitions collapse to instant, and
+   nothing below has to remember. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @media print {

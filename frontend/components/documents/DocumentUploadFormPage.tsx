@@ -24,7 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -351,7 +351,7 @@ export default function DocumentUploadFormPage() {
       role="button"
       tabIndex={0}
       aria-label={queue.length ? "Add more document files" : "Choose document files or drag and drop them here"}
-      className={`${queue.length ? "flex min-h-16 items-center justify-between gap-4 px-4 py-3 text-left" : "flex min-h-44 flex-col items-center justify-center px-6 py-6 text-center"} rounded-[var(--radius-card)] border border-dashed ${isDragging ? "border-primary bg-action-primary-muted" : "border-line-strong bg-surface-muted"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus`}
+      className={`${queue.length ? "flex min-h-16 items-center justify-between gap-4 px-4 py-3 text-left" : "flex min-h-44 flex-col items-center justify-center px-6 py-6 text-center"} rounded-[var(--radius-card)] border border-dashed ${isDragging ? "border-primary bg-action-primary-muted" : "border-line-control bg-surface-muted"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus`}
       onClick={() => fileInputRef.current?.click()}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -377,14 +377,12 @@ export default function DocumentUploadFormPage() {
   );
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Upload documents"
-        description="Upload a batch to CRM storage or a connected cloud account and link it to the records that use it."
-        actions={<Button asChild variant="ghost" size="sm"><Link href="/dashboard/documents"><ArrowLeft />Back to documents</Link></Button>}
-      />
-
-      <Card className="mx-auto w-full max-w-6xl overflow-visible">
+    <PageShell
+      title="Upload documents"
+      description="Upload a batch to CRM storage or a connected cloud account and link it to the records that use it."
+      actions={<Button asChild variant="ghost" size="sm"><Link href="/dashboard/documents"><ArrowLeft />Back to documents</Link></Button>}
+    >
+      <Card className="mx-auto w-full max-w-6xl">
         <section>
           <div className="border-b border-line-subtle px-4 py-4 md:px-5">
             <h2 className="font-semibold text-copy-primary">Choose files</h2>
@@ -526,7 +524,7 @@ export default function DocumentUploadFormPage() {
           </div>
         </div>
       </Card>
-    </div>
+    </PageShell>
   );
 
   async function uploadItemsForRow(item: QueueItem) {

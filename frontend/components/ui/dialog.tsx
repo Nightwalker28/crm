@@ -128,7 +128,7 @@ function DialogPanel<TTag extends React.ElementType = typeof motion.div>(
       data-slot="dialog-panel"
       as={as as React.ElementType}
       className={cn(
-        "rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-4",
+        "rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-4 shadow-[var(--shadow-panel)]",
         dialogPanelSizeClasses[size],
         size === "3xl" && "max-h-[80vh] overflow-y-auto",
         className

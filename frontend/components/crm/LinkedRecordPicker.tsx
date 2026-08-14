@@ -350,7 +350,7 @@ export default function LinkedRecordPicker({
           id={listboxId}
           role="listbox"
           aria-label={`${placeholder} results`}
-          className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-[var(--radius-control)] border border-line-default bg-surface-raised shadow-xl"
+          className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-[var(--radius-control)] border border-line-default bg-surface-raised shadow-[var(--shadow-panel)]"
         >
           {query.isLoading ? (
             <div role="status" className="px-3 py-2 text-sm text-copy-muted">Searching…</div>

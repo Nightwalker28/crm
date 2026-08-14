@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
 
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Pill } from "@/components/ui/Pill";
@@ -11,7 +11,7 @@ import type { Task } from "@/hooks/useTasks";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { getTaskPriorityStyle } from "@/lib/statusStyles";
 
-type Props = { tasks: Task[]; isLoading: boolean; isRefreshing?: boolean; onOpen: (task: Task) => void };
+type Props = { tasks: Task[]; isLoading: boolean; isRefreshing?: boolean; hasError?: boolean; onRetry?: () => void; onOpen: (task: Task) => void };
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -35,7 +35,7 @@ function buildCalendarDays(month: Date) {
   });
 }
 
-export default function TasksCalendar({ tasks, isLoading, isRefreshing = false, onOpen }: Props) {
+export default function TasksCalendar({ tasks, isLoading, isRefreshing = false, hasError = false, onRetry, onOpen }: Props) {
   const [month, setMonth] = useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState(() => new Date());
   const days = useMemo(() => buildCalendarDays(month), [month]);
@@ -63,6 +63,19 @@ export default function TasksCalendar({ tasks, isLoading, isRefreshing = false, 
     setSelectedDay(today);
   }
 
+  // §7.4 — same four states as the table this view replaces.
+  if (hasError) {
+    return (
+      <div role="alert">
+        <EmptyState
+          icon={TriangleAlert}
+          title="Tasks could not be loaded"
+          description="Check your connection and try again."
+          action={onRetry ? <Button type="button" variant="outline" onClick={onRetry}>Try again</Button> : undefined}
+        />
+      </div>
+    );
+  }
   if (isLoading) return <Skeleton className="h-[640px] w-full rounded-[var(--radius-panel)]" />;
   if (!tasks.length) return <EmptyState icon={CalendarDays} title="No tasks to schedule" description="Tasks matching the current view will appear here." />;
 

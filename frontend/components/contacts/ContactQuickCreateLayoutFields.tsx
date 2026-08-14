@@ -230,8 +230,7 @@ export function ContactQuickCreateLayoutFields({
               id={inputId}
               checked={value.email_opt_out}
               onCheckedChange={(checked) => onChange({ ...value, email_opt_out: checked === true })}
-              disabled={disabled}
-              className="mt-0.5"
+              disabled={disabled} className="mt-0.5"
               aria-describedby={aria.describedBy}
             />
             <span>Prevent routine marketing email actions for this contact.</span>

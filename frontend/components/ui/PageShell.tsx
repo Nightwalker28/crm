@@ -4,6 +4,8 @@ import type { ReactNode } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { PageHeader } from "@/components/ui/PageHeader";
+import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
+import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { cn } from "@/lib/utils";
 
 /**
@@ -42,6 +44,30 @@ type PageShellProps = VariantProps<typeof pageShellVariants> & {
   children: ReactNode;
   className?: string;
   headerClassName?: string;
+
+  /**
+   * The §7.4 states, in the order the operator can act on them. A page opts out of one by
+   * supplying its own slot; it does not opt out by omitting it.
+   *
+   * These are here rather than per page because when each page had to remember them, most
+   * did not — `PermissionDeniedState` reached 1 of 23 settings pages and 7 settings pages
+   * carried no error state at all. A page that renders its own loading skeleton inside the
+   * content (a table, a list) leaves these unset and keeps doing that; these are for the
+   * whole-route case, where the page has nothing to show yet.
+   */
+  isPermissionDenied?: boolean;
+  permissionDeniedState?: ReactNode;
+  isLoading?: boolean;
+  loadingState?: ReactNode;
+  hasError?: boolean;
+  errorState?: ReactNode;
+  /** Wired to the error state's "Try again". Without it the state offers only the back link. */
+  onRetry?: () => void;
+  /** Names the fix, not the failure (§7.5). Defaults to a retry-and-connection line. */
+  errorDescription?: string;
+  /** Where the error and permission-denied states send the operator back to. */
+  backHref?: string;
+  backLabel?: string;
 };
 
 export function PageShell({
@@ -54,22 +80,63 @@ export function PageShell({
   children,
   className,
   headerClassName,
+  isPermissionDenied = false,
+  permissionDeniedState,
+  isLoading = false,
+  loadingState,
+  hasError = false,
+  errorState,
+  onRetry,
+  errorDescription,
+  backHref,
+  backLabel,
 }: PageShellProps) {
+  // Denied, then loading, then failed — the order the operator can act on them. A page
+  // whose permission check is still in flight must not claim `isPermissionDenied` yet, or
+  // it flashes a wall before the answer arrives.
+  const state = isPermissionDenied
+    ? (permissionDeniedState ?? (
+        <PermissionDeniedState
+          titleAs="p"
+          description={`Ask an administrator for access to ${title.toLocaleLowerCase()}.`}
+          {...(backHref ? { backHref } : {})}
+          {...(backLabel ? { backLabel } : {})}
+        />
+      ))
+    : isLoading
+      ? (loadingState ?? <RouteLoadingState label={title.toLocaleLowerCase()} />)
+      : hasError
+        ? (errorState ?? (
+            <RouteErrorState
+              titleAs="p"
+              title={`${title} could not be loaded`}
+              description={errorDescription ?? "Check your connection and try again."}
+              reset={() => onRetry?.()}
+              {...(backHref ? { backHref } : {})}
+              {...(backLabel ? { backLabel } : {})}
+            />
+          ))
+        : null;
+
   return (
     <div
       data-slot="page-shell"
       data-variant={variant ?? "document"}
-      className={cn(pageShellVariants({ variant }), className)}
+      // A state replaces the page's content, and a full-height list column would stretch
+      // it against a pinned toolbar that is no longer there. Scroll it as a document.
+      className={cn(pageShellVariants({ variant: state ? "document" : variant }), className)}
     >
       <PageHeader
         title={title}
         description={description}
         eyebrow={eyebrow}
-        context={context}
-        actions={actions}
+        context={state ? undefined : context}
+        // An action row over a permission wall or a failed load offers work the operator
+        // cannot do. The heading stays; the buttons go.
+        actions={state ? undefined : actions}
         className={headerClassName}
       />
-      {children}
+      {state ?? children}
     </div>
   );
 }

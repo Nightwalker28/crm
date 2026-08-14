@@ -1,33 +1,17 @@
 "use client";
 
-import { Fragment } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo } from "react";
 import { UserRoundPlus } from "lucide-react";
 
-import {
-  SortableHead,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableHeaderRow,
-  TableRow,
-} from "@/components/ui/Table";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
-import { CustomFieldCell } from "@/components/ui/CustomFieldCell";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { CustomFieldValue } from "@/components/ui/CustomFieldValue";
 import { Pill } from "@/components/ui/Pill";
+import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { Lead } from "@/hooks/sales/useLeads";
 import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateTime } from "@/lib/datetime";
 import { getLeadScoreStyle, getLeadStatusStyle } from "@/lib/statusStyles";
-
-type SortState = { column: string; direction: "asc" | "desc" } | null;
 
 type LeadsTableProps = {
   leads: Lead[];
@@ -36,15 +20,38 @@ type LeadsTableProps = {
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
   selectedIds?: number[];
-  currentPageSelectionState?: boolean | "indeterminate";
   onToggleRow?: (leadId: number, checked: boolean) => void;
   onToggleCurrentPage?: (checked: boolean) => void;
-  sort?: SortState;
-  onSortChange?: (sort: SortState) => void;
+  sort?: RecordTableSort | null;
+  onSortChange?: (sort: RecordTableSort) => void;
   hasActiveFilters?: boolean;
+  hasError?: boolean;
+  onRetry?: () => void;
   onClearFilters?: () => void;
   /** Opens the list's Quick Create surface. Omitted when the user cannot create leads. */
   onCreateLead?: () => void;
+};
+
+const SORTABLE_COLUMNS = new Set([
+  "first_name",
+  "last_name",
+  "company",
+  "primary_email",
+  "status",
+  "score",
+  "score_grade",
+  "created_time",
+  "last_contacted_at",
+  "next_follow_up_at",
+]);
+
+const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
+  first_name: "lg",
+  primary_email: "lg",
+  tags: "lg",
+  status: "sm",
+  score: "sm",
+  score_grade: "sm",
 };
 
 function initials(lead: Lead) {
@@ -54,6 +61,70 @@ function initials(lead: Lead) {
   return "?";
 }
 
+function leadName(lead: Lead) {
+  return [lead.first_name, lead.last_name].filter(Boolean).join(" ");
+}
+
+function renderCell(lead: Lead, column: string) {
+  if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={lead.custom_fields} />;
+
+  switch (column) {
+    case "first_name":
+      return (
+        <div className="flex h-8 items-center gap-2.5">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted text-2xs font-semibold text-copy-secondary">
+            {initials(lead)}
+          </div>
+          <span className="truncate text-sm font-medium text-copy-primary">
+            {leadName(lead) || <span className="text-copy-disabled">-</span>}
+          </span>
+        </div>
+      );
+    case "primary_email":
+      return <span className="text-sm text-copy-secondary">{lead.primary_email || <span className="text-copy-disabled">-</span>}</span>;
+    case "status": {
+      const style = getLeadStatusStyle(lead.status ?? "");
+      return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+    }
+    case "score": {
+      const style = getLeadScoreStyle(lead.score_grade ?? "cold");
+      return <Pill bg={style.bg} text={style.text} border={style.border}>{lead.score ?? 0}</Pill>;
+    }
+    case "score_grade": {
+      const style = getLeadScoreStyle(lead.score_grade ?? "cold");
+      return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+    }
+    case "created_time":
+      return <span className="text-sm text-copy-muted">{lead.created_time ? formatDateTime(lead.created_time) : "-"}</span>;
+    case "last_contacted_at":
+      return <span className="text-sm text-copy-muted">{lead.last_contacted_at ? formatDateTime(lead.last_contacted_at) : "No activity"}</span>;
+    case "next_follow_up_at": {
+      const isOverdue = Boolean(lead.next_follow_up_is_overdue);
+      return lead.next_follow_up_at ? (
+        <span className={isOverdue ? "text-sm font-medium text-state-warning" : "text-sm text-copy-muted"}>
+          {formatDateTime(lead.next_follow_up_at)}{isOverdue ? " · Overdue" : ""}
+        </span>
+      ) : (
+        <span className="text-sm text-copy-disabled">Not scheduled</span>
+      );
+    }
+    case "tags":
+      return (
+        <div className="flex max-w-64 flex-wrap gap-1">
+          {(lead.tags ?? []).length
+            ? (lead.tags ?? []).map((tag) => <Pill key={tag.toLocaleLowerCase()}>{tag}</Pill>)
+            : <span className="text-sm text-copy-disabled">No tags</span>}
+        </div>
+      );
+    default:
+      return (
+        <span className="text-sm text-copy-secondary">
+          {String(lead[column as keyof Lead] ?? "") || <span className="text-copy-disabled">-</span>}
+        </span>
+      );
+  }
+}
+
 export default function LeadsTable({
   leads,
   isLoading,
@@ -61,173 +132,62 @@ export default function LeadsTable({
   visibleColumns,
   columnOptions = [],
   selectedIds = [],
-  currentPageSelectionState = false,
   onToggleRow,
   onToggleCurrentPage,
   sort = null,
   onSortChange,
   hasActiveFilters = false,
+  hasError = false,
+  onRetry,
   onClearFilters,
   onCreateLead,
 }: LeadsTableProps) {
-  const router = useRouter();
-
-  function toggleSort(column: string) {
-    const nextSort: SortState = sort?.column === column
-      ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
-      : { column, direction: "asc" };
-    onSortChange?.(nextSort);
-  }
-
-  function renderCell(lead: Lead, column: string, isIdentityColumn: boolean) {
-    const stickyClassName = isIdentityColumn ? "sticky left-12 z-10 border-r border-line-subtle bg-surface group-hover:bg-surface-raised" : undefined;
-    if (isCustomFieldColumnKey(column)) {
-      return <CustomFieldCell column={column} values={lead.custom_fields} className={stickyClassName} />;
-    }
-    switch (column) {
-      case "first_name":
-        const leadName = [lead.first_name, lead.last_name].filter(Boolean).join(" ");
-        return (
-          <TableCell className={stickyClassName}>
-            <div className="flex h-8 items-center gap-2.5">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted text-[10px] font-semibold text-copy-secondary">
-                {initials(lead)}
-              </div>
-              <span className="truncate text-sm font-medium text-copy-primary">{leadName || <span className="text-copy-disabled">-</span>}</span>
-            </div>
-          </TableCell>
-        );
-      case "primary_email":
-        return <TableCell className={stickyClassName}><span className="text-sm text-copy-secondary">{lead.primary_email || <span className="text-copy-disabled">-</span>}</span></TableCell>;
-      case "status": {
-        const style = getLeadStatusStyle(lead.status ?? "");
-        return <TableCell className={stickyClassName}><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
-      }
-      case "score": {
-        const style = getLeadScoreStyle(lead.score_grade ?? "cold");
-        return (
-          <TableCell className={stickyClassName}>
-            <Pill bg={style.bg} text={style.text} border={style.border}>{lead.score ?? 0}</Pill>
-          </TableCell>
-        );
-      }
-      case "score_grade": {
-        const style = getLeadScoreStyle(lead.score_grade ?? "cold");
-        return <TableCell className={stickyClassName}><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
-      }
-      case "created_time":
-        return <TableCell className={stickyClassName}><span className="text-sm text-copy-muted">{lead.created_time ? formatDateTime(lead.created_time) : "-"}</span></TableCell>;
-      case "last_contacted_at":
-        return <TableCell className={stickyClassName}><span className="text-sm text-copy-muted">{lead.last_contacted_at ? formatDateTime(lead.last_contacted_at) : "No activity"}</span></TableCell>;
-      case "next_follow_up_at": {
-        const isOverdue = Boolean(lead.next_follow_up_is_overdue);
-        return (
-          <TableCell className={stickyClassName}>
-            {lead.next_follow_up_at ? (
-              <span className={isOverdue ? "text-sm font-medium text-state-warning" : "text-sm text-copy-muted"}>
-                {formatDateTime(lead.next_follow_up_at)}{isOverdue ? " · Overdue" : ""}
-              </span>
-            ) : <span className="text-sm text-copy-disabled">Not scheduled</span>}
-          </TableCell>
-        );
-      }
-      case "tags":
-        return (
-          <TableCell className={stickyClassName}>
-            <div className="flex max-w-64 flex-wrap gap-1">
-              {(lead.tags ?? []).length
-                ? (lead.tags ?? []).map((tag) => <Pill key={tag.toLocaleLowerCase()}>{tag}</Pill>)
-                : <span className="text-sm text-copy-disabled">No tags</span>}
-            </div>
-          </TableCell>
-        );
-      default:
-        return <TableCell className={stickyClassName}><span className="text-sm text-copy-secondary">{String(lead[column as keyof Lead] ?? "") || <span className="text-copy-disabled">-</span>}</span></TableCell>;
-    }
-  }
+  const columns = useMemo<RecordTableColumn<Lead>[]>(
+    () =>
+      visibleColumns.map((column) => ({
+        key: column,
+        label: getReadableColumnLabel(column, columnOptions),
+        sortable: !isCustomFieldColumnKey(column) && SORTABLE_COLUMNS.has(column),
+        size: COLUMN_SIZES[column],
+        render: (lead) => renderCell(lead, column),
+      })),
+    [visibleColumns, columnOptions],
+  );
 
   return (
-    <ModuleTableShell isRefreshing={isRefreshing}>
-      <Table className="min-w-[920px]">
-        <TableHeader>
-          <TableHeaderRow>
-            <TableHead className="sticky left-0 z-40 w-12 border-r border-line-subtle bg-surface-raised pr-0">
-              <Checkbox
-                checked={currentPageSelectionState}
-                onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
-                className="h-4 w-4 rounded border border-line-strong bg-surface-raised"
-                aria-label="Select current page leads"
-              >
-                <CheckboxIndicator className="h-3 w-3" />
-              </Checkbox>
-            </TableHead>
-            {visibleColumns.map((column, index) => {
-              const label = getReadableColumnLabel(column, columnOptions);
-              const sortable = !isCustomFieldColumnKey(column) && ["first_name", "last_name", "company", "primary_email", "status", "score", "score_grade", "created_time", "last_contacted_at", "next_follow_up_at"].includes(column);
-              const stickyClassName = index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-surface-raised" : undefined;
-              return sortable ? (
-                <SortableHead
-                  key={column}
-                  sorted={sort?.column === column}
-                  direction={sort?.column === column ? sort.direction : "asc"}
-                  onClick={() => toggleSort(column)}
-                  className={stickyClassName}
-                >
-                  {label}
-                </SortableHead>
-              ) : (
-                <TableHead key={column} className={stickyClassName}>{label}</TableHead>
-              );
-            })}
-          </TableHeaderRow>
-        </TableHeader>
-        <TableBody>
-          {isLoading ? (
-            <ModuleTableLoading columnCount={visibleColumns.length + 1} />
-          ) : leads.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
-                {hasActiveFilters ? (
-                  <EmptyState
-                    icon={UserRoundPlus}
-                    title="No leads match these filters"
-                    description="Clear one or more filters and try again."
-                    action={<Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button>}
-                  />
-                ) : (
-                  <EmptyState
-                    icon={UserRoundPlus}
-                    title="No leads yet"
-                    description="Create your first lead or import existing records from CSV."
-                    action={onCreateLead ? (
-                      // Same Quick Create surface as the toolbar, so the list has one create interaction.
-                      <Button type="button" onClick={onCreateLead}>Create lead</Button>
-                    ) : null}
-                  />
-                )}
-              </TableCell>
-            </TableRow>
-          ) : (
-            leads.map((lead) => (
-              <TableRow key={lead.lead_id} className="group cursor-pointer" onClick={() => router.push(`/dashboard/sales/leads/${lead.lead_id}`)}>
-                <TableCell className="sticky left-0 z-20 w-12 border-r border-line-subtle bg-surface pr-0 group-hover:bg-surface-raised" onClick={(event) => event.stopPropagation()}>
-                  <Checkbox
-                    checked={selectedIds.includes(lead.lead_id)}
-                    onCheckedChange={(checked) => onToggleRow?.(lead.lead_id, checked === true)}
-                    className="h-4 w-4 rounded border border-line-strong bg-surface-raised"
-                    aria-label={`Select lead ${lead.primary_email ?? lead.lead_id}`}
-                  >
-                    <CheckboxIndicator className="h-3 w-3" />
-                  </Checkbox>
-                </TableCell>
-                {visibleColumns.map((column, index) => (
-                  <Fragment key={column}>{renderCell(lead, column, index === 0)}</Fragment>
-                ))}
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
-    </ModuleTableShell>
+    <RecordTable
+      label="Leads"
+      columns={columns}
+      rows={leads}
+      rowKey={(lead) => lead.lead_id}
+      rowHref={(lead) => `/dashboard/sales/leads/${lead.lead_id}`}
+      rowLabel={(lead) => `Open lead ${leadName(lead) || lead.primary_email || lead.lead_id}`}
+      selection={
+        onToggleRow && onToggleCurrentPage
+          ? {
+              selectedIds,
+              onToggleRow: (id, checked) => onToggleRow(Number(id), checked),
+              onToggleAll: onToggleCurrentPage,
+              rowLabel: (lead) => `Select lead ${leadName(lead) || lead.primary_email || lead.lead_id}`,
+            }
+          : undefined
+      }
+      sort={sort}
+      onSortChange={onSortChange}
+      isLoading={isLoading}
+      isRefreshing={isRefreshing}
+      hasError={hasError}
+      onRetry={onRetry}
+      hasActiveFilters={hasActiveFilters}
+      onClearFilters={onClearFilters}
+      emptyState={{
+        icon: UserRoundPlus,
+        title: "No leads yet",
+        description: "Create your first lead or import existing records from CSV.",
+        // The toolbar's Quick Create surface, so the list has one create interaction.
+        action: onCreateLead ? <Button type="button" onClick={onCreateLead}>Create lead</Button> : undefined,
+      }}
+      filteredEmptyState={{ icon: UserRoundPlus }}
+    />
   );
 }

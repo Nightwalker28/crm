@@ -6,6 +6,7 @@ import { FileDown, Pencil } from "lucide-react";
 
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/Pill";
@@ -65,12 +66,13 @@ export default function InsertionOrderDetailPage() {
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageShell
+      title={order.io_number}
+      description={order.customer_name || "Finance insertion order"}
+    >
       <RecordPageHeader
         backHref="/dashboard/finance/insertion-orders"
         backLabel="Back to insertion orders"
-        title={order.io_number}
-        description={order.customer_name || "Finance insertion order"}
         primaryAction={canEdit ? (
           <Button asChild>
             <Link href={`/dashboard/finance/insertion-orders/${order.id}/edit`}><Pencil />Edit insertion order</Link>
@@ -173,7 +175,7 @@ export default function InsertionOrderDetailPage() {
         recordLabel="Insertion order"
         taskSourceLabel={order.io_number}
       />
-    </div>
+    </PageShell>
   );
 }
 

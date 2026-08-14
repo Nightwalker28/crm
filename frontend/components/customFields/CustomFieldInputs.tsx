@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RequiredMark } from "@/components/ui/RequiredMark";
@@ -64,14 +64,11 @@ export function CustomFieldInput({ definition: field, value, onChange, disabled 
             id={inputId}
             checked={value === true}
             onCheckedChange={(checked) => onChange(checked === true)}
-            className="flex size-4 items-center justify-center rounded border border-line-strong bg-surface text-primary"
             aria-required={field.is_required}
             disabled={disabled}
             aria-describedby={describedBy}
             aria-invalid={Boolean(error)}
-          >
-            <CheckboxIndicator className="size-3" />
-          </Checkbox>
+          />
         </label>
         {field.help_text ? <FieldDescription id={descriptionId}>{field.help_text}</FieldDescription> : null}
         {error ? <FieldError id={errorId}>{error}</FieldError> : null}

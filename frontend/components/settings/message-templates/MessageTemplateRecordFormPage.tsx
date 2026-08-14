@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
@@ -122,8 +122,11 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
   }
 
   return (
-    <div className="grid gap-6">
-      <PageToolbar><Button type="button" variant="outline" onClick={() => void returnToTemplates()}><ArrowLeft />Back to templates</Button></PageToolbar>
+    <PageShell
+      title={isEdit ? "Edit template" : "Create template"}
+      description="A reusable message body for mail and WhatsApp."
+      actions={<Button type="button" variant="outline" onClick={() => void returnToTemplates()}><ArrowLeft />Back to templates</Button>}
+    >
       <Card className="overflow-hidden">
         {!isEdit ? (
           <section className="border-b border-line-subtle px-5 py-5 md:px-6" aria-labelledby="template-presets-heading">
@@ -210,7 +213,7 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
           </div>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }
 

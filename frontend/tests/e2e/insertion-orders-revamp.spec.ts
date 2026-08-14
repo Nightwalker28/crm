@@ -305,11 +305,12 @@ test("Insertion Order list distinguishes filtered empty and fixed failure states
   await expect(page.getByText("No insertion orders yet")).toBeVisible();
   await page.getByRole("button", { name: "Active" }).click();
   await expect(page.getByText("No insertion orders match this view")).toBeVisible();
-  await page.getByLabel("Data table").getByRole("button", { name: "Clear filters" }).click();
+  await page.getByLabel("Insertion orders").getByRole("button", { name: "Clear filters" }).click();
 
   shouldFail = true;
   await page.reload();
-  await expect(page.getByText("Insertion orders could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("Insertion orders could not be loaded")).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.")).toBeVisible();
   await expect(page.getByText("tenant_id=42 sql_connection=private-secret")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });

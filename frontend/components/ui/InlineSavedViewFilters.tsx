@@ -43,7 +43,7 @@ export function InlineSavedViewFilters({ filterFields, filters, onChange, hideHe
               <Filter className="h-4 w-4" />
               {isOpen ? "Hide Filters" : "Show Filters"}
               {activeCount > 0 ? (
-                <span className="ml-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-action-primary-muted px-1 text-[9px] font-bold text-copy-primary">
+                <span className="ml-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-action-primary-muted px-1 text-2xs font-semibold text-copy-primary">
                   {activeCount}
                 </span>
               ) : null}

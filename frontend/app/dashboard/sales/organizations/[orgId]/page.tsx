@@ -256,26 +256,26 @@ export default function OrganizationDetailPage() {
   }
 
   return (
-    <RecordWorkspace>
+    <RecordWorkspace title={accountName} description="Review account ownership, contacts, commercial activity, transactions, and documents.">
       {!summary ? (
         <RecordPageHeader
           backHref="/dashboard/sales/organizations"
           backLabel="Back to Accounts"
-          title={accountName}
-          description="Review account ownership, contacts, commercial activity, transactions, and documents."
         />
       ) : null}
 
       {summaryError instanceof OrganizationSummaryRequestError && summaryError.status === 403 ? (
-        <PermissionDeniedState />
+        <PermissionDeniedState titleAs="p" />
       ) : summaryError instanceof OrganizationSummaryRequestError && summaryError.status === 404 ? (
         <RouteNotFoundState
+          titleAs="p"
           recordLabel="Account"
           backHref="/dashboard/sales/organizations"
           backLabel="Back to accounts"
         />
       ) : summaryError ? (
         <RouteErrorState
+          titleAs="p"
           title="Unable to load this account"
           reset={() => void summaryQuery.refetch()}
           backHref="/dashboard/sales/organizations"
@@ -291,8 +291,6 @@ export default function OrganizationDetailPage() {
               <RecordPageHeader
                 backHref="/dashboard/sales/organizations"
                 backLabel="Back to Accounts"
-                title={accountName}
-                description="Review account ownership, contacts, commercial activity, transactions, and documents."
                 primaryAction={(
                   <>
                     {canDeleteOrganization ? (

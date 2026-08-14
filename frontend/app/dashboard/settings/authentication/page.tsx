@@ -3,8 +3,9 @@
 import { Check, KeyRound, ShieldCheck } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
+import { Card, CardFooter } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { PageShell } from "@/components/ui/PageShell";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -38,10 +39,13 @@ export default function AuthenticationSettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 pb-20 text-copy-primary">
+    <PageShell variant="settings" title="Authentication" description="Set the MFA policy and connect an external identity provider.">
       <Card className="px-4 py-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div className="flex items-center gap-3"><ShieldCheck className="size-4 text-copy-secondary" /><div><h2 className="text-sm font-semibold">MFA policy</h2><p className="text-xs text-copy-muted">Applies to manual CRM sign-in.</p></div></div>
+          {/* This control saves on change; the SSO card below commits through its own
+              footer. Two commit models on one page is fine — leaving the operator to
+              guess which half has already saved is not, so each one says so (§7.4). */}
+          <div className="flex items-center gap-3"><ShieldCheck className="size-4 text-copy-secondary" /><div><h2 className="text-sm font-semibold">MFA policy</h2><p className="text-xs text-copy-muted">Applies to manual CRM sign-in. Saves as soon as you change it.</p></div></div>
           <Select value={settings.mfaPolicy} disabled={settings.isLoading || settings.isSaving} onValueChange={(value) => settings.updateMfaPolicy(value as MfaPolicy)}><SelectTrigger className="w-full md:w-60" aria-label="MFA policy"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="off">Do not require MFA</SelectItem><SelectItem value="admins_only">Require for admins</SelectItem><SelectItem value="all_users">Require for all users</SelectItem></SelectContent></Select>
         </div>
       </Card>
@@ -85,14 +89,14 @@ export default function AuthenticationSettingsPage() {
             </div>
           ) : null}
         </div>
+        <CardFooter className="sticky bottom-0 z-10 mt-4 flex flex-col gap-2 bg-surface/95 backdrop-blur sm:flex-row sm:items-center sm:justify-end">
+          <span className="mr-auto text-sm text-copy-muted" aria-live="polite">{draft.isDirty ? "You have unsaved SSO changes." : "No unsaved SSO changes."}</span>
+          <Button variant="ghost" onClick={draft.reset} disabled={!draft.isDirty || settings.isSaving}>Discard changes</Button>
+          <Button variant="secondary" onClick={() => void settings.testSsoSettings().catch(() => undefined)} disabled={settings.isTesting || settings.isSaving || draft.isDirty} title={draft.isDirty ? "Save changes before testing" : undefined}>{settings.isTesting ? "Testing…" : "Test connection"}</Button>
+          <Button onClick={() => void save()} disabled={!draft.isDirty || settings.isSaving || settings.isTesting}>{settings.isSaving ? "Saving…" : "Save SSO settings"}</Button>
+        </CardFooter>
       </Card>
-
-      <div className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-line-default bg-surface/95 px-4 py-3 backdrop-blur sm:flex-row sm:justify-end">
-        <Button variant="ghost" onClick={draft.reset} disabled={!draft.isDirty || settings.isSaving}>Discard changes</Button>
-        <Button variant="secondary" onClick={() => void settings.testSsoSettings().catch(() => undefined)} disabled={settings.isTesting || settings.isSaving || draft.isDirty} title={draft.isDirty ? "Save changes before testing" : undefined}>{settings.isTesting ? "Testing…" : "Test connection"}</Button>
-        <Button onClick={() => void save()} disabled={!draft.isDirty || settings.isSaving || settings.isTesting}>{settings.isSaving ? "Saving…" : "Save changes"}</Button>
-      </div>
-    </div>
+    </PageShell>
   );
 }
 

@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import {
@@ -126,12 +127,13 @@ export default function OrderDetailPage() {
     );
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
+    <PageShell
+      title={order ? order.order_number : "Order"}
+      description="Review order value, linked quote, and fulfillment status."
+    >
       <RecordPageHeader
         backHref="/dashboard/sales/orders"
         backLabel="Back to Orders"
-        title={order ? order.order_number : "Order"}
-        description="Review order value, linked quote, and fulfillment status."
         primaryAction={
           <>
             <Button asChild variant="outline">
@@ -336,7 +338,7 @@ export default function OrderDetailPage() {
           taskSourceLabel={order.order_number}
         />
       </div>
-    </div>
+    </PageShell>
   );
 }
 

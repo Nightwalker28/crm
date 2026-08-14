@@ -22,10 +22,9 @@ import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
 import { RequiredMark } from "@/components/ui/RequiredMark";
-import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SettingsSwitchRow } from "@/components/ui/SettingsSwitchRow";
@@ -611,7 +610,7 @@ function ModuleWorkspace({
           <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
           <SheetContent
             side="right"
-            className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none"
+            className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised outline-none"
           >
             <FieldInspector
               field={selectedField}
@@ -773,22 +772,18 @@ export default function ModuleBuilderPage() {
     }
   }
 
-  if (isLoading) return <RouteLoadingState label="module builder" />;
-  if (queryError) {
-    return (
-      <RouteErrorState
-        title="Module builder could not be loaded"
-        description="Your module configuration is unchanged. Try loading it again."
-        reset={() => void refresh()}
-        backHref="/dashboard/settings"
-        backLabel="Return to settings"
-      />
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-6">
-      <PageToolbar>
+    <PageShell
+      variant="settings"
+      title="Module Builder"
+      description="Create custom modules and shape the fields their records carry."
+      isLoading={isLoading}
+      hasError={Boolean(queryError)}
+      errorDescription="Your module configuration is unchanged. Try loading it again."
+      onRetry={() => void refresh()}
+      backHref="/dashboard/settings"
+      backLabel="Return to settings"
+      actions={(
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
             <SearchBar value={search} onChange={setSearch} placeholder="Search modules" className="sm:w-56" />
             {modules.length ? (
@@ -812,8 +807,8 @@ export default function ModuleBuilderPage() {
               </>
             ) : null}
           </div>
-      </PageToolbar>
-
+      )}
+    >
       <div className="min-w-0">
           {creating || !selectedModule ? (
             <CreateModulePanel
@@ -874,6 +869,6 @@ export default function ModuleBuilderPage() {
             />
           )}
       </div>
-    </div>
+    </PageShell>
   );
 }

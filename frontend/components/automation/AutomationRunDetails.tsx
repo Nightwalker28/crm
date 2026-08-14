@@ -18,7 +18,7 @@ export function AutomationRunDetails({ run, open, onOpenChange }: { run: Automat
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetPortal>
         <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[38rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[38rem] flex-col border-l border-line-default bg-surface-raised outline-none">
           <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
             <div><SheetTitle className="text-lg font-semibold text-copy-primary">Run #{run?.id}</SheetTitle><SheetDescription className="mt-1 text-sm text-copy-muted">Safe execution summary and administrator diagnostics.</SheetDescription></div>
             <SheetClose asChild><Button type="button" variant="ghost" size="icon-sm" aria-label="Close run details"><X /></Button></SheetClose>

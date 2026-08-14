@@ -151,7 +151,7 @@ export function QuickCreateSurface({
           side="right"
           aria-busy={isSubmitting}
           data-quick-create-surface="true"
-          className="z-50 flex h-dvh w-full max-w-none flex-col bg-surface-raised shadow-2xl outline-none sm:max-w-[36rem] sm:border-l sm:border-line-default"
+          className="z-50 flex h-dvh w-full max-w-none flex-col bg-surface-raised outline-none sm:max-w-[36rem] sm:border-l sm:border-line-default"
           onOpenAutoFocus={(event) => {
             event.preventDefault();
             const target =
@@ -282,7 +282,7 @@ export function QuickCreateSurface({
           <DialogPrimitive.Root open={discardConfirmationOpen} onOpenChange={setDiscardConfirmationOpen}>
             <DialogPrimitive.Portal>
               <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-overlay" />
-              <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[70] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-5 shadow-2xl outline-none">
+              <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[70] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-5 shadow-[var(--shadow-panel)] outline-none">
                 <DialogPrimitive.Title className="text-base font-semibold text-copy-primary">
                   {discardTitle}
                 </DialogPrimitive.Title>

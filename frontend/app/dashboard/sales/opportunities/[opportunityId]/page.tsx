@@ -24,6 +24,7 @@ import CommunicationActions from "@/components/recordActivity/CommunicationActio
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -422,12 +423,13 @@ export default function OpportunityDetailPage() {
     </div>
   );
   return (
-    <div className="flex flex-col gap-6">
+    <PageShell
+      title={opportunity.opportunity_name}
+      description={`${summary.organization?.org_name || opportunity.client || "Unlinked customer"} · ${formatMoney(opportunity.total_cost_of_project, opportunity.currency_type)}`}
+    >
       <RecordPageHeader
         backHref="/dashboard/sales/opportunities"
         backLabel="Back to deals"
-        title={opportunity.opportunity_name}
-        description={`${summary.organization?.org_name || opportunity.client || "Unlinked customer"} · ${formatMoney(opportunity.total_cost_of_project, opportunity.currency_type)}`}
         primaryAction={
           <>
             <RecordDeleteButton
@@ -523,7 +525,7 @@ export default function OpportunityDetailPage() {
           },
         ]}
       />
-    </div>
+    </PageShell>
   );
 }
 

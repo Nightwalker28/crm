@@ -22,6 +22,7 @@ import CommunicationActions from "@/components/recordActivity/CommunicationActio
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import {
@@ -466,12 +467,13 @@ export default function QuoteDetailPage() {
     );
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
+    <PageShell
+      title={summary ? summary.quote.quote_number || "Quote" : "Quote"}
+      description="Review quote value, customer status, and record history."
+    >
       <RecordPageHeader
         backHref="/dashboard/sales/quotes"
         backLabel="Back to Quotes"
-        title={summary ? summary.quote.quote_number || "Quote" : "Quote"}
-        description="Review quote value, customer status, and record history."
         primaryAction={
           <>
             <RecordDeleteButton
@@ -1290,7 +1292,7 @@ export default function QuoteDetailPage() {
           </div>
         </>
       )}
-    </div>
+    </PageShell>
   );
 }
 

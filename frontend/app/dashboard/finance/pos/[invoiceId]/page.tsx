@@ -7,6 +7,7 @@ import { ExternalLink, Pencil, ReceiptText } from "lucide-react";
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Pill } from "@/components/ui/Pill";
@@ -220,12 +221,13 @@ export default function InvoiceDetailPage() {
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageShell
+      title={invoice.invoice_number}
+      description={`${invoice.customer_name} · ${money(invoice.total_amount, invoice.currency)}`}
+    >
       <RecordPageHeader
         backHref="/dashboard/finance/pos"
         backLabel="Back to invoices"
-        title={invoice.invoice_number}
-        description={`${invoice.customer_name} · ${money(invoice.total_amount, invoice.currency)}`}
         primaryAction={
           <>
             {canDelete ? (
@@ -272,7 +274,7 @@ export default function InvoiceDetailPage() {
           },
         ]}
       />
-    </div>
+    </PageShell>
   );
 }
 

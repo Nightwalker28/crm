@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BarChart3, Download, FileDown, PieChart as PieChartIcon, RotateCcw, Save, Table2, Trash2 } from "lucide-react";
+import { BarChart3, BookmarkPlus, Download, FileDown, PieChart as PieChartIcon, RotateCcw, Save, Table2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Card } from "@/components/ui/Card";
@@ -16,11 +16,12 @@ import { Dialog, DialogBackdrop, DialogFooter, DialogHeader, DialogPanel, Dialog
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -439,17 +440,6 @@ export default function ReportsPage() {
     );
   }
 
-  function renderSavedReportHead(column: SavedReportSortableColumn, label: string) {
-    return (
-      <SortableHead
-        sorted={savedReportSort?.key === column}
-        direction={savedReportSort?.key === column ? savedReportSort.direction : column === "updated_at" || column === "created_at" ? "desc" : "asc"}
-        onClick={() => toggleSavedReportSort(column)}
-      >
-        {label}
-      </SortableHead>
-    );
-  }
 
   function applyReportPreset(preset: ReportPreset) {
     const nextModule = modules.find((item) => item.module_key === preset.module_key);
@@ -537,23 +527,26 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageToolbar context={selectedModule ? `Viewing ${selectedModule.label}` : undefined}>
-          <>
-            {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={() => void exportCsv()} disabled={!chartData.length || Boolean(exporting)}>
-              <FileDown />{exporting === "csv" ? "Preparing…" : "Export CSV"}
-            </Button> : null}
-            {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={exportChartSvg} disabled={viewMode === "table" || !chartData.length || Boolean(exporting)}>
-              <Download />{exporting === "svg" ? "Preparing…" : "Export chart"}
-            </Button> : null}
-            {canCreateReport ? <Button type="button" variant="outline" size="sm" onClick={() => { setSaveName(""); setActionError(""); setSaveDialogOpen(true); }} disabled={!activeModuleKey || createMutation.isPending}>
-              <Save />Save as
-            </Button> : null}
-            {canEditReport ? <Button type="button" size="sm" onClick={() => void saveCurrentReport()} disabled={!isSavedReportDirty || updateMutation.isPending}>
-              <Save />{updateMutation.isPending ? "Saving…" : "Save changes"}
-            </Button> : null}
-          </>
-      </PageToolbar>
+    <PageShell
+      title="Reports"
+      context={selectedModule ? `Viewing ${selectedModule.label}` : undefined}
+      actions={(
+        <>
+          {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={() => void exportCsv()} disabled={!chartData.length || Boolean(exporting)}>
+            <FileDown />{exporting === "csv" ? "Preparing…" : "Export CSV"}
+          </Button> : null}
+          {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={exportChartSvg} disabled={viewMode === "table" || !chartData.length || Boolean(exporting)}>
+            <Download />{exporting === "svg" ? "Preparing…" : "Export chart"}
+          </Button> : null}
+          {canCreateReport ? <Button type="button" variant="outline" size="sm" onClick={() => { setSaveName(""); setActionError(""); setSaveDialogOpen(true); }} disabled={!activeModuleKey || createMutation.isPending}>
+            <Save />Save as
+          </Button> : null}
+          {canEditReport ? <Button type="button" size="sm" onClick={() => void saveCurrentReport()} disabled={!isSavedReportDirty || updateMutation.isPending}>
+            <Save />{updateMutation.isPending ? "Saving…" : "Save changes"}
+          </Button> : null}
+        </>
+      )}
+    >
 
       {!modules.length ? (
         <Card>
@@ -664,63 +657,39 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {savedReportsQuery.error ? (
-          <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-            <span>Saved reports could not be loaded.</span>
-            <Button type="button" variant="outline" size="sm" onClick={() => void savedReportsQuery.refetch()}><RotateCcw />Retry</Button>
-          </div>
-        ) : null}
-
-        <ModuleTableShell className="mb-4 max-h-72" isRefreshing={savedReportsQuery.isFetching && !savedReportsQuery.isLoading}>
-          <Table className="min-w-[720px]">
-            <TableHeader>
-              <TableHeaderRow>
-                {renderSavedReportHead("name", "Name")}
-                {renderSavedReportHead("module_key", "Module")}
-                {renderSavedReportHead("updated_at", "Updated")}
-                {renderSavedReportHead("created_at", "Created")}
-                <TableHead className="text-right">Actions</TableHead>
-              </TableHeaderRow>
-            </TableHeader>
-            <TableBody>
-              {savedReportsQuery.isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-sm text-copy-muted">Loading saved reports…</TableCell>
-                </TableRow>
-              ) : savedReports.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-sm text-copy-muted">No saved reports for this module.</TableCell>
-                </TableRow>
-              ) : (
-                savedReports.map((item) => (
-                  <TableRow
-                    key={item.id}
-                    className="cursor-pointer"
-                    tabIndex={0}
-                    aria-label={`Open saved report ${item.name}`}
-                    onClick={() => applySavedReport(String(item.id))}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        applySavedReport(String(item.id));
-                      }
-                    }}
-                  >
-                    <TableCell className="font-medium text-copy-primary">{item.name}</TableCell>
-                    <TableCell className="text-copy-secondary">{getModuleDisplayName(item.module_key)}</TableCell>
-                    <TableCell className="text-copy-secondary">{formatDateTime(item.updated_at, { hour: "numeric", minute: "2-digit" })}</TableCell>
-                    <TableCell className="text-copy-secondary">{formatDateTime(item.created_at, { hour: "numeric", minute: "2-digit" })}</TableCell>
-                    <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => applySavedReport(String(item.id))}>
-                        Open
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </ModuleTableShell>
+        {/* No height cap: §4.5/§11.1 — a capped shell is a second scroll container inside
+            an already-scrolling page. The list grows and the page scrolls, like every
+            other list on a document page. */}
+        <RecordTable
+          label="Saved reports"
+          className="mb-4"
+          columns={[
+            { key: "name", label: "Name", size: "lg", sortable: true, render: (item) => <span className="font-medium text-copy-primary">{item.name}</span> },
+            { key: "module_key", label: "Module", sortable: true, render: (item) => <span className="text-copy-secondary">{getModuleDisplayName(item.module_key)}</span> },
+            { key: "updated_at", label: "Updated", sortable: true, render: (item) => <span className="text-copy-secondary">{formatDateTime(item.updated_at, { hour: "numeric", minute: "2-digit" })}</span> },
+            { key: "created_at", label: "Created", sortable: true, render: (item) => <span className="text-copy-secondary">{formatDateTime(item.created_at, { hour: "numeric", minute: "2-digit" })}</span> },
+          ]}
+          rows={savedReports}
+          rowKey={(item) => item.id}
+          onOpenRow={(item) => applySavedReport(String(item.id))}
+          rowLabel={(item) => `Open saved report ${item.name}`}
+          sort={savedReportSort ? { column: savedReportSort.key, direction: savedReportSort.direction } : null}
+          onSortChange={(next) => toggleSavedReportSort(next.column as SavedReportSortableColumn)}
+          isLoading={savedReportsQuery.isLoading}
+          isRefreshing={savedReportsQuery.isFetching && !savedReportsQuery.isLoading}
+          hasError={Boolean(savedReportsQuery.error)}
+          onRetry={() => void savedReportsQuery.refetch()}
+          emptyState={{
+            icon: BookmarkPlus,
+            title: "No saved reports for this module",
+            description: "Build a report below, then save it to reuse the same grouping and filters.",
+          }}
+          rowActions={(item) => (
+            <Button type="button" variant="ghost" size="sm" onClick={() => applySavedReport(String(item.id))}>
+              Open
+            </Button>
+          )}
+        />
 
         <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <Field>
@@ -933,7 +902,7 @@ export default function ReportsPage() {
           </DialogPanel>
         </div>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }
 

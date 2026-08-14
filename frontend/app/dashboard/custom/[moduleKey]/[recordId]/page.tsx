@@ -12,6 +12,7 @@ import {
 } from "@/components/customModules/CustomModuleFieldInput";
 import { FormSection } from "@/components/forms/RecordFormLayout";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Button } from "@/components/ui/button";
@@ -250,12 +251,13 @@ export default function CustomModuleRecordDetailPage() {
   const record = recordQuery.record;
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageShell
+      title={record.title}
+      description={description}
+    >
       <RecordPageHeader
         backHref={backHref}
         backLabel="Back to records"
-        title={record.title}
-        description={description}
         primaryAction={
           <>
             {canDelete ? (
@@ -313,6 +315,6 @@ export default function CustomModuleRecordDetailPage() {
           },
         ]}
       />
-    </div>
+    </PageShell>
   );
 }

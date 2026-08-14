@@ -10,7 +10,7 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ImageAssetField, validateImageAssetFile } from "@/components/ui/ImageAssetField";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Textarea } from "@/components/ui/textarea";
@@ -321,9 +321,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title="Profile" description="Manage your personal details, preferences, profile image, and sign-in security." />
-
+    <PageShell title="Profile" description="Manage your personal details, preferences, profile image, and sign-in security.">
       {error ? (
         <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           {error}
@@ -490,7 +488,7 @@ export default function ProfilePage() {
           ) : null}
         </CardBody>
       </Card>
-    </div>
+    </PageShell>
   );
 }
 

@@ -192,7 +192,7 @@ export function IntegrationWebhookWorkspace() {
       <Sheet open={editorOpen} onOpenChange={handleEditorOpenChange}>
         <SheetPortal>
           <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised outline-none">
             <div className="flex min-h-0 flex-1 flex-col">
               <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
                 <div>

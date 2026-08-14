@@ -8,6 +8,7 @@ import { ContactQuickCreate } from "@/components/contacts/ContactQuickCreate";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import Pagination from "@/components/ui/Pagination";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
@@ -44,12 +45,6 @@ export default function ContactsPage() {
   const activeFilterCount = allConditions.length + anyConditions.length;
   const hasActiveFilters = Boolean((typeof activeFilters.search === "string" && activeFilters.search.trim()) || activeFilterCount);
   const currentPageIds = useMemo(() => contacts.map((contact) => contact.contact_id), [contacts]);
-  const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
-    if (!currentPageIds.length) return false;
-    const selectedOnPage = currentPageIds.filter((id) => selectedIds.includes(id)).length;
-    if (!selectedOnPage) return false;
-    return selectedOnPage === currentPageIds.length ? true : "indeterminate";
-  }, [currentPageIds, selectedIds]);
 
   function toggleRow(contactId: number, checked: boolean) {
     setSelectedIds((current) => checked ? Array.from(new Set([...current, contactId])) : current.filter((id) => id !== contactId));
@@ -64,7 +59,7 @@ export default function ContactsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <PageShell variant="list" title="Contacts">
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: value } }))}
@@ -93,7 +88,6 @@ export default function ContactsPage() {
         onCreated={() => refresh()}
       />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />
-      {error ? <div className="flex justify-between rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-state-danger"><span>We could not load contacts.</span><button onClick={refresh} className="underline underline-offset-2">Retry</button></div> : null}
       <ContactList
         contacts={contacts}
         isLoading={isLoading}
@@ -101,16 +95,17 @@ export default function ContactsPage() {
         visibleColumns={visibleColumns}
         columnOptions={definition?.columns ?? []}
         selectedIds={selectedIds}
-        currentPageSelectionState={currentPageSelectionState}
         onToggleRow={toggleRow}
         onToggleCurrentPage={toggleCurrentPage}
         hasActiveFilters={hasActiveFilters}
+        hasError={Boolean(error)}
+        onRetry={refresh}
         onClearFilters={clearFilters}
         onCreateContact={canCreate ? () => setQuickCreateOpen(true) : undefined}
         sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
         onSortChange={(nextSort) => setDraftConfig((current) => ({ ...current, sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null }))}
       />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
-    </div>
+    </PageShell>
   );
 }

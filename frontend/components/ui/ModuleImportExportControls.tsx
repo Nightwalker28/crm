@@ -51,7 +51,7 @@ export function ModuleImportExportControls({
         </MenuButton>
         <MenuItems
           anchor="bottom end"
-          className="z-50 mt-2 w-44 rounded-[var(--radius-card)] border border-line-default bg-surface-raised p-1 shadow-2xl outline-none"
+          className="z-50 mt-2 w-44 rounded-[var(--radius-card)] border border-line-default bg-surface-raised p-1 shadow-[var(--shadow-panel)] outline-none"
         >
           {importEndpoint ? (
             <ImportControls

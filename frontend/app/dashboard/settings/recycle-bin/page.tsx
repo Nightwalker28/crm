@@ -8,12 +8,10 @@ import { RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import Pagination from "@/components/ui/Pagination";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useConfirm } from "@/hooks/useConfirm";
 import { formatDateTime } from "@/lib/datetime";
 import { getModuleDisplayName } from "@/lib/module-display";
@@ -140,29 +138,34 @@ export default function RecycleBinPage() {
   const data = query.data;
 
   return (
-    <div className="flex flex-col gap-5 text-copy-primary">
-      <PageToolbar>
-          <Select
-            value={moduleKey}
-            onValueChange={(value) => {
-              setModuleKey(value);
-              setPage(1);
-              setRestoreError(false);
-            }}
-          >
-            <SelectTrigger className="w-72 max-w-full" aria-label="Recycle bin module">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {moduleOptions.map((option) => (
-                <SelectItem key={option.value} value={option.value}>
-                  {option.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-      </PageToolbar>
-
+    <PageShell
+      variant="settings"
+      title="Recycle Bin"
+      description="Restore records deleted in the last retention window."
+      actions={(
+        <>
+        <Select
+          value={moduleKey}
+          onValueChange={(value) => {
+            setModuleKey(value);
+            setPage(1);
+            setRestoreError(false);
+          }}
+        >
+          <SelectTrigger className="w-72 max-w-full" aria-label="Recycle bin module">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {moduleOptions.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        </>
+      )}
+    >
       {customModulesError ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted px-4 py-3 text-sm text-copy-secondary">
           <span>Custom-module recovery options could not be loaded. Built-in modules remain available.</span>
@@ -180,80 +183,64 @@ export default function RecycleBinPage() {
         </div>
       ) : null}
 
-      <Card className="overflow-visible">
+      <Card>
         <div className="border-b border-line-subtle px-5 py-4">
           <h2 className="text-lg font-semibold text-copy-primary">{label}</h2>
           <p className="mt-1 text-sm text-copy-muted">Restore records without removing their audit history.</p>
         </div>
 
-        <ModuleTableShell className="min-h-80 rounded-none border-0" isRefreshing={query.isFetching && !query.isLoading}>
-          <Table className="min-w-[900px]">
-          <TableHeader>
-            <TableHeaderRow>
-              <TableHead>Record</TableHead>
-              <TableHead>Module</TableHead>
-              <TableHead>Deleted</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableHeaderRow>
-          </TableHeader>
-          <TableBody>
-            {query.isLoading ? (
-              <TableRow>
-                <TableCell colSpan={4} className="py-10 text-center text-sm text-copy-muted" aria-busy="true">Loading recycle items...</TableCell>
-              </TableRow>
-            ) : query.error ? (
-              <TableRow>
-                <TableCell colSpan={4}>
-                  <div role="alert" className="flex flex-col items-center px-4 py-8 text-center">
-                    <p className="text-sm font-medium text-copy-primary">Recycled records could not be loaded.</p>
-                    <p className="mt-1 text-sm text-copy-muted">Check your connection and try again.</p>
-                    <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => void query.refetch()}>
-                      <RefreshCw />
-                      Try again
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : data?.results?.length ? (
-              data.results.map((item) => (
-                <TableRow key={`${item.module_key}-${item.record_id}`}>
-                  <TableCell>
-                    <div className="font-medium text-copy-primary">{item.title}</div>
-                    <div className="mt-1 text-xs text-copy-muted">{item.subtitle || "No secondary label"}</div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-copy-secondary">{getModuleDisplayName(item.module_key)}</div>
-                    <div className="text-xs text-copy-muted">#{item.record_id}</div>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-copy-muted">{item.deleted_at ? formatDateTime(item.deleted_at) : "-"}</TableCell>
-                  <TableCell>
-                    <div className="flex justify-end">
-                      <Button
-                        variant="outline"
-                        onClick={() => void restoreItem(item)}
-                        disabled={restoringKey !== null}
-                      >
-                        <RotateCcw />
-                        {restoringKey === `${item.module_key}-${item.record_id}` ? "Restoring..." : "Restore"}
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={4}>
-                  <EmptyState
-                    icon={Trash2}
-                    title={`No recycled ${label.toLowerCase()}`}
-                    description="Deleted records for this module will appear here until restored or removed by the retention policy."
-                  />
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-        </ModuleTableShell>
+        <RecordTable
+          label={label}
+          shellVariant="nested"
+          className="min-h-80"
+          columns={[
+            {
+              key: "record",
+              label: "Record",
+              size: "lg",
+              render: (item) => (
+                <div className="min-w-0">
+                  <div className="font-medium text-copy-primary">{item.title}</div>
+                  <div className="mt-1 text-xs text-copy-muted">{item.subtitle || "No secondary label"}</div>
+                </div>
+              ),
+            },
+            {
+              key: "module",
+              label: "Module",
+              render: (item) => (
+                <div className="min-w-0">
+                  <div className="text-copy-secondary">{getModuleDisplayName(item.module_key)}</div>
+                  <div className="text-xs text-copy-muted">#{item.record_id}</div>
+                </div>
+              ),
+            },
+            { key: "deleted_at", label: "Deleted", render: (item) => <span className="whitespace-nowrap text-copy-muted">{item.deleted_at ? formatDateTime(item.deleted_at) : "Not recorded"}</span> },
+          ]}
+          rows={data?.results ?? []}
+          rowKey={(item) => `${item.module_key}-${item.record_id}`}
+          isLoading={query.isLoading}
+          isRefreshing={query.isFetching && !query.isLoading}
+          hasError={Boolean(query.error)}
+          onRetry={() => void query.refetch()}
+          emptyState={{
+            icon: Trash2,
+            title: `No recycled ${label.toLowerCase()}`,
+            description: "Deleted records for this module will appear here until restored or removed by the retention policy.",
+          }}
+          rowActions={(item) => (
+            <div className="flex justify-end">
+              <Button
+                variant="outline"
+                onClick={() => void restoreItem(item)}
+                disabled={restoringKey !== null}
+              >
+                <RotateCcw />
+                {restoringKey === `${item.module_key}-${item.record_id}` ? "Restoring..." : "Restore"}
+              </Button>
+            </div>
+          )}
+        />
       </Card>
 
       {data && data.total_count > 0 && !query.error ? (
@@ -272,6 +259,6 @@ export default function RecycleBinPage() {
           }}
         />
       ) : null}
-    </div>
+    </PageShell>
   );
 }

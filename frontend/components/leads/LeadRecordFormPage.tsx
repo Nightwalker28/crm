@@ -12,7 +12,7 @@ import { EMPTY_LEAD_FORM, LeadFormMainFields, LeadFormSidebarFields, type LeadFo
 import { buildLeadPayload, saveLead, toDatetimeLocalValue, validateLeadEmail } from "@/components/leads/leadMutation";
 import { consumeLeadQuickCreateDraft, isLeadQuickCreateHandoff } from "@/components/leads/leadQuickCreateDraft";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
@@ -138,18 +138,16 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
   const cancelHref = mode === "edit" && leadId ? `/dashboard/sales/leads/${leadId}` : "/dashboard/sales/leads";
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={title}
-        eyebrow={mode === "edit" && summaryQuery.data?.lead.updated_at ? `Last modified ${formatDateTime(summaryQuery.data.lead.updated_at)}` : undefined}
-        description={mode === "edit" ? "Update lead details and qualification information." : "Capture a new prospect and prepare the first follow-up."}
-        actions={(
-          <Button asChild variant="ghost" size="sm">
-            <Link href={cancelHref}><ArrowLeft />Back to {mode === "edit" ? "lead" : "leads"}</Link>
-          </Button>
-        )}
-      />
-
+    <PageShell
+      title={title}
+      eyebrow={mode === "edit" && summaryQuery.data?.lead.updated_at ? `Last modified ${formatDateTime(summaryQuery.data.lead.updated_at)}` : undefined}
+      description={mode === "edit" ? "Update lead details and qualification information." : "Capture a new prospect and prepare the first follow-up."}
+      actions={(
+        <Button asChild variant="ghost" size="sm">
+          <Link href={cancelHref}><ArrowLeft />Back to {mode === "edit" ? "lead" : "leads"}</Link>
+        </Button>
+      )}
+    >
       {submitError ? (
         <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           <div className="font-medium">We could not save this lead.</div>
@@ -181,6 +179,6 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
           emailError={emailError}
         />
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -114,12 +115,13 @@ function SupportCaseWorkspace({ item }: { item: SupportCase }) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageShell
+      title={item.case_number}
+      description={item.subject}
+    >
       <RecordPageHeader
         backHref="/dashboard/support/cases"
         backLabel="Back to support cases"
-        title={item.case_number}
-        description={item.subject}
         primaryAction={<Button onClick={() => void handleSave()} disabled={saving || !isDirty}><Save />{saving ? "Saving…" : "Save changes"}</Button>}
       />
 
@@ -236,7 +238,7 @@ function SupportCaseWorkspace({ item }: { item: SupportCase }) {
           taskSourceLabel={item.case_number}
         />
       </div>
-    </div>
+    </PageShell>
   );
 }
 

@@ -9,6 +9,7 @@ import RecordPaymentDialog from "@/components/finance/payments/RecordPaymentDial
 import PaymentsTable from "@/components/finance/payments/PaymentsTable";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import Pagination from "@/components/ui/Pagination";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
@@ -54,7 +55,7 @@ export default function PaymentsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <PageShell variant="list" title="Payments">
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -71,10 +72,9 @@ export default function PaymentsPage() {
         primaryAction={canRecordPayment ? <Button asChild><Link href="/dashboard/finance/payments/record">Record payment</Link></Button> : undefined}
       />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(filters) => setDraftConfig((current) => ({ ...current, filters }))} hideHeader />
-      {error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"><span>We could not load payments. Check your connection and try again.</span><Button type="button" variant="outline" size="sm" onClick={() => void refresh()}>Try again</Button></div> : null}
-      <PaymentsTable invoices={invoices} visibleColumns={visibleColumns} isLoading={isLoading} isRefreshing={isFetching && !isLoading} selectedIds={selectedIds} sort={sort} hasActiveFilters={hasActiveFilters} canCreateInvoice={canCreateInvoice} canRecordPayment={canRecordPayment} onSortChange={(nextSort) => setDraftConfig((current) => ({ ...current, sort: nextSort }))} onToggle={(id, checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((item) => item !== id))} onTogglePage={(checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, ...currentPageIds])) : current.filter((id) => !currentPageIds.includes(id)))} onRecordPayment={setPaymentInvoice} onClearFilters={clearFilters} />
+      <PaymentsTable invoices={invoices} visibleColumns={visibleColumns} isLoading={isLoading} isRefreshing={isFetching && !isLoading} selectedIds={selectedIds} sort={sort} hasActiveFilters={hasActiveFilters} hasError={Boolean(error)} onRetry={() => void refresh()} canCreateInvoice={canCreateInvoice} canRecordPayment={canRecordPayment} onSortChange={(nextSort) => setDraftConfig((current) => ({ ...current, sort: nextSort }))} onToggle={(id, checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((item) => item !== id))} onTogglePage={(checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, ...currentPageIds])) : current.filter((id) => !currentPageIds.includes(id)))} onRecordPayment={setPaymentInvoice} onClearFilters={clearFilters} />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
       <RecordPaymentDialog key={paymentInvoice?.id ?? "closed"} open={Boolean(paymentInvoice)} invoice={paymentInvoice} isSubmitting={isRecordingPayment} onClose={() => setPaymentInvoice(null)} onSubmit={submitPayment} />
-    </div>
+    </PageShell>
   );
 }

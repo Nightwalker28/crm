@@ -179,20 +179,19 @@ export default function LeadDetailPage() {
   }, [requestedTab, summary]);
 
   return (
-    <RecordWorkspace>
+    <RecordWorkspace title={leadName} description="Review the lead record, qualification status, and follow-up history.">
       {!summary ? <RecordPageHeader
         backHref="/dashboard/sales/leads"
         backLabel="Back to Leads"
-        title={leadName}
-        description="Review the lead record, qualification status, and follow-up history."
       /> : null}
 
       {summaryError instanceof LeadSummaryRequestError && summaryError.status === 403 ? (
-        <PermissionDeniedState />
+        <PermissionDeniedState titleAs="p" />
       ) : summaryError instanceof LeadSummaryRequestError && summaryError.status === 404 ? (
-        <RouteNotFoundState recordLabel="Lead" backHref="/dashboard/sales/leads" backLabel="Back to leads" />
+        <RouteNotFoundState titleAs="p" recordLabel="Lead" backHref="/dashboard/sales/leads" backLabel="Back to leads" />
       ) : summaryError ? (
         <RouteErrorState
+          titleAs="p"
           title="Unable to load this lead"
           reset={() => void summaryQuery.refetch()}
           backHref="/dashboard/sales/leads"
@@ -208,8 +207,6 @@ export default function LeadDetailPage() {
               <RecordPageHeader
                 backHref="/dashboard/sales/leads"
                 backLabel="Back to Leads"
-                title={leadName}
-                description="Review the lead record, qualification status, and follow-up history."
                 primaryAction={(
                   <>
                     {canDeleteLead ? <RecordDeleteButton

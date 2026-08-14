@@ -9,6 +9,7 @@ import Pagination from "@/components/ui/Pagination";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { Button } from "@/components/ui/button";
@@ -62,13 +63,6 @@ export default function LeadsPage() {
   const hasActiveFilters = Boolean((typeof activeFilters.search === "string" && activeFilters.search.trim()) || activeFilterCount);
 
   const currentPageIds = useMemo(() => leads.map((lead) => lead.lead_id), [leads]);
-  const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
-    if (!currentPageIds.length) return false;
-    const selectedOnPage = currentPageIds.filter((id) => selectedIds.includes(id)).length;
-    if (!selectedOnPage) return false;
-    if (selectedOnPage === currentPageIds.length) return true;
-    return "indeterminate";
-  }, [currentPageIds, selectedIds]);
 
   function toggleRow(leadId: number, checked: boolean) {
     setSelectedIds((current) => checked ? Array.from(new Set([...current, leadId])) : current.filter((id) => id !== leadId));
@@ -82,7 +76,7 @@ export default function LeadsPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <PageShell variant="list" title="Leads">
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: value } }))}
@@ -126,12 +120,6 @@ export default function LeadsPage() {
         onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))}
         hideHeader
       />
-      {error ? (
-        <div className="flex justify-between rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <span>{error}</span>
-          <button onClick={refresh} className="underline underline-offset-2">Retry</button>
-        </div>
-      ) : null}
       <LeadsTable
         leads={leads}
         isLoading={isLoading}
@@ -139,10 +127,11 @@ export default function LeadsPage() {
         visibleColumns={visibleColumns}
         columnOptions={definition?.columns ?? []}
         selectedIds={selectedIds}
-        currentPageSelectionState={currentPageSelectionState}
         onToggleRow={toggleRow}
         onToggleCurrentPage={toggleCurrentPage}
         hasActiveFilters={hasActiveFilters}
+        hasError={Boolean(error)}
+        onRetry={refresh}
         onCreateLead={canCreate ? () => setQuickCreateOpen(true) : undefined}
         onClearFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }))}
         sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
@@ -164,6 +153,6 @@ export default function LeadsPage() {
         onPageChange={goToPage}
         onPageSizeChange={onPageSizeChange}
       />
-    </div>
+    </PageShell>
   );
 }

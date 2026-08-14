@@ -12,7 +12,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
@@ -100,13 +100,11 @@ export default function RecordPaymentPage() {
   if (!canRecordPayment) return <PermissionDeniedState />;
 
   return (
-    <div className="grid gap-6">
-      <PageHeader
-        title="Record payment"
-        description="Select an outstanding invoice and apply a customer payment."
-        actions={<Button asChild variant="outline"><Link href="/dashboard/finance/payments"><ArrowLeft />Back to payments</Link></Button>}
-      />
-
+    <PageShell
+      title="Record payment"
+      description="Select an outstanding invoice and apply a customer payment."
+      actions={<Button asChild variant="outline"><Link href="/dashboard/finance/payments"><ArrowLeft />Back to payments</Link></Button>}
+    >
       <RecordFormLayout
         sidebar={
           <Card className="p-5">
@@ -206,6 +204,6 @@ export default function RecordPaymentPage() {
           </FieldGroup>
         </FormSection>
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

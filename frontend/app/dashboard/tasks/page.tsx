@@ -10,6 +10,7 @@ import TaskDialog from "@/components/tasks/TaskDialog";
 import TasksBoard from "@/components/tasks/TasksBoard";
 import TasksCalendar from "@/components/tasks/TasksCalendar";
 import TasksTable from "@/components/tasks/TasksTable";
+import { PageShell } from "@/components/ui/PageShell";
 import Pagination from "@/components/ui/Pagination";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
@@ -181,7 +182,7 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <PageShell variant="list" title="Tasks">
       <ModuleListToolbar
         searchValue={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -217,13 +218,6 @@ export default function TasksPage() {
         hideHeader
       />
 
-      {error ? (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <span>Tasks could not be loaded. Check your connection and try again.</span>
-          <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>Try again</Button>
-        </div>
-      ) : null}
-
       {displayMode !== "list" ? (
         <div className="rounded-[var(--radius-card)] border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
           Showing loaded records {rangeStart}-{rangeEnd} of {totalCount}. {displayMode === "board" ? "Drag cards between columns or use the status menu for keyboard access." : "Calendar placement follows each task's due date in your local timezone."}
@@ -237,14 +231,17 @@ export default function TasksPage() {
           isRefreshing={isFetching && !isLoading}
           visibleColumns={visibleColumns}
           onEdit={openEditDialog}
+          onCreateTask={openCreateDialog}
           isFiltered={hasActiveFilters}
+          hasError={Boolean(error)}
+          onRetry={() => void refresh()}
           sort={sort}
           onSortChange={setSort}
         />
       ) : displayMode === "board" ? (
-        <TasksBoard tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} onOpen={openEditDialog} onStatusChange={handleStatusChange} />
+        <TasksBoard tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={() => void refresh()} onOpen={openEditDialog} onStatusChange={handleStatusChange} />
       ) : (
-        <TasksCalendar tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} onOpen={openEditDialog} />
+        <TasksCalendar tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={() => void refresh()} onOpen={openEditDialog} />
       )}
 
       <Pagination
@@ -275,6 +272,6 @@ export default function TasksPage() {
         onRemoveFromCalendar={activeTask ? handleRemoveFromCalendar : undefined}
         onOpenCalendarEvent={linkedCalendarEventQuery.data?.event ? handleOpenCalendarEvent : undefined}
       />
-    </div>
+    </PageShell>
   );
 }

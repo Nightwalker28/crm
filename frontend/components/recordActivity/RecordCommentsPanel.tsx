@@ -238,7 +238,7 @@ export default function RecordCommentsPanel({
               <div
                 role="listbox"
                 aria-label="Mention suggestions"
-                className="absolute left-2 right-2 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-[var(--radius-control)] border border-line-default bg-surface-raised py-1 shadow-xl"
+                className="absolute left-2 right-2 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-[var(--radius-control)] border border-line-default bg-surface-raised py-1 shadow-[var(--shadow-panel)]"
               >
                 {mentionQueryResult.isLoading ? (
                   <div role="status" className="px-3 py-2 text-sm text-copy-muted">Loading people…</div>

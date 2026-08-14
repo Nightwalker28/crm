@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, GripVertical } from "lucide-react";
+import { AlertTriangle, GripVertical, TriangleAlert } from "lucide-react";
 
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -14,6 +15,8 @@ import { getTaskPriorityStyle, getTaskStatusStyle } from "@/lib/statusStyles";
 type Props = {
   tasks: Task[];
   isLoading: boolean;
+  hasError?: boolean;
+  onRetry?: () => void;
   isRefreshing?: boolean;
   onOpen: (task: Task) => void;
   onStatusChange: (task: Task, status: TaskStatus) => Promise<void> | void;
@@ -30,9 +33,23 @@ function isOverdue(task: Task) {
   return Boolean(task.due_at && task.status !== "completed" && new Date(task.due_at).getTime() < Date.now());
 }
 
-export default function TasksBoard({ tasks, isLoading, isRefreshing = false, onOpen, onStatusChange }: Props) {
+export default function TasksBoard({ tasks, isLoading, isRefreshing = false, hasError = false, onRetry, onOpen, onStatusChange }: Props) {
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [dropStatus, setDropStatus] = useState<TaskStatus | null>(null);
+
+  // §7.4 — the board is the same data view as the table, so it owes the same states.
+  if (hasError) {
+    return (
+      <div role="alert">
+        <EmptyState
+          icon={TriangleAlert}
+          title="Tasks could not be loaded"
+          description="Check your connection and try again."
+          action={onRetry ? <Button type="button" variant="outline" onClick={onRetry}>Try again</Button> : undefined}
+        />
+      </div>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -86,7 +103,7 @@ export default function TasksBoard({ tasks, isLoading, isRefreshing = false, onO
                       draggable
                       onDragStart={() => setDraggedId(task.id)}
                       onDragEnd={() => { setDraggedId(null); setDropStatus(null); }}
-                      className={`rounded-[var(--radius-card)] border bg-surface p-3 shadow-sm ${isOverdue(task) ? "border-state-warning/60" : "border-line-default"}`}
+                      className={`rounded-[var(--radius-card)] border bg-surface p-3 ${isOverdue(task) ? "border-state-warning/60" : "border-line-default"}`}
                     >
                       <div className="flex items-start gap-2">
                         <GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" />

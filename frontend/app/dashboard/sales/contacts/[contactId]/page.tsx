@@ -300,22 +300,21 @@ export default function ContactDetailPage() {
   }
 
   return (
-    <RecordWorkspace>
+    <RecordWorkspace title={contactName} description="Review contact details, account context, communications, and related sales records.">
       {!summary ? (
         <RecordPageHeader
           backHref="/dashboard/sales/contacts"
           backLabel="Back to Contacts"
-          title={contactName}
-          description="Review contact details, account context, communications, and related sales records."
         />
       ) : null}
 
       {summaryError instanceof ContactSummaryRequestError && summaryError.status === 403 ? (
-        <PermissionDeniedState />
+        <PermissionDeniedState titleAs="p" />
       ) : summaryError instanceof ContactSummaryRequestError && summaryError.status === 404 ? (
-        <RouteNotFoundState recordLabel="Contact" backHref="/dashboard/sales/contacts" backLabel="Back to contacts" />
+        <RouteNotFoundState titleAs="p" recordLabel="Contact" backHref="/dashboard/sales/contacts" backLabel="Back to contacts" />
       ) : summaryError ? (
         <RouteErrorState
+          titleAs="p"
           title="Unable to load this contact"
           reset={() => void summaryQuery.refetch()}
           backHref="/dashboard/sales/contacts"
@@ -331,8 +330,6 @@ export default function ContactDetailPage() {
               <RecordPageHeader
                 backHref="/dashboard/sales/contacts"
                 backLabel="Back to Contacts"
-                title={contactName}
-                description="Review contact details, account context, communications, and related sales records."
                 primaryAction={(
                   <>
                     {canDeleteContact ? (

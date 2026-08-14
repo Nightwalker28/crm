@@ -8,6 +8,7 @@ import { History, Pencil, UserRoundCheck, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -200,12 +201,13 @@ export default function ContractDetailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageShell
+      title={item.contract_number}
+      description={item.title ?? "Review contract lifecycle, related CRM records, parties, signers, and events."}
+    >
       <RecordPageHeader
         backHref="/dashboard/contracts"
         backLabel="Back to Contracts"
-        title={item.contract_number}
-        description={item.title ?? "Review contract lifecycle, related CRM records, parties, signers, and events."}
         primaryAction={canEdit ? (
           <>
             <Button asChild variant="outline"><Link href={`/dashboard/contracts/${params.contractId}/edit`}><Pencil />Edit contract</Link></Button>
@@ -427,7 +429,7 @@ export default function ContractDetailPage() {
           </CardBody>
         </Card>
       </div>
-    </div>
+    </PageShell>
   );
 }
 

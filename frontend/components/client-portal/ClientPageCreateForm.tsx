@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -170,13 +170,11 @@ export default function ClientPageCreateForm() {
   }
 
   return (
-    <div className="grid gap-6">
-      <PageHeader
-        title="Create client page"
-        description="Prepare a customer-specific pricing snapshot, proposal, and document package."
-        actions={<Button variant="outline" asChild><Link href="/dashboard/client-portal"><ArrowLeft />Back to Client Portal</Link></Button>}
-      />
-
+    <PageShell
+      title="Create client page"
+      description="Prepare a customer-specific pricing snapshot, proposal, and document package."
+      actions={<Button variant="outline" asChild><Link href="/dashboard/client-portal"><ArrowLeft />Back to Client Portal</Link></Button>}
+    >
       <form onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
           sidebar={
@@ -368,6 +366,6 @@ export default function ClientPageCreateForm() {
           </FormSection>
         </RecordFormLayout>
       </form>
-    </div>
+    </PageShell>
   );
 }

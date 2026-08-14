@@ -6,6 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { PageShell } from "@/components/ui/PageShell";
 import { Dialog, DialogBackdrop, DialogDescription, DialogFooter, DialogHeader, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/input";
@@ -30,7 +31,11 @@ export default function DomainsSettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 text-copy-primary">
+    <PageShell
+      variant="settings"
+      title="Domains"
+      description="Verify a custom hostname before using tenant SSO."
+    >
       <Card className="px-4 py-4">
         <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -47,7 +52,7 @@ export default function DomainsSettingsPage() {
         </div>
       </Card>
       <Dialog open={deleting !== null} onClose={() => { if (!settings.isSaving) setDeleting(null); }}><DialogBackdrop /><div className="fixed inset-0 z-[30] flex items-center justify-center p-4"><DialogPanel size="sm"><DialogHeader><DialogTitle>Remove custom domain?</DialogTitle></DialogHeader><DialogDescription className="mt-2">Removing <strong>{deleting?.hostname}</strong> may interrupt SSO routing.</DialogDescription><DialogFooter className="mt-5"><Button variant="outline" onClick={() => setDeleting(null)}>Cancel</Button><Button variant="destructive" disabled={settings.isSaving} onClick={async () => { if (!deleting) return; try { await settings.deleteTenantDomain(deleting.id); setDeleting(null); } catch { /* keep confirmation open */ } }}>{settings.isSaving ? "Removing…" : "Remove domain"}</Button></DialogFooter></DialogPanel></div></Dialog>
-    </div>
+    </PageShell>
   );
 }
 

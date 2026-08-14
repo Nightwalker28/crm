@@ -10,7 +10,7 @@ import type { UserFiltersValue } from "@/components/users/userFilters";
 import { UserManagementTable, type SortDirection, type SortKey } from "@/components/users/userManagementTable";
 import { Button } from "@/components/ui/button";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useUserManagement } from "@/hooks/admin/useUserManagement";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
@@ -68,11 +68,17 @@ function UsersWorkspace({ createRequested }: { createRequested: boolean }) {
   }
 
   return (
-    <div className="flex flex-col gap-5 text-copy-primary">
-      <PageToolbar>
+    <PageShell
+      variant="settings"
+      title="Users"
+      description="Invite users, manage accounts, and keep access current."
+      actions={(
+        <>
         <SavedViewSelector moduleKey="admin_users" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />
         <Button onClick={admin.openCreateModal}><Plus />Add User</Button>
-      </PageToolbar>
+        </>
+      )}
+    >
       <InlineSavedViewFilters
         filterFields={definition?.filterFields ?? []}
         filters={activeFilters}
@@ -99,6 +105,6 @@ function UsersWorkspace({ createRequested }: { createRequested: boolean }) {
       />
       <CreateUserDialog open={admin.isCreateOpen || createRequested} roles={admin.roles} teams={admin.teams} onClose={closeCreate} onCreate={admin.createUser} />
       {admin.editUserData ? <EditUserDialog open={admin.isEditOpen} user={admin.editUserData} roles={admin.roles} teams={admin.teams} currentUserId={admin.currentUserId} onClose={admin.closeEditModal} onSave={async (id, form) => { await admin.updateUser(id, form); admin.closeEditModal(); }} onResetMfa={async (id) => { await admin.resetUserMfa(id); admin.closeEditModal(); }} isResettingMfa={admin.isResettingUserMfa} /> : null}
-    </div>
+    </PageShell>
   );
 }

@@ -1,10 +1,7 @@
 "use client";
 
 import { RecordLayoutBuilder } from "@/components/recordLayouts/RecordLayoutBuilder";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
-import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
-import { RouteLoadingState } from "@/components/ui/RouteStates";
+import { PageShell } from "@/components/ui/PageShell";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { RecordLayoutAdminError, useRecordLayoutAdminState } from "@/hooks/useRecordLayoutAdmin";
 
@@ -25,24 +22,29 @@ export default function RecordLayoutsSettingsPage() {
 
   const layoutQuery = useRecordLayoutAdminState(LAYOUT_MODULE_KEY, LAYOUT_SURFACE, canConfigure);
 
-  if (isLoadingModules) return <RouteLoadingState label="record layouts" />;
-  if (!canConfigure) return <PermissionDeniedState />;
   // The client check is a courtesy; the server is the boundary and can still say no.
-  if (layoutQuery.error instanceof RecordLayoutAdminError && layoutQuery.error.kind === "forbidden") {
-    return <PermissionDeniedState />;
-  }
+  const isForbidden =
+    (!isLoadingModules && !canConfigure)
+    || (layoutQuery.error instanceof RecordLayoutAdminError && layoutQuery.error.kind === "forbidden");
+  const isPending = isLoadingModules || (canConfigure && layoutQuery.isPending);
+  const hasError = !isForbidden && !isPending && Boolean(layoutQuery.error || !layoutQuery.data);
 
-  if (layoutQuery.isPending) return <RouteLoadingState label="record layouts" />;
-
-  if (layoutQuery.error || !layoutQuery.data) {
+  if (isForbidden || isPending || hasError || !layoutQuery.data) {
     return (
-      <Card className="p-6" role="alert">
-        <h1 className="font-semibold text-copy-primary">The layout could not be loaded</h1>
-        <p className="mt-1 text-p-sm text-copy-secondary">
-          Nothing has been changed. Try the request again.
-        </p>
-        <Button className="mt-4" variant="outline" onClick={() => void layoutQuery.refetch()}>Try again</Button>
-      </Card>
+      <PageShell
+        variant="settings"
+        title="Record Layouts"
+        description="Arrange the fields on the Lead Quick Create surface."
+        isPermissionDenied={isForbidden}
+        isLoading={isPending}
+        hasError={hasError}
+        errorDescription="Nothing has been changed. Try the request again."
+        onRetry={() => void layoutQuery.refetch()}
+        backHref="/dashboard/settings"
+        backLabel="Back to Settings"
+      >
+        {null}
+      </PageShell>
     );
   }
 

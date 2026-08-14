@@ -77,7 +77,7 @@ export default function NotificationCenter() {
         align="end"
         side="bottom"
         sideOffset={10}
-        className="w-[min(380px,calc(100vw-2rem))] border-line-default bg-surface-raised p-0 text-copy-primary shadow-xl"
+        className="w-[min(380px,calc(100vw-2rem))] border-line-default bg-surface-raised p-0 text-copy-primary shadow-[var(--shadow-panel)]"
       >
         <div className="space-y-3 border-b border-line-default px-4 py-3">
           <div>

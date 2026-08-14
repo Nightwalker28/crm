@@ -56,7 +56,10 @@ function Checkbox({
           whileTap={{ scale: 0.95 }}
           whileHover={{ scale: 1.05 }}
           className={cn(
-            'inline-flex size-4 shrink-0 items-center justify-center rounded border border-line-control bg-surface-raised text-copy-primary transition-colors outline-none data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-app disabled:cursor-not-allowed disabled:opacity-50',
+            // The hover here is CSS, not just the `whileHover` scale below:
+            // under prefers-reduced-motion the scale is suppressed, and 7.4
+            // makes hover mandatory in every condition, not most of them.
+            'inline-flex size-4 shrink-0 items-center justify-center rounded border border-line-control bg-surface-raised text-copy-primary transition-colors duration-150 outline-none enabled:hover:border-line-control-hover data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground enabled:hover:data-[state=checked]:bg-action-primary-hover enabled:hover:data-[state=checked]:border-action-primary-hover focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-app disabled:cursor-not-allowed disabled:opacity-50',
             className,
           )}
           {...props}

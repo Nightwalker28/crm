@@ -44,7 +44,7 @@ export function SettingsSwitch({
           "focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
           "disabled:cursor-not-allowed",
           !checked
-            ? "bg-surface-raised text-copy-primary shadow-sm"
+            ? "bg-surface-raised text-copy-primary"
             : "text-copy-muted hover:text-copy-primary",
         )}
       >
@@ -62,7 +62,7 @@ export function SettingsSwitch({
           "focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
           "disabled:cursor-not-allowed",
           checked
-            ? "bg-action-primary text-primary-foreground shadow-sm"
+            ? "bg-action-primary text-primary-foreground"
             : "text-copy-muted hover:text-copy-primary",
         )}
       >

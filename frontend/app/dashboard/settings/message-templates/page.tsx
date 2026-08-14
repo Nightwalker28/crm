@@ -3,16 +3,15 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Edit3, Plus, Power, Trash2 } from "lucide-react";
+import { Edit3, FileText, Plus, Power, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { apiFetch } from "@/lib/api";
@@ -96,8 +95,12 @@ export default function MessageTemplatesPage() {
   const isMutating = updateMutation.isPending || deleteMutation.isPending;
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageToolbar>{canCreate ? <Button asChild><Link href="/dashboard/settings/message-templates/new"><Plus />Create template</Link></Button> : null}</PageToolbar>
+    <PageShell
+      variant="settings"
+      title="Templates"
+      description="Reusable message bodies for mail and WhatsApp."
+      actions={canCreate ? <Button asChild><Link href="/dashboard/settings/message-templates/new"><Plus />Create template</Link></Button> : null}
+    >
       <div className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line-default bg-surface px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
         <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search templates" className="lg:max-w-sm" />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -105,36 +108,61 @@ export default function MessageTemplatesPage() {
           <Select value={moduleFilter} onValueChange={setModuleFilter}><SelectTrigger className="sm:w-48" aria-label="Module filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All modules</SelectItem>{MODULE_OPTIONS.map((moduleName) => <SelectItem key={moduleName} value={moduleName}>{getModuleDisplayName(moduleName)}</SelectItem>)}</SelectContent></Select>
         </div>
       </div>
-      {query.error ? <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"><span>We could not load message templates.</span><Button type="button" variant="outline" size="sm" onClick={() => void query.refetch()}>Try again</Button></div> : null}
-      <ModuleTableShell>
-        <Table className="min-w-[950px]">
-          <TableHeader><TableHeaderRow>
-            <SortableHead sorted={sort.key === "name"} direction={sort.direction} onClick={() => setSort((current) => nextTemplateSort(current, "name"))}>Name</SortableHead>
-            <SortableHead sorted={sort.key === "channel"} direction={sort.direction} onClick={() => setSort((current) => nextTemplateSort(current, "channel"))}>Channel</SortableHead>
-            <SortableHead sorted={sort.key === "module_key"} direction={sort.direction} onClick={() => setSort((current) => nextTemplateSort(current, "module_key"))}>Module</SortableHead>
-            <SortableHead sorted={sort.key === "is_active"} direction={sort.direction} onClick={() => setSort((current) => nextTemplateSort(current, "is_active"))}>Status</SortableHead>
-            <TableHead>Variables</TableHead>
-            {(canEdit || canDelete) ? <TableHead className="text-right">Actions</TableHead> : null}
-          </TableHeaderRow></TableHeader>
-          <TableBody>
-            {query.isLoading ? <TableRow><TableCell colSpan={canEdit || canDelete ? 6 : 5} className="py-10 text-center text-copy-muted">Loading templates...</TableCell></TableRow>
-              : visibleTemplates.length ? visibleTemplates.map((template) => (
-                <TableRow key={template.id}>
-                  <TableCell><div className="font-medium text-copy-primary">{template.name}</div><div className="mt-1 max-w-md truncate text-xs text-copy-muted">{template.description || template.template_key}</div></TableCell>
-                  <TableCell className="capitalize text-copy-secondary">{template.channel}</TableCell>
-                  <TableCell className="text-copy-secondary">{template.module_key ? getModuleDisplayName(template.module_key) : "—"}</TableCell>
-                  <TableCell><div className="flex flex-wrap gap-2"><Pill bg={template.is_active ? "bg-state-success-muted" : "bg-state-danger-muted"} text={template.is_active ? "text-state-success" : "text-state-danger"} border={template.is_active ? "border-state-success/40" : "border-state-danger/40"}>{template.is_active ? "Active" : "Inactive"}</Pill>{template.is_system ? <Pill bg="bg-surface-muted" text="text-copy-secondary" border="border-line-default">System</Pill> : null}</div></TableCell>
-                  <TableCell className="max-w-xs truncate text-copy-muted">{variablesToText(template.variables) || "—"}</TableCell>
-                  {(canEdit || canDelete) ? <TableCell><div className="flex justify-end gap-2">
-                    {canEdit ? <Button asChild variant="outline" size="icon-sm"><Link href={`/dashboard/settings/message-templates/${template.id}/edit`} aria-label={`Edit ${template.name}`}><Edit3 /></Link></Button> : null}
-                    {canEdit ? <Button type="button" variant="outline" size="icon-sm" aria-label={`${template.is_active ? "Disable" : "Enable"} ${template.name}`} disabled={isMutating} onClick={() => updateMutation.mutate({ template, is_active: !template.is_active })}><Power /></Button> : null}
-                    {canDelete ? <Button type="button" variant="outline" size="icon-sm" aria-label={`Delete ${template.name}`} disabled={isMutating} onClick={() => void deleteTemplate(template)}><Trash2 /></Button> : null}
-                  </div></TableCell> : null}
-                </TableRow>
-              )) : <TableRow><TableCell colSpan={canEdit || canDelete ? 6 : 5} className="py-10 text-center text-copy-muted">{templates.length ? "No templates match the current search or filters." : "No templates found."}</TableCell></TableRow>}
-          </TableBody>
-        </Table>
-      </ModuleTableShell>
-    </div>
+      <RecordTable
+        label="Templates"
+        columns={[
+          {
+            key: "name",
+            label: "Name",
+            size: "lg",
+            sortable: true,
+            render: (template) => (
+              <div className="min-w-0">
+                <div className="font-medium text-copy-primary">{template.name}</div>
+                <div className="mt-1 max-w-md truncate text-xs text-copy-muted">{template.description || template.template_key}</div>
+              </div>
+            ),
+          },
+          { key: "channel", label: "Channel", size: "sm", sortable: true, render: (template) => <span className="capitalize text-copy-secondary">{template.channel}</span> },
+          { key: "module_key", label: "Module", sortable: true, render: (template) => <span className="text-copy-secondary">{template.module_key ? getModuleDisplayName(template.module_key) : "Not set"}</span> },
+          {
+            key: "is_active",
+            label: "Status",
+            size: "sm",
+            sortable: true,
+            render: (template) => (
+              <div className="flex flex-wrap gap-2">
+                <Pill bg={template.is_active ? "bg-state-success-muted" : "bg-state-danger-muted"} text={template.is_active ? "text-state-success" : "text-state-danger"} border={template.is_active ? "border-state-success/40" : "border-state-danger/40"}>{template.is_active ? "Active" : "Inactive"}</Pill>
+                {template.is_system ? <Pill bg="bg-surface-muted" text="text-copy-secondary" border="border-line-default">System</Pill> : null}
+              </div>
+            ),
+          },
+          { key: "variables", label: "Variables", render: (template) => <span className="block max-w-xs truncate text-copy-muted">{variablesToText(template.variables) || "Not set"}</span> },
+        ]}
+        rows={visibleTemplates}
+        rowKey={(template) => template.id}
+        sort={{ column: sort.key, direction: sort.direction }}
+        onSortChange={(next) => setSort((current) => nextTemplateSort(current, next.column as typeof sort.key))}
+        isLoading={query.isLoading}
+        isRefreshing={query.isFetching && !query.isLoading}
+        hasError={Boolean(query.error)}
+        onRetry={() => void query.refetch()}
+        hasActiveFilters={Boolean(search.trim()) || channelFilter !== "all" || moduleFilter !== "all"}
+        onClearFilters={() => { setSearch(""); setChannelFilter("all"); setModuleFilter("all"); }}
+        emptyState={{
+          icon: FileText,
+          title: "No templates yet",
+          description: "Create a reusable message body for mail or WhatsApp.",
+          action: canCreate ? <Button asChild><Link href="/dashboard/settings/message-templates/new"><Plus />Create template</Link></Button> : undefined,
+        }}
+        rowActions={canEdit || canDelete ? (template) => (
+          <div className="flex justify-end gap-2">
+            {canEdit ? <Button asChild variant="outline" size="icon-sm"><Link href={`/dashboard/settings/message-templates/${template.id}/edit`} aria-label={`Edit ${template.name}`}><Edit3 /></Link></Button> : null}
+            {canEdit ? <Button type="button" variant="outline" size="icon-sm" aria-label={`${template.is_active ? "Disable" : "Enable"} ${template.name}`} disabled={isMutating} onClick={() => updateMutation.mutate({ template, is_active: !template.is_active })}><Power /></Button> : null}
+            {canDelete ? <Button type="button" variant="outline" size="icon-sm" aria-label={`Delete ${template.name}`} disabled={isMutating} onClick={() => void deleteTemplate(template)}><Trash2 /></Button> : null}
+          </div>
+        ) : undefined}
+      />
+    </PageShell>
   );
 }

@@ -21,7 +21,7 @@ import {
   validateOpportunityName,
 } from "@/components/opportunities/opportunityMutation";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import {
   RouteErrorState,
   RouteLoadingState,
@@ -176,28 +176,27 @@ export default function OpportunityRecordFormPage({
       ? `/dashboard/sales/opportunities/${opportunityId}`
       : "/dashboard/sales/opportunities";
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={mode === "edit" ? "Edit deal" : "Create deal"}
-        eyebrow={
-          mode === "edit" && summaryQuery.data?.opportunity.updated_at
-            ? `Last modified ${formatDateTime(summaryQuery.data.opportunity.updated_at)}`
-            : undefined
-        }
-        description={
-          mode === "edit"
-            ? "Update pipeline, value, linked customers, and delivery context."
-            : "Add a qualified commercial opportunity to the pipeline."
-        }
-        actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={cancelHref}>
-              <ArrowLeft />
-              Back to {mode === "edit" ? "deal" : "deals"}
-            </Link>
-          </Button>
-        }
-      />
+    <PageShell
+      title={mode === "edit" ? "Edit deal" : "Create deal"}
+      eyebrow={
+        mode === "edit" && summaryQuery.data?.opportunity.updated_at
+          ? `Last modified ${formatDateTime(summaryQuery.data.opportunity.updated_at)}`
+          : undefined
+      }
+      description={
+        mode === "edit"
+          ? "Update pipeline, value, linked customers, and delivery context."
+          : "Add a qualified commercial opportunity to the pipeline."
+      }
+      actions={
+        <Button asChild variant="ghost" size="sm">
+          <Link href={cancelHref}>
+            <ArrowLeft />
+            Back to {mode === "edit" ? "deal" : "deals"}
+          </Link>
+        </Button>
+      }
+    >
       {submitError ? (
         <div
           role="alert"
@@ -258,6 +257,6 @@ export default function OpportunityRecordFormPage({
           mode={mode}
         />
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

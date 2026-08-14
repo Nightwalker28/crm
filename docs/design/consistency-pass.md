@@ -324,11 +324,11 @@ audit did not record them; they are cheap, and each already belongs to a phase:
 
 | Failing rule | Site | Owner |
 |---|---|---|
-| §2.3 focus ring is its own token | `documents/DocumentList.tsx:173` — `ring-primary/40` on the highlighted row | Phase 2 (focus pass) |
+| ~~§2.3 focus ring is its own token~~ | `documents/DocumentList.tsx:173` — `ring-primary/40` on the highlighted row | **cleared in Phase 2** |
 | §4.5/§11.1 no height cap on `ModuleTableShell` | `reports/page.tsx:674` — `max-h-72` | Phase 4 — this is the exact nested-scroll regression §11.1 exists to prevent |
 | §4.2 no call-site control heights | `ClientPageCreateForm.tsx:337` — `size-6` on a `Button` | Phase 7 (portal) |
 | §4.1 spacing off the 4px grid | 1 match | Phase 6 |
-| §6 transitions name their properties | `HexagonBackground.tsx:92`, `sonner.tsx:24` — `transition-all` | Phase 2 |
+| ~~§6 transitions name their properties~~ | `HexagonBackground.tsx:92`, `sonner.tsx:24` — `transition-all` | **cleared in Phase 2** |
 | §7.2 shadcn is the only component library | `@headlessui/react` is **live in 4 shared primitives** — `ui/dialog.tsx`, `ExportControls`, `ImportControls`, `ModuleImportExportControls` | **Not this pass.** See below |
 
 Run the source guard at the start of a phase as well as the end. It is the cheapest of
@@ -486,6 +486,73 @@ Screenshot before/after in both themes.
 **Files:** `components/ui/Card.tsx`, `ModuleListToolbar.tsx`, `InlineSavedViewFilters.tsx`,
 `components/sidebar/SidebarNav.tsx`, the five checkbox call sites, `app/globals.css`.
 
+### Status: done
+
+Green on lint, build, `check-design.sh`, and both rendered guards across 91 routes.
+**The source guard went 6 failures → 4**: this phase owned two of the six baseline
+rules and cleared both — §2.3 (`ring-primary/40` on the highlighted document row) and
+§6 (`transition-all` in `HexagonBackground` and `sonner`). The remaining four belong
+to Phases 4, 6, 7 and the recorded §11.3 exception, unchanged.
+
+**Two accessibility defects the audit had not found**, both in shared primitives and
+both worse than the ones it did find:
+
+- `Input` was bounded by `border-line-default` — a structural hairline on a control,
+  which `tokens.md` §2 names an accessibility bug in so many words — and it *hovered*
+  to `border-line-strong`, which is 2.0:1 on the raised ground. Pointing at a text
+  field made it less visible. It now reads the control tier, and a new
+  `--color-border-control-hover` (4.17:1 dark / 4.02:1 light on the worst ground)
+  exists so a control edge can only move away from its ground on hover. `Textarea`,
+  `Select` and `InputGroup` got the same hover and lost their `shadow-xs`; they now
+  sit on the same ground as `Input`, which they did not before.
+- The checkbox override was **20 call sites, not five**. Every one re-typed the
+  primitive's own defaults (`size-4 rounded bg-surface-raised` + a `size-3` indicator
+  child) and swapped `border-line-control` for `border-line-strong` on the way, so the
+  fix was to delete the skin, not to correct it — `<Checkbox />` now, everywhere. The
+  four indicator sizings went with it. Same for `permissions/page.tsx`'s
+  `CHECKBOX_CLASS` const, three hand-rolled switch tracks, `ColumnPicker`'s raw
+  `<input type="checkbox">`, and the document upload dropzone.
+
+**Reduced motion is now a platform property, not 13 remembered classes** (§6, rewritten).
+A `prefers-reduced-motion` block in `globals.css` collapses every animation and
+transition, and `MotionConfig reducedMotion="user"` in `app/providers.tsx` covers
+`motion/react`, which animates in JS and cannot see a media query. That second half
+matters more than it looks: `Checkbox`'s only hover feedback was a `whileHover` scale,
+so honouring reduced motion would have left it with no hover state at all — it gained
+a CSS one in the same edit.
+
+**Elevation: five vocabularies → one token.** `shadow-2xl` ×13, `shadow-xl` ×5,
+`shadow-md` ×2, a hand-written `shadow-[0_32px_100px_rgba(...)]`, and the three places
+already correct. The token now lives in `sheet`/`dialog`/`popover`/`select`, so a call
+site never types an elevation; `DialogPanel` had none at all and now floats. Seven
+anchored shadows (switch thumbs, a kanban card, a filter chip, a selected settings row,
+a sticky editor bar, the toast action button) are simply gone, per §4.6.
+
+`Card` took the panel border tier, lost `shadow-lg shadow-black/20` from `raised`, and
+settled on two vertical steps with named roles — 24px content, 16px action bar — now
+written into §4.4. **B.1 and B.3 are fixed**: `overflow-hidden` is off the base (the six
+`overflow-visible` workarounds deleted with it, `CardFooter` rounds its own bottom
+corners instead), and `custom-scrollbar` is a real utility rather than a class three
+pickers referenced and nothing defined.
+
+**Visual pass — 8 routes × 2 themes + 3 narrow, stashed/restored for a true
+before-and-after.** Diffs run 0.2%–17%, and every one of them is the same two changes:
+
+| Shape | Diff | Cause |
+|---|---|---|
+| List pages (`leads`, `settings/users`) | 1.6–1.8% | control edges become visible; layout unchanged |
+| Dashboard | ~1.0% | card edges one tier stronger |
+| Form pages (`lead/new`, `catalog/new`) | 4.8–5.9% | + card body 20px → 24px, so content below shifts |
+| `profile`, `settings/general` | 11–17% | the same shift, compounded over four stacked cards |
+| `/auth/login` | 0.17% | the login card's inputs gained an edge. **The hive is still a honeycomb** in both themes |
+
+The large numbers are vertical displacement, not restyling — no page reflowed, no
+gutter broke at 768px, and the light-theme captures are where the input fix is most
+obvious: text fields that were previously edgeless on the muted ground now read as
+controls. Screenshots in `frontend/phase2-visual/` (untracked, safe to delete); the
+picker-clipping check is `picker-open.png`, showing a six-row suggestion list
+overflowing its form section instead of being cut at the card edge.
+
 ---
 
 ## Phase 3 — The record-table composition
@@ -521,6 +588,118 @@ opportunities,orders,quotes,contracts,support,tasks,catalog,documents}/…Table.
 `components/finance/{pos/InvoicesTable,PaymentsTable,insertionOrderList}.tsx`,
 `app/dashboard/custom/[moduleKey]/page.tsx` (whose table is inline in the route file —
 extract it while migrating).
+
+### Status: done
+
+Green on lint, typecheck, build, `check-design.sh` (**still 4 failures, the same four**
+Phase 2 left to Phases 4, 6, 7 and the recorded §11.3 exception — no new ones), and both
+rendered guards **across 95 routes**, up from 91 in Phase 2.
+
+All 14 module tables plus the inline custom-module table are on `RecordTable`. The 9
+hardcoded `min-w-[Npx]` values are gone from module lists — the only survivors repo-wide
+are the kanban and calendar boards, which are not tables.
+
+`renderCell` now returns cell **content**; the primitive supplies the `td`. That single
+change is what removes the mechanics: every table used to hand-write the shell, the
+`<Table>`, the header row, the selection column, the sticky classes, the `colSpan`
+arithmetic and its own empty state. `CustomFieldCell` was a `TableCell` in disguise, so
+it became `CustomFieldValue` (content only) — a nested `td` was one call site away.
+
+**Column widths are declared, not measured.** The derived min-width sums a per-column
+hint (`sm` 96 / `md` 132 / `lg` 220) plus 48 for selection and 112 for row actions. Coarse
+on purpose: the table is `table-auto`, so the hint only decides *when* a horizontal
+scrollbar appears, never the rendered widths. Seven default columns land at ~970px against
+the 920px that leads used to hardcode.
+
+**Four defects fixed on the way through, all of them invisible until the mechanics had an
+owner:**
+
+- **Catalog rendered a header with no cell under it.** `renderCell` returned `null` for
+  `sku` / `stock_status` / `stock_quantity` on the *services* catalog while the header row
+  still emitted those columns, so every services row was short up to three `td`s and every
+  value after the gap sat under the wrong heading. Columns are now filtered before the
+  header is built.
+- **pos and payments showed an unchecked box for a partial page selection**, where the
+  other five lists showed a dash. Tri-state is computed in the primitive from the rows, so
+  the five page-level `useMemo`s that each recomputed it are gone with it.
+- **Quotes' sticky number floated over a 48px hole** — its header checkbox was not sticky
+  (`QuotesTable.tsx:174`). The primitive makes the header cell sticky with the body cell.
+- **Modified clicks navigated in place.** Seven lists opened the record on any click,
+  including ⌘/ctrl-click. The row gesture now ignores modified clicks and lets the identity
+  link handle them natively, so open-in-new-tab works instead of hijacking the tab.
+
+**The row gesture, measured rather than assumed.** A `<tr>` in a `border-collapse` table
+does not paint a `box-shadow` reliably, so the focus ring is an `outline`. Verified in the
+browser rather than argued: the focused row computes
+`outline: 2px solid rgb(143, 154, 168)` — the focus token, not the action colour (§2.3) —
+and a real tab-through of `/dashboard/sales/leads` gives 22 stops from the search box to
+pagination, **every one of them painting a visible focus point**, rows included. The only
+unpainted stop is Next's dev-overlay portal. `phase3-visual/leads-row-focused.png` is the
+picture.
+
+**The sticky column took two passes, and only a browser found the second.** Extending the
+sticky identity column from 6 lists to all of them exposed a mismatch that had always been
+there: the sticky cell declared `bg-surface` while the row it sits in is striped
+`even:bg-surface-muted/30` and hovers to `surface-raised/60`, so the identity cell read as
+a lighter panel down every alternate row. First fix: `bg-inherit`, so the cell tracks the
+stripe and the hover with its row.
+
+That fix was wrong in a way no assertion could see, and no screenshot taken so far could
+either — **every capture had been of a table that fitted, so the sticky column had never
+actually been stuck.** Scrolling one sideways in the browser showed status pills and
+checkboxes bleeding straight through the pinned columns, on even rows only. `bg-inherit`
+inherits the row's *translucent* stripe, and a 30%-alpha cell does not occlude what
+scrolls beneath it. A pinned column that fails to pin is worse than the mismatch it fixed.
+
+The close is two derived tokens — `--color-bg-surface-row-alt` and
+`--color-bg-surface-row-hover`, each a `color-mix` of grounds that already exist, so
+neither theme gains a literal and the stripe looks exactly as it did. `TableRow` paints
+those instead of the tinted versions, and the inherited ground is opaque. Verified pinned
+and occluding in both themes at a viewport narrow enough to force the scroll
+(`phase3-visual/pos-scrolled-{dark,light}.png`). `tokens.md` carries the general rule:
+anything a sticky element inherits must be opaque.
+
+This is the phase's argument for the browser being on the exit criteria rather than
+delegated to an assertion. Lint, typecheck, build, the source guard, both rendered guards
+and 99 module specs were all green *with the bug in the tree* — it needed a wide table, a
+sideways scroll, and someone looking.
+
+**Line count: 3,496 → 2,909 across the 14 files (−17%), short of the "well over half" the
+plan predicted.** The prediction counted lines rather than mechanics. What is left is
+per-module cell *content* — a lead's avatar and score pill, an invoice's balance colouring
+— which is business rendering, not list machinery, and it does not deduplicate. Two files
+(`InvoicesTable`, `PaymentsTable`) even grew, because they were written as 200-character
+one-liners; both lost their hand-rolled mechanics regardless. The honest measure of this
+phase is the drift table in Layer 1, which is now empty.
+
+**Specs updated, none loosened.** Three lists lost their page-level error banner because
+the table now supplies that state, and their specs asserted the banner's one-sentence copy;
+they now assert the same title, the same "Check your connection and try again.", the same
+absence of leaked backend detail, and the same Try-again button, against the title +
+description shape. Four specs targeted the table region by its old generic
+`aria-label="Data table"` — regions are named for their module now, which is why
+`ModuleTableShell` grew a `label`.
+
+Suite: **89 passed / 4 failed** across the 15 module specs, run serially. All four are in
+`docs/e2e-suite-status.md` — `opportunities-revamp:21` (`button "Table"` resolves to 3),
+`payments-revamp:56` (`getByText("Paid", exact)` resolves to 2), `payments-revamp:122`
+(`getByRole("alert")` also matches Next's route announcer), and `payments-revamp:74`, which
+this session confirmed **flaky rather than broken**: fail/pass/pass in isolation, and a DOM
+dump in its exact mocked state shows the "Clear filters" button it cannot find is genuinely
+rendered. That characterisation is now recorded in the suite-status doc.
+
+Two run-shape traps worth not re-learning. A first cold run reported five sales lists as
+unreachable — the documented cold-start timing trap; a warm run discovers every one. And
+running these 20 specs in parallel produces a dozen extra failures at the 30–35s timeout
+ceiling that all disappear serially, `reports-revamp` included. Judge this suite on
+`--workers=1`.
+
+The settings specs that still use raw `Table` — permissions, settings-modules, users,
+recycle-bin, reports — were re-run after the row-ground token change, since that one
+touches every table in the app. Every failure there is already in the suite-status doc.
+
+Screenshots (8 routes × 2 themes + 3 narrow) are in `frontend/phase3-visual/` (untracked,
+safe to delete). Narrow-viewport horizontal overflow is 0px on all three captures.
 
 ---
 
@@ -716,10 +895,12 @@ Reproduce the audit numbers (from `frontend/`):
 # page-root stack drift — should collapse to one value after Phase 4
 grep -rhoE 'space-y-[0-9.]+' app/dashboard --include='page.tsx' | sort | uniq -c | sort -rn
 
-# module table line count — 3,403 today, expect <1,500 after Phase 3
+# module table line count — 3,496 before Phase 3, 2,909 after. The remainder is
+# per-module cell content, which does not deduplicate; see the Phase 3 status.
 wc -l components/*/[A-Z]*Table.tsx components/*/*[Ll]ist.tsx components/finance/pos/InvoicesTable.tsx
 
-# hardcoded table min-widths — 9 values today, target 0
+# hardcoded table min-widths — 9 in module lists before Phase 3, 0 after. The remaining
+# repo-wide hits are the kanban and calendar boards, which are not tables.
 grep -rn 'min-w-\[[0-9]*px\]' components --include='*.tsx'
 
 # hand-rolled card boxes vs <Card> — 206 vs 65 today

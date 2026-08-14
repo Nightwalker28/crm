@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import {
   RouteErrorState,
   RouteLoadingState,
@@ -106,25 +106,23 @@ export default function PosInvoicePrintPage() {
   // regardless of the dashboard theme selected by the current CRM user.
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        className="print:hidden"
-        title="Print invoice"
-        description={`Review ${invoice.invoice_number} before opening the browser print dialog.`}
-        actions={
-          <>
-            <Button asChild variant="outline">
-              <Link href={`/dashboard/finance/pos/${invoice.id}`}>
-                <ArrowLeft /> Back to invoice
-              </Link>
-            </Button>
-            <Button type="button" onClick={() => window.print()} aria-label={`Print invoice ${invoice.invoice_number}`}>
-              <Printer /> Print invoice
-            </Button>
-          </>
-        }
-      />
-
+    <PageShell
+      headerClassName="print:hidden"
+      title="Print invoice"
+      description={`Review ${invoice.invoice_number} before opening the browser print dialog.`}
+      actions={
+        <>
+          <Button asChild variant="outline">
+            <Link href={`/dashboard/finance/pos/${invoice.id}`}>
+              <ArrowLeft /> Back to invoice
+            </Link>
+          </Button>
+          <Button type="button" onClick={() => window.print()} aria-label={`Print invoice ${invoice.invoice_number}`}>
+            <Printer /> Print invoice
+          </Button>
+        </>
+      }
+    >
       <section
         aria-labelledby="print-invoice-number"
         className={`invoice-print-area overflow-hidden rounded-[var(--radius-card)] border shadow-xl ${isClassic ? "border-neutral-300 bg-neutral-100 text-neutral-950" : "border-neutral-800 bg-neutral-950 text-neutral-100"}`}
@@ -159,9 +157,12 @@ export default function PosInvoicePrintPage() {
                 </div>
               )}
               <div>
-                <h1 className="text-xl font-semibold">
+                {/* The printed document sits inside a page the shell has already named
+                    "Print invoice" — §8 allows one h1, so the document's own headings are
+                    section headings. The print stylesheet sizes them, not the tag. */}
+                <h2 className="text-xl font-semibold">
                   {company.name || "Company"}
-                </h1>
+                </h2>
                 <div
                   className={`mt-2 text-p-sm ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
                 >
@@ -184,9 +185,9 @@ export default function PosInvoicePrintPage() {
               >
                 POS Invoice
               </div>
-              <h1 id="print-invoice-number" className="mt-2 text-2xl font-semibold">
+              <h2 id="print-invoice-number" className="mt-2 text-2xl font-semibold">
                 {invoice.invoice_number}
-              </h1>
+              </h2>
               <dl
                 className={`mt-4 grid grid-cols-2 gap-2 text-sm ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
               >
@@ -343,6 +344,6 @@ export default function PosInvoicePrintPage() {
           </div>
         </div>
       </section>
-    </div>
+    </PageShell>
   );
 }

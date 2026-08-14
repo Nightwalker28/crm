@@ -8,15 +8,14 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useClientPortalActions, useClientPortalAccounts, useClientPortalPages, useCustomerOptions, type ClientAccountStatus, type ClientPortalSortState } from "@/hooks/useClientPortal";
 import { useConfirm } from "@/hooks/useConfirm";
 import { formatDateTime } from "@/lib/datetime";
@@ -263,8 +262,11 @@ export default function ClientPortalDashboardPage() {
   const accounts = accountsQuery.data ?? [];
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
-      <PageToolbar><Button asChild><Link href="/dashboard/client-portal/pages/new">Create client page</Link></Button></PageToolbar>
+    <PageShell
+      title="Client portal"
+      description="Provision authenticated client access and publish scoped customer pages."
+      actions={<Button asChild><Link href="/dashboard/client-portal/pages/new">Create client page</Link></Button>}
+    >
 
       <div className="grid gap-4">
         <Card className="px-5 py-5">
@@ -314,175 +316,144 @@ export default function ClientPortalDashboardPage() {
             <FieldDescription className="mt-1">Publish a signed link after the pricing snapshot is ready.</FieldDescription>
           </div>
         </div>
-        {pagesQuery.isLoading ? (
-          <div className="px-4 py-8 text-center text-sm text-copy-muted" aria-busy="true">Loading client pages...</div>
-        ) : pagesQuery.error ? (
-          <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-4 text-sm text-copy-secondary">
-            <p>Client pages could not be loaded.</p>
-            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void pagesQuery.refetch()}><RefreshCw />Try again</Button>
-          </div>
-        ) : pages.length === 0 ? (
-          <EmptyState
-            icon={Link2}
-            title="No client pages yet"
-            description="Create a private customer page, then publish a scoped link when it is ready."
-            action={<Button asChild><Link href="/dashboard/client-portal/pages/new">Create client page</Link></Button>}
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <Table className="min-w-[1080px]">
-              <TableHeader>
-                <TableHeaderRow>
-                  <SortableHead sorted={pageSort?.key === "title"} direction={pageSort?.key === "title" ? pageSort.direction : "asc"} onClick={() => setPageSort((current) => nextSort(current, "title"))}>
-                    Page
-                  </SortableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Pricing</TableHead>
-                  <TableHead>Activity</TableHead>
-                  <SortableHead sorted={pageSort?.key === "status"} direction={pageSort?.key === "status" ? pageSort.direction : "asc"} onClick={() => setPageSort((current) => nextSort(current, "status"))}>
-                    Status
-                  </SortableHead>
-                  <SortableHead sorted={pageSort?.key === "updated_at"} direction={pageSort?.key === "updated_at" ? pageSort.direction : "asc"} onClick={() => setPageSort((current) => nextSort(current, "updated_at"))}>
-                    Updated
-                  </SortableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableHeaderRow>
-              </TableHeader>
-              <TableBody>
-                {pages.map((page) => (
-                  <TableRow key={page.id}>
-                    <TableCell>
-                      <div className="font-medium text-copy-primary">{page.title}</div>
-                      <div className="text-xs text-copy-muted">{page.summary || "No summary"}</div>
-                    </TableCell>
-                    <TableCell className="text-copy-secondary">
-                      {customerLabel(page)}
-                    </TableCell>
-                    <TableCell className="text-copy-secondary">
-                      {page.pricing_items[0] ? formatMoney(page.pricing_items[0].public_unit_price, page.pricing_items[0].currency) : "No items"}
-                    </TableCell>
-                    <TableCell className="text-copy-secondary">
-                      {page.latest_action ? (
-                        <div>
-                          <div className="text-copy-primary">{actionLabel(page.latest_action.action)}</div>
-                          <div className="text-xs text-copy-muted">{page.latest_action.actor_email || page.latest_action.actor_name || "Client response"} · {page.action_count} total</div>
-                        </div>
-                      ) : (
-                        <span className="text-copy-muted">No responses</span>
-                      )}
-                    </TableCell>
-                    <TableCell><Pill {...statusTone(page.status)} className="capitalize">{page.status}</Pill></TableCell>
-                    <TableCell className="text-copy-muted">{formatDateTime(page.updated_at)}</TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-2">
-                        {page.public_link ? (
-                          <Button type="button" variant="outline" size="sm" onClick={() => void copyText(page.public_link, "Client link")}>
-                            <Copy className="h-4 w-4" />
-                            Copy
-                          </Button>
-                        ) : null}
-                        {page.public_link ? (
-                          <Button type="button" variant="outline" size="sm" asChild>
-                            <a href={page.public_link} target="_blank" rel="noreferrer">
-                              <ExternalLink className="h-4 w-4" />
-                              Open
-                            </a>
-                          </Button>
-                        ) : null}
-                        <Button type="button" size="sm" onClick={() => void handlePublish(page.id)} disabled={isPublishingPage}>
-                          <Link2 className="h-4 w-4" />
-                          Publish
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+        <RecordTable
+          label="Client pages"
+          columns={[
+            {
+              key: "title",
+              label: "Page",
+              size: "lg",
+              sortable: true,
+              render: (page) => (
+                <div className="min-w-0">
+                  <div className="font-medium text-copy-primary">{page.title}</div>
+                  <div className="text-xs text-copy-muted">{page.summary || "No summary"}</div>
+                </div>
+              ),
+            },
+            { key: "customer", label: "Customer", render: (page) => <span className="text-copy-secondary">{customerLabel(page)}</span> },
+            {
+              key: "pricing",
+              label: "Pricing",
+              render: (page) => (
+                <span className="text-copy-secondary">
+                  {page.pricing_items[0] ? formatMoney(page.pricing_items[0].public_unit_price, page.pricing_items[0].currency) : "No items"}
+                </span>
+              ),
+            },
+            {
+              key: "activity",
+              label: "Activity",
+              size: "lg",
+              render: (page) => page.latest_action ? (
+                <div className="min-w-0">
+                  <div className="text-copy-primary">{actionLabel(page.latest_action.action)}</div>
+                  <div className="text-xs text-copy-muted">{page.latest_action.actor_email || page.latest_action.actor_name || "Client response"} · {page.action_count} total</div>
+                </div>
+              ) : (
+                <span className="text-copy-muted">No responses</span>
+              ),
+            },
+            { key: "status", label: "Status", size: "sm", sortable: true, render: (page) => <Pill {...statusTone(page.status)} className="capitalize">{page.status}</Pill> },
+            { key: "updated_at", label: "Updated", sortable: true, render: (page) => <span className="text-copy-muted">{formatDateTime(page.updated_at)}</span> },
+          ]}
+          rows={pages}
+          rowKey={(page) => page.id}
+          sort={pageSort ? { column: pageSort.key, direction: pageSort.direction } : null}
+          onSortChange={(next) => setPageSort((current) => nextSort(current, next.column))}
+          isLoading={pagesQuery.isLoading}
+          isRefreshing={pagesQuery.isFetching && !pagesQuery.isLoading}
+          hasError={Boolean(pagesQuery.error)}
+          onRetry={() => void pagesQuery.refetch()}
+          emptyState={{
+            icon: Link2,
+            title: "No client pages yet",
+            description: "Create a private customer page, then publish a scoped link when it is ready.",
+            action: <Button asChild><Link href="/dashboard/client-portal/pages/new">Create client page</Link></Button>,
+          }}
+          rowActions={(page) => (
+            <div className="flex justify-end gap-2">
+              {page.public_link ? (
+                <Button type="button" variant="outline" size="sm" onClick={() => void copyText(page.public_link, "Client link")}>
+                  <Copy className="h-4 w-4" />
+                  Copy
+                </Button>
+              ) : null}
+              {page.public_link ? (
+                <Button type="button" variant="outline" size="sm" asChild>
+                  <a href={page.public_link} target="_blank" rel="noreferrer">
+                    <ExternalLink className="h-4 w-4" />
+                    Open
+                  </a>
+                </Button>
+              ) : null}
+              <Button type="button" size="sm" onClick={() => void handlePublish(page.id)} disabled={isPublishingPage}>
+                <Link2 className="h-4 w-4" />
+                Publish
+              </Button>
+            </div>
+          )}
+        />
       </Card>
 
       <Card className="px-5 py-5">
         <h2 className="mb-4 text-base font-semibold text-copy-primary">Client Accounts</h2>
-        {accountsQuery.isLoading ? (
-          <div className="px-4 py-8 text-center text-sm text-copy-muted" aria-busy="true">Loading accounts...</div>
-        ) : accountsQuery.error ? (
-          <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-4 text-sm text-copy-secondary">
-            <p>Client accounts could not be loaded.</p>
-            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void accountsQuery.refetch()}><RefreshCw />Try again</Button>
-          </div>
-        ) : accounts.length === 0 ? (
-          <EmptyState
-            icon={Users}
-            title="No client accounts yet"
-            description="Create a setup link above to provision authenticated client access."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <Table className="min-w-[1100px]">
-              <TableHeader>
-                <TableHeaderRow>
-                  <SortableHead sorted={accountSort?.key === "email"} direction={accountSort?.key === "email" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "email"))}>
-                    Email
-                  </SortableHead>
-                  <TableHead>Customer</TableHead>
-                  <SortableHead sorted={accountSort?.key === "status"} direction={accountSort?.key === "status" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "status"))}>
-                    Status
-                  </SortableHead>
-                  <SortableHead sorted={accountSort?.key === "last_login_at"} direction={accountSort?.key === "last_login_at" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "last_login_at"))}>
-                    Last Login
-                  </SortableHead>
-                  <SortableHead sorted={accountSort?.key === "setup_token_expires_at"} direction={accountSort?.key === "setup_token_expires_at" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "setup_token_expires_at"))}>
-                    Setup Expires
-                  </SortableHead>
-                  <SortableHead sorted={accountSort?.key === "updated_at"} direction={accountSort?.key === "updated_at" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "updated_at"))}>
-                    Updated
-                  </SortableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableHeaderRow>
-              </TableHeader>
-              <TableBody>
-                {accounts.map((account) => (
-                  <TableRow key={account.id}>
-                    <TableCell><span className="font-medium text-copy-primary">{account.email}</span></TableCell>
-                    <TableCell className="text-copy-secondary">{customerLabel(account)}</TableCell>
-                    <TableCell>
-                      <Select value={account.status} onValueChange={(value) => void handleUpdateAccountStatus(account.id, value as ClientAccountStatus)} disabled={isUpdatingAccountStatus}>
-                        <SelectTrigger size="sm" className="w-[132px] capitalize" aria-label={`Access status for ${account.email}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="inactive">Inactive</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="text-copy-muted">{account.last_login_at ? formatDateTime(account.last_login_at) : "-"}</TableCell>
-                    <TableCell className="text-copy-muted">{account.setup_token_expires_at ? formatDateTime(account.setup_token_expires_at) : "-"}</TableCell>
-                    <TableCell className="text-copy-muted">{formatDateTime(account.updated_at)}</TableCell>
-                    <TableCell>
-                      <div className="flex justify-end">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void handleRegenerateSetupLink(account.id)}
-                          disabled={isRegeneratingSetupLink || account.status === "inactive"}
-                        >
-                          <KeyRound className="h-4 w-4" />
-                          Setup Link
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+        <RecordTable
+          label="Client accounts"
+          columns={[
+            { key: "email", label: "Email", size: "lg", sortable: true, render: (account) => <span className="font-medium text-copy-primary">{account.email}</span> },
+            { key: "customer", label: "Customer", render: (account) => <span className="text-copy-secondary">{customerLabel(account)}</span> },
+            {
+              key: "status",
+              label: "Status",
+              sortable: true,
+              interactive: true,
+              render: (account) => (
+                <Select value={account.status} onValueChange={(value) => void handleUpdateAccountStatus(account.id, value as ClientAccountStatus)} disabled={isUpdatingAccountStatus}>
+                  <SelectTrigger size="sm" className="w-[132px] capitalize" aria-label={`Access status for ${account.email}`}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              ),
+            },
+            { key: "last_login_at", label: "Last login", sortable: true, render: (account) => <span className="text-copy-muted">{account.last_login_at ? formatDateTime(account.last_login_at) : "Never"}</span> },
+            { key: "setup_token_expires_at", label: "Setup expires", sortable: true, render: (account) => <span className="text-copy-muted">{account.setup_token_expires_at ? formatDateTime(account.setup_token_expires_at) : "Not set"}</span> },
+            { key: "updated_at", label: "Updated", sortable: true, render: (account) => <span className="text-copy-muted">{formatDateTime(account.updated_at)}</span> },
+          ]}
+          rows={accounts}
+          rowKey={(account) => account.id}
+          sort={accountSort ? { column: accountSort.key, direction: accountSort.direction } : null}
+          onSortChange={(next) => setAccountSort((current) => nextSort(current, next.column))}
+          isLoading={accountsQuery.isLoading}
+          isRefreshing={accountsQuery.isFetching && !accountsQuery.isLoading}
+          hasError={Boolean(accountsQuery.error)}
+          onRetry={() => void accountsQuery.refetch()}
+          emptyState={{
+            icon: Users,
+            title: "No client accounts yet",
+            description: "Create a setup link above to provision authenticated client access.",
+          }}
+          rowActions={(account) => (
+            <div className="flex justify-end">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => void handleRegenerateSetupLink(account.id)}
+                disabled={isRegeneratingSetupLink || account.status === "inactive"}
+              >
+                <KeyRound className="h-4 w-4" />
+                Setup link
+              </Button>
+            </div>
+          )}
+        />
       </Card>
-    </div>
+    </PageShell>
   );
 }

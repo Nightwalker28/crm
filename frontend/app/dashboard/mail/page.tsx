@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -380,36 +380,38 @@ export default function MailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
-      <PageToolbar>
-          <>
-            <Button type="button" variant="outline" asChild>
-              <Link href="/dashboard/settings/integrations">Manage Integrations</Link>
-            </Button>
-            {imapSmtpConnection?.can_sync ? (
-              <>
-                <Button type="button" variant="outline" onClick={() => void handleSyncProvider("imap_smtp")} disabled={isSyncingMail}>
-                  <RefreshCw className={"h-4 w-4 " + (isSyncingMail ? "animate-spin" : "")} />
-                  Sync IMAP
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setImapFormOpen((current) => !current)} disabled={isConnectingMail}>
-                  <KeyRound className="h-4 w-4" />
-                  Reconfigure IMAP
-                </Button>
-              </>
-            ) : (
+    <PageShell
+      title="Mail"
+      actions={(
+        <>
+          <Button type="button" variant="outline" asChild>
+            <Link href="/dashboard/settings/integrations">Manage Integrations</Link>
+          </Button>
+          {imapSmtpConnection?.can_sync ? (
+            <>
+              <Button type="button" variant="outline" onClick={() => void handleSyncProvider("imap_smtp")} disabled={isSyncingMail}>
+                <RefreshCw className={"h-4 w-4 " + (isSyncingMail ? "animate-spin" : "")} />
+                Sync IMAP
+              </Button>
               <Button type="button" variant="outline" onClick={() => setImapFormOpen((current) => !current)} disabled={isConnectingMail}>
                 <KeyRound className="h-4 w-4" />
-                IMAP/SMTP
+                Reconfigure IMAP
               </Button>
-            )}
-            {hasSendProvider ? (
-              <Button asChild><Link href="/dashboard/mail/compose">New Mail</Link></Button>
-            ) : (
-              <Button type="button" disabled>New Mail</Button>
-            )}
-          </>
-      </PageToolbar>
+            </>
+          ) : (
+            <Button type="button" variant="outline" onClick={() => setImapFormOpen((current) => !current)} disabled={isConnectingMail}>
+              <KeyRound className="h-4 w-4" />
+              IMAP/SMTP
+            </Button>
+          )}
+          {hasSendProvider ? (
+            <Button asChild><Link href="/dashboard/mail/compose">New Mail</Link></Button>
+          ) : (
+            <Button type="button" disabled>New Mail</Button>
+          )}
+        </>
+      )}
+    >
 
       <Card>
         <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-5 py-4">
@@ -753,6 +755,6 @@ export default function MailPage() {
           ) : null}
         </Card>
       </section>
-    </div>
+    </PageShell>
   );
 }

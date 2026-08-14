@@ -12,6 +12,7 @@ import {
 import { getStrictContext } from '@/lib/get-strict-context';
 import { useDialogLayerCovered } from '@/components/ui/dialog-layer';
 import { useControlledState } from '@/hooks/use-controlled-state';
+import { cn } from '@/lib/utils';
 
 type SheetContextType = {
   isOpen: boolean;
@@ -110,6 +111,7 @@ function SheetContent({
   side = 'right',
   transition = { type: 'spring', stiffness: 150, damping: 22 },
   style,
+  className,
   children,
   onInteractOutside,
   onEscapeKeyDown,
@@ -161,6 +163,10 @@ function SheetContent({
         aria-hidden={covered || undefined}
         inert={covered}
         data-reduced-motion={shouldReduceMotion ? 'true' : 'false'}
+        // A sheet genuinely floats, so it is one of the things 4.6 gives a
+        // shadow to - and the shadow belongs here, not retyped as `shadow-2xl`
+        // at each of the twelve call sites.
+        className={cn('shadow-[var(--shadow-panel)]', className)}
         initial={shouldReduceMotion ? false : offscreen[side]}
         animate={{ [axis]: 0, opacity: 1 }}
         exit={shouldReduceMotion ? undefined : offscreen[side]}

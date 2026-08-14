@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
+import { PageShell } from "@/components/ui/PageShell";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
 const SETTINGS_SECTIONS = [
@@ -132,7 +133,7 @@ const SETTINGS_SECTIONS = [
 
 export default function SettingsPage() {
   return (
-    <div className="flex flex-col gap-6 text-copy-secondary">
+    <PageShell variant="settings" title="Settings" description="Configure the workspace, its users, and the modules they can reach.">
       <div className="grid gap-6">
         {SETTINGS_SECTIONS.map((section) => (
           <section key={section.key} aria-labelledby={`${section.key}-heading`}>
@@ -174,6 +175,6 @@ export default function SettingsPage() {
           </section>
         ))}
       </div>
-    </div>
+    </PageShell>
   );
 }

@@ -13,10 +13,10 @@ import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -259,12 +259,11 @@ function InsertionOrderFormEditor({
   }
 
   return (
-    <div className="grid gap-6">
-      <PageHeader
-        title={mode === "edit" ? `Edit ${order?.io_number ?? "insertion order"}` : "Create insertion order"}
-        description="Capture customer, schedule, references, and commercial values in one workflow."
-        actions={<Button variant="outline" asChild><Link href={mode === "edit" && ioId ? `/dashboard/finance/insertion-orders/${ioId}` : "/dashboard/finance/insertion-orders"}><ArrowLeft />Cancel</Link></Button>}
-      />
+    <PageShell
+      title={mode === "edit" ? `Edit ${order?.io_number ?? "insertion order"}` : "Create insertion order"}
+      description="Capture customer, schedule, references, and commercial values in one workflow."
+      actions={<Button variant="outline" asChild><Link href={mode === "edit" && ioId ? `/dashboard/finance/insertion-orders/${ioId}` : "/dashboard/finance/insertion-orders"}><ArrowLeft />Cancel</Link></Button>}
+    >
       <form onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
           sidebar={
@@ -362,9 +361,7 @@ function InsertionOrderFormEditor({
                 <FieldError>{errors.customer}</FieldError>
                 {!form.customer_contact_id && !form.customer_organization_id && form.customer_name.trim() ? (
                   <label className="mt-2 flex items-start gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3 text-sm text-copy-secondary">
-                    <Checkbox checked={form.create_customer_if_missing} onCheckedChange={(checked) => update("create_customer_if_missing", checked === true)} className="mt-0.5">
-                      <CheckboxIndicator />
-                    </Checkbox>
+                    <Checkbox checked={form.create_customer_if_missing} onCheckedChange={(checked) => update("create_customer_if_missing", checked === true)} className="mt-0.5" />
                     <span>Create a lightweight contact when this order is saved.</span>
                   </label>
                 ) : null}
@@ -414,6 +411,6 @@ function InsertionOrderFormEditor({
           ) : null}
         </RecordFormLayout>
       </form>
-    </div>
+    </PageShell>
   );
 }

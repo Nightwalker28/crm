@@ -102,7 +102,7 @@ export function UserTeamPicker({
         </PopoverTrigger>
         <PopoverContent
           align="start"
-          className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] border-line-default bg-surface-raised p-0 text-copy-primary shadow-xl sm:w-[440px]"
+          className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] border-line-default bg-surface-raised p-0 text-copy-primary shadow-[var(--shadow-panel)] sm:w-[440px]"
         >
           <div className="border-b border-line-default p-3">
             <label htmlFor={searchId} className="sr-only">{searchLabel}</label>

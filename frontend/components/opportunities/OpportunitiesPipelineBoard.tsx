@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, GripVertical } from "lucide-react";
+import { AlertTriangle, GripVertical, Handshake, TriangleAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +20,12 @@ type Props = {
   opportunities: Opportunity[];
   isLoading: boolean;
   isRefreshing?: boolean;
+  /** §7.4 — the board is a data view, so it owes the same states the table does. */
+  hasError?: boolean;
+  onRetry?: () => void;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
+  onCreate?: () => void;
   onEdit: (opportunity: Opportunity) => void;
   onStageChange: (opportunity: Opportunity, salesStage: string) => Promise<void> | void;
 };
@@ -33,6 +41,11 @@ export default function OpportunitiesPipelineBoard({
   opportunities,
   isLoading,
   isRefreshing = false,
+  hasError = false,
+  onRetry,
+  hasActiveFilters = false,
+  onClearFilters,
+  onCreate,
   onEdit,
   onStageChange,
 }: Props) {
@@ -71,7 +84,19 @@ export default function OpportunitiesPipelineBoard({
         </p>
       </div>
 
-      {isLoading ? (
+      {hasError ? (
+        // Same four states as `RecordTable`, in the same order and the same shape — the
+        // board is the other half of this list, and an operator switching display should
+        // not meet a different vocabulary (§7.4).
+        <div role="alert" className="px-4 py-12">
+          <EmptyState
+            icon={TriangleAlert}
+            title="Deals could not be loaded"
+            description="Check your connection and try again."
+            action={onRetry ? <Button type="button" variant="outline" onClick={onRetry}>Try again</Button> : undefined}
+          />
+        </div>
+      ) : isLoading ? (
         <div className="overflow-x-auto px-4 py-4">
           <div className="flex gap-4 overflow-x-auto">
             {Array.from({ length: 7 }).map((_, index) => (
@@ -95,6 +120,19 @@ export default function OpportunitiesPipelineBoard({
               </div>
             ))}
           </div>
+        </div>
+      ) : !opportunities.length ? (
+        <div className="px-4 py-12">
+          <EmptyState
+            icon={Handshake}
+            title={hasActiveFilters ? "No deals match these filters" : "No deals yet"}
+            description={hasActiveFilters ? "Clear one or more filters and try again." : "Create your first deal to see it move through the pipeline."}
+            action={
+              hasActiveFilters
+                ? onClearFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button> : undefined
+                : onCreate ? <Button type="button" onClick={onCreate}>Create deal</Button> : undefined
+            }
+          />
         </div>
       ) : (
         <div className="overflow-x-auto px-4 py-4">

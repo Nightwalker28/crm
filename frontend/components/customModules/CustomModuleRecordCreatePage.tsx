@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
@@ -157,21 +157,19 @@ function CustomModuleRecordCreateEditor({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Create record"
-        eyebrow={moduleName}
-        description={`Add a record using the fields configured for ${moduleName}.`}
-        actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={backHref}>
-              <ArrowLeft />
-              Back to records
-            </Link>
-          </Button>
-        }
-      />
-
+    <PageShell
+      title="Create record"
+      eyebrow={moduleName}
+      description={`Add a record using the fields configured for ${moduleName}.`}
+      actions={
+        <Button asChild variant="ghost" size="sm">
+          <Link href={backHref}>
+            <ArrowLeft />
+            Back to records
+          </Link>
+        </Button>
+      }
+    >
       {submitError ? (
         <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           <div className="font-medium">We could not create this record.</div>
@@ -283,6 +281,6 @@ function CustomModuleRecordCreateEditor({
           </FormSection>
         </RecordFormLayout>
       </form>
-    </div>
+    </PageShell>
   );
 }

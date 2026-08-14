@@ -6,14 +6,14 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageToolbar } from "@/components/ui/PageToolbar";
-import { RequiredMark } from "@/components/ui/RequiredMark";
+import { PageShell } from "@/components/ui/PageShell";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -80,7 +80,6 @@ const PRESETS: Array<{ value: PermissionPreset; label: string }> = [
   { value: "full", label: "Full access" },
 ];
 
-const CHECKBOX_CLASS = "h-4 w-4 rounded border border-line-strong bg-surface-raised text-primary";
 const EMPTY_PERMISSIONS: ModulePermission[] = [];
 
 function permissionSignature(permissions: ModulePermission[]) {
@@ -319,20 +318,21 @@ export default function RolesPermissionsPage() {
     }
   }
 
-  if (isOverviewLoading) return <RouteLoadingState label="roles and permissions" />;
-
   return (
-    <div className="flex h-full min-h-0 flex-col gap-5">
-      <PageToolbar><Button onClick={() => setDialogOpen(true)}><Plus />Create Role</Button></PageToolbar>
-
-      {overviewError ? (
-        <Card className="p-6" role="alert">
-          <h2 className="font-semibold text-copy-primary">Roles could not be loaded</h2>
-          <p className="mt-1 text-sm text-copy-secondary">Try the request again. No permissions have been changed.</p>
-          <Button className="mt-4" variant="outline" onClick={() => void retryOverview()}>Try again</Button>
-        </Card>
-      ) : (
-        <Card className="flex min-h-0 flex-1 flex-col overflow-visible">
+    <PageShell
+      variant="list"
+      title="Permissions"
+      description="Control role actions across enabled modules."
+      actions={<Button onClick={() => setDialogOpen(true)}><Plus />Create Role</Button>}
+      isLoading={isOverviewLoading}
+      hasError={Boolean(overviewError)}
+      errorDescription="Try the request again. No permissions have been changed."
+      onRetry={() => void retryOverview()}
+      backHref="/dashboard/settings"
+      backLabel="Back to Settings"
+    >
+      {(
+        <Card className="flex min-h-0 flex-1 flex-col">
             <div className="border-b border-line-subtle px-5 py-4">
               <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
                 <div>
@@ -411,7 +411,6 @@ export default function RolesPermissionsPage() {
                                 <div className="flex flex-col items-center gap-1.5">
                                   <span>{column.label}</span>
                                   <Checkbox
-                                    className={CHECKBOX_CLASS}
                                     aria-label={`Set ${column.label.toLocaleLowerCase()} for all visible modules`}
                                     checked={state}
                                     disabled={!filteredPermissions.length || isSaving}
@@ -421,9 +420,7 @@ export default function RolesPermissionsPage() {
                                         actions: { ...permission.actions, [column.key]: checked === true },
                                       }))
                                     }
-                                  >
-                                    <CheckboxIndicator className="h-3 w-3" />
-                                  </Checkbox>
+                                  />
                                 </div>
                               </TableHead>
                             );
@@ -445,7 +442,7 @@ export default function RolesPermissionsPage() {
                                   <TableCell className="sticky left-0 z-10 border-r border-line-subtle bg-surface">
                                     <div className="flex items-start gap-3">
                                       <Checkbox
-                                        className={`${CHECKBOX_CLASS} mt-0.5 shrink-0`}
+                                        className="mt-0.5 shrink-0"
                                         aria-label={`Set all permissions for ${permission.module_name}`}
                                         checked={rowState}
                                         disabled={isSaving}
@@ -456,9 +453,7 @@ export default function RolesPermissionsPage() {
                                               : item,
                                           ))
                                         }
-                                      >
-                                        <CheckboxIndicator className="h-3 w-3" />
-                                      </Checkbox>
+                                      />
                                       <div>
                                         <div className="font-medium text-copy-primary">{permission.module_name}</div>
                                         {permission.module_description ? <div className="mt-1 text-xs text-copy-muted">{permission.module_description}</div> : null}
@@ -479,10 +474,8 @@ export default function RolesPermissionsPage() {
                                               : item,
                                           ));
                                         }}
-                                        className={`${CHECKBOX_CLASS} mx-auto`}
-                                      >
-                                        <CheckboxIndicator className="h-3 w-3" />
-                                      </Checkbox>
+                                        className="mx-auto"
+                                      />
                                     </TableCell>
                                   ))}
                                 </TableRow>
@@ -542,7 +535,7 @@ export default function RolesPermissionsPage() {
       <Sheet open={createRoleOpen} onOpenChange={handleCreateRoleOpenChange}>
         <SheetPortal>
           <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised outline-none">
             <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); void handleCreateRole(); }}>
               <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
                 <div>
@@ -589,6 +582,6 @@ export default function RolesPermissionsPage() {
           </SheetContent>
         </SheetPortal>
       </Sheet>
-    </div>
+    </PageShell>
   );
 }

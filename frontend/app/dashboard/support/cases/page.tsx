@@ -7,6 +7,7 @@ import { Plus } from "lucide-react";
 import SupportCasesTable from "@/components/support/SupportCasesTable";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import Pagination from "@/components/ui/Pagination";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
@@ -56,7 +57,7 @@ export default function SupportCasesPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-4">
+    <PageShell variant="list" title="Support cases">
       <ModuleListToolbar
         searchValue={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -82,12 +83,6 @@ export default function SupportCasesPage() {
         <SupportMetric label="Urgent" value={summary?.urgent_open} loading={summaryQuery.isLoading} tone="urgent" />
         <SupportMetric label="Overdue" value={summary?.overdue} loading={summaryQuery.isLoading} tone="overdue" />
       </div>
-      {error ? (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <span>Support cases could not be loaded. Check your connection and try again.</span>
-          <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>Try again</Button>
-        </div>
-      ) : null}
       <SupportCasesTable
         cases={cases}
         isLoading={isLoading}
@@ -102,9 +97,11 @@ export default function SupportCasesPage() {
           }))
         }
         isFiltered={hasActiveFilters}
+        hasError={Boolean(error)}
+        onRetry={() => void refresh()}
       />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
-    </div>
+    </PageShell>
   );
 }
 

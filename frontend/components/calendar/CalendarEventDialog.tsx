@@ -289,9 +289,9 @@ export default function CalendarEventDialog({
                     checked={form.is_all_day}
                     onCheckedChange={(checked) => setForm((current) => ({ ...current, is_all_day: checked }))}
                     aria-label="All-day event"
-                    className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface data-[state=checked]:bg-primary"
+                    className="relative h-6 w-11 shrink-0 rounded-full border border-line-control bg-surface data-[state=checked]:bg-primary"
                   >
-                    <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
+                    <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary data-[state=checked]:translate-x-5" />
                   </Switch>
                 </div>
               </Field>

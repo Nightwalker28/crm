@@ -6,13 +6,13 @@ import { ArrowLeft, Building2, Repeat2, Save, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardFooter } from "@/components/ui/Card";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { Pill } from "@/components/ui/Pill";
 import { RecordTabs } from "@/components/ui/RecordTabs";
-import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
+import { RouteNotFoundState } from "@/components/ui/RouteStates";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { ModuleAccessConflictError, type ModuleAccess, useModuleAccessAdmin } from "@/hooks/admin/useModulesAdmin";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -95,7 +95,7 @@ function ModuleAccessEditor({
       <p className="border-b border-line-subtle px-5 py-3 text-sm text-copy-secondary">
         Department access opens the parent gate. Select the individual teams that should receive access from the Teams tab.
       </p>
-      <ModuleTableShell className="rounded-none border-0">
+      <ModuleTableShell variant="nested">
         <Table className="min-w-[760px]">
           <TableHeader>
             <TableHeaderRow>
@@ -139,10 +139,8 @@ function ModuleAccessEditor({
                           setTeamIds((current) => current.filter((teamId) => !childTeamIds.has(teamId)));
                         }
                       }}
-                      className="ml-auto flex h-5 w-5 items-center justify-center rounded border border-line-strong bg-surface text-copy-primary focus-visible:ring-2 focus-visible:ring-focus"
-                    >
-                      <CheckboxIndicator className="h-3.5 w-3.5" />
-                    </Checkbox>
+                      className="ml-auto"
+                    />
                   </TableCell>
                 </TableRow>
               );
@@ -158,7 +156,7 @@ function ModuleAccessEditor({
       <p className="border-b border-line-subtle px-5 py-3 text-sm text-copy-secondary">
         A team can be selected only when its parent department is allowed. Unassigned teams use a direct team grant.
       </p>
-      <ModuleTableShell className="rounded-none border-0">
+      <ModuleTableShell variant="nested">
         <Table className="min-w-[860px]">
           <TableHeader>
             <TableHeaderRow>
@@ -204,10 +202,7 @@ function ModuleAccessEditor({
                         checked={directAccess}
                         disabled={(hasDepartment && !departmentAccess) || isSaving}
                         onCheckedChange={(nextChecked) => setTeamIds((current) => toggleId(current, team.id, nextChecked === true))}
-                        className="flex h-5 w-5 items-center justify-center rounded border border-line-strong bg-surface text-copy-primary focus-visible:ring-2 focus-visible:ring-focus"
-                      >
-                        <CheckboxIndicator className="h-3.5 w-3.5" />
-                      </Checkbox>
+                      />
                       {hasDepartment ? (
                         <span id={checkboxDescriptionId} className="max-w-44 text-xs text-copy-muted">
                           {departmentAccess
@@ -227,13 +222,18 @@ function ModuleAccessEditor({
   );
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
-      <PageToolbar context={`${moduleDisplayName} access`}>
-          <>
-            <Button type="button" variant="outline" onClick={() => void navigateAway(SETTINGS_ROUTES.modules)}><ArrowLeft />Module Settings</Button>
-            <Button type="button" variant="outline" onClick={() => void navigateAway(`${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(access.module.name)}`)}><Repeat2 />Automation</Button>
-          </>
-      </PageToolbar>
+    <PageShell
+      variant="settings"
+      title="Access Settings"
+      description={`Choose which departments and teams can reach ${moduleDisplayName}.`}
+      context={`${moduleDisplayName} access`}
+      actions={(
+        <>
+          <Button type="button" variant="outline" onClick={() => void navigateAway(SETTINGS_ROUTES.modules)}><ArrowLeft />Module Settings</Button>
+          <Button type="button" variant="outline" onClick={() => void navigateAway(`${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(access.module.name)}`)}><Repeat2 />Automation</Button>
+        </>
+      )}
+    >
 
       {!access.module.is_enabled ? (
         <div className="rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted px-4 py-3 text-sm text-copy-secondary">
@@ -281,7 +281,7 @@ function ModuleAccessEditor({
           </Button>
         </CardFooter>
       </Card>
-    </div>
+    </PageShell>
   );
 }
 
@@ -290,22 +290,28 @@ export default function ModuleAccessPage() {
   const moduleId = parseModuleId(params.moduleId);
   const { access, isLoading, error, refetch, updateAccess, isSaving } = useModuleAccessAdmin(moduleId);
 
-  if (moduleId === null) {
-    return <RouteNotFoundState recordLabel="Module" backHref={SETTINGS_ROUTES.modules} backLabel="Back to module settings" />;
-  }
-  if (isLoading) return <RouteLoadingState label="module access settings" />;
-  if (error) {
+  if (moduleId === null || isLoading || error || !access) {
     return (
-      <RouteErrorState
-        title="Module access could not be loaded"
-        description="Check your connection and try again. No access settings were changed."
-        reset={() => void refetch()}
+      <PageShell
+        variant="settings"
+        title="Access Settings"
+        isLoading={isLoading}
+        hasError={Boolean(error) || moduleId === null || !access}
+        errorState={
+          moduleId === null || (!error && !access) ? (
+            <RouteNotFoundState titleAs="p" recordLabel="Module" backHref={SETTINGS_ROUTES.modules} backLabel="Back to module settings" />
+          ) : undefined
+        }
+        errorDescription="Check your connection and try again. No access settings were changed."
+        onRetry={() => void refetch()}
         backHref={SETTINGS_ROUTES.modules}
         backLabel="Back to module settings"
-      />
+      >
+        {null}
+      </PageShell>
     );
   }
-  if (access) {
+  {
     const accessKey = [
       access.module.id,
       access.departments.filter((department) => department.has_access).map((department) => department.id).sort((a, b) => a - b).join("."),
@@ -322,5 +328,4 @@ export default function ModuleAccessPage() {
       />
     );
   }
-  return <RouteNotFoundState recordLabel="Module" backHref={SETTINGS_ROUTES.modules} backLabel="Back to module settings" />;
 }

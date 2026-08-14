@@ -2,6 +2,7 @@
 "use client";
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MotionConfig } from "motion/react";
 import { ThemeProvider } from "next-themes";
 import { useEffect, useState } from "react";
 import { ConfirmProvider } from "@/hooks/useConfirm";
@@ -47,7 +48,12 @@ export default function Providers({ children }: { children: React.ReactNode }) {
       value={{ light: "light", dark: "dark" }}
     >
       <QueryClientProvider client={queryClient}>
-        <ConfirmProvider>{children}</ConfirmProvider>
+        {/* The reduced-motion block in globals.css cannot reach motion/react -
+            Checkbox and Switch animate scale in JS. "user" makes the library
+            read the same media query, so design.md 6 holds for both halves. */}
+        <MotionConfig reducedMotion="user">
+          <ConfirmProvider>{children}</ConfirmProvider>
+        </MotionConfig>
       </QueryClientProvider>
     </ThemeProvider>
   );

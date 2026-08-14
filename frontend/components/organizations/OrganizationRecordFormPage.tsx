@@ -25,7 +25,7 @@ import {
 } from "@/components/organizations/organizationQuickCreateDraft";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import {
   RouteErrorState,
   RouteLoadingState,
@@ -193,28 +193,27 @@ export default function OrganizationRecordFormPage({
       ? `/dashboard/sales/organizations/${orgId}`
       : "/dashboard/sales/organizations";
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={title}
-        eyebrow={
-          mode === "edit" && summaryQuery.data?.organization.updated_at
-            ? `Last modified ${formatDateTime(summaryQuery.data.organization.updated_at)}`
-            : undefined
-        }
-        description={
-          mode === "edit"
-            ? "Update account, billing, and ownership information."
-            : "Create a company account for contacts, deals, and transactions."
-        }
-        actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={cancelHref}>
-              <ArrowLeft />
-              Back to {mode === "edit" ? "account" : "accounts"}
-            </Link>
-          </Button>
-        }
-      />
+    <PageShell
+      title={title}
+      eyebrow={
+        mode === "edit" && summaryQuery.data?.organization.updated_at
+          ? `Last modified ${formatDateTime(summaryQuery.data.organization.updated_at)}`
+          : undefined
+      }
+      description={
+        mode === "edit"
+          ? "Update account, billing, and ownership information."
+          : "Create a company account for contacts, deals, and transactions."
+      }
+      actions={
+        <Button asChild variant="ghost" size="sm">
+          <Link href={cancelHref}>
+            <ArrowLeft />
+            Back to {mode === "edit" ? "account" : "accounts"}
+          </Link>
+        </Button>
+      }
+    >
       {submitError ? (
         <div
           role="alert"
@@ -278,6 +277,6 @@ export default function OrganizationRecordFormPage({
           mode={mode}
         />
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

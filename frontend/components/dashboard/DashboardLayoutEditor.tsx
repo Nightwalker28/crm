@@ -172,7 +172,7 @@ function DashboardWidgetShell({
       }}
       className={cn(
         "rounded-[var(--radius-card)] border border-line-subtle bg-surface",
-        isEditing && "border-line-strong bg-surface-raised shadow-sm",
+        isEditing && "border-line-strong bg-surface-raised",
         sizeClass(widget.size),
       )}
     >
@@ -269,7 +269,7 @@ export function DashboardLayoutEditor({
   return (
     <>
       {isEditing ? (
-        <div className="sticky top-2 z-20 flex flex-wrap items-center gap-2 rounded-[var(--radius-card)] border border-line-strong bg-surface-raised/95 px-4 py-3 shadow-lg backdrop-blur">
+        <div className="sticky top-2 z-20 flex flex-wrap items-center gap-2 rounded-[var(--radius-card)] border border-line-strong bg-surface-raised/95 px-4 py-3 backdrop-blur">
           <div className="mr-auto">
             <p className="text-sm font-semibold text-copy-primary">Dashboard edit mode</p>
             <p className={cn("text-xs", isLayoutDirty ? "text-state-warning" : "text-copy-muted")}>

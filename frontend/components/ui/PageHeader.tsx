@@ -6,8 +6,8 @@ import { cn } from "@/lib/utils";
 
 type PageHeaderProps = {
   /**
-   * Names the page, rendered as an `sr-only` h1 (design.md §8). Optional only so the
-   * deprecated `PageToolbar` shape still compiles — every page owes one, and
+   * Names the page, rendered as an `sr-only` h1 (design.md §8). Optional only for the
+   * record action row, which sits under a shell that has already named the page;
    * `PageShell` requires it.
    */
   title?: string;
@@ -16,8 +16,6 @@ type PageHeaderProps = {
   /** Quiet left-hand line: what is being scoped, a count, an unsaved-changes note. */
   context?: ReactNode;
   actions?: ReactNode;
-  /** Alias for `actions`, kept for the `PageToolbar` call shape. Prefer `actions`. */
-  children?: ReactNode;
   className?: string;
 };
 
@@ -26,8 +24,8 @@ type PageHeaderProps = {
  * and a right-aligned action group.
  *
  * This absorbed `PageToolbar`, which was the same component with a `context` slot and a
- * `min-h-9`. Keeping both meant a page picked one at random, and only this one emitted
- * the h1 — so every `PageToolbar` page depended on the shell's title for its heading.
+ * `min-h-9`. Keeping both meant a page picked one at random, and only this one emitted the
+ * h1. The deprecated alias is gone: every page is on `PageShell`, which renders this.
  * See design.md §4.4.
  *
  * The h1 is deliberately `sr-only`: the heading belongs in the accessibility tree, while
@@ -39,11 +37,9 @@ export function PageHeader({
   eyebrow,
   context,
   actions,
-  children,
   className,
 }: PageHeaderProps) {
-  const actionContent = actions ?? children;
-  const hasVisibleRow = Boolean(context || actionContent);
+  const hasVisibleRow = Boolean(context || actions);
 
   if (!title && !description && !eyebrow && !hasVisibleRow) return null;
 
@@ -65,9 +61,9 @@ export function PageHeader({
       {eyebrow ? <div className="sr-only">{eyebrow}</div> : null}
       {description ? <p className="sr-only">{description}</p> : null}
       {context ? <div className="min-w-0 text-xs font-medium text-copy-muted">{context}</div> : null}
-      {actionContent ? (
+      {actions ? (
         <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:shrink-0">
-          {actionContent}
+          {actions}
         </div>
       ) : null}
     </div>

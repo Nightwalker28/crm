@@ -9,7 +9,7 @@ import { toast } from "sonner";
 import CalendarEventDialog from "@/components/calendar/CalendarEventDialog";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -242,25 +242,27 @@ export default function CalendarPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageToolbar>
-          <>
-            <div className="hidden items-center gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-xs text-copy-muted xl:flex">
-              <Clock3 className="h-4 w-4 text-copy-disabled" />
-              {contextQuery.data?.connections.some((connection) => connection.sync_enabled_for_current_session)
-                ? "External sync active for this session"
-                : "Internal calendar only for this session"}
-            </div>
-            <Button aria-label={isCalendarSyncActive ? "Syncing calendar" : "Sync calendar now"} variant="outline" onClick={() => void handleManualSync()} disabled={isCalendarSyncActive || !hasActiveSyncConnection}>
-              <RefreshCw className={"h-4 w-4 " + (isCalendarSyncActive ? "animate-spin" : "")} />
-              <span className="hidden sm:inline">{isCalendarSyncActive ? "Syncing" : "Sync now"}</span>
-            </Button>
-            <Button aria-label="New event" onClick={() => openCreateDialog(selectedDay)}>
-              <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">New event</span>
-            </Button>
-          </>
-      </PageToolbar>
+    <PageShell
+      title="Calendar"
+      actions={(
+        <>
+          <div className="hidden items-center gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-xs text-copy-muted xl:flex">
+            <Clock3 className="h-4 w-4 text-copy-disabled" />
+            {contextQuery.data?.connections.some((connection) => connection.sync_enabled_for_current_session)
+              ? "External sync active for this session"
+              : "Internal calendar only for this session"}
+          </div>
+          <Button aria-label={isCalendarSyncActive ? "Syncing calendar" : "Sync calendar now"} variant="outline" onClick={() => void handleManualSync()} disabled={isCalendarSyncActive || !hasActiveSyncConnection}>
+            <RefreshCw className={"h-4 w-4 " + (isCalendarSyncActive ? "animate-spin" : "")} />
+            <span className="hidden sm:inline">{isCalendarSyncActive ? "Syncing" : "Sync now"}</span>
+          </Button>
+          <Button aria-label="New event" onClick={() => openCreateDialog(selectedDay)}>
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">New event</span>
+          </Button>
+        </>
+      )}
+    >
 
       {contextQuery.isError ? (
         <div role="alert" className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-secondary sm:flex-row sm:items-center sm:justify-between">
@@ -624,6 +626,6 @@ export default function CalendarPage() {
         onSubmit={handleSubmit}
         onDelete={activeEvent ? handleDelete : undefined}
       />
-    </div>
+    </PageShell>
   );
 }

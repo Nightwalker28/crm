@@ -127,8 +127,14 @@ linked requester rather than the plain summary tile.
 | `fields-revamp.spec.ts:124` | `button /Contract Term/` | 2 |
 | `opportunities-revamp.spec.ts:21` | `button "Table"` | 3 |
 | `payments-revamp.spec.ts:56` | `getByText("Paid", { exact: true })` | 2 |
+| `permissions-revamp.spec.ts:194` | `getByText("Sales", { exact: true })` | 2 — sidebar nav group + the table's module-group row |
 | `profile-revamp.spec.ts:146` | `getByText("MFA enabled")` | 2 |
 | `users-revamp.spec.ts:364` | `getByText("Custom domains")` | 2 — heading + "No custom domains yet" |
+
+`permissions-revamp.spec.ts:194` was added on 2026-08-13. It is not in the 2026-08-11
+snapshot above but reproduces on a stashed, route-warmed HEAD, so it is pre-existing rather
+than new — worth stating because it is the one failure in that batch that touches a file the
+Phase 2 primitive pass had edited, which is exactly the shape of a false attribution.
 
 Watch for the `getByLabel` trap specifically: it is substring and case-insensitive by default, and
 it matches `aria-label` on any element, not just form controls. `getByLabel("Tags")` matched a chip
@@ -248,6 +254,16 @@ await expect.poll(async () => page.evaluate(() => sessionStorage.getItem("lynk_u
   Playwright calls happened to take. Now polls for the settled value. Passes 3/3.
 - `accounts-revamp.spec.ts` — "keeps shared controls usable on mobile" passed 3/3 in isolation
   after failing in a full run.
+- `payments-revamp.spec.ts:74` — "distinguishes filtered empty results" observed
+  **fail/pass/pass** in isolation on 2026-08-14, and passing then failing within the same
+  session. Listed above under the unconfirmed-cause group as `button "Clear filters"` not
+  found; the button is genuinely rendered. Dumping the DOM in that exact mocked state
+  gives `buttonsInTable: ["Clear filters"]` with the filtered title above it, so the spec
+  is asserting behaviour the product has. The likely mechanism is the un-debounced search
+  (Appendix A.5 of `docs/design/consistency-pass.md`): filling "missing customer" fires a
+  request per keystroke, so the empty-state row unmounts and remounts ~16 times while the
+  locator is resolving. Fixing the debounce would probably retire this failure; changing
+  the spec would only hide it.
 
 ## Already fixed this session
 

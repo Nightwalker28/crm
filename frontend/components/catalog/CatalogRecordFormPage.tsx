@@ -10,10 +10,10 @@ import { toast } from "sonner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -204,14 +204,12 @@ function CatalogRecordFormEditor({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        eyebrow={mode === "edit" && record?.updated_at ? `Last modified ${formatDateTime(record.updated_at)}` : undefined}
-        title={mode === "edit" ? `Edit ${record?.name ?? noun}` : `Create ${noun}`}
-        description={mode === "edit" ? `Update this ${noun}'s catalog, pricing, visibility, and media details.` : `Add a ${noun} with customer-facing pricing, visibility, and media.`}
-        actions={<Button asChild variant="ghost" size="sm"><Link href={mode === "edit" ? detailHref : listHref}><ArrowLeft />Back to {mode === "edit" ? noun : kind}</Link></Button>}
-      />
-
+    <PageShell
+      eyebrow={mode === "edit" && record?.updated_at ? `Last modified ${formatDateTime(record.updated_at)}` : undefined}
+      title={mode === "edit" ? `Edit ${record?.name ?? noun}` : `Create ${noun}`}
+      description={mode === "edit" ? `Update this ${noun}'s catalog, pricing, visibility, and media details.` : `Add a ${noun} with customer-facing pricing, visibility, and media.`}
+      actions={<Button asChild variant="ghost" size="sm"><Link href={mode === "edit" ? detailHref : listHref}><ArrowLeft />Back to {mode === "edit" ? noun : kind}</Link></Button>}
+    >
       {submitError ? (
         <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           <div className="font-medium">We could not {mode === "edit" ? "update" : "create"} this {noun}.</div>
@@ -321,7 +319,7 @@ function CatalogRecordFormEditor({
           </FormSection>
         ) : null}
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }
 
@@ -329,9 +327,7 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
   return (
     <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3 text-sm text-copy-secondary">
       <span>{label}</span>
-      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} className="flex h-4 w-4 items-center justify-center rounded border border-line-strong bg-surface-raised text-copy-primary">
-        <CheckboxIndicator className="h-3 w-3" />
-      </Checkbox>
+      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
     </label>
   );
 }

@@ -8,9 +8,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PageShell } from "@/components/ui/PageShell";
 import { ImageAssetField, validateImageAssetFile } from "@/components/ui/ImageAssetField";
 import { RequiredMark } from "@/components/ui/RequiredMark";
-import { RouteErrorState } from "@/components/ui/RouteStates";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
@@ -221,20 +221,18 @@ export default function CompanyPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-secondary">
-      {loadFailed ? (
-        <RouteErrorState
-          title="Company profile could not be loaded"
-          description="Your saved company settings are unchanged. Check your connection and try again."
-          reset={() => void loadCompany()}
-          backHref="/dashboard/settings"
-          backLabel="Back to settings"
-        />
-      ) : loading ? (
-        <Card className="px-5 py-8 text-sm text-copy-muted" aria-busy="true">
-          Loading company profile...
-        </Card>
-      ) : (
+    <PageShell
+      variant="settings"
+      title="General"
+      description="Company profile and tenant setup."
+      isLoading={loading && !loadFailed}
+      hasError={loadFailed}
+      errorDescription="Your saved company settings are unchanged. Check your connection and try again."
+      onRetry={() => void loadCompany()}
+      backHref="/dashboard/settings"
+      backLabel="Back to settings"
+    >
+      {(
         <form
           className="grid gap-5"
           onSubmit={(event) => {
@@ -248,7 +246,7 @@ export default function CompanyPage() {
             </div>
           ) : null}
 
-          <Card className="overflow-visible" aria-label="Company settings workspace">
+          <Card aria-label="Company settings workspace">
             <CardHeader>
               <div>
                 <h2 className="text-base font-semibold text-copy-primary">Company profile</h2>
@@ -336,7 +334,7 @@ export default function CompanyPage() {
             </CardBody>
             </section>
 
-            <CardFooter className="sticky bottom-0 z-20 flex flex-wrap items-center justify-between gap-3 rounded-b-[var(--radius-card)] bg-surface-raised/95 backdrop-blur">
+            <CardFooter className="sticky bottom-0 z-20 flex flex-wrap items-center justify-between gap-3 bg-surface-raised/95 backdrop-blur">
               <span className={`text-sm ${isDirty ? "text-state-warning" : "text-state-success"}`}>
                 {isDirty ? "You have unsaved company changes." : "All company settings are saved."}
               </span>
@@ -354,6 +352,6 @@ export default function CompanyPage() {
           </Card>
         </form>
       )}
-    </div>
+    </PageShell>
   );
 }

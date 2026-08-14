@@ -138,13 +138,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           <header className="relative z-10 grid min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line-subtle px-4 py-3 sm:px-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,34rem)_minmax(0,1fr)] xl:py-0">
             <div className="flex min-w-0 items-center gap-2">
               <Button type="button" variant="ghost" size="icon-sm" className="md:hidden" aria-label="Open navigation" aria-expanded={mobileNavigationOpen} onClick={() => setMobileNavigationOpen(true)}><Menu /></Button>
-              {/* This is the "second visible h1" design.md §8 warns about: `PageHeader` already
-                  emits an sr-only h1 naming the page, and this one names the module, so pages
-                  carrying a PageHeader have two. It stays an h1 until every page is on
-                  `PageShell` (Phase 4 of docs/design/consistency-pass.md) — demoting it sooner
-                  would leave the pages that have no PageHeader with no h1 at all, which is the
-                  worse of the two defects. Then it becomes a plain element. */}
-              {moduleTitle ? <h1 className="truncate text-sm font-semibold text-copy-primary">{moduleTitle}</h1> : null}
+              {/* Not an h1: this names the *module*, and `PageHeader` names the page (§8 —
+                  exactly one per page). It was an h1 until every route carried a `PageShell`,
+                  because demoting it sooner would have left the unmigrated pages with no
+                  heading at all. Phase 4 finished that migration. */}
+              {moduleTitle ? <div className="truncate text-sm font-semibold text-copy-primary">{moduleTitle}</div> : null}
             </div>
             <div className="min-w-0">
               <GlobalCommandPalette responsive />

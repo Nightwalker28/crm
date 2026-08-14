@@ -315,7 +315,8 @@ test("Contract list failures use fixed recoverable guidance", async ({ page }) =
 
   await page.goto("/dashboard/contracts");
 
-  await expect(page.getByText("Contracts could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("Contracts could not be loaded")).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.")).toBeVisible();
   await expect(page.getByText("tenant_id=42 database_password=private-secret")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });

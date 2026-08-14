@@ -366,7 +366,8 @@ test("custom-module routes distinguish not-found and recoverable list failures",
   );
 
   await page.goto("/dashboard/custom/custom_projects");
-  await expect(page.getByText("Records could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("Records could not be loaded")).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.")).toBeVisible();
   await expect(page.getByText("tenant_id=42 database_password=secret")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 

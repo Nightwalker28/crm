@@ -256,7 +256,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
       <Dialog open={open} onClose={handleClose} className="z-50">
         <DialogBackdrop />
         <div className="fixed inset-0 flex items-start justify-center px-4 pt-[12vh]">
-          <DialogPanel className="w-full max-w-2xl overflow-hidden rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-0 shadow-[0_32px_100px_rgba(0,0,0,0.55)]">
+          <DialogPanel className="w-full max-w-2xl overflow-hidden rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-0 shadow-[var(--shadow-panel)]">
             {/* cmdk always points the input's aria-labelledby at the element it renders for
                 `label`, and aria-labelledby wins over aria-label. Without it the reference
                 resolved to empty text, leaving the combobox with no accessible name at all. */}
